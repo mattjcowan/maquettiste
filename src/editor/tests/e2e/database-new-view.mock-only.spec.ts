@@ -3,7 +3,10 @@
 // Add dialect adds a body for another dialect; the Database screen lists it under Views, and the DDL preview renders it (the whole
 // database while the pack's view unit writes nothing, the view's own script once objectScripts is on); undo takes the steps back.
 import type { Page } from "@playwright/test";
-import { expect, openEditor, test, workspace } from "./fixtures";
+import { expect, openEditor, test, workspace, keepDdlOpen } from "./fixtures";
+
+// The DDL preview is hidden by default; these specs read it.
+test.beforeEach(({ page }) => keepDdlOpen(page));
 
 const editor = (page: Page) => page.getByTestId("element-editor");
 

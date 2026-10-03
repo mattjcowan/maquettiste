@@ -40,6 +40,33 @@ internal static class DialectTypeMaps
         return merged.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
+    /// <summary>
+    /// The map entry a column's native type comes from: the keyword itself, or a variant entry when the column asks for a fixed-length
+    /// or a Unicode (or single-byte) type: <c>&lt;keyword&gt;:fixed:unicode</c>, <c>&lt;keyword&gt;:fixed:ansi</c>, <c>&lt;keyword&gt;:fixed</c>,
+    /// <c>&lt;keyword&gt;:unicode</c>, <c>&lt;keyword&gt;:ansi</c>, tried most specific first; the plain keyword when the map has none of
+    /// them (a dialect that stores every text alike, such as PostgreSQL for Unicode).
+    /// </summary>
+    /// <param name="map">The effective map.</param>
+    /// <param name="keyword">The built-in keyword.</param>
+    /// <param name="fixedLength">Whether the column is fixed-length.</param>
+    /// <param name="unicode"><see langword="true"/> for Unicode, <see langword="false"/> for single-byte, <see langword="null"/> for the default.</param>
+    /// <returns>The map key.</returns>
+    public static string VariantKey(IReadOnlyDictionary<string, string> map, string keyword, bool fixedLength, bool? unicode)
+    {
+        if (!fixedLength && unicode is null)
+            return keyword;
+        var charset = unicode switch { true => ":unicode", false => ":ansi", _ => "" };
+        if (fixedLength)
+        {
+            if (charset.Length > 0 && map.ContainsKey(keyword + ":fixed" + charset))
+                return keyword + ":fixed" + charset;
+            if (map.ContainsKey(keyword + ":fixed"))
+                return keyword + ":fixed";
+        }
+
+        return charset.Length > 0 && map.ContainsKey(keyword + charset) ? keyword + charset : keyword;
+    }
+
     /// <summary>Renders a native type from a pattern; missing facets take the given defaults.</summary>
     /// <param name="map">The effective map.</param>
     /// <param name="keyword">The built-in keyword.</param>

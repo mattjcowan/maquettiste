@@ -24,25 +24,28 @@ public sealed partial class ModelStore
         var result = await RunMaterializerAsync(snapshot, ToRequest(o), ct).ConfigureAwait(false);
         if (result.Refusal is not null)
             return result.Refusal;
-        changes.AddRange(ToChanges(result));
+        changes.AddRange(ToChanges(result, o.ExpectedHashes));
         results.Add(result);
         return null;
     }
 
     /// <summary>
-    /// After a saved materialize-tables, rewrites the keys of the databases' committed snapshots (<see cref="SchemaDiff.SnapshotRekey"/>), so
-    /// the next schema diff sees each projected table and its designed successor as one table rather than a drop and a create.
+    /// After a saved materialize-tables, records in each database's committed snapshot the keys of the tables (and key sequences) it
+    /// stored as files: the projected key, the file's id and each column's key before and after (<see cref="Generation.SnapshotAliases"/>).
+    /// Nothing is rekeyed: the schema diff reads the snapshot through the aliases, so the next migration sees each projected table and
+    /// its stored successor as one table, and so does the one after an undo puts the projection back, or a redo stores it again. A
+    /// database without a snapshot gets an alias-only one, which the diff reads as none.
     /// </summary>
-    private async Task RekeySnapshotsAsync(IReadOnlyList<MaterializeResult> results, CancellationToken ct)
+    private async Task RecordAliasesAsync(IReadOnlyList<MaterializeResult> results, CancellationToken ct)
     {
         foreach (var group in results.Where(r => r.Database is not null && (r.Rekeys?.Count > 0 || r.Sequences?.Count > 0)).GroupBy(r => r.Database!, StringComparer.Ordinal))
         {
-            if (await _services.Snapshots.LoadAsync(group.Key, ct).ConfigureAwait(false) is not { } before)
+            if (_current?.All<Database>().FirstOrDefault(d => d.Name == group.Key) is not { } database)
                 continue;
+            var before = await _services.Snapshots.LoadAsync(group.Key, ct).ConfigureAwait(false);
             var tables = group.SelectMany(r => r.Rekeys ?? []).ToList();
             var sequences = group.SelectMany(r => r.Sequences ?? new Dictionary<string, string>()).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
-            var after = SchemaDiff.SnapshotRekey.Apply(before, tables, sequences);
-            if (!ReferenceEquals(after, before))
+            if (Generation.SnapshotAliases.Record(before, database, tables, sequences) is { } after)
                 await _services.Snapshots.SaveAsync(after, ct).ConfigureAwait(false);
         }
     }
@@ -51,19 +54,33 @@ public sealed partial class ModelStore
         ? new MaterializeRequest("materialize-tables", o.Database ?? o.Id ?? "", o.Entities ?? [], o.Schema)
         : new MaterializeRequest("materialize-entities", o.Database ?? o.Id ?? "", o.Tables ?? [], null, o.Package);
 
-    private Task<MaterializeResult> RunMaterializerAsync(ModelSnapshot snapshot, MaterializeRequest request, CancellationToken ct)
+    /// <summary>
+    /// Runs the materializer. Storing tables reads the database's committed snapshot first: its aliases give back the ids a table, its
+    /// columns and its key sequences had when they were stored before (and undone), so storing again changes neither ids nor aliases.
+    /// </summary>
+    private async Task<MaterializeResult> RunMaterializerAsync(ModelSnapshot snapshot, MaterializeRequest request, CancellationToken ct)
     {
-        var materializer = new Materializer(snapshot, _services.Resolver, _options.EffectiveIdGenerator, _options.EffectiveParallelism);
+        IReadOnlyList<SnapshotAlias>? aliases = null;
+        if (request.Operation == "materialize-tables" && snapshot.Get<Database>(request.Database) is { } database)
+            aliases = (await _services.Snapshots.LoadAsync(database.Name, ct).ConfigureAwait(false))?.Aliases;
+        var materializer = new Materializer(snapshot, _services.Resolver, _options.EffectiveIdGenerator, _options.EffectiveParallelism, aliases);
         return request.Operation switch
         {
-            "materialize-tables" => materializer.TablesAsync(request.Database, request.Ids, request.Schema, ct),
-            "materialize-entities" => materializer.EntitiesAsync(request.Database, request.Ids, request.Package, ct),
-            _ => Task.FromResult(new MaterializeResult($"'{request.Operation}' is not materialize-tables or materialize-entities.", [], [])),
+            "materialize-tables" => await materializer.TablesAsync(request.Database, request.Ids, request.Schema, ct).ConfigureAwait(false),
+            "materialize-entities" => await materializer.EntitiesAsync(request.Database, request.Ids, request.Package, ct).ConfigureAwait(false),
+            _ => new MaterializeResult($"'{request.Operation}' is not materialize-tables or materialize-entities.", [], []),
         };
     }
 
-    private static IEnumerable<PlannedChange> ToChanges(MaterializeResult result) =>
-        result.Ops.Select(op => new PlannedChange(op.Op, op.Op == BatchOp.Create ? null : op.Id, op.Hash, op.Node?.DeepClone(), DeleteResolution.Refuse));
+    /// <summary>
+    /// The planned changes. With the caller's expected hashes, each update and delete expects the hash the caller read (none read: a
+    /// hash no file has), so a document that changed since the caller read it, or one the caller did not expect the operation to
+    /// touch, is a conflict and nothing is written: an undo built from what the caller read never puts back a stale version.
+    /// </summary>
+    private static IEnumerable<PlannedChange> ToChanges(MaterializeResult result, IReadOnlyDictionary<string, string>? expected = null) =>
+        result.Ops.Select(op => new PlannedChange(op.Op, op.Op == BatchOp.Create ? null : op.Id,
+            op.Op == BatchOp.Create || expected is null ? op.Hash : expected.GetValueOrDefault(op.Id) ?? "unread",
+            op.Node?.DeepClone(), DeleteResolution.Refuse));
 
     /// <summary>
     /// What a materialize operation would do, planned and validated like the batch operation without writing anything: the elements it

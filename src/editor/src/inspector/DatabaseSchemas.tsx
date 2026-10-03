@@ -1,35 +1,71 @@
 // A database's schemas (erratum E26): the Schemas section of the database inspector and the dialogs the explorer's
 // New schema… shares. Schema edits are batch operations (add-schema, rename-schema, remove-schema, set-default-schema):
-// the server renames the default with its schema and moves what lives in a removed schema to the target.
+// the server renames the default with its schema and moves what lives in a removed schema to the target. Each is one undo step.
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
-import { applyBatchResult, invalidateResolved, keys, useDatabaseTables, useIndex } from "@/api/queries";
-import type { BatchRequest } from "@/api/types";
-import { useServices } from "@/app/context";
+import { applyBatchResult, elementQuery, indexQuery, invalidateResolved, keys, useDatabaseTables, useIndex } from "@/api/queries";
+import type { BatchRequest, ModelJson } from "@/api/types";
+import { clone } from "@/lib/json";
+import { batchUndoEntry } from "@/workspaces/database/tableParts";
+import { readDocuments } from "@/workspaces/database/tableBatch";
+import { useServices, type AppServices } from "@/app/context";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";
 import { conventionSchemas, defaultSchemaName, schemasOf, type SchemaOp } from "@/model/databaseSchemas";
 
-/** Runs one schema operation; resolves to null when saved, else the reason. */
+/** The undo label of a schema operation. */
+function schemaLabel(op: SchemaOp, schemas: readonly { id: string; name: string }[]): string {
+  const name = (id: string | undefined) => schemas.find((s) => s.id === id)?.name ?? id ?? "";
+  switch (op.op) {
+    case "add-schema":
+      return `New schema ${op.name}`;
+    case "rename-schema":
+      return `Rename schema ${name(op.schema)} to ${op.name}`;
+    case "remove-schema":
+      return `Remove schema ${name(op.schema)}`;
+    case "set-default-schema":
+      return `Make ${name(op.schema)} the default schema`;
+  }
+}
+
+/**
+ * Runs one schema operation as one undo step: the documents it may change are read first (the database; for a remove, what
+ * lives in the database, which may move to the target schema), the batch expects the database as read, and the step restores
+ * what the batch changed. Resolves to null when saved, else the reason.
+ */
 export function useSchemaOperation(): (op: SchemaOp) => Promise<string | null> {
   const qc = useQueryClient();
-  return async (op) => {
-    const result = await endpoints.applyBatch({ operations: [op] } as unknown as BatchRequest);
-    if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The operation is not valid.";
-    if (result.outcome !== "saved") {
-      const failed = result.items.find((i) => i.outcome !== "saved");
-      return failed?.diagnostics[0]?.message ?? result.outcome;
-    }
-    applyBatchResult(qc, result);
-    for (const item of result.items) if (item.id) void qc.invalidateQueries({ queryKey: keys.element(item.id) });
-    void qc.invalidateQueries({ queryKey: keys.index });
-    void qc.invalidateQueries({ queryKey: keys.tables });
-    invalidateResolved(qc);
-    return null;
-  };
+  const services = useServices();
+  return (op) => runSchemaOperation(services, qc, op);
+}
+
+/** `useSchemaOperation`'s work: one schema operation, one undo step. */
+export async function runSchemaOperation(services: Pick<AppServices, "store" | "drafts">, qc: QueryClient, op: SchemaOp): Promise<string | null> {
+  const { store, drafts } = services;
+  await drafts.flushAll();
+  const database = await qc.fetchQuery({ ...elementQuery(op.id), staleTime: 0 });
+  const priors = new Map<string, ModelJson>([[op.id, clone(database.json as ModelJson)]]);
+  if (op.op === "remove-schema") {
+    const rows = await qc.fetchQuery(indexQuery);
+    const ids = rows.filter((r) => r.database === op.id).map((r) => r.id);
+    for (const doc of await readDocuments(ids)) priors.set(String(doc.id), clone(doc as unknown as ModelJson));
+  }
+  const result = await endpoints.applyBatch({ operations: [{ ...op, expectedHash: database.hash }] } as unknown as BatchRequest);
+  if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The operation is not valid.";
+  if (result.outcome !== "saved") {
+    const failed = result.items.find((i) => i.outcome !== "saved");
+    return result.outcome === "conflict" ? "The database changed meanwhile; try again." : (failed?.diagnostics[0]?.message ?? result.outcome);
+  }
+  applyBatchResult(qc, result);
+  store.getState().pushUndo(batchUndoEntry(schemaLabel(op, schemasOf(database.json as unknown as Record<string, unknown>)), priors, result.items));
+  for (const item of result.items) if (item.id) void qc.invalidateQueries({ queryKey: keys.element(item.id) });
+  void qc.invalidateQueries({ queryKey: keys.index });
+  void qc.invalidateQueries({ queryKey: keys.tables });
+  invalidateResolved(qc);
+  return null;
 }
 
 /** New schema… and Rename…: one name. */

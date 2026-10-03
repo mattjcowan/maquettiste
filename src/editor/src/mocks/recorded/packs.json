@@ -404,7 +404,7 @@
     {
       "name": "sql-ddl",
       "version": "1.0.0",
-      "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
+      "description": "SQL DDL for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
       "enabled": true,
       "output": "db",
       "units": [

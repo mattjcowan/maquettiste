@@ -1,7 +1,10 @@
 // Table detail in the Databases explorer (explorer-redesign.md 1.3, EX step 13): a table expands into Columns, keys
 // and indexes from its detail (E5f); selecting a column highlights, in the Domain model, the entity and the attribute
 // mapped onto it; opening the table shows it focused in the Database screen, whose table section has a filter.
-import { expect, openEditor, test, workspace } from "./fixtures";
+import { expect, openEditor, test, workspace, keepDdlOpen } from "./fixtures";
+
+// The DDL preview is hidden by default; these specs read it.
+test.beforeEach(({ page }) => keepDdlOpen(page));
 
 const explorer = (page: import("@playwright/test").Page) => page.getByRole("complementary", { name: "Explorer" });
 const chevron = (row: import("@playwright/test").Locator) => row.locator("span[aria-hidden]").first();

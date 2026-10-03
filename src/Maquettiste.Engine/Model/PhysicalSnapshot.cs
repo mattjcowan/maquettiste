@@ -25,6 +25,12 @@ public sealed record PhysicalSnapshot
     /// <summary>The revision; incremented by every non-empty diff that is applied.</summary>
     public int Revision { get; init; }
 
+    /// <summary>
+    /// The declared schemas, sorted by key; <see langword="null"/> in a snapshot written before schemas were recorded, which the diff
+    /// then compares with nothing (no schema changes until the next snapshot records them).
+    /// </summary>
+    public IReadOnlyList<SnapshotSchema>? Schemas { get; init; }
+
     /// <summary>Tables, sorted by key.</summary>
     public IReadOnlyList<SnapshotTable> Tables { get; init; } = [];
 
@@ -42,6 +48,40 @@ public sealed record PhysicalSnapshot
 
     /// <summary>SQL objects, sorted by key.</summary>
     public IReadOnlyList<SnapshotDefinition> Objects { get; init; } = [];
+
+    /// <summary>
+    /// The other keys a table or sequence of this database has had, sorted by key: <c>materialize-tables</c> records each projected
+    /// table it stores as a table file (its synthesized key, the file's id, and each column's key before and after), and the schema
+    /// diff reads the snapshot through them (<see cref="Generation.SnapshotAliases"/>), so the table is one table whichever key the
+    /// model gives it now (stored, or put back by an undo). <see langword="null"/> or empty: none.
+    /// </summary>
+    public IReadOnlyList<SnapshotAlias>? Aliases { get; init; }
+}
+
+/// <summary>Two keys of one table or sequence of a <see cref="PhysicalSnapshot"/> (<see cref="PhysicalSnapshot.Aliases"/>).</summary>
+public sealed record SnapshotAlias
+{
+    /// <summary>The synthesized key (a projected table's <c>&lt;entityId&gt;@&lt;databaseId&gt;</c>, or a key sequence's).</summary>
+    public required string Key { get; init; }
+
+    /// <summary>The id of the table or sequence file that took its place.</summary>
+    public required string Alias { get; init; }
+
+    /// <summary><c>table</c> or <c>sequence</c>.</summary>
+    public string Kind { get; init; } = "table";
+
+    /// <summary>A table's column keys under <see cref="Key"/> (attribute paths) and the file's column ids, by the former.</summary>
+    public IReadOnlyDictionary<string, string>? Columns { get; init; }
+}
+
+/// <summary>A declared schema in a <see cref="PhysicalSnapshot"/>.</summary>
+public sealed record SnapshotSchema
+{
+    /// <summary>The schema's id.</summary>
+    public required string Key { get; init; }
+
+    /// <summary>The name.</summary>
+    public required string Name { get; init; }
 }
 
 /// <summary>A table in a <see cref="PhysicalSnapshot"/>.</summary>
@@ -111,8 +151,20 @@ public sealed record SnapshotColumn
     /// <summary>The default SQL expression for the database's dialect.</summary>
     public string? DefaultSql { get; init; }
 
+    /// <summary>The name the column's file gives its default constraint, or <see langword="null"/> for the template's convention.</summary>
+    public string? DefaultName { get; init; }
+
     /// <summary>Whether the column is an identity column.</summary>
     public bool Identity { get; init; }
+
+    /// <summary>An identity column's first value, or <see langword="null"/> for the dialect's.</summary>
+    public long? IdentitySeed { get; init; }
+
+    /// <summary>An identity column's step, or <see langword="null"/> for the dialect's.</summary>
+    public long? IdentityIncrement { get; init; }
+
+    /// <summary>Whether an identity column is generated always (not by default).</summary>
+    public bool IdentityAlways { get; init; }
 
     /// <summary>The key of the sequence that supplies values (a sequence id or a synthesized sequence key), when sequence-generated.</summary>
     public string? Sequence { get; init; }
@@ -150,6 +202,9 @@ public sealed record SnapshotConstraint
 
     /// <summary>Whether the constraint is clustered (SQL Server); <see langword="null"/> means the dialect's default.</summary>
     public bool? Clustered { get; init; }
+
+    /// <summary>For a unique constraint: whether rows with nulls in its columns conflict (NULLS NOT DISTINCT).</summary>
+    public bool NullsNotDistinct { get; init; }
 }
 
 /// <summary>A foreign key in a snapshot.</summary>
@@ -175,6 +230,9 @@ public sealed record SnapshotForeignKey
 
     /// <summary>The on-update action.</summary>
     public ReferentialAction OnUpdate { get; init; } = ReferentialAction.NoAction;
+
+    /// <summary>When the key is checked.</summary>
+    public Deferrability Deferrable { get; init; } = Deferrability.NotDeferrable;
 }
 
 /// <summary>A check constraint in a snapshot.</summary>
@@ -199,8 +257,8 @@ public sealed record SnapshotIndex
     /// <summary>The physical name.</summary>
     public required string Name { get; init; }
 
-    /// <summary>Indexed columns with sort order (column keys).</summary>
-    public required IReadOnlyList<IndexColumn> Columns { get; init; }
+    /// <summary>Indexed columns (column keys) or expressions, with sort order and prefix length.</summary>
+    public required IReadOnlyList<SnapshotIndexColumn> Columns { get; init; }
 
     /// <summary>Included column keys.</summary>
     public IReadOnlyList<string> Include { get; init; } = [];
@@ -213,6 +271,22 @@ public sealed record SnapshotIndex
 
     /// <summary>The index method.</summary>
     public IndexMethod Method { get; init; } = IndexMethod.Default;
+}
+
+/// <summary>A column or expression of an index in a snapshot.</summary>
+public sealed record SnapshotIndexColumn
+{
+    /// <summary>The column key; <see langword="null"/> for an expression.</summary>
+    public string? Column { get; init; }
+
+    /// <summary>The expression for the database's dialect; <see langword="null"/> for a column.</summary>
+    public string? Expression { get; init; }
+
+    /// <summary>Whether the column sorts descending.</summary>
+    public bool Descending { get; init; }
+
+    /// <summary>The key prefix length, or <see langword="null"/>.</summary>
+    public int? Length { get; init; }
 }
 
 /// <summary>A view in a snapshot.</summary>
@@ -229,6 +303,21 @@ public sealed record SnapshotView
 
     /// <summary>The body for the database's dialect.</summary>
     public required string Body { get; init; }
+
+    /// <summary>The column names CREATE VIEW lists (the view's columnList), or empty.</summary>
+    public IReadOnlyList<string> Columns { get; init; } = [];
+
+    /// <summary>Whether the view has WITH CHECK OPTION.</summary>
+    public bool WithCheckOption { get; init; }
+
+    /// <summary>Whether the view is materialized.</summary>
+    public bool Materialized { get; init; }
+
+    /// <summary>The keys of the views of the database it reads (its resolved dependsOn), so a later migration drops it before them.</summary>
+    public IReadOnlyList<string> DependsOn { get; init; } = [];
+
+    /// <summary>The database comment.</summary>
+    public string? Comment { get; init; }
 }
 
 /// <summary>A sequence in a snapshot.</summary>

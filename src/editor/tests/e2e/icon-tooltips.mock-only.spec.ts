@@ -36,7 +36,7 @@ test("every icon-only control on the main screens has a tooltip and an accessibl
   await open(page, "Invoice");
   const editor = page.getByRole("region", { name: "Editor: Invoice" });
   total += await scan("entity editor");
-  for (const name of ["Relationships", "Indexes", "Mappings", "Seed data", "Code generation", "References", "Attributes"]) await tab(name, editor);
+  for (const name of ["Relationships", "Indexes", "Storage", "Seed data", "Code generation", "References", "Attributes"]) await tab(name, editor);
 
   // Reference data: the New reference type dialog, then the type's fields and rows.
   await workspace(page, "Reference data");

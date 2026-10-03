@@ -1,6 +1,104 @@
 {{-
 # Shared SQL functions for the sql-ddl pack. Include this file once at the top of a template; it prints nothing.
-# Supported dialects: postgresql, sqlserver, sqlite. Other dialects get portable ANSI SQL.
+# Supported dialects: postgresql, sqlserver, mysql (MySQL 8 and MariaDB), sqlite and oracle (tables, keys, constraints, indexes,
+# sequences, views and comments; routines and database types on PostgreSQL and SQL Server only).
+
+# The number of SQL Server procedure calls the script checked so far (ms_checked): each check declares a variable of its own.
+mq_ms_checks = 0
+
+# SQL Server: a call of a system procedure (sp_rename, the extended property procedures) whose failure is an error XACT_ABORT does
+# not act on and a return code: the code is checked and THROW, which XACT_ABORT does act on, aborts the script and rolls its
+# transaction back. A batch declares a variable name once, so each call gets its own. A BEGIN ... END block without its semicolon
+# (it can stand after IF or ELSE).
+func ms_checked(call, db)
+  mq_ms_checks = mq_ms_checks + 1
+  $v = "@mq_rc" + mq_ms_checks
+  $proc = (call | string.split " ")[0]
+  ret "BEGIN DECLARE " + $v + " int; EXEC " + $v + " = " + call + "; IF " + $v + " <> 0 THROW 50000, " + lit($proc + " failed: the migration stops here.", db) + ", 1; END"
+end
+
+# Whether the pack writes idempotent DDL (the "idempotent" parameter): CREATE ... IF NOT EXISTS, DROP ... IF EXISTS and the
+# dialect's guards where it has no such clause (SQL Server OBJECT_ID tests, PostgreSQL DO blocks for constraints).
+func idem()
+  ret pack.params.idempotent == true
+end
+
+# A PostgreSQL DO block that runs a statement only when a constraint of a table is missing (ADD CONSTRAINT has no IF NOT EXISTS).
+func pg_unless_constraint(t, name, statement)
+  ret "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = " + lit(name, t.database) + " AND conrelid = " + lit(qt(t), t.database) + "::regclass) THEN " + statement + " END IF; END $$;"
+end
+
+# SQL Server: the N'...' literal of a schema-qualified object name, for OBJECT_ID.
+func ms_object(schema, name, db)
+  ret lit((schema ? schema + "." : "") + name, db)
+end
+
+# ALTER TABLE ... ADD CONSTRAINT, guarded when idempotent (PostgreSQL DO block, SQL Server OBJECT_ID test; MySQL, SQLite and Oracle
+# have no guard for it and add it as is).
+func add_constraint_sql(t, name, body)
+  $db = t.database
+  $s = "ALTER TABLE " + qt(t) + " ADD CONSTRAINT " + q(name, $db) + " " + body + ";"
+  if !idem()
+    ret $s
+  end
+  if $db.dialect == "postgresql"
+    ret pg_unless_constraint(t, name, $s)
+  else if $db.dialect == "sqlserver"
+    ret "IF OBJECT_ID(" + ms_object(t.schema, name, $db) + ") IS NULL " + $s
+  else if $db.dialect == "mysql"
+    $kind = (body | string.starts_with "PRIMARY KEY") ? "PRIMARY KEY" : null
+    ret my_guard($db, "NOT " + my_exists_constraint(t, $kind ? "PRIMARY" : name, $kind), $s)
+  end
+  ret $s
+end
+
+# MySQL: a statement run only when a condition holds, through a prepared statement (MySQL has no IF outside stored programs and no
+# IF [NOT] EXISTS for most of ALTER TABLE), for the idempotent parameter.
+func my_guard(db, condition, statement)
+  $st = statement | string.rstrip
+  if $st | string.ends_with ";"
+    $st = $st | string.slice 0 ($st.size - 1)
+  end
+  ret "SET @mq_sql = IF(" + condition + ", " + lit($st, db) + ", 'DO 0');\nPREPARE mq_stmt FROM @mq_sql;\nEXECUTE mq_stmt;\nDEALLOCATE PREPARE mq_stmt;"
+end
+
+# MySQL: the information_schema test of the schema a table is in (its database, or the current one).
+func my_schema(schema, db)
+  ret "table_schema = " + (schema ? lit(schema, db) : "DATABASE()")
+end
+
+# MySQL: EXISTS tests for a table (or view), a column, an index and a constraint, by name.
+func my_exists_table(schema, name, db)
+  ret "EXISTS (SELECT 1 FROM information_schema.tables WHERE " + my_schema(schema, db) + " AND table_name = " + lit(name, db) + ")"
+end
+
+func my_exists_column(t, name)
+  ret "EXISTS (SELECT 1 FROM information_schema.columns WHERE " + my_schema(t.schema, t.database) + " AND table_name = " + lit(t.name, t.database) + " AND column_name = " + lit(name, t.database) + ")"
+end
+
+func my_exists_index(t, name)
+  ret "EXISTS (SELECT 1 FROM information_schema.statistics WHERE " + my_schema(t.schema, t.database) + " AND table_name = " + lit(t.name, t.database) + " AND index_name = " + lit(name, t.database) + ")"
+end
+
+# kind narrows the constraint type (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK), or null for any.
+func my_exists_constraint(t, name, kind)
+  ret "EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE " + my_schema(t.schema, t.database) + " AND table_name = " + lit(t.name, t.database) + " AND constraint_name = " + lit(name, t.database) + (kind ? " AND constraint_type = " + lit(kind, t.database) : "") + ")"
+end
+
+# A PostgreSQL DO block that runs a statement only when a condition holds, for the idempotent parameter.
+func pg_do_if(condition, statement)
+  ret "DO $$ BEGIN IF " + condition + " THEN " + statement + " END IF; END $$;"
+end
+
+# PostgreSQL: the information_schema test of the schema a table is in (its schema, or the search path's first).
+func pg_schema(schema, db)
+  ret "table_schema = " + (schema ? lit(schema, db) : "current_schema()")
+end
+
+# PostgreSQL: EXISTS test for a column of a table, by name; is_identity narrows it to an identity column.
+func pg_exists_column(t, name, identity)
+  ret "EXISTS (SELECT 1 FROM information_schema.columns WHERE " + pg_schema(t.schema, t.database) + " AND table_name = " + lit(t.name, t.database) + " AND column_name = " + lit(name, t.database) + (identity ? " AND is_identity = 'YES'" : "") + ")"
+end
 
 # Quotes one identifier for a database, honouring the pack's "quoting" parameter ("" = the database's own setting).
 func q(name, db)
@@ -37,7 +135,15 @@ func lit(value, db)
 end
 
 # ON DELETE / ON UPDATE action, or "" for the default (no action). SQL Server has no RESTRICT; NO ACTION behaves the same there.
+# Oracle has only ON DELETE CASCADE and ON DELETE SET NULL, and MySQL's InnoDB refuses SET DEFAULT: what they lack is left out
+# (MQ4056).
 func fk_action(action, db)
+  if db.dialect == "oracle" && action != "cascade" && action != "set-null"
+    ret ""
+  end
+  if db.dialect == "mysql" && action == "set-default"
+    ret ""
+  end
   case action
     when "cascade"
       ret "CASCADE"
@@ -63,17 +169,22 @@ func sqlite_rowid(t)
   ret t.primary_key.columns[0].identity
 end
 
-# The SQL expression for a named attribute default expression (now, today, new-uuid), or "" when the dialect has none.
+# The SQL expression for a named attribute default expression (now, today, new-uuid), or "" when the dialect has none. MySQL takes
+# an expression default in parentheses, and CURRENT_TIMESTAMP with the column's fractional seconds.
 func default_expression(expr, c, db)
   $d = db.dialect
   if expr == "now"
     if $d == "sqlserver"
       ret c.type == "datetimeoffset" ? "SYSDATETIMEOFFSET()" : "SYSUTCDATETIME()"
+    else if $d == "mysql" && c.precision && c.precision > 0
+      ret "CURRENT_TIMESTAMP(" + c.precision + ")"
     end
     ret "CURRENT_TIMESTAMP"
   else if expr == "today"
     if $d == "sqlserver"
       ret "CAST(SYSUTCDATETIME() AS date)"
+    else if $d == "mysql"
+      ret "(CURRENT_DATE)"
     end
     ret "CURRENT_DATE"
   else if expr == "new-uuid"
@@ -81,9 +192,20 @@ func default_expression(expr, c, db)
       ret "gen_random_uuid()"
     else if $d == "sqlserver"
       ret "NEWID()"
+    else if $d == "mysql"
+      ret "(UUID())"
+    else if $d == "oracle"
+      ret "SYS_GUID()"
     end
   end
   ret ""
+end
+
+# MySQL: whether a column's type is a text, blob or json type, whose literal default must be written as an expression in
+# parentheses (MySQL 8.0.13 and later; MariaDB takes both) and whose index needs a key prefix length.
+func mysql_blob(c)
+  $t = column_type(c) | string.downcase
+  ret ($t | string.contains "text") || ($t | string.contains "blob") || ($t | string.starts_with "json")
 end
 
 # The default clause of a column without the DEFAULT keyword, or "": per-dialect SQL, then a literal, then a sequence, then a
@@ -93,6 +215,9 @@ func default_sql(c, db)
     ret c.default_sql
   end
   if c.default != null
+    if db.dialect == "mysql" && mysql_blob(c)
+      ret "(" + lit(c.default, db) + ")"
+    end
     ret lit(c.default, db)
   end
   if c.sequence && !c.identity
@@ -100,6 +225,8 @@ func default_sql(c, db)
       ret "nextval(" + lit(qn(c.sequence.schema, c.sequence.name, db), db) + ")"
     else if db.dialect == "sqlserver"
       ret "(NEXT VALUE FOR " + qn(c.sequence.schema, c.sequence.name, db) + ")"
+    else if db.dialect == "oracle"
+      ret qn(c.sequence.schema, c.sequence.name, db) + ".NEXTVAL"
     end
     ret ""
   end
@@ -109,14 +236,45 @@ func default_sql(c, db)
   ret ""
 end
 
-# FOREIGN KEY ... REFERENCES ... with its actions, without the CONSTRAINT name.
+# The name of a column's default constraint on SQL Server: its file's defaultName, else df_<table>_<column>.
+func default_name(c, table_name)
+  ret c.default_name ?? ("df_" + table_name + "_" + c.name)
+end
+
+# UNIQUE (columns) of a unique constraint, with NULLS NOT DISTINCT on PostgreSQL (15 and later; MQ4056 elsewhere).
+func unique_body(u, db)
+  ret "UNIQUE" + (u.nulls_not_distinct && db.dialect == "postgresql" ? " NULLS NOT DISTINCT" : "") + " (" + cols(u.columns, db) + ")"
+end
+
+# The options of an identity column in parentheses with a leading space (START WITH, INCREMENT BY), or "" when it sets none.
+func identity_options(c)
+  $o = ""
+  if c.identity_seed != null
+    $o = "START WITH " + c.identity_seed
+  end
+  if c.identity_increment != null
+    $o = $o + ($o == "" ? "" : " ") + "INCREMENT BY " + c.identity_increment
+  end
+  ret $o == "" ? "" : " (" + $o + ")"
+end
+
+# GENERATED ALWAYS / BY DEFAULT AS IDENTITY with its options (PostgreSQL, Oracle).
+func identity_clause(c)
+  ret "GENERATED " + (c.identity_always ? "ALWAYS" : "BY DEFAULT") + " AS IDENTITY" + identity_options(c)
+end
+
+# FOREIGN KEY ... REFERENCES ... with its actions and deferral, without the CONSTRAINT name. SQL Server and MySQL have no deferrable
+# keys (MQ4056); Oracle has no ON UPDATE.
 func foreign_key_body(f, db)
   $s = "FOREIGN KEY (" + cols(f.columns, db) + ") REFERENCES " + qt(f.referenced_table) + " (" + cols(f.referenced_columns, db) + ")"
   if fk_action(f.on_delete, db) != ""
     $s = $s + " ON DELETE " + fk_action(f.on_delete, db)
   end
-  if fk_action(f.on_update, db) != ""
+  if fk_action(f.on_update, db) != "" && db.dialect != "oracle"
     $s = $s + " ON UPDATE " + fk_action(f.on_update, db)
+  end
+  if f.deferrable != "not-deferrable" && db.dialect != "sqlserver" && db.dialect != "mysql"
+    $s = $s + (f.deferrable == "initially-deferred" ? " DEFERRABLE INITIALLY DEFERRED" : " DEFERRABLE INITIALLY IMMEDIATE")
   end
   ret $s
 end
@@ -158,77 +316,234 @@ func column_def(c)
     if $d == "postgresql"
       ret $s + " GENERATED ALWAYS AS (" + c.computed + ") STORED"
     end
-    ret $s + " GENERATED ALWAYS AS (" + c.computed + ")" + (c.computed_stored ? " STORED" : " VIRTUAL")
+    # Oracle computes every generated column on read.
+    ret $s + " GENERATED ALWAYS AS (" + c.computed + ")" + (c.computed_stored && $d != "oracle" ? " STORED" : " VIRTUAL")
   end
   if c.is_primary_key && sqlite_rowid($t)
     ret $s + " INTEGER NOT NULL CONSTRAINT " + q($t.primary_key.name, $db) + " PRIMARY KEY"
   end
   $s = $s + " " + column_type(c)
   if c.collation
-    $s = $s + " COLLATE " + ($d == "postgresql" ? q(c.collation, $db) : c.collation)
+    $s = $s + " COLLATE " + collation_sql(c.collation, $db)
   end
   if c.identity
-    if $d == "postgresql"
-      $s = $s + " GENERATED BY DEFAULT AS IDENTITY"
+    if $d == "postgresql" || $d == "oracle"
+      $s = $s + " " + identity_clause(c)
     else if $d == "sqlserver"
-      $s = $s + " IDENTITY(1,1)"
+      $s = $s + " IDENTITY(" + (c.identity_seed ?? 1) + "," + (c.identity_increment ?? 1) + ")"
     end
   end
-  $s = $s + (c.nullable ? " NULL" : " NOT NULL")
   $dflt = default_sql(c, $db)
+  if $d == "oracle"
+    # Oracle takes the default before the column's constraints.
+    ret $s + ($dflt != "" ? " DEFAULT " + $dflt : "") + (c.nullable ? " NULL" : " NOT NULL")
+  end
+  $s = $s + (c.nullable ? " NULL" : " NOT NULL")
   if $dflt != ""
     if $d == "sqlserver"
-      $s = $s + " CONSTRAINT " + q("df_" + $t.name + "_" + c.name, $db)
+      $s = $s + " CONSTRAINT " + q(default_name(c, $t.name), $db)
     end
     $s = $s + " DEFAULT " + $dflt
+  end
+  if $d == "mysql"
+    if c.identity
+      $s = $s + " AUTO_INCREMENT"
+    end
+    if pack.params.comments && c.comment
+      $s = $s + " COMMENT " + lit(c.comment, $db)
+    end
   end
   ret $s
 end
 
-# The CREATE INDEX statement of an index (with its terminating semicolon).
+# A collation name as the dialect writes it: PostgreSQL's in double quotes (its collation names are case-sensitive, "C" and
+# "en_US"), the others as written.
+func collation_sql(name, db)
+  if db.dialect == "postgresql"
+    ret "\"" + (name | string.replace "\"" "\"\"") + "\""
+  end
+  ret name
+end
+
+# SQL Server: whether the tables need SET QUOTED_IDENTIFIER ON (a persisted computed column or a filtered index refuses to be created
+# without it, and sqlcmd starts with it off).
+func ms_needs_quoted_identifier(tables)
+  for t in tables
+    for c in t.columns
+      if c.computed
+        ret true
+      end
+    end
+    for ix in t.indexes
+      if ix.where
+        ret true
+      end
+    end
+  end
+  ret false
+end
+
+# The table options after the closing parenthesis of CREATE TABLE: MySQL's first AUTO_INCREMENT value (an identity seed) and table
+# comment, else "".
+func table_options(t)
+  if t.database.dialect != "mysql"
+    ret ""
+  end
+  $s = ""
+  for c in t.columns
+    if c.identity && c.identity_seed != null
+      $s = " AUTO_INCREMENT = " + c.identity_seed
+    end
+  end
+  if pack.params.comments && t.comment
+    $s = $s + " COMMENT = " + lit(t.comment, t.database)
+  end
+  ret $s
+end
+
+# The PRIMARY KEY clause's SQL Server clustering: the primary key's own clustered setting, else NONCLUSTERED when a clustered
+# index takes the table's clustering, else the server's default (clustered).
+func pk_clustering(t)
+  if t.database.dialect != "sqlserver"
+    ret ""
+  end
+  if t.primary_key.clustered == true
+    ret " CLUSTERED"
+  else if t.primary_key.clustered == false
+    ret " NONCLUSTERED"
+  end
+  for ix in t.indexes
+    if ix.method == "clustered"
+      ret " NONCLUSTERED"
+    end
+  end
+  ret ""
+end
+
+# The indexed parts of an index: each column (with its key prefix length on MySQL) or expression (in parentheses), then DESC.
+func index_parts(ix, db)
+  $parts = ""
+  for ic in ix.columns
+    if ic.column
+      $part = q(ic.column.name, db) + (ic.length && db.dialect == "mysql" ? "(" + ic.length + ")" : "")
+    else
+      $part = "(" + ic.expression + ")"
+    end
+    $parts = $parts + (for.first ? "" : ", ") + $part + (ic.descending ? " DESC" : "")
+  end
+  ret $parts
+end
+
+# Why the DDL leaves an index out (MQ4056), or "": SQL Server indexes no expression, and MySQL indexes a text or blob column only
+# with a key prefix length.
+func index_left_out(ix, db)
+  for ic in ix.columns
+    if !ic.column && db.dialect == "sqlserver"
+      ret "SQL Server indexes no expression (index a computed column instead)"
+    else if ic.column && db.dialect == "mysql" && !ic.length && mysql_blob(ic.column)
+      ret "MySQL indexes the text or blob column " + ic.column.name + " only with a key prefix length"
+    end
+  end
+  ret ""
+end
+
+# A MySQL index declared in CREATE TABLE: [UNIQUE] INDEX name (columns) [USING BTREE|HASH].
+func mysql_index_def(ix, db)
+  ret (ix.unique ? "UNIQUE " : "") + "INDEX " + q(ix.name, db) + " (" + index_parts(ix, db) + ")" + ((ix.method == "btree" || ix.method == "hash") ? " USING " + (ix.method | string.upcase) : "")
+end
+
+# The CREATE INDEX statement of an index (with its terminating semicolon). What the dialect lacks is left out (MQ4056): include
+# columns outside PostgreSQL and SQL Server, partial indexes on MySQL and Oracle, methods outside PostgreSQL (MySQL: btree, hash).
 func index_sql(ix, t)
   $db = t.database
   $d = $db.dialect
-  $parts = ""
-  for ic in ix.columns
-    $parts = $parts + (for.first ? "" : ", ") + q(ic.column.name, $db) + (ic.descending ? " DESC" : "")
+  $out = index_left_out(ix, $db)
+  if $out != ""
+    ret "-- Index " + ix.name + " is left out: " + $out + "."
   end
+  $parts = index_parts(ix, $db)
   $s = "CREATE " + (ix.unique ? "UNIQUE " : "")
   if $d == "sqlserver" && ix.method == "clustered"
     $s = $s + "CLUSTERED "
   end
-  $s = $s + "INDEX " + q(ix.name, $db) + " ON " + qt(t)
+  $s = $s + "INDEX " + (idem() && ($d == "postgresql" || $d == "sqlite") ? "IF NOT EXISTS " : "") + q(ix.name, $db) + " ON " + qt(t)
   if $d == "postgresql" && (ix.method == "btree" || ix.method == "hash" || ix.method == "gin" || ix.method == "gist")
     $s = $s + " USING " + ix.method
   end
   $s = $s + " (" + $parts + ")"
+  if $d == "mysql" && (ix.method == "btree" || ix.method == "hash")
+    $s = $s + " USING " + (ix.method | string.upcase)
+  end
   if ix.include.size > 0 && ($d == "postgresql" || $d == "sqlserver")
     $s = $s + " INCLUDE (" + cols(ix.include, $db) + ")"
   end
-  if ix.where
+  if ix.where && $d != "mysql" && $d != "oracle"
     $s = $s + " WHERE " + ix.where
   end
   $s = $s + ";"
+  if idem() && $d == "sqlserver"
+    $s = "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = " + lit(ix.name, $db) + " AND object_id = OBJECT_ID(" + ms_object(t.schema, t.name, $db) + ")) " + $s
+  else if idem() && $d == "mysql"
+    $s = my_guard($db, "NOT " + my_exists_index(t, ix.name), $s)
+  end
   if $d == "postgresql" && ix.method == "clustered"
     $s = $s + "\nCLUSTER " + qt(t) + " USING " + q(ix.name, $db) + ";"
   end
   ret $s
 end
 
-# A table comment or column comment statement for PostgreSQL or SQL Server; "" elsewhere (SQLite keeps comments in the text).
+# A table comment or column comment statement for PostgreSQL, Oracle or SQL Server; "" elsewhere (MySQL writes comments in the
+# column and table definitions, SQLite keeps them in the script's text). On SQL Server an idempotent script sets the description
+# whether or not it exists (ms_description).
 func comment_sql(t, c, text)
   $db = t.database
-  if $db.dialect == "postgresql"
+  if $db.dialect == "postgresql" || $db.dialect == "oracle"
     if c
       ret "COMMENT ON COLUMN " + qt(t) + "." + q(c.name, $db) + " IS " + lit(text, $db) + ";"
     end
     ret "COMMENT ON TABLE " + qt(t) + " IS " + lit(text, $db) + ";"
   else if $db.dialect == "sqlserver"
-    $s = "EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = " + lit(text, $db) + ", @level0type = N'SCHEMA', @level0name = " + lit(t.schema ?? "dbo", $db) + ", @level1type = N'TABLE', @level1name = " + lit(t.name, $db)
-    if c
-      $s = $s + ", @level2type = N'COLUMN', @level2name = " + lit(c.name, $db)
+    if idem()
+      ret ms_description($db, "TABLE", t.schema, t.name, c ? c.name : null, text)
     end
-    ret $s + ";"
+    ret ms_add_description($db, "TABLE", t.schema, t.name, c ? c.name : null, text)
+  end
+  ret ""
+end
+
+# SQL Server: adds the MS_Description of a new table, view or column (sp_addextendedproperty fails when it exists).
+func ms_add_description(db, kind, schema, name, column, text)
+  $s = "sys.sp_addextendedproperty @name = N'MS_Description', @value = " + lit(text, db) + ", @level0type = N'SCHEMA', @level0name = " + lit(schema ?? "dbo", db) + ", @level1type = N'" + kind + "', @level1name = " + lit(name, db)
+  if column
+    $s = $s + ", @level2type = N'COLUMN', @level2name = " + lit(column, db)
+  end
+  ret ms_checked($s, db) + ";"
+end
+
+# SQL Server: sets (text) or removes (null) the MS_Description of a table, view or column, whether or not it exists. kind is TABLE
+# or VIEW; column is null for the object itself.
+func ms_description(db, kind, schema, name, column, text)
+  $args = "@name = N'MS_Description', @level0type = N'SCHEMA', @level0name = " + lit(schema ?? "dbo", db) + ", @level1type = N'" + kind + "', @level1name = " + lit(name, db)
+  if column
+    $args = $args + ", @level2type = N'COLUMN', @level2name = " + lit(column, db)
+  end
+  $where = "SELECT 1 FROM sys.extended_properties WHERE class = 1 AND name = N'MS_Description' AND major_id = OBJECT_ID(" + ms_object(schema ?? "dbo", name, db) + ") AND minor_id = " + (column ? "COLUMNPROPERTY(OBJECT_ID(" + ms_object(schema ?? "dbo", name, db) + "), " + lit(column, db) + ", 'ColumnId')" : "0")
+  if text == null
+    ret "IF EXISTS (" + $where + ") " + ms_checked("sys.sp_dropextendedproperty " + $args, db) + ";"
+  end
+  ret "IF EXISTS (" + $where + ") " + ms_checked("sys.sp_updateextendedproperty " + $args + ", @value = " + lit(text, db), db) + " ELSE " + ms_checked("sys.sp_addextendedproperty " + $args + ", @value = " + lit(text, db), db) + ";"
+end
+
+# The comment statement of a view, or "": PostgreSQL COMMENT ON VIEW, Oracle COMMENT ON TABLE, SQL Server MS_Description. MySQL and
+# SQLite views have no comments.
+func view_comment_sql(v, db, text)
+  $d = db.dialect
+  if $d == "postgresql"
+    ret "COMMENT ON " + (v.materialized ? "MATERIALIZED VIEW " : "VIEW ") + qn(v.schema, v.name, db) + " IS " + (text ? lit(text, db) : "NULL") + ";"
+  else if $d == "oracle"
+    ret "COMMENT ON " + (v.materialized ? "MATERIALIZED VIEW " : "TABLE ") + qn(v.schema, v.name, db) + " IS " + lit(text ?? "", db) + ";"
+  else if $d == "sqlserver"
+    ret ms_description(db, "VIEW", v.schema, v.name, null, text)
   end
   ret ""
 end

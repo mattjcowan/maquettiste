@@ -7,12 +7,13 @@ import { activeTab, type EditorTabsState } from "@/editors/tabs";
 import { RAIL_LABELS } from "@/model/labels";
 import { EXTENSIONS_TAB } from "@/workspaces/generate/packTabs";
 import type { EditorState, InspectedTable, SidebarView } from "@/state/store";
+import { isLaidOutKey, type TablePart } from "@/workspaces/database/tableParts";
 
 export type InspectorContext =
   | { mode: "element"; ids: string[]; source: "editor" | "explorer" }
   | { mode: "empty"; place: string; noun: "an element" | "a pack" }
   | { mode: "pack"; pack: string; unit: string | null }
-  | { mode: "table"; database: string; key: string; column: string | null }
+  | { mode: "table"; database: string; key: string; column: string | null; part: TablePart | null }
   | { mode: "none" };
 
 export type ContextInput = Pick<EditorState, "workspace" | "editors" | "generation" | "selectionBy"> & {
@@ -27,6 +28,12 @@ export type ContextInput = Pick<EditorState, "workspace" | "editors" | "generati
 
 export function inspectorContext(s: ContextInput): InspectorContext {
   const tab = activeTab(s.editors as EditorTabsState);
+  // A table the model lays out has an editor by its key (no file): the inspector shows it as the table, with its pick.
+  if (tab?.kind === "table" && isLaidOutKey(tab.id)) {
+    const database = tab.id.slice(tab.id.lastIndexOf("@") + 1);
+    const t = s.inspectedTable?.database === database && s.inspectedTable.key === tab.id ? s.inspectedTable : null;
+    return { mode: "table", database, key: tab.id, column: t?.column ?? null, part: t?.part ?? null };
+  }
   if (tab) return { mode: "element", ids: [tab.id], source: "editor" };
   if (s.workspace === "settings" || s.workspace === "reference-data") return { mode: "none" };
   if (s.workspace === "generate") {
@@ -39,11 +46,11 @@ export function inspectorContext(s: ContextInput): InspectorContext {
   const shown = s.explorer.active;
   // A selection made in the pinned second explorer shows while that explorer is still pinned beside the active one.
   const active = s.selectionFrom && s.selectionFrom !== shown && s.selectionFrom === s.explorer.pinned ? s.selectionFrom : shown;
-  // The Databases side inspects the table itself: physical fields, its columns, what it derives from (the entity shows in
-  // the Domain model). Selecting an element clears the pick.
+  // The Databases side inspects the table itself, or one part of it (a column, a key, an index, a check). Selecting an
+  // element clears the pick.
   if (s.inspectedTable && (s.workspace === "database" || active === "databases")) {
     const t = s.inspectedTable;
-    return { mode: "table", database: t.database, key: t.key, column: t.column };
+    return { mode: "table", database: t.database, key: t.key, column: t.column, part: t.part ?? null };
   }
   // The Database screen's own picks of a view or a sequence are a selection on the Databases side, whichever explorer shows.
   const side = s.workspace === "database" && s.selectionFrom === "databases" ? "databases" : active;

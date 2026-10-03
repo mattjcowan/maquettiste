@@ -2,14 +2,15 @@
   "name": "sql-ddl",
   "enabled": true,
   "output": "db",
-  "hash": "bc91e4e14d0b77d44e839e1cd180160219d936a03cbf4d412025c228ec4d50e0",
+  "hash": "bddbd2d766562a472eab34ec0a47cdb3e3f418756b008a2b0ef6bff3074ac548",
   "document": {
     "name": "sql-ddl",
     "version": "1.0.0",
     "engine": ">=1.0 <2.0",
-    "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
+    "description": "SQL DDL for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
     "parameters": {
       "comments": true,
+      "idempotent": false,
       "objectScripts": false,
       "processTables": false,
       "quoting": "",
@@ -89,6 +90,13 @@
       "required": false
     },
     {
+      "name": "idempotent",
+      "default": false,
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
       "name": "objectScripts",
       "default": false,
       "value": null,
@@ -138,15 +146,15 @@
   "files": [
     {
       "path": "README.md",
-      "size": 23268,
-      "hash": "2168013b4b24a330cbaab3bf419324ef917bbf62ce7729cf0f2d3594c6af54ed",
+      "size": 37634,
+      "hash": "35af0ec23afc36a8e120fcb36d9c1510a18c3264b2ee03dddf9a5f8026775503",
       "role": "other",
       "usedBy": []
     },
     {
       "path": "_migration.scriban",
-      "size": 16873,
-      "hash": "37b29d8cc6cab32c3266203e77c68459574ffd89c6198823ce966adabed7dad5",
+      "size": 57631,
+      "hash": "97618ef6ed58f007e699da619ac30552dd3e5059e8477aec1d94311ed1d1ac22",
       "role": "partial",
       "usedBy": [
         "include:migration.scriban"
@@ -154,8 +162,8 @@
     },
     {
       "path": "_objects.scriban",
-      "size": 13046,
-      "hash": "0e7f1ff9a1498e243f5d2d27f6cbc2b86dcf789bd3dfdfd51e53a09427b4f05e",
+      "size": 15562,
+      "hash": "810ba47cf0ed567c59e56b25dc1097e2515baad863741637fe874ca508c6ce99",
       "role": "partial",
       "usedBy": [
         "include:database-type.scriban",
@@ -181,8 +189,8 @@
     },
     {
       "path": "_sql.scriban",
-      "size": 8196,
-      "hash": "722451ac8b8101b61aec2460ab9e2496d9b32aa6db2510366ef64d2f05e22412",
+      "size": 22026,
+      "hash": "850c1729c7f194c3155d044c2fc0d22091477d8d9ca8c6fe017a0d8cc28a32fd",
       "role": "partial",
       "usedBy": [
         "include:database-type.scriban",
@@ -199,10 +207,11 @@
     },
     {
       "path": "_table.scriban",
-      "size": 2330,
-      "hash": "65c5ad28ceb433a0f95dfb75afce042e872be8e3ddec26bea8ac5cc568443ba1",
+      "size": 3156,
+      "hash": "d4fd93f2e1a357da23efba4001524576056760d51e759ada54f7bddae024c746",
       "role": "partial",
       "usedBy": [
+        "include:_migration.scriban",
         "include:migration.scriban",
         "include:schema.scriban",
         "include:table.scriban"
@@ -226,8 +235,8 @@
     },
     {
       "path": "migration.scriban",
-      "size": 8790,
-      "hash": "f35f040cd54953a97800b87b3d55b4c1d9c1530cd54625a9ae93b96f557f9c98",
+      "size": 15599,
+      "hash": "77f70cf7048dee23cd70e8e0200a9aae97fd8b2b462eed10190db216b33590ab",
       "role": "template",
       "usedBy": [
         "unit:migration"
@@ -235,8 +244,8 @@
     },
     {
       "path": "pack.json",
-      "size": 2139,
-      "hash": "bc91e4e14d0b77d44e839e1cd180160219d936a03cbf4d412025c228ec4d50e0",
+      "size": 2191,
+      "hash": "bddbd2d766562a472eab34ec0a47cdb3e3f418756b008a2b0ef6bff3074ac548",
       "role": "manifest",
       "usedBy": []
     },
@@ -260,8 +269,8 @@
     },
     {
       "path": "schema.scriban",
-      "size": 2961,
-      "hash": "bbbcd92caa1b27d5e67be2341fc0d15a7dae9924880a4024b5a9da03af839296",
+      "size": 3164,
+      "hash": "06c5bdd8b7b0b1ef42f4c71cdc84e641eebd632c9cb4c4ebca1263a18d32f088",
       "role": "template",
       "usedBy": [
         "unit:schema"

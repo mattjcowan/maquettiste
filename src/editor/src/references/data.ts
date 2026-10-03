@@ -23,6 +23,23 @@ export function indexReferences(target: string, rows: readonly ElementSummary[])
   return out;
 }
 
+/**
+ * The database side (a database and what lives in it) knows no entities (the owner, 2026-10-03): where one of its elements is
+ * used lists only the others of that side (foreign keys of other tables, views, routines, queries, SQL objects). An entity's
+ * binding to it is the entity side's business, shown on the entity's Storage tab.
+ */
+export const DATABASE_SIDE_KINDS: ReadonlySet<string> = new Set(["database", "table", "view", "sequence", "routine", "query", "database-type", "sql-object"]);
+
+/** The references a Used list shows for an element of `targetKind`: all of them, or for a database-side element its side's only. */
+export function sideReferences<T extends { fromElementId: string }>(
+  targetKind: string | undefined,
+  refs: readonly T[],
+  kindOf: (id: string) => string | undefined,
+): T[] {
+  if (!targetKind || !DATABASE_SIDE_KINDS.has(targetKind)) return [...refs];
+  return refs.filter((r) => DATABASE_SIDE_KINDS.has(kindOf(r.fromElementId) ?? ""));
+}
+
 export interface ReferenceRow {
   type: "reference";
   key: string;

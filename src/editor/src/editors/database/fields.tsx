@@ -443,7 +443,6 @@ export function QueryFields(props: FormProps) {
   const index = useIndex();
   const rows = index.data ?? [];
   const count = (member: string) => (Array.isArray(rec[member]) ? (rec[member] as unknown[]).length : 0);
-  const entity = typeof rec.entity === "string" ? rows.find((r) => r.id === rec.entity) : undefined;
   const fields = count("select");
   const sources = 1 + count("joins");
   const words = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -452,8 +451,7 @@ export function QueryFields(props: FormProps) {
     <div className="flex flex-col gap-2" data-testid="query-fields">
       <DatabaseLine json={props.json} />
       <p className="text-12 text-secondary">
-        {typeof rec.entity === "string" ? `Each row is ${entity?.name ?? rec.entity}` : `An ad hoc shape (${words(fields, "field", "fields")})`};{" "}
-        {words(sources, "source", "sources")}; {words(count("parameters"), "parameter", "parameters")};{" "}
+        {`Each row has ${words(fields, "field", "fields")}`}; {words(sources, "source", "sources")}; {words(count("parameters"), "parameter", "parameters")};{" "}
         {words(count("collections"), "collection", "collections")}. The query&apos;s editor edits them.
       </p>
       <Button

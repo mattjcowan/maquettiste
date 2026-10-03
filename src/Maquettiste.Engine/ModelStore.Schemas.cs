@@ -60,7 +60,7 @@ public sealed partial class ModelStore
             return new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source));
         var result = await ExecuteAsync(changes, source, ct).ConfigureAwait(false);
         if (result.Outcome == SaveOutcome.Saved && materializeResults.Count > 0)
-            await RekeySnapshotsAsync(materializeResults, ct).ConfigureAwait(false);
+            await RecordAliasesAsync(materializeResults, ct).ConfigureAwait(false);
         return result;
     }
 

@@ -2,7 +2,10 @@
 // editor; the Definition tab edits it one field per save; the Database screen lists it under Sequences and the DDL preview
 // renders its CREATE SEQUENCE; undo takes each step back, the create last.
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, test, keepDdlOpen } from "./fixtures";
+
+// The DDL preview is hidden by default; these specs read it.
+test.beforeEach(({ page }) => keepDdlOpen(page));
 
 const editor = (page: Page) => page.getByTestId("element-editor");
 

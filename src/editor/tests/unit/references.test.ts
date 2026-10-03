@@ -2,7 +2,7 @@
 // (explorer-redesign.md 3.3 and 3.5, steps 10 and 11).
 import { afterEach, describe, expect, it } from "vitest";
 import type { ElementSummary, ReferenceInfo } from "@/api/types";
-import { groupReferences, indexReferences, referenceCount, referenceLabel } from "@/references/data";
+import { groupReferences, indexReferences, referenceCount, referenceLabel, sideReferences } from "@/references/data";
 import { breadcrumbPath } from "@/app/Breadcrumbs";
 import { emptyHistory, HISTORY_LIMIT, prune, travel, visit } from "@/state/history";
 import { createEditorStore } from "@/state/store";
@@ -189,5 +189,17 @@ describe("canvas in step (3.5)", () => {
     expect(right[0].x).toBeGreaterThan(100);
     expect(right.map((m) => m.element)).toEqual(["INVOICE", "BILLS"]);
     expect(planMembers({ members: [{ element: "ORDER" }, { element: "LINE" }, { element: "HAS" }], entities: ["ORDER"], lookup })).toEqual([]);
+  });
+});
+
+describe("Used on the database side", () => {
+  it("lists only database-side referrers for a database-side element, everything for the others", () => {
+    const kinds: Record<string, string> = { T2: "table", V: "view", Q: "query", E: "entity", M: "mapping", R: "routine" };
+    const refs = ["T2", "V", "Q", "E", "M", "R"].map((id) => ({ fromElementId: id }));
+    const kindOf = (id: string) => kinds[id];
+    expect(sideReferences("table", refs, kindOf).map((r) => r.fromElementId)).toEqual(["T2", "V", "Q", "R"]);
+    expect(sideReferences("query", refs, kindOf).map((r) => r.fromElementId)).toEqual(["T2", "V", "Q", "R"]);
+    expect(sideReferences("entity", refs, kindOf)).toHaveLength(6);
+    expect(sideReferences(undefined, refs, kindOf)).toHaveLength(6);
   });
 });

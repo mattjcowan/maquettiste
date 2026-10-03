@@ -1,5 +1,6 @@
 {
   "binary": "blob",
+  "binary:fixed": "raw({length})",
   "bool": "number(1)",
   "date": "date",
   "datetime": "timestamp({precision})",
@@ -13,7 +14,11 @@
   "int64": "number(19)",
   "json": "clob",
   "string": "varchar2({length} char)",
+  "string:fixed": "char({length} char)",
+  "string:fixed:unicode": "nchar({length})",
+  "string:unicode": "nvarchar2({length})",
   "text": "clob",
+  "text:unicode": "nclob",
   "time": "interval day(0) to second({precision})",
   "ulid": "char(26)",
   "uuid": "raw(16)"

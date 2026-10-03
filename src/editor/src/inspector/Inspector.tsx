@@ -35,6 +35,7 @@ import { ElementPropertyBag } from "./PropertyBag";
 import { declaredKeys } from "./propertyBag";
 import { emptyTitle, inspectorContext, type InspectorContext } from "./context";
 import { OpenTableButton, TableInspector } from "./TableInspector";
+import { sideReferences } from "@/references/data";
 import { DatabaseTypeFields, QueryFields, RoutineFields, SchemaField, SequenceFields, SqlObjectFields, ViewFields } from "@/editors/database/fields";
 import { EntityAttributeList } from "./AttributeList";
 import { ActorInspectorSection, ProcessInspectorSection, ScenarioInspectorSection, useProcessNodeShown } from "./ProcessSections";
@@ -59,7 +60,10 @@ export function useInspectorContext(): InspectorContext {
   }, [index.data]);
   // A deleted element (here, in another session, or by an undo of its create) leaves every explorer's selection.
   useEffect(() => {
-    if (exists) store.getState().pruneSelection(exists);
+    if (!exists) return;
+    store.getState().pruneSelection(exists);
+    // The Recent strip drops what was deleted, too.
+    store.getState().pruneRecent(exists);
   }, [exists, store]);
   return useMemo(
     () => inspectorContext({ workspace, explorer: { active, pinned }, selectionFrom, editors, generation, selectionBy, exists, inspectedTable }),
@@ -73,7 +77,7 @@ export function Inspector({ context }: { context: InspectorContext }) {
   const onTab = useCallback((kind: ElementKind, tab: string) => setTabs((t) => (t[kind] === tab ? t : { ...t, [kind]: tab })), []);
   if (context.mode === "none") return null;
   if (context.mode === "pack") return <PackInspector key={context.pack} pack={context.pack} unit={context.unit} />;
-  if (context.mode === "table") return <TableInspector database={context.database} tableKey={context.key} column={context.column} />;
+  if (context.mode === "table") return <TableInspector database={context.database} tableKey={context.key} column={context.column} part={context.part} />;
   if (context.mode === "empty")
     return (
       <section
@@ -200,8 +204,8 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   const tableDoc = json as { origin?: string; database?: unknown };
   if (kind === "table" && tableDoc.origin !== "synthesized" && typeof tableDoc.database === "string") {
     const database = tableDoc.database;
-    const column = inspectedTable?.database === database && inspectedTable.key === id ? inspectedTable.column : null;
-    return <TableInspector database={database} tableKey={id} column={column} />;
+    const shown = inspectedTable?.database === database && inspectedTable.key === id ? inspectedTable : null;
+    return <TableInspector database={database} tableKey={id} column={shown?.column ?? null} part={shown?.part ?? null} />;
   }
 
   const diagnostics = draft?.diagnostics ?? [];
@@ -381,10 +385,12 @@ export function References({ id }: { id: string }) {
   const lookup = indexLookup(index.data);
   const { reveal } = useEditorNavigation();
   if (refs.isPending) return <Spinner label="Finding references" />;
-  if (!refs.data?.length) return <EmptyState title="Nothing references this element" />;
+  // A database-side element lists only its side's referrers (references/data.ts): an entity's binding shows on the entity.
+  const shown = sideReferences(lookup.byId.get(id)?.kind, refs.data ?? [], (x) => lookup.byId.get(x)?.kind);
+  if (!shown.length) return <EmptyState title="Nothing references this element" />;
   return (
     <ul className="flex flex-col gap-1" aria-label="References to this element">
-      {refs.data.map((r: ReferenceInfo, i) => {
+      {shown.map((r: ReferenceInfo, i) => {
         const from = lookup.byId.get(r.fromElementId);
         return (
           <li key={i}>

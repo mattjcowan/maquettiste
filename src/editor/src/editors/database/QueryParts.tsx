@@ -100,6 +100,8 @@ export interface CollectionTarget {
   /** What a collection's `attribute` is written as: a collection attribute's id, or the relation end a navigation leads to. */
   value: string;
   label: string;
+  /** The attribute's or the navigation's own name (what an ad hoc collection is named after the result entity goes). */
+  name: string;
   /** The entity each element has, when the target says (a navigation's). */
   entity: string | null;
 }
@@ -185,7 +187,7 @@ export function entityShapeOf(
     const keyId = entity.key?.attributes?.[0];
     if (keyId && !key) key = attributes.find((a) => a.id === keyId) ?? null;
   }
-  const collections: CollectionTarget[] = attributes.filter((a) => a.collection).map((a) => ({ value: a.id, label: a.name, entity: null }));
+  const collections: CollectionTarget[] = attributes.filter((a) => a.collection).map((a) => ({ value: a.id, label: a.name, name: a.name, entity: null }));
   for (const rid of relationIds) {
     const relation = docs.get(rid)?.json as RelationDoc | undefined;
     const ends = relation?.ends ?? [];
@@ -198,7 +200,7 @@ export function entityShapeOf(
       const target = lookup.byId.get(other.entity)?.name ?? other.entity;
       if (max !== undefined && max !== "*" && max <= 1)
         fills.push({ id: other.id, name: `${navigation} (foreign key to ${target})`, kind: "foreign-key", fieldName: `${navigation}Id` });
-      else collections.push({ value: other.id, label: `${navigation} (${target})`, entity: other.entity });
+      else collections.push({ value: other.id, label: `${navigation} (${target})`, name: navigation, entity: other.entity });
     });
   }
   return { attributes, fills, collections, key };
@@ -475,14 +477,14 @@ export function SelectSection({
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1 text-12 text-secondary">
           {entity
-            ? "Each row fills the entity's attributes: pick the column or expression for each; a field of its own name holds a value the entity does not."
+            ? "Each row fills the older result shape's members (see General): pick the column or expression for each; a field of its own name holds any other value."
             : "Each field is a member of the row: its name, its expression and, when the expression does not say, its type."}
         </p>
         {entity && own.length ? (
           own.length > 1 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="ghost" title="Map each attribute without a field to the same-named column of a source">
+                <Button size="sm" variant="ghost" title="Fill each member without a field from the same-named column of a source">
                   <Wand2 /> Fill from columns by name
                 </Button>
               </DropdownMenuTrigger>
@@ -498,7 +500,7 @@ export function SelectSection({
             <Button
               size="sm"
               variant="ghost"
-              title={`Map each attribute without a field to the same-named column of ${own[0].alias}`}
+              title={`Fill each member without a field from the same-named column of ${own[0].alias}`}
               onClick={() => fill(own[0])}
             >
               <Wand2 /> Fill from columns by name
@@ -615,10 +617,10 @@ export function SelectSection({
                     {unknown(f) ? (
                       <span
                         className="block truncate pt-1 font-mono text-11 text-danger"
-                        title={`The field fills ${f.attribute}, which the result entity does not have: remove it, or select the value again for an attribute above.`}
+                        title={`The field fills ${f.attribute}, which the result shape does not have: remove it, or select the value again for a member above.`}
                         data-testid="query-field-unknown"
                       >
-                        {f.name ?? f.attribute} (not on the entity)
+                        {f.name ?? f.attribute} (not in the shape)
                       </span>
                     ) : (
                       <CommitInput
@@ -1185,9 +1187,8 @@ export function ParametersSection({ doc, update }: { doc: QueryDoc; update: (mut
 // ------------------------------------------------------------------ collections
 
 /**
- * The collections: one card each, naming what it fills (a collection attribute or a to-many navigation of the result entity, or
- * a name for an ad hoc one) and the element entity, with the nested query's sources, select list, filter (the outer aliases in
- * scope for the correlation) and order.
+ * The collections: one card each, named (or, for an older query with a result entity, naming the member it fills), with the
+ * nested query's sources, select list, filter (the outer aliases in scope for the correlation) and order.
  */
 export function CollectionsSection({
   doc,
@@ -1201,8 +1202,6 @@ export function CollectionsSection({
   resolved?: QueryView["collections"];
 }) {
   const shape = useEntityShape(doc.entity);
-  const index = useIndex();
-  const entities = (index.data ?? []).filter((r) => r.kind === "entity").sort((a, b) => a.name.localeCompare(b.name));
   const collections = doc.collections ?? [];
   const outer = scopeOf(doc, q.view, q.files);
   const add = () =>
@@ -1240,7 +1239,6 @@ export function CollectionsSection({
           collection={c}
           doc={doc}
           targets={shape.collections}
-          entities={entities}
           q={{ ...q, outer }}
           resolved={resolved?.[i]}
           update={(mutate) => update((d) => mutate(d.collections![i]))}
@@ -1261,7 +1259,6 @@ function CollectionCard({
   collection,
   doc,
   targets,
-  entities,
   q,
   resolved,
   update,
@@ -1271,7 +1268,6 @@ function CollectionCard({
   collection: Collection;
   doc: QueryDoc;
   targets: readonly CollectionTarget[];
-  entities: readonly ElementSummary[];
   q: QueryContext;
   resolved?: QueryView["collections"][number];
   update: (mutate: (c: Collection) => void) => void;
@@ -1300,7 +1296,7 @@ function CollectionCard({
               value={collection.attribute}
               onChange={(e) => update((c) => void (c.attribute = e.target.value))}
             >
-              {target ? null : <option value={collection.attribute}>{collection.attribute} (not a collection of the entity)</option>}
+              {target ? null : <option value={collection.attribute}>{collection.attribute} (not in the shape)</option>}
               {targets.map((t) => (
                 <option key={t.value} value={t.value}>
                   {t.label}
@@ -1316,27 +1312,6 @@ function CollectionCard({
               onCommit={(v) => !nameProblem(v.trim(), [], "collection") && update((c) => void (c.attribute = v.trim()))}
             />
           )}
-        </label>
-        <label className="flex items-center gap-1 text-12 text-secondary">
-          Elements
-          <select
-            aria-label={`${label} element entity`}
-            className={`${cellSelect} font-sans`}
-            value={collection.entity ?? ""}
-            onChange={(e) =>
-              update((c) => {
-                if (e.target.value) c.entity = e.target.value;
-                else delete c.entity;
-              })
-            }
-          >
-            <option value="">{target?.entity ? "(the navigation's target)" : "(an ad hoc row)"}</option>
-            {entities.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
         </label>
         <span className="flex-1" />
         <Button size="icon-row" variant="ghost" label={`Remove collection ${name}`} onClick={remove}>

@@ -1,7 +1,9 @@
 -- Migration 0001 of database reporting (SQL Server): schema revision 0 to 1.
 -- Written once by Maquettiste (sql-ddl/migration) from the schema diff. It is yours now: review it, adjust it and commit it.
--- Lines marked TODO need a decision the diff cannot make (data conversions, SQLite table rebuilds).
+-- Lines marked TODO need a decision the diff cannot make (data conversions, sequence restarts).
 
+-- One transaction across the batches: XACT_ABORT rolls it back on an error, and a batch that finds it gone turns execution off
+-- (SET NOEXEC ON), so no later batch runs outside it.
 SET XACT_ABORT ON;
 BEGIN TRANSACTION;
 

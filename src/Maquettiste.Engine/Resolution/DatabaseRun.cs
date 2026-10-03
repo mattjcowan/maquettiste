@@ -150,6 +150,9 @@ internal sealed partial class DatabaseRun
                     NativeType = c.Type is null ? null : DialectTypeMaps.Render(_typeMap, c.Type, null, null, null, _conv),
                     Nullable = c.Nullable,
                 })],
+                ColumnList = view.ColumnList,
+                WithCheckOption = view.WithCheckOption,
+                Materialized = view.Materialized,
                 Comment = view.Comment,
             };
             var deps = new DependencySet(_run.Keys).Element(view.Id).Element(_db.Id).Referrers(view.Id).Add(TypeMaps);
@@ -157,6 +160,7 @@ internal sealed partial class DatabaseRun
             _run.FillPhysicalAnnotations(r, view, deps);
             r.Dependencies = deps.ToList();
             _views.Add((r, view.Id));
+            _viewFiles.Add((r, view, deps));
             _run.Register(r);
         }
 
@@ -210,7 +214,7 @@ internal sealed partial class DatabaseRun
             };
             ApplyColumnFile(t, c, column);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale));
+            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale, null, c.FixedLength, c.Unicode));
             t.Columns.Add(c);
             t.ByKey.TryAdd(column.Id, c);
             _run.Register(c);
@@ -237,11 +241,12 @@ internal sealed partial class DatabaseRun
         }
 
         foreach (var unique in table.Uniques)
-            t.Uniques.Add(new UniqueSpec(unique.Columns, unique.Name, null, unique.Id));
+            t.Uniques.Add(new UniqueSpec(unique.Columns, unique.Name, null, unique.Id, unique.NullsNotDistinct));
         foreach (var fk in table.ForeignKeys)
         {
             var spec = new ForeignKeySpec(t, fk.Columns, null, fk.ReferencesTable, fk.ReferencesColumns, ResolutionValues.Kebab(fk.OnDelete),
                 ResolutionValues.Kebab(fk.OnUpdate), fk.Name) { FileId = table.Id, Id = fk.Id };
+            spec.Result.Deferrable = ResolutionValues.Kebab(fk.Deferrable);
             t.ForeignKeys.Add(spec);
             _foreignKeysById.TryAdd(fk.Id, spec);
         }
@@ -251,12 +256,18 @@ internal sealed partial class DatabaseRun
         {
             var expression = ForDialect(check.Expression);
             if (expression is not null)
-                t.Checks.Add(new CheckSpec(expression, check.Name, ++ordinal, check.Id));
+                t.Checks.Add(new CheckSpec(expression, check.Name, ++ordinal, check.Id, check.Column));
         }
 
         foreach (var index in table.Indexes)
         {
-            t.Indexes.Add(new IndexSpec([.. index.Columns.Select(c => (c.Column, c.Descending))], index.Include, index.Where, index.Unique,
+            // An expression without a text for the dialect leaves the index out, as a check without one is left out.
+            var columns = index.Columns.Select(c => c.Column is null
+                ? new IndexColumnSpec(null, c.Descending, c.Expression is null ? null : ForDialect(c.Expression), c.Length)
+                : new IndexColumnSpec(c.Column, c.Descending, null, c.Length)).ToList();
+            if (columns.Any(c => c.Column is null && c.Expression is null))
+                continue;
+            t.Indexes.Add(new IndexSpec(columns, index.Include, index.Where, index.Unique,
                 ResolutionValues.Kebab(index.Method), index.Name, FromFile: true, Id: index.Id));
         }
     }
@@ -277,6 +288,9 @@ internal sealed partial class DatabaseRun
             case ColumnGeneration.Identity:
                 c.Identity = true;
                 c.Sequence = null;
+                c.IdentitySeed = column.Identity?.Seed;
+                c.IdentityIncrement = column.Identity?.Increment;
+                c.IdentityAlways = column.Identity?.Always ?? false;
                 break;
             case ColumnGeneration.Sequence:
                 c.Identity = false;
@@ -297,6 +311,9 @@ internal sealed partial class DatabaseRun
 
         c.Collation = column.Collation ?? c.Collation;
         c.Comment = column.Comment ?? c.Comment;
+        c.Unicode = column.Unicode ?? c.Unicode;
+        c.FixedLength |= column.FixedLength;
+        c.DefaultName = column.DefaultName ?? c.DefaultName;
     }
 
     /// <summary>The logical type that decides a column's native type: a reference column's code type, else the column's type.</summary>
@@ -557,16 +574,18 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// The native type of a logical type with its facets: the custom type's native type for the dialect when the value is of a custom
-    /// type that declares one, else the effective type map's entry for the built-in keyword.
+    /// type that declares one, else the effective type map's entry for the built-in keyword, or for its fixed-length and Unicode
+    /// variant (<see cref="DialectTypeMaps.VariantKey"/>) when the column asks for one.
     /// </summary>
-    private string NativeType(string type, int? length, int? precision, int? scale, RScalarType? scalar = null)
+    private string NativeType(string type, int? length, int? precision, int? scale, RScalarType? scalar = null, bool fixedLength = false, bool? unicode = null)
     {
         var pattern = scalar is not null && scalar.NativeTypes.TryGetValue(_dialect, out var own) ? own : null;
-        var key = (type, length, precision, scale, pattern);
+        var keyword = pattern is null ? DialectTypeMaps.VariantKey(_typeMap, type, fixedLength, unicode) : type;
+        var key = (keyword, length, precision, scale, pattern);
         if (!_nativeTypes.TryGetValue(key, out var native))
         {
             native = pattern is null
-                ? DialectTypeMaps.Render(_typeMap, type, length, precision, scale, _conv)
+                ? DialectTypeMaps.Render(_typeMap, keyword, length, precision, scale, _conv)
                 : DialectTypeMaps.RenderPattern(pattern, type, length, precision, scale, _conv);
             _nativeTypes[key] = native;
         }
@@ -844,7 +863,7 @@ internal sealed partial class DatabaseRun
                 if (a.Unique)
                     t.Uniques.Add(new UniqueSpec(keys, null, null));
                 else
-                    t.Indexes.Add(new IndexSpec([.. keys.Select(k => (k, false))], [], null, false, "default", null));
+                    t.Indexes.Add(new IndexSpec([.. keys.Select(k => new IndexColumnSpec(k, false))], [], null, false, "default", null));
             }
 
             foreach (var ak in e.AlternateKeys)

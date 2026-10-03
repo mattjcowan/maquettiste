@@ -1,0 +1,187 @@
+using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.SchemaDiff;
+using Maquettiste.Engine.Tests.Validation;
+using Maquettiste.Engine.Validation;
+using Maquettiste.Testing;
+
+namespace Maquettiste.Engine.Tests.Resolution;
+
+/// <summary>
+/// The DDL model additions of the coverage review: expression index columns and key prefix lengths, unique constraints with nulls not
+/// distinct, identity options, views with a column list, check option, materialization and dependencies (explicit and read from the
+/// body), what the schema diff records of them, and the MQ4056 warnings for what a dialect lacks.
+/// </summary>
+public sealed class DdlModelAdditionsTests
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private static async Task<List<Diagnostic>> Findings(ModelSnapshot model, params string[] rules) =>
+        [.. (await ValidationFixture.Validator().ValidateAsync(model, ValidationScope.All, null, Ct)).Diagnostics.Where(d => rules.Contains(d.Rule))];
+
+    private static View View(ModelBuilder b, DatabaseBuilder db, string name, string body, Func<View, View>? edit = null)
+    {
+        var view = new View { Id = b.NewId(), Name = name, Database = db.Id, Body = new Dictionary<string, string> { ["*"] = body } };
+        view = edit?.Invoke(view) ?? view;
+        b.Add(view);
+        return view;
+    }
+
+    [Fact]
+    public void Index_expressions_prefix_lengths_nulls_not_distinct_and_identity_options_resolve()
+    {
+        var b = new ModelBuilder(seed: 90);
+        var db = b.Database("db", Dialect.PostgreSql);
+        b.Table("things", db).Column("id", "int64", nullable: false).Column("email", "string", length: 100).PrimaryKey("id").Index(false, "email")
+            .Edit(t => t with
+            {
+                Columns = [t.Columns[0] with { Generated = ColumnGeneration.Identity, Identity = new ColumnIdentity { Seed = 100, Increment = 5, Always = true } }, t.Columns[1]],
+                Uniques = [new UniqueConstraint { Id = "01JB2Q0M8X4T5V6W7Y8Z9A0C10", Columns = [t.Columns[1].Id], NullsNotDistinct = true }],
+                Indexes =
+                [
+                    t.Indexes[0] with { Name = "ix_prefix", Columns = [new IndexColumn { Column = t.Columns[1].Id, Length = 10 }] },
+                    new TableIndex { Id = b.NewId(), Name = "ix_lower", Columns = [new IndexColumn { Expression = new Dictionary<string, string> { ["postgresql"] = "lower(email)" }, Descending = true }] },
+                    new TableIndex { Id = b.NewId(), Name = "ix_other", Columns = [new IndexColumn { Expression = new Dictionary<string, string> { ["mysql"] = "(lower(email))" } }] },
+                ],
+            });
+
+        var table = ResolutionKit.Resolve(b).Db("db").Table("things");
+
+        var id = table.Column("id");
+        Assert.Equal((true, 100L, 5L, true), (id.Identity, id.IdentitySeed, id.IdentityIncrement, id.IdentityAlways));
+        Assert.True(Assert.Single(table.Uniques).NullsNotDistinct);
+        Assert.Equal(["ix_lower", "ix_prefix"], table.Indexes.Select(i => i.Name).Order(StringComparer.Ordinal));
+        var lower = table.Indexes.Single(i => i.Name == "ix_lower").Columns[0];
+        Assert.Equal((null, "lower(email)", true), (lower.Column, lower.Expression, lower.Descending));
+        Assert.Equal(10, table.Indexes.Single(i => i.Name == "ix_prefix").Columns[0].Length);
+    }
+
+    [Fact]
+    public void A_view_depends_on_what_its_file_names_and_on_the_views_its_body_reads()
+    {
+        var b = new ModelBuilder(seed: 91);
+        var db = b.Database("db", Dialect.PostgreSql);
+        b.Table("orders", db).Column("id", "int64", nullable: false).PrimaryKey("id");
+        var basis = View(b, db, "order_list", "SELECT id FROM orders");
+        var other = View(b, db, "audit", "SELECT 1 AS one");
+        View(b, db, "order_totals", "SELECT count(*) FROM \"Order_List\" -- order_listing is not a view", v => v with
+        {
+            DependsOn = [other.Id],
+            ColumnList = true,
+            Columns = [new ViewColumn { Name = "n" }],
+            WithCheckOption = true,
+            Materialized = true,
+        });
+
+        var resolved = ResolutionKit.Resolve(b).Db("db");
+        var totals = resolved.Views.Single(v => v.Name == "order_totals");
+
+        Assert.Equal([other.Id, basis.Id], totals.DependsOn.Select(d => ((RView)d).Id));
+        Assert.Empty(resolved.Views.Single(v => v.Name == "order_list").DependsOn);
+        Assert.Equal((true, true, true), (totals.ColumnList, totals.WithCheckOption, totals.Materialized));
+        Assert.Contains(totals.Dependencies, k => k.Contains(basis.Id, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_snapshot_and_the_diff_carry_the_additions()
+    {
+        static ModelBuilder Model(bool changed)
+        {
+            var b = new ModelBuilder(seed: 92);
+            var db = b.Database("db", Dialect.PostgreSql);
+            b.Table("things", db).Column("id", "int64", nullable: false).Column("email", "string", length: 100).PrimaryKey("id")
+                .Edit(t => t with
+                {
+                    Columns = [t.Columns[0] with { Generated = ColumnGeneration.Identity, Identity = changed ? new ColumnIdentity { Seed = 7, Always = true } : null }, t.Columns[1]],
+                    Uniques = [new UniqueConstraint { Id = "01JB2Q0M8X4T5V6W7Y8Z9A0C11", Columns = [t.Columns[1].Id], NullsNotDistinct = changed }],
+                    Indexes = [new TableIndex { Id = "01JB2Q0M8X4T5V6W7Y8Z9A0C01", Name = "ix_lower", Columns = [new IndexColumn { Expression = new Dictionary<string, string> { ["*"] = changed ? "upper(email)" : "lower(email)" } }] }],
+                });
+            var basis = new View { Id = "01JB2Q0M8X4T5V6W7Y8Z9A0C02", Name = "things_list", Database = db.Id, Body = new Dictionary<string, string> { ["*"] = "SELECT id FROM things" } };
+            var top = new View
+            {
+                Id = "01JB2Q0M8X4T5V6W7Y8Z9A0C03",
+                Name = "things_top",
+                Database = db.Id,
+                Body = new Dictionary<string, string> { ["*"] = "SELECT id FROM things_list" },
+                Materialized = changed,
+            };
+            b.Add(basis);
+            b.Add(top);
+            return b;
+        }
+
+        var differ = new SchemaDiffer();
+        var before = differ.Capture(ResolutionKit.Resolve(Model(false)).Db("db"), 1);
+        var topBefore = before.Views.Single(v => v.Name == "things_top");
+        Assert.Equal(["01JB2Q0M8X4T5V6W7Y8Z9A0C02"], topBefore.DependsOn);
+        Assert.Matches("^ix:expr:[0-9a-f]{16}$", Assert.Single(before.Tables[0].Indexes).Key);
+
+        var diff = differ.Diff(before, ResolutionKit.Resolve(Model(true)).Db("db"));
+
+        var table = Assert.Single(diff.Tables);
+        var id = table.Columns.Single(c => c.NewName == "id");
+        Assert.Equal(["identitySeed", "identityAlways"], id.Changes.Select(c => c.Property));
+        var unique = Assert.Single(table.Uniques);
+        Assert.Equal("nullsNotDistinct", Assert.Single(unique.Changes).Property);
+        // What a migration needs to drop the foreign keys that rely on a key first: its columns and whether it was a key.
+        Assert.Equal([before.Tables[0].Columns.Single(c => c.Name == "email").Key], unique.OldColumns);
+        Assert.True(unique.OldUnique);
+        // A new expression is a new index (the expression forms its key).
+        Assert.Equal([ChangeKind.Added, ChangeKind.Dropped], table.Indexes.Select(i => i.Kind));
+        Assert.Equal([null], table.Indexes[1].OldColumns);
+        Assert.False(table.Indexes[1].OldUnique);
+        Assert.Empty(table.Indexes[0].OldColumns);
+        var view = Assert.Single(diff.Views);
+        Assert.Equal("materialized", Assert.Single(view.Changes).Property);
+        Assert.Equal(["01JB2Q0M8X4T5V6W7Y8Z9A0C02"], view.OldDependsOn);
+        Assert.False(view.OldMaterialized);
+    }
+
+    [Fact]
+    public async Task What_a_dialect_lacks_of_the_additions_is_a_warning()
+    {
+        var b = new ModelBuilder(seed: 93);
+        var oracle = b.Database("ora", Dialect.Oracle);
+        var parent = b.Table("parents", oracle).Column("id", "int64", nullable: false).PrimaryKey("id");
+        b.Table("children", oracle).Column("id", "int64", nullable: false).Column("parent_id", "int64").Column("twice", "int64").PrimaryKey("id")
+            .ForeignKey(parent, "parent_id")
+            .Edit(t => t with
+            {
+                Columns = [t.Columns[0], t.Columns[1], t.Columns[2] with { Computed = "id * 2", ComputedStored = true }],
+                ForeignKeys = [t.ForeignKeys[0] with { OnUpdate = ReferentialAction.Cascade, OnDelete = ReferentialAction.Restrict }],
+                Uniques = [new UniqueConstraint { Id = "01JB2Q0M8X4T5V6W7Y8Z9A0C12", Columns = [t.Columns[1].Id], NullsNotDistinct = true }],
+            });
+        var mysql = b.Database("my", Dialect.MySql);
+        b.Table("notes", mysql).Column("id", "int64", nullable: false).Column("body", "text").PrimaryKey("id").Index(false, "body")
+            .Edit(t => t with
+            {
+                Columns = [t.Columns[0] with { Generated = ColumnGeneration.Identity, Identity = new ColumnIdentity { Seed = 10, Increment = 2, Always = true } }, t.Columns[1]],
+            });
+        View(b, mysql, "stored", "SELECT 1 AS one", v => v with { Materialized = true });
+        var sqlserver = b.Database("ms", Dialect.SqlServer);
+        b.Table("people", sqlserver).Column("id", "int64", nullable: false).Column("name", "string", length: 20).PrimaryKey("id").Index(false, "name")
+            .Edit(t => t with
+            {
+                Indexes = [t.Indexes[0] with { Columns = [new IndexColumn { Expression = new Dictionary<string, string> { ["*"] = "lower(name)" } }, new IndexColumn { Column = t.Columns[1].Id, Length = 5 }] }],
+            });
+        var sqlite = b.Database("lite", Dialect.Sqlite);
+        View(b, sqlite, "checked", "SELECT 1 AS one", v => v with { WithCheckOption = true });
+        var pg = b.Database("pg", Dialect.PostgreSql);
+        View(b, pg, "stored_checked", "SELECT 1 AS one", v => v with { WithCheckOption = true, Materialized = true });
+
+        var findings = await Findings(b.Build(), "MQ4056");
+
+        string[] expected =
+        [
+            "/columns/0/identity/always", "/columns/0/identity/increment", "/columns/2/computedStored", "/foreignKeys/0/onDelete",
+            "/foreignKeys/0/onUpdate", "/indexes/0/columns/0/expression", "/indexes/0/columns/0/length", "/indexes/0/columns/1/length",
+            "/materialized", "/uniques/0/nullsNotDistinct", "/withCheckOption", "/withCheckOption",
+        ];
+        Assert.Equal(expected, findings.Select(d => d.JsonPointer).Order(StringComparer.Ordinal));
+        Assert.All(findings, d => Assert.Equal(DiagnosticSeverity.Warning, d.Severity));
+        Assert.Contains(findings, d => d.Message.Contains("without a key prefix length", StringComparison.Ordinal));
+        Assert.Contains(findings, d => d.Message.Contains("leaves the index out", StringComparison.Ordinal));
+
+    }
+}

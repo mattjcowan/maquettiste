@@ -146,7 +146,7 @@ internal static class DatabaseObjectRules
     }
 
     /// <summary>MQ4019: every <c>dependsOn</c> entry names an object of the same database (a missing id or a wrong kind is MQ2001 or MQ2002).</summary>
-    private static void CheckDependsOn(ValidationContext context, string databaseId, IReadOnlyList<string> dependsOn, Report report)
+    internal static void CheckDependsOn(ValidationContext context, string databaseId, IReadOnlyList<string> dependsOn, Report report)
     {
         for (var i = 0; i < dependsOn.Count; i++)
         {
@@ -171,7 +171,7 @@ internal static class DatabaseObjectRules
     }
 
     /// <summary>MQ4020: the element is part of a dependency cycle.</summary>
-    private static void CheckCycle(ValidationContext context, Element element, string what, Report report)
+    internal static void CheckCycle(ValidationContext context, Element element, string what, Report report)
     {
         if (context.DatabaseObjects.InCycle(element.Id, out var names))
         {

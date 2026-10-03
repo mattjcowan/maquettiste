@@ -123,7 +123,7 @@ public sealed class LifecycleTests
         Assert.Contains("schema revision 1 to 2", pg, StringComparison.Ordinal);
         Assert.Contains("ALTER TABLE billing.customers ADD COLUMN phone varchar(30) NULL;", pg, StringComparison.Ordinal);
         Assert.Contains("ALTER TABLE billing.customers RENAME COLUMN name TO full_name;", pg, StringComparison.Ordinal);
-        Assert.Contains("ALTER TABLE billing.customers ALTER COLUMN full_name TYPE varchar(200) USING full_name::varchar(200);", pg, StringComparison.Ordinal);
+        Assert.Contains("ALTER TABLE billing.customers ALTER COLUMN full_name TYPE varchar(200);", pg, StringComparison.Ordinal);
         Assert.Contains("ALTER TABLE billing.customers DROP COLUMN customer_since;", pg, StringComparison.Ordinal);
         Assert.Contains("ALTER TABLE billing.invoice_lines ADD CONSTRAINT fk_invoice_lines_product_id FOREIGN KEY (product_id) REFERENCES billing.products (id) ON DELETE CASCADE;", pg, StringComparison.Ordinal);
 
@@ -137,13 +137,19 @@ public sealed class LifecycleTests
         AssertBefore(sqlServer, "ALTER TABLE dbo.customers ADD region nvarchar(40) NULL;", "CREATE INDEX ix_customers_region ON dbo.customers (region);");
         AssertBefore(sqlServer, "ALTER TABLE dbo.customers ADD featured_invoice_id uniqueidentifier NULL;", "ADD CONSTRAINT fk_customers_featured_invoice_id");
         Assert.Contains("ALTER TABLE dbo.customers ADD priority int NOT NULL CONSTRAINT df_customers_priority DEFAULT 0;", sqlServer, StringComparison.Ordinal);
-        Assert.Contains("EXEC sp_rename N'dbo.customers.name', N'full_name', N'COLUMN';", sqlServer, StringComparison.Ordinal);
+        // sp_rename reports a failure by an error XACT_ABORT does not act on: its return code is checked and THROW aborts the migration.
+        Assert.Matches(@"BEGIN DECLARE (@mq_rc\d+) int; EXEC \1 = sp_rename N'dbo\.customers\.name', N'full_name', N'COLUMN'; IF \1 <> 0 THROW 50000, N'sp_rename failed: the migration stops here\.', 1; END;", sqlServer);
         Assert.Contains("ALTER TABLE dbo.customers ADD phone nvarchar(30) NULL;", sqlServer, StringComparison.Ordinal);
 
         var sqlite = repo.Read("db/local/migrations/0002.sql");
-        Assert.Contains("ALTER TABLE customers RENAME COLUMN name TO full_name;", sqlite, StringComparison.Ordinal);
-        Assert.Contains("-- TODO (SQLite cannot change constraints in place; rebuild invoice_lines)", sqlite, StringComparison.Ordinal);
-        AssertBefore(sqlite, "ALTER TABLE customers ADD COLUMN region text NULL;", "CREATE INDEX ix_customers_region ON customers (region);");
+        // customers gains a foreign key, so it is rebuilt too; its renamed column is copied from its old name.
+        Assert.Contains("INSERT INTO \"_mq_new_customers\" (id, full_name, email, created_at, updated_at)\nSELECT id, name, email, created_at, updated_at FROM customers;", sqlite, StringComparison.Ordinal);
+        // SQLite cannot change a foreign key in place: invoice_lines is rebuilt (new table, rows copied, old dropped, new renamed).
+        Assert.Contains("-- Rebuild invoice_lines (SQLite cannot change it in place: keys and constraints).", sqlite, StringComparison.Ordinal);
+        AssertBefore(sqlite, "PRAGMA foreign_keys = OFF;", "BEGIN;");
+        AssertBefore(sqlite, "INSERT INTO \"_mq_new_invoice_lines\" (", "DROP TABLE invoice_lines;");
+        AssertBefore(sqlite, "ALTER TABLE \"_mq_new_invoice_lines\" RENAME TO invoice_lines;", "COMMIT;");
+        AssertBefore(sqlite, "ALTER TABLE \"_mq_new_customers\" RENAME TO customers;", "CREATE INDEX ix_customers_region ON customers (region);");
         Assert.DoesNotContain("review by hand", sqlite, StringComparison.Ordinal);
         // The new reference row reaches the lookup table through the seed's idempotent upsert, and the CHECKs elsewhere.
         var localSeed = repo.Read("db/local/seed.sql");

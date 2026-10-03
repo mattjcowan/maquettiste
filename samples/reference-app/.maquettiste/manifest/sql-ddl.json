@@ -6,6 +6,7 @@
     ["db/main/migrations/0002.sql", "o:84829ef8a453ed4c4641406fa5e27013c0d7ca18c696582ab93b0dfd3d533335", "migration:01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/migrations/0003.sql", "o:17222c2a0b25726904dac3f97a9db1dbd2ba2535dc893fc663ad19389d67ecbb", "migration:01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/migrations/0004.sql", "o:cedf0e5675e7eb2544074fcdabd14355427a31ae1bdc050a84476ed789d63257", "migration:01M34AZ3RECQSPQQX1DXTCN03G"],
+    ["db/main/migrations/0005.sql", "o:4a90e705144e4afe93abf76b339690560f0728cbab1a6179227733bd2a96c357", "migration:01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/account_assignments.sql", "618b1214dc6a39bb9dfcb5d0bf40fd84d3f73aadc6c8352578a13b58fa1f5acd", "table:01M27MB1JDD1JEXGF6HNEJ3AR7@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/adjustment_reasons.sql", "2276073b5a19f2d4de91cea6eb8595f1fbc30e25a25f949d6bd5a7930f177bab", "table:01M1DS9VPCTYKBK92K1P6VE6W9@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/advance_ship_notices.sql", "7479c575b6fad9bc49e63c13de3808f0604c148ad5f258dc8179c152516d3367", "table:01M2YZRYH468YVFQMMZJ96Y03R@01M34AZ3RECQSPQQX1DXTCN03G"],
@@ -214,7 +215,7 @@
     ["db/main/northwind/tables/warehouses.sql", "f2086f59c7e810261a27c64d33843cfca4cb72dfb183f186be7d21198ac44b71", "table:01M1PN7QBBJ001FSBR7DTP2QS6@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/warranty_claims.sql", "56bae2dcf97eea68697fe62c219b38723f9c1601ffa7aebb561b9e5f505ded90", "table:01M36YFEAJKTX0GEAR37WGKBNY@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/write_offs.sql", "4a2124b0c1efe4787ad3a3d6759f8d9d7e7dd53ab1fe80785871a525b7ffcb40", "table:01M1JB5KP4X1QZ0YD2TYHE2E3Y@01M34AZ3RECQSPQQX1DXTCN03G"],
-    ["db/main/schema.sql", "2c050c607c6f9c64a0b58662579900c3789e306dbef8c6224e7184ec85623015", "schema:01M34AZ3RECQSPQQX1DXTCN03G"],
+    ["db/main/schema.sql", "f865eb802ddc0c0fd1c6c63c835453c56c78352c1f9af1a0a994c3c4a41251a8", "schema:01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/seed.sql", "r:f29b2151018e15c8d3e9e2701c99e6bc208ecbeda9ab9c3b66a78933da055c57", "seed:01M34AZ3RECQSPQQX1DXTCN03G"]
   ]
 }

@@ -14,6 +14,7 @@ internal sealed partial class DatabaseRun
     private readonly List<(RDatabaseType Type, DatabaseType File, DependencySet Deps)> _typeOrder = [];
     private readonly List<(RRoutine Routine, Routine File, DependencySet Deps)> _routines = [];
     private readonly List<(RSqlObject Object, SqlObject File, DependencySet Deps)> _objects = [];
+    private readonly List<(RView View, View File, DependencySet Deps)> _viewFiles = [];
 
     /// <summary>The language a routine's body is written in when its file names none.</summary>
     private string DefaultLanguage => _dialect switch
@@ -280,5 +281,81 @@ internal sealed partial class DatabaseRun
 
         foreach (var (type, _, deps) in _typeOrder)
             type.Dependencies = deps.ToList();
+        FinishViewDependencies(Resolve);
+    }
+
+    /// <summary>
+    /// Each view's <c>dependsOn</c>: what its file names, then the other views of the database whose names its body uses as an
+    /// identifier (a best-effort reading: a column or alias that happens to share a view's name counts too), so DDL can create views
+    /// after the views they read and drop them before. Names compare case-insensitively; a view named in another schema counts.
+    /// </summary>
+    private void FinishViewDependencies(Func<IReadOnlyList<string>, DependencySet, List<IResolvedObject>> resolve)
+    {
+        if (_viewFiles.Count == 0)
+            return;
+        var byName = new Dictionary<string, List<RView>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (view, _, _) in _viewFiles)
+        {
+            if (!byName.TryGetValue(view.Name, out var list))
+                byName[view.Name] = list = [];
+            list.Add(view);
+        }
+
+        foreach (var (view, file, deps) in _viewFiles)
+        {
+            var list = file.DependsOn.Count > 0 ? resolve(file.DependsOn, deps) : [];
+            if (_viewFiles.Count > 1)
+            {
+                var inferred = new List<RView>();
+                foreach (var token in Identifiers(view.Body))
+                {
+                    if (!byName.TryGetValue(token, out var named))
+                        continue;
+                    foreach (var other in named)
+                    {
+                        if (!ReferenceEquals(other, view) && !inferred.Contains(other))
+                            inferred.Add(other);
+                    }
+                }
+
+                foreach (var other in inferred.OrderBy(v => v.Schema ?? "", StringComparer.Ordinal).ThenBy(v => v.Name, StringComparer.Ordinal).ThenBy(v => v.Id, StringComparer.Ordinal))
+                {
+                    if (list.Contains(other))
+                        continue;
+                    deps.Element(other.Id);
+                    list.Add(other);
+                }
+            }
+
+            view.DependsOn = list;
+            view.Dependencies = deps.ToList();
+        }
+    }
+
+    /// <summary>The identifiers of a SQL text: runs of letters, digits, <c>_</c>, <c>$</c> and <c>#</c> that start with a letter or <c>_</c>.</summary>
+    private static IEnumerable<string> Identifiers(string sql)
+    {
+        var start = -1;
+        for (var i = 0; i <= sql.Length; i++)
+        {
+            var ch = i < sql.Length ? sql[i] : ' ';
+            var part = char.IsLetterOrDigit(ch) || ch is '_' or '$' or '#';
+            if (part && start < 0)
+            {
+                if (char.IsLetter(ch) || ch == '_')
+                    start = i;
+                else
+                {
+                    // A token that starts with a digit is a number (or its tail): skip it whole.
+                    while (i + 1 < sql.Length && (char.IsLetterOrDigit(sql[i + 1]) || sql[i + 1] is '_' or '$' or '#'))
+                        i++;
+                }
+            }
+            else if (!part && start >= 0)
+            {
+                yield return sql[start..i];
+                start = -1;
+            }
+        }
     }
 }

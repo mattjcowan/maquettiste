@@ -1,15 +1,15 @@
-// The inspector on the Databases side (the Database screen, the Databases explorer): the TABLE, by its resolved key, never the
-// entity it derives from (the entity shows in the Domain model). Properties: the table's physical fields (name, schema,
-// origin, comment, description, category, stereotypes, tags), its custom properties and its property bag, edited in its file
-// like any table document; a projected table without a file shows the same fields, and its first edit creates its overlay
-// (one undo step). What the table derives from (or is bound to), with a way to the entity; and, when a column is picked in
-// the grid, that column's physical fields, tags, stereotypes and property bag, written through the grid's own path
-// (useTableFile: the file of a designed or imported table, the overlay of a projected one, created on the first edit), one
-// save per commit. JSON: the file, or for a projected table without one the resolved table, read-only, with a way to create
-// the file. The attribute's type and length are validation; the column's are storage; they may differ, and nothing compares them.
+// The inspector on the Databases side (the Database screen, the Databases explorer, a table's editor): one subject at a time,
+// the TABLE (by its resolved key) or one of its parts. The table: its physical fields (name, schema, comment, description,
+// category, stereotypes, tags), its custom properties and its property bag, edited in its file; a table the model lays out is
+// stored as a table file on its first edit (one undo step). A part (a column, the primary key, a unique constraint, an index,
+// a foreign key or a check) shows alone under a breadcrumb whose table part goes back to the table: a column's physical fields,
+// tags, stereotypes and property bag (written through the column grid's path, useTableFile), a key's or an index's members
+// (written through the table editor's path, useTableDoc). JSON: the table file, or the resolved table, read-only, until it is
+// stored. The database side knows tables only.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink } from "lucide-react";
-import { useDatabaseView, useElements, useIndex, useProject } from "@/api/queries";
+import { ExternalLink, PanelTop, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useDatabaseView, useElements, useProject } from "@/api/queries";
 import type { ColumnView, Diagnostic, ModelJson, StereotypeDoc, TableView } from "@/api/types";
 import { CodeView } from "@/code";
 import { clone } from "@/lib/json";
@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { KindIcon } from "@/app/icons";
+import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { BUILTIN_TYPES } from "@/model/model";
 import { schemasOf } from "@/model/databaseSchemas";
@@ -32,9 +33,43 @@ import {
   type ColumnEditField,
   type ColumnField,
   type ColumnValue,
-  type Derivation,
 } from "@/workspaces/database/columnEdits";
-import { useColumnDerivations, useTableFile } from "@/workspaces/database/useTableFile";
+import { useTableFile } from "@/workspaces/database/useTableFile";
+import { useTableDoc, type TableDoc } from "@/workspaces/database/useTableDoc";
+import { storeTables } from "@/workspaces/database/storeTables";
+import { openTableEditor } from "@/workspaces/database/openTableEditor";
+import { openEditForeignKey } from "@/workspaces/database/foreignKeys";
+import {
+  findPart,
+  isLaidOutKey,
+  PART_LABELS,
+  partCrumb,
+  partEntries,
+  partName,
+  qualifiedTable,
+  nullsNotDistinctNote,
+  resolvedTableDoc,
+  type TablePart,
+} from "@/workspaces/database/tableParts";
+import { tableColumns } from "@/editors/database/databaseDocs";
+import { CommitInput } from "@/editors/database/fields";
+import {
+  ActionSelect,
+  CheckColumnSelect,
+  ColumnsPicker,
+  DeferrableSelect,
+  deferrableNote,
+  IndexColumnDetails,
+  IndexColumns,
+  MethodSelect,
+  partProblems,
+  ReferencedColumns,
+  ReferencedTableSelect,
+  useDialect,
+  usePartEdits,
+} from "@/editors/database/TablePartsTabs";
+import { useProblems } from "@/editors/process/shared";
+import { ColumnFacets, columnProblems } from "@/editors/database/ColumnFacets";
 import { ChipsEditor, CommonFields, setOptional, TextField, useVocabularies, type FormProps } from "./fields";
 import { useDraftDocument } from "./useDraft";
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
@@ -47,7 +82,17 @@ type TableTab = "properties" | "json" | "references";
 
 const TAB_LABELS: Record<TableTab, string> = { properties: "Properties", json: "JSON", references: USED_LABEL };
 
-export function TableInspector({ database, tableKey, column }: { database: string; tableKey: string; column: string | null }) {
+export function TableInspector({
+  database,
+  tableKey,
+  column,
+  part = null,
+}: {
+  database: string;
+  tableKey: string;
+  column: string | null;
+  part?: TablePart | null;
+}) {
   const view = useDatabaseView(database);
   const table = useMemo(() => view.data?.view?.tables.find((t) => t.key === tableKey) ?? null, [view.data, tableKey]);
   if (view.isPending) return <Spinner label="Resolving the table" />;
@@ -63,7 +108,7 @@ export function TableInspector({ database, tableKey, column }: { database: strin
       database={database}
       table={table}
       tables={view.data?.view?.tables ?? []}
-      column={column}
+      subject={column ? { kind: "column", id: column } : part}
       problems={view.data?.stale ? view.data.diagnostics.filter((d) => d.severity === "error") : []}
     />
   );
@@ -73,56 +118,95 @@ function TableInspectorBody({
   database,
   table,
   tables,
-  column,
+  subject,
   problems,
 }: {
   database: string;
   table: TableView;
   tables: TableView[];
-  column: string | null;
+  /** The part shown alone; null: the table. */
+  subject: TablePart | null;
   /** The model's errors while the view is the last resolved one (stale). */
   problems: Diagnostic[];
 }) {
-  const { openTable, openEntity } = useEditorNavigation();
+  const { store } = useServices();
+  const { openTable } = useEditorNavigation();
   const file = useTableFile(table, database);
-  const derivations = useColumnDerivations(table);
-  const draft = useDraftDocument(file.fileId);
+  // A table stored on its first edit has no draft until it is a file; one that adjusts a laid-out table edits that file.
+  const draft = useDraftDocument(file.fileId && !file.owner ? file.fileId : null);
   const doc = useTableDocument(table, database, file, draft);
-  const index = useIndex();
+  const td = useTableDoc(database, table.key);
+  const fileProblems = useProblems(td.fileId ?? "", td.diagnostics);
   const [tab, setTab] = useState<TableTab>("properties");
   const tabs: TableTab[] = ["properties", "json", "references"];
-  const picked = column ? (table.columns.find((c) => c.key === column) ?? null) : null;
-  const owner = table.entityId ?? table.relationId;
-  const ownerRow = owner ? index.data?.find((r) => r.id === owner) : undefined;
-  const ownerName = ownerRow ? ownerRow.displayName || ownerRow.name : null;
-  const qualified = `${table.schema ? `${table.schema}.` : ""}${table.name}`;
+  const laidOut = isLaidOutKey(table.key);
+  const column = subject?.kind === "column" ? (table.columns.find((c) => c.key === subject.id) ?? null) : null;
+  const part = subject && subject.kind !== "column" ? subject : null;
+  const partShown = part && td.doc ? partName(td.doc, part, table) : part?.id;
+  const subjectName = column ? column.name : partShown;
+  const fileJson = laidOut ? undefined : (draft.json as unknown as Rec | undefined);
 
   return (
     <section aria-label={`Inspector: table ${table.name}`} className="flex h-full min-h-0 flex-col bg-surface" data-testid="table-inspector">
       <header className="flex flex-col gap-1 border-b border-default px-2 py-1">
+        {subject ? (
+          <nav
+            aria-label={`Breadcrumb: ${partCrumb(table, subjectName ?? null)}`}
+            className="flex min-w-0 items-center gap-1 text-12"
+            data-testid="inspector-breadcrumb"
+          >
+            <button
+              type="button"
+              className="truncate font-mono text-accent hover:underline"
+              title="Back to the table"
+              aria-label={`Back to the table ${qualifiedTable(table)}`}
+              onClick={() => store.getState().inspectPart(null)}
+              data-testid="inspector-back-to-table"
+            >
+              {qualifiedTable(table)}
+            </button>
+            <span className="text-secondary" aria-hidden>
+              ›
+            </span>
+            <span className="truncate font-mono" aria-current="true">
+              {subjectName}
+            </span>
+          </nav>
+        ) : null}
         <div className="flex items-center gap-2">
           <KindIcon kind="table" />
           <h2 className="min-w-0 flex-1 truncate text-14 font-semibold" data-testid="inspector-title">
-            {table.name}
+            {subject ? subjectName : table.name}
           </h2>
-          {file.fileId ? <span data-testid="save-status">{statusBadge(draft.draft?.status, file.busy)}</span> : null}
+          {file.fileId && !laidOut ? <span data-testid="save-status">{statusBadge(draft.draft?.status, file.busy)}</span> : null}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            label="Open the table editor"
+            onClick={() => openTableEditor(store, database, table.key, { part: subject })}
+            data-testid="table-inspector-edit"
+          >
+            <PanelTop />
+          </Button>
           <Button
             size="icon-sm"
             variant="ghost"
             label="Open in the Database screen"
-            onClick={() => openTable(database, table.key, column)}
+            onClick={() => openTable(database, table.key, column?.key ?? null)}
             data-testid="table-inspector-open"
           >
             <ExternalLink />
           </Button>
-          {file.fileId && draft.json ? <DeleteButton id={file.fileId} name={table.name} /> : null}
+          {!subject && !laidOut && draft.json ? <DeleteButton id={table.key} name={table.name} /> : null}
         </div>
-        <p className="truncate font-mono text-11 text-secondary" data-testid="table-inspector-path">
-          {draft.element.data?.path ?? `${qualified} · no file`}
-        </p>
+        {subject ? null : (
+          <p className="truncate font-mono text-11 text-secondary" data-testid="table-inspector-path">
+            {laidOut ? `${qualifiedTable(table)} · not stored as a table file yet` : (draft.element.data?.path ?? qualifiedTable(table))}
+          </p>
+        )}
         {problems.length ? (
           <ul role="alert" className="flex flex-col gap-0.5 text-12 text-danger" data-testid="table-inspector-problems">
-            {(problems.some((d) => d.elementId === file.fileId) ? problems.filter((d) => d.elementId === file.fileId) : problems).slice(0, 3).map((d, i) => (
+            {(problems.some((d) => d.elementId === table.key) ? problems.filter((d) => d.elementId === table.key) : problems).slice(0, 3).map((d, i) => (
               <li key={i}>
                 <span className="font-mono">{d.rule}</span> {d.message}
               </li>
@@ -130,84 +214,59 @@ function TableInspectorBody({
           </ul>
         ) : null}
       </header>
-      <Tabs value={tab} onValueChange={(next) => setTab(next as TableTab)} className="flex min-h-0 flex-1 flex-col">
-        <TabsList aria-label="Inspector views">
-          {tabs.map((t) => (
-            <TabsTrigger key={t} value={t}>
-              {TAB_LABELS[t]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="properties" className="overflow-auto p-2">
-          <div className="flex flex-col gap-3">
-            <OwnerLine table={table} ownerName={ownerName} onGo={owner ? () => openEntity(owner) : undefined} />
-            {picked ? (
-              <ColumnSection
-                key={picked.key}
-                table={table}
-                tables={tables}
-                column={picked}
-                derivation={derivations.get(picked.key) ?? null}
-                entry={file.fileJson ? (columnEntryOf(file.fileJson, picked) ?? null) : null}
-                write={file.write}
-                onGo={openEntity}
-              />
-            ) : (
+      {column ? (
+        <div className="min-h-0 flex-1 overflow-auto p-2">
+          <ColumnSection
+            key={column.key}
+            database={database}
+            table={table}
+            tables={tables}
+            column={column}
+            entry={file.fileJson ? (columnEntryOf(file.fileJson, column) ?? null) : null}
+            write={file.write}
+            problems={columnProblems(fileProblems, td.doc, column)}
+          />
+        </div>
+      ) : part ? (
+        <div className="min-h-0 flex-1 overflow-auto p-2">
+          <PartSection key={`${part.kind}:${part.id}`} td={td} part={part} />
+        </div>
+      ) : (
+        <Tabs value={tab} onValueChange={(next) => setTab(next as TableTab)} className="flex min-h-0 flex-1 flex-col">
+          <TabsList aria-label="Inspector views">
+            {tabs.map((t) => (
+              <TabsTrigger key={t} value={t}>
+                {TAB_LABELS[t]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent value="properties" className="overflow-auto p-2">
+            <div className="flex flex-col gap-3">
               <p className="text-12 text-secondary" data-testid="table-inspector-column-hint">
-                Pick a column in the Columns grid to see and edit its fields here.
+                Pick a column, a key, an index or a check (the explorer, the column grid, the table editor) to see it here alone.
               </p>
-            )}
-            <TableSection database={database} table={table} doc={doc} ownerName={ownerName} />
-          </div>
-        </TabsContent>
-        <TabsContent value="json" className="flex min-h-0 flex-col p-0">
-          {file.fileId ? (
-            draft.json ? (
-              <JsonTab json={draft.json} onChange={(next) => draft.edit(() => next)} />
+              <TableSection database={database} table={table} doc={doc} />
+            </div>
+          </TabsContent>
+          <TabsContent value="json" className="flex min-h-0 flex-col p-0">
+            {laidOut ? (
+              <ResolvedJson td={td} />
+            ) : fileJson ? (
+              <JsonTab json={draft.json!} onChange={(next) => draft.edit(() => next)} />
             ) : (
               <Spinner label="Loading the table's file" />
-            )
-          ) : (
-            <ResolvedJson table={table} create={() => file.writeTable(() => undefined, { force: true })} />
-          )}
-        </TabsContent>
-        <TabsContent value="references" className="overflow-auto p-2">
-          {file.fileId ? (
-            <References id={file.fileId} />
-          ) : (
-            <EmptyState title="Nothing references this table">A projected table without a file has no id for other elements to use.</EmptyState>
-          )}
-        </TabsContent>
-      </Tabs>
+            )}
+          </TabsContent>
+          <TabsContent value="references" className="overflow-auto p-2">
+            {laidOut ? <EmptyState title="Nothing uses this table's file">It is not stored as a table file yet.</EmptyState> : <References id={table.key} />}
+          </TabsContent>
+        </Tabs>
+      )}
     </section>
   );
 }
 
-/** "Projected from entity X", "Bound to entity X", "Junction of relationship X", with a way to it in the Domain model. */
-function OwnerLine({ table, ownerName, onGo }: { table: TableView; ownerName: string | null; onGo?: () => void }) {
-  if (!onGo || !ownerName) {
-    return (
-      <p className="text-12 text-secondary" data-testid="table-inspector-owner">
-        {table.origin === "synthesized" ? "Projected table." : "Bound to no entity."}
-      </p>
-    );
-  }
-  const text = table.isJunction
-    ? `Junction of relationship ${ownerName}`
-    : table.origin === "synthesized"
-      ? `Projected from entity ${ownerName}`
-      : `Bound to entity ${ownerName}`;
-  return (
-    <div className="flex items-center gap-2 text-12" data-testid="table-inspector-owner">
-      <span className="min-w-0 flex-1 truncate">{text}</span>
-      <Button size="sm" variant="link" className="h-6 px-0" onClick={onGo} title={`Open ${ownerName} in the Domain model`}>
-        {table.isJunction ? "Go to relationship" : "Go to entity"}
-      </Button>
-    </div>
-  );
-}
-
-/** The document the table's own fields edit: its file's draft, or, for a projected table without a file, a local overlay. */
+/** The document the table's own fields edit: its file's draft, or, for a laid-out table, a local document written on commit. */
 interface TableDocument {
   /** The file's id, or a stable dom id for the overlay still to create. */
   id: string;
@@ -218,9 +277,9 @@ interface TableDocument {
 
 /**
  * The table's own document for its fields. With a file: its draft (saved 600 ms after the last keystroke, or on blur).
- * Without one (a projected table): an overlay kept here; edits apply to it at once and are written together on blur, Enter,
- * a pick, or 600 ms after the last keystroke, as one write of the table's file, the first of which creates the overlay (one
- * undo step). The local overlay shows until the file's own document is loaded.
+ * A table the model lays out: a document kept here (its resolved document, or for one that cannot be stored yet the file that
+ * adjusts it); edits apply to it at once and are written together on blur, Enter, a pick, or 600 ms after the last keystroke,
+ * as one write (storing the table as a file first, or creating the adjusting file), one undo step.
  */
 function useTableDocument(
   table: TableView,
@@ -229,7 +288,11 @@ function useTableDocument(
   draft: ReturnType<typeof useDraftDocument>,
 ): TableDocument {
   const target = file.target;
-  const base = useMemo(() => (target?.kind === "overlay" ? (emptyOverlay(target, database, "") as unknown as ModelJson) : null), [target, database]);
+  const storable = !!file.owner;
+  const base = useMemo(
+    () => (target?.kind !== "overlay" ? null : ((storable ? resolvedTableDoc(table, database) : emptyOverlay(target, database, "")) as unknown as ModelJson)),
+    [target, database, storable, table],
+  );
   const [local, setLocal] = useState<ModelJson | null>(null);
   const current = useRef<ModelJson | null>(null);
   const queued = useRef<((json: ModelJson) => ModelJson | void)[]>([]);
@@ -297,17 +360,17 @@ function useTableDocument(
   const id = `overlay-${table.key}`.replace(/[^A-Za-z0-9_-]/g, "_");
   const json = local ?? base ?? undefined;
   // A file whose document is still loading (and no local edits to show meanwhile) waits.
-  if (!json || (file.fileId && !local) || (!file.fileId && file.pending && !local)) return { id, hasFile: !!file.fileId, json: undefined, form: null };
+  if (!json || (!storable && file.fileId && !local) || (!storable && !file.fileId && file.pending && !local))
+    return { id, hasFile: !!file.fileId, json: undefined, form: null };
   return { id, hasFile: !!file.fileId, json, form: { id, json, doc: undefined, edit: editLocal, flush: flushLocal, diagnostics: [] } };
 }
 
-/** The table's own fields: edited in its file, or in the overlay a projected table without one gets on its first edit. */
-function TableSection({ database, table, doc, ownerName }: { database: string; table: TableView; doc: TableDocument; ownerName: string | null }) {
+/** The table's own fields, edited in its file (a laid-out table is stored as one on its first edit). */
+function TableSection({ database, table, doc }: { database: string; table: TableView; doc: TableDocument }) {
   const dbDoc = useElements([database]).byId.get(database)?.json as Rec | undefined;
   const project = useProject();
   const vocab = useVocabularies("table");
   const schemas = schemasOf(dbDoc);
-  const origin = table.origin === "synthesized" ? "projected" : table.origin;
   if (!doc.form) return <Spinner label="Loading the table's file" />;
   const props = doc.form;
   const json = props.json as unknown as Rec;
@@ -321,12 +384,7 @@ function TableSection({ database, table, doc, ownerName }: { database: string; t
   return (
     <div className="flex flex-col gap-2" data-testid="table-inspector-table">
       <SectionTitle>Table</SectionTitle>
-      {doc.hasFile ? null : (
-        <p className="text-12 text-secondary" data-testid="table-inspector-no-file">
-          {ownerName ? `Projected from ${ownerName}` : "Projected table"}: edits go to the table's overlay file.
-        </p>
-      )}
-      <ReadOnly label="Origin" value={json.origin === "synthesized" && doc.hasFile ? "projected, with an overlay file" : origin} />
+      {table.origin === "synthesized" ? null : <ReadOnly label="Origin" value={table.origin} />}
       <CommonFields {...props} />
       <Field label="Schema" htmlFor={`${props.id}-schema`}>
         <Select
@@ -379,30 +437,36 @@ function TableSection({ database, table, doc, ownerName }: { database: string; t
   );
 }
 
-/** A projected table without a file: the resolved table as read-only JSON, and the way to create its file (the overlay). */
-function ResolvedJson({ table, create }: { table: TableView; create: () => Promise<boolean> }) {
-  const [creating, setCreating] = useState(false);
-  const text = useMemo(() => JSON.stringify(table, null, 2), [table]);
-  if (creating) return <Spinner label="Creating the table's file" />;
+/** A table not stored as a file yet: its resolved document, read-only, and the way to store it (when it can be). */
+function ResolvedJson({ td }: { td: TableDoc }) {
+  const services = useServices();
+  const qc = useQueryClient();
+  const [storing, setStoring] = useState(false);
+  const text = useMemo(() => JSON.stringify(td.doc ?? {}, null, 2), [td.doc]);
+  if (storing) return <Spinner label="Storing the table as a file" />;
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="table-inspector-resolved-json">
       <div className="flex items-center gap-2 border-b border-default px-2 py-1">
-        <p className="min-w-0 flex-1 text-12 text-secondary">The resolved table, read-only: this projected table has no file yet.</p>
-        <Button
-          size="sm"
-          data-testid="table-inspector-create-file"
-          onClick={() => {
-            setCreating(true);
-            void create().then((ok) => {
-              if (!ok) setCreating(false);
-            });
-          }}
-        >
-          Create the table's file
-        </Button>
+        <p className="min-w-0 flex-1 text-12 text-secondary">The table as resolved, read-only: it is not stored as a table file yet.</p>
+        {td.mode === "storable" && td.owner && td.table ? (
+          <Button
+            size="sm"
+            data-testid="table-inspector-store-file"
+            onClick={() => {
+              const name = td.table!.name;
+              setStoring(true);
+              void storeTables(services, qc, td.database, new Map([[td.key, td.owner!]]), `Store ${name} as a table file`).then((r) => {
+                if (r.ok) services.store.getState().notify(`${name} is now stored as a table file.`);
+                else setStoring(false);
+              });
+            }}
+          >
+            Store as a table file
+          </Button>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1">
-        <CodeView language="json" label="Resolved table JSON" value={text} readOnly />
+        <CodeView language="json" label="Table JSON" value={text} readOnly />
       </div>
     </div>
   );
@@ -435,26 +499,29 @@ function referencedOf(table: TableView, tables: TableView[], column: ColumnView)
  * stereotypes' defaults the resolved column merges in.
  */
 function ColumnSection({
+  database,
   table,
   tables,
   column,
-  derivation,
   entry,
   write,
-  onGo,
+  problems,
 }: {
+  database: string;
   table: TableView;
   tables: TableView[];
   column: ColumnView;
-  derivation: Derivation | null;
-  /** The column's own entry in the table's file, or null (no file, or an overlay that does not change the column). */
+  /** The column's own entry in the table's file, or null (no file yet). */
   entry: Rec | null;
   write: (column: ColumnView, field: ColumnEditField, value: ColumnValue) => void;
-  onGo: (id: string) => boolean;
+  /** The column's problems in the table's file (MQ4057 among them). */
+  problems: Diagnostic[];
 }) {
   const vocab = useVocabularies("column");
+  const { store } = useServices();
+  const dbView = useDatabaseView(database);
   const id = `col-${table.key}-${column.key}`.replace(/[^A-Za-z0-9_-]/g, "_");
-  const hint = physicalHint(column, derivation);
+  const hint = physicalHint(column, null);
   const referenced = column.isForeignKey ? referencedOf(table, tables, column) : null;
   const commit = (field: Exclude<ColumnField, "nullable">, value: string) => {
     if (value !== columnText(column, field)) write(column, field, value);
@@ -462,25 +529,11 @@ function ColumnSection({
   return (
     <div className="flex flex-col gap-2" data-testid="table-inspector-column">
       <SectionTitle>Column {column.name}</SectionTitle>
-      {derivation ? (
-        <div className="flex items-center gap-2 text-12" data-testid="table-inspector-derived">
-          <span className="min-w-0 flex-1">
-            Derived from attribute <span className="font-mono">{derivation.label}</span>
-            {derivation.logical ? <span className="font-mono text-secondary"> ({derivation.logical})</span> : null}
-          </span>
-          <Button size="sm" variant="link" className="h-6 px-0" onClick={() => onGo(derivation.entityId)} title="Open the entity in the Domain model">
-            Go to entity
-          </Button>
-        </div>
-      ) : column.isForeignKey ? (
-        <p className="text-12 text-secondary" data-testid="table-inspector-derived">
+      {column.isForeignKey ? (
+        <p className="text-12 text-secondary" data-testid="table-inspector-references">
           Follows the referenced column{referenced ? ` ${referenced.name} (${referenced.nativeType})` : ""}; a different type set here is reported (MQ4005).
         </p>
-      ) : (
-        <p className="text-12 text-secondary" data-testid="table-inspector-derived">
-          Derives from no attribute.
-        </p>
-      )}
+      ) : null}
       <CommitField id={`${id}-name`} label="Name" value={column.name} mono onCommit={(v) => commit("name", v)} />
       <Field label="Type" htmlFor={`${id}-type`} hint={hint}>
         <Select id={`${id}-type`} className="font-mono" value={column.type} onChange={(e) => commit("type", e.target.value)}>
@@ -509,6 +562,15 @@ function ColumnSection({
         hint="The database's type: the type map's, or the one typed here (cleared, the type map's again)."
         onCommit={(v) => commit("nativeType", v)}
       />
+      <ColumnFacets
+        id={id}
+        column={column}
+        entry={entry}
+        problems={problems}
+        dialect={dbView.data?.view?.dialect}
+        sequences={dbView.data?.view?.sequences ?? []}
+        onSet={(field, value) => write(column, field, value)}
+      />
       <CheckboxField id={`${id}-nullable`} label="Nullable" checked={column.nullable} onChange={(v) => write(column, "nullable", v)} />
       <CommitField id={`${id}-default`} label="Default" value={columnText(column, "default")} mono onCommit={(v) => commit("default", v)} />
       <CommitField id={`${id}-comment`} label="Comment" value={columnText(column, "comment")} onCommit={(v) => commit("comment", v)} />
@@ -529,6 +591,186 @@ function ColumnSection({
         onChange={(values) => write(column, "tags", values)}
       />
       <PropertyBag idPrefix={id} properties={entry ? entry.properties : column.properties} onEdit={(edit) => write(column, "properties", edit)} />
+      <div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => store.getState().requestPartDelete({ database, key: table.key, part: { kind: "column", id: column.key } })}
+          data-testid="table-inspector-delete-column"
+        >
+          <Trash2 /> Delete column
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One key, constraint or index alone: its members, each change one save of the table (a laid-out table is stored as a file
+ * first, in the same undo step), its problems, and Delete (back to the table).
+ */
+function PartSection({ td, part }: { td: TableDoc; part: TablePart }) {
+  const services = useServices();
+  const qc = useQueryClient();
+  const edits = usePartEdits(td);
+  const dialect = useDialect(td);
+  const problems = useProblems(td.fileId ?? "", td.diagnostics);
+  if (!td.doc || !td.table) return <Spinner label="Resolving the table" />;
+  const doc = td.doc;
+  const fixed = td.mode === "fixed";
+  const index = part.kind === "primary-key" ? 0 : findPart(doc, td.table, part.kind as "unique", part.id);
+  const entry = part.kind === "primary-key" ? (doc.primaryKey as Rec | undefined) : index >= 0 ? partEntries(doc, part.kind as "unique")[index] : undefined;
+  if (!entry) return <EmptyState title={`This ${PART_LABELS[part.kind]} is not on the table`}>It was deleted or renamed.</EmptyState>;
+  const columns = tableColumns(doc);
+  const id = `part-${part.kind}-${part.id}`.replace(/[^A-Za-z0-9_-]/g, "_");
+  const mine = partProblems(problems, part.kind, index);
+  const fkView =
+    part.kind === "foreign-key" ? (td.table.foreignKeys.find((f) => f.name === partName(doc, part, td.table)) ?? td.table.foreignKeys[index]) : undefined;
+  return (
+    <div className="flex flex-col gap-2" data-testid="table-inspector-part" data-part={part.kind}>
+      <SectionTitle>{`${PART_LABELS[part.kind][0].toUpperCase()}${PART_LABELS[part.kind].slice(1)} ${partName(doc, part, td.table)}`}</SectionTitle>
+      {fixed ? <p className="text-12 text-secondary">This table&apos;s keys and constraints are set by the model; they cannot be edited here yet.</p> : null}
+      {mine.length ? (
+        <ul role="alert" className="flex flex-col gap-0.5 text-12 text-danger" data-testid="table-inspector-part-problems">
+          {mine.map((d, i) => (
+            <li key={i}>
+              <span className="font-mono">{d.rule}</span> {d.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <Field label="Name" htmlFor={`${id}-name`}>
+        <CommitInput
+          id={`${id}-name`}
+          mono
+          value={String(entry.name ?? "")}
+          placeholder={partName(doc, part, td.table)}
+          onCommit={(v) => (v.trim() && !fixed ? void edits.rename(part, v) : undefined)}
+        />
+      </Field>
+      {part.kind === "check" ? (
+        <Field label="Column" htmlFor={`${id}-column`} hint="A column check constrains one column; none: a check on the table.">
+          <CheckColumnSelect id={`${id}-column`} part={part} entry={entry} columns={columns} edits={edits} fixed={fixed} />
+        </Field>
+      ) : null}
+      {part.kind === "check" ? (
+        [dialect, "*"].map((d) => (
+          <Field key={d} label={d === "*" ? "Expression (any dialect)" : `Expression (${d})`} htmlFor={`${id}-expr-${d}`}>
+            <CommitInput
+              id={`${id}-expr-${d}`}
+              mono
+              value={((entry.expression as Record<string, string> | undefined) ?? {})[d] ?? ""}
+              onCommit={(v) => void edits.setExpression(part, d, v)}
+            />
+          </Field>
+        ))
+      ) : part.kind === "index" ? (
+        <>
+          <Field label="Columns and order">
+            <IndexColumns part={part} entry={entry} columns={columns} edits={edits} fixed={fixed} dialect={dialect} />
+          </Field>
+          <IndexColumnDetails part={part} entry={entry} columns={columns} edits={edits} fixed={fixed} dialect={dialect} />
+          <Field label="Include">
+            <ColumnsPicker
+              label={`Include columns of ${part.id}`}
+              options={columns}
+              chosen={(entry.include as string[] | undefined) ?? []}
+              disabled={fixed}
+              onToggle={(c) => void edits.toggleInclude(part, c)}
+            />
+          </Field>
+          <CheckboxField id={`${id}-unique`} label="Unique" checked={entry.unique === true} onChange={(v) => void edits.set(part, "unique", v)} />
+          <Field label="Method" htmlFor={`${id}-method`}>
+            <MethodSelect id={`${id}-method`} part={part} value={String(entry.method ?? "default")} edits={edits} fixed={fixed} />
+          </Field>
+          <Field label="Where (a partial index)" htmlFor={`${id}-where`}>
+            <CommitInput
+              id={`${id}-where`}
+              mono
+              value={String(entry.where ?? "")}
+              placeholder="every row"
+              onCommit={(v) => void edits.set(part, "where", v.trim())}
+            />
+          </Field>
+        </>
+      ) : (
+        <Field label="Columns">
+          <ColumnsPicker
+            label={`Columns of ${part.id}`}
+            options={columns}
+            chosen={(entry.columns as string[]) ?? []}
+            disabled={fixed}
+            onToggle={(c) => void edits.toggleColumn(part, c)}
+          />
+        </Field>
+      )}
+      {part.kind === "unique" ? (
+        <>
+          <CheckboxField
+            id={`${id}-nulls-not-distinct`}
+            label="Nulls not distinct (two rows with nulls in these columns conflict)"
+            checked={entry.nullsNotDistinct === true}
+            onChange={(v) => void edits.set(part, "nullsNotDistinct", v)}
+          />
+          {nullsNotDistinctNote(dialect) ? (
+            <p className="text-11 text-secondary" data-testid="unique-nulls-note">
+              {nullsNotDistinctNote(dialect)}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      {part.kind === "primary-key" ? (
+        <CheckboxField id={`${id}-clustered`} label="Clustered" checked={entry.clustered === true} onChange={(v) => void edits.set(part, "clustered", v)} />
+      ) : null}
+      {part.kind === "foreign-key" ? (
+        <>
+          <Field label="References table" htmlFor={`${id}-table`}>
+            <ReferencedTableSelect id={`${id}-table`} part={part} entry={entry} td={td} edits={edits} fixed={fixed} />
+          </Field>
+          <Field label="Referenced columns" hint="None picked: the referenced table's primary key.">
+            <ReferencedColumns part={part} entry={entry} tables={td.tables} edits={edits} fixed={fixed} />
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="On delete" htmlFor={`${id}-on-delete`}>
+              <ActionSelect id={`${id}-on-delete`} part={part} member="onDelete" value={String(entry.onDelete ?? "no-action")} edits={edits} fixed={fixed} />
+            </Field>
+            <Field label="On update" htmlFor={`${id}-on-update`}>
+              <ActionSelect id={`${id}-on-update`} part={part} member="onUpdate" value={String(entry.onUpdate ?? "no-action")} edits={edits} fixed={fixed} />
+            </Field>
+          </div>
+          <Field label="Deferrable" htmlFor={`${id}-deferrable`} hint="When the key is checked: on each statement, or at commit.">
+            <DeferrableSelect
+              id={`${id}-deferrable`}
+              part={part}
+              value={String(entry.deferrable ?? "not-deferrable")}
+              edits={edits}
+              fixed={fixed}
+              dialect={dialect}
+            />
+          </Field>
+          {deferrableNote(dialect) ? (
+            <p className="text-11 text-secondary" data-testid="fk-deferrable-note">
+              {deferrableNote(dialect)}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      <div className="flex gap-1">
+        {part.kind === "foreign-key" && fkView ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={fixed}
+            onClick={() => void openEditForeignKey(services, qc, td.database, td.tables, td.table!, fkView)}
+            data-testid="table-inspector-edit-fk"
+          >
+            Edit in the dialog…
+          </Button>
+        ) : null}
+        <Button size="sm" variant="ghost" disabled={fixed} onClick={() => edits.remove(part)} data-testid="table-inspector-delete-part">
+          <Trash2 /> Delete {PART_LABELS[part.kind]}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -327,15 +327,15 @@ export class MockGeneration {
             unit: "table",
             elementId: table.key,
             unitKey: `${ddl}/table:${table.key}`,
-            files: [renderTable(view, table, entityName, root)],
+            files: [renderTable(view, table, entityName, root, docs)],
           });
         }
-        units.push({ pack: ddl, unit: "schema", elementId: view.id, unitKey: `${ddl}/schema:${view.id}`, files: [renderSchema(view, root)] });
+        units.push({ pack: ddl, unit: "schema", elementId: view.id, unitKey: `${ddl}/schema:${view.id}`, files: [renderSchema(view, root, docs)] });
         // The view, sequence, routine, database type and SQL object scripts, as the pack writes them: only with its objectScripts
         // parameter on.
         if (this.packParameter(ddl, "objectScripts") === true) {
           for (const v of view.views)
-            units.push({ pack: ddl, unit: "view", elementId: v.id, unitKey: `${ddl}/view:${v.id}`, files: [renderView(view, v, root)] });
+            units.push({ pack: ddl, unit: "view", elementId: v.id, unitKey: `${ddl}/view:${v.id}`, files: [renderView(view, v, root, docs)] });
           for (const q of view.sequences)
             units.push({ pack: ddl, unit: "sequence", elementId: q.id, unitKey: `${ddl}/sequence:${q.id}`, files: [renderSequence(view, q, root)] });
           for (const r of view.routines ?? [])

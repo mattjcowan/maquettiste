@@ -18,6 +18,10 @@
     "category",
     "body",
     "columns",
+    "columnList",
+    "withCheckOption",
+    "materialized",
+    "dependsOn",
     "comment",
     "properties",
     "generation",
@@ -87,6 +91,27 @@
         "required": ["name"],
         "additionalProperties": false
       },
+      "default": []
+    },
+    "columnList": {
+      "description": "Whether CREATE VIEW names the columns (CREATE VIEW v (a, b) AS ...), which then name the body's result columns.",
+      "type": "boolean",
+      "default": false
+    },
+    "withCheckOption": {
+      "description": "Whether an insert or update through the view must satisfy its WHERE (WITH CHECK OPTION). SQLite and materialized views leave it out (MQ4056).",
+      "type": "boolean",
+      "default": false
+    },
+    "materialized": {
+      "description": "Whether the view stores its rows (CREATE MATERIALIZED VIEW: PostgreSQL and Oracle; the other dialects create a plain view, MQ4056). Refreshing it is up to the application.",
+      "type": "boolean",
+      "default": false
+    },
+    "dependsOn": {
+      "description": "Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first. Views the body names are found without it (by reading the body), so this is for what the body names in a way that reading misses.",
+      "$ref": "common.json#/$defs/idList",
+      "uniqueItems": true,
       "default": []
     },
     "comment": {

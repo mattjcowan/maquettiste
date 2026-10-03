@@ -52,10 +52,11 @@ export class DraftManager {
   edit(
     id: string,
     update: (json: ModelJson) => ModelJson | void,
-    options: { channel?: Draft["channel"]; base?: ElementDocument; followUp?: boolean } = {},
+    options: { channel?: Draft["channel"]; base?: ElementDocument; followUp?: boolean; label?: string } = {},
   ): void {
     let draft = this.state.drafts[id];
     const followUp = !!options.followUp && (draft ? draft.followUp === true : true);
+    const label = options.label ?? draft?.label;
     if (!draft) {
       const doc = options.base ?? this.deps.queryClient.getQueryData<ElementDocument>(keys.element(id));
       if (!doc) throw new Error(`Element ${id} is not loaded; it cannot be edited yet.`);
@@ -80,6 +81,7 @@ export class DraftManager {
       status: this.inflight.has(id) ? "saving" : "dirty",
       error: null,
       followUp,
+      ...(label ? { label } : {}),
     });
     this.schedule(id);
   }
@@ -230,7 +232,7 @@ export class DraftManager {
           this.state.setStacks([...this.state.undo.slice(0, -1), { ...top, ids, before: befores, after, afterHashes }], this.state.redo);
         } else
           this.state.pushUndo({
-            label: `Edit ${(sent as { name?: string }).name ?? id}`,
+            label: draft?.label ?? `Edit ${(sent as { name?: string }).name ?? id}`,
             ids: [id],
             before: [before],
             after: [clone(sent)],
@@ -242,7 +244,7 @@ export class DraftManager {
         if (jsonEqual(draft.json, sent)) {
           this.state.removeDraft(id);
         } else {
-          this.state.setDraft({ ...draft, baseHash: result.hash!, baseJson: clone(baseJson), status: "dirty", diagnostics: [], error: null });
+          this.state.setDraft({ ...draft, baseHash: result.hash!, baseJson: clone(baseJson), status: "dirty", diagnostics: [], error: null, label: undefined });
           this.schedule(id, 0);
         }
         return;

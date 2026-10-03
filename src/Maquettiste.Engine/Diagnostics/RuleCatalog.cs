@@ -99,7 +99,7 @@ public static class RuleCatalog
         new("MQ4017", W, "A routine or SQL object has no body for its database's dialect (and no \"*\" body), or a database type has neither its structured form nor a definition for the dialect: nothing is created there."),
         new("MQ4018", E, "A routine or query parameter, a routine result, or a composite type's field names a type that is neither a built-in type nor a database type of the same database."),
         new("MQ4019", E, "A column's native type or a dependsOn entry names a database type or object of another database."),
-        new("MQ4020", E, "Routines, database types and SQL objects depend on each other in a cycle (dependsOn, or a composite type's fields), so no creation order exists."),
+        new("MQ4020", E, "Routines, views, database types and SQL objects depend on each other in a cycle (dependsOn, or a composite type's fields), so no creation order exists."),
         new("MQ4021", E, "A query's source (from or a join) is not a table or view of the query's database, or a call names an id that is not a routine of that database: unknown, of another database, or of another kind."),
         new("MQ4022", E, "A query declares an alias twice, or a column reference names an alias that no source of the query declares."),
         new("MQ4023", E, "A query's column reference names no column of its source (by name, attribute id or column key), or a column name without an alias is ambiguous or unknown."),
@@ -135,6 +135,9 @@ public static class RuleCatalog
         new("MQ4053", E, "A binding deletes by key from a table without a primary key, or deletes (by key or softly) without a table to write."),
         new("MQ4054", I, "An entity mapping element maps an entity to a database where the entity has a binding: the binding wins and the mapping is ignored."),
         new("MQ4055", E, "A materialize operation is refused: an entity already bound to the database, a table an entity is already bound to, an entity in an inheritance hierarchy, a name already taken, or an id that is not what the operation takes."),
+        new("MQ4056", W, "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL."),
+        new("MQ4057", E, "A column facet does not fit its type: unicode on a column that is not string or text, or fixedLength on a column that is not string or binary."),
+        new("MQ4059", E, "A foreign key references columns of a table that are neither its primary key nor one of its unique keys (a unique constraint, or a unique index without a filter except on Oracle): a database accepts a foreign key only to a key."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule script error."),

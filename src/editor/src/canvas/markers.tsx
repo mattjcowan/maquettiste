@@ -50,6 +50,30 @@ export function MarkerDefs() {
             <path d={d} fill="none" stroke={stroke} strokeWidth="1.25" />
           </marker>
         ))}
+        {/* A foreign key's ends (ForeignKeyEdge): drawn just outside the card the edge meets (the card's border at x 19), so
+            the same marker serves both ends; a circle means "zero or". */}
+        {(
+          [
+            ["one", "M8 1 V11 M12 1 V11 M0 6 H19", null],
+            ["zero-or-one", "M13 1 V11 M0 6 H3 M9 6 H19", 6],
+            ["many", "M9 6 L19 1 M9 6 L19 11 M9 6 H19 M0 6 H1 M7 6 H9", 4],
+          ] as const
+        ).map(([id, d, circle]) => (
+          <marker
+            key={id}
+            id={`mq-fk-${id}`}
+            viewBox="0 0 20 12"
+            refX="19"
+            refY="6"
+            markerWidth="20"
+            markerHeight="12"
+            orient="auto-start-reverse"
+            markerUnits="userSpaceOnUse"
+          >
+            <path d={d} fill="none" stroke={stroke} strokeWidth="1.25" />
+            {circle !== null ? <circle cx={circle} cy="6" r="3" fill="var(--mq-bg-canvas)" stroke={stroke} strokeWidth="1.25" /> : null}
+          </marker>
+        ))}
         <marker id="mq-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
           <path d="M0 0 L10 5 L0 10 Z" fill={stroke} />
         </marker>

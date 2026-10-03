@@ -1023,10 +1023,13 @@ public enum BatchOp
 /// <param name="Entities">The entity ids (materialize-tables).</param>
 /// <param name="Tables">The table and view ids (materialize-entities).</param>
 /// <param name="Package">The package id the entities go to (materialize-entities).</param>
+/// <param name="ExpectedHashes">Materialize: the hash the caller read of each element it expects the operation to change or delete; given,
+/// an element that changed since, or that the operation changes but the map does not name, is a conflict.</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
     string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
-    string? Database = null, IReadOnlyList<string>? Entities = null, IReadOnlyList<string>? Tables = null, string? Package = null);
+    string? Database = null, IReadOnlyList<string>? Entities = null, IReadOnlyList<string>? Tables = null, string? Package = null,
+    IReadOnlyDictionary<string, string>? ExpectedHashes = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

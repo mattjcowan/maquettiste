@@ -74,14 +74,20 @@ internal sealed class TableBuild
 }
 
 /// <summary>A unique constraint to resolve.</summary>
-internal sealed record UniqueSpec(IReadOnlyList<string> Columns, string? Name, string? NameToken, string? Id = null);
+internal sealed record UniqueSpec(IReadOnlyList<string> Columns, string? Name, string? NameToken, string? Id = null, bool NullsNotDistinct = false);
 
 /// <summary>An index to resolve.</summary>
-internal sealed record IndexSpec(IReadOnlyList<(string Column, bool Descending)> Columns, IReadOnlyList<string> Include, string? Where, bool Unique,
+internal sealed record IndexSpec(IReadOnlyList<IndexColumnSpec> Columns, IReadOnlyList<string> Include, string? Where, bool Unique,
     string Method, string? Name, bool FromFile = false, string? Id = null);
 
+/// <summary>
+/// A column of an index to resolve: a column key, or an expression for the dialect (<paramref name="Column"/> is then
+/// <see langword="null"/>).
+/// </summary>
+internal sealed record IndexColumnSpec(string? Column, bool Descending, string? Expression = null, int? Length = null);
+
 /// <summary>A check constraint to resolve.</summary>
-internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, string? Id = null);
+internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, string? Id = null, string? Column = null);
 
 /// <summary>A foreign key to resolve; <see cref="Result"/> exists from the start so mappings can hold it.</summary>
 internal sealed class ForeignKeySpec(TableBuild host, IReadOnlyList<string> columns, TableBuild? target, string? targetKey,

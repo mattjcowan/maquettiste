@@ -68,5 +68,8 @@ The model loader (stage 1), the index cache, the file-name policy, the change pl
   `materialize-entities` against one snapshot (resolving it, for tables with every picked entity projected through a mapping
   element added in memory) and returns creates, updates and deletes that `ModelStore` adds to the batch's changes, so they apply
   all or nothing with the rest; the overlay of a materialized entity becomes its designed table under the same id, and after the
-  save `SnapshotRekey` rewrites the committed snapshot's keys. `ChangePlanner.Cascade` treats a reference from an entity's binding
+  save the committed snapshot records the stored tables' keys as aliases (`Generation.SnapshotAliases`), which the schema diff reads
+  it through, in either direction (an undo of the materialize is not a drop and a create either); storing a table again after an
+  undo takes back the table, column and key sequence ids those aliases recorded (when no element holds them), so the alias stays
+  as it is and the next diff sees only what changed in between. `ChangePlanner.Cascade` treats a reference from an entity's binding
   as removable in both resolutions: the binding (or the one field, constant or listed column) goes and the entity stays.

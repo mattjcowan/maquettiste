@@ -1,12 +1,13 @@
 // Explicit mapping (engine-design.md D46, explorer-redesign.md 1.3): a database holds what its byConvention takes plus
-// the entities a mapping names; a file without the member keeps "every entity" (or its packages'). The New database
-// dialog's document, the Map to database… menu items and the mock server's database view.
+// the entities a mapping names; a file without the member keeps "every entity" (or its packages'). A new database starts
+// empty (no convention, no domain picks); domains and entities offer the Storage bulk actions, never Map to database…; the
+// mock server's database view.
 import { describe, expect, it } from "vitest";
 import * as endpoints from "@/api/endpoints";
 import type { ModelJson } from "@/api/types";
 import { buildElement } from "@/explorer/create";
 import { menuFor } from "@/explorer/menus";
-import { conventionLabel, conventionOf, mapDomains, newDatabaseConvention, placesEntity, setConvention, takesPackage } from "@/model/databaseMapping";
+import { conventionLabel, conventionOf, EMPTY_DATABASE_HINT, placesEntity, setConvention, takesPackage } from "@/model/databaseMapping";
 import { newId } from "@/lib/ids";
 import { useMockApi } from "./harness";
 
@@ -21,28 +22,16 @@ describe("database convention", () => {
     expect(conventionLabel(conventionOf({ byConvention: "packages" }), (x) => x)).toBe("By convention: nothing");
   });
 
-  it("writes the member on every new database, none by default", () => {
-    expect(newDatabaseConvention("none", ["a"])).toEqual({ byConvention: "none" });
-    expect(newDatabaseConvention("pick", ["b", "a", "b"])).toEqual({ byConvention: "packages", packages: ["a", "b"] });
-    expect(newDatabaseConvention("pick", [])).toEqual({ byConvention: "none" });
-    expect(newDatabaseConvention("all", ["a"])).toEqual({ byConvention: "all" });
+  it("starts every new database empty: no convention and no domains", () => {
     const ids = () => "01ARZ3NDEKTSV4RRFFQ69G5FAV";
-    expect(buildElement("database", { name: "reporting", domain: null, convention: "pick", packages: ["d1"] }, ids)).toMatchObject({
-      byConvention: "packages",
-      packages: ["d1"],
-    });
-    expect(buildElement("database", { name: "reporting", domain: null }, ids)).toMatchObject({ byConvention: "none" });
+    const json = buildElement("database", { name: "reporting", domain: null, schemas: [{ id: "S", name: "sales" }] }, ids);
+    expect(json).toMatchObject({ byConvention: "none", defaultSchema: "sales" });
+    expect(json).not.toHaveProperty("packages");
+    // The empty database's hint is the database's own: no mapping, no Domain model.
+    expect(EMPTY_DATABASE_HINT).not.toMatch(/map|domain|entit/i);
   });
 
-  it("maps domains into the list, makes an unspecified all explicit, and leaves an explicit all alone", () => {
-    const none: Record<string, unknown> = { byConvention: "none" };
-    expect(mapDomains(none, ["b", "a"])).toBe(true);
-    expect(none).toMatchObject({ byConvention: "packages", packages: ["a", "b"] });
-    expect(mapDomains(none, ["a"])).toBe(false);
-    const legacy: Record<string, unknown> = {};
-    expect(mapDomains(legacy, ["a"])).toBe(true);
-    expect(legacy).toEqual({ byConvention: "all" });
-    expect(mapDomains({ byConvention: "all" }, ["a"])).toBe(false);
+  it("writes the convention explicitly", () => {
     const json: Record<string, unknown> = { byConvention: "packages", packages: ["a"] };
     setConvention(json, "none");
     expect(json).toEqual({ byConvention: "none" });
@@ -60,21 +49,22 @@ describe("database convention", () => {
   });
 });
 
-describe("Map to database… menu items", () => {
-  it("is offered on a domain and an entity, for a multi-selection too", () => {
+describe("storage on domain and entity menus", () => {
+  it("offers the Storage bulk actions, never Map to database…", () => {
     const domain = { type: "domain" as const, kind: "package", element: true };
     const entity = { type: "element" as const, kind: "entity", element: true };
-    expect(menuFor([domain]).map((i) => i.id)).toContain("map-to-database");
-    expect(menuFor([domain, domain]).map((i) => i.id)).toContain("map-to-database");
-    expect(menuFor([entity, entity]).map((i) => i.label)).toContain("Map to database…");
-    expect(menuFor([{ type: "element", kind: "enum", element: true }]).map((i) => i.id)).not.toContain("map-to-database");
+    for (const targets of [[domain], [entity], [entity, entity]]) {
+      const labels = menuFor(targets).map((i) => i.label);
+      expect(labels).not.toContain("Map to database…");
+      expect(labels).toEqual(expect.arrayContaining(["Auto-map to existing tables…", "Create tables…", "Remove bindings…"]));
+    }
   });
 });
 
 describe("mock database view", () => {
   useMockApi();
 
-  it("a new database holds nothing until a domain is mapped to it", async () => {
+  it("a new database holds nothing until its convention takes a domain (an older project's)", async () => {
     const json = buildElement("database", { name: "archive", domain: null, dialect: "sqlite" }, newId);
     const created = await endpoints.createElement(json);
     expect(created.outcome).toBe("saved");
@@ -83,7 +73,7 @@ describe("mock database view", () => {
 
     const current = await endpoints.getElement(id);
     const next = structuredClone(current.json) as unknown as Record<string, unknown>;
-    mapDomains(next, [BILLING]);
+    setConvention(next, "packages", [BILLING]);
     expect((await endpoints.saveElement(id, next as unknown as ModelJson, current.hash)).outcome).toBe("saved");
     const names = ((await endpoints.getDatabaseView(id)).view?.tables ?? []).map((t) => t.name);
     expect(names).toContain("customers");

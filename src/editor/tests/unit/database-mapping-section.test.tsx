@@ -1,16 +1,19 @@
-// The database inspector's Mapping section over the mock API: mappings that ignore an entity are listed apart from the
-// ones that place it, and the convention's domains show as paths.
-import { render, screen, waitFor } from "@testing-library/react";
+// Settings > Conventions, Older projects: tables laid out by convention (the database inspector's Mapping section before), over
+// the mock API: read-only, mappings that ignore an entity are listed apart from the ones that place it, and the convention's
+// domains show as paths, each with Stop laying out by convention and nothing to add one.
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { ServicesProvider } from "@/app/context";
 import * as endpoints from "@/api/endpoints";
 import { indexQuery } from "@/api/queries";
 import type { ModelJson } from "@/api/types";
-import { DatabaseMappingSection } from "@/inspector/DatabaseMapping";
+import { DatabaseMappingSection } from "@/workspaces/settings/DatabaseConvention";
 import { IDS, useMockApi } from "./harness";
 
-describe("the database Mapping section", () => {
+const CATALOG = "01J92P0V025DRFTXKMS240G2NG";
+
+describe("the Tables laid out by convention section", () => {
   const api = useMockApi();
 
   it("lists ignoring mappings apart and shows domain paths", async () => {
@@ -35,13 +38,22 @@ describe("the database Mapping section", () => {
     render(
       <ServicesProvider services={api.services}>
         <QueryClientProvider client={api.services.queryClient}>
-          <DatabaseMappingSection id={database.id} json={{ kind: "database", byConvention: "packages", packages: [] }} edit={() => {}} flush={() => {}} />
+          <DatabaseMappingSection id={database.id} name="main" json={{ kind: "database", byConvention: "packages", packages: [CATALOG] }} />
         </QueryClientProvider>
       </ServicesProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("database-mapping-ignored")).toHaveTextContent("Ignored (kept out of this database): Payment"));
-    expect(screen.getByTestId("database-mapping-mapped")).toHaveTextContent("Mapped one by one: Invoice");
+    expect(screen.getByTestId("database-mapping-mapped")).toHaveTextContent("Placed one by one by an older mapping element: Invoice");
     expect(screen.getByTestId("database-mapping-mapped")).not.toHaveTextContent("Payment");
-    expect(screen.getByRole("group", { name: "Domains mapped by convention" })).toHaveTextContent("Billing › Catalog");
+    const group = screen.getByRole("group", { name: "Domains laid out by convention" });
+    expect(group).toHaveTextContent("Billing › Catalog");
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Stop laying out by convention"]);
+    // Read-only: no checkbox, no picker to add a domain.
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(screen.queryAllByRole("combobox")).toHaveLength(0);
   });
 });

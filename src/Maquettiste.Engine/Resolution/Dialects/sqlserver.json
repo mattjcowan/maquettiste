@@ -1,5 +1,6 @@
 {
   "binary": "varbinary(max)",
+  "binary:fixed": "binary({length})",
   "bool": "bit",
   "date": "date",
   "datetime": "datetime2({precision})",
@@ -13,7 +14,11 @@
   "int64": "bigint",
   "json": "nvarchar(max)",
   "string": "nvarchar({length})",
+  "string:ansi": "varchar({length})",
+  "string:fixed": "nchar({length})",
+  "string:fixed:ansi": "char({length})",
   "text": "nvarchar(max)",
+  "text:ansi": "varchar(max)",
   "time": "time({precision})",
   "ulid": "char(26)",
   "uuid": "uniqueidentifier"

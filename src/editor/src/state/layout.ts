@@ -1,5 +1,5 @@
 // The layout, per browser (the owner's 0.2.0 test pass): which panels are open, the explorer, inspector and bottom
-// panel sizes, and the pinned second explorer. It lives in localStorage (`mq.layout`, `mq.explorer.pinned`) and comes
+// panel sizes, the Database screen's list and DDL preview widths, the pack editor's panes, and the pinned second explorer. It lives in localStorage (`mq.layout`, `mq.explorer.pinned`) and comes
 // back on load; "Reset layout" clears it. The page state (what is open inside the panels) is pageState.ts, per project.
 import { local } from "@/lib/storage";
 import type { ExplorerId } from "@/explorer/tree";
@@ -26,6 +26,8 @@ export const LIMITS = {
   packFiles: { min: 120, max: 400 },
   templatePreview: { min: 240, max: 960 },
   unitHelp: { min: 160, max: 480 },
+  tables: { min: 144, max: 400 },
+  ddl: { min: 240, max: 800 },
 } as const;
 
 export interface Layout {
@@ -37,9 +39,14 @@ export interface Layout {
   packFilesSize: number;
   templatePreviewSize: number;
   unitHelpSize: number;
+  /** The Database screen's tables list and DDL preview widths. */
+  tablesSize: number;
+  ddlSize: number;
   pinned: ExplorerId | null;
 }
 
+/** The defaults. The Database screen opens with its DDL preview hidden (its edge brings it back) and a narrow list, so the
+ * diagram has most of the screen: at 1440 px with the explorer and the inspector open, well over half of it. */
 export const DEFAULT_LAYOUT: Layout = Object.freeze({
   collapsed: Object.freeze({
     explorer: false,
@@ -48,7 +55,7 @@ export const DEFAULT_LAYOUT: Layout = Object.freeze({
     tabs: false,
     topbar: false,
     tables: false,
-    ddl: false,
+    ddl: true,
     packFiles: false,
     templatePreview: false,
     unitHelp: false,
@@ -59,6 +66,8 @@ export const DEFAULT_LAYOUT: Layout = Object.freeze({
   packFilesSize: 192,
   templatePreviewSize: 360,
   unitHelpSize: 256,
+  tablesSize: 176,
+  ddlSize: 400,
   pinned: null,
 }) as Layout;
 
@@ -78,11 +87,17 @@ export function readLayout(): Layout {
     packFiles?: unknown;
     templatePreview?: unknown;
     unitHelp?: unknown;
+    tables?: unknown;
+    ddl?: unknown;
     collapsed?: unknown;
   }>(LAYOUT_KEY);
   const raw = saved && typeof saved === "object" ? saved : {};
-  const collapsedList = Array.isArray(raw.collapsed) ? raw.collapsed : [];
-  const collapsed = Object.fromEntries(PANELS.map((p) => [p, collapsedList.includes(p)])) as Record<Panel, boolean>;
+  // A saved list says every panel's state; without one (nothing saved, or the sizes-only format of 0.2.0) the defaults apply.
+  const collapsedList = Array.isArray(raw.collapsed) ? (raw.collapsed as unknown[]) : null;
+  const collapsed = (collapsedList ? Object.fromEntries(PANELS.map((p) => [p, collapsedList.includes(p)])) : { ...DEFAULT_LAYOUT.collapsed }) as Record<
+    Panel,
+    boolean
+  >;
   const pinned = local.get(PINNED_KEY);
   return {
     collapsed,
@@ -92,6 +107,8 @@ export function readLayout(): Layout {
     packFilesSize: size(raw.packFiles, LIMITS.packFiles, DEFAULT_LAYOUT.packFilesSize),
     templatePreviewSize: size(raw.templatePreview, LIMITS.templatePreview, DEFAULT_LAYOUT.templatePreviewSize),
     unitHelpSize: size(raw.unitHelp, LIMITS.unitHelp, DEFAULT_LAYOUT.unitHelpSize),
+    tablesSize: size(raw.tables, LIMITS.tables, DEFAULT_LAYOUT.tablesSize),
+    ddlSize: size(raw.ddl, LIMITS.ddl, DEFAULT_LAYOUT.ddlSize),
     pinned: pinned && EXPLORER_IDS.includes(pinned) ? (pinned as ExplorerId) : null,
   };
 }
@@ -105,6 +122,8 @@ export function writeLayout(layout: Layout): void {
     packFiles: layout.packFilesSize,
     templatePreview: layout.templatePreviewSize,
     unitHelp: layout.unitHelpSize,
+    tables: layout.tablesSize,
+    ddl: layout.ddlSize,
     collapsed: PANELS.filter((p) => layout.collapsed[p]),
   });
   local.set(PINNED_KEY, layout.pinned ?? "");

@@ -3,10 +3,13 @@
 # second argument is the set of foreign keys to leave out, an object keyed by constraint name (cycle_skip in _objects.scriban):
 # the caller adds them with ALTER TABLE once every table exists. It is an object rather than a ",name,name," string because a
 # large database can have thousands of such keys, and scanning that string for every foreign key made schema scripts quadratic.
+# The optional third argument creates the table under another name, without its indexes and comments: the new table of a SQLite
+# rebuild (_migration.scriban), renamed to the table's name once the rows are copied.
 # The text is built with string concatenation rather than arrays: Scriban counts every element an array function copies
 # against the template loop limit, and schema scripts and first migrations render thousands of tables in one unit.
 $t = $1
 $skip = $2
+$as = $3
 $db = $t.database
 $d = $db.dialect
 $rowid = sqlite_rowid($t)
@@ -18,25 +21,17 @@ for c in $t.columns
     if $d == "sqlite"
       # A line of its own above the column: a trailing comment would swallow the comma that follows the column.
       $body = $body + "    -- " + (c.comment | string.replace "\n" " ") + "\n"
-    else
+    else if $d != "mysql"
       $after = $after + "\n" + comment_sql($t, c, c.comment)
     end
   end
   $body = $body + "    " + column_def(c)
 end
 if $t.primary_key && !$rowid
-  $clustered = ""
-  if $d == "sqlserver"
-    for ix in $t.indexes
-      if ix.method == "clustered"
-        $clustered = " NONCLUSTERED"
-      end
-    end
-  end
-  $body = $body + ",\n    CONSTRAINT " + q($t.primary_key.name, $db) + " PRIMARY KEY" + $clustered + " (" + cols($t.primary_key.columns, $db) + ")"
+  $body = $body + ",\n    CONSTRAINT " + q($t.primary_key.name, $db) + " PRIMARY KEY" + pk_clustering($t) + " (" + cols($t.primary_key.columns, $db) + ")"
 end
 for u in $t.uniques
-  $body = $body + ",\n    CONSTRAINT " + q(u.name, $db) + " UNIQUE (" + cols(u.columns, $db) + ")"
+  $body = $body + ",\n    CONSTRAINT " + q(u.name, $db) + " " + unique_body(u, $db)
 end
 for f in $t.foreign_keys
   if $skip && $skip[f.name]
@@ -48,14 +43,37 @@ for k in $t.checks
   $body = $body + ",\n    CONSTRAINT " + q(k.name, $db) + " CHECK (" + k.expression + ")"
 end
 $indexes = ""
-for ix in $t.indexes
-  $indexes = $indexes + "\n" + index_sql(ix, $t)
+if $d == "mysql"
+  # MySQL declares indexes in CREATE TABLE, so CREATE TABLE IF NOT EXISTS covers them (it has no CREATE INDEX IF NOT EXISTS).
+  for ix in $t.indexes
+    if index_left_out(ix, $db) == ""
+      $body = $body + ",\n    " + mysql_index_def(ix, $db)
+    else if !$as
+      $indexes = $indexes + "\n" + index_sql(ix, $t)
+    end
+  end
+else if !$as
+  for ix in $t.indexes
+    $indexes = $indexes + "\n" + index_sql(ix, $t)
+  end
 end
-if pack.params.comments && $t.comment && $d != "sqlite"
+if pack.params.comments && $t.comment && $d != "sqlite" && $d != "mysql"
   $after = "\n" + comment_sql($t, null, $t.comment) + $after
 end
+if $as
+  $after = ""
+end
+$name = $as ? q($as, $db) : qt($t)
+$create = "CREATE TABLE "
+if idem() && !$as
+  if $d == "postgresql" || $d == "mysql" || $d == "sqlite"
+    $create = "CREATE TABLE IF NOT EXISTS "
+  else if $d == "sqlserver"
+    $create = "IF OBJECT_ID(" + ms_object($t.schema, $t.name, $db) + ", N'U') IS NULL\nCREATE TABLE "
+  end
+end
 -}}
-CREATE TABLE {{ qt($t) }} (
+{{ $create }}{{ $name }} (
 {{ $body }}
-);{{ $indexes }}{{ $after }}
+){{ table_options($t) }};{{ $indexes }}{{ $after }}
 {{- -}}

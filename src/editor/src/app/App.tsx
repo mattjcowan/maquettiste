@@ -10,6 +10,10 @@ import { EditorArea, EditorTabBar } from "@/editors/EditorTabs";
 import { CommandPalette, QuickOpen } from "@/palette/CommandPalette";
 import { NewElementHost } from "@/explorer/NewElementDialog";
 import { NewDatabaseObjectHost } from "@/explorer/NewDatabaseObjectDialog";
+import { ForeignKeyDialogHost } from "@/workspaces/database/ForeignKeyDialog";
+import { PartDeleteHost } from "@/workspaces/database/PartDeleteDialog";
+import { useSourceRenameFollow } from "@/workspaces/database/columnRename";
+import { StorageDialogsHost } from "@/editors/storage/StorageDialogs";
 import { ConflictDialog } from "@/inspector/ConflictDialog";
 import { Splitter } from "@/components/ui/splitter";
 import { Spinner } from "@/components/ui/misc";
@@ -40,7 +44,6 @@ const WORKSPACE_VIEWS: Record<Workspace, ComponentType> = {
   entities: named(() => import("@/workspaces/entities/EntitiesWorkspace"), "EntitiesWorkspace"),
   "reference-data": named(() => import("@/workspaces/reference-data/ReferenceDataWorkspace"), "ReferenceDataWorkspace"),
   database: named(() => import("@/workspaces/database/DatabaseWorkspace"), "DatabaseWorkspace"),
-  mappings: named(() => import("@/workspaces/mappings/MappingsWorkspace"), "MappingsWorkspace"),
   generate: named(() => import("@/workspaces/generate/GenerateWorkspace"), "GenerateWorkspace"),
   settings: named(() => import("@/workspaces/settings/SettingsWorkspace"), "SettingsWorkspace"),
 };
@@ -157,6 +160,7 @@ function Shell() {
   useThemeSync();
   useLayoutPersistence();
   useGlobalShortcuts();
+  useSourceRenameFollow();
 
   const workspace = useEditor(store, (s) => s.workspace);
   const sidebar = useEditor(store, (s) => s.explorer.active);
@@ -288,6 +292,9 @@ function Shell() {
       <ConflictDialog />
       <NewElementHost />
       <NewDatabaseObjectHost />
+      <ForeignKeyDialogHost />
+      <PartDeleteHost />
+      <StorageDialogsHost />
     </div>
   );
 }

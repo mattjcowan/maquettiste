@@ -210,6 +210,33 @@ export function nativeType(dialect: string, type: string, facets: { length?: num
   return (map[type] ?? (() => type))(facets);
 }
 
+/**
+ * The native type of a fixed-length or Unicode string, text or binary column (the engine's type map variant entries, such as
+ * string:fixed or string:ansi), or undefined when the column asks for neither or the dialect writes the plain keyword's type.
+ */
+export function variantNativeType(
+  dialect: string,
+  type: string,
+  length: number | null,
+  fixedLength: boolean,
+  unicode: boolean | undefined,
+): string | undefined {
+  const n = length ?? 255;
+  if (dialect === "sqlserver") {
+    if (type === "string" && fixedLength) return unicode === false ? `char(${n})` : `nchar(${n})`;
+    if (type === "string" && unicode === false) return `varchar(${n})`;
+    if (type === "text" && unicode === false) return "varchar(max)";
+    if (type === "binary" && fixedLength) return `binary(${n})`;
+  } else if (dialect === "postgresql") {
+    if (type === "string" && fixedLength) return `char(${n})`;
+  } else if (dialect === "mysql") {
+    const charset = unicode === true ? " character set utf8mb4" : "";
+    if (type === "string" && (fixedLength || charset)) return `${fixedLength ? "char" : "varchar"}(${n})${charset}`;
+    if (type === "binary" && fixedLength) return `binary(${n})`;
+  }
+  return undefined;
+}
+
 interface ResolvedColumn {
   name: string;
   type: string;
@@ -258,6 +285,12 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
   const enumStorage = String(conventions.enumStorage ?? "int");
   const defaultStringLength = typeof conventions.defaultStringLength === "number" ? conventions.defaultStringLength : 255;
   const defaultSchema = typeof db.defaultSchema === "string" ? db.defaultSchema : null;
+  /** A per-dialect text map's text for the database's dialect, else its "*" one, else null. */
+  const forDialectText = (map: unknown): string | null => {
+    const texts = map && typeof map === "object" ? (map as Record<string, unknown>) : {};
+    const text = texts[dialect] ?? texts["*"];
+    return typeof text === "string" ? text : null;
+  };
   // The comments convention (engine-design.md 2.4): with "descriptions" (the default) a table or column without an explicit comment
   // takes its own description, else the description of what it stores.
   const commentsFromDescriptions = conventions.comments !== "none";
@@ -501,6 +534,8 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       .map((c) => ({ name: `ix_${name}_${c.name}`, columns: [{ column: c.key, descending: false }], unique: false, where: null }));
     if (overlay) {
       for (const ix of arr(overlay.indexes)) {
+        // An index on an expression is a table file's (the legacy overlay shape has none).
+        if (arr(ix.columns).some((c) => typeof c.column !== "string")) continue;
         const cols = arr(ix.columns).map((c) => ({ column: String(c.column), descending: c.descending === true }));
         const names = cols.map((c) => table.columns.find((col) => col.key === c.column)?.name ?? c.column);
         if (!table.indexes.some((x) => x.columns.length === cols.length && x.columns.every((c, i) => c.column === cols[i].column)))
@@ -512,19 +547,146 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     pkColumnsByEntity.set(id, { table, columns: table.columns.filter((c) => c.isPrimaryKey) });
   }
 
+  // Designed and imported tables (DatabaseRun.BuildDesignedTable): their own columns by id, their keys, uniques, indexes and
+  // foreign keys as the file says them (a foreign key names a table file id or a synthesized key; no referenced columns: its
+  // primary key).
+  const designedSchema = (doc: Json) => (typeof doc.schema === "string" ? (declared.get(doc.schema) ?? defaultSchema) : defaultSchema);
+  const designed = overlays.filter((d) => d.origin !== "synthesized").sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  for (const doc of designed) {
+    const name = String(doc.name ?? "");
+    const pkColumns = ((doc.primaryKey as Json | undefined)?.columns as string[] | undefined) ?? [];
+    const fkColumns = new Set(arr(doc.foreignKeys).flatMap((fk) => (fk.columns as string[] | undefined) ?? []));
+    const columns = arr(doc.columns)
+      .filter((c) => typeof c.id === "string")
+      .map((c, i) => {
+        const type = typeof c.type === "string" ? c.type : "string";
+        return {
+          ...toView(
+            {
+              name: String(c.name ?? ""),
+              type,
+              length: num(c.length) ?? (type === "string" ? defaultStringLength : null),
+              precision: num(c.precision) ?? (type === "decimal" ? 18 : null),
+              scale: num(c.scale) ?? (type === "decimal" ? 2 : null),
+              nullable: c.nullable !== false,
+              attributeId: null,
+              attributePath: null,
+              key: String(c.id),
+              isPrimaryKey: pkColumns.includes(String(c.id)),
+              isForeignKey: fkColumns.has(String(c.id)),
+              unique: false,
+              indexed: false,
+              nativeOverride:
+                typeof c.nativeType === "string"
+                  ? c.nativeType
+                  : variantNativeType(
+                      dialect,
+                      type,
+                      num(c.length) ?? (type === "string" ? defaultStringLength : null),
+                      c.fixedLength === true,
+                      typeof c.unicode === "boolean" ? c.unicode : undefined,
+                    ),
+              entry: c,
+              attributeDescription: null,
+            },
+            i + 1,
+          ),
+          identity: c.generated === "identity",
+          // The dialect's default SQL (or the "*" one) and the computed expression, as the file says them.
+          defaultSql: (c.defaultSql as Record<string, string> | undefined)?.[dialect] ?? (c.defaultSql as Record<string, string> | undefined)?.["*"] ?? null,
+          computed: typeof c.computed === "string" ? c.computed : null,
+        };
+      });
+    const nameOf = (key: string) => columns.find((c) => c.key === key)?.name ?? key;
+    const pk = doc.primaryKey as Json | undefined;
+    tables.push({
+      key: String(doc.id),
+      name,
+      schema: designedSchema(doc),
+      origin: doc.origin === "imported" ? "imported" : "designed",
+      entityId: null,
+      relationId: null,
+      isJunction: false,
+      isLookup: false,
+      comment: commentOf(doc),
+      columns,
+      primaryKey: pkColumns.length ? { name: typeof pk?.name === "string" ? pk.name : `pk_${name}`, columns: [...pkColumns] } : null,
+      uniques: arr(doc.uniques).map((u) => {
+        const cols = (u.columns as string[] | undefined) ?? [];
+        return { name: typeof u.name === "string" ? u.name : `uq_${name}_${cols.map(nameOf).join("_")}`, columns: [...cols] };
+      }),
+      foreignKeys: arr(doc.foreignKeys).map((fk) => {
+        const cols = (fk.columns as string[] | undefined) ?? [];
+        return {
+          name: typeof fk.name === "string" ? fk.name : `fk_${name}_${cols.map(nameOf).join("_")}`,
+          columns: [...cols],
+          referencedTable: String(fk.referencesTable ?? ""),
+          referencedColumns: [...((fk.referencesColumns as string[] | undefined) ?? [])],
+          onDelete: String(fk.onDelete ?? "no-action").replace("-", " "),
+          onUpdate: String(fk.onUpdate ?? "no-action").replace("-", " "),
+          relationId: null,
+          endId: null,
+        };
+      }),
+      // An index column is a column, or an expression for the dialect ("*" for any) shown in parentheses; an expression without
+      // a text for the dialect leaves the index out, and an expression is "expr" in a conventional name (DatabaseRun).
+      indexes: arr(doc.indexes).flatMap((ix) => {
+        const cols = arr(ix.columns).map((c) => {
+          if (typeof c.column === "string") return { column: c.column, descending: c.descending === true, expr: false };
+          const text = forDialectText(c.expression);
+          return text === null ? null : { column: `(${text})`, descending: c.descending === true, expr: true };
+        });
+        if (!cols.length || cols.some((c) => c === null)) return [];
+        const kept = cols as { column: string; descending: boolean; expr: boolean }[];
+        return [
+          {
+            name: typeof ix.name === "string" ? ix.name : `ix_${name}_${kept.map((c) => (c.expr ? "expr" : nameOf(c.column))).join("_")}`,
+            columns: kept.map((c) => ({ column: c.column, descending: c.descending })),
+            unique: ix.unique === true,
+            where: typeof ix.where === "string" ? ix.where : null,
+          },
+        ];
+      }),
+      ...annotationsOf(doc, stereotypes),
+    });
+  }
+  // An entity bound to one of the database's table files (erratum E43) has no table laid out for it, but the foreign keys of
+  // the tables still laid out reference its file's primary key, as the engine's bindings resolve them.
+  const boundTo = new Map<string, string>();
+  // A bound key column's attribute (the binding's field map), so a foreign key column naming it keeps its key.
+  const boundAttribute = new Map<string, string>();
+  for (const d of all)
+    if (d.kind === "entity")
+      for (const b of arr(d.bindings))
+        if (b.database === databaseId && typeof b.source === "string") {
+          // Its rows live in the write table, else the source (DatabaseRun.BindingHost); a read-only binding has no host.
+          const write = b.write as Json | string | undefined;
+          if (write && typeof write === "object" && write.none === true) continue;
+          boundTo.set(String(d.id), write && typeof write === "object" && typeof write.table === "string" ? write.table : b.source);
+          for (const f of arr(b.fields)) if (typeof f.column === "string" && typeof f.attribute === "string") boundAttribute.set(f.column, f.attribute);
+        }
+  const stableKey = (column: string) => boundAttribute.get(column) ?? column;
+  for (const [entity, source] of boundTo) {
+    const file = tables.find((t) => t.key === source);
+    if (file) pkColumnsByEntity.set(entity, { table: file, columns: file.columns.filter((c) => c.isPrimaryKey) });
+  }
+
   // Relations: a foreign key on the "many" side, or a junction table for many-to-many.
   const relations = all.filter((d) => d.kind === "relation").sort((a, b) => String(a.id).localeCompare(String(b.id)));
   for (const relation of relations) {
     const ends = arr(relation.ends);
     if (ends.length !== 2) continue;
     const [a, b] = ends;
-    if (!entityIds.has(String(a.entity)) || !entityIds.has(String(b.entity))) continue;
+    const known = (id: unknown) => entityIds.has(String(id)) || pkColumnsByEntity.has(String(id));
+    if (!known(a.entity) || !known(b.entity)) continue;
     const relationMapping = mappings.find((m) => m.relation === relation.id);
     if (relationMapping?.ignore === true) continue;
     const manyA = (a.max ?? "*") === "*";
     const manyB = (b.max ?? "*") === "*";
     const onDelete = (end: Json) => ({ cascade: "cascade", restrict: "restrict", "set-null": "set null" })[String(end.onDelete)] ?? "no action";
     const addForeignKey = (holder: Json, referenced: Json, end: Json, nullable: boolean, ordered: boolean) => {
+      // A bound holder's foreign key is in its table file already.
+      if (boundTo.has(String(holder.entity))) return;
       const from = pkColumnsByEntity.get(String(holder.entity));
       const to = pkColumnsByEntity.get(String(referenced.entity));
       if (!from || !to) return;
@@ -533,7 +695,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       // A foreign key column copies the referenced key column's type, facets and native type, then its own overlay entry
       // applies (DatabaseRun.Relations.cs): a different type pinned here is the mismatch MQ4005 reports.
       const fkColumns: ColumnView[] = to.columns.map((pk) => {
-        const key = `${String(referenced.id)}.${pk.key}`;
+        const key = `${String(referenced.id)}.${stableKey(pk.key)}`;
         const entry = arr(holderOverlay?.columns).find((c) => c.attribute === key);
         const c = overlaid({ ...pk, key, name: colName(`${role}_${pk.name}`), nullable }, entry);
         return {
@@ -628,7 +790,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       for (const side of sides) {
         const cols = side.target.columns.map((pk) => ({
           ...pk,
-          key: `${String(side.end.id)}.${pk.key}`,
+          key: `${String(side.end.id)}.${stableKey(pk.key)}`,
           name: colName(`${side.label}_${pk.name}`),
           nullable: false,
           identity: false,
@@ -667,87 +829,6 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     }
   }
 
-  // Designed and imported tables (DatabaseRun.BuildDesignedTable): their own columns by id, their keys, uniques, indexes and
-  // foreign keys as the file says them (a foreign key names a table file id or a synthesized key; no referenced columns: its
-  // primary key).
-  const designedSchema = (doc: Json) => (typeof doc.schema === "string" ? (declared.get(doc.schema) ?? defaultSchema) : defaultSchema);
-  const designed = overlays.filter((d) => d.origin !== "synthesized").sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  for (const doc of designed) {
-    const name = String(doc.name ?? "");
-    const pkColumns = ((doc.primaryKey as Json | undefined)?.columns as string[] | undefined) ?? [];
-    const fkColumns = new Set(arr(doc.foreignKeys).flatMap((fk) => (fk.columns as string[] | undefined) ?? []));
-    const columns = arr(doc.columns)
-      .filter((c) => typeof c.id === "string")
-      .map((c, i) => {
-        const type = typeof c.type === "string" ? c.type : "string";
-        return {
-          ...toView(
-            {
-              name: String(c.name ?? ""),
-              type,
-              length: num(c.length) ?? (type === "string" ? defaultStringLength : null),
-              precision: num(c.precision) ?? (type === "decimal" ? 18 : null),
-              scale: num(c.scale) ?? (type === "decimal" ? 2 : null),
-              nullable: c.nullable !== false,
-              attributeId: null,
-              attributePath: null,
-              key: String(c.id),
-              isPrimaryKey: pkColumns.includes(String(c.id)),
-              isForeignKey: fkColumns.has(String(c.id)),
-              unique: false,
-              indexed: false,
-              nativeOverride: typeof c.nativeType === "string" ? c.nativeType : undefined,
-              entry: c,
-              attributeDescription: null,
-            },
-            i + 1,
-          ),
-          identity: c.generated === "identity",
-        };
-      });
-    const nameOf = (key: string) => columns.find((c) => c.key === key)?.name ?? key;
-    const pk = doc.primaryKey as Json | undefined;
-    tables.push({
-      key: String(doc.id),
-      name,
-      schema: designedSchema(doc),
-      origin: doc.origin === "imported" ? "imported" : "designed",
-      entityId: null,
-      relationId: null,
-      isJunction: false,
-      isLookup: false,
-      comment: commentOf(doc),
-      columns,
-      primaryKey: pkColumns.length ? { name: typeof pk?.name === "string" ? pk.name : `pk_${name}`, columns: [...pkColumns] } : null,
-      uniques: arr(doc.uniques).map((u) => {
-        const cols = (u.columns as string[] | undefined) ?? [];
-        return { name: typeof u.name === "string" ? u.name : `uq_${name}_${cols.map(nameOf).join("_")}`, columns: [...cols] };
-      }),
-      foreignKeys: arr(doc.foreignKeys).map((fk) => {
-        const cols = (fk.columns as string[] | undefined) ?? [];
-        return {
-          name: typeof fk.name === "string" ? fk.name : `fk_${name}_${cols.map(nameOf).join("_")}`,
-          columns: [...cols],
-          referencedTable: String(fk.referencesTable ?? ""),
-          referencedColumns: [...((fk.referencesColumns as string[] | undefined) ?? [])],
-          onDelete: String(fk.onDelete ?? "no-action").replace("-", " "),
-          onUpdate: String(fk.onUpdate ?? "no-action").replace("-", " "),
-          relationId: null,
-          endId: null,
-        };
-      }),
-      indexes: arr(doc.indexes).map((ix) => {
-        const cols = arr(ix.columns).map((c) => ({ column: String(c.column), descending: c.descending === true }));
-        return {
-          name: typeof ix.name === "string" ? ix.name : `ix_${name}_${cols.map((c) => nameOf(c.column)).join("_")}`,
-          columns: cols,
-          unique: ix.unique === true,
-          where: typeof ix.where === "string" ? ix.where : null,
-        };
-      }),
-      ...annotationsOf(doc, stereotypes),
-    });
-  }
   // A designed foreign key without referenced columns references the referenced table's primary key.
   for (const t of tables)
     for (const fk of t.foreignKeys)
@@ -999,8 +1080,10 @@ export function foreignKeyMismatches(view: DatabaseView, docs: ReadonlyMap<strin
         const column = t.columns.find((c) => c.key === key);
         const referenced = target.columns.find((c) => c.key === fk.referencedColumns[i]);
         if (!column || !referenced || samePhysicalType(column, referenced)) return;
-        const overlay = overlays.find((o) => t.entityId && o.entity === t.entityId && !o.attribute && !o.relation);
-        const at = arr(overlay?.columns).findIndex((c) => c.attribute === key);
+        // A table file holds the column itself; a laid-out table's adjusting file holds its entry.
+        const own = t.origin !== "synthesized" ? docs.get(t.key) : undefined;
+        const overlay = own ?? overlays.find((o) => t.entityId && o.entity === t.entityId && !o.attribute && !o.relation);
+        const at = arr(overlay?.columns).findIndex((c) => (own ? c.id === key : c.attribute === key));
         out.push({
           rule: "MQ4005",
           severity: "error",

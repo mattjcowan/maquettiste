@@ -8,4 +8,4 @@ CREATE TABLE dbo.revenue_months (
     revenue decimal(18,2) NOT NULL,
     CONSTRAINT pk_revenue_months PRIMARY KEY (month)
 );
-EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Invoiced revenue per month, read through the RevenueByMonth query; read-only.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'revenue_months';
+BEGIN DECLARE @mq_rc1 int; EXEC @mq_rc1 = sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Invoiced revenue per month, read through the RevenueByMonth query; read-only.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'revenue_months'; IF @mq_rc1 <> 0 THROW 50000, N'sys.sp_addextendedproperty failed: the migration stops here.', 1; END;

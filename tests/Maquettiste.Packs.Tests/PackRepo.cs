@@ -435,6 +435,10 @@ internal sealed class PackRepo : IDisposable
 
     private PackRepo() => Repo = new TempRepo();
 
+    /// <summary>An empty repo: no model, no packs (the caller lays them out, see <see cref="DdlCoverage"/>).</summary>
+    /// <returns>The repo.</returns>
+    public static PackRepo Blank() => new();
+
     /// <summary>
     /// The schemas fixture (erratum E26) with the sql-ddl pack: PostgreSQL database <c>main</c> with schemas <c>sales</c> (the
     /// default), <c>ops</c> and <c>audit</c>; package Sales by convention without a schema, package Ops into <c>ops</c>, and entity

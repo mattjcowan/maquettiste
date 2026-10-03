@@ -48,6 +48,16 @@ export function referencesOf(doc: Json): Ref[] {
     case "entity":
       push("/base", "base", doc.base, false);
       attributeRefs(id, "/attributes", doc.attributes, out);
+      // A binding's database, source and write table (erratum E43): removing what it names drops the binding, never the entity.
+      arr(doc.bindings).forEach((b, i) => {
+        const at = `/bindings/${i}`;
+        push(`${at}/database`, "database", b.database, false, at);
+        // A synthesized table key (<entityId>@<databaseId>) is no element id.
+        if (str(b.source) && !(b.source as string).includes("@")) push(`${at}/source`, "source", b.source, false, at);
+        const write = b.write as Json | string | undefined;
+        if (write && typeof write === "object" && str(write.table) && !(write.table as string).includes("@"))
+          push(`${at}/write/table`, "table", write.table, false, at);
+      });
       break;
     case "value-object":
     case "stereotype":
@@ -190,6 +200,7 @@ export function subElementIds(doc: Json): string[] {
   collect(doc.columns);
   collect(doc.indexes);
   collect(doc.checks);
+  if (doc.kind === "entity") collect(doc.bindings);
   if (doc.kind === "enum") collect(doc.members);
   if (doc.kind === "process") {
     collect(doc.context);

@@ -17,7 +17,8 @@ namespace Maquettiste.Engine.SchemaDiff;
 /// <item><description>a unique constraint is <c>uq:</c> + its column keys;</description></item>
 /// <item><description>a foreign key is <c>fk:</c> + its column keys + <c>-&gt;</c> + the referenced table key + the referenced
 /// column keys in parentheses;</description></item>
-/// <item><description>an index is <c>ix:</c> + its column keys (<c> desc</c> for descending), followed only when they differ from
+/// <item><description>an index is <c>ix:</c> + its column keys (an expression: <c>expr:</c> + 16 hex of its SHA-256; <c> desc</c> for
+/// descending), followed only when they differ from
 /// the default by <c>;unique</c>, <c>;using=&lt;method&gt;</c>, <c>;include=&lt;column keys&gt;</c> and
 /// <c>;where=&lt;16 hex of the SHA-256 of the predicate&gt;</c>;</description></item>
 /// <item><description>a check is <c>ck:</c> + the first 16 hex characters of the SHA-256 of its expression.</description></item>
@@ -62,8 +63,20 @@ internal static class SnapshotCapture
             Name = database.Name,
             Dialect = dialect,
             Revision = revision,
+            Schemas = [.. database.Schemas.Where(s => s.IsDeclared).Select(s => new SnapshotSchema { Key = s.Id, Name = s.Name }).OrderBy(s => s.Key, StringComparer.Ordinal)],
             Tables = [.. captured.OrderBy(t => t.Key, StringComparer.Ordinal)],
-            Views = [.. database.Views.Select(v => new SnapshotView { Key = v.Id, Name = v.Name, Schema = v.Schema, Body = v.Body })
+            Views = [.. database.Views.Select(v => new SnapshotView
+                {
+                    Key = v.Id,
+                    Name = v.Name,
+                    Schema = v.Schema,
+                    Body = v.Body,
+                    Columns = v.ColumnList ? [.. v.Columns.Select(c => c.Name)] : [],
+                    WithCheckOption = v.WithCheckOption,
+                    Materialized = v.Materialized,
+                    DependsOn = [.. v.DependsOn.OfType<RView>().Select(d => d.Id)],
+                    Comment = v.Comment,
+                })
                 .OrderBy(v => v.Key, StringComparer.Ordinal)],
             Sequences = [.. database.Sequences.Select(CaptureSequence).OrderBy(s => s.Key, StringComparer.Ordinal)],
             Types = [.. database.Types.Select(CaptureType).OrderBy(s => s.Key, StringComparer.Ordinal)],
@@ -80,6 +93,7 @@ internal static class SnapshotCapture
         ArgumentNullException.ThrowIfNull(snapshot);
         return snapshot with
         {
+            Schemas = snapshot.Schemas is null ? null : [.. snapshot.Schemas.OrderBy(s => s.Key, StringComparer.Ordinal)],
             Tables = [.. snapshot.Tables.Select(t => t with
             {
                 Uniques = [.. t.Uniques.OrderBy(c => c.Key, StringComparer.Ordinal)],
@@ -113,10 +127,10 @@ internal static class SnapshotCapture
     {
         var columns = table.Columns.OrderBy(c => c.Position).ThenBy(c => c.Key, StringComparer.Ordinal).Select(CaptureColumn).ToList();
         SnapshotConstraint? primaryKey = table.PrimaryKey is { } pk
-            ? new SnapshotConstraint { Key = "pk", Name = pk.Name, Columns = Keys(pk.Columns) }
+            ? new SnapshotConstraint { Key = "pk", Name = pk.Name, Columns = Keys(pk.Columns), Clustered = pk.Clustered }
             : null;
         var uniques = AssignKeys(table.Uniques, u => "uq:" + JoinKeys(u.Columns), _ => "", u => u.Name,
-            (u, key) => new SnapshotConstraint { Key = key, Name = u.Name, Columns = Keys(u.Columns) });
+            (u, key) => new SnapshotConstraint { Key = key, Name = u.Name, Columns = Keys(u.Columns), NullsNotDistinct = u.NullsNotDistinct });
         var foreignKeys = AssignKeys(table.ForeignKeys, ForeignKeyKey, f => (f.OnDelete ?? "") + "|" + (f.OnUpdate ?? ""), f => f.Name,
             (f, key) => new SnapshotForeignKey
             {
@@ -127,6 +141,7 @@ internal static class SnapshotCapture
                 ReferencedColumns = Keys(f.ReferencedColumns),
                 OnDelete = PlainValues.Parse(f.OnDelete, ReferentialAction.NoAction),
                 OnUpdate = PlainValues.Parse(f.OnUpdate, ReferentialAction.NoAction),
+                Deferrable = PlainValues.Parse(f.Deferrable, Deferrability.NotDeferrable),
             });
         var checks = AssignKeys(table.Checks, c => "ck:" + ContentHash.Of(c.Expression)[..16], _ => "", c => c.Name,
             (c, key) => new SnapshotCheck { Key = key, Name = c.Name, Expression = c.Expression });
@@ -135,7 +150,7 @@ internal static class SnapshotCapture
             {
                 Key = key,
                 Name = i.Name,
-                Columns = [.. i.Columns.Select(c => new IndexColumn { Column = c.Column.Key, Descending = c.Descending })],
+                Columns = [.. i.Columns.Select(c => new SnapshotIndexColumn { Column = c.Column?.Key, Expression = c.Column is null ? c.Expression : null, Descending = c.Descending, Length = c.Length })],
                 Include = Keys(i.Include),
                 Where = i.Where,
                 Unique = i.Unique,
@@ -168,7 +183,11 @@ internal static class SnapshotCapture
         Nullable = column.Nullable,
         Default = PlainValues.ToElement(column.Default),
         DefaultSql = column.DefaultSql,
+        DefaultName = column.DefaultName,
         Identity = column.Identity,
+        IdentitySeed = column.Identity ? column.IdentitySeed : null,
+        IdentityIncrement = column.Identity ? column.IdentityIncrement : null,
+        IdentityAlways = column.Identity && column.IdentityAlways,
         Sequence = column.Sequence?.Id,
         Computed = column.Computed,
         ComputedStored = column.ComputedStored,
@@ -267,7 +286,7 @@ internal static class SnapshotCapture
     private static string IndexKey(RIndex index)
     {
         var key = new System.Text.StringBuilder("ix:");
-        key.Append(string.Join(',', index.Columns.Select(c => c.Descending ? c.Column.Key + " desc" : c.Column.Key)));
+        key.Append(string.Join(',', index.Columns.Select(c => IndexColumnKey(c.Column?.Key, c.Expression) + (c.Descending ? " desc" : ""))));
         if (index.Unique)
             key.Append(";unique");
         var method = PlainValues.Parse(index.Method, IndexMethod.Default);
@@ -279,6 +298,9 @@ internal static class SnapshotCapture
             key.Append(";where=").Append(ContentHash.Of(index.Where)[..16]);
         return key.ToString();
     }
+
+    /// <summary>The key part of an index column: its column key, or <c>expr:</c> and 16 hex of the SHA-256 of its expression.</summary>
+    internal static string IndexColumnKey(string? column, string? expression) => column ?? "expr:" + ContentHash.Of(expression ?? "")[..16];
 
     /// <summary>
     /// Derives keys, disambiguates repeats with <c>#n</c> in the order of their remaining properties, then name, then list

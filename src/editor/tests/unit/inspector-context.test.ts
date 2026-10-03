@@ -93,7 +93,7 @@ describe("inspectorContext", () => {
     store.getState().select(["billing-db"]);
     // A canvas pick, a Tables list row or an explorer row: the table by its resolved key (a projected table has no file).
     store.getState().inspectTable({ database: "billing-db", key: "invoice@billing-db" }, "billing-db/t:invoice@billing-db");
-    expect(ctx(store)).toEqual({ mode: "table", database: "billing-db", key: "invoice@billing-db", column: null });
+    expect(ctx(store)).toEqual({ mode: "table", database: "billing-db", key: "invoice@billing-db", column: null, part: null });
     expect(store.getState().selectionBy.databases).toEqual([]);
     expect(store.getState().explorerItem).toBe("billing-db/t:invoice@billing-db");
     // A column picked in the grid shows with it; another table starts with none.

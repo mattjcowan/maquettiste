@@ -142,9 +142,39 @@ describe("the menus that offer them", () => {
     expect(menu({ type: "group", kind: "table", element: false, home: "databases", explorer: "databases" })[0]).toBe("new-db:table New table…");
   });
 
-  it("a table with a file of its own also offers Show in Database screen", () => {
-    expect(menuFor([{ type: "table", kind: "table", element: true, designed: true }]).map((i) => i.id)).toEqual(["open", "show-in-database"]);
-    expect(menuFor([{ type: "table", kind: "table", element: false, linked: true }]).map((i) => i.id)).toEqual(["open", "go-to-entity"]);
+  it("every table offers Open, Show in Database screen, its New part actions and Rename; a table file Used, Favorite and Delete; no entity", () => {
+    const parts = ["new-part:column", "new-part:unique", "new-part:index", "new-part:foreign-key", "new-part:check"];
+    expect(menuFor([{ type: "table", kind: "table", element: true, designed: true }]).map((i) => i.id)).toEqual([
+      "open",
+      "show-in-database",
+      ...parts,
+      "where-used",
+      "rename",
+      "favorite",
+      "delete",
+    ]);
+    expect(menuFor([{ type: "table", kind: "table", element: true, designed: true, favorite: true }]).find((i) => i.id === "favorite")?.label).toBe(
+      "Remove from favorites",
+    );
+    expect(menuFor([{ type: "table", kind: "table", element: false }]).map((i) => i.id)).toEqual(["open", "show-in-database", ...parts, "rename"]);
+    expect(menuFor([{ type: "table", kind: "table", element: false }]).map((i) => i.label)).toEqual([
+      "Open",
+      "Show in Database screen",
+      "New column",
+      "New unique constraint",
+      "New index",
+      "New foreign key",
+      "New check",
+      "Rename",
+    ]);
+  });
+
+  it("a table's part folders offer their New action, and its parts Rename and Delete; Referenced by rows only open", () => {
+    expect(menuFor([{ type: "folder", element: false, part: "index" }]).map((i) => i.id)).toEqual(["open", "new-part:index", "expand-all"]);
+    expect(menuFor([{ type: "folder", element: false, part: "primary-key" }]).map((i) => i.label)).toEqual(["Open", "New primary key", "Expand all"]);
+    expect(menuFor([{ type: "item", element: false, part: "unique" }]).map((i) => i.id)).toEqual(["open", "rename-part", "delete-part"]);
+    expect(menuFor([{ type: "item", element: false, part: "foreign-key", incoming: true }]).map((i) => i.id)).toEqual(["open"]);
+    expect(menuFor([{ type: "folder", element: false, part: "foreign-key", incoming: true }]).map((i) => i.id)).toEqual(["open", "expand-all"]);
   });
 });
 

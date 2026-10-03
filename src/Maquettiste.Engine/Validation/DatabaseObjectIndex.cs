@@ -37,7 +37,7 @@ internal sealed class DatabaseObjectIndex
                 byName.TryAdd(type.Database + "|" + defaultSchema + "." + type.Name, type);
         }
 
-        // The dependency graph: a routine or SQL object depends on what its dependsOn names, a database type on the database types
+        // The dependency graph: a routine, SQL object or view depends on what its dependsOn names, a database type on the database types
         // its fields use.
         var edges = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -47,6 +47,7 @@ internal sealed class DatabaseObjectIndex
             {
                 Routine r => r.DependsOn,
                 SqlObject o => o.DependsOn,
+                View v => v.DependsOn,
                 DatabaseType t => t.Fields.Select(f => f.Type).OfType<string>().Where(id => model.Get<DatabaseType>(id) is not null),
                 _ => null,
             };

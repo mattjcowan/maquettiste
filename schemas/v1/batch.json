@@ -10,7 +10,7 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "schema", "name", "target", "default"],
+        "x-order": ["op", "id", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "expectedHashes", "schema", "name", "target", "default"],
         "properties": {
           "op": {
             "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario"]
@@ -64,6 +64,14 @@
           "package": {
             "description": "The package the new entities go to (materialize-entities).",
             "$ref": "common.json#/$defs/id"
+          },
+          "expectedHashes": {
+            "description": "Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           "schema": {
             "description": "The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own).",

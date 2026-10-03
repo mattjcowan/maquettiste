@@ -16,6 +16,7 @@ import { validExtensionPath } from "./model/extensions";
 import { BAD_CURSOR, filterOf, filterRows, isEmptyFilter, kinds, MAX_LIMIT, page, parseLimit, trim } from "./model/bulk";
 import type { DatabaseView, ResolvedRecord } from "@/api/types";
 import { resolveQueries } from "./model/queries";
+import { bindingSql } from "./model/bindings";
 import { parseDialect } from "./model/querySql";
 import { isUlid, readTag } from "./wire";
 import { processHandlers } from "./processHandlers";
@@ -558,6 +559,45 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       if (dialect !== null && !parseDialect(dialect))
         return problem(400, "bad-request", "The request is not valid.", `'${dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).`);
       return HttpResponse.json(generation.querySql(params.id, dialect, { placeholder, lists }));
+    }),
+    http.get("/api/model/databases/{id}/materialize", ({ params }) => {
+      const status = model.materializeStatus(params.id);
+      if (!status)
+        return model.entries.has(params.id)
+          ? problem(404, "not-a-database", `${params.id} is not a database.`)
+          : problem(404, "not-found", `No element has the id ${params.id}.`);
+      return HttpResponse.json(status);
+    }),
+    http.post("/api/model/databases/{id}/materialize/preview", async ({ params, request }) => {
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const op = body.value.op;
+      if (op !== "materialize-tables" && op !== "materialize-entities")
+        return problem(400, "bad-request", "The request is not valid.", "op must be materialize-tables or materialize-entities.");
+      if (model.entries.get(params.id)?.json.kind !== "database")
+        return model.entries.has(params.id)
+          ? problem(404, "not-a-database", `${params.id} is not a database.`)
+          : problem(404, "not-found", `No element has the id ${params.id}.`);
+      return HttpResponse.json(model.previewMaterialize(params.id, body.value as never));
+    }),
+    http.get("/api/model/entities/{id}/bindings/{bindingId}/sql", ({ params, request }) => {
+      const q = new URL(request.url).searchParams;
+      const placeholder = q.get("placeholder") || "@";
+      const dialect = q.get("dialect") || null;
+      if (!["@", ":", "$"].includes(placeholder))
+        return problem(400, "bad-request", "The request is not valid.", `placeholder must be @, : or $, not '${placeholder}'.`);
+      if (dialect !== null && !parseDialect(dialect))
+        return problem(400, "bad-request", "The request is not valid.", `'${dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).`);
+      const settings = model.projectSettings();
+      const result = bindingSql(
+        { docs: model.docs(), conventions: settings.conventions as Json, databaseConventions: settings.databases as Record<string, Json> },
+        params.id,
+        params.bindingId,
+        dialect,
+        placeholder,
+      );
+      if (!result) return problem(404, "not-found", `No binding ${params.bindingId} on ${params.id}.`);
+      return HttpResponse.json(result);
     }),
     http.get("/api/databases/{id}/tables", ({ params }) => {
       const rec = replayable(recorded, "getDatabaseTables", pristine(), (r) => mentions(r, params.id));

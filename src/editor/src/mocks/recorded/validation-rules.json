@@ -474,7 +474,7 @@
   {
     "id": "MQ4020",
     "defaultSeverity": "error",
-    "description": "Routines, database types and SQL objects depend on each other in a cycle (dependsOn, or a composite type's fields), so no creation order exists.",
+    "description": "Routines, views, database types and SQL objects depend on each other in a cycle (dependsOn, or a composite type's fields), so no creation order exists.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -755,6 +755,30 @@
     "id": "MQ4055",
     "defaultSeverity": "error",
     "description": "A materialize operation is refused: an entity already bound to the database, a table an entity is already bound to, an entity in an inheritance hierarchy, a name already taken, or an id that is not what the operation takes.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4056",
+    "defaultSeverity": "warning",
+    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4057",
+    "defaultSeverity": "error",
+    "description": "A column facet does not fit its type: unicode on a column that is not string or text, or fixedLength on a column that is not string or binary.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4059",
+    "defaultSeverity": "error",
+    "description": "A foreign key references columns of a table that are neither its primary key nor one of its unique keys (a unique constraint, or a unique index without a filter except on Oracle): a database accepts a foreign key only to a key.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true

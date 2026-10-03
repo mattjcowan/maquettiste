@@ -71,6 +71,12 @@ export function deleteTableColumn(doc: Json, columnId: string): boolean {
       .filter((e) => e.columns.length > 0)
       .map((e) => (Array.isArray(e.include) && !e.include.length ? withoutKey(e, "include") : e)),
   );
+  // A column check goes with its column (its expression reads it), as a migration drops it first.
+  setList(
+    doc,
+    "checks",
+    list(doc, "checks").filter((e) => e.column !== columnId),
+  );
   return true;
 }
 
@@ -189,6 +195,48 @@ export function addViewColumn(doc: Json): void {
   const columns = list(doc, "columns");
   doc.columns = [...columns, { name: nextColumnName(columns.map((c) => String(c.name ?? ""))) }];
 }
+
+/** The DDL options of a view file (schemas/v1 view.json), each a flag left out of the file when false. */
+export type ViewOption = "columnList" | "withCheckOption" | "materialized";
+
+/** Sets or clears a view's DDL option. */
+export function setViewOption(doc: Json, option: ViewOption, on: boolean): void {
+  if (on) doc[option] = true;
+  else delete doc[option];
+}
+
+/** What a view option does on a dialect (the sql-ddl pack's DDL and MQ4056), or null where it is written as set. */
+export function viewOptionNote(dialect: string, doc: Json): string | null {
+  const notes: string[] = [];
+  const materializes = dialect === "postgresql" || dialect === "oracle";
+  if (doc.materialized === true && !materializes) notes.push("Only PostgreSQL and Oracle materialize a view; this dialect creates a plain view (MQ4056).");
+  if (doc.materialized === true && materializes) notes.push("Refreshing a materialized view is up to the application.");
+  if (doc.withCheckOption === true && dialect === "sqlite") notes.push("SQLite has no WITH CHECK OPTION; it is left out (MQ4056).");
+  else if (doc.withCheckOption === true && doc.materialized === true && materializes)
+    notes.push("A materialized view is not written through: WITH CHECK OPTION is left out (MQ4056).");
+  if (doc.columnList === true && !list(doc, "columns").length) notes.push("The column list names the Columns tab's columns; declare them there.");
+  return notes.length ? notes.join(" ") : null;
+}
+
+/** The identifiers of a SQL text, as the engine reads a view body (DatabaseRun.Identifiers): runs of letters, digits, _, $ and #
+ * that start with a letter or _. */
+export function sqlIdentifierTokens(sql: string): string[] {
+  return sql.match(/(?<![\p{L}\p{N}_$#])[\p{L}_][\p{L}\p{N}_$#]*/gu) ?? [];
+}
+
+/**
+ * The views of the database a view's body names (the engine's inferred view dependencies): every other view whose name, compared
+ * without case, is an identifier of the body; only when the database has more than one view. In schema, name and id order.
+ */
+export function inferredViewDependencies<V extends { id: string; name: string; schema?: string | null }>(body: string, views: readonly V[], self: string): V[] {
+  if (views.length < 2) return [];
+  const tokens = new Set(sqlIdentifierTokens(body).map((t) => t.toLowerCase()));
+  return views
+    .filter((v) => v.id !== self && tokens.has(v.name.toLowerCase()))
+    .sort((a, b) => cmp(a.schema ?? "", b.schema ?? "") || cmp(a.name, b.name) || cmp(a.id, b.id));
+}
+
+const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 export function removeViewColumn(doc: Json, index: number): void {
   setList(

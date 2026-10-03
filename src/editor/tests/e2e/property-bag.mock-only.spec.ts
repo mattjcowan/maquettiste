@@ -1,14 +1,13 @@
 // The property bag (the owner: "a properties bag (Dictionary<string,string>) for all the objects ... default functionality for
 // every object in the inspector"): free keys with text values on every element, a number or true/false when chosen, declared
-// keys left to their typed form; each commit one save and one undo step. A projected table edits from the inspector, its first
-// edit creating the overlay file, and its columns carry tags and properties; every table has a JSON tab.
+// keys left to their typed form; each commit one save and one undo step. A table laid out by convention edits from the inspector,
+// its first edit storing it as a table file, and its columns carry tags and properties; every table has a JSON tab.
 import type { Page } from "@playwright/test";
 import { card, expect, openEditor, test } from "./fixtures";
 
 const CUSTOMER = "01J92P0V0ETQKXXP951CMMNHH3";
-const NAME = "01J92P0V0MS09YFZHX07JQ3KMN";
 
-type TableDoc = { id: string; origin?: string; entity?: string; properties?: Record<string, unknown>; columns?: Record<string, unknown>[] };
+type TableDoc = { id: string; name?: string; origin?: string; properties?: Record<string, unknown>; columns?: Record<string, unknown>[] };
 
 /** One element's document, read through the API. */
 const documentOf = (page: Page, id: string) =>
@@ -21,19 +20,20 @@ const documentOf = (page: Page, id: string) =>
     return ((await read.json()) as { elements: { json: Record<string, unknown> }[] }).elements[0]?.json;
   }, id);
 
-/** The table files on an entity, read through the API. */
-const overlaysOf = (page: Page, entity: string) =>
-  page.evaluate(async (entityId) => {
-    const index = (await (await fetch("/api/model/index")).json()) as
-      { elements?: { id: string; kind: string; entity?: string }[] } | { id: string; kind: string; entity?: string }[];
-    const rows = (Array.isArray(index) ? index : (index.elements ?? [])).filter((r) => r.kind === "table" && r.entity === entityId);
+/** The table file named `name` (stored as a file), read through the API, or undefined. */
+const fileOf = (page: Page, name: string) =>
+  page.evaluate(async (tableName) => {
+    const index = (await (await fetch("/api/model/index")).json()) as { elements?: { id: string; kind: string }[] } | { id: string; kind: string }[];
+    const rows = (Array.isArray(index) ? index : (index.elements ?? [])).filter((r) => r.kind === "table");
     const read = await fetch("/api/model/elements/read", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ids: rows.map((r) => r.id) }),
     });
-    return ((await read.json()) as { elements: { json: TableDoc }[] }).elements.map((d) => d.json);
-  }, entity);
+    return ((await read.json()) as { elements: { json: TableDoc }[] }).elements
+      .map((d) => d.json)
+      .find((t) => t.name === tableName && t.origin !== "synthesized");
+  }, name);
 
 const propertiesOf = async (page: Page, id: string) => (await documentOf(page, id))?.properties;
 
@@ -97,24 +97,23 @@ test("an entity's property bag: text by default, a number when chosen, declared 
   await expect(bag.getByLabel("Value of owner")).toHaveValue("finance");
 });
 
-test("a projected table edits from the inspector: a table property and a column property create its overlay, a column takes a tag", async ({ page }) => {
+test("a laid-out table edits from the inspector: its first property stores it as a file, a column takes a property and a tag", async ({ page }) => {
   const inspector = await openCustomersTable(page);
-  expect(await overlaysOf(page, CUSTOMER)).toEqual([]);
+  expect(await fileOf(page, "customers")).toBeUndefined();
   const tableSection = inspector.getByTestId("table-inspector-table");
-  await expect(inspector.getByTestId("table-inspector-no-file")).toHaveText("Projected from Customer: edits go to the table's overlay file.");
+  await expect(inspector.getByTestId("table-inspector-path")).toHaveText("billing.customers · not stored as a table file yet");
 
-  // The table's own property: the first commit creates the overlay with it.
+  // The table's own property: the first commit stores the table as a file, with it.
   const tableBag = tableSection.getByTestId("property-bag");
   await tableBag.getByRole("button", { name: "Add property" }).click();
   await page.keyboard.type("tier");
   await page.keyboard.press("Tab");
   await page.keyboard.type("gold");
   await page.keyboard.press("Enter");
-  await expect.poll(async () => (await overlaysOf(page, CUSTOMER)).map((t) => t.properties)).toEqual([{ tier: "gold" }]);
-  await expect(inspector.getByTestId("table-inspector-no-file")).toHaveCount(0);
-  await expect(tableSection).toContainText("projected, with an overlay file");
+  await expect.poll(async () => (await fileOf(page, "customers"))?.properties).toEqual({ tier: "gold" });
+  await expect(page.getByText("customers is now stored as a table file.")).toBeVisible();
 
-  // A column's property and tag go to the same overlay's entry for that column.
+  // A column's property and tag go to that column's entry in the file.
   await page.getByTestId("column-grid").getByTestId("column-row-name").locator('[data-column="name"]').click();
   const columnSection = inspector.getByTestId("table-inspector-column");
   await expect(columnSection).toContainText("Column name");
@@ -124,41 +123,36 @@ test("a projected table edits from the inspector: a table property and a column 
   await page.keyboard.press("Tab");
   await page.keyboard.type("finance");
   await page.keyboard.press("Enter");
-  await expect
-    .poll(async () => (await overlaysOf(page, CUSTOMER))[0]?.columns)
-    .toEqual([{ id: expect.any(String), attribute: NAME, properties: { owner: "finance" } }]);
+  const nameColumn = async () => (await fileOf(page, "customers"))?.columns?.find((c) => c.name === "name");
+  await expect.poll(async () => (await nameColumn())?.properties).toEqual({ owner: "finance" });
   await columnSection.getByLabel("Add to Tags").selectOption("pii");
-  await expect
-    .poll(async () => (await overlaysOf(page, CUSTOMER))[0]?.columns)
-    .toEqual([{ id: expect.any(String), attribute: NAME, properties: { owner: "finance" }, tags: ["pii"] }]);
+  await expect.poll(async () => (await nameColumn())?.tags).toEqual(["pii"]);
   await expect(columnSection.getByRole("button", { name: "Remove pii from Tags" })).toBeVisible();
-  expect(await overlaysOf(page, CUSTOMER)).toHaveLength(1);
 
-  // The JSON tab shows the overlay file with both.
+  // The JSON tab (back on the table) shows the file with both.
+  await inspector.getByTestId("inspector-back-to-table").click();
   await inspector.getByRole("tab", { name: "JSON" }).click();
   await expect(inspector).toContainText('"tier": "gold"');
   await expect(inspector).toContainText('"owner": "finance"');
 });
 
-test("a projected table's JSON tab shows the resolved table read-only, and Create the table's file makes the overlay", async ({ page }) => {
+test("a laid-out table's JSON tab shows the table read-only, and Store as a table file makes the whole file", async ({ page }) => {
   const inspector = await openCustomersTable(page);
   await inspector.getByRole("tab", { name: "JSON" }).click();
   const resolved = inspector.getByTestId("table-inspector-resolved-json");
-  await expect(resolved).toContainText("The resolved table, read-only");
+  await expect(resolved).toContainText("The table as resolved, read-only");
   await expect(resolved).toContainText('"name": "customers"');
 
-  await resolved.getByRole("button", { name: "Create the table's file" }).click();
+  await resolved.getByTestId("table-inspector-store-file").click();
+  await expect(page.getByText("customers is now stored as a table file.")).toBeVisible();
   await expect(inspector.getByTestId("table-inspector-resolved-json")).toHaveCount(0);
-  await expect(inspector).toContainText('"origin": "synthesized"');
-  const overlays = await overlaysOf(page, CUSTOMER);
-  expect(overlays).toHaveLength(1);
-  expect(overlays[0]).toMatchObject({ kind: "table", origin: "synthesized", entity: CUSTOMER });
-  // It overrides nothing yet.
-  expect(overlays[0]).not.toHaveProperty("columns");
-  expect(overlays[0]).not.toHaveProperty("properties");
+  const file = await fileOf(page, "customers");
+  expect(file).toMatchObject({ kind: "table", name: "customers" });
+  expect(file?.columns?.length).toBeGreaterThan(1);
+  await inspector.getByRole("tab", { name: "JSON" }).click();
+  await expect(inspector).toContainText('"name": "customer_since"');
 
-  // The create is one undo step.
+  // Storing is one undo step.
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect.poll(() => overlaysOf(page, CUSTOMER)).toEqual([]);
-  await expect(inspector.getByTestId("table-inspector-resolved-json")).toBeVisible();
+  await expect.poll(() => fileOf(page, "customers")).toBeUndefined();
 });

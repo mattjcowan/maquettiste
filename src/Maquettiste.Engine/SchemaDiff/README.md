@@ -40,9 +40,22 @@ Deviations and notes:
   for a primary key's columns and an FK's `onDelete`/`onUpdate`. Renaming one of two fully identical indexes can still show as
   two renames (their names trade keys); applied in order, those renames produce the same schema. The lasting fix is a stable
   `Key` on the resolved types (requested).
-  `RPrimaryKey` and `RUnique` have no `Clustered`, so snapshots hold none.
+  The primary key's `Clustered` is captured (`RUnique` has none, so a unique constraint's is never set).
 - `TableChange` has no property-change list, so a table whose only change is its schema or comment is `Altered` with empty
-  sub-lists (the old value is not reported, but both values reach `Hash`).
+  sub-lists; its `OldSchema` and `OldComment` (init properties) give the old values, and both values reach `Hash`.
+- DDL coverage additions: the snapshot's declared `schemas` (compared only when both snapshots have them; `SchemaDiffResult.Schemas`,
+  hashed only when non-empty), a column's `defaultName` (`ColumnChange.OldDefaultName` gives the old one), a foreign key's
+  `deferrable` (compared as enums, so the unchanged-table check allocates no strings), and a view's `comment`;
+  `ObjectChange.OldSchema` for views and sequences. All are additive: a model without them keeps its diff hashes, and only the declared `schemas` are new in the next snapshot saved.
+- DDL coverage review (2026-10-03): an index column is a column key or an expression (`SnapshotIndexColumn`; its key part is
+  `expr:<16 hex of SHA-256(expression)>`, so a new expression is a drop plus an add) with an optional prefix `length` (in the
+  `columns` property's text, `key(n)`); a unique constraint's `nullsNotDistinct`, a column's `identitySeed`,
+  `identityIncrement` and `identityAlways`, and a view's `columns` (its column list), `withCheckOption` and `materialized` are
+  compared properties. A view's `dependsOn` (the keys of the views it reads) is recorded but never compared: a migration reads
+  it from the committed snapshot (`ObjectChange.OldDependsOn`, with `OldMaterialized`) to drop views before the views they read.
+- A changed or dropped unique constraint or index carries its column keys and whether it was a key a foreign key can rely on
+  (`ObjectChange.OldColumns`, `OldUnique`), from the committed snapshot, so a migration drops the foreign keys that rely on it
+  before it drops the key and adds them back after.
 - Column reordering is not reported (no property holds a position).
 - The snapshot file name uses a local kebab-case helper (`SnapshotStore.Kebab`, the section 9 word rule) because W3's
   `Casing.Words` is still a stub; switch to it once it lands.

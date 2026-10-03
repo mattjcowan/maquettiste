@@ -12,4 +12,4 @@ CREATE TABLE dbo.customers (
     CONSTRAINT pk_customers PRIMARY KEY (id),
     CONSTRAINT uq_customers_email UNIQUE (email)
 );
-EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Someone we bill.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'customers';
+BEGIN DECLARE @mq_rc1 int; EXEC @mq_rc1 = sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Someone we bill.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'customers'; IF @mq_rc1 <> 0 THROW 50000, N'sys.sp_addextendedproperty failed: the migration stops here.', 1; END;

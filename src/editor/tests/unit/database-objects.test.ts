@@ -224,7 +224,7 @@ describe("the editors' edits", () => {
     expect(memberProblem(doc.members as string[], 0, "value_1")).toBeNull();
   });
 
-  it("offers the database's other objects as dependencies, by kind then name", () => {
+  it("offers the database's other objects as dependencies, by kind then name, each table by its table name", () => {
     const rows = [
       { id: "E1", kind: "entity", name: "Invoice" },
       { id: "T1", kind: "table", name: "", database: "db1", entity: "E1" },
@@ -233,11 +233,14 @@ describe("the editors' edits", () => {
       { id: "R2", kind: "routine", name: "a_fn", database: "db1" },
       { id: "X1", kind: "view", name: "other", database: "db2" },
     ];
-    expect(dependencyOptions(rows, "db1", "R1")).toEqual([
-      { id: "T1", kind: "table", name: "Invoice table" },
+    // A file adjusting a laid-out table is named by the table, never by an entity.
+    expect(dependencyOptions(rows, "db1", "R1", new Map([["E1@db1", "invoices"]]))).toEqual([
+      { id: "T1", kind: "table", name: "invoices" },
       { id: "V1", kind: "view", name: "open" },
       { id: "R2", kind: "routine", name: "a_fn" },
     ]);
+    expect(dependencyOptions(rows, "db1", "R1").find((o) => o.id === "T1")?.name).toBe("T1");
+    expect(dependencyOptions(rows, "db1", "R1").some((o) => /Invoice/.test(o.name))).toBe(false);
   });
 
   it("says what a type slot and a database type are in one line", () => {

@@ -3,7 +3,10 @@
 // DDL, the explorer under Objects and the inspector summarises it. Deleting what it depends on shows the delete plan, which
 // clears the reference; undo brings both back.
 import type { Page } from "@playwright/test";
-import { expect, test, workspace } from "./fixtures";
+import { expect, test, workspace, keepDdlOpen } from "./fixtures";
+
+// The DDL preview is hidden by default; these specs read it.
+test.beforeEach(({ page }) => keepDdlOpen(page));
 
 const editor = (page: Page) => page.getByTestId("element-editor");
 

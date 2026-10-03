@@ -1,5 +1,6 @@
 {
   "binary": "longblob",
+  "binary:fixed": "binary({length})",
   "bool": "tinyint(1)",
   "date": "date",
   "datetime": "datetime({precision})",
@@ -13,7 +14,11 @@
   "int64": "bigint",
   "json": "json",
   "string": "varchar({length})",
+  "string:fixed": "char({length})",
+  "string:fixed:unicode": "char({length}) character set utf8mb4",
+  "string:unicode": "varchar({length}) character set utf8mb4",
   "text": "longtext",
+  "text:unicode": "longtext character set utf8mb4",
   "time": "time({precision})",
   "ulid": "char(26)",
   "uuid": "char(36)"

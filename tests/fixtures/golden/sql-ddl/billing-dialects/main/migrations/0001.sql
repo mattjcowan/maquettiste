@@ -1,6 +1,6 @@
 -- Migration 0001 of database main (PostgreSQL 16): schema revision 0 to 1.
 -- Written once by Maquettiste (sql-ddl/migration) from the schema diff. It is yours now: review it, adjust it and commit it.
--- Lines marked TODO need a decision the diff cannot make (data conversions, SQLite table rebuilds).
+-- Lines marked TODO need a decision the diff cannot make (data conversions, sequence restarts).
 
 BEGIN;
 

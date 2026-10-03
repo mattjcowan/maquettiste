@@ -11,11 +11,13 @@ import { emptyFilter, normalizeFilter, scopeOf, type ExplorerFilter, type Filter
 import type { CreateKind } from "@/explorer/create";
 import type { DatabaseObjectKind } from "@/explorer/databaseCreate";
 import { DEFAULT_LAYOUT, clearLayout, readLayout, writeLayout, type Layout, type Panel } from "./layout";
+import type { TablePart } from "@/workspaces/database/tableParts";
+import type { FkDraft } from "@/workspaces/database/fkEdits";
 
 export type PaletteCommand = "plan" | "apply" | "new-entity";
 
-export type Workspace = "entities" | "reference-data" | "database" | "mappings" | "generate" | "settings";
-export const WORKSPACES: Workspace[] = ["entities", "reference-data", "database", "mappings", "generate", "settings"];
+export type Workspace = "entities" | "reference-data" | "database" | "generate" | "settings";
+export const WORKSPACES: Workspace[] = ["entities", "reference-data", "database", "generate", "settings"];
 export type ThemeChoice = "system" | "light" | "dark";
 export type BottomTab = "problems" | "output" | "diff" | "references";
 
@@ -38,6 +40,8 @@ export interface Draft {
    * the save joins the last undo step instead of taking one of its own.
    */
   followUp?: boolean;
+  /** The undo step's label for the next save (the gesture's own words); absent: "Edit <name>". */
+  label?: string;
   error: string | null;
 }
 
@@ -135,6 +139,8 @@ export interface InspectedTable {
   /** The resolved table key (a table file's id, or a synthesized key such as `<entityId>@<databaseId>`). */
   key: string;
   column: string | null;
+  /** The constraint, index or primary key picked in the table editor, the explorer or the inspector (a column is `column`). */
+  part?: TablePart | null;
 }
 
 export interface EditorState {
@@ -180,6 +186,9 @@ export interface EditorState {
   packFilesSize: number;
   templatePreviewSize: number;
   unitHelpSize: number;
+  /** The Database screen's tables list and DDL preview widths. */
+  tablesSize: number;
+  ddlSize: number;
   /** The Settings tab last shown: Settings opens on it when the address names none. */
   settingsTab: string | null;
   bottomTab: BottomTab;
@@ -201,6 +210,14 @@ export interface EditorState {
    * database type…, New SQL object…): the database and,
    * from a schema row, the schema's name the dialog starts on. */
   newDatabaseObject: NewDatabaseObjectRequest | null;
+  /** The open foreign key dialog (the diagram's drag, New foreign key in the explorer, the Foreign keys tab, Edit… on a key):
+   * the database and the draft it starts from. */
+  foreignKeyDialog: { database: string; draft: FkDraft } | null;
+  /** A delete of a table part (a column, a key, a constraint, an index) whose plan the delete dialog shows first. */
+  partDelete: { database: string; key: string; part: TablePart; nonce: number } | null;
+  /** A storage action asked of the Storage dialogs (editors/storage/StorageDialogs.tsx): Auto-map, Create tables, Remove bindings,
+   * New entities from tables, over entities or a domain. */
+  storageRequest: (StorageRequest & { nonce: number }) | null;
   /** A reference type action the explorer's menu asked the Reference data screen to run (RT 4.2's type menu). */
   typeAction: { action: string; ids: string[]; nonce: number } | null;
   /** Back and forward through selections (explorer-redesign.md 3.3). */
@@ -224,6 +241,18 @@ export interface EditorState {
 }
 
 /** A New dialog for something in a database. */
+export type StorageAction = "auto-map" | "create-tables" | "remove-bindings" | "entities-from-tables";
+
+export interface StorageRequest {
+  action: StorageAction;
+  /** The entities picked (a domain's entities when only the domain is given). */
+  entities: string[];
+  /** The domain picked, or the domain new entities go to. */
+  domain: string | null;
+  /** The database to start on. */
+  database?: string | null;
+}
+
 export interface NewDatabaseObjectRequest {
   kind: DatabaseObjectKind;
   database: string;
@@ -251,9 +280,11 @@ export interface EditorActions {
   setExplorerItem(key: string | null): void;
   setDatabaseTable(key: string | null): void;
   /** Shows a table in the inspector (null: none); `item` is its explorer row key, highlighted like a selected row. */
-  inspectTable(table: { database: string; key: string; column?: string | null } | null, item?: string | null): void;
+  inspectTable(table: { database: string; key: string; column?: string | null; part?: TablePart | null } | null, item?: string | null): void;
   /** The column the inspector shows for the inspected table (the column grid's pick). */
   inspectColumn(column: string | null): void;
+  /** The part the inspector shows for the inspected table (a column part sets `column`); null: the table itself. */
+  inspectPart(part: TablePart | null): void;
   setActiveDiagram(id: string | null): void;
   setActiveDatabase(id: string | null): void;
   setBottomTab(tab: BottomTab): void;
@@ -265,11 +296,22 @@ export interface EditorActions {
   setPaletteOpen(open: boolean): void;
   setQuickOpen(open: boolean): void;
   noteRecent(id: string): void;
+  /** Removes elements from the Recent strip (all of them when `ids` is left out). */
+  clearRecent(ids?: readonly string[]): void;
+  /** Removes elements from the favorites (all of them when `ids` is left out). */
+  clearFavorites(ids?: readonly string[]): void;
+  /** Drops recent elements that no longer exist (after a delete). */
+  pruneRecent(exists: (id: string) => boolean): void;
   requestCommand(name: PaletteCommand | null): void;
   /** Opens the New element dialog for a kind, its domain picker on `domain`; null closes it. */
   requestNew(request: { kind: CreateKind; domain: string | null; source?: string } | null): void;
   /** Opens the New dialog of a schema, table, view, sequence, routine, database type or SQL object in a database; null closes it. */
   requestNewDatabaseObject(request: NewDatabaseObjectRequest | null): void;
+  /** Opens the foreign key dialog on a draft; null closes it. */
+  requestForeignKeyDialog(request: { database: string; draft: FkDraft } | null): void;
+  /** Asks to delete a table part: its plan first (what else goes), then the delete; null closes the plan. */
+  requestPartDelete(request: { database: string; key: string; part: TablePart } | null): void;
+  requestStorage(request: StorageRequest | null): void;
   requestTypeAction(request: { action: string; ids: string[] } | null): void;
   /** Moves back or forward through the selection history; returns the selection it moved to, or null. */
   travel(direction: "back" | "forward"): string[] | null;
@@ -390,6 +432,8 @@ export function createEditorStore(): EditorStore {
     packFilesSize: layout.packFilesSize,
     templatePreviewSize: layout.templatePreviewSize,
     unitHelpSize: layout.unitHelpSize,
+    tablesSize: layout.tablesSize,
+    ddlSize: layout.ddlSize,
     settingsTab: null,
     bottomTab: "problems",
     theme: initialTheme(),
@@ -399,6 +443,9 @@ export function createEditorStore(): EditorStore {
     command: null,
     newElement: null,
     newDatabaseObject: null,
+    foreignKeyDialog: null,
+    partDelete: null,
+    storageRequest: null,
     typeAction: null,
     history: emptyHistory,
     references: null,
@@ -511,10 +558,14 @@ export function createEditorStore(): EditorStore {
         return;
       }
       const was = get().inspectedTable;
-      const column = table.column !== undefined ? table.column : was && was.database === table.database && was.key === table.key ? was.column : null;
+      const same = !!was && was.database === table.database && was.key === table.key;
+      const asColumn = table.part?.kind === "column" ? table.part.id : undefined;
+      const column = asColumn ?? (table.column !== undefined ? table.column : table.part ? null : same ? was.column : null);
+      const part =
+        asColumn !== undefined || table.column ? null : table.part !== undefined ? table.part : same && table.column === undefined ? (was.part ?? null) : null;
       // The table is the Databases side's selection now: the explorer's element selection gives way to it.
       set({
-        inspectedTable: { database: table.database, key: table.key, column },
+        inspectedTable: { database: table.database, key: table.key, column, part },
         selectionBy: { ...get().selectionBy, databases: [] },
         selectionFrom: "databases",
         ...(item === undefined ? {} : { explorerItem: item }),
@@ -522,7 +573,13 @@ export function createEditorStore(): EditorStore {
     },
     inspectColumn: (column) => {
       const t = get().inspectedTable;
-      if (t && t.column !== column) set({ inspectedTable: { ...t, column } });
+      if (t && (t.column !== column || (column && t.part))) set({ inspectedTable: { ...t, column, part: column ? null : (t.part ?? null) } });
+    },
+    inspectPart: (part) => {
+      const t = get().inspectedTable;
+      if (!t) return;
+      if (part?.kind === "column") set({ inspectedTable: { ...t, column: part.id, part: null } });
+      else set({ inspectedTable: { ...t, column: null, part } });
     },
     setActiveDatabase: (id) => set({ activeDatabase: id }),
     setBottomTab: (tab) => set({ bottomTab: tab, bottomCollapsed: false }),
@@ -542,14 +599,16 @@ export function createEditorStore(): EditorStore {
         bottomCollapsed: false,
         tabsCollapsed: false,
         topbarCollapsed: false,
-        tablesCollapsed: false,
-        ddlCollapsed: false,
+        tablesCollapsed: d.collapsed.tables,
+        ddlCollapsed: d.collapsed.ddl,
         packFilesCollapsed: false,
         templatePreviewCollapsed: false,
         unitHelpCollapsed: false,
         packFilesSize: d.packFilesSize,
         templatePreviewSize: d.templatePreviewSize,
         unitHelpSize: d.unitHelpSize,
+        tablesSize: d.tablesSize,
+        ddlSize: d.ddlSize,
         explorer: { ...get().explorer, pinned: null },
       });
     },
@@ -561,6 +620,26 @@ export function createEditorStore(): EditorStore {
     setPaletteOpen: (open) => set(open ? { paletteOpen: true, quickOpen: false } : { paletteOpen: false }),
     setQuickOpen: (open) => set(open ? { quickOpen: true, paletteOpen: false } : { quickOpen: false }),
     noteRecent: (id) => set({ recent: withRecent(get().recent, id) }),
+    clearRecent: (ids) => {
+      const drop = ids ? new Set(ids) : null;
+      const recent = drop ? get().recent.filter((x) => !drop.has(x)) : [];
+      local.setJson("mq.recent", recent.slice(0, 20));
+      set({ recent });
+    },
+    clearFavorites: (ids) => {
+      const e = get().explorer;
+      const drop = ids ? new Set(ids) : null;
+      const favorites = drop ? e.favorites.filter((x) => !drop.has(x)) : [];
+      local.setJson("mq.favorites", favorites);
+      set({ explorer: { ...e, favorites } });
+    },
+    pruneRecent: (exists) => {
+      const recent = get().recent;
+      const kept = recent.filter(exists);
+      if (kept.length === recent.length) return;
+      local.setJson("mq.recent", kept.slice(0, 20));
+      set({ recent: kept });
+    },
     travel: (direction) => {
       const next = travel(get().history, direction);
       if (!next?.current) return null;
@@ -572,6 +651,9 @@ export function createEditorStore(): EditorStore {
     requestCenter: (id) => set({ centerRequest: { id, nonce: (get().centerRequest?.nonce ?? 0) + 1 }, recent: withRecent(get().recent, id) }),
     requestNew: (request) => set({ newElement: request }),
     requestNewDatabaseObject: (request) => set({ newDatabaseObject: request }),
+    requestForeignKeyDialog: (request) => set({ foreignKeyDialog: request }),
+    requestPartDelete: (request) => set({ partDelete: request ? { ...request, nonce: (get().partDelete?.nonce ?? 0) + 1 } : null }),
+    requestStorage: (request) => set({ storageRequest: request ? { ...request, nonce: (get().storageRequest?.nonce ?? 0) + 1 } : null }),
     requestTypeAction: (request) => set({ typeAction: request ? { ...request, nonce: (get().typeAction?.nonce ?? 0) + 1 } : null }),
     requestCommand: (name) => set({ command: name ? { name, nonce: (get().command?.nonce ?? 0) + 1 } : null }),
     updateEditors: (update) => {
@@ -628,6 +710,8 @@ type LayoutFields = Pick<
   | "packFilesSize"
   | "templatePreviewSize"
   | "unitHelpSize"
+  | "tablesSize"
+  | "ddlSize"
   | "explorer"
 >;
 
@@ -652,6 +736,8 @@ export function layoutOf(state: LayoutFields): Layout {
     packFilesSize: state.packFilesSize,
     templatePreviewSize: state.templatePreviewSize,
     unitHelpSize: state.unitHelpSize,
+    tablesSize: state.tablesSize,
+    ddlSize: state.ddlSize,
     pinned: state.explorer.pinned,
   };
 }
@@ -665,9 +751,22 @@ export function saveLayout(state: LayoutFields): void {
  * once, a resize `delay` ms after the last move. Returns the unsubscribe. */
 export function watchLayout(store: EditorStore, delay = 300): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const sizes = (s: LayoutFields) => `${s.explorerSize},${s.inspectorSize},${s.bottomSize},${s.packFilesSize},${s.templatePreviewSize},${s.unitHelpSize}`;
+  const sizes = (s: LayoutFields) =>
+    `${s.explorerSize},${s.inspectorSize},${s.bottomSize},${s.packFilesSize},${s.templatePreviewSize},${s.unitHelpSize},${s.tablesSize},${s.ddlSize}`;
   const shape = (s: LayoutFields) =>
-    JSON.stringify(layoutOf({ ...s, explorerSize: 0, inspectorSize: 0, bottomSize: 0, packFilesSize: 0, templatePreviewSize: 0, unitHelpSize: 0 }));
+    JSON.stringify(
+      layoutOf({
+        ...s,
+        explorerSize: 0,
+        inspectorSize: 0,
+        bottomSize: 0,
+        packFilesSize: 0,
+        templatePreviewSize: 0,
+        unitHelpSize: 0,
+        tablesSize: 0,
+        ddlSize: 0,
+      }),
+    );
   const unsubscribe = store.subscribe((state, previous) => {
     if (shape(state) !== shape(previous)) {
       if (timer) clearTimeout(timer);

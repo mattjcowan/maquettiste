@@ -1,7 +1,7 @@
 // The stage walk (phase2-design.md §4.10, mock project): open the editor, see Billing overview, select
 // Invoice, rename an attribute (the inspector opens the entity editor), watch the Problems panel follow, open Database and read
 // the DDL preview, then plan and apply.
-import { card, expect, openEditor, test, workspace } from "./fixtures";
+import { card, expect, openEditor, showDdl, test, workspace } from "./fixtures";
 
 test("open, select Invoice, rename, problems, DDL, plan and apply", async ({ page }) => {
   await openEditor(page);
@@ -48,6 +48,8 @@ test("open, select Invoice, rename, problems, DDL, plan and apply", async ({ pag
   await workspace(page, "Databases");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await expect(page.locator(".react-flow__node")).toHaveCount(7); // six tables and the designed notes table
+  // The DDL preview starts hidden behind its edge.
+  await showDdl(page);
   const ddl = page.getByTestId("ddl-preview");
   await expect(ddl).toContainText("sql-ddl/schema");
   await expect(ddl).toContainText("CREATE SCHEMA IF NOT EXISTS billing;");

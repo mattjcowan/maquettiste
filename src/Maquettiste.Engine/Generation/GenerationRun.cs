@@ -445,7 +445,10 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             if (run.PendingSnapshots is { } pending && pending.TryGetValue(database.Name, out var prepared) && services.Snapshots is SnapshotStore store)
                 await store.WriteAsync(await prepared.ConfigureAwait(false), ct).ConfigureAwait(false);
             else
-                await services.Snapshots.SaveAsync(services.SchemaDiffer.Capture(database, diff.ToRevision), ct).ConfigureAwait(false);
+            {
+                var previous = await services.Snapshots.LoadAsync(database.Name, ct).ConfigureAwait(false);
+                await services.Snapshots.SaveAsync(SnapshotAliases.Carry(services.SchemaDiffer.Capture(database, diff.ToRevision), previous), ct).ConfigureAwait(false);
+            }
         }
     }
 
@@ -491,13 +494,17 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
                 return (null, null);
             }
 
+            // The snapshot under the keys the model gives its tables now (a table stored as a file, or put back by an undo, is the
+            // same table); the snapshot saved keeps the aliases.
+            var loaded = previous;
+            previous = SnapshotAliases.Normalize(previous, database);
             SchemaDiffResult diff;
             if (differ is not null)
             {
                 (diff, var current) = differ.DiffAndCapture(previous, database, services.Options.EffectiveParallelism, ct);
                 if (store is not null && !diff.IsEmpty)
                 {
-                    var toSave = current with { Revision = diff.ToRevision };
+                    var toSave = SnapshotAliases.Carry(current with { Revision = diff.ToRevision }, loaded);
                     (pending ??= new(StringComparer.Ordinal))[database.Name] = Observed(Task.Run(() => store.Prepare(toSave, parse: true, ct), ct));
                 }
             }

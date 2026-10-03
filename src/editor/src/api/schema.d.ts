@@ -694,8 +694,8 @@ export interface paths {
          *     every view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,
          *     view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
          *     properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
-         *     overlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace
-         *     sets it beside the entity. A model with errors returns `view: null` and the diagnostics.
+         *     overlay entry, has none. The Database workspace draws table diagrams from it and an entity's Storage tab
+         *     reads its binding sources' columns from it. A model with errors returns `view: null` and the diagnostics.
          */
         get: operations["getDatabaseView"];
         put?: never;
@@ -2620,7 +2620,7 @@ export interface components {
             changes: components["schemas"]["ChangeSet"] | null;
         };
         /**
-         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot is rekeyed) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them); they expand the same way, and a refusal (an entity or table already bound) is MQ4055 at `/operations/<n>`.
+         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them); they expand the same way, and a refusal (an entity or table already bound) is MQ4055 at `/operations/<n>`.
          * @enum {string}
          */
         BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
@@ -2653,6 +2653,14 @@ export interface components {
             tables?: string[] | null;
             /** @description The package id the new entities go to (`materialize-entities`). */
             package?: string | null;
+            /**
+             * @description Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's
+             *     updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
+             *     a conflict and nothing is written.
+             */
+            expectedHashes?: {
+                [key: string]: string;
+            } | null;
         };
         ModelBatch: {
             operations: components["schemas"]["BatchOperation"][];
@@ -6007,6 +6015,13 @@ export interface components {
                 precision?: components["schemas"]["precision"];
                 scale?: components["schemas"]["scale"];
                 nativeType?: string;
+                /** @description String and text columns: true stores Unicode text (SQL Server nvarchar and nchar, Oracle nvarchar2 and nchar, MySQL the utf8mb4 character set), false single-byte text (SQL Server varchar and char, Oracle varchar2 and char); absent takes the dialect's default, which is Unicode on SQL Server. PostgreSQL and SQLite keep every text in the database's encoding, so it changes nothing there. The type map's string:unicode, string:ansi and text:unicode entries decide the native types. */
+                unicode?: boolean;
+                /**
+                 * @description String and binary columns: a fixed-length type of the column's length (char, nchar, binary) instead of a varying one; the type map's string:fixed and binary:fixed entries decide the native types.
+                 * @default false
+                 */
+                fixedLength?: boolean;
                 /**
                  * @description Designed or extra column: true (the default) or false. Overlay (with attribute): omitted keeps the synthesized value.
                  * @default true
@@ -6015,8 +6030,17 @@ export interface components {
                 default?: unknown;
                 /** @default {} */
                 defaultSql?: components["schemas"]["dialectMap"];
+                /** @description The name of the column's default constraint, where the dialect names defaults (SQL Server); absent names it df_<table>_<column>. Other dialects keep defaults in the column and ignore it. */
+                defaultName?: components["schemas"]["label"];
                 /** @enum {unknown} */
                 generated?: "identity" | "sequence";
+                /** @description With generated identity: the identity's first value (seed), its step (increment) and whether the database always generates the value and refuses one an insert gives (always, GENERATED ALWAYS) instead of generating it only when none is given (GENERATED BY DEFAULT). PostgreSQL and Oracle write all three; SQL Server writes IDENTITY(seed, increment) and always generates; MySQL writes the seed as the table's AUTO_INCREMENT; what a dialect lacks is left out (MQ4056). */
+                identity?: {
+                    seed?: number;
+                    increment?: number;
+                    /** @default false */
+                    always?: boolean;
+                };
                 sequence?: components["schemas"]["id"];
                 computed?: string;
                 /** @default false */
@@ -6046,6 +6070,11 @@ export interface components {
                 id: components["schemas"]["id"];
                 name?: components["schemas"]["label"];
                 columns: string[];
+                /**
+                 * @description Whether two rows with nulls in the columns conflict (NULLS NOT DISTINCT, PostgreSQL 15 and later); the other dialects leave it out (MQ4056).
+                 * @default false
+                 */
+                nullsNotDistinct?: boolean;
             }[];
             /** @default [] */
             foreignKeys?: {
@@ -6065,22 +6094,34 @@ export interface components {
                  * @enum {unknown}
                  */
                 onUpdate?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
+                /**
+                 * @description When the key is checked: not-deferrable (every statement), initially-immediate (every statement unless a transaction defers it with SET CONSTRAINTS) or initially-deferred (at commit). PostgreSQL, SQLite and Oracle have deferrable keys; SQL Server and MySQL check every statement and leave it out (MQ4056).
+                 * @default not-deferrable
+                 * @enum {unknown}
+                 */
+                deferrable?: "not-deferrable" | "initially-immediate" | "initially-deferred";
             }[];
             /** @default [] */
             checks?: {
                 id: components["schemas"]["id"];
                 name?: components["schemas"]["label"];
+                /** @description A column check: the id or key of the column it constrains. The constraint is written in the table like any other check; a migration that drops the column drops the check first. */
+                column?: string;
                 expression: components["schemas"]["dialectMap"];
             }[];
             /** @default [] */
             indexes?: {
                 id: components["schemas"]["id"];
                 name?: components["schemas"]["label"];
-                columns: {
-                    column: string;
+                columns: ({
+                    column?: string;
+                    /** @description An expression indexed instead of a column (a functional index), per dialect name or "*": written in parentheses. A dialect without an entry leaves the index out; SQL Server indexes no expression (MQ4056: index a computed column instead), MySQL from 8.0.13 (not MariaDB). */
+                    expression?: components["schemas"]["dialectMap"];
                     /** @default false */
                     descending?: boolean;
-                }[];
+                    /** @description A key prefix length: only the first characters or bytes of the column are indexed (MySQL, which needs one for a text or blob column; the other dialects leave it out, MQ4056). */
+                    length?: number;
+                } & (unknown | unknown))[];
                 /** @default [] */
                 include?: string[];
                 where?: string;
@@ -6128,6 +6169,26 @@ export interface components {
                 /** @default true */
                 nullable?: boolean;
             }[];
+            /**
+             * @description Whether CREATE VIEW names the columns (CREATE VIEW v (a, b) AS ...), which then name the body's result columns.
+             * @default false
+             */
+            columnList?: boolean;
+            /**
+             * @description Whether an insert or update through the view must satisfy its WHERE (WITH CHECK OPTION). SQLite and materialized views leave it out (MQ4056).
+             * @default false
+             */
+            withCheckOption?: boolean;
+            /**
+             * @description Whether the view stores its rows (CREATE MATERIALIZED VIEW: PostgreSQL and Oracle; the other dialects create a plain view, MQ4056). Refreshing it is up to the application.
+             * @default false
+             */
+            materialized?: boolean;
+            /**
+             * @description Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first. Views the body names are found without it (by reading the body), so this is for what the body names in a way that reading misses.
+             * @default []
+             */
+            dependsOn?: components["schemas"]["idList"];
             comment?: string;
             /** @default {} */
             properties?: components["schemas"]["properties"];
@@ -7748,6 +7809,10 @@ export interface components {
                 tables?: components["schemas"]["idList"];
                 /** @description The package the new entities go to (materialize-entities). */
                 package?: components["schemas"]["id"];
+                /** @description Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. */
+                expectedHashes?: {
+                    [key: string]: string;
+                };
                 /** @description The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own). */
                 schema?: components["schemas"]["id"];
                 /** @description The schema name (add-schema, rename-schema). */

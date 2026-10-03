@@ -39,6 +39,10 @@ programmables = routines_and_views(db)
 {{- if db.dialect == "sqlite" }}
 
 PRAGMA foreign_keys = ON;
+{{- else if db.dialect == "sqlserver" && ms_needs_quoted_identifier(tables) }}
+
+SET QUOTED_IDENTIFIER ON;
+GO
 {{- end }}
 {{- for s in schemas_to_create(db) }}
 

@@ -5,7 +5,6 @@
 // key attribute and a relationship gets the canvas dialog's default end roles.
 import type { ModelJson } from "@/api/types";
 import { defaultEndRoles, IDENTIFIER } from "@/model/model";
-import { newDatabaseConvention } from "@/model/databaseMapping";
 import type { ExplorerId, Forest } from "./tree";
 import { nodeOf } from "./tree";
 
@@ -175,12 +174,8 @@ export interface NewElementInput {
   base?: string;
   /** A database's dialect. */
   dialect?: string;
-  /** A database's "Map domains by convention" choice (none by default) and the picked domains. */
-  convention?: "none" | "pick" | "all";
-  packages?: readonly string[];
-  /** A new database's schemas (the first is the default) and the schema each picked domain goes to (erratum E26). */
+  /** A new database's schemas (the first is the default, erratum E26). */
   schemas?: readonly { id: string; name: string }[];
-  packageSchemas?: Readonly<Record<string, string>>;
   /** A relationship's ends. */
   source?: string;
   target?: string;
@@ -238,14 +233,15 @@ export function buildElement(kind: Exclude<CreateKind, "reference-type">, input:
       json = { kind: "scalar-type", id, name, ...home, base: input.base ?? "string" };
       break;
     case "database":
-      // A new database holds nothing until something is mapped to it (D46): the member is always written.
+      // A new database starts empty (D46): it lays out nothing by convention, and the member is always written. Entities are
+      // stored in it from their own Storage tab.
       json = {
         kind: "database",
         id,
         name,
         dialect: input.dialect ?? "postgresql",
         ...(input.schemas?.length ? { defaultSchema: input.schemas[0].name, schemas: input.schemas.map((x) => ({ id: x.id, name: x.name })) } : {}),
-        ...newDatabaseConvention(input.convention ?? "none", input.packages ?? [], input.packageSchemas ?? {}),
+        byConvention: "none",
       };
       break;
     case "enum":

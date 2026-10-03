@@ -124,7 +124,7 @@ internal static partial class ResolutionKit
                     sb.Append("    unique ").Append(u.Name).Append(" (").Append(string.Join(',', u.Columns.Names())).Append(")\n");
                 foreach (var i in t.Indexes)
                     sb.Append("    index ").Append(i.Name).Append(i.Unique ? " unique" : "").Append(" (")
-                        .Append(string.Join(',', i.Columns.Select(c => c.Column.Name + (c.Descending ? " desc" : "")))).Append(")\n");
+                        .Append(string.Join(',', i.Columns.Select(c => (c.Column?.Name ?? "(" + c.Expression + ")") + (c.Descending ? " desc" : "")))).Append(")\n");
                 foreach (var ck in t.Checks)
                     sb.Append("    check ").Append(ck.Name).Append(' ').Append(ck.Expression).Append('\n');
             }

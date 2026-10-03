@@ -1,12 +1,22 @@
 -- Migration 0001 of database reporting (SQL Server): schema revision 0 to 1.
 -- Written once by Maquettiste (sql-ddl/migration) from the schema diff. It is yours now: review it, adjust it and commit it.
--- Lines marked TODO need a decision the diff cannot make (data conversions, SQLite table rebuilds).
+-- Lines marked TODO need a decision the diff cannot make (data conversions, sequence restarts).
 
+-- One transaction across the batches: XACT_ABORT rolls it back on an error, and a batch that finds it gone turns execution off
+-- (SET NOEXEC ON), so no later batch runs outside it.
 SET XACT_ABORT ON;
 BEGIN TRANSACTION;
 
+GO
+IF @@ERROR <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+IF @@TRANCOUNT = 0 SET NOEXEC ON;
+GO
 -- SQL Server alias types have no CHECK; email_address does not enforce: VALUE LIKE '%_@_%'
 CREATE TYPE dbo.email_address FROM nvarchar(254);
+GO
+IF @@ERROR <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+IF @@TRANCOUNT = 0 SET NOEXEC ON;
+GO
 
 CREATE TABLE dbo.customers (
     id uniqueidentifier NOT NULL,
@@ -18,7 +28,7 @@ CREATE TABLE dbo.customers (
     CONSTRAINT pk_customers PRIMARY KEY (id),
     CONSTRAINT uq_customers_email UNIQUE (email)
 );
-EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Someone we bill.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'customers';
+BEGIN DECLARE @mq_rc1 int; EXEC @mq_rc1 = sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Someone we bill.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'customers'; IF @mq_rc1 <> 0 THROW 50000, N'sys.sp_addextendedproperty failed: the migration stops here.', 1; END;
 
 CREATE TABLE dbo.invoices (
     id uniqueidentifier NOT NULL,
@@ -39,9 +49,9 @@ CREATE TABLE dbo.invoices (
     CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)
 );
 CREATE INDEX ix_invoices_issued_on ON dbo.invoices (issued_on);
-EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'# Invoice
+BEGIN DECLARE @mq_rc2 int; EXEC @mq_rc2 = sys.sp_addextendedproperty @name = N'MS_Description', @value = N'# Invoice
 
-A bill issued to a customer. Its number is assigned when it is issued and never reused.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoices';
+A bill issued to a customer. Its number is assigned when it is issued and never reused.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoices'; IF @mq_rc2 <> 0 THROW 50000, N'sys.sp_addextendedproperty failed: the migration stops here.', 1; END;
 
 CREATE TABLE dbo.payments (
     id bigint IDENTITY(1,1) NOT NULL,
@@ -97,7 +107,7 @@ CREATE TABLE dbo.invoice_notes (
     created_at datetimeoffset(6) NULL,
     CONSTRAINT pk_invoice_notes PRIMARY KEY (id)
 );
-EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'A note on an invoice. Stored in the shared notes table with entity_type ''invoice''.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoice_notes';
+BEGIN DECLARE @mq_rc3 int; EXEC @mq_rc3 = sys.sp_addextendedproperty @name = N'MS_Description', @value = N'A note on an invoice. Stored in the shared notes table with entity_type ''invoice''.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoice_notes'; IF @mq_rc3 <> 0 THROW 50000, N'sys.sp_addextendedproperty failed: the migration stops here.', 1; END;
 
 CREATE TABLE dbo.customer_notes (
     id uniqueidentifier NOT NULL,
@@ -106,7 +116,7 @@ CREATE TABLE dbo.customer_notes (
     created_at datetimeoffset(6) NULL,
     CONSTRAINT pk_customer_notes PRIMARY KEY (id)
 );
-EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'A note on a customer. Stored in the shared notes table with entity_type ''customer''.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'customer_notes';
+BEGIN DECLARE @mq_rc4 int; EXEC @mq_rc4 = sys.sp_addextendedproperty @name = N'MS_Description', @value = N'A note on a customer. Stored in the shared notes table with entity_type ''customer''.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'customer_notes'; IF @mq_rc4 <> 0 THROW 50000, N'sys.sp_addextendedproperty failed: the migration stops here.', 1; END;
 
 CREATE TABLE dbo.revenue_months (
     month date NOT NULL,
@@ -114,8 +124,11 @@ CREATE TABLE dbo.revenue_months (
     revenue decimal(18,2) NOT NULL,
     CONSTRAINT pk_revenue_months PRIMARY KEY (month)
 );
-EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Invoiced revenue per month, read through the RevenueByMonth query; read-only.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'revenue_months';
+BEGIN DECLARE @mq_rc5 int; EXEC @mq_rc5 = sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Invoiced revenue per month, read through the RevenueByMonth query; read-only.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'revenue_months'; IF @mq_rc5 <> 0 THROW 50000, N'sys.sp_addextendedproperty failed: the migration stops here.', 1; END;
 
+GO
+IF @@ERROR <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+IF @@TRANCOUNT = 0 SET NOEXEC ON;
 GO
 CREATE FUNCTION dbo.invoice_total(@invoice_id uniqueidentifier)
 RETURNS decimal(18,2)
@@ -124,7 +137,13 @@ BEGIN
     RETURN (SELECT COALESCE(SUM(quantity * unit_price_amount), 0) FROM dbo.invoice_lines WHERE invoice_id = @invoice_id);
 END
 GO
+IF @@ERROR <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+IF @@TRANCOUNT = 0 SET NOEXEC ON;
+GO
 
+GO
+IF @@ERROR <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+IF @@TRANCOUNT = 0 SET NOEXEC ON;
 GO
 CREATE TRIGGER dbo.invoices_keep_number ON dbo.invoices AFTER UPDATE AS
 BEGIN
@@ -132,5 +151,12 @@ BEGIN
         THROW 50001, 'An invoice keeps its number.', 1;
 END
 GO
+IF @@ERROR <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+IF @@TRANCOUNT = 0 SET NOEXEC ON;
+GO
 
 COMMIT TRANSACTION;
+GO
+-- A compile error in the last batch skips its COMMIT and leaves the transaction open: roll it back.
+IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+SET NOEXEC OFF;

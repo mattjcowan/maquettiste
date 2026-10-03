@@ -7,8 +7,19 @@
 // sequences, routines, queries, database types or SQL objects (a kind chip picks which), and the toolbar's New menu creates any
 // of them, or a schema, in the database.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useNodesInitialized, useReactFlow, type NodeChange, type Viewport } from "@xyflow/react";
-import { Download, LayoutGrid, Plus } from "lucide-react";
+import {
+  Background,
+  ConnectionMode,
+  Controls,
+  MiniMap,
+  ReactFlow,
+  ReactFlowProvider,
+  useNodesInitialized,
+  useReactFlow,
+  type NodeChange,
+  type Viewport,
+} from "@xyflow/react";
+import { Download, LayoutGrid, Plus, Table2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { exportCanvas } from "@/canvas/export";
 import { useDatabaseTables, useDatabaseView, useIndex, usePacks, usePreview, useProject, useQuerySql } from "@/api/queries";
@@ -31,9 +42,17 @@ import { placeNodes, roundViewport } from "@/canvas/placement";
 import { useDraftDocument } from "@/inspector/useDraft";
 import { DIALECTS } from "@/inspector/fields";
 import { EdgeToggle, PanelToggle } from "@/app/panels";
+import { Splitter } from "@/components/ui/splitter";
+import { LIMITS } from "@/state/layout";
 import { ColumnPanel } from "./ColumnGrid";
+import { StoreTablesBanner } from "./StoreTablesBanner";
 import { databaseTargetOf, ddlPreviewCaption, ddlPreviewTarget, emptyObjectUnitNote, NO_DDL_UNIT, type DdlObject } from "./ddlPreview";
 import { DATABASE_CREATE, DATABASE_CREATE_LABELS } from "@/explorer/databaseCreate";
+// The diagram designer (foreign keys by dragging, a picked key shown in the inspector, Delete, New table on the canvas, the
+// Display menu).
+import { edgeHandles, shownColumns } from "@/canvas/tableColumns";
+import { fkEnds } from "./fkEdits";
+import { fkEdgeId, fkSummary, useDiagramDesigner } from "./DiagramDesigner";
 import { filterObjects, LIST_KINDS, OBJECT_LIST_MEMBERS, type ListKind, type ObjectListKind } from "./tableList";
 import { countOf, KIND_LABELS } from "@/model/labels";
 
@@ -56,6 +75,8 @@ function DatabaseCanvas() {
   // edge to bring them back), kept in the saved layout.
   const tablesCollapsed = useEditor(store, (s) => s.tablesCollapsed);
   const ddlCollapsed = useEditor(store, (s) => s.ddlCollapsed);
+  const tablesSize = useEditor(store, (s) => s.tablesSize);
+  const ddlSize = useEditor(store, (s) => s.ddlSize);
   const { openDatabase, select } = useEditorNavigation();
   const flow = useReactFlow<TableFlowNode, ForeignKeyFlowEdge>();
   const initialized = useNodesInitialized();
@@ -100,6 +121,16 @@ function DatabaseCanvas() {
   }, [activeDatabase, setSelectedTable, store]);
 
   const allTables = useMemo(() => view.data?.view?.tables ?? [], [view.data]);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const designer = useDiagramDesigner({
+    databaseId: activeDatabase,
+    databaseName: databases.find((d) => d.id === activeDatabase)?.name ?? null,
+    allTables,
+    flow,
+    canvasRef,
+    selectedTable,
+  });
+  const { display, onLink, selectedFk, takePlaced } = designer;
   // Above 300 tables the canvas shows the selected table and its foreign-key neighbours, else the list-and-DDL form.
   const scope = useMemo(() => scopeTables(allTables, selectedTable), [allTables, selectedTable]);
   // Auto-layout runs once per database, and once per focus while the canvas is scoped.
@@ -117,28 +148,40 @@ function DatabaseCanvas() {
         measured: measured[table.key],
         selected: selectedTable === table.key,
         ariaLabel: `Table ${table.name}`,
-        data: { table },
+        data: { table, display: display.mode, onLink },
       })),
-    [tables, positions, dragging, measured, selectedTable],
+    [tables, positions, dragging, measured, selectedTable, display.mode, onLink],
   );
-  const edges: ForeignKeyFlowEdge[] = useMemo(
-    () =>
-      tables.flatMap((t) =>
-        t.foreignKeys
-          .filter((fk) => tables.some((x) => x.key === fk.referencedTable))
-          .map((fk) => ({
-            id: `${t.key}:${fk.name}`,
+  // Each key joins the facing sides of its two cards, at its first column's row when the card shows it (tableColumns.ts).
+  const edges: ForeignKeyFlowEdge[] = useMemo(() => {
+    const shown = new Map(tables.map((t) => [t.key, new Set(shownColumns(t, display.mode).map((c) => c.key))]));
+    // Every card is as wide, so their left edges compare as their centres do.
+    const center = (key: string) => (dragging[key] ?? positions[key])?.x ?? 0;
+    return tables.flatMap((t) =>
+      t.foreignKeys.flatMap((fk) => {
+        const referenced = tables.find((x) => x.key === fk.referencedTable);
+        if (!referenced) return [];
+        const id = fkEdgeId(t.key, fk);
+        return [
+          {
+            id,
             type: "foreignKey" as const,
             source: t.key,
             target: fk.referencedTable,
-            sourceHandle: "r",
-            targetHandle: "l",
+            ...edgeHandles(
+              fk,
+              { source: shown.get(t.key)!, target: shown.get(referenced.key)! },
+              { source: center(t.key), target: center(referenced.key) },
+              t.key === referenced.key,
+            ),
+            selected: selectedFk === id,
             ariaLabel: `Foreign key ${fk.name}`,
-            data: { foreignKey: fk },
-          })),
-      ),
-    [tables],
-  );
+            data: { foreignKey: fk, ends: fkEnds(t, fk), summary: fkSummary(t, fk, referenced) },
+          },
+        ];
+      }),
+    );
+  }, [tables, display.mode, positions, dragging, selectedFk]);
 
   // Mouse or keyboard (Tab to a table, Enter): the canvas is controlled, so a pick arrives as a
   // `select` change. The DDL preview follows the table, and so does the inspector: the TABLE, by its key (a file or not),
@@ -155,6 +198,10 @@ function DatabaseCanvas() {
     [activeDatabase, store, setSelectedTable],
   );
 
+  // The drawing is settled once its first layout (or its kept viewport) is in place and fitted, a frame later: the canvas says
+  // so (data-layout="settled"), so what measures the cards (a test's drag) waits for it.
+  const [settledFor, setSettledFor] = useState<string | null>(null);
+  const settle = useCallback((key: string | null) => requestAnimationFrame(() => setSettledFor(key)), []);
   const layout = useCallback(async () => {
     if (!activeDatabase) return;
     const result = await defaultLayoutEngine().layout(
@@ -167,9 +214,9 @@ function DatabaseCanvas() {
     viewportFor.current = layoutKey;
     requestAnimationFrame(() => {
       programmatic();
-      void flow.fitView({ padding: 0.1 });
+      void flow.fitView({ padding: 0.1 }).then(() => settle(layoutKey));
     });
-  }, [activeDatabase, edges, flow, layoutKey, programmatic]);
+  }, [activeDatabase, edges, flow, layoutKey, programmatic, settle]);
 
   // Every table unplaced (a database seen for the first time): the full automatic layout, then fit. Some unplaced (a
   // table just added): only those are placed, beside a table they share a foreign key with or under the drawing.
@@ -188,12 +235,15 @@ function DatabaseCanvas() {
       return { width: m?.width || 256, height: m?.height || 200 };
     };
     const set = new Set(missing);
+    // A table made by a double click on the canvas lands where the click was.
+    const clicked = takePlaced(missing);
     const placed = nodes.filter((n) => !set.has(n.id)).map((n) => ({ id: n.id, ...n.position, ...size(n.id) }));
-    const added = placeNodes({ placed, unplaced: missing.map((id) => ({ id, ...size(id) })), edges });
-    const next = { ...loadPositions(`db.${activeDatabase}`), ...added };
+    const rest = missing.filter((id) => !clicked[id]);
+    const added = rest.length ? placeNodes({ placed, unplaced: rest.map((id) => ({ id, ...size(id) })), edges }) : {};
+    const next = { ...loadPositions(`db.${activeDatabase}`), ...added, ...clicked };
     savePositions(`db.${activeDatabase}`, next);
     setPositions(next);
-  }, [initialized, activeDatabase, missing, unplaced, nodes, edges, flow]);
+  }, [initialized, activeDatabase, missing, unplaced, nodes, edges, flow, takePlaced]);
 
   // Pan and zoom are kept per browser beside the positions; opening restores them and fits only when none is kept.
   useEffect(() => {
@@ -201,9 +251,8 @@ function DatabaseCanvas() {
     viewportFor.current = layoutKey;
     const kept = loadViewport(`db.${activeDatabase}`);
     programmatic();
-    if (kept) void flow.setViewport(kept, { duration: 0 });
-    else void flow.fitView({ padding: 0.1, duration: 0 });
-  }, [initialized, activeDatabase, nodes.length, unplaced, layoutKey, flow, programmatic]);
+    void (kept ? flow.setViewport(kept, { duration: 0 }) : flow.fitView({ padding: 0.1, duration: 0 })).then(() => settle(layoutKey));
+  }, [initialized, activeDatabase, nodes.length, unplaced, layoutKey, flow, programmatic, settle]);
   const moveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(moveTimer.current), []);
   const onMoveEnd = useCallback(
@@ -351,6 +400,17 @@ function DatabaseCanvas() {
         <Button size="sm" onClick={() => void layout()}>
           <LayoutGrid /> Auto-layout
         </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!activeDatabase}
+          onClick={() => designer.newTable(null)}
+          title="Create a table in this database (or double-click the empty canvas to place it there)"
+          data-testid="database-canvas-new-table"
+        >
+          <Table2 /> New table
+        </Button>
+        {designer.displayMenu}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" variant="ghost" data-testid="database-export-menu">
@@ -397,7 +457,13 @@ function DatabaseCanvas() {
       <div className="flex min-h-0 flex-1">
         {tablesCollapsed ? <EdgeToggle panel="tables" side="left" /> : null}
         {!tablesCollapsed && (
-          <section className={`flex w-56 shrink-0 flex-col border-r border-default bg-surface`} aria-label="Tables" data-testid="database-tables">
+          <section
+            id="mq-database-tables"
+            className="flex max-w-[40%] shrink-0 flex-col bg-surface"
+            style={{ width: tablesSize }}
+            aria-label="Tables"
+            data-testid="database-tables"
+          >
             <div className="flex h-6 shrink-0 items-center gap-2 border-b border-default px-2" data-testid="tables-panel-header">
               <span className="min-w-0 flex-1 truncate text-11 font-semibold uppercase tracking-wide text-secondary">Tables</span>
               <PanelToggle panel="tables" />
@@ -473,6 +539,17 @@ function DatabaseCanvas() {
             </p>
           </section>
         )}
+        {!tablesCollapsed && (
+          <Splitter
+            orientation="vertical"
+            value={tablesSize}
+            {...LIMITS.tables}
+            direction={1}
+            label="Resize the tables list"
+            controls="mq-database-tables"
+            onChange={(v) => store.setState({ tablesSize: v })}
+          />
+        )}
         <div className="flex min-w-0 flex-1 flex-col">
           {view.data?.stale ? (
             <div role="alert" className="border-b border-default bg-surface px-2 py-1 text-12 text-danger" data-testid="database-stale">
@@ -484,7 +561,19 @@ function DatabaseCanvas() {
                 .join(" · ")}
             </div>
           ) : null}
-          <div className="relative min-h-0 flex-1" role="region" aria-label="Table diagram">
+          <div
+            ref={canvasRef}
+            tabIndex={-1}
+            className="relative min-h-0 flex-1 outline-none"
+            role="region"
+            aria-label="Table diagram"
+            aria-keyshortcuts="Delete"
+            onKeyDown={designer.onKeyDown}
+            onDoubleClick={designer.onDoubleClick}
+            data-testid="database-canvas"
+            data-layout={settledFor !== null && settledFor === layoutKey ? "settled" : "pending"}
+          >
+            <StoreTablesBanner database={activeDatabase} tables={view.data?.view?.tables} />
             <MarkerDefs />
             {view.isPending ? <Spinner label="Resolving tables" /> : null}
             {scope.mode === "list" ? (
@@ -509,29 +598,57 @@ function DatabaseCanvas() {
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
                 onPaneClick={() => {
+                  designer.selectFk(null);
                   if (scope.mode !== "all") return;
                   setSelectedTable(null);
                   store.getState().inspectTable(null, null);
                 }}
+                onEdgeClick={(_, edge) => {
+                  designer.selectFk(edge.id);
+                  canvasRef.current?.focus({ preventScroll: true });
+                }}
+                onEdgeDoubleClick={(_, edge) => designer.editFk(edge.id)}
+                onConnectStart={designer.onConnectStart}
+                onConnectEnd={designer.onConnectEnd}
+                connectionMode={ConnectionMode.Loose}
                 onMoveEnd={onMoveEnd}
                 minZoom={0.1}
-                nodesConnectable={false}
+                nodesConnectable
+                // A drag to another table never pans the drawing under the pointer.
+                autoPanOnConnect={false}
+                zoomOnDoubleClick={false}
                 deleteKeyCode={null}
+                // A key's edge may name a row's handle a moment before the card has measured it (a Display change).
+                onError={(code, message) => code !== "008" && console.warn(message)}
                 proOptions={{ hideAttribution: false }}
               >
                 <Background gap={16} />
                 <Controls showInteractive={false} />
-                <MiniMap pannable zoomable ariaLabel="Minimap" />
+                {display.minimap ? <MiniMap pannable zoomable ariaLabel="Minimap" /> : null}
               </ReactFlow>
             )}
+            {designer.overlays}
           </div>
-          {/* The selected table's columns, editable (a synthesized table's edits go to its overlay). */}
+          {/* The selected table's columns, editable (a table not stored as a file yet is stored on its first edit). */}
           <ColumnPanel table={allTables.find((t) => t.key === selectedTable) ?? null} databaseId={activeDatabase} />
         </div>
         {ddlCollapsed ? <EdgeToggle panel="ddl" side="right" /> : null}
         {!ddlCollapsed && (
+          <Splitter
+            orientation="vertical"
+            value={ddlSize}
+            {...LIMITS.ddl}
+            direction={-1}
+            label="Resize the DDL preview"
+            controls="mq-ddl-preview"
+            onChange={(v) => store.setState({ ddlSize: v })}
+          />
+        )}
+        {!ddlCollapsed && (
           <aside
-            className={`flex w-[40%] min-w-80 max-w-[640px] flex-col border-l border-default bg-surface`}
+            id="mq-ddl-preview"
+            className="flex max-w-[60%] shrink-0 flex-col bg-surface"
+            style={{ width: ddlSize }}
             aria-label="DDL preview"
             data-testid="ddl-preview"
           >

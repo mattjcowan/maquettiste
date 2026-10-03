@@ -2963,8 +2963,8 @@ paths:
         every view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,
         view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
         properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
-        overlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace
-        sets it beside the entity. A model with errors returns `view: null` and the diagnostics.
+        overlay entry, has none. The Database workspace draws table diagrams from it and an entity's Storage tab
+        reads its binding sources' columns from it. A model with errors returns `view: null` and the diagnostics.
       x-maquettiste-role: viewer
       x-engine-addition: E1 GenerationService.GetDatabaseViewAsync(databaseId)
       responses:
@@ -7267,7 +7267,9 @@ components:
         `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional
         `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay
         folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the
-        committed schema snapshot is rekeyed) and `materialize-entities` (`tables`, `package`: an entity per designed or imported
+        committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the
+        materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the
+        preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported
         table or view, bound to it, and a many-to-one relation per foreign key between them); they expand the same way, and a
         refusal (an entity or table already bound) is MQ4055 at `/operations/<n>`.
       enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, sync-enum, set-lifecycle, set-initial, refresh-scenario]
@@ -7324,6 +7326,14 @@ components:
         package:
           description: The package id the new entities go to (`materialize-entities`).
           type: [string, 'null']
+        expectedHashes:
+          description: |
+            Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's
+            updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
+            a conflict and nothing is written.
+          type: [object, 'null']
+          additionalProperties:
+            type: string
     ModelBatch:
       x-engine-record: Maquettiste.Engine.ModelBatch
       type: object

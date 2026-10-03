@@ -22,8 +22,8 @@ import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
 import { useEditor, type NewDatabaseObjectRequest } from "@/state/store";
 import { BUILTIN_TYPES } from "@/model/model";
-import type { BuiltinType, EntityDoc } from "@/api/types";
-import { findSource, sourceOptions } from "@/model/queryTree";
+import type { BuiltinType } from "@/api/types";
+import { sourceOptions } from "@/model/queryTree";
 import {
   ANY_DIALECT,
   buildDatabaseObject,
@@ -86,7 +86,7 @@ const BODY_TEXTS: Partial<Record<DatabaseElementKind, { hint: string; dialectHin
 function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObjectRequest & { kind: DatabaseElementKind }; onClose: () => void }) {
   const { store } = useServices();
   const queryClient = useQueryClient();
-  const { openDatabase, openEditor, openWorkspace } = useEditorNavigation();
+  const { openDatabase, openEditor } = useEditorNavigation();
   const { kind, database } = request;
   const dbDoc = useElements([database]).byId.get(database)?.json as (DatabaseDoc & Record<string, unknown>) | undefined;
   const view = useDatabaseView(database);
@@ -111,7 +111,6 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
   const [members, setMembers] = useState("");
   const [objectKind, setObjectKind] = useState("trigger");
   const [phase, setPhase] = useState<ObjectPhase>("after");
-  const [entity, setEntity] = useState("");
   const [source, setSource] = useState<string | null>(null);
   const [alias, setAlias] = useState<string | null>(null);
   const [type, setType] = useState<SequenceType>("int64");
@@ -144,22 +143,12 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
       .map((r) => ({ schema: null, name: r.name, kind: r.kind }));
   }, [view.data, index.data, database]);
 
-  // A query: the entities its rows may have, the tables and views it may read (the entity's table first chosen), the alias.
-  const entities = useMemo(
-    () => (kind === "query" ? (index.data ?? []).filter((r) => r.kind === "entity").sort((a, b) => a.name.localeCompare(b.name)) : []),
-    [kind, index.data],
-  );
-  const entityDoc = useElements(kind === "query" && entity ? [entity] : []).byId.get(entity)?.json as EntityDoc | undefined;
+  // A query: the tables and views it may read and the alias. A query is the database's: its rows are an ad hoc shape (an entity
+  // is bound to a query from the entity's Storage tab).
   const sources = useMemo(() => (kind === "query" ? sourceOptions(view.data?.view) : []), [kind, view.data]);
-  const entityTable = entity ? findSource(view.data?.view, entity) : null;
-  const shownSource = source ?? entityTable?.value ?? sources[0]?.value ?? "";
+  const shownSource = source ?? sources[0]?.value ?? "";
   const sourceOption = sources.find((o) => o.value === shownSource) ?? null;
   const shownAlias = alias ?? queryAlias(sourceOption);
-  const keyAttribute = (() => {
-    const keyId = entityDoc?.key?.attributes?.[0];
-    const attribute = keyId ? entityDoc?.attributes?.find((a) => a.id === keyId) : undefined;
-    return attribute ? { id: attribute.id, name: attribute.name } : null;
-  })();
   const input = {
     kind,
     name,
@@ -179,14 +168,12 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
     members,
     objectKind,
     phase,
-    entity: entity || null,
     source: shownSource,
     alias: shownAlias,
-    select: kind === "query" ? querySelect(sourceOption, shownAlias, entity ? keyAttribute : null) : undefined,
+    select: kind === "query" ? querySelect(sourceOption, shownAlias, null) : undefined,
   };
   const problems = databaseObjectProblems(input, taken, schema || null, defaultName);
-  // A query with an entity waits for the entity's document (its key attribute is the first field).
-  const blocked = Object.keys(problems).length > 0 || busy || !dbDoc || (kind === "query" && !!entity && !entityDoc);
+  const blocked = Object.keys(problems).length > 0 || busy || !dbDoc;
   const title = DATABASE_CREATE_TITLES[kind];
 
   const create = async () => {
@@ -254,25 +241,6 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
           ) : null}
           {kind === "query" ? (
             <>
-              <Field label="Result entity" htmlFor="new-db-entity" hint="Each result row has this entity's shape; none: the select list is the row's shape.">
-                <Select
-                  id="new-db-entity"
-                  value={entity}
-                  onChange={(e) => {
-                    setEntity(e.target.value);
-                    // An untouched source follows the entity to its table.
-                    setSource(null);
-                    setAlias(null);
-                  }}
-                >
-                  <option value="">(none: an ad hoc row)</option>
-                  {entities.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
               <div className="grid grid-cols-[1fr_8rem] gap-2">
                 <Field label="From" htmlFor="new-db-source" hint="A table or view of this database.">
                   <Select
@@ -304,11 +272,7 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
                 </Field>
               </div>
               {problems.source || problems.alias ? <p className="text-12 text-danger">{problems.source ?? problems.alias}</p> : null}
-              <p className="text-11 text-secondary">
-                {entity
-                  ? "Starts with the entity's key in the select list; the query's editor adds joins, the other fields and the filters."
-                  : "Starts with the source's first column in the select list; the query's editor adds the rest."}
-              </p>
+              <p className="text-11 text-secondary">Starts with the source&apos;s first column in the select list; the query&apos;s editor adds the rest.</p>
             </>
           ) : (
             <Field label="Schema" htmlFor="new-db-schema">
@@ -326,27 +290,6 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
           )}
           {kind === "table" ? (
             <>
-              <fieldset className="flex flex-col gap-1" aria-label="Table kind">
-                <legend className="text-12 font-medium text-secondary">Kind</legend>
-                <label className="flex h-6 items-center gap-2 text-13">
-                  <input type="radio" name="new-db-table-kind" checked readOnly />
-                  Designed table (its own columns)
-                </label>
-                <p className="text-11 text-secondary">
-                  A projected table comes from mapping an entity to this database, not from here.{" "}
-                  <button
-                    type="button"
-                    className="text-accent underline-offset-2 hover:underline"
-                    onClick={() => {
-                      onClose();
-                      openWorkspace("mappings");
-                    }}
-                    data-testid="new-db-open-mappings"
-                  >
-                    Open the Mappings tab
-                  </button>
-                </p>
-              </fieldset>
               <CheckboxField id="new-db-id-column" label="Start with an id column (int64, primary key)" checked={withIdColumn} onChange={setWithIdColumn} />
             </>
           ) : null}

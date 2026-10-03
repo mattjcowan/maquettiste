@@ -38,6 +38,7 @@ import { applyRules, diagnosticKey, validateModel, type ModelEntry } from "./val
 import { ModelIndex } from "./modelIndex";
 import { applyCase, foreignKeyMismatches, resolveDatabase } from "./physical";
 import { resolveQueries } from "./queries";
+import { bindingFindings, materializeStatus, planMaterialize, type MaterializeRequest } from "./bindings";
 
 type Json = Record<string, unknown>;
 
@@ -411,6 +412,13 @@ export class MockModel {
       // The queries' findings (MQ3001, MQ4018, MQ4021 to MQ4043), which only the resolver can see (queries.ts).
       const paths = new Map([...this.entries.values()].filter((e) => e.json.kind === "query").map((e) => [e.id, e.path]));
       out.push(...applyRules(resolveQueries(view, docs, paths).diagnostics, this.rules()));
+      // The binding rules (MQ4044 to MQ4050, and the proposed MQ4058), as resolver findings (bindings.ts).
+      out.push(
+        ...applyRules(
+          bindingFindings(view, docs, (id) => this.entries.get(id)?.path ?? null),
+          this.rules(),
+        ),
+      );
     }
     this.findingsCache = { version: this.version, diagnostics: out };
     return out;
@@ -807,6 +815,51 @@ export class MockModel {
         }
         continue;
       }
+      if (op.op === "materialize-tables" || op.op === "materialize-entities") {
+        // A materialize operation (erratum E43): expands into the creates, updates and deletes its plan lists, all or nothing.
+        const docs = new Map([...candidate].map(([k, e]) => [k, e.json as Json]));
+        const settings = this.projectSettings();
+        const request = op as unknown as MaterializeRequest & { database?: string };
+        const { plan, writes } = planMaterialize(
+          { docs, conventions: settings.conventions as Json, databaseConventions: settings.databases as Record<string, Json>, newId: this.options.newId },
+          String(request.database ?? ""),
+          request,
+        );
+        if (!plan.valid) {
+          fail(
+            this.invalid(
+              request.database ?? null,
+              plan.diagnostics.map((d) => ({ ...d, jsonPointer: `/operations/${operations.indexOf(op)}` })),
+            ),
+          );
+          continue;
+        }
+        // The hashes the caller read (ModelStore.ToChanges): a document changed since, or one it did not expect the operation to
+        // touch, is a conflict, so an undo built from what it read never restores a stale version.
+        const expected = (op as { expectedHashes?: Record<string, string> }).expectedHashes;
+        const stale = expected
+          ? [...writes.updates.map((j) => String(j.id)), ...writes.deletes].find((id) => {
+              const known = expected[id];
+              return !known || normalizeHash(known) !== candidate.get(id)?.hash;
+            })
+          : undefined;
+        if (stale !== undefined) {
+          const existing = candidate.get(stale)!;
+          fail({ outcome: "conflict", id: stale, hash: existing.hash, current: this.document(existing), diagnostics: [], referrers: [], changes: null });
+          continue;
+        }
+        for (const json of [...writes.creates, ...writes.updates]) {
+          const id = String(json.id);
+          const entry = this.entryFor(json, candidate.get(id));
+          candidate.set(id, entry);
+          items.push({ outcome: "saved", id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        }
+        for (const id of writes.deletes) {
+          candidate.delete(id);
+          items.push({ outcome: "saved", id, hash: null, current: null, diagnostics: [], referrers: [], changes: null });
+        }
+        continue;
+      }
       if (op.op === "refresh-scenario") {
         // The mock has no interpreter: the expectations stay as they are (the engine rewrites them from a replay).
         const existing = candidate.get(op.id ?? "");
@@ -962,6 +1015,45 @@ export class MockModel {
       return entry ? { ...item, hash: entry.hash, current: this.document(entry) } : item;
     });
     return { status: 200, body: { outcome: "saved", items: results, changes } };
+  }
+
+  /** GET /api/model/databases/{id}/materialize (erratum E43). */
+  materializeStatus(databaseId: string) {
+    const settings = this.projectSettings();
+    return materializeStatus(
+      { docs: this.docs(), conventions: settings.conventions as Json, databaseConventions: settings.databases as Record<string, Json> },
+      databaseId,
+    );
+  }
+
+  /**
+   * POST /api/model/databases/{id}/materialize/preview (ModelStore.PlanMaterializeAsync): the plan of materialize-tables or
+   * materialize-entities, the result validated, nothing written (new ids are drawn for the preview only). The entity side's
+   * Create tables and New entities from tables and the database side's Store as table files all read it.
+   */
+  previewMaterialize(databaseId: string, request: MaterializeRequest) {
+    const settings = this.projectSettings();
+    const { plan, writes } = planMaterialize(
+      {
+        docs: this.docs(),
+        conventions: settings.conventions as Json,
+        databaseConventions: settings.databases as Record<string, Json>,
+        newId: this.options.newId,
+        pathOf: (id) => this.entries.get(id)?.path ?? null,
+      },
+      databaseId,
+      request,
+    );
+    if (!plan.valid) return plan;
+    // What the change would break: the errors it introduces make the plan invalid, as the engine's preview says.
+    const candidate = new Map(this.entries);
+    for (const json of [...writes.creates, ...writes.updates]) candidate.set(String(json.id), this.entryFor(json, candidate.get(String(json.id))));
+    for (const id of writes.deletes) candidate.delete(id);
+    const { introduced } = this.check(
+      candidate,
+      [...writes.creates, ...writes.updates].map((d) => String(d.id)),
+    );
+    return introduced.length ? { ...plan, valid: false, diagnostics: [...plan.diagnostics, ...introduced] } : plan;
   }
 
   /** A change made outside the editor (another window, the disk, the CLI): no hash check, source disk. */

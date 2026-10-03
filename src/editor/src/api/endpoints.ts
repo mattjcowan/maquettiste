@@ -45,6 +45,10 @@ import type {
   RuleCatalogEntry,
   PackRenameResult,
   QuerySqlResult,
+  BindingSqlResult,
+  MaterializeBody,
+  MaterializePlan,
+  MaterializeStatus,
 } from "./types";
 
 function must<T>(data: T | undefined, response: Response): T {
@@ -216,6 +220,26 @@ export async function getDatabaseView(id: string): Promise<DatabaseViewResult> {
 /** The SQL of one query for its database's dialect or the one named: its statement and one per collection, with what stops it. */
 export async function getQuerySql(id: string, dialect?: string | null): Promise<QuerySqlResult> {
   const { data, response } = await api().GET("/api/model/queries/{id}/sql", { params: { path: { id }, query: dialect ? { dialect } : {} } });
+  return must(data, response);
+}
+
+/** The five statements of an entity's binding for its database's dialect or the one named (erratum E43). */
+export async function getBindingSql(entityId: string, bindingId: string, dialect?: string | null): Promise<BindingSqlResult> {
+  const { data, response } = await api().GET("/api/model/entities/{id}/bindings/{bindingId}/sql", {
+    params: { path: { id: entityId, bindingId }, query: dialect ? { dialect } : {} },
+  });
+  return must(data, response);
+}
+
+/** What can be materialized in a database: the entities with no binding to it, its tables and views with their binders. */
+export async function getMaterializeStatus(databaseId: string): Promise<MaterializeStatus> {
+  const { data, response } = await api().GET("/api/model/databases/{id}/materialize", { params: { path: { id: databaseId } } });
+  return must(data, response);
+}
+
+/** What a materialize operation would write, validated, writing nothing. */
+export async function previewMaterialize(databaseId: string, body: MaterializeBody): Promise<MaterializePlan> {
+  const { data, response } = await api().POST("/api/model/databases/{id}/materialize/preview", { params: { path: { id: databaseId } }, body });
   return must(data, response);
 }
 

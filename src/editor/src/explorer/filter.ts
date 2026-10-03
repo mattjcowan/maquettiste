@@ -21,7 +21,11 @@ export interface ExplorerFilter {
   errors: boolean;
   /** A diagram id: only its members. */
   diagram: string | null;
+  /** Entities by storage (erratum E43): domain only (no binding) or bound to a database; null does not filter. */
+  storage: StorageChip | null;
 }
+
+export type StorageChip = "domain-only" | "bound";
 
 export const emptyFilter: ExplorerFilter = {
   text: "",
@@ -32,11 +36,21 @@ export const emptyFilter: ExplorerFilter = {
   stereotypes: [],
   errors: false,
   diagram: null,
+  storage: null,
 };
 
 /** The number of active chips (the count on the filter button). */
 export function chipCount(f: ExplorerFilter): number {
-  return f.kinds.length + (f.domain ? 1 : 0) + f.tags.length + f.categories.length + f.stereotypes.length + (f.errors ? 1 : 0) + (f.diagram ? 1 : 0);
+  return (
+    f.kinds.length +
+    (f.domain ? 1 : 0) +
+    f.tags.length +
+    f.categories.length +
+    f.stereotypes.length +
+    (f.errors ? 1 : 0) +
+    (f.diagram ? 1 : 0) +
+    (f.storage ? 1 : 0)
+  );
 }
 
 /** Whether any condition is set. */
@@ -58,6 +72,7 @@ export function normalizeFilter(value: unknown): ExplorerFilter {
     stereotypes: list(v.stereotypes),
     errors: v.errors === true,
     diagram: id(v.diagram),
+    storage: v.storage === "domain-only" || v.storage === "bound" ? v.storage : null,
   };
 }
 
@@ -160,6 +175,8 @@ export interface FilterContext {
   errorIds?: ReadonlySet<string>;
   /** The chosen diagram's members. */
   diagramMembers?: ReadonlySet<string>;
+  /** The entities the storage chip keeps. */
+  storageIds?: ReadonlySet<string>;
 }
 
 /** The row test of a filter: the search term and every chip. */
@@ -177,6 +194,7 @@ export function rowPredicate(filter: ExplorerFilter, ctx: FilterContext = {}): (
     if (filter.stereotypes.length && !filter.stereotypes.some((s) => row.stereotypes.includes(s))) return false;
     if (filter.errors && !ctx.errorIds?.has(row.id)) return false;
     if (filter.diagram && !ctx.diagramMembers?.has(row.id)) return false;
+    if (filter.storage && !ctx.storageIds?.has(row.id)) return false;
     return true;
   };
 }

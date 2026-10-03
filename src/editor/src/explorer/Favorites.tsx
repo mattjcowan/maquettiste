@@ -1,7 +1,9 @@
 // Favorites and recents (explorer-redesign.md 3.3): a collapsible strip above the tree with the user's starred
-// elements and the last 20 opened ones, both kept per user in localStorage. Each explorer lists the ones it holds.
+// elements and the last 20 opened ones, both kept per user in localStorage. Each explorer lists the ones it holds; each section
+// has Clear in its header (favorites ask first) and each row a Remove. A deleted element leaves the recent list.
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Eraser, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { ElementSummary } from "@/api/types";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
@@ -36,21 +38,40 @@ export function FavoritesStrip({ forest, id }: { forest: Forest; id: ExplorerId 
     local.set("mq.explorer.strip", open ? "0" : "1");
     setOpen(!open);
   };
-  const item = (x: string, group: string) => {
+  const item = (x: string, group: "favorite" | "recent") => {
     const row = forest.byId.get(x) as ElementSummary;
+    const name = displayName(row);
     return (
-      <li key={`${group}:${x}`}>
+      <li key={`${group}:${x}`} className="group flex items-center">
         <button
           type="button"
-          className="w-full truncate rounded-control px-2 py-0.5 text-left text-12 hover:bg-app"
+          className="min-w-0 flex-1 truncate rounded-control px-2 py-0.5 text-left text-12 hover:bg-app"
           onClick={() => reveal(row)}
           data-testid={`explorer-${group}-${row.name}`}
         >
-          {displayName(row)}
+          {name}
         </button>
+        <Button
+          size="icon-row"
+          variant="ghost"
+          className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+          label={group === "favorite" ? `Remove ${name} from the favorites` : `Remove ${name} from the recent list`}
+          onClick={() => (group === "favorite" ? store.getState().clearFavorites([x]) : store.getState().clearRecent([x]))}
+          data-testid={`explorer-${group}-remove-${row.name}`}
+        >
+          <X />
+        </Button>
       </li>
     );
   };
+  const header = (title: string, testid: string, tooltip: string, onClear: () => void) => (
+    <div className="flex items-center gap-1 px-2">
+      <h3 className="min-w-0 flex-1 text-11 text-secondary">{title}</h3>
+      <Button size="icon-row" variant="ghost" label={tooltip} onClick={onClear} data-testid={testid}>
+        <Eraser />
+      </Button>
+    </div>
+  );
   return (
     <div className="border-b border-default px-1 py-1" data-testid="explorer-strip">
       <button type="button" className="flex items-center gap-1 px-1 text-11 font-medium uppercase text-secondary" aria-expanded={open} onClick={toggle}>
@@ -61,13 +82,16 @@ export function FavoritesStrip({ forest, id }: { forest: Forest; id: ExplorerId 
         <div className="grid grid-cols-1 gap-1 pt-1">
           {fav.length ? (
             <section aria-label="Favorites">
-              <h3 className="px-2 text-11 text-secondary">Favorites</h3>
+              {header("Favorites", "explorer-favorites-clear", "Clear the favorites listed here", () => {
+                // Starred elements are kept on purpose: clearing them asks first.
+                if (window.confirm(`Remove ${fav.length === 1 ? "this favorite" : `these ${fav.length} favorites`}?`)) store.getState().clearFavorites(fav);
+              })}
               <ul className="max-h-28 overflow-auto">{fav.map((x) => item(x, "favorite"))}</ul>
             </section>
           ) : null}
           {rec.length ? (
             <section aria-label="Recent">
-              <h3 className="px-2 text-11 text-secondary">Recent</h3>
+              {header("Recent", "explorer-recent-clear", "Clear the recent elements listed here", () => store.getState().clearRecent(rec))}
               <ul className="max-h-28 overflow-auto">{rec.map((x) => item(x, "recent"))}</ul>
             </section>
           ) : null}

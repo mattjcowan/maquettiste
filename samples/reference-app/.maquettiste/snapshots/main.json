@@ -3,7 +3,13 @@
   "database": "01M34AZ3RECQSPQQX1DXTCN03G",
   "name": "main",
   "dialect": "postgresql",
-  "revision": 4,
+  "revision": 5,
+  "schemas": [
+    {
+      "key": "01M3284CYQRZY91V34X73GDH91",
+      "name": "northwind"
+    }
+  ],
   "tables": [
     {
       "key": "01M1D4CTN6F0HS5SZQC5VH8H2N@01M34AZ3RECQSPQQX1DXTCN03G",
@@ -28260,7 +28266,8 @@
       "key": "01M1MQG3PF94PDYRTXRBEAH7JY",
       "name": "open_sales_orders",
       "schema": "northwind",
-      "body": "SELECT id, order_number, ordered_at, status, promised_delivery_on, grand_total_amount, grand_total_currency\nFROM northwind.sales_orders\nWHERE status IN ('SUBMIT', 'CONFIRM', 'HOLD', 'PARTSHIP') AND deleted_at IS NULL"
+      "body": "SELECT id, order_number, ordered_at, status, promised_delivery_on, grand_total_amount, grand_total_currency\nFROM northwind.sales_orders\nWHERE status IN ('SUBMIT', 'CONFIRM', 'HOLD', 'PARTSHIP') AND deleted_at IS NULL",
+      "comment": "Excludes soft-deleted orders."
     }
   ],
   "sequences": [

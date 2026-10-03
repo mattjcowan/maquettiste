@@ -193,6 +193,9 @@ public sealed class RUnique
 
     /// <summary>The columns.</summary>
     public IReadOnlyList<RColumn> Columns { get; internal set; } = [];
+
+    /// <summary>Whether rows with nulls in the columns conflict (PostgreSQL 15 <c>NULLS NOT DISTINCT</c>).</summary>
+    public bool NullsNotDistinct { get; internal set; }
 }
 
 /// <summary>A resolved foreign key.</summary>
@@ -219,6 +222,9 @@ public sealed class RForeignKey
     /// <summary>The on-update action, as <see cref="OnDelete"/>.</summary>
     public string OnUpdate { get; internal set; } = "no-action";
 
+    /// <summary><c>not-deferrable</c>, <c>initially-immediate</c> or <c>initially-deferred</c>.</summary>
+    public string Deferrable { get; internal set; } = "not-deferrable";
+
     /// <summary>The relation the key implements, if any.</summary>
     public RRelation? Relation { get; internal set; }
 
@@ -237,6 +243,9 @@ public sealed class RCheck
 
     /// <summary>The expression for the database's dialect.</summary>
     public string Expression { get; internal set; } = "";
+
+    /// <summary>For a column check: the column it constrains; <see langword="null"/> for a table check.</summary>
+    public RColumn? Column { get; internal set; }
 }
 
 /// <summary>A resolved index.</summary>
@@ -264,14 +273,20 @@ public sealed class RIndex
     public string Method { get; internal set; } = "default";
 }
 
-/// <summary>A column in a resolved index.</summary>
+/// <summary>A column in a resolved index, or an expression (a functional index).</summary>
 public sealed class RIndexColumn
 {
-    /// <summary>The column.</summary>
-    public RColumn Column { get; internal set; } = null!;
+    /// <summary>The column; <see langword="null"/> for an expression.</summary>
+    public RColumn? Column { get; internal set; }
+
+    /// <summary>The indexed expression for the database's dialect; <see langword="null"/> for a column.</summary>
+    public string? Expression { get; internal set; }
 
     /// <summary>Whether the column sorts descending.</summary>
     public bool Descending { get; internal set; }
+
+    /// <summary>A key prefix length (MySQL), or <see langword="null"/>.</summary>
+    public int? Length { get; internal set; }
 }
 
 /// <summary>
@@ -314,6 +329,15 @@ public sealed class RColumn : RAnnotated
     /// </summary>
     public RDatabaseType? DbType { get; internal set; }
 
+    /// <summary>
+    /// For a string or text column: <see langword="true"/> for Unicode text, <see langword="false"/> for single-byte text,
+    /// <see langword="null"/> for the dialect's default. <see cref="NativeType"/> already reflects it.
+    /// </summary>
+    public bool? Unicode { get; internal set; }
+
+    /// <summary>For a string or binary column: whether the type is fixed-length. <see cref="NativeType"/> already reflects it.</summary>
+    public bool FixedLength { get; internal set; }
+
     /// <summary>Whether the column is nullable.</summary>
     public bool Nullable { get; internal set; }
 
@@ -323,8 +347,20 @@ public sealed class RColumn : RAnnotated
     /// <summary>The default SQL expression for the database's dialect.</summary>
     public string? DefaultSql { get; internal set; }
 
+    /// <summary>The name its file gives the default constraint (SQL Server), or <see langword="null"/> for the template's convention.</summary>
+    public string? DefaultName { get; internal set; }
+
     /// <summary>Whether the column is an identity column.</summary>
     public bool Identity { get; internal set; }
+
+    /// <summary>An identity column's first value, or <see langword="null"/> for the dialect's (1).</summary>
+    public long? IdentitySeed { get; internal set; }
+
+    /// <summary>An identity column's step, or <see langword="null"/> for the dialect's (1).</summary>
+    public long? IdentityIncrement { get; internal set; }
+
+    /// <summary>Whether an identity column refuses values given by an insert (GENERATED ALWAYS) rather than generating them by default.</summary>
+    public bool IdentityAlways { get; internal set; }
 
     /// <summary>The sequence that supplies values.</summary>
     public RSequence? Sequence { get; internal set; }
@@ -392,6 +428,21 @@ public sealed class RView : RAnnotated
 
     /// <summary>The columns.</summary>
     public IReadOnlyList<RViewColumn> Columns { get; internal set; } = [];
+
+    /// <summary>Whether the DDL names <see cref="Columns"/> in CREATE VIEW.</summary>
+    public bool ColumnList { get; internal set; }
+
+    /// <summary>Whether writes through the view must satisfy its WHERE (WITH CHECK OPTION).</summary>
+    public bool WithCheckOption { get; internal set; }
+
+    /// <summary>Whether the view is materialized (it stores its rows).</summary>
+    public bool Materialized { get; internal set; }
+
+    /// <summary>
+    /// What must exist before the view: the objects its file's <c>dependsOn</c> names, then the other views of the database its body
+    /// names (a best-effort reading of the body text), each once.
+    /// </summary>
+    public IReadOnlyList<IResolvedObject> DependsOn { get; internal set; } = [];
 
     /// <summary>The comment.</summary>
     public string? Comment { get; internal set; }

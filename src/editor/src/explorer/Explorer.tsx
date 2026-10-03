@@ -56,7 +56,6 @@ import {
   EXPLORERS,
   collapseAt,
   databaseOf,
-  tableOf,
   documentChildren,
   needsDocument,
   rowsNeedingDocuments,
@@ -91,7 +90,10 @@ import { RowMenu, type RowMenuState } from "./RowMenu";
 import { menuFor, isMovable, isRenamable, type MenuActionId, type MenuTarget } from "./menus";
 import { useTreeKeyboard, type KeyRow, type TreeAction } from "./useTreeKeyboard";
 import { useExplorerActions } from "./actions";
-import { AddRelatedDialog, DeleteDialog, MapToDatabaseDialog, MoveDialog } from "./dialogs";
+import { loadTableExtras, useTableRowActions } from "./tableRows";
+import { openTableEditor } from "@/workspaces/database/openTableEditor";
+import type { TablePartKind } from "@/workspaces/database/tableParts";
+import { AddRelatedDialog, DeleteDialog, MoveDialog } from "./dialogs";
 import { DeleteProcessDialog, ImportXStateDialog, useCommit } from "./processDialogs";
 import { deleteProcessOps } from "./processCreate";
 import { exportProcess, useScenarioStatuses, verifyLines, verifyScenarios } from "./processApi";
@@ -105,6 +107,9 @@ import { exportAllSeeds } from "@/workspaces/reference-data/seedBundle";
 import { createTargetSeed } from "@/workspaces/reference-data/seedTargets";
 import { CREATE_LABELS, domainOfKey, EXPLORER_CREATE, processOfKey, startDomain, type CreateKind } from "./create";
 import { CreateButtons } from "./NewElementDialog";
+import { isStorageAction, runStorageAction } from "@/editors/storage/menuItems";
+import { useStorageChipIds } from "@/editors/storage/useStorage";
+import { StorageNewMenuItems } from "@/editors/storage/StorageNewMenu";
 import { addToDiagram } from "@/workspaces/entities/actions";
 import { isProcessDiagram } from "@/canvas/statechart/diagram";
 import { ELEMENTS_MIME, relatedWithin, type RelationLookup } from "@/canvas/model";
@@ -312,7 +317,7 @@ const relationsIn = (forest: Forest): RelationLookup => ({
  * The chip data the worker cannot see (3.2): the elements with errors (Has errors) and the chosen diagram's members
  * (On this diagram). Undefined while the chip is off, so a validation run does not re-ask an unrelated filter.
  */
-function useChipData(filter: ExplorerFilter): { errorIds?: string[]; members?: string[] } {
+function useChipData(filter: ExplorerFilter): { errorIds?: string[]; members?: string[]; storageIds?: string[] } {
   const validation = useValidation();
   const diagram = useElement(filter.diagram);
   const errorIds = useMemo(() => (filter.errors ? [...errorCounts(validation.data?.diagnostics).keys()] : undefined), [filter.errors, validation.data]);
@@ -321,7 +326,8 @@ function useChipData(filter: ExplorerFilter): { errorIds?: string[]; members?: s
     const json = diagram.data?.json as { members?: { element: string }[] } | undefined;
     return (json?.members ?? []).map((m) => m.element);
   }, [filter.diagram, diagram.data]);
-  return useMemo(() => ({ errorIds, members }), [errorIds, members]);
+  const storageIds = useStorageChipIds(filter.storage);
+  return useMemo(() => ({ errorIds, members, storageIds }), [errorIds, members, storageIds]);
 }
 
 /** Asks the worker for the filter's matches; the answer of the latest filter wins. Re-asks when the data changes. */
@@ -343,6 +349,7 @@ function useTreeFilter(id: ExplorerId, filter: ExplorerFilter): FilterResult | n
         domain: filter.domain,
         errorIds: chipData.errorIds,
         members: chipData.members,
+        storageIds: chipData.storageIds,
       })
       .then((a) => {
         // Painted in this task: a scheduled render would wait for the next frame.
@@ -413,6 +420,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const canvasMembers = useCanvasMembers();
   const [addingRelated, setAddingRelated] = useState<string[] | null>(null);
   const actions = useExplorerActions();
+  const tableRows = useTableRowActions();
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [anchorKey, setAnchorKey] = useState<string | null>(null);
@@ -420,7 +428,6 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const [renaming, setRenaming] = useState<string | null>(null);
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set());
   const [moving, setMoving] = useState<string[] | null>(null);
-  const [mappingTo, setMappingTo] = useState<string[] | null>(null);
   const [marking, setMarking] = useState<{ kind: MarkKind; ids: string[] } | null>(null);
   const [promoting, setPromoting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string[] | null>(null);
@@ -650,8 +657,11 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         try {
           if (database) {
             // A table's children (1.3): its detail (E5f, else the database read) as Columns, keys and indexes.
-            const view = await queryClient.fetchQuery(tableDetailQuery(database, node.table!.key));
-            if (view) tableChildren(forest, key, view);
+            const [view, extras] = await Promise.all([
+              queryClient.fetchQuery(tableDetailQuery(database, node.table!.key)),
+              loadTableExtras(queryClient, database, node).catch(() => ({})),
+            ]);
+            if (view) tableChildren(forest, key, view, extras);
             loaded.add(key);
           } else await loadDocument(forest, key, node);
         } catch {
@@ -786,34 +796,29 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         openEditor(forest.byId.get(node.id) as ElementSummary, how === "open");
         return;
       }
-      // A table is the same thing by every path: a click shows the TABLE in the inspector (by its key, a file or not, never
-      // its entity), and the Database screen follows when it shows that database; opening it (Enter, a double click, the
-      // menu's Open) shows it focused in the Database screen (1.3), and a table with a file of its own (designed, imported)
-      // in its editor in front of it. A projected table has no editor.
+      // A table is the same thing by every path: a click shows the TABLE in the inspector (by its key, a file or not), and
+      // the Database screen follows when it shows that database; opening it (Enter, a double click, the menu's Open) shows it
+      // in its table editor (every table has one).
       const database = node.type === "table" && node.table ? databaseOf(forest, key) : undefined;
       if (database && node.table) {
         if (how === "open") {
-          const file = node.id && node.table.origin !== "synthesized" ? (forest.byId.get(node.id) as ElementSummary | undefined) : undefined;
-          if (file) openEditor(file, true);
-          else openTable(database, node.table.key);
+          if (node.id && forest.byId.has(node.id) && node.table.origin !== "synthesized") store.getState().noteRecent(node.id);
+          openTableEditor(store, database, node.table.key, { explorerItem: key });
           return;
         }
         const s = store.getState();
+        // An editor in front follows the click (the preview tab), as it does for an element row.
+        if (s.editors.active !== null) {
+          openTableEditor(store, database, node.table.key, { explorerItem: key, pin: false });
+          return;
+        }
         s.inspectTable({ database, key: node.table.key, column: null }, key);
         if (s.workspace === "database" && s.activeDatabase === database) s.setDatabaseTable(node.table.key);
         return;
       }
-      // A column of a table's detail: the inspector shows the table with that column (and its "mapped by" rows highlight).
-      const columnTable = node.type === "item" && node.attribute !== undefined && node.id ? tableOf(forest, key) : undefined;
-      const columnOwner = columnTable ? forest.nodes.get(columnTable) : undefined;
-      const columnDatabase = columnTable ? databaseOf(forest, columnTable) : undefined;
-      if (columnOwner?.table && columnDatabase && node.id) {
-        const s = store.getState();
-        s.inspectTable({ database: columnDatabase, key: columnOwner.table.key, column: node.id }, key);
-        if (how === "open") openTable(columnDatabase, columnOwner.table.key, node.id);
-        else if (s.workspace === "database" && s.activeDatabase === columnDatabase) s.setDatabaseTable(columnOwner.table.key);
-        return;
-      }
+      // A row under a table (a column, a key, an index, a check, a foreign key pointing at it): the inspector shows it alone;
+      // opening it (or its folder) shows the table editor on its tab with it picked.
+      if (node.part && (node.type === "item" || how === "open") && tableRows.openPart(forest, key, how)) return;
       if (node.id && forest.byId.has(node.id) && node.home) {
         const summary = forest.byId.get(node.id) as ElementSummary;
         if (how === "open" && hasEditor(summary.kind, summary)) openEditor(summary, true);
@@ -828,18 +833,24 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       }
       toggle(key);
     },
-    [forest, reveal, toggle, openEditor, openTable, store, select],
+    [forest, reveal, toggle, openEditor, store, select, tableRows],
   );
   /** A double click: opens the row pinned (as Enter does). A folder, a schema or a database only toggles, which the
-   * first click did already; a domain opens its editor without toggling again. */
+   * first click did already (a table's part folder also opens the table editor on its tab); a domain opens its editor
+   * without toggling again. */
   const doubleClickRow = useCallback(
     (key: string) => {
       if (!forest) return;
-      const type = nodeOf(forest, key)?.type;
+      const node = nodeOf(forest, key);
+      if (node?.type === "folder" && node.part) {
+        tableRows.openPart(forest, key, "open");
+        return;
+      }
+      const type = node?.type;
       if (type === "folder" || type === "group" || type === "schema" || type === "database") return;
       openRow(key, "open");
     },
-    [forest, openRow],
+    [forest, openRow, tableRows],
   );
   /** The browser's dblclick: ignored when the second click already handled the double click, which it does unless
    * the two clicks came without a click before (a synthetic double click). */
@@ -936,8 +947,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     (key: string): MenuTarget | null => {
       const node = forest ? nodeOf(forest, key) : undefined;
       if (!node || !forest) return null;
-      const linked =
-        node.kind === "entity" ? !!node.id && (forest.related.tablesOf.get(node.id)?.length ?? 0) > 0 : node.type === "table" ? !!node.table?.entityId : false;
+      const linked = node.kind === "entity" ? !!node.id && (forest.related.tablesOf.get(node.id)?.length ?? 0) > 0 : false;
       const element = idOf(key);
       const domainGroup = node.type === "group" && !!node.id && forest.byId.get(node.id)?.kind === "package";
       const creates = node.type === "group" && !domainGroup && (key === NOT_IN_DOMAIN_KEY || node.explorer !== "domain-model");
@@ -952,6 +962,8 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         processDiagram: node.kind === "diagram" && !!element && isProcessDiagram(forest.byId.get(element)),
         home: node.explorer,
         designed: node.type === "table" && !!element && !!node.table && node.table.origin !== "synthesized",
+        part: node.part?.kind,
+        incoming: !!node.partTable || key.endsWith("/referenced-by"),
       };
     },
     [forest, idOf, favoriteSet],
@@ -1016,9 +1028,20 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       store.getState().requestTypeAction({ action: action.slice(5), ids });
       return;
     }
+    if (isStorageAction(action))
+      return runStorageAction(
+        store,
+        action,
+        keys.map(idOf).filter((x): x is string => !!x),
+        (x) => forest.byId.get(x)?.kind,
+      );
     if (action.startsWith("new-db:")) {
       const database = databaseOf(forest, keys[0]);
       if (database) store.getState().requestNewDatabaseObject({ kind: action.slice(7) as DatabaseObjectKind, database, schema: schemaNameOf(forest, keys[0]) });
+      return;
+    }
+    if (action.startsWith("new-part:")) {
+      void tableRows.newPart(forest, keys[0], action.slice(9) as TablePartKind);
       return;
     }
     if (action.startsWith("new:")) {
@@ -1045,8 +1068,11 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       case "open-database":
         if (node?.id) openDatabase(node.id);
         break;
-      case "open-mappings":
-        openWorkspace("mappings");
+      case "rename-part":
+        setRenaming(key);
+        break;
+      case "delete-part":
+        void tableRows.deletePart(forest, key);
         break;
       case "show-in-database": {
         const database = databaseOf(forest, key);
@@ -1088,12 +1114,6 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         }
         break;
       }
-      case "go-to-entity":
-        if (node?.table?.entityId) {
-          store.getState().setSidebar("domain-model");
-          select([node.table.entityId]);
-        }
-        break;
       case "go-to-ends": {
         const end = node?.id ? forest.related.endsOf.get(node.id)?.[0] : undefined;
         if (end) select([end]);
@@ -1110,9 +1130,6 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         break;
       case "move":
         setMoving(ids);
-        break;
-      case "map-to-database":
-        if (ids.length) setMappingTo(ids);
         break;
       case "apply-stereotype":
       case "tag":
@@ -1271,6 +1288,8 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       const same = own.every((s) => forest?.byId.get(s)?.kind === kind);
       select(same ? (selected.has(id) ? own.filter((x) => x !== id) : [...own, id]) : [id]);
     } else if (a.type === "rename" && key && isRenamable(kindOf(key), forest?.nodes.get(key)?.explorer) && idOf(key)) setRenaming(key);
+    else if (a.type === "rename" && key && forest?.nodes.get(key)?.part && forest.nodes.get(key)?.type === "item" && !forest.nodes.get(key)?.partTable)
+      setRenaming(key);
     else if (a.type === "delete") {
       const ids = own.filter(
         (s) => forest?.byId.has(s) && (forest.nodes.get(forest.place.get(s) ?? "")?.explorer === id || (!!key && forest.nodes.get(key)?.id === s)),
@@ -1338,9 +1357,11 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       setRenaming(null);
       const id = idOf(key);
       const node = forest?.nodes.get(key);
-      if (id && name && name !== node?.label) void actions.rename(id, name);
+      if (forest && node?.part && node.type === "item" && name && name !== node.label) void tableRows.renameRow(forest, key, name);
+      else if (forest && node?.type === "table" && name && name !== node.label) void tableRows.renameTable(forest, key, name);
+      else if (id && name && name !== node?.label) void actions.rename(id, name);
     },
-    [idOf, forest, actions],
+    [idOf, forest, actions, tableRows],
   );
 
   // ------------------------------------------------------------------ render
@@ -1529,30 +1550,6 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         <>
           <ImportSeedsDialog open={importingSeeds} onOpenChange={setImportingSeeds} />
           {importingCsv ? <ImportCsvDialog open onOpenChange={(o) => !o && setImportingCsv(null)} seed={importingCsv} /> : null}
-          <MapToDatabaseDialog
-            databases={
-              mappingTo
-                ? [...forest.byId.values()]
-                    .filter((r) => r.kind === "database")
-                    .map((r) => ({ id: r.id, name: r.name }))
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                : null
-            }
-            count={mappingTo?.length ?? 0}
-            onClose={() => setMappingTo(null)}
-            onMap={(database) => {
-              const ids = mappingTo ?? [];
-              setMappingTo(null);
-              const rows = [...forest.byId.values()];
-              void actions.mapToDatabase(
-                database,
-                ids.map((x) => ({ id: x, kind: forest.byId.get(x)?.kind ?? "", name: forest.byId.get(x)?.name ?? x })),
-                (entity) => rows.find((r) => r.kind === "mapping" && r.database === database.id && r.entity === entity),
-                (entity) => forest.byId.get(entity)?.package,
-                (pkg) => forest.byId.get(pkg)?.package,
-              );
-            }}
-          />
           {marking ? <MarkDialog forest={forest} request={marking} onClose={() => setMarking(null)} /> : null}
           {promoting ? (
             <PromoteDialog
@@ -1660,6 +1657,7 @@ function ExplorerHeader(props: {
               {CREATE_LABELS[kind]}
             </DropdownMenuItem>
           ))}
+          {props.id === "domain-model" ? <StorageNewMenuItems /> : null}
           {props.database
             ? DATABASE_CREATE.map((kind) => (
                 <DropdownMenuItem key={kind} onSelect={() => props.onNewInDatabase?.(kind, props.database!)} data-testid={`explorer-new-${kind}`}>

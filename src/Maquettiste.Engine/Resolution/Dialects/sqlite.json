@@ -1,5 +1,6 @@
 {
   "binary": "blob",
+  "binary:fixed": "blob",
   "bool": "integer",
   "date": "text",
   "datetime": "text",
@@ -13,6 +14,7 @@
   "int64": "integer",
   "json": "text",
   "string": "text",
+  "string:fixed": "text",
   "text": "text",
   "time": "text",
   "ulid": "text",

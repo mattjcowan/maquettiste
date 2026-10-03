@@ -699,19 +699,36 @@ public sealed class TableBuilder : ElementBuilder<TableBuilder>
         return this;
     }
 
-    /// <inheritdoc/>
-    protected override Element CreateElement() => new Table
+    /// <summary>Changes the table the builder creates (columns, constraints, any property), after everything else.</summary>
+    /// <param name="edit">The change.</param>
+    /// <returns>This builder.</returns>
+    public TableBuilder Edit(Func<Table, Table> edit)
     {
-        Id = Id,
-        Name = Name,
-        Database = _database.Id,
-        Origin = _origin,
-        Entity = _entity,
-        Columns = [.. _columns],
-        PrimaryKey = _primaryKey,
-        ForeignKeys = [.. _foreignKeys],
-        Indexes = [.. _indexes],
-    };
+        _edits.Add(edit);
+        return this;
+    }
+
+    private readonly List<Func<Table, Table>> _edits = [];
+
+    /// <inheritdoc/>
+    protected override Element CreateElement()
+    {
+        var table = new Table
+        {
+            Id = Id,
+            Name = Name,
+            Database = _database.Id,
+            Origin = _origin,
+            Entity = _entity,
+            Columns = [.. _columns],
+            PrimaryKey = _primaryKey,
+            ForeignKeys = [.. _foreignKeys],
+            Indexes = [.. _indexes],
+        };
+        foreach (var edit in _edits)
+            table = edit(table);
+        return table;
+    }
 }
 
 /// <summary>Builds a mapping.</summary>

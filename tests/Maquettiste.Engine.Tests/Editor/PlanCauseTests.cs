@@ -43,7 +43,10 @@ public sealed class PlanCauseTests
         var parameter = await PlanAndApplyAsync(repo);
         var rendered = parameter.Units.Where(u => !u.Skipped).ToList();
         Assert.NotEmpty(rendered);
-        Assert.All(rendered, u => Assert.Contains(u.Causes, c => (c.Kind, c.Key) == ("parameter", "comments")));
+        // A unit whose causes run past the first MaxCauses (the migration: its last render wrote a table comment statement and read
+        // the changed table, this one finds an empty diff and reads none of it) lists its element causes first.
+        Assert.All(rendered.Where(u => u.CauseCount <= Maquettiste.Engine.Generation.PlanExplainer.MaxCauses),
+            u => Assert.Contains(u.Causes, c => (c.Kind, c.Key) == ("parameter", "comments")));
         Assert.All(rendered, u => Assert.DoesNotContain(u.Causes, c => c.Kind == "parameter" && c.Key != "comments"));
 
         // A pack version bump.

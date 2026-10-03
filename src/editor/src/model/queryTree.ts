@@ -544,6 +544,33 @@ export function setResultEntity(
   });
 }
 
+/** Whether a query still names an older result entity (its own, or a collection's elements'). */
+export const hasResultEntity = (doc: Pick<QueryDoc, "entity" | "collections">): boolean => !!doc.entity || (doc.collections ?? []).some((c) => !!c.entity);
+
+/**
+ * Drops an older query's result entities (the query's `entity` and each collection's element entity): a query is the database's,
+ * and the entity side binds an entity to it instead. Every field that filled an attribute becomes a named field with its
+ * expression (setResultEntity), and a collection that filled a collection attribute or a navigation takes its name
+ * (`collectionName`, made a unique field name). `attributeName` names the query's attributes; `elementName(i)` the attributes of
+ * collection i's elements. Nothing is lost: each value keeps its expression under a name.
+ */
+export function removeResultEntities(
+  doc: QueryDoc,
+  attributeName: (id: string) => string | undefined,
+  collectionName: (attribute: string) => string | undefined,
+  elementName: (index: number) => (id: string) => string | undefined,
+): void {
+  setResultEntity(doc, null, attributeName);
+  const taken: string[] = [];
+  (doc.collections ?? []).forEach((c, i) => {
+    const named = collectionName(c.attribute);
+    if (named) c.attribute = fieldName(named, taken);
+    taken.push(c.attribute);
+    if (c.query.select) setResultEntity(c.query as QueryDoc, null, elementName(i));
+    delete c.entity;
+  });
+}
+
 /** Removes an empty optional list member (the canonical writer leaves out empty defaults). */
 export function tidy(body: Subquery): void {
   for (const member of ["joins", "groupBy", "orderBy"] as const) if (body[member] && !body[member]!.length) delete body[member];

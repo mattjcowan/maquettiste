@@ -69,15 +69,17 @@ func cycle_fk_statements(tables, breaks, db, out)
     $pair = b | string.split ":"
     $t = tables[$pair[0] | string.to_int]
     $f = $t.foreign_keys[$pair[1] | string.to_int]
-    out[out.size] = "ALTER TABLE " + qt($t) + " ADD CONSTRAINT " + q($f.name, db) + " " + foreign_key_body($f, db) + ";"
+    out[out.size] = add_constraint_sql($t, $f.name, foreign_key_body($f, db))
   end
 end
 
+# CREATE SEQUENCE, or a comment where the dialect has none (SQLite, MySQL; MariaDB has sequences, write them as SQL objects).
+# Oracle sequences have no type.
 func sequence_sql(s, db)
-  if db.dialect == "sqlite"
-    ret "-- SQLite has no sequences; " + s.name + " (start " + s.start + ") is not created."
+  if db.dialect == "sqlite" || db.dialect == "mysql"
+    ret "-- " + dialect_title(db) + " has no sequences; " + s.name + " (start " + s.start + ") is not created."
   end
-  $r = "CREATE SEQUENCE " + qn(s.schema, s.name, db) + " AS " + s.native_type + " START WITH " + s.start + " INCREMENT BY " + s.increment
+  $r = "CREATE SEQUENCE " + (idem() && (db.dialect == "postgresql") ? "IF NOT EXISTS " : "") + qn(s.schema, s.name, db) + (db.dialect == "oracle" ? "" : " AS " + s.native_type) + " START WITH " + s.start + " INCREMENT BY " + s.increment
   if s.min != null
     $r = $r + " MINVALUE " + s.min
   end
@@ -90,15 +92,53 @@ func sequence_sql(s, db)
   if s.cache != null
     $r = $r + " CACHE " + s.cache
   end
-  ret $r + ";"
+  $r = $r + ";"
+  if idem() && db.dialect == "sqlserver"
+    $r = "IF OBJECT_ID(" + ms_object(s.schema, s.name, db) + ", N'SO') IS NULL " + $r
+  end
+  ret $r
 end
 
+# Whether the DDL creates a view as a materialized view: one that asks for it, on PostgreSQL or Oracle (MQ4056 elsewhere, where it is
+# a plain view).
+func materialized(v, db)
+  ret v.materialized && (db.dialect == "postgresql" || db.dialect == "oracle")
+end
+
+# CREATE VIEW with its column list (columnList), WITH CHECK OPTION (not on SQLite or a materialized view, MQ4056) and its comment
+# (comments parameter). Idempotent: CREATE OR REPLACE VIEW (PostgreSQL, MySQL, Oracle), CREATE OR ALTER VIEW (SQL Server), CREATE
+# VIEW IF NOT EXISTS (SQLite); a materialized view is CREATE MATERIALIZED VIEW [IF NOT EXISTS] (PostgreSQL, Oracle), which the
+# application refreshes. On SQL Server the comment follows in a batch of its own.
 func view_sql(v, db)
+  $d = db.dialect
   $body = v.body | string.rstrip
   if $body | string.ends_with ";"
     $body = $body | string.slice 0 ($body.size - 1)
   end
-  ret "CREATE VIEW " + qn(v.schema, v.name, db) + " AS\n" + $body + ";"
+  $mat = materialized(v, db)
+  $create = $mat ? "CREATE MATERIALIZED VIEW " : "CREATE VIEW "
+  if idem()
+    if $mat
+      $create = $d == "postgresql" ? "CREATE MATERIALIZED VIEW IF NOT EXISTS " : $create
+    else if $d == "sqlserver"
+      $create = "CREATE OR ALTER VIEW "
+    else if $d == "sqlite"
+      $create = "CREATE VIEW IF NOT EXISTS "
+    else
+      $create = "CREATE OR REPLACE VIEW "
+    end
+  end
+  $names = ""
+  if v.column_list && v.columns.size > 0
+    $names = " (" + cols(v.columns, db) + ")"
+  end
+  $check = v.with_check_option && !$mat && $d != "sqlite" ? "\nWITH CHECK OPTION" : ""
+  $s = $create + qn(v.schema, v.name, db) + $names + " AS\n" + $body + $check + ";"
+  if pack.params.comments && v.comment && view_comment_sql(v, db, v.comment) != ""
+    $comment = ($d == "sqlserver" && !idem()) ? ms_add_description(db, "VIEW", v.schema, v.name, null, v.comment) : view_comment_sql(v, db, v.comment)
+    $s = $s + ($d == "sqlserver" ? "\nGO\n" : "\n") + $comment
+  end
+  ret $s
 end
 
 # ---- routines, database types and SQL objects -------------------------------------------------------------------------------
@@ -120,14 +160,12 @@ func object_dependency_spec(items)
       if !for.first
         ";"
       end
-      if o.kind != "view"
-        for dep in o.depends_on
-          if !for.first
-            ","
-          end
-          $target = $index[dep.id]
-          ($target == null || dep.id == o.id) ? "x" : $target
+      for dep in o.depends_on
+        if !for.first
+          ","
         end
+        $target = $index[dep.id]
+        ($target == null || dep.id == o.id) ? "x" : $target
       end
     end
   end
@@ -150,10 +188,11 @@ func in_dependency_order(items)
   ret $result
 end
 
-# The routines of a database followed by its views, in creation order: a routine whose dependsOn names a view comes after it.
+# The routines of a database followed by its views, in creation order: a routine whose dependsOn names a view comes after it, and a
+# view after the views it reads (its dependsOn, which the resolver completes from the body).
 func routines_and_views(db)
   if db.routines.size == 0
-    ret db.views
+    ret in_dependency_order(db.views)
   end
   $items = []
   for r in db.routines
@@ -337,12 +376,22 @@ func object_sql(o, db)
   ret o.body | string.rstrip
 end
 
+# Whether the dialect creates schemas (MySQL's schemas are its databases; SQLite has none; Oracle's are users, created by hand).
+func creates_schemas(db)
+  ret db.dialect == "postgresql" || db.dialect == "sqlserver" || db.dialect == "mysql"
+end
+
+# Whether a schema name is the dialect's built-in schema, which is never created or dropped.
+func builtin_schema(name, db)
+  ret (db.dialect == "postgresql" && name == "public") || (db.dialect == "sqlserver" && name == "dbo")
+end
+
 # Schemas the script must create: every named schema of the database except the dialect's built-in one.
 func schemas_to_create(db)
   $result = []
-  if db.dialect == "postgresql" || db.dialect == "sqlserver"
+  if creates_schemas(db)
     for s in db.schemas
-      if !(db.dialect == "postgresql" && s.name == "public") && !(db.dialect == "sqlserver" && s.name == "dbo")
+      if !builtin_schema(s.name, db)
         $result[$result.size] = s.name
       end
     end

@@ -157,14 +157,18 @@ export function mergeDatabaseView(previous: DatabaseViewState | undefined, next:
   return { ...next, stale: false };
 }
 
+/** One database's resolved view, kept stale over a model with errors (`mergeDatabaseView`). */
+export function databaseViewQuery(qc: QueryClient, id: string) {
+  return {
+    queryKey: keys.databaseView(id),
+    queryFn: async (): Promise<DatabaseViewState> =>
+      mergeDatabaseView(qc.getQueryData<DatabaseViewState>(keys.databaseView(id)), await endpoints.getDatabaseView(id)),
+  };
+}
+
 export function useDatabaseView(id: string | null) {
   const qc = useQueryClient();
-  return useQuery({
-    queryKey: keys.databaseView(id ?? ""),
-    queryFn: async (): Promise<DatabaseViewState> =>
-      mergeDatabaseView(qc.getQueryData<DatabaseViewState>(keys.databaseView(id ?? "")), await endpoints.getDatabaseView(id!)),
-    enabled: !!id,
-  });
+  return useQuery({ ...databaseViewQuery(qc, id ?? ""), enabled: !!id });
 }
 
 /**

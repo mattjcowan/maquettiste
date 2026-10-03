@@ -33,7 +33,8 @@ import { IDS } from "./harness";
 
 const strictTiming = process.env.MQ_SCALE_STRICT === "1";
 
-const SETTINGS_KINDS = new Set(["tag-vocabulary", "category-tree", "stereotype"]);
+// Kinds with no row of their own: the vocabularies and stereotypes (Settings), and mappings (the entity side leads to them).
+const SETTINGS_KINDS = new Set(["tag-vocabulary", "category-tree", "stereotype", "mapping"]);
 
 function billing() {
   const backend = new MockBackend();
@@ -124,7 +125,7 @@ describe("tree over the billing fixture", () => {
   it("reaches every index row, and places no vocabulary or stereotype", () => {
     expectReachable(forest, rows);
     expectKindFolders(forest);
-    expect(forest.unplaced.length).toBe(6); // five vocabularies and stereotypes of the fixture, and the mock's persona
+    expect(forest.unplaced.length).toBe(8); // five vocabularies and stereotypes of the fixture, the mock's persona, two mappings
   });
 
   it("reaches physical rows without the E5 database member, in Not in a database", () => {
@@ -134,22 +135,13 @@ describe("tree over the billing fixture", () => {
     });
     const f = buildForest({ rows: old });
     expectReachable(f, old);
-    expect(labels(f, find(f, "databases", "Not in a database").key)).toEqual([
-      "Tables",
-      "Views",
-      "Sequences",
-      "Routines",
-      "Types",
-      "Objects",
-      "Queries",
-      "Customised mappings",
-    ]);
+    expect(labels(f, find(f, "databases", "Not in a database").key)).toEqual(["Tables", "Views", "Sequences", "Routines", "Types", "Objects", "Queries"]);
   });
 
-  it("shapes Databases: main › billing (by name) › Tables, Views, Sequences, Routines, Types, Objects, Queries, then Customised mappings", () => {
+  it("shapes Databases: main › billing (by name) › Tables, Views, Sequences, Routines, Types, Objects, Queries, and no mapping", () => {
     const main = find(forest, "databases", "main");
     expect(main.pending).toBeUndefined();
-    expect(labels(forest, main.key)).toEqual(["billing", "Customised mappings"]);
+    expect(labels(forest, main.key)).toEqual(["billing"]);
     expect(labels(forest, find(forest, "databases", "main", "billing").key)).toEqual([
       "Tables",
       "Views",
@@ -172,46 +164,43 @@ describe("tree over the billing fixture", () => {
     );
     const tableNames = labels(forest, find(forest, "databases", "main", "billing", "Tables").key);
     expect(tableNames).toContain("invoices");
-    expect(main.secondary).toBe(
-      "7 tables · 1 view · 1 sequence · 2 routines · 2 database types · 1 SQL object · 3 queries · 2 customised mappings · 5 entities mapped",
-    );
+    expect(main.secondary).toBe("7 tables · 1 view · 1 sequence · 2 routines · 2 database types · 1 SQL object · 3 queries");
     expect(forest.headers.databases).toBe("1 database · 7 tables");
     // The table overlay file is the invoices row; the junction carries its marker.
     expect(forest.place.get(rows.find((r) => r.kind === "table")!.id)).toBe(find(forest, "databases", "main", "billing", "Tables", "invoices").key);
     expect(find(forest, "databases", "main", "billing", "Tables", "payment_invoice").markers).toEqual(["junction"]);
-    expect(labels(forest, find(forest, "databases", "main", "Customised mappings").key)).toEqual(["Invoice → invoices", "settles in main"]);
+    // The database side names no entity: no mapping rows, no "mapped" counts.
+    expect(main.secondary).not.toMatch(/mapp/);
   });
 
   it("shows the index's rows and a pending database before the table summaries arrive", () => {
     const f = buildForest({ rows });
     const main = find(f, "databases", "main");
     expect(main.pending).toBe(true);
-    expect(labels(f, main.key)).toEqual(["Default schema", "Customised mappings"]);
+    expect(labels(f, main.key)).toEqual(["Default schema"]);
     expectReachable(f, rows);
     const named = buildForest({ rows, databases: new Map([[main.id!, { defaultSchema: "billing" }]]) });
-    expect(labels(named, find(named, "databases", "main").key)).toEqual(["billing", "Customised mappings"]);
+    expect(labels(named, find(named, "databases", "main").key)).toEqual(["billing"]);
   });
 
   it("shows a Default schema node for tables with a null schema", () => {
     const dbId = idOf(rows, "main");
     const noSchema = new Map([[dbId, { tables: tables.get(dbId)!.tables.map((t) => ({ ...t, schema: null })) }]]);
     const f = buildForest({ rows, tables: noSchema });
-    expect(labels(f, find(f, "databases", "main").key)).toEqual(["Default schema", "Customised mappings"]);
+    expect(labels(f, find(f, "databases", "main").key)).toEqual(["Default schema"]);
   });
 
   it("answers an entity's and a relation's children from the index", () => {
     const invoice = node(forest, IDS.invoice);
     expect(invoice.load).toBe("document");
-    expect(labels(forest, invoice.key)).toEqual(["Relationships", "Mappings"]);
+    // No projected tables or mapping files: an entity's storage is its bindings, read from its document.
+    expect(labels(forest, invoice.key)).toEqual(["Relationships"]);
     const relations = find(forest, "domain-model", "Billing", "Entities", "Invoice", "Relationships");
     expect(labels(forest, relations.key)).toEqual(["contains", "places", "settles"]);
     const contains = node(forest, childKeys(forest, relations.key)[0]);
     expect(contains.home).toBe(false);
     expect(contains.target).toBe(idOf(rows, "contains"));
     expect(contains.secondary).toBe("Invoice → InvoiceLine");
-    const mapping = node(forest, childKeys(forest, find(forest, "domain-model", "Billing", "Entities", "Invoice", "Mappings").key)[0]);
-    expect(mapping.label).toBe("main → invoices");
-    expect(mapping.markers).toEqual(["customised"]);
     const ends = find(forest, "domain-model", "Billing", "Relationships", "contains", "Ends");
     expect(labels(forest, ends.key)).toEqual(["Invoice", "InvoiceLine"]);
     // A relation from another domain names its domain path.
@@ -222,10 +211,26 @@ describe("tree over the billing fixture", () => {
   it("adds Attributes first once the entity's document is loaded", () => {
     const f = buildForest({ rows, tables });
     const children = documentChildren(f, IDS.invoice, backend.model.get(IDS.invoice)!);
-    expect(children.map((k) => node(f, k).label)).toEqual(["Attributes", "Relationships", "Mappings"]);
+    expect(children.map((k) => node(f, k).label)).toEqual(["Attributes", "Relationships"]);
     const attributes = node(f, children[0]);
     expect(attributes.count).toBeGreaterThan(0);
     expect(node(f, attributes.children![0]).type).toBe("item");
+  });
+
+  it("lists a bound entity's bindings under Storage (database › source), going to the source", () => {
+    const f = buildForest({ rows, tables });
+    for (const [name, label] of [
+      ["CustomerNote", "main › notes"],
+      ["RevenueMonth", "main › RevenueByMonth"],
+    ] as const) {
+      const id = idOf(rows, name);
+      const children = documentChildren(f, id, backend.model.get(id)!);
+      const storage = children.map((k) => node(f, k)).find((n) => n.label === "Storage")!;
+      expect(storage).toBeDefined();
+      const row = node(f, storage.children![0]);
+      expect(row.label).toBe(label);
+      expect(row.target).toBeDefined();
+    }
   });
 
   it("lists diagrams outside the domains, in a group named after the home domain", () => {
@@ -366,7 +371,7 @@ describe("tree places", () => {
     expect(labels(byCategory, find(byCategory, "domain-model", "Billing", "Core").key)).toEqual(["Customer", "Invoice", "InvoiceLine", "Payment"]);
   });
 
-  it("groups an enum's lookup table under the enum's domain, mapped by the enum, with no unlinked marker", () => {
+  it("groups an enum's lookup table under the enum's domain, mapped by the enum, with no marker", () => {
     const dbId = idOf(rows, "main");
     const enumId = idOf(rows, "InvoiceStatus");
     const lookup = {
@@ -389,7 +394,8 @@ describe("tree places", () => {
     expect(relatedKeys(f, table.key)).toEqual(new Set([enumId]));
     expect(relatedKeys(f, enumId).has(table.key)).toBe(true);
     const flat = buildForest({ rows, tables: new Map([[dbId, { tables: [{ ...lookup, enumId: null, isLookup: false, entityId: null }] }]]) });
-    expect(find(flat, "databases", "main", "billing", "Tables", "invoice_statuses").markers).toEqual(["unlinked"]);
+    // The database side names nothing a table relates to: no "unlinked" marker either.
+    expect(find(flat, "databases", "main", "billing", "Tables", "invoice_statuses").markers).toBeUndefined();
   });
 
   it("builds the Reference data explorer with a leaf per type, and seeds by target", () => {

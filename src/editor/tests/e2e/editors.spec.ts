@@ -16,7 +16,7 @@ test("entity editor tabs: pinned, preview, General mode, close", async ({ page }
   await expect(editor).toBeVisible();
   const tabs = page.getByTestId("editor-tabs");
   await expect(tabs.getByTestId("editor-tab")).toHaveAttribute("data-pinned", "true");
-  for (const name of ["Attributes", "Relationships", "Indexes", "Mappings", "Seed data", "Code generation", "References"])
+  for (const name of ["Attributes", "Relationships", "Indexes", "Storage", "Seed data", "Code generation", "References"])
     await expect(editor.getByRole("tab", { name })).toBeVisible();
   await expect(editor.getByRole("grid", { name: "Attributes of Invoice" })).toBeVisible();
   // The inspector stays the compact property view.

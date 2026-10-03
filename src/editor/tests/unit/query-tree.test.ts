@@ -37,6 +37,8 @@ import {
   resolveColumn,
   rightShape,
   scopeOf,
+  hasResultEntity,
+  removeResultEntities,
   setResultEntity,
   sourceOptions,
   sqlText,
@@ -262,6 +264,39 @@ describe("edits across the query", () => {
       // Its attribute's name is taken by another field: numbered.
       { name: "number2", expression: column("i", "x") },
     ]);
+  });
+
+  it("removes an older query's result entities, its collections' too, keeping every value under a name", () => {
+    const d: QueryDoc = {
+      ...doc(),
+      entity: INVOICE,
+      select: [
+        { attribute: INVOICE_ID, expression: column("i", INVOICE_ID) },
+        { name: "extra", expression: literal(1) },
+      ],
+      collections: [
+        { attribute: "END", query: { from: { source: "L", alias: "l" }, select: [{ attribute: "QTY", expression: column("l", "q") }] } },
+        { attribute: "ATTR", entity: INVOICE_LINE, query: { from: { source: "L", alias: "m" }, select: [{ name: "n", expression: column("m", "n") }] } },
+      ],
+    };
+    expect(hasResultEntity(d)).toBe(true);
+    const names: Record<string, string> = { [INVOICE_ID]: "id", QTY: "quantity", END: "lines", ATTR: "lines" };
+    removeResultEntities(
+      d,
+      (id) => names[id],
+      (a) => names[a],
+      () => (id) => names[id],
+    );
+    expect(hasResultEntity(d)).toBe(false);
+    expect(d.select).toEqual([
+      { name: "id", expression: column("i", INVOICE_ID) },
+      { name: "extra", expression: literal(1) },
+    ]);
+    // Each collection is named after what it filled (unique), its fields named, its element entity gone.
+    expect(d.collections!.map((c) => c.attribute)).toEqual(["lines", "lines2"]);
+    expect(d.collections![0].query.select).toEqual([{ name: "quantity", expression: column("l", "q") }]);
+    expect(d.collections![1]).not.toHaveProperty("entity");
+    expect(d.collections![1].query.select).toEqual([{ name: "n", expression: column("m", "n") }]);
   });
 
   it("drops the entity for an ad hoc row, keeping the attributes' names", () => {

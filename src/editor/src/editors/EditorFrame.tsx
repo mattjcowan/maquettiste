@@ -77,11 +77,14 @@ export function EditorLayout({
   draft,
   controls,
   tabs,
+  translations = true,
 }: {
   ctx: EditorContext;
   draft: Draft | undefined;
   controls: ReactNode;
   tabs: (EditorSubTab | null)[];
+  /** The Translations section under the header (an element that is not a file yet has none). */
+  translations?: boolean;
 }) {
   const { store } = useServices();
   const { id, kind, name } = ctx;
@@ -137,7 +140,7 @@ export function EditorLayout({
             ))}
           </ul>
         ) : null}
-        {details ? <HeaderFields {...ctx} /> : null}
+        {details ? <HeaderFields {...ctx} translations={translations} /> : null}
       </header>
       {details ? (
         <div className="border-b border-default px-2 py-1" data-testid="editor-controls">
@@ -164,7 +167,7 @@ export function EditorLayout({
 
 /** Display names and the description, then the collapsed Translations section when the project declares two or more
  * locales (RT 3.10). */
-function HeaderFields({ id, kind, json, doc, edit, flush }: EditorContext) {
+function HeaderFields({ id, kind, json, doc, edit, flush, translations }: EditorContext & { translations: boolean }) {
   const { store } = useServices();
   // RT 3.10 places Translations in the inspector: the editor shows the section only while the inspector does not
   // show this element, so its inputs never appear twice.
@@ -185,7 +188,7 @@ function HeaderFields({ id, kind, json, doc, edit, flush }: EditorContext) {
           typeof description === "object" && description !== null ? { file: (description as { file: string }).file, text: doc?.sidecarText ?? "" } : null
         }
       />
-      {inInspector ? null : <TranslationsSection id={id} kind={kind} />}
+      {inInspector || !translations ? null : <TranslationsSection id={id} kind={kind} />}
     </div>
   );
 }

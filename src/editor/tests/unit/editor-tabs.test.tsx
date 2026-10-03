@@ -315,7 +315,7 @@ describe("entity editor", () => {
     const editor = await screen.findByRole("region", { name: "Editor: Invoice" }, { timeout: 5000 });
     const tabs = screen.getByTestId("editor-tabs");
     expect(within(tabs).getByTestId("editor-tab").dataset.pinned).toBe("false");
-    for (const name of ["Attributes", "Relationships", "Indexes", "Mappings", "Seed data", "Code generation", "References"])
+    for (const name of ["Attributes", "Relationships", "Indexes", "Storage", "Seed data", "Code generation", "References"])
       expect(within(editor).getByRole("tab", { name })).toBeTruthy();
     expect(within(editor).getByRole("grid", { name: "Attributes of Invoice" })).toBeTruthy();
 

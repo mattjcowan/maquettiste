@@ -3,7 +3,10 @@
 // tab adds a definition for a dialect; the Database screen lists it under Types with its DDL, the inspector summarises it; undo
 // takes the steps back, and the inspector's delete removes it through the delete plan.
 import type { Page } from "@playwright/test";
-import { expect, openEditor, test, workspace } from "./fixtures";
+import { expect, openEditor, test, workspace, keepDdlOpen } from "./fixtures";
+
+// The DDL preview is hidden by default; these specs read it.
+test.beforeEach(({ page }) => keepDdlOpen(page));
 
 const editor = (page: Page) => page.getByTestId("element-editor");
 

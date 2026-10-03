@@ -73,6 +73,8 @@ export interface FilterExtra {
   errorIds?: readonly string[];
   /** On this diagram: its members. */
   members?: readonly string[];
+  /** Domain only, or bound to a database: the entities kept. */
+  storageIds?: readonly string[];
 }
 
 /** Whether the chips narrow at all (an unset list or flag does not). */
@@ -85,7 +87,8 @@ export function extraNarrows(extra: FilterExtra | undefined): boolean {
       !!extra.kinds?.length ||
       !!extra.domain ||
       !!extra.errorIds ||
-      !!extra.members)
+      !!extra.members ||
+      !!extra.storageIds)
   );
 }
 
@@ -338,7 +341,8 @@ export class SearchIndex {
     const chipDomain = extra?.domain ? this.domainScope([extra.domain.toLowerCase()]) : undefined;
     const errors = extra?.errorIds ? new Set(extra.errorIds) : undefined;
     const members = extra?.members ? new Set(extra.members) : undefined;
-    if (!kinds.length && !tags.length && !sts.length && !cats && !scope && !chipKinds && !chipDomain && !errors && !members) return undefined;
+    const storage = extra?.storageIds ? new Set(extra.storageIds) : undefined;
+    if (!kinds.length && !tags.length && !sts.length && !cats && !scope && !chipKinds && !chipDomain && !errors && !members && !storage) return undefined;
     const kindOk = (kind: string) => kinds.some((k) => k === kindWord(kind) || k === kindWord(KIND_LABELS[kind as keyof typeof KIND_LABELS] ?? ""));
     return (d) => {
       if (kinds.length && !kindOk(d.kind)) return false;
@@ -346,6 +350,7 @@ export class SearchIndex {
       if (chipDomain && !chipDomain(d)) return false;
       if (errors && !errors.has(d.id)) return false;
       if (members && !members.has(d.id)) return false;
+      if (storage && !storage.has(d.id)) return false;
       if (tags.length && !tags.some((t) => d.tags.includes(t))) return false;
       if (sts.length && !sts.some((t) => d.st.includes(t))) return false;
       if (cats && !(d.cat && cats.has(d.cat.toLowerCase()))) return false;

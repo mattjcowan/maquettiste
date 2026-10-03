@@ -1,6 +1,7 @@
 -- Migration 0001 of database local (SQLite): schema revision 0 to 1.
 -- Written once by Maquettiste (sql-ddl/migration) from the schema diff. It is yours now: review it, adjust it and commit it.
--- Lines marked TODO need a decision the diff cannot make (data conversions, SQLite table rebuilds).
+-- Lines marked TODO need a decision the diff cannot make (data conversions, sequence restarts).
+-- Run it so it stops at the first error: sqlite3 -bail (the sqliteBail parameter writes ".bail on" at the top for the sqlite3 shell).
 
 BEGIN;
 

@@ -1,19 +1,21 @@
-// The query editor (schemas/v1/query.json; engine-design.md section 7, "Queries"): General (the common fields and the result
-// entity), Sources, Select, Filter, Group and order, Parameters, Collections, SQL (the statements the engine renders for a dialect,
+// The query editor (schemas/v1/query.json; engine-design.md section 7, "Queries"): General (the common fields), Sources, Select, Filter, Group and order, Parameters, Collections, SQL (the statements the engine renders for a dialect,
 // with what stops them), JSON, Code generation and References. The trees are edited as data, never as SQL text; every gesture is
-// one edit of the document and one save, so one undo step.
+// one edit of the document and one save, so one undo step. A query is the database's: it knows no entities (the entity side binds
+// an entity to a query on the entity's Storage tab). An older query that names a result entity keeps working, and General says so
+// in one line with Remove, which turns it into an ad hoc row without losing a value.
 import { useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Info } from "lucide-react";
 import { useDatabaseView, useElements, useIndex, useQuerySql } from "@/api/queries";
 import type { DatabaseDoc, Diagnostic, ModelJson, StereotypeDoc } from "@/api/types";
 import { CodeView } from "@/code";
-import { Field, Select } from "@/components/ui/input";
+import { Select } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { EmptyState, Spinner } from "@/components/ui/misc";
 import { CommonFields, DIALECTS, useVocabularies } from "@/inspector/fields";
 import { JsonTab, References } from "@/inspector/Inspector";
 import { EDITOR_TAB_LABELS } from "@/model/labels";
-import { scopeOf, setResultEntity, tidy, type QueryDoc } from "@/model/queryTree";
+import { hasResultEntity, removeResultEntities, scopeOf, tidy, type QueryDoc } from "@/model/queryTree";
 import { domIdOf, EditorLayout, useCodeGenerationTab, useEditorContext, type EditorContext } from "../EditorFrame";
 import { DatabaseLine } from "./fields";
 import { FunctionList, type QueryEnv } from "./queryExpression";
@@ -26,7 +28,6 @@ import {
   SelectSection,
   SourcesSection,
   tableFiles,
-  useEntityShape,
   type BodyUpdate,
   type QueryContext,
 } from "./QueryParts";
@@ -96,7 +97,7 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
           content: (
             <div className="flex max-w-xl flex-col gap-2" data-testid="query-editor-general">
               <CommonFields {...form} inEditorHeader />
-              <ResultEntityField doc={doc} id={form.id} update={update} />
+              <OlderResultEntity doc={doc} update={update} />
             </div>
           ),
         },
@@ -133,40 +134,54 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
 }
 
 /**
- * The result entity: each row has its shape; none: the select list is the row. A field naming what the new entity does not have
- * becomes a named field (its own name, else the old attribute's) with its expression, so nothing is lost (setResultEntity).
+ * An older query's result entity (its own, or a collection's elements'): one line saying where that belongs now, and Remove, which
+ * turns every field that filled an attribute into a named field with its expression and names each such collection after what it
+ * filled (removeResultEntities), as one save and one undo step.
  */
-function ResultEntityField({ doc, id, update }: { doc: QueryDoc; id: string; update: (mutate: (d: QueryDoc) => void) => void }) {
+function OlderResultEntity({ doc, update }: { doc: QueryDoc; update: (mutate: (d: QueryDoc) => void) => void }) {
   const index = useIndex();
   const qc = useQueryClient();
   const vocab = useVocabularies("entity");
-  const entities = useMemo(() => (index.data ?? []).filter((r) => r.kind === "entity").sort((a, b) => a.name.localeCompare(b.name)), [index.data]);
-  const shape = useEntityShape(doc.entity);
-  const choose = async (next: string | null) => {
-    const target = next ? await loadEntityShape(qc, next, index.data, vocab.allStereotypes as StereotypeDoc[]) : null;
-    const has = new Set([...(target?.attributes.map((a) => a.id) ?? []), ...(target?.fills.map((f) => f.id) ?? [])]);
-    const name = (a: string) => shape.attributes.find((x) => x.id === a)?.name ?? shape.fills.find((x) => x.id === a)?.fieldName;
-    update((d) => setResultEntity(d, next, name, (a) => has.has(a)));
+  const [busy, setBusy] = useState(false);
+  if (!hasResultEntity(doc)) return null;
+  const remove = async () => {
+    setBusy(true);
+    try {
+      const stereotypes = vocab.allStereotypes as StereotypeDoc[];
+      const shapeOf = (entity: string | null | undefined) => (entity ? loadEntityShape(qc, entity, index.data, stereotypes) : Promise.resolve(null));
+      const top = await shapeOf(doc.entity);
+      const elements = await Promise.all(
+        (doc.collections ?? []).map((c) => shapeOf(c.entity ?? top?.collections.find((t) => t.value === c.attribute)?.entity)),
+      );
+      const nameIn = (shape: Awaited<ReturnType<typeof shapeOf>>) => (a: string) =>
+        shape?.attributes.find((x) => x.id === a)?.name ?? shape?.fills.find((x) => x.id === a)?.fieldName;
+      update((d) =>
+        removeResultEntities(
+          d,
+          nameIn(top),
+          (a) => top?.collections.find((t) => t.value === a)?.name,
+          (i) => nameIn(elements[i] ?? null),
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
   };
   return (
-    <Field
-      label="Result entity"
-      htmlFor={`${id}-entity`}
-      hint={
-        doc.entity
-          ? "Each row has this entity's shape: the Select tab fills its attributes."
-          : `No entity: each row is the select list, an ad hoc shape of ${doc.select.length} ${doc.select.length === 1 ? "field" : "fields"}.`
-      }
-    >
-      <Select id={`${id}-entity`} value={doc.entity ?? ""} onChange={(e) => void choose(e.target.value || null)}>
-        <option value="">(none: an ad hoc row)</option>
-        {entities.map((e) => (
-          <option key={e.id} value={e.id}>
-            {e.name}
-          </option>
-        ))}
-      </Select>
-    </Field>
+    <div className="flex items-center gap-2 rounded-control border border-default p-1 text-12" data-testid="query-older-result-entity">
+      <Info className="size-3.5 shrink-0 text-secondary" aria-hidden />
+      <span className="min-w-0 flex-1">An older result entity is set; bind the entity to this query on its Storage tab instead.</span>
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={busy}
+        title="Make each row an ad hoc shape: every field keeps its value under a name"
+        onClick={() => void remove()}
+        data-testid="query-older-result-entity-remove"
+      >
+        Remove
+      </Button>
+    </div>
   );
 }
 

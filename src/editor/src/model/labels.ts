@@ -199,11 +199,14 @@ export const GROUP_LABELS = {
   members: "Members",
   ends: "Ends",
   mappings: "Mappings",
+  storage: "Storage",
   columns: "Columns",
   primaryKey: "Primary key",
   foreignKeys: "Foreign keys",
   uniques: "Unique constraints",
   indexes: "Indexes",
+  checks: "Checks",
+  referencedBy: "Referenced by",
 } as const;
 
 /** The element editor's frame. */
@@ -220,6 +223,7 @@ export const EDITOR_TAB_LABELS = {
   relationships: "Relationships",
   indexes: GROUP_LABELS.indexes,
   mappings: GROUP_LABELS.mappings,
+  storage: GROUP_LABELS.storage,
   inheritance: "Inheritance",
   seedData: "Seed data",
   codeGeneration: "Code generation",
@@ -282,7 +286,6 @@ export const SCREEN_LABELS: Record<Workspace, string> = {
   entities: "Domain model",
   "reference-data": "Reference data",
   database: "Databases",
-  mappings: "Mappings",
   generate: "Generate",
   settings: "Settings",
 };

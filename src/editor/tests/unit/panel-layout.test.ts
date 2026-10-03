@@ -19,11 +19,13 @@ describe("layout", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => vi.useRealTimers());
 
-  it("opens every panel at the default sizes when nothing is saved", () => {
+  it("opens every panel but the DDL preview at the default sizes when nothing is saved", () => {
     expect(readLayout()).toEqual(DEFAULT_LAYOUT);
     const s = createEditorStore().getState();
     expect([s.explorerCollapsed, s.inspectorCollapsed, s.bottomCollapsed, s.tabsCollapsed, s.topbarCollapsed]).toEqual([false, false, false, false, false]);
     expect([s.explorerSize, s.inspectorSize, s.bottomSize]).toEqual([280, 360, 220]);
+    // The Database screen gives its diagram the room: a narrow list, the DDL preview behind its edge.
+    expect([s.tablesCollapsed, s.ddlCollapsed, s.tablesSize, s.ddlSize]).toEqual([false, true, 176, 400]);
   });
 
   it("reads the sizes-only format of 0.2.0 and clamps bad values", () => {
@@ -51,7 +53,8 @@ describe("layout", () => {
   it("saves every panel's toggle at once and brings it back in a new store", () => {
     const store = createEditorStore();
     const stop = watchLayout(store);
-    for (const panel of PANELS) store.getState().toggle(panel);
+    // Every panel hidden (the DDL preview starts hidden: its toggle with a value leaves it so).
+    for (const panel of PANELS) store.getState().toggle(panel, true);
     store.getState().pinExplorer("databases");
     stop();
     expect(JSON.parse(localStorage.getItem(LAYOUT_KEY)!).collapsed).toEqual([
@@ -96,7 +99,7 @@ describe("layout", () => {
     expect(JSON.parse(localStorage.getItem(LAYOUT_KEY)!).inspector).toBe(400);
   });
 
-  it("Reset layout opens every panel at the default sizes, unpins and clears what was saved", () => {
+  it("Reset layout opens every panel (the DDL preview back behind its edge) at the default sizes, unpins and clears what was saved", () => {
     const store = createEditorStore();
     const stop = watchLayout(store);
     store.getState().toggle("inspector");
@@ -106,12 +109,13 @@ describe("layout", () => {
     store.getState().toggle("packFiles");
     store.getState().toggle("unitHelp");
     store.getState().pinExplorer("diagrams");
-    store.setState({ explorerSize: 400, templatePreviewSize: 700 });
+    store.setState({ explorerSize: 400, templatePreviewSize: 700, tablesSize: 300, ddlSize: 600 });
     stop();
     store.getState().resetLayout();
     const s = store.getState();
     expect([s.explorerCollapsed, s.inspectorCollapsed, s.bottomCollapsed, s.tabsCollapsed, s.topbarCollapsed]).toEqual([false, false, false, false, false]);
-    expect([s.tablesCollapsed, s.ddlCollapsed]).toEqual([false, false]);
+    expect([s.tablesCollapsed, s.ddlCollapsed]).toEqual([false, true]);
+    expect([s.tablesSize, s.ddlSize]).toEqual([176, 400]);
     expect([s.packFilesCollapsed, s.templatePreviewCollapsed, s.unitHelpCollapsed]).toEqual([false, false, false]);
     expect(s.explorerSize).toBe(280);
     expect([s.packFilesSize, s.templatePreviewSize, s.unitHelpSize]).toEqual([192, 360, 256]);
@@ -120,9 +124,12 @@ describe("layout", () => {
     expect(localStorage.getItem(PINNED_KEY)).toBeNull();
   });
 
-  it("keeps the Database screen's two panels in the layout, keyed to that screen", () => {
+  it("keeps the Database screen's two panels and their widths in the layout, keyed to that screen", () => {
     localStorage.setItem(LAYOUT_KEY, JSON.stringify({ collapsed: ["tables", "ddl"] }));
     expect(readLayout().collapsed).toMatchObject({ tables: true, ddl: true, explorer: false });
+    // A saved list says every panel: the DDL preview opened once stays open.
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ collapsed: [], tables: 250, ddl: 9000 }));
+    expect(readLayout()).toMatchObject({ collapsed: { tables: false, ddl: false }, tablesSize: 250, ddlSize: 800 });
     expect(SCREEN_PANELS).toMatchObject({ tables: "database", ddl: "database" });
     expect(PANEL_KEYS.tables.label).toBe("Alt+Shift+L");
     expect(PANEL_KEYS.ddl.label).toBe("Alt+Shift+D");

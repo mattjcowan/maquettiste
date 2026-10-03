@@ -80,7 +80,8 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     Database: Text(item, "database"),
                     Entities: Texts(item, "entities"),
                     Tables: Texts(item, "tables"),
-                    Package: Text(item, "package")));
+                    Package: Text(item, "package"),
+                    ExpectedHashes: Map(item, "expectedHashes")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);
@@ -90,6 +91,11 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
     private static IReadOnlyList<string>? Texts(JsonElement item, string name) =>
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
             ? [.. value.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!)]
+            : null;
+
+    private static Dictionary<string, string>? Map(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object
+            ? value.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.Ordinal)
             : null;
 
     private static string? Text(JsonElement item, string name) =>

@@ -22,8 +22,8 @@ internal sealed record MaterializeOp(BatchOp Op, string Id, string? Hash, JsonOb
 /// <param name="Refusal">Why the operation is refused (nothing is planned), or <see langword="null"/>.</param>
 /// <param name="Ops">The changes, in the order they are applied.</param>
 /// <param name="Notes">What the operation leaves as it is, in words.</param>
-/// <param name="Database">The database's name, for the snapshot rewrite.</param>
-/// <param name="Rekeys">The projected tables that became designed tables, with their keys before and after (the snapshot rewrite).</param>
+/// <param name="Database">The database's name, for the snapshot's aliases.</param>
+/// <param name="Rekeys">The projected tables that became designed tables, with their keys before and after (the snapshot's aliases).</param>
 /// <param name="Sequences">The key sequences that became sequence files, by their synthesized key.</param>
 internal sealed record MaterializeResult(string? Refusal, IReadOnlyList<MaterializeOp> Ops, IReadOnlyList<string> Notes, string? Database = null,
     IReadOnlyList<SchemaDiff.TableRekey>? Rekeys = null, IReadOnlyDictionary<string, string>? Sequences = null);
@@ -34,9 +34,11 @@ internal sealed record MaterializeResult(string? Refusal, IReadOnlyList<Material
 /// entity's table overlay into the table and deleting its mapping element); <c>materialize-entities</c> writes, for each designed or
 /// imported table or view, an entity with one attribute per column, its key from the primary key, a binding, and many-to-one
 /// relations for the foreign keys between the tables (or towards tables an entity is already bound to). Everything is planned against
-/// one snapshot; the caller applies the changes all or nothing.
+/// one snapshot; the caller applies the changes all or nothing. A table (or key sequence) stored again after an undo takes back the
+/// ids the committed snapshot's alias recorded for its projected key, whenever no file holds them now (<paramref name="aliases"/>):
+/// storing again then yields the same table, column and sequence ids, the alias stays as it is, and the next migration sees one table.
 /// </summary>
-internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolver, IIdGenerator ids, int parallelism)
+internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolver, IIdGenerator ids, int parallelism, IReadOnlyList<SnapshotAlias>? aliases = null)
 {
     private readonly Dictionary<string, (string? Hash, JsonObject Node, BatchOp Op, string Because)> _work = new(StringComparer.Ordinal);
     private readonly List<string> _order = [];
@@ -85,10 +87,22 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             if (table is null)
                 return Refused($"Entity '{entity.Name}' has no table of its own in database '{db.Name}'.");
             var overlay = snapshot.All<Table>().FirstOrDefault(t => t.Database == db.Id && t.Origin == TableOrigin.Synthesized && t.Entity == entity.Id && t.Attribute is null);
+            var tableId = overlay?.Id ?? Reused(table.Key, "table") ?? ids.NewId();
+            var known = AliasOf(table.Key, "table") is { } alias && alias.Alias == tableId ? alias.Columns : null;
             var columns = new Dictionary<string, string>(StringComparer.Ordinal);
+            var taken = new HashSet<string>(StringComparer.Ordinal);
             foreach (var column in table.Columns)
-                columns[column.Key] = overlay?.Columns.FirstOrDefault(c => c.Attribute == column.Key || (c.Attribute is null && c.Id == column.Key))?.Id ?? ids.NewId();
-            tables[table.Key] = (entity, table, overlay, overlay?.Id ?? ids.NewId(), columns);
+            {
+                var id = overlay?.Columns.FirstOrDefault(c => c.Attribute == column.Key || (c.Attribute is null && c.Id == column.Key))?.Id;
+                if (id is null && known?.GetValueOrDefault(column.Key) is { } was && !taken.Contains(was)
+                    && overlay?.Columns.Any(c => c.Id == was) != true)
+                    id = was;
+                id ??= ids.NewId();
+                taken.Add(id);
+                columns[column.Key] = id;
+            }
+
+            tables[table.Key] = (entity, table, overlay, tableId, columns);
             if (overlay is not null)
                 tables[overlay.Id] = tables[table.Key];
             foreach (var child in rdb.Tables.Where(t => t.Entity?.Id == entity.Id && t.Attribute is not null))
@@ -180,7 +194,12 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                 c["precision"] = precision;
             if (column.Scale is { } scale)
                 c["scale"] = scale;
-            var rendered = column.NativeType is null ? null : DialectTypeMaps.Render(typeMap, type, column.Length, column.Precision, column.Scale, conventions);
+            var rendered = column.NativeType is null ? null
+                : DialectTypeMaps.Render(typeMap, DialectTypeMaps.VariantKey(typeMap, type, column.FixedLength, column.Unicode), column.Length, column.Precision, column.Scale, conventions);
+            if (column.Unicode is { } unicode)
+                c["unicode"] = unicode;
+            if (column.FixedLength)
+                c["fixedLength"] = true;
             if (entry?.NativeType is { } native)
                 c["nativeType"] = native;
             else if (column.NativeType is { } computedNative && !string.Equals(computedNative, rendered, StringComparison.Ordinal))
@@ -193,9 +212,22 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                 c["defaultSql"] = JsonSerializer.SerializeToNode(entry.DefaultSql);
             else if (column.DefaultSql is { } sql)
                 c["defaultSql"] = new JsonObject { [dialect] = sql };
+            if (column.DefaultName is { } defaultName)
+                c["defaultName"] = defaultName;
             if (column.Identity)
             {
                 c["generated"] = "identity";
+                if (column.IdentitySeed is not null || column.IdentityIncrement is not null || column.IdentityAlways)
+                {
+                    var identity = new JsonObject();
+                    if (column.IdentitySeed is { } seed)
+                        identity["seed"] = seed;
+                    if (column.IdentityIncrement is { } increment)
+                        identity["increment"] = increment;
+                    if (column.IdentityAlways)
+                        identity["always"] = true;
+                    c["identity"] = identity;
+                }
             }
             else if (column.Sequence is { } sequence)
             {
@@ -230,9 +262,12 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             node["primaryKey"] = key;
         }
 
-        node["uniques"] = new JsonArray([.. table.Uniques.Select(u => (JsonNode)new JsonObject
+        node["uniques"] = new JsonArray([.. table.Uniques.Select(u =>
         {
-            ["id"] = u.Id ?? ids.NewId(), ["name"] = u.Name, ["columns"] = new JsonArray([.. u.Columns.Select(c => (JsonNode)Col(c))]),
+            var x = new JsonObject { ["id"] = u.Id ?? ids.NewId(), ["name"] = u.Name, ["columns"] = new JsonArray([.. u.Columns.Select(c => (JsonNode)Col(c))]) };
+            if (u.NullsNotDistinct)
+                x["nullsNotDistinct"] = true;
+            return (JsonNode)x;
         })]);
 
         var foreignKeys = new JsonArray();
@@ -241,7 +276,7 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             var target = fk.ReferencedTable;
             var materialized = tables.TryGetValue(target.Key, out var other) ? other : default;
             var fkId = fk.Id ?? ids.NewId();
-            foreignKeys.Add(new JsonObject
+            var fkNode = new JsonObject
             {
                 ["id"] = fkId,
                 ["name"] = fk.Name,
@@ -250,7 +285,10 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                 ["referencesColumns"] = new JsonArray([.. fk.ReferencedColumns.Select(c => (JsonNode)(materialized.Columns is { } map ? map[c.Key] : c.Key))]),
                 ["onDelete"] = fk.OnDelete,
                 ["onUpdate"] = fk.OnUpdate,
-            });
+            };
+            if (fk.Deferrable != "not-deferrable")
+                fkNode["deferrable"] = fk.Deferrable;
+            foreignKeys.Add(fkNode);
             if (fk.Relation is { } relation && snapshot.Get<Relation>(relation.Id) is not null)
                 relationKeys[relation.Id] = fkId;
             if (target.Origin == "synthesized" && materialized.Id is null)
@@ -262,22 +300,36 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
         foreach (var check in table.Checks)
         {
             var file = overlay?.Checks.FirstOrDefault(x => x.Id == check.Id);
-            checks.Add(new JsonObject
+            var checkNode = new JsonObject
             {
                 ["id"] = check.Id ?? ids.NewId(),
                 ["name"] = check.Name,
                 ["expression"] = file is not null ? JsonSerializer.SerializeToNode(file.Expression) : new JsonObject { ["*"] = check.Expression },
-            });
+            };
+            if (check.Column is { } checkColumn)
+                checkNode["column"] = Col(checkColumn);
+            checks.Add(checkNode);
         }
 
         node["checks"] = checks;
+        JsonNode IndexColumnNode(RIndexColumn c)
+        {
+            var x = c.Column is { } column
+                ? new JsonObject { ["column"] = Col(column) }
+                : new JsonObject { ["expression"] = new JsonObject { [table.Database.Dialect] = c.Expression } };
+            x["descending"] = c.Descending;
+            if (c.Length is { } length)
+                x["length"] = length;
+            return x;
+        }
+
         node["indexes"] = new JsonArray([.. table.Indexes.Select(index =>
         {
             var x = new JsonObject
             {
                 ["id"] = index.Id ?? ids.NewId(),
                 ["name"] = index.Name,
-                ["columns"] = new JsonArray([.. index.Columns.Select(c => (JsonNode)new JsonObject { ["column"] = Col(c.Column), ["descending"] = c.Descending })]),
+                ["columns"] = new JsonArray([.. index.Columns.Select(IndexColumnNode)]),
                 ["include"] = new JsonArray([.. index.Include.Select(c => (JsonNode)Col(c))]),
                 ["unique"] = index.Unique,
                 ["method"] = index.Method,
@@ -292,7 +344,7 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
     /// <summary>A sequence file for a key sequence the projection synthesized, which a bound entity no longer gets.</summary>
     private string CreateSequence(Database db, RSequence sequence, string? schema)
     {
-        var id = ids.NewId();
+        var id = Reused(sequence.Id, "sequence") ?? ids.NewId();
         _sequenceKeys[sequence.Id] = id;
         var node = new JsonObject { ["kind"] = "sequence", ["id"] = id, ["name"] = sequence.Name, ["database"] = db.Id, ["type"] = sequence.Type };
         if (schema is not null)
@@ -810,6 +862,20 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
 
         return null;
     }
+
+    // ---- ids stored before -------------------------------------------------------------------------------------------------------
+
+    private readonly HashSet<string> _reused = new(StringComparer.Ordinal);
+
+    /// <summary>The committed snapshot's alias of a synthesized key (the last one recorded), or <see langword="null"/>.</summary>
+    private SnapshotAlias? AliasOf(string key, string kind) => aliases?.LastOrDefault(a => a.Key == key && a.Kind == kind);
+
+    /// <summary>
+    /// The id a table or sequence file had when the key was stored before (the alias), when no element holds it now and this operation
+    /// has not given it out already; otherwise <see langword="null"/>.
+    /// </summary>
+    private string? Reused(string key, string kind) =>
+        AliasOf(key, kind) is { } alias && snapshot.GetDocument(alias.Alias) is null && !_work.ContainsKey(alias.Alias) && _reused.Add(alias.Alias) ? alias.Alias : null;
 
     // ---- working set ------------------------------------------------------------------------------------------------------------
 

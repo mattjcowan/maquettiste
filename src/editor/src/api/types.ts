@@ -64,6 +64,17 @@ export type TableView = S["TableView"];
 export type ColumnView = S["ColumnView"];
 export type ForeignKeyView = S["ForeignKeyView"];
 export type ViewView = S["ViewView"];
+// Bindings and materialize (erratum E43)
+export type BoundByView = S["BoundByView"];
+export type BindingSqlResult = S["BindingSqlResult"];
+export type BindingSqlPreview = S["BindingSqlPreview"];
+export type BindingStatement = S["BindingStatement"];
+export type MaterializeBody = S["MaterializeBody"];
+export type MaterializePlan = S["MaterializePlan"];
+export type MaterializeChange = S["MaterializeChange"];
+export type MaterializeStatus = S["MaterializeStatus"];
+export type MaterializeEntityStatus = S["MaterializeEntityStatus"];
+export type MaterializeSourceStatus = S["MaterializeSourceStatus"];
 export type SequenceView = S["SequenceView"];
 export type RoutineView = S["RoutineView"];
 export type DatabaseTypeView = S["DatabaseTypeView"];

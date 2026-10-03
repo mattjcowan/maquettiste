@@ -1,9 +1,12 @@
 // New table… (the owner: "where do i create a new table, view, function, procedure in the UI?"): from a database's row menu in
 // the Databases explorer, a designed table is created in one step and opens in its editor; its Columns tab adds and edits
-// columns in the column grid, its Keys tab adds a unique constraint; the table shows in the Database screen's list and DDL
+// columns in the column grid, its Unique constraints tab adds a unique constraint; the table shows in the Database screen's list and DDL
 // preview; each gesture is one undo step, and undoing the create removes the table.
 import type { Page } from "@playwright/test";
-import { expect, openEditor, test, workspace } from "./fixtures";
+import { expect, openEditor, test, workspace, keepDdlOpen } from "./fixtures";
+
+// The DDL preview is hidden by default; these specs read it.
+test.beforeEach(({ page }) => keepDdlOpen(page));
 
 const explorer = (page: Page) => page.getByRole("complementary", { name: "Explorer" });
 const editor = (page: Page) => page.getByTestId("element-editor");
@@ -21,7 +24,8 @@ test("New table… creates a designed table, its editor edits columns and keys, 
   await expect(dialog).toHaveAttribute("data-kind", "table");
   await expect(dialog.getByLabel("Schema")).toHaveValue("");
   await expect(dialog.getByRole("option", { name: "billing (default)" })).toHaveCount(1);
-  await expect(dialog.getByText("Designed table (its own columns)")).toBeVisible();
+  // The database side makes tables of their own: nothing names what else might lay a table out.
+  await expect(dialog).not.toContainText(/entity|projected|mapping/i);
   // The identifier rule is checked as typed.
   await dialog.getByLabel("Name").fill("audit log");
   await expect(page.getByTestId("new-db-name-problem")).toHaveText("Use letters, digits and underscores, not starting with a digit.");
@@ -49,10 +53,11 @@ test("New table… creates a designed table, its editor edits columns and keys, 
   await page.keyboard.press("Enter");
   await expect(grid.getByTestId("column-row-created_at")).toBeVisible();
 
-  // Keys: the primary key is there; Add unique starts on the first column.
-  await editor(page).getByRole("tab", { name: "Keys" }).click();
+  // Primary key: it is there. Unique constraints: Add starts on the first column.
+  await editor(page).getByRole("tab", { name: "Primary key" }).click();
   await expect(page.getByTestId("keys-primary")).toContainText("id");
-  await page.getByTestId("keys-add-uniques").click();
+  await editor(page).getByRole("tab", { name: "Unique constraints" }).click();
+  await page.getByTestId("table-add-unique").click();
   await expect(page.getByTestId("keys-uniques")).toBeVisible();
 
   // A column picked in the grid shows in the inspector; Delete column removes it, and Undo brings it back.
@@ -95,7 +100,7 @@ test("New table… creates a designed table, its editor edits columns and keys, 
   await expect(page.getByTestId("database-table-audit_log")).toHaveCount(0);
 });
 
-test("the explorer's New menu offers the database's New actions, and New table… points to the Mappings tab for a projected table", async ({ page }) => {
+test("the explorer's New menu offers the database's New actions", async ({ page }) => {
   await openEditor(page);
   await workspace(page, "Databases");
   const tree = explorer(page).getByTestId("explorer-tree");
@@ -104,8 +109,8 @@ test("the explorer's New menu offers the database's New actions, and New table�
   for (const kind of ["schema", "table", "view", "sequence"]) await expect(page.getByTestId(`explorer-new-${kind}`)).toBeVisible();
   await page.getByTestId("explorer-new-table").click();
   await expect(page.getByTestId("new-database-object-dialog")).toHaveAttribute("data-kind", "table");
-  // A projected table comes from a mapping: the dialog's link opens the Mappings tab.
-  await page.getByTestId("new-db-open-mappings").click();
-  await expect(page.getByTestId("new-database-object-dialog")).toHaveCount(0);
-  await expect(page).toHaveURL(/\/mappings/);
+  // The database side knows no entities: no hint, no link to a mapping screen.
+  await expect(page.getByTestId("new-db-table-hint")).toHaveCount(0);
+  await expect(page.getByTestId("new-db-open-mappings")).toHaveCount(0);
+  await expect(page.getByTestId("new-database-object-dialog")).not.toContainText(/entit/i);
 });

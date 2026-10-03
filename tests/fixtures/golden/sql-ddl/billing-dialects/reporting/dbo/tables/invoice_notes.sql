@@ -9,4 +9,4 @@ CREATE TABLE dbo.invoice_notes (
     created_at datetimeoffset(6) NULL,
     CONSTRAINT pk_invoice_notes PRIMARY KEY (id)
 );
-EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'A note on an invoice. Stored in the shared notes table with entity_type ''invoice''.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoice_notes';
+BEGIN DECLARE @mq_rc1 int; EXEC @mq_rc1 = sys.sp_addextendedproperty @name = N'MS_Description', @value = N'A note on an invoice. Stored in the shared notes table with entity_type ''invoice''.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoice_notes'; IF @mq_rc1 <> 0 THROW 50000, N'sys.sp_addextendedproperty failed: the migration stops here.', 1; END;

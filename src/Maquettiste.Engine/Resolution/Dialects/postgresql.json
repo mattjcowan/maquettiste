@@ -1,5 +1,6 @@
 {
   "binary": "bytea",
+  "binary:fixed": "bytea",
   "bool": "boolean",
   "date": "date",
   "datetime": "timestamp({precision})",
@@ -13,6 +14,7 @@
   "int64": "bigint",
   "json": "jsonb",
   "string": "varchar({length})",
+  "string:fixed": "char({length})",
   "text": "text",
   "time": "time({precision})",
   "ulid": "char(26)",

@@ -1,19 +1,19 @@
 // The file behind a resolved table and the one way it is written, shared by the Database screen's column grid and the table
-// inspector: a designed or imported table is its own file; a synthesized (projected) table's file is its overlay, found by
-// what it overrides, and created on the first edit (a column's field, or a table field from the inspector). Every write is
-// one save of that file (or one create of the overlay), so one undo step. Writes for a table run one after another across the
-// grid and the inspector (a second edit before the first overlay exists must not create a second overlay), each reading the
-// latest file.
+// inspector: a designed or imported table is its own file. A table the model lays out by convention is stored as a table file
+// on its first edit (storeTables.ts), the edit then made on that file, as one undo step; one that cannot be stored yet (a child
+// or junction table) keeps its adjustments in the file that adjusts it, found by what it adjusts and created on the first edit.
+// Every write is one save of that file, so one undo step. Writes for a table run one after another across the grid, the
+// inspector and the table editor's tabs (the one queue per table, `enqueueTableWrite`: a second edit before the first stored the
+// table, or created its file, must not store or create it again), each reading the latest file.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ColumnView, TableView } from "@/api/types";
-import { invalidateResolved, useElements, useIndex } from "@/api/queries";
+import { invalidateResolved, useDatabaseView, useElements, useIndex } from "@/api/queries";
 import { useServices } from "@/app/context";
 import { useElementEdits } from "@/editors/mappingEdit";
 import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
 import {
-  columnDerivations,
   columnFieldProblem,
   emptyOverlay,
   isOverlayFor,
@@ -23,11 +23,11 @@ import {
   tableFileTarget,
   type ColumnEditField,
   type ColumnValue,
-  type Derivation,
 } from "./columnEdits";
+import { enqueueTableWrite, storeThenEdit, useStorableTables } from "./storeTables";
+import { renameTableColumn } from "./columnRename";
 
-/** Per table (database and key): the queue of its writes, and the overlay a write created before the index lists it. */
-const queues = new Map<string, Promise<void>>();
+/** Per table (database and key): the overlay a write created before the index lists it. */
 const created = new Map<string, string>();
 
 /** One write of the table's file: `apply` edits the document (false: it has no place for the edit, said as `refused`). */
@@ -41,8 +41,12 @@ interface TableWrite {
 
 export function useTableFile(table: TableView | null, databaseId: string | null) {
   const qc = useQueryClient();
-  const { store } = useServices();
+  const services = useServices();
+  const { store } = services;
   const edits = useElementEdits();
+  const view = useDatabaseView(databaseId);
+  const storable = useStorableTables(databaseId, view.data?.view?.tables);
+  const owner = table ? storable.get(table.key) : undefined;
   const index = useIndex();
   const target = useMemo(() => (table && databaseId ? tableFileTarget(table, databaseId) : null), [table, databaseId]);
   const candidates = useMemo(
@@ -61,14 +65,25 @@ export function useTableFile(table: TableView | null, databaseId: string | null)
   useEffect(() => {
     if (fileId) created.delete(queueKey);
   }, [fileId, queueKey]);
-  const latest = useRef({ fileId, fileJson, pending: docs.pending, target });
-  latest.current = { fileId, fileJson, pending: docs.pending, target };
+  const latest = useRef({ fileId, fileJson, pending: docs.pending, target, owner, table });
+  latest.current = { fileId, fileJson, pending: docs.pending, target, owner, table };
   const [busy, setBusy] = useState(0);
 
   const run = useCallback(
     async (write: TableWrite): Promise<boolean> => {
-      const { fileId: known, fileJson: json, pending, target: to } = latest.current;
+      const { fileId: known, fileJson: json, pending, target: to, owner: storableAs, table: shown } = latest.current;
       if (!to || !databaseId) return false;
+      // A table the model lays out: stored as a table file first, the edit then made on the file.
+      if (storableAs && shown) {
+        const done = await storeThenEdit(services, qc, {
+          database: databaseId,
+          table: shown,
+          owner: storableAs,
+          label: write.label,
+          edit: (doc) => void write.apply(doc),
+        });
+        return !!done;
+      }
       const id = known ?? created.get(queueKey) ?? null;
       if (!id && pending && to.kind === "overlay") {
         store.getState().notify("The table's files are still loading; try again in a moment.", "error");
@@ -95,27 +110,21 @@ export function useTableFile(table: TableView | null, databaseId: string | null)
       invalidateResolved(qc);
       return done;
     },
-    [databaseId, queueKey, store, edits, qc],
+    [databaseId, queueKey, store, edits, qc, services],
   );
 
   /** Queues a write behind the table's earlier ones; a failure is said, keyed by `subject`. Resolves to whether it was written. */
   const enqueue = useCallback(
     (subject: string, write: TableWrite): Promise<boolean> => {
       setBusy((n) => n + 1);
-      const next = (queues.get(queueKey) ?? Promise.resolve())
-        .then(() => run(write))
+      return enqueueTableWrite(databaseId ?? "", table?.key ?? "", () => run(write))
         .catch((e: unknown) => {
           store.getState().notify(`${subject}: ${(e as Error).message}`, "error");
           return false;
         })
         .finally(() => setBusy((n) => n - 1));
-      queues.set(
-        queueKey,
-        next.then(() => undefined),
-      );
-      return next;
     },
-    [queueKey, run, store],
+    [databaseId, table?.key, run, store],
   );
 
   /** Writes one field of one column; a value the field cannot take is said, not saved. */
@@ -126,13 +135,23 @@ export function useTableFile(table: TableView | null, databaseId: string | null)
         store.getState().notify(`Column ${column.name}: ${problem}`, "error");
         return;
       }
-      void enqueue(`Column ${column.name}`, {
+      const edit = {
         label: `Edit column ${column.name}`,
-        apply: (doc) => setColumnField(doc, column, field, value, newId),
+        apply: (doc: Record<string, unknown>) => setColumnField(doc, column, field, value, newId),
         refused: `Column ${column.name}: this ${field} cannot be edited here; use the table's JSON view.`,
-      });
+      };
+      // A rename rewrites what names the column too (columnRename.ts); a table that keeps its columns in an adjusting file
+      // (a child or junction table) takes the name there.
+      if (field === "name" && typeof value === "string" && table && databaseId) {
+        if (!value.trim() || value.trim() === column.name) return;
+        void renameTableColumn(services, qc, { database: databaseId, key: table.key, column: column.key, to: value })
+          .then((done) => (done === null ? enqueue(`Column ${column.name}`, edit) : done))
+          .catch((e: unknown) => store.getState().notify(`Column ${column.name}: ${(e as Error).message}`, "error"));
+        return;
+      }
+      void enqueue(`Column ${column.name}`, edit);
     },
-    [enqueue, store],
+    [enqueue, store, services, qc, table, databaseId],
   );
 
   /** Writes the table's own fields (`update` edits the document); a projected table's first write creates its overlay. */
@@ -150,43 +169,5 @@ export function useTableFile(table: TableView | null, databaseId: string | null)
     [enqueue, table?.name],
   );
 
-  return { target, fileId, fileJson, pending: docs.pending, write, writeTable, busy: busy > 0 };
-}
-
-/** What each column of a table derives from (`columnDerivations`): its entity's document, its base entities' and the stereotypes'. */
-export function useColumnDerivations(table: TableView | null): Map<string, Derivation> {
-  const index = useIndex();
-  type Doc = { id?: unknown; key?: unknown; name?: unknown; base?: unknown; stereotypes?: unknown; attributes?: unknown };
-  // The entity and its bases, one level per load (a base's id is in the document above it), at most 16 deep.
-  const [chain, setChain] = useState<string[]>([]);
-  const ids = useMemo(() => (table?.entityId ? [table.entityId, ...chain] : []), [table?.entityId, chain]);
-  const docs = useElements(ids);
-  const stereotypeIds = useMemo(() => (index.data ?? []).filter((r) => r.kind === "stereotype").map((r) => r.id), [index.data]);
-  const stereotypeDocs = useElements(stereotypeIds);
-  const lineage = ids.map((id) => docs.byId.get(id)?.json as Doc | undefined);
-  const last = lineage[lineage.length - 1];
-  const nextBase = typeof last?.base === "string" && !ids.includes(last.base) && ids.length < 16 ? last.base : null;
-  useEffect(() => {
-    if (nextBase) setChain((c) => (c.includes(nextBase) ? c : [...c, nextBase]));
-  }, [nextBase]);
-  return useMemo(() => {
-    if (!table) return new Map<string, Derivation>();
-    const rows = index.data ?? [];
-    const docOf = (id: string) => docs.byId.get(id)?.json as Doc | undefined;
-    return columnDerivations(
-      table,
-      docOf(ids[0] ?? ""),
-      (ref) => {
-        const row = rows.find((r) => r.id === ref);
-        return row ? row.displayName || row.name : undefined;
-      },
-      {
-        bases: ids
-          .slice(1)
-          .map(docOf)
-          .filter((d): d is Doc => !!d),
-        stereotypes: stereotypeIds.map((id) => stereotypeDocs.byId.get(id)?.json as Doc | undefined).filter((d): d is Doc => !!d),
-      },
-    );
-  }, [table, ids, index.data, docs.byId, stereotypeIds, stereotypeDocs.byId]);
+  return { target, fileId, fileJson, pending: docs.pending, write, writeTable, busy: busy > 0, owner };
 }

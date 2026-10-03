@@ -1,5 +1,5 @@
 {
-  "id": "01M3ZRT8DX9Q29P2K8MJWA1ND4",
+  "id": "01M40H3B7NCBAJ3SBVZW3J5FPF",
   "request": {
     "mode": "apply",
     "packs": null,
@@ -86,7 +86,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/migration:01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "o:4b6951c6db4b690f870a67a03067afcd90b4123e81ac7a5512f6b2be771881f1",
+      "newHash": "o:c52987a4236ddd0eadebb6bfea68de3299d70c89506408b20c54c7c9cef589e2",
       "diff": null
     },
     {

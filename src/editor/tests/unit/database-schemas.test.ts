@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { conventionOf, newDatabaseConvention, setConvention } from "@/model/databaseMapping";
+import { conventionOf, setConvention } from "@/model/databaseMapping";
+import { stopConvention } from "@/workspaces/settings/DatabaseConvention";
 import { applySchemaOperation, defaultSchemaId, occupantsOf, schemaForEntity, schemasOf, type SchemaOp } from "@/model/databaseSchemas";
 
 type Json = Record<string, unknown>;
@@ -34,7 +35,13 @@ describe("database schemas (erratum E26)", () => {
     expect(json.packages).toEqual(["P1", { package: "P2", schema: "S2" }, "P3"]);
     setConvention(json, "packages", ["P1", "P2"], { P1: "S2" });
     expect(json.packages).toEqual([{ package: "P1", schema: "S2" }, "P2"]);
-    expect(newDatabaseConvention("pick", ["B", "A"], { B: "S1" }).packages).toEqual(["A", { package: "B", schema: "S1" }]);
+    // Stopping one domain keeps the others with their schemas; stopping the last leaves none.
+    const stopped = db();
+    stopConvention(stopped, "P1");
+    expect(stopped).toMatchObject({ byConvention: "packages", packages: [{ package: "P2", schema: "S2" }] });
+    stopConvention(stopped, "P2");
+    expect(stopped.byConvention).toBe("none");
+    expect(stopped).not.toHaveProperty("packages");
   });
 
   it("places a table: the mapping, else the nearest convention entry up the package tree, else the default", () => {

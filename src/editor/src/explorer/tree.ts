@@ -10,6 +10,7 @@ import type { Diagnostic, ElementDocument, ElementSummary, ExplorerFolder, Table
 import type { AttributeDoc } from "@/api/types";
 import { attributesOf, typeLabel } from "@/model/model";
 import { tableKeyOf } from "@/search/engine";
+import type { TablePart, TablePartKind } from "@/workspaces/database/tableParts";
 import { patchesBetween, type IndexPatch } from "@/api/indexPatch";
 import {
   EXPLORER_LABELS,
@@ -68,6 +69,10 @@ export interface TreeNode {
   table?: TableSummary;
   /** A column row (from the table's detail): the attribute mapped onto it (`ColumnView.attributeId`), null for none. */
   attribute?: string | null;
+  /** A row under a table (a column, a key, an index, a check, or a folder of them): the part it stands for, or the kind a
+   * folder lists (`id` empty); a "Referenced by" row names the referencing table in `partTable`. */
+  part?: TablePart;
+  partTable?: string;
   /** Child keys; undefined until `childKeys` builds an element's index-answered children. */
   children?: string[];
   /** Sort key (lower-cased label). */
@@ -711,6 +716,9 @@ export function buildForest(input: TreeInput): Forest {
         break;
       case "databases":
         if (r.kind === "database") databases.push(r);
+        // A mapping belongs to the entity side (its entity's Mappings rows lead to it), never under a database: it has no
+        // row of its own.
+        else if (r.kind === "mapping") unplaced.push(r.id);
         else physical.push(r);
         break;
       case "diagrams":
@@ -1198,10 +1206,10 @@ export function buildForest(input: TreeInput): Forest {
     if (loaded) {
       for (const t of loaded.tables as readonly Summary[]) {
         const key = tableKeyOf(db.id, t.key);
+        // The database side shows tables only: no marker says what else a table relates to.
         const markers: string[] = [];
         if (t.isJunction) markers.push("junction");
         const owner = t.entityId ?? t.relationId ?? t.enumId ?? null;
-        if (!owner && !t.isLookup) markers.push("unlinked");
         const node = add({
           key,
           type: "table",
@@ -1229,7 +1237,6 @@ export function buildForest(input: TreeInput): Forest {
       }
     }
     const fallbackSchema = () => info?.defaultSchema ?? (schemas.size === 1 ? [...schemas.keys()][0] : "");
-    const mappings: TreeNode[] = [];
     for (const r of own) {
       if (r.kind === "table" && loaded) {
         // A table file is its summary's row: by key (designed, imported), or by entity (an overlay).
@@ -1240,13 +1247,6 @@ export function buildForest(input: TreeInput): Forest {
           place.set(r.id, node.key);
           continue;
         }
-      }
-      if (r.kind === "mapping") {
-        const node = elementNode(r, "databases");
-        if (r.entity) node.label = `${nameOf(r.entity) ?? "?"} → ${ownerTable.get(r.entity)?.label ?? r.name}`;
-        node.sort = node.label.toLowerCase();
-        mappings.push(node);
-        continue;
       }
       const node = elementNode(r, "databases");
       bucketList(bucket(fallbackSchema()), r.kind)?.push(node);
@@ -1277,21 +1277,13 @@ export function buildForest(input: TreeInput): Forest {
         );
       });
     const children: TreeNode[] = [...schemaNodes];
-    if (mappings.length) children.push(folderNode(`${db.id}/mapping`, "databases", kindFolder("mapping")!, mappings));
     const totals = emptyCounts();
     for (const s of schemas.values()) for (const kind of BUCKET_KINDS) totals[kind] += s[kind].length;
     const tables = totals.table;
     tableTotal += tables;
     const label = labelOf(db);
     const dialect = [info?.dialect, info?.version].filter(Boolean).join(" ");
-    const phrase = [
-      countOf(tables, "table"),
-      ...OBJECT_KINDS.map((kind) => (totals[kind] ? countOf(totals[kind], kind) : "")),
-      mappings.length ? countOf(mappings.length, "mapping") : "",
-      loaded ? plural(new Set([...ownerTable.keys()]).size, "entity mapped", "entities mapped") : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const phrase = [countOf(tables, "table"), ...OBJECT_KINDS.map((kind) => (totals[kind] ? countOf(totals[kind], kind) : ""))].filter(Boolean).join(" · ");
     place.set(db.id, db.id);
     const node = add({
       key: db.id,
@@ -1309,7 +1301,7 @@ export function buildForest(input: TreeInput): Forest {
     });
     if (!loaded) node.pending = true;
     if (loaded?.stale) node.stale = true;
-    if (loaded && BUCKET_KINDS.every((kind) => !totals[kind]) && !mappings.length) {
+    if (loaded && BUCKET_KINDS.every((kind) => !totals[kind])) {
       const hint: TreeNode = {
         key: `${db.id}/empty`,
         type: "item",
@@ -1329,13 +1321,8 @@ export function buildForest(input: TreeInput): Forest {
   databaseNodes.sort(byLabel);
   if (loose.length) {
     const s = emptyBucket();
-    const mappings: TreeNode[] = [];
-    for (const r of loose) {
-      const node = elementNode(r, "databases");
-      (bucketList(s, r.kind) ?? mappings).push(node);
-    }
+    for (const r of loose) bucketList(s, r.kind)?.push(elementNode(r, "databases"));
     const children = schemaFolders(NOT_IN_DATABASE, s);
-    if (mappings.length) children.push(folderNode(`${NOT_IN_DATABASE}/mapping`, "databases", kindFolder("mapping")!, mappings));
     tableTotal += s.table.length;
     databaseNodes.push(
       attach(
@@ -1690,8 +1677,6 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
         ),
       );
     }
-    const mappings = mappingRows(forest, node, r.id);
-    if (mappings.length) out.push(navFolder(forest, node, "mappings", GROUP_LABELS.mappings, "mapping", mappings));
   } else if (r.kind === "relation") {
     const ends = r.ends ?? [];
     if (ends.length) {
@@ -1703,44 +1688,38 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
   return out;
 }
 
-/** An entity's Mappings child: one row per database it is mapped into ("main → invoices"), customised when a mapping file exists. */
-function mappingRows(forest: Forest, node: TreeNode, entity: string): TreeNode[] {
-  const holderKey = `${node.key}/mappings`;
-  const customised = new Set((forest.related.mappingsOf.get(entity) ?? []).map((m) => forest.byId.get(m)?.database).filter(Boolean));
-  const out: TreeNode[] = [];
-  const seen = new Set<string>();
-  for (const tableKey of forest.related.tablesOf.get(entity) ?? []) {
-    const table = forest.nodes.get(tableKey);
-    if (!table?.table || table.table.isJunction) continue;
-    const db = tableKey.slice(0, tableKey.indexOf("/"));
-    seen.add(db);
-    const label = `${forest.byId.get(db)?.name ?? db} → ${table.label}`;
-    const row: TreeNode = {
-      key: `${holderKey}/${tableKey}`,
-      type: "item",
-      explorer: "domain-model",
-      label,
-      icon: "table",
-      home: false,
-      target: tableKey,
-      errors: 0,
-      sort: label.toLowerCase(),
-      children: [],
-    };
-    if (customised.has(db)) row.markers = ["customised"];
-    forest.nodes.set(row.key, row);
-    forest.parent.set(row.key, holderKey);
-    out.push(row);
-  }
-  for (const m of forest.related.mappingsOf.get(entity) ?? []) {
-    const db = forest.byId.get(m)?.database;
-    if (db && seen.has(db)) continue;
-    const row = navigation(forest, holderKey, m);
-    row.label = `${db ? (forest.byId.get(db)?.name ?? db) : "?"} → ${forest.byId.get(m)?.name ?? m}`;
-    row.markers = ["customised"];
-    out.push(row);
-  }
-  return out.sort(byLabel);
+/**
+ * An entity's Storage child, from its document: one row per binding, "main › invoices" (the database, then the table, view or
+ * query it reads), going to that source. None for a domain-only entity (no binding).
+ */
+function bindingRows(forest: Forest, node: TreeNode, json: Record<string, unknown>): TreeNode[] {
+  const holderKey = `${node.key}/storage`;
+  const bindings = (Array.isArray(json.bindings) ? json.bindings : []) as { id?: string; database?: string; source?: unknown }[];
+  return bindings
+    .map((b, i) => {
+      const db = typeof b.database === "string" ? b.database : "";
+      const source = typeof b.source === "string" ? b.source : "";
+      const sourceRow = source ? forest.byId.get(source) : undefined;
+      // A SQL source (a statement per dialect) has no element to go to.
+      const sourceName = sourceRow?.name ?? (source ? source : "SQL");
+      const label = `${forest.byId.get(db)?.name ?? db} › ${sourceName}`;
+      const row: TreeNode = {
+        key: `${holderKey}/${b.id ?? i}`,
+        type: "item",
+        explorer: "domain-model",
+        label,
+        icon: sourceRow?.kind ?? "table",
+        home: false,
+        target: source ? forest.place.get(source) : undefined,
+        errors: 0,
+        sort: label.toLowerCase(),
+        children: [],
+      };
+      forest.nodes.set(row.key, row);
+      forest.parent.set(row.key, holderKey);
+      return row;
+    })
+    .sort(byLabel);
 }
 
 /**
@@ -1772,7 +1751,7 @@ export function documentChildren(forest: Forest, key: string, doc: ElementDocume
   if (!node) return [];
   if (node.id) documentHashes.set(node, forest.byId.get(node.id)?.hash ?? "");
   if (node.kind === "process") return processChildren(forest, node, doc, boundAttribute);
-  const rest = childKeys(forest, key).filter((k) => k !== `${key}/attributes` && k !== `${key}/members`);
+  const rest = childKeys(forest, key).filter((k) => k !== `${key}/attributes` && k !== `${key}/members` && k !== `${key}/storage`);
   const json = doc.json as Record<string, unknown>;
   const nameOf = (id: string) => forest.byId.get(id)?.name;
   let added: TreeNode | undefined;
@@ -1787,7 +1766,10 @@ export function documentChildren(forest: Forest, key: string, doc: ElementDocume
       added = navFolder(forest, node, "attributes", GROUP_LABELS.attributes, "attribute", items);
     }
   }
-  node.children = added ? [added.key, ...rest] : [...rest];
+  // An entity's bindings (its storage, set on its Storage tab), after its relationships and seeds.
+  const storage = node.kind === "entity" ? bindingRows(forest, node, json) : [];
+  const stored = storage.length ? navFolder(forest, node, "storage", GROUP_LABELS.storage, "database", storage) : undefined;
+  node.children = [...(added ? [added.key] : []), ...rest, ...(stored ? [stored.key] : [])];
   return node.children;
 }
 
@@ -1833,31 +1815,51 @@ function processChildren(forest: Forest, node: TreeNode, doc: ElementDocument, a
   return node.children;
 }
 
-/** A table's children from its detail (E5f, or `/view`): Columns, Primary key, Foreign keys, Unique constraints, Indexes. */
-export function tableChildren(forest: Forest, key: string, view: TableView): readonly string[] {
+/** What a table's rows show beyond its detail: its checks (from its file) and the foreign keys pointing at it. */
+export interface TableExtras {
+  checks?: readonly { id: string; name: string; expression?: string }[];
+  referencedBy?: readonly { tableKey: string; tableName: string; name: string; columns: string[] }[];
+}
+
+/**
+ * A table's children from its detail (E5f, or `/view`): Columns, Primary key, Unique constraints, Indexes, Foreign keys and
+ * Checks (each shown even when empty, so it can take a new part), and Referenced by when another table's foreign key points at
+ * it. Every row names its part, so it opens the table editor on that part's tab with the part picked.
+ */
+export function tableChildren(forest: Forest, key: string, view: TableView, extras: TableExtras = {}): readonly string[] {
   const node = nodeOf(forest, key);
   if (!node) return [];
   const folders: TreeNode[] = [];
-  const group = (name: string, label: string, icon: string, entries: { id: string; label: string; secondary?: string; attribute?: string | null }[]) => {
-    if (!entries.length) return;
-    folders.push(
-      navFolder(
-        forest,
-        node,
-        name,
-        label,
-        icon,
-        entries.map((e) => {
-          const row = item(forest, `${key}/${name}`, e.id, e.label, e.secondary);
-          if (e.attribute !== undefined) row.attribute = e.attribute;
-          return row;
-        }),
-      ),
+  const group = (
+    name: string,
+    label: string,
+    icon: string,
+    kind: TablePartKind,
+    entries: { id: string; label: string; secondary?: string; attribute?: string | null; table?: string }[],
+    always = true,
+  ) => {
+    if (!entries.length && !always) return;
+    const folder = navFolder(
+      forest,
+      node,
+      name,
+      label,
+      icon,
+      entries.map((e) => {
+        const row = item(forest, `${key}/${name}`, e.table ? `${e.table}|${e.id}` : e.id, e.label, e.secondary);
+        if (e.attribute !== undefined) row.attribute = e.attribute;
+        row.part = { kind, id: e.id };
+        if (e.table) row.partTable = e.table;
+        return row;
+      }),
     );
+    folder.part = { kind, id: "" };
+    folders.push(folder);
   };
   group(
     "columns",
     GROUP_LABELS.columns,
+    "column",
     "column",
     view.columns.map((c) => ({
       id: c.key,
@@ -1866,27 +1868,49 @@ export function tableChildren(forest: Forest, key: string, view: TableView): rea
       attribute: c.attributeId ?? null,
     })),
   );
-  if (view.primaryKey)
-    group("primary-key", GROUP_LABELS.primaryKey, "key", [
-      { id: view.primaryKey.name, label: view.primaryKey.name, secondary: view.primaryKey.columns.join(", ") },
-    ]);
+  const nameOf = (column: string) => view.columns.find((c) => c.key === column)?.name ?? column;
   group(
-    "foreign-keys",
-    GROUP_LABELS.foreignKeys,
+    "primary-key",
+    GROUP_LABELS.primaryKey,
     "key",
-    view.foreignKeys.map((k) => ({ id: k.name, label: k.name, secondary: `${k.columns.join(", ")} → ${k.referencedTable}` })),
+    "primary-key",
+    view.primaryKey ? [{ id: "primary-key", label: view.primaryKey.name, secondary: view.primaryKey.columns.map(nameOf).join(", ") }] : [],
   );
   group(
     "uniques",
     GROUP_LABELS.uniques,
     "key",
-    view.uniques.map((k) => ({ id: k.name, label: k.name, secondary: k.columns.join(", ") })),
+    "unique",
+    view.uniques.map((k) => ({ id: k.name, label: k.name, secondary: k.columns.map(nameOf).join(", ") })),
   );
   group(
     "indexes",
     GROUP_LABELS.indexes,
     "index",
-    view.indexes.map((k) => ({ id: k.name, label: k.name, secondary: k.columns.map((c) => c.column).join(", ") })),
+    "index",
+    view.indexes.map((k) => ({ id: k.name, label: k.name, secondary: `${k.unique ? "unique · " : ""}${k.columns.map((c) => nameOf(c.column)).join(", ")}` })),
+  );
+  group(
+    "foreign-keys",
+    GROUP_LABELS.foreignKeys,
+    "key",
+    "foreign-key",
+    view.foreignKeys.map((k) => ({ id: k.name, label: k.name, secondary: `${k.columns.map(nameOf).join(", ")} → ${k.referencedTable}` })),
+  );
+  group(
+    "checks",
+    GROUP_LABELS.checks,
+    "item",
+    "check",
+    (extras.checks ?? []).map((c) => ({ id: c.name, label: c.name, secondary: c.expression })),
+  );
+  group(
+    "referenced-by",
+    GROUP_LABELS.referencedBy,
+    "key",
+    "foreign-key",
+    (extras.referencedBy ?? []).map((r) => ({ id: r.name, label: `${r.tableName}.${r.name}`, secondary: r.columns.join(", "), table: r.tableKey })),
+    false,
   );
   node.children = folders.map((f) => f.key);
   return node.children;

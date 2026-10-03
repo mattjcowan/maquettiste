@@ -19,9 +19,10 @@ A project lives under a `.maquettiste/` folder in a repository. It holds:
 - **Reference data**: reference types, sets of rows managed as data (units of measure, countries), each with a code
   and a label, usable as the type of an attribute.
 - **Seed data**: rows an element starts with (an entity's initial rows, a reference type's rows).
-- **Databases**: the physical side. A database holds only what is mapped to it: the domains it takes **by
-  convention** (all of them, the ones you pick, or none) and the entities mapped to it one by one. Tables of mapped
-  entities follow the naming conventions; a table that differs has a **customised mapping** (an override file).
+- **Databases**: the physical side, managed on its own: schemas, tables with their columns, keys, indexes and
+  checks, views, sequences, routines, database types, SQL objects and queries, and a diagram of the tables. A database
+  knows no entities and holds only what is made in it; an entity says on its own **Storage** tab which table, view or
+  query it reads and writes (its **binding**), or that it is **domain only**.
 - **Processes**: statecharts. A **lifecycle** describes the states of one entity; an **orchestration** coordinates work
   across people, systems and other processes. **Actors** are the people, roles and systems that raise their events and
   sign their gates; **scenarios** are recorded runs of a process that the engine replays as tests (see "Processes, actors
@@ -99,11 +100,10 @@ their own panel. Going to an element from one of them (a translation queue's "Op
 the Domain model screen with the element selected.
 
 The inspector is about the side you are on. On the **Databases** side (the Database screen, or the Databases explorer) a
-table you pick shows as the **table**, never its entity: a click on it on the canvas, in the Tables list or in the
-explorer, a search result for a table file, and a problem in one all show the same table inspector (see "The table
-inspector" below). On the **Domain model** side an entity's inspector is about the entity. The two meet through one
-button each way: the table inspector's **Go to entity** opens the entity's editor in the Domain model, and an entity's
-**Go to table** (its row menu) shows its table on the Databases side.
+table you pick shows as the **table**: a click on it on the canvas, in the Tables list or in the explorer, a search
+result for a table file, and a problem in one all show the same table inspector (see "The inspector: one subject at a
+time" below). The database side names no entity. On the **Domain model** side an entity's inspector is about the
+entity, and an entity's **Go to table** (its row menu) shows its table on the Databases side.
 
 An element's inspector has four tabs, switched with the mouse or the arrow keys: **Properties** (its own fields, such
 as name, domain, stereotypes, tags and custom properties, plus the kind's settings), **Attributes** (only for kinds that
@@ -145,12 +145,16 @@ stereotypes, **Has errors** and **On this diagram**; the **Active filters** row 
 filters as a scope** names a set of chips: **Your scopes** stay in this browser, **Team scopes** come from
 `maquettiste.json` (`explorer.scopes`). **Pin the filter** keeps the explorer's filter across reloads. **Favorites** and
 **Recent** at the top of the explorer list the elements you starred (the row menu's **Add to favorites**) and the ones you
-opened last.
+opened last. Each row has a remove button (the cross, on hover) that takes it off the list, and each list's header has
+**Clear**: clearing the recents is immediate, clearing the favorites asks first; both clear only the rows that explorer
+lists. An element you delete leaves the recent list on its own.
 
 The keyboard walks the tree: the arrows move and expand, Enter opens, F2 renames, Delete deletes, and Shift or Ctrl with a
 click or an arrow selects several rows of one kind. Every row has a right-click menu (also Shift+F10) with the actions
-that fit it, such as **Used**, **Show on canvas**, **Add to diagram**, **Move to domain…**, **Go to table** or
-**Open mappings**. **Move to domain…** warns before a tag or category declared by a domain would fall out of scope in
+that fit it, such as **Used**, **Show on canvas**, **Add to diagram**, **Move to domain…**, **Go to table**, a
+table's **New index**, or the storage actions **Auto-map to existing tables…**, **Create tables…** and **Remove
+bindings…** (see [Storage: binding an entity](#storage-binding-an-entity)). **Move to domain…** warns before a tag or
+category declared by a domain would fall out of scope in
 the new place. **Apply stereotype…**, **Tag…** and **Set category…** mark a row, or every selected row at once, in one
 change. **Promote to entity** on a value object or a custom type makes it an entity (an id key plus the value object's
 attributes, or one `value` attribute of the custom type's base) and turns each entity attribute typed as it into a
@@ -167,7 +171,7 @@ tab in the centre, beside the screen. A single click opens it in the **preview**
 click replaces; editing it, a double click or Enter keeps it open. Each editor has top controls (name, domain, and for an
 entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category as chips) over tabs:
 
-- **Entity**: Attributes, Relationships, Indexes, Mappings, Inheritance, Seed data, References, Code generation. The
+- **Entity**: Attributes, Relationships, Indexes, Storage, Inheritance, Seed data, References, Code generation. The
   attribute grid's last two columns are each attribute's **Display name** and **Description** (what the attribute
   means; the whole text shows when you hover the cell, and Shift+Enter adds a line while you edit it). Under
   the attribute grid, **Inherited** lists the base entities' fields and **Virtual** the fields the entity's stereotypes
@@ -178,10 +182,10 @@ entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category
   joined (tpt)**, **One table per concrete entity (tpc)**, or **By convention**, which names the strategy the
   conventions give) and the **Discriminator value**. The strategy is written on the root entity's mapping in that
   database (disabled, with a tooltip, while the root has none); the discriminator value on this entity's mapping.
-- **Relationship**: its ends at the top, then Attributes, Mappings, Code generation, References. **Mappings** edits,
-  per database, the **Shape** (**Foreign key**, **Junction table**, **Promoted to an entity**, or **By convention**),
-  the **Junction table** name and the **Promoted entity name**; the first edit creates the relationship's mapping in
-  that database when it has none. Every edit here is one undo step.
+  **Storage** binds the entity to databases (see [Storage: binding an entity](#storage-binding-an-entity)).
+- **Relationship**: its ends at the top, then Attributes, Storage, Code generation, References. **Storage** says, per
+  database, how the relationship is stored (see [Relationship storage](#relationship-storage)); every edit there is one
+  undo step.
 - **Enum**: Members; **value object**: Attributes; **custom type**: Definition; each with Code generation and References.
 - **Custom type › Definition**: the base type, length, precision and scale, then **Native types**: one row per dialect
   the project's databases use, and **Add a dialect** for another. A value such as `pg_lsn` or `binary({length})`
@@ -198,7 +202,7 @@ top controls; the inspector shows the same fields) so a chart or a grid gets the
 browser per kind of element. A process starts folded, so its chart has the room.
 
 **Follow selection** on the tab bar turns the shown editor into **General mode**: it follows the selection in the
-explorer and on the canvas and keeps its tab, so you can walk twenty entities on the Mappings tab without reopening
+explorer and on the canvas and keeps its tab, so you can walk twenty entities on the Storage tab without reopening
 anything. Unsaved edits are kept per element, so moving on never loses one. A reference type opens in the Reference data
 screen instead.
 
@@ -378,80 +382,186 @@ database shows on the Database screen at once. The explorers remember which rows
   domain chip on, the filter offers that domain's chain; without one, every vocabulary. A tag or category used
   outside its domain (MQ2008), or a domain key that the global vocabulary or an enclosing domain already declares
   (MQ3021), shows in Problems with a **Go to** button that opens the element, or the domain's Tags or Categories tab.
-- **Databases**: each database, its schemas and tables, and the tables not linked to an entity. Expanding a table
-  loads its detail: Columns (type, PK and FK markers), Primary key, Foreign keys, Unique constraints and Indexes.
-  Clicking a table or a column shows the table (with that column) in the inspector, whether or not the table has a file
-  of its own, and tints, in the Domain model, the entity mapped onto the table and the attribute mapped onto the column
-  (once the entity is expanded; a collapsed folder shows "n related"). Enter, a double click or the row menu's **Open**
-  on a table made from an entity opens the Database screen with that table focused and the same table in the inspector;
-  such a table has no editor of its own, so **Open** never opens the entity's. A table with columns of its own (designed
-  or imported) opens in its table editor, in front of the Database screen focused on it; its row menu also has **Show in
-  Database screen**. A view, sequence, routine, database type or SQL object row opens its editor the same way. The screen
-  shows table diagrams per database, a list with a filter (the first 300 matches) whose chips **Tables**, **Views**,
-  **Sequences**, **Routines**, **Types** and **Objects** pick what it lists (each with its count), a dialect selector, a
-  **New** menu, and a live DDL preview for the selected table or the picked object. The preview renders the enabled pack
-  that has a unit rendered per database (a unit named schema or table first; with a table selected, that pack's unit for
-  each table; with another object picked, its unit for each view, each sequence, each routine, each database type or
-  each sql object), names the pack and unit in its header, and says so when no enabled pack has such a unit. A pack's unit
-  for an object may write nothing for it (the sql-ddl pack writes an object's own script only when its **objectScripts**
-  parameter is on): the preview then says so in a line above and shows the whole database's script, which creates it. The Tables list and the DDL preview each hide from the button in their header ("Hide tables list",
-  "Hide DDL preview") or with Alt+Shift+L and Alt+Shift+D on this screen, and come back from the slim strip they leave
-  at the edge or the same shortcut; the palette has "Toggle tables list" and "Toggle DDL preview". Like the other
-  panels, what you hid stays hidden after a reload, and "Reset layout" shows both again. A database of more than 300 tables is not drawn whole: with no table selected the screen says
-  "<n> tables are too many to draw at once" and keeps the list and the DDL preview of the whole database; pick a table
-  and the diagram draws it with the tables its foreign keys connect it to, in both directions (at most 300, the header
-  saying how many more were left out). A database diagram's table positions and its pan and zoom are kept in your
-  browser (there is no diagram file for a database yet); a table added later is placed beside a table its foreign
-  keys connect it to, or under the drawing, without moving the others. The database row's menu opens **Mappings**: an entity and its table side by side, where names mapped automatically are
-  muted and customised ones are highlighted.
+- **Databases**: each database with its schemas and, in each schema, its tables, views, sequences, routines, database
+  types and SQL objects, and the database's queries (a query has no schema). The database side is a database manager of its own: it shows tables, never the
+  entities of the Domain model (how an entity reads and writes a table is set on the entity's side). Expanding a table
+  loads its folders: **Columns** (type, PK and FK markers), **Primary key**, **Unique constraints**, **Indexes**,
+  **Foreign keys**, **Checks**, and **Referenced by** when another table's foreign key points at it. Clicking a table, or
+  anything under it, shows it in the inspector (see "The inspector: one subject at a time" below). Enter, a double click
+  or the row menu's **Open** opens the table in its **table editor**, whatever the table: a folder opens the editor on
+  its tab, and a column, key, index or check opens it on its tab with that row picked (a **Referenced by** row opens the
+  other table's editor on its foreign key). While an editor shows, a click on a table or one of its rows moves the
+  editor to it. A table's row menu offers **Open**, **Show in Database screen**, **New column**, **New unique
+  constraint**, **New index**, **New foreign key** (it opens the foreign key dialog, to pick the referenced table and
+  columns) and **New check**, and **Rename** (F2 too; a table not stored as a file yet is stored first); a table file also
+  has **Used**, **Add to favorites** and **Delete** (its delete plan first, as anywhere else). A folder offers its own New
+  (the Primary key folder **New primary key** when the table has none); a column, key, index or check offers **Rename**
+  (F2 too) and **Delete** (see "Deleting a column or a key" below). Each of these is one change, one step Undo takes back,
+  and a new part opens picked on its tab. A view,
+  sequence, routine, database type or SQL object row opens its editor the same way.
 
-  **Columns.** Under the diagram, the **Columns** panel lists the selected table's columns in a grid: Name,
-  **Attribute**, Type, Length, Prec. (precision), Scale, Native, Null, Default, Comment and Description, with key and
-  foreign key markers. Arrow keys move, Enter or F2 edits (Enter again saves), Escape cancels, Tab moves right, Space
-  toggles Null, and a description edits in a text area where Shift+Enter adds a line. Each saved cell is one change you
-  can undo. The edit goes to the table's file: a designed or imported table's own file, or, for a table made from an
-  entity, the file that customises it, which holds only what differs from the conventions. A table made from an entity
-  that has no such file yet gets one on its first edit, holding just that column's change; Undo removes it again.
-  Clearing a cell of such a column returns it to what the conventions give (cleared, Native goes back to the dialect's
-  type map). The Comment column shows the comment the database gets: an explicit comment, else (with the **comments**
-  convention, on by default) the column's description, else its attribute's. The panel hides from the button in its
-  header ("Hide columns").
+  The **Database screen** shows the table diagram of one database, a list with a filter (the first 300 matches) whose
+  chips **Tables**, **Views**, **Sequences**, **Routines**, **Queries**, **Types** and **Objects** pick what it lists (each with its
+  count), a dialect selector, a **New** menu, and a live DDL preview for the selected table or the picked object. The
+  preview renders the enabled pack that has a unit rendered per database (a unit named schema or table first; with a table
+  selected, that pack's unit for each table; with another object picked, its unit for each view, each sequence, each
+  routine, each database type or each sql object), names the pack and unit in its header, and says so when no enabled pack
+  has such a unit. A pack's unit for an object may write nothing for it (the sql-ddl pack writes an object's own script
+  only when its **objectScripts** parameter is on): the preview then says so in a line above and shows the whole
+  database's script, which creates it. The diagram has most of the screen: the list starts narrow and the DDL preview
+  starts hidden behind the slim strip at the right edge (click it, or press Alt+Shift+D, to open it). The Tables list and
+  the DDL preview each hide from the button in their header ("Hide tables list", "Hide DDL preview") or with Alt+Shift+L
+  and Alt+Shift+D on this screen, come back from the slim strip they leave at the edge or the same shortcut, and resize
+  from the line between them and the diagram (a drag, or the arrow keys once it has focus); the palette has "Toggle
+  tables list" and "Toggle DDL preview". Like the other panels, what you hid and the widths you chose stay after a
+  reload, and "Reset layout" goes back to the defaults (the list shown, the DDL preview hidden). A database of
+  more than 300 tables is not drawn whole: with no table selected the screen says "<n> tables are too many to draw at
+  once" and keeps the list and the DDL preview of the whole database; pick a table and the diagram draws it with the
+  tables its foreign keys connect it to, in both directions (at most 300, the header saying how many more were left out).
+  A database diagram's table positions and its pan and zoom are kept in your browser (there is no diagram file for a
+  database yet); a table added later is placed beside a table its foreign keys connect it to, or under the drawing,
+  without moving the others.
 
-  The **Attribute** column (read only) names what a column is made from, as `Entity.attribute` (an attribute of a base
-  entity says "from" the base, one a stereotype adds shows the stereotype's «key»); hovering it shows the attribute's own
-  type, such as `string(255)`, and a click, or Enter on the cell, opens that entity in the Domain model. A foreign key
-  column, or a column you added, has none.
+  **Tables that are not table files yet.** A model made before table files were the rule may still have tables that the
+  conventions lay out, with no file of their own (or with a small file holding only a few adjustments). They show and
+  work like every other table, and the Database screen says so once, at the foot of the diagram: "5 tables are not stored as
+  table files yet. Store them as files to edit every part of them." **Store as table files** checks the change first,
+  then writes one table file per table, holding every column, key, index and foreign key the table has (a file that held
+  adjustments becomes the table's file and keeps its id), in one step that Undo takes back whole. You do not have to use
+  it: the first edit of any part of such a table (a column's cell, a key, an index, a check, the comment, a property)
+  stores that table as a file first and then makes the edit, says "customers is now stored as a table file", and Undo
+  takes both back at once. Undoing a store is safe for your migrations: the database's schema snapshot remembers the key
+  each table had before it was stored, so neither the store nor its undo (nor a redo) reads as dropping and creating the
+  table in the next migration. Storing the table again after an undo (a new store, not a redo) takes back the ids it had
+  when it was first stored (the table's, its columns' and its key sequence's), so the next migration holds only what really
+  changed in between, such as a column you added and then undid. And the store checks that nothing it changes was saved by someone else meanwhile (it is
+  refused then, and nothing is written), so its undo never puts back an older version. The table's JSON tab shows the whole file from then on. A table editor or inspector showing a
+  table that is not a file yet also has **Store as a table file** for that one table. A few tables cannot be stored yet
+  (a table linking two others for a many-to-many relationship, a table holding a list of values, and the tables laid out
+  for an abstract entity or for the entities of an inheritance hierarchy); **Store as table files** leaves them out of its
+  count (its tooltip says so), their columns still edit, but their keys and constraints are set by the model and say so.
 
-  **The column's type is storage, the attribute's is validation.** Type, Length, Prec., Scale and Native are the
-  column's physical type, and they are yours to set for every table, whatever the attribute says: an attribute declared
-  `string(255)` can be stored in a `text` column, and an attribute of length 128 in a column of length 2056. The
-  attribute keeps its own type and length, which is what generated code validates against; the column's is what the
-  database stores, and nothing compares the two. Hovering one of these cells says so ("Physical type of the column; the
-  attribute keeps its own (string(255)) for validation."). For a table made from an entity, the file that customises it
-  may hold, per column, the name, type, length, precision, scale, native type, nullability, default, comment and
-  description. A foreign key column follows the column it references on its own (its cells say "Follows the
-  referenced column"); you can still set its type, and when it then differs from the referenced column it is MQ4005,
-  listed in the Problems panel at once (its row opens the Database screen on that table with the column picked). While
-  the model has such an error the Database screen keeps the tables as they last resolved, with the errors above the
-  diagram, so you can fix the cell or undo.
+  **The database diagram.** Each table is a card: its schema-qualified name, its column count, and one row per column
+  with its markers (a key for the primary key, a link for a foreign key, a fingerprint for a column that is unique on its
+  own, an asterisk for not null; hover a marker for its name) and the dialect's native type. The diagram shows tables
+  only: a table not stored as a table file yet looks like any other. The toolbar's **Display** menu picks **All columns**, **Keys only** (primary key, foreign key and unique columns) or **Names only** (the table names),
+  and turns the minimap on or off; your browser keeps the choice. **Auto-layout** arranges the tables again; dragging a
+  card moves it, and positions are kept as described above.
+  - *Create a foreign key by dragging.* Hover a column row: a dot shows at its right edge. Drag it onto a column of
+    another table (or of the same table, for a key that references its own table), or onto a table's header. The
+    **New foreign key** dialog opens with the dragged column paired with the column you dropped on (or with the dropped
+    table's primary key; one pair per key column for a composite key). Change a pair, **Add column pair** for a
+    composite key, or **Add column** to add a column to the table, typed like the column it references and named after
+    the referenced table (`invoice_id` for `invoices.id`). The name follows the project's foreign key naming
+    convention (Settings > Conventions, `fk_{table}_{columns}` by default) until you type another; **On delete** and
+    **On update** take No action, Restrict, Cascade, Set null or Set default, and **Deferrable** when the key is checked
+    (not deferrable, the default; per statement; or at commit; on SQL Server and MySQL, which check every key on each
+    statement, a note says the DDL leaves it out, MQ4056). The referenced columns must be the referenced table's primary key or
+    one of its unique keys (a unique constraint, or a unique index without a filter except on Oracle), each column once; on
+    MySQL some key or index of the referenced table must also start with them in the order the pairs name them: anything
+    else is refused, as the database would (MQ4059). Dropping on one column of a composite key references the whole key, the
+    dragged column in the dropped one's place. A column whose native type differs from the one it references is pointed
+    out; it is not refused. **Create** writes the key into the table's file, one undo step. The same dialog opens from
+    **New foreign key** in the explorer and from **Add foreign key** on the table editor's Foreign keys tab. Dragging from a table's header starts the same dialog with the columns to choose. From the keyboard, Tab to a
+    row's dot (or the header's) and press Enter: the dialog opens with that column and the referenced table to pick.
+  - *A table that is not stored as a table file yet* (see above) is stored as one first: the dialog says so, and Create
+    stores the table as a file, then writes the key into the new file (its columns found under the ids the store gave
+    them), in one undo step ("invoice_lines is now stored as a table file", then "Foreign key ... created."). Undo puts
+    the table back as it was; Redo stores it again with the key.
+  - *Foreign keys on the diagram.* Each key is a line between the two tables, from the row of its first column to the row
+    of the column it references when both rows show (else between the headers), on the sides that face each other. Its
+    ends are crow's feet: at the referencing table, many (or zero or one when the key columns are unique); at the
+    referenced table, exactly one when every key column is not null, else zero or one. Hovering a line shows the key's
+    name and a tooltip with its columns, rules and ends. A click selects it and shows the key alone in the inspector,
+    under its table's breadcrumb, where every field of it edits (columns, referenced table and columns, rules,
+    deferrable) and **Delete** removes it; a double click (or **Edit in the dialog…** in the inspector) edits it in the
+    same dialog as a new key (**Save**), which keeps what the dialog does not show (its comment, properties and anything
+    else in the file). Delete on a selected key asks first, then removes it from the table's file (a relationship's
+    mapping that named the key no longer does). Each is one undo step; the key's columns stay.
+  - *Tables.* **New table** in the toolbar, or a double click on an empty part of the diagram, opens the New table dialog;
+    a table created from a double click lands where you clicked. Delete on a selected table opens its delete plan, as
+    the explorer's Delete does (a table not stored as a table file yet cannot be deleted from here).
 
-  **The table inspector.** On the Databases side the inspector shows the picked table. Its header names the table, its
-  file (or "no file"), the save status, **Open in the Database screen** (the arrow icon; it focuses the table on the
-  canvas) and Delete when the table has a file. **Properties** starts with what the table comes from: "Projected from
-  entity Invoice", "Bound to entity Invoice" for a designed or imported table bound to an entity, or "Junction of
-  relationship ...", each with **Go to entity** (or **Go to relationship**), which opens it in the Domain model. With a
-  column picked in the grid (a click or the arrow keys) the **Column** section follows: "Derived from attribute
-  Invoice.number (string(32))" with **Go to entity**, or "Follows the referenced column customers.id (uuid)" for a
-  foreign key, then the column's Name, Type, Length, Precision, Scale, Native type, Nullable, Default, Comment and
-  Description, each saved through the same file as the grid, one undo step per field (on Enter or when you leave it),
-  then its Stereotypes (those that apply to columns), Tags and property bag, kept in the column's own entry.
-  The **Table** section edits the table's own fields in its file: origin, name, display and plural names, description,
-  category, stereotypes, tags, schema, comment, its custom properties and its property bag. A table made from an entity
-  with no file of its own edits the same way, with the note "Projected from Customer: edits go to the table's overlay
-  file": its first edit (a table field or a column's) creates the overlay file holding just that change, one undo step,
-  and later edits go to the same file. **JSON** is on every table: the table's file when it has one; for a projected
-  table without one, the resolved table as read-only JSON with **Create the table's file**, which creates an overlay that
-  changes nothing yet and shows its JSON, editable. **Used** lists what references it.
+  **Deleting a column or a key.** Delete on a column (the Columns tab, the explorer, the inspector), the primary key, a
+  unique constraint, an index, a foreign key or a check works as a database manager does: a column goes with every key,
+  constraint and index that holds it, whole (a composite primary key, unique constraint, foreign key or index; an index
+  that includes it or whose filter reads it; a check on it or whose expression reads it) and with the table's own
+  foreign keys to it. Before anything is written, a plan lists what else goes when there is more than the part itself:
+  other tables' foreign keys to a key that goes (a key that loses a column goes whole; a foreign key without referenced
+  columns references the primary key), and how many storage bindings follow ("2 storage bindings follow": a relationship's
+  mapping that named a foreign key that goes, a binding's fields, constants, listed columns and soft-delete column that read
+  the column; **Files** lists their files, and the plan never names what they belong to). A query whose references resolve to
+  the column keeps the delete from happening (change the query first): each reference's alias is followed to its source (a
+  table, or an entity bound to it; without an alias, the table's own name), and the column matches by its name in any case,
+  its id or an attribute bound to it, nested queries included. Listed to check by hand: a query that may read it (a reference
+  without an alias while the query has other sources, an SQL expression that names it), a view whose body names it or returns
+  `*` from the table, a computed column or default that reads it, and every routine and SQL object whose text names it.
+  **Delete** then changes everything in one batch and one undo step; a delete that takes nothing else goes at once. The plan
+  is written as it was read: if any document it changes was saved since (another tab, another person), nothing is written and
+  the notice says to ask again for the new plan. The primary key, a unique key or a unique index goes the same way, with the
+  foreign keys that reference it. A table not stored as a file yet (the one the part is on, or one whose foreign key goes with
+  it) is stored first, before the plan is made, so the plan shows exactly what Delete writes; the store and the delete are one
+  undo step, and **Cancel** (or a plan that cannot be carried out) takes the store back, leaving nothing in the history.
+
+  **Renaming a column.** A column's new name (the grid, the inspector, the explorer's Rename) is written where the table
+  names it in SQL: its checks' expressions, its indexes' filters and expressions, its computed columns and its per-dialect
+  defaults; in the bodies of the database's views that read the table; in its queries, where a reference's alias leads to the
+  table (`o.order_number`, nested queries included) and in their SQL expressions when the table is the query's only source;
+  and the storage bindings that name the column by its name follow (the notice says how many, never whose). SQL text is read
+  per dialect (MySQL's `"…"` strings and backslash escapes, PostgreSQL's `E'…'` and `$$…$$` strings, SQL Server's `[a]]b]`,
+  names in any script) and only columns are rewritten: never text in strings or comments, a function call, a type, or a
+  table, an alias or a qualifier of the same name (`JOIN customer ON customer.id = o.customer` becomes `… = o.customer_id`).
+  A view whose body returns the column under its own name (`SELECT email`) while its column list is off gets
+  `SELECT mail AS email`, so the view's column and what reads it keep their name. All of it is one save and one undo step,
+  and the notice says where the name was rewritten. Left as it is and listed to check by hand: a name that is also an SQL
+  keyword; a text that also uses the name for a table, an alias or a qualifier while some use of it stands bare; a view that
+  reads another table with a column of the same name, or returns `*` without a column list (its column would change name);
+  a query's reference without an alias that another source may hold; and every routine and SQL object whose text names the
+  column. Renaming a view's declared column (the view editor's Columns tab, or its JSON) renames it in the view's body too
+  when the Column list option is off (the alias that names it, or `AS` added; a body that does not name it plainly is listed
+  to check), and in the bindings that read the view, in the same undo step; a query's column renamed is followed by the
+  bindings that read it the same way. Renaming a table (its General tab, the explorer) lists the views, queries (those that
+  read it without an alias, so their references say its old name), routines and SQL objects that still name the old name.
+
+  **Columns.** Under the diagram, the **Columns** panel lists the selected table's columns in a grid: Name, Type,
+  Length, Prec. (precision), Scale, Native, Null, Default, Comment and Description, with key and foreign key markers.
+  Arrow keys move, Enter or F2 edits (Enter again saves), Escape cancels, Tab moves right, Space toggles Null, and a
+  description edits in a text area where Shift+Enter adds a line. Each saved cell is one change of the table's file you
+  can undo. Clearing Native goes back to the dialect's type map. The Comment column shows the comment the database gets:
+  an explicit comment, else (with the **comments** convention, on by default) the column's description. The panel hides
+  from the button in its header ("Hide columns"). Type, Length, Prec., Scale and Native are the column's physical type,
+  yours to set for every table. A foreign key column follows the column it references on its own (its cells say
+  "Follows the referenced column"); you can still set its type, and when it then differs from the referenced column it
+  is MQ4005, listed in the Problems panel at once (its row opens the Database screen on that table with the column
+  picked). While the model has such an error the Database screen keeps the tables as they last resolved, with the errors
+  above the diagram, so you can fix the cell or undo.
+
+  **The inspector: one subject at a time.** On the Databases side the inspector shows the picked table, or one part of
+  it. For the table, its header names the table and its file (or "not stored as a table file yet"), the save status,
+  **Open the table editor**, **Open in the Database screen** and Delete when the table is a file; **Properties** edits the
+  table's own fields in its file (name, display and plural names, description, category, stereotypes, tags, schema,
+  comment, its custom properties and its property bag), **JSON** shows the file (or, before the table is a file, the
+  table as resolved, read-only, with **Store as a table file**), and **Used** lists what of the database references the file
+  (other tables' foreign keys, views, routines, queries, SQL objects; an entity bound to it shows on that entity's Storage
+  tab, not here, as on every database-side element's Used list). Pick a
+  column (in the grid, the explorer or the table editor), a key, an index, a foreign key or a check, and the inspector
+  shows that part alone, under a breadcrumb such as **billing.customers › email**: its table part (tooltip "Back to the
+  table") returns to the table. A column shows its Name, Type, Length, Precision, Scale, Native type, Nullable, Default,
+  Comment and Description (and "Follows the referenced column customers.id (uuid)" for a foreign key column), its
+  DDL facets (**Text encoding** and **Fixed width** where its type has them, **Collation**; see "What a table can say"
+  below), how it gets its values (**Generated by**: nothing, **Identity** or **A sequence**, the database's sequences to
+  pick from; under **Identity**, **Identity seed** (the first value; empty, the database's 1), **Identity increment** (the
+  step, not 0; empty, 1) and **Generated always (an insert cannot give a value)**, with a note when the database's dialect
+  leaves some of them out (MQ4056, a warning: a DDL feature the database's dialect lacks, left out of the DDL; what each
+  dialect writes is under "Identity options" in "What a table can say");
+  **Computed from**, an SQL expression, with **Stored** or virtual; **Default SQL** per dialect, a row for the
+  database's dialect and one for any dialect; **Default constraint name**), what does not fit together said
+  under them (a sequence not picked, an identity on a type that is not an integer, a computed column with a default or a
+  generation), then its Stereotypes, Tags and property bag, each saved on Enter or when you leave it, one undo step each,
+  and **Delete column** (its delete plan, as above). A key, an index, a foreign key or a check shows the same fields as
+  its row in the table editor, its problems, and **Delete**: an index also its **Index columns**, a unique constraint
+  **Nulls not distinct**, a foreign key **Deferrable** (with a note when the database's dialect checks every key on each
+  statement), and a check its **Column**.
 
   **Creating a table, a view, a sequence or another database object.** A database's New actions are **New schema…**,
   **New table…**, **New view…**, **New sequence…**, **New routine…**, **New query…**, **New database type…** and **New SQL
@@ -465,9 +575,8 @@ database shows on the Database screen at once. The explorers remember which rows
     tables, views, sequences and database types share one set of names, while routines and SQL objects each have their
     own; a query's name is not used by another query of the database.
   - **Schema**: one of the database's schemas; the default schema is picked first. A query has none.
-  - For a table, **Kind**: **Designed table (its own columns)**. A projected table is not made here: it comes from mapping
-    an entity to the database, and the dialog's **Open the Mappings tab** link goes there. **Start with an id column
-    (int64, primary key)**, ticked by default, gives the table its first column and primary key.
+  - For a table, **Start with an id column (int64, primary key)**, ticked by default, which gives the table its first
+    column and primary key.
   - For a view, **Dialect** (the database's own first, **Any dialect (*)** for SQL every dialect runs, or another) and
     **Body**, the SELECT the view runs, prefilled with `select 1 as id` for the dialect.
   - For a sequence, **Type** (int16, int32 or int64; int64 by default), **Start** and **Increment** (both 1 by default;
@@ -481,23 +590,52 @@ database shows on the Database screen at once. The explorers remember which rows
   - For a SQL object, **Object kind** (what it is, in your words: trigger to start, with suggestions such as grant or
     extension), **Runs** (**After the routines and views**, the default, or **Before the types and tables**), then
     **Dialect** and **Body**, the statements, run as written.
-  - For a query, **Result entity** (an entity whose shape each row has, or none for an ad hoc row), **From** (a table or
-    view of the database; with an entity, its table there is picked first) and **Alias** (the first letter of each word
-    of the source's name: `i` for invoices, `il` for invoice_lines). The query starts valid: with an entity, its select
-    list fills the entity's key from the column that stores it; without one, it holds the source's first column.
+  - For a query, **From** (a table or view of the database) and **Alias** (the first letter of each word of the source's
+    name: `i` for invoices, `il` for invoice_lines). The query starts valid: its select list holds the source's first
+    column. A query is the database's: its rows are an ad hoc shape, and an entity reads through it from the entity's
+    Storage tab (a binding whose source is the query).
 
   **Create** saves the new file in one step (Undo removes it), shows the Databases explorer and opens the element's editor.
   The editors have text tabs:
 
-  - **Table**: **General** (name, category, stereotypes, tags, schema and comment), **Columns** (the column grid described
-    below, with **Add column**, which adds a nullable string column named `column_1`, `column_2`…, and **Delete column**
-    for the column picked in the grid; deleting a column also takes it out of the table's keys), **Keys** (one grid each
-    for the **Primary key**, **Unique constraints**, **Indexes** and **Foreign keys**, with **Add primary key**, **Add
-    unique**, **Add index** and **Add foreign key** and a delete button per row; a key's columns are picked from a list of
-    ticks and always keep one; a foreign key names the table it references and, optionally, the referenced columns,
-    which are that table's primary key when none is picked; On delete and On update default to no action), **Code
-    generation** and **References**.
-  - **View**: **General** (name, marks, schema and comment), **Body** (one SQL editor per dialect the view has a body
+  - **Table** (every table, stored as a file or not yet): **General** (name, display names, description, category,
+    stereotypes, tags, schema, comment, custom properties and property bag); **Columns** (the column grid, with **Add
+    column**, which adds a nullable string column named `column_1`, `column_2`…, and **Delete column** for the column
+    picked in the grid; deleting a column also takes the keys, indexes and checks that hold it, whole, with its plan
+    first when more goes; under the grid, the picked column's DDL facets and values, as in the inspector: **Text
+    encoding**, **Fixed width**, **Collation**, **Generated by** (with **Identity seed**, **Identity increment** and
+    **Generated always** for an identity), **Sequence**, **Computed from** and **Stored**, **Default SQL** per dialect,
+    **Default constraint name**); **Primary key** (its name, columns and Clustered); **Unique constraints** (name,
+    columns and **Nulls not distinct**, which makes two rows with nulls in its columns conflict: PostgreSQL 15 and later,
+    the other dialects leave it out, MQ4056); **Indexes** (name; the columns in key order, each with its order, ascending
+    or descending, and a move earlier and later, any column either way; **Include** columns; **Unique**; **Method**; and
+    **Where** for a partial index; a picked index row shows its **Index columns** beneath it, described below);
+    **Foreign keys** (name, columns, the table it references, picked from the
+    database's tables, the referenced columns, which are that table's primary key when none is picked, and **On delete**
+    and **On update**, no action by default, and **Deferrable**: not deferrable by default, or checked per statement or
+    at commit; on SQL Server and MySQL, which check every key on each statement, it says so and the DDL leaves it out,
+    MQ4056); **Checks** (name, the **Column** it constrains, or the table, and the expression for the database's dialect
+    and for any dialect); **DDL** (the table's create script, from the DDL preview's unit for one table); **References** (the foreign
+    keys of other tables that point at it, each opening that table on its foreign key, and what else of the database uses the
+    table's file);
+    and **JSON** (the whole file). Each part tab has its **Add** button and a delete button per row; a key's columns are
+    picked from a list of ticks and always keep one; a new constraint or index is named after the table and its first
+    column (`uq_orders_id`, `ix_orders_id`), and a name typed over replaces it. A row you click is picked: the inspector
+    shows it alone, and a row's problems show under it. Every change is one save of the table, one step Undo takes back.
+
+    **Index columns** (beneath a picked index row, and in the inspector's index section) lists the index's columns in key
+    order, each a column or an expression; the ƒx button beside an index's columns adds an expression column (a functional index, such as
+    `lower(email)`), written per dialect like a check: one text for the database's dialect and one for any dialect (`*`);
+    a dialect with neither leaves the index out. SQL Server indexes no expression (MQ4056, the index is left out: index a
+    computed column instead); MySQL takes one from 8.0.13, MariaDB not at all. **Prefix length** indexes only the first
+    characters of a column; a typed value that is not a whole number from 1 is said in place and not saved (MySQL, which needs one for a text or blob column: without it the index is left out, MQ4056);
+    the other dialects leave it out (MQ4056).
+  - **View**: **General** (name, marks, schema and comment, then the **DDL** section: **Column list (CREATE VIEW names the
+    Columns tab's columns)**; **With check option**, so an insert or update through the view must satisfy its WHERE
+    (SQLite, and a materialized view, leave it out, MQ4056); **Materialized**, a view that stores its rows (PostgreSQL and
+    Oracle; the other dialects create a plain view, MQ4056; refreshing it is the application's); **Depends on** (below);
+    and **Found in the body**, read-only: the other views whose names the body uses, which the scripts create first and
+    drop after without your naming them), **Body** (one SQL editor per dialect the view has a body
     for; typing marks it **Unsaved**, and it is saved when you leave the editor, press Ctrl+S or click **Save**; **Add
     dialect** adds a body for another dialect, starting from the first one's text, and the bin removes one, a view
     keeping at least one), **Columns** (the columns the view returns, optional: name, type and Null, with **Add column**),
@@ -525,38 +663,18 @@ database shows on the Database screen at once. The explorers remember which rows
   - **Query**: **General**, **Sources**, **Select**, **Filter**, **Group and order**, **Parameters**, **Collections**,
     **SQL**, **JSON**, **Code generation** and **References**; the Queries part below walks through them.
 
-  **Depends on** lists what must exist before a routine or a SQL object, each with a button that removes it, and its
-  picker adds any other table, view, sequence, routine, database type or SQL object of the same database. Every change in
-  these editors is one save of the file and one step Undo takes back. The inspector shows a table of its own as the table
-  inspector below, a view's schema, comment and the dialects its body has, a sequence's schema and definition, a
+  **Depends on** lists what must exist before a view, a routine or a SQL object, each with a button that removes it, and
+  its picker adds any other table, view, sequence, routine, database type or SQL object of the same database. Every change
+  in these editors is one save of the file and one step Undo takes back. The inspector shows a table as described in
+  "The inspector: one subject at a time" above, a view's schema, comment and the dialects its body has, a sequence's schema and definition, a
   routine's schema, kind and comment with a line on its parameters, result and body, a database type's schema, kind and
   comment with what it is ("Enum: draft, issued, paid"), and a SQL object's schema, kind and phase with the dialects of its
   statements and how many objects it depends on. Deleting one of them goes through the delete plan like any element: a
   routine another object depends on is taken out of that object's Depends on, and a database type that types a
   parameter, a result or a field takes the routine or type that needs it along when deleted with its dependents.
 
-  **What a database holds.** Entities are not turned into tables on their own: a database holds only what is mapped to
-  it, and how an entity becomes a table is yours to say. There is no default database either; every database, the first
-  one included, holds what its own mapping says, and an entity may land in several databases or in none.
+  **Type checks.** What validation says about a table's types:
 
-  - **A new database starts empty.** New database asks **Map domains by convention**: **None** (the default), **Pick
-    domains** or **All domains**. With None, the Databases explorer shows "Nothing is mapped here yet" under it and
-    generation makes no tables for it.
-  - **Mapping domains.** **Map to database…** on a domain (several selected domains at once if you like) adds it to the
-    database's convention list; its sub-domains come with it, and their entities get tables named by the naming
-    conventions. A database whose convention is already All domains has nothing to add.
-  - **Mapping entities.** **Map to database…** on one or more entities maps each one by itself, whatever the convention
-    says, with a mapping element (the entity's Mappings tab and the database's Mappings screen show it). A mapping is also
-    where a table that differs from the conventions is described (a **customised mapping**: another table name, other
-    column names, an inheritance strategy, an ignored attribute), and a mapping marked ignore keeps the entity out of that database.
-  - **The Mapping section.** Select the database in the Databases explorer: its inspector form has a **Mapping**
-    section with the convention (None, Picked domains, All domains), the domains checklist, and the entities mapped one by
-    one.
-  - **Databases made before 0.3.0** have no convention written in their file and keep the old rule: every entity, or the
-    entities of the domains their file lists. The Mapping section says "By convention: all domains (unspecified)" (or
-    lists the domains), and **Make explicit** writes that choice into the file; generated output does not change.
-  - An entity that lands in no database is reported in Problems as MQ4012 (info, only once the model has a database); a
-    domain list that the convention does not use (All or None) is MQ4013 (warning).
   - A column's native type that the database's dialect does not know is MQ4006 (warning). A native type written with
     quotes or a schema, such as `"public"."unit_of_measure"`, names a type the database defines, which Maquettiste cannot
     check: it is MQ4016 (info), reported once per type with the number of columns that use it. A native type named after
@@ -565,7 +683,7 @@ database shows on the Database screen at once. The explorers remember which rows
     `reg` types such as `regclass`, the multiranges and `jsonpath`) and the common extension types `citext`, `hstore`,
     `ltree`, `cube`, `earth`, `geometry` and `geography`. To use a type the list lacks, give a custom type a native type
     for the dialect (on its Definition tab): every column of that type takes it, and the name counts as known. For a
-    single column, set its native type in the table's overlay. A type the database itself defines (a domain, an enum)
+    single column, set its native type in the column grid (the Native cell). A type the database itself defines (a domain, an enum)
     is best modeled as a database type (see Routines, database types and other objects below), which a column names by
     id or name; one made by hand outside the model can be written quoted or with its schema,
     `"public"."ledger_position"`, which MQ4016 covers.
@@ -578,22 +696,86 @@ database shows on the Database screen at once. The explorers remember which rows
     the other findings of resolution (an over-long conventional name, MQ4001; a constraint or overlay that resolution
     leaves out, MQ4008 and MQ4009; MQ4011), which validation reports once the model has no other error.
 
+  **What a table can say.** Besides its columns' types, nullability, defaults, identity or sequence, computed expression,
+  collation and comment, a table file holds every database concept the DDL writes:
+
+  - **Unicode and fixed-length text.** A string or text column's `unicode` asks for Unicode text (`true`: `nvarchar` on SQL
+    Server, `nvarchar2` on Oracle, the `utf8mb4` character set on MySQL) or single-byte text (`false`: `varchar`); left out,
+    the dialect's default applies (Unicode on SQL Server). PostgreSQL and SQLite keep every text in the database's encoding.
+    `fixedLength` on a string or binary column asks for a fixed-length type (`char(n)`, `nchar(n)`, `binary(n)`). Both pick
+    a variant entry of the type map (`string:unicode`, `string:ansi`, `string:fixed`, `string:fixed:ansi`, `text:ansi`,
+    `binary:fixed`, ...), so `typeMaps` can change them like any other entry. Either one on a type that has no such facet
+    (an integer, a decimal) is MQ4057 (error).
+  - **Named defaults.** `defaultName` names a column's default constraint where the dialect names defaults (SQL Server);
+    without it the DDL names it `df_<table>_<column>`. Migrations rename it with the column, the table or the name, and drop
+    and add it on its own when only the default changes.
+  - **Identity options.** A column with `generated: identity` may say `identity`: its first value (`seed`), its step
+    (`increment`) and whether the database always generates the value and refuses one an insert gives (`always`, GENERATED
+    ALWAYS, rather than BY DEFAULT). PostgreSQL and Oracle write all three, SQL Server writes `IDENTITY(seed, increment)`
+    (its identity always generates), MySQL writes the seed as the table's `AUTO_INCREMENT` and leaves out the increment and
+    `always`, SQLite leaves out all three (MQ4056 for what is left out); a column that becomes an identity in a migration
+    starts after the largest value it holds.
+  - **Keys and constraints.** A primary key has a name and, on SQL Server, `clustered`; unique constraints, checks and
+    foreign keys have names; a foreign key has `onDelete` and `onUpdate` (`no-action`, `restrict`, `cascade`, `set-null`,
+    `set-default`) and `deferrable` (`not-deferrable`, `initially-immediate`, `initially-deferred`: checked at the end of
+    each statement, or at commit). A check's `column` makes it a column check: the column it constrains. A unique
+    constraint's `nullsNotDistinct` makes two rows with nulls in its columns conflict (PostgreSQL 15 and later).
+  - **Indexes** list their columns with a sort order, and may be `unique`, have `include` columns, a partial `where`
+    predicate and a `method` (`btree`, `hash`, `gin`, `gist`, `clustered`). An index column may be an `expression` instead
+    of a column, per dialect like a check (`{ "*": "lower(email)" }`: a functional index), and may index only the first
+    characters of its column (`length`, MySQL, which needs one for a text or blob column).
+  - **Views** (their own files) have a body per dialect and their `columns`; `columnList` writes the column names in
+    `CREATE VIEW`, `withCheckOption` makes writes through the view satisfy its `WHERE`, and `materialized` stores its rows
+    (PostgreSQL and Oracle; refreshing them is up to the application). `dependsOn` names what must exist before the view;
+    the views its body names are found without it, so views are created after the views they read and dropped before them.
+  - **What a foreign key references** is the referenced table's primary key or one of its unique keys (a unique
+    constraint, or a unique index without a `where` filter; Oracle takes a constraint only), its columns in any order, each
+    named once. On MySQL (and MariaDB) the referenced table also needs a primary key, unique constraint or index whose first
+    columns are the referenced ones in the order the foreign key names them. Anything else is MQ4059 (error), as the
+    database would refuse it.
+  - A feature the database's dialect does not have is MQ4056 (warning) and the DDL leaves it out: a deferrable foreign key on
+    SQL Server or MySQL, `ON UPDATE` or a `restrict` or `set-default` action on Oracle, `set-default` on MySQL, include
+    columns outside PostgreSQL and SQL Server, a partial index on MySQL or Oracle, an index method the dialect lacks, an
+    index expression on SQL Server (the index is left out), a key prefix length outside MySQL, a MySQL index on a text column
+    without one (the index is left out), `nullsNotDistinct` outside PostgreSQL, a stored computed column on Oracle, identity
+    options (any on SQLite, the increment or `always` on MySQL), a clustered primary key outside SQL Server, a materialized view outside PostgreSQL and Oracle,
+    `withCheckOption` on SQLite or a materialized view, a sequence on SQLite or MySQL.
+
+  The sql-ddl pack writes all of it for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle, and migrates every
+  change: its README has the coverage table per dialect, and how each dialect's limits are handled (SQLite tables are rebuilt
+  when they cannot be altered, for instance). A migration says what it cannot decide: a "Data loss" line before every
+  dropped column or table, and a TODO with a query that counts the rows at risk before a column gets shorter, holds fewer
+  digits (a larger scale at the same precision included), or switches from Unicode to single-byte text. It also does what a
+  database would otherwise refuse: on PostgreSQL, a view dropped or given a new body takes the views that read it with it
+  (dropped first, created again after, unchanged), and a unique key or unique index that foreign keys rely on is recreated
+  with those foreign keys dropped before and added back after. Run each migration so it stops at its first error (a client
+  that carries on reaches the `COMMIT` with part of it applied): `psql -v ON_ERROR_STOP=1`, `sqlcmd -b`, `sqlite3 -bail`
+  (or the pack's `sqliteBail` parameter, which writes `.bail on` at the top of SQLite migrations for the sqlite3 shell); a
+  SQLite rebuild's foreign key check and SQL Server's renames and descriptions roll the migration back on their own. Its
+  `idempotent` parameter writes scripts that can run again
+  (`CREATE TABLE IF NOT EXISTS`, `DROP ... IF EXISTS` and the dialect's guards, renames and column changes included on
+  PostgreSQL, SQL Server and MySQL). Truncating a table is data, not schema, and
+  reading a live database's tables is an importer's job: the pack does neither.
+
   **Schemas.** A PostgreSQL or SQL Server database can hold several schemas (namespaces such as `sales` or `ops`).
 
   - **New schema…** on a database (its context menu, or the New menu while a database is selected) adds one. The
     database inspector's **Schemas** section lists them with the **Default schema** marked, and renames, removes or
     makes one the default. A rename changes nothing else: tables, views, sequences and mappings point at the schema,
-    not at its name.
-  - **Where a table goes.** A table file (a designed table, or a customised mapping's override) says its own schema. A
-    mapped entity's table otherwise goes to the schema its **Mappings** tab picks, else to the schema picked for its
-    domain (or the nearest parent domain) in the database's convention list, else to the default schema. When a
-    database has more than one schema, New database, the convention list and the Mappings tab offer the schema, and
-    the Databases explorer groups the tables under one row per schema.
+    not at its name. Each of these (a new schema, a rename, a removal with what moves, a new default) is one undo step.
+  - **Where a table goes.** A table file says its own schema. A table not stored as a file yet goes to the schema its
+    mapping element names (`schema`), else to the schema picked for its domain (or the nearest parent domain) in the
+    database's convention list (an older project's; see "Tables laid out by convention" under Storage), else to the default
+    schema. When a database has more than one schema, New table and **Create tables…** offer the schema, and the
+    Databases explorer groups the tables under one row per schema.
   - **Removing a schema** shows what still lives in it and asks for the schema to move it to; the default schema can
     be removed only by making another one the default at the same time. A schema named by a convention entry or a
     mapping but not declared in the database is MQ4014; a refused schema change is MQ4015.
-  - Moving a table to another schema is, for sql-ddl's migrations, a drop and a create of the table (not a move that
-    keeps its rows): move data yourself when that matters.
+  - Moving a table to another schema keeps its rows: sql-ddl's migration moves it (`ALTER TABLE ... SET SCHEMA` on
+    PostgreSQL, `ALTER SCHEMA ... TRANSFER` on SQL Server, `RENAME TABLE` on MySQL). Renaming a schema renames it on
+    PostgreSQL; on SQL Server and MySQL the migration creates the new schema, moves what is in it and drops the old one
+    (on MySQL, where dropping a schema drops what is left in it, that last step is a note). Adding and removing a schema
+    creates and drops it.
 
   **Routines, database types and other objects.** Besides tables, views and sequences, a database holds three more kinds
   of file, each in its own folder of the database: routines in `model/databases/<db>/routines/`, database types in
@@ -641,22 +823,23 @@ database shows on the Database screen at once. The explorers remember which rows
     with neither its structured form nor a definition for the dialect, is MQ4017 (warning): nothing is created there.
     A parameter, result column or composite field whose type is neither a built-in type nor a database type of the same
     database is MQ4018 (error). A column's native type or a `dependsOn` entry that names an object of another database is
-    MQ4019 (error). Routines, database types and SQL objects that depend on each other in a circle are MQ4020 (error):
+    MQ4019 (error). Views, routines, database types and SQL objects that depend on each other in a circle are MQ4020 (error):
     there is no order to create them in. Two routines, two database types or two SQL objects with one name in a schema
     are MQ3001.
 
   **Queries.** Tables, views and routines are the physical model: they are what the database holds, and they generate the
-  repository layer. Entities are the shapes the services work with. An entity is filled either by its simple mapping to
-  one table, or by a **query**: a query over the tables and views of a database, with joins, filters, grouping,
-  ordering, paging and collections, whose result rows have the shape of an entity (or, without one, of its own select
-  list), and which a pack turns into the repository method that runs it. A query is data, a tree of JSON objects an
-  agent reads and writes and a pack walks per dialect, never SQL text; an opaque text per dialect is allowed for one
-  expression at a time. Entities and tables stay separate: a table needs no entity, an entity needs no table, and one
-  query may read several tables into one entity.
+  repository layer. A **query** reads the tables and views of a database, with joins, filters, grouping, ordering, paging
+  and collections; its rows have the shape of its own select list, and a pack turns it into the repository method that
+  runs it. A query is data, a tree of JSON objects an agent reads and writes and a pack walks per dialect, never SQL
+  text; an opaque text per dialect is allowed for one expression at a time. Entities are the shapes the services work
+  with, and they stay separate: a table needs no entity, an entity needs no table, and an entity that should read
+  through a query (several tables into one entity) binds to it from its own Storage tab (see "A read-only entity over a
+  query").
 
   A query is one file per query in `model/databases/<db>/queries/<name>.json` (kind `query`). It has a name, a
   description, stereotypes, tags, a category, custom properties and generation hints, like a view, but no schema: a
-  query creates nothing in the database. The billing sample's `InvoicesByCustomer`, a little shortened:
+  query creates nothing in the database. The billing sample's `InvoicesByCustomer`, a little shortened (an older query
+  that names a result entity; see "The result shape" below):
 
   ```json
   {
@@ -721,20 +904,21 @@ database shows on the Database screen at once. The explorers remember which rows
   LIMIT @limit OFFSET @offset
   ```
 
-  - **The result shape.** With `entity`, each row is that entity: every select field names the `attribute` it fills (its
-    name defaults to the attribute's), or a `name` of its own for a value the entity does not hold. A field may also
-    fill a member of a value object attribute, written `<attribute id>.<member id>` (the members of one attribute build
-    the value together; its name defaults to `totalAmount` for `total.amount`), or the foreign key of a to-one
-    navigation, written as the relation end the navigation leads to (the invoice's customer end fills `CustomerId`; its
-    name defaults to the foreign key column's, `customerId`). A field that fills an attribute takes the attribute's type
-    in generated code: a value of unknown type (an unknown function, an `sql` text) takes it, a number of another
-    number type is converted, and a value that cannot convert (a text into a number) is MQ4033. Without `entity`, the
-    select list is the row: each field has a `name`, and a `type` (a built-in type) and `nullable` when the expression
-    does not say them, and a pack turns the fields into a record. A required attribute of the entity that no field
-    fills is MQ4026 (a warning: the rows leave it at its default); an attribute of a value object type spans several
-    columns and is not asked for. A query's rows are read-only projections: an entity row holds what the query selects
-    and leaves the rest at its defaults, so it is not a row to save back through a repository. The result entity, and
-    a collection's element entity, is a concrete one (an abstract one is MQ4041).
+  - **The result shape.** Without `entity` (every query the editor makes), the select list is the row: each field has a
+    `name`, and a `type` (a built-in type) and `nullable` when the expression does not say them, and a pack turns the
+    fields into a record. An older query may name an `entity` (as the sample above does), which the engine still reads:
+    each row is then that entity. Every select field names the `attribute` it fills (its name defaults to the
+    attribute's), or a `name` of its own for a value the entity does not hold. A field may also fill a member of a value
+    object attribute, written `<attribute id>.<member id>` (the members of one attribute build the value together; its
+    name defaults to `totalAmount` for `total.amount`), or the foreign key of a to-one navigation, written as the relation
+    end the navigation leads to (the invoice's customer end fills `CustomerId`; its name defaults to the foreign key
+    column's, `customerId`). A field that fills an attribute takes the attribute's type in generated code: a value of
+    unknown type (an unknown function, an `sql` text) takes it, a number of another number type is converted, and a
+    value that cannot convert (a text into a number) is MQ4033. A required attribute of the entity that no field fills is
+    MQ4026 (a warning: the rows leave it at its default); an attribute of a value object type spans several columns and
+    is not asked for. Such rows are read-only projections: an entity row holds what the query selects and leaves the
+    rest at its defaults, so it is not a row to save back through a repository. The result entity, and a collection's
+    element entity, is a concrete one (an abstract one is MQ4041).
   - **Sources.** `from` and each of `joins` name a `source` and an `alias`. The source is a table or view of the
     query's database: a table or view file's id (a designed table, or a synthesized table's override), a table key as
     the database view lists it (`<entity id>@<database id>`), or an entity id for that entity's table there. The alias
@@ -852,28 +1036,25 @@ database shows on the Database screen at once. The explorers remember which rows
   - **Building a query in the editor.** **New query…** (see "Creating a table, a view, a sequence or another database
     object" above) creates the query and opens its editor; the Databases explorer lists it in the database's Queries
     folder and the Database screen under its **Queries** chip, where picking one shows its SQL in the preview pane. The
-    inspector sums it up (the result entity, or an ad hoc shape of so many fields, and how many sources, parameters and
-    collections it has) with **Show the SQL**, which opens the editor on its SQL tab. Nothing in the editor is SQL text
+    inspector sums it up (how many fields each row has, and how many sources, parameters and collections it has) with **Show the SQL**, which opens the editor on its SQL tab. Nothing in the editor is SQL text
     but the SQL per dialect form: every cell writes the query's data, and every change is one save and one step Undo takes
     back. The tabs:
-    - **General**: the name, marks and description, and the **Result entity**. Choosing none turns the select list into
-      an ad hoc row: each field keeps its attribute's name as its own. Choosing another entity keeps the fields it has
-      (the same attribute, member or foreign key) and turns each of the others into a field of its own name, its
-      expression kept: its name, else the old attribute's (numbered when another field has it). Nothing is lost, and
-      nothing names what the new entity lacks.
+    - **General**: the name, marks and description. The editor says nothing about entities: an entity binds to the
+      query from its own Storage tab. An older query that still names a result entity (its own, or a collection's
+      elements') keeps working and shows one line, "An older result entity is set; bind the entity to this query on its
+      Storage tab instead", with **Remove**: each field that filled an attribute becomes a field of its own name, its
+      expression kept (the attribute's name, numbered when another field has it), and each such collection takes the name
+      of what it filled. Nothing is lost; one undo step.
     - **Sources**: the **From** source and its alias, then the joins, each with its kind (inner, left, right, full or
       cross), its source, its alias and its **on** condition. **Add join** adds a source not read yet, one that shares a
       foreign key with a source already read first. **Join by foreign key** fills the condition from the foreign key
       between the joined source and one before it (when several link them, it lists them). Renaming an alias renames every
       column reference through it, the collections' correlations included.
-    - **Select**: with a result entity, one row per attribute (an attribute of a value object type spans several columns:
-      one row per member instead, `total.amount`), then one per to-one relationship's foreign key (`customer (foreign
-      key to Customer)`), its expression, or **Select <attribute>** to give it one, and its type as the engine infers
-      it. A field that names what the entity does not have (after a hand edit) is listed under the fields, marked not on
-      the entity, with **Remove**. **Fill from columns by name** gives every attribute without a field the column that stores it, else the column
-      whose name matches the attribute's ignoring case and underscores (`issuedOn` and `issued_on`), from the source you
-      pick. **Add field** adds a field of its own name. Without an entity, the fields are the row: name, expression,
-      **Declared type** and **Nulls** (inferred unless you say), moved up and down.
+    - **Select**: the fields are the row: name, expression, **Declared type** and **Nulls** (inferred unless you say),
+      moved up and down; **Add field** adds one. An older query with a result entity shows one row per member of that
+      shape instead (a value object's members one by one, `total.amount`, and each to-one relationship's foreign key), its
+      expression or **Select <member>**, with **Fill from columns by name** (the same-named column of the source you pick,
+      ignoring case and underscores) and fields it does not have marked not in the shape, with **Remove**.
     - **Expressions**: each cell picks a form, then what the form needs. A **Column** is picked from the columns of the
       aliases in scope, shown as `alias.column` and written as the column's key (so a rename does not break it); a
       **Parameter** from the query's own; a **Value** is typed (a number, true or false, or a text, quoted when it would read
@@ -893,13 +1074,12 @@ database shows on the Database screen at once. The explorers remember which rows
     - **Parameters**: a grid of name, type (a built-in type or a database type), length, precision, scale, **List** (a
       list for in and not in), **Default** (a number for a number type, true or false for bool) and description, with
       **Add parameter**, move and delete. Renaming a parameter renames its uses and the paging's.
-    - **Collections**: one card per collection: what it **Fills** (a collection attribute of the result entity, or the
-      other end of a to-many relationship of it, when that end has a navigation name; a name for an ad hoc one), its **Elements** entity (the relationship's
-      other entity unless you pick one), then the nested query's Sources, Select, Filter and Group and order, the same as
-      the query's, with the query's aliases in scope: an equality at the top of its filter between one of its columns and
+    - **Collections**: one card per collection: its name (for an older query with a result entity, what it **Fills**),
+      then the nested query's Sources, Select, Filter and Group and order, the same as the query's, with the query's
+      aliases in scope: an equality at the top of its filter between one of its columns and
       one of the query's ties its rows to the parent row (`l.invoice_id = i.id`), and the card says by what. **Add
-      collection** starts one on the next to-many relationship, its source the other entity's table and its filter that
-      tie, from the foreign key.
+      collection** starts one on the first table or view, its filter the tie from a foreign key to the query's source
+      when there is one.
     - **SQL**: the statement as the engine renders it for the database's dialect, or the one picked in **Dialect**, with
       the parameters it names, then each collection's statement; it renders again after each change, and another
       dialect shows nothing until its own SQL comes. What stops it (a column the source does not have, an undeclared
@@ -947,12 +1127,14 @@ database shows on the Database screen at once. The explorers remember which rows
   - **General**: the project's name and branding (below).
   - **Tags**, **Categories**, **Stereotypes**: the global vocabularies (a domain's own are on its editor's tabs).
   - **Conventions**: the naming conventions, for the project (every database) or for one database picked at the top;
-    they name the tables and columns of the entities mapped to a database, and never decide which entities that is.
+    they name what **Create a table for this entity…** and **Create tables…** write, the name the foreign key dialog
+    proposes, and the tables an older project lays out by convention; they never decide which entities
+    a database stores.
     **comments** says where the database comments of tables and columns come from when none is written: with
     **descriptions** (the default) a column takes its own description, else its attribute's, and a table its own
     description, else its entity's (a junction table its relationship's); with **none** only explicit comments are
-    written. The sql-ddl pack writes them (`COMMENT ON` for PostgreSQL, a description property for SQL Server, a `--`
-    line for SQLite) while its `comments` parameter is on.
+    written. The sql-ddl pack writes them (`COMMENT ON` for PostgreSQL and Oracle, a description property for SQL
+    Server, `COMMENT` in the definitions for MySQL, a `--` line for SQLite) while its `comments` parameter is on.
   - **Locales**: the content locales (see "Translating the model in the editor").
   - **Validation**: the severity of each built-in rule (see "Settings › Validation" below).
   - **Type maps, outputs, formatters**: the output allowlist (`outputs.allow`), the type maps, the formatters and the
@@ -998,8 +1180,9 @@ field reads, what happens to the columns no field maps, where it writes back and
 database is never projected into it: no table follows the entity there, whatever the database's convention or a mapping
 element says (such a mapping element is reported as MQ4054 and ignored). Models without bindings keep working as before.
 
-The editor's screens for bindings and materialize come with the next round; until then, write bindings in the entity's file (or
-with the agent tools) and materialize from the command line, the API or the agent tools, as below.
+In the editor, all of this is done from the entity side (below, [Storage: binding an entity](#storage-binding-an-entity)); the
+database side shows tables, views and queries and never the entities stored in them. The file shape, the rules and the command
+line follow.
 
 ### The file shape
 
@@ -1059,8 +1242,9 @@ unnoticed.
 The billing sample keeps notes on invoices and on customers in one table, `notes (id, entity_type, entity_id, body,
 created_at)`. `InvoiceNote` above and `CustomerNote` both bind to it; their constants (`entity_type = 'invoice'` and
 `entity_type = 'customer'`) tell their rows apart: reading invoice notes never returns a customer note, inserting one sets the
-type, and updates and deletes find their row by key and type. The table lists both entities: the database view shows
-`boundBy` on each table, view and query, with each binding's constants.
+type, and updates and deletes find their row by key and type. The editor shows the two bindings on each entity's Storage tab;
+for tools, the API's and the agent server's database view shows `boundBy` on each table, view and query, with each binding's
+constants.
 
 ### A read-only entity over a query
 
@@ -1086,15 +1270,18 @@ the csharp-dapper pack builds a bound entity's repository from it.
 
 ### Materialize, both ways
 
-**Tables from entities.** For an entity the database projects today, `materialize-tables` writes a designed table with
+**A table for each entity** (`materialize-tables`; in the editor, **Create a table for this entity…** and **Create
+tables…**). For an entity the database projects today (the older format), `materialize-tables` writes a designed table with
 exactly the shape the projection has (columns, keys, uniques, checks, indexes, foreign keys, comments) and binds the entity to
 it, every column mapped. The table's overlay, when there was one, becomes the designed table and keeps its id, so queries and
 keys naming it keep working; the entity's mapping element for the database is deleted; relations whose foreign key is now in the
 designed table name it in their relation mapping; and the committed schema snapshot follows, so the next generation writes no
-migration (the DDL is the same table). From then on the table is yours. An entity already bound to the database is refused
-(MQ4055), so running it twice is harmless.
+migration (the DDL is the same table). Undone and run again, it gives the table, its columns and its key sequences the ids they
+had the first time (the snapshot remembers them), so the snapshot still reads it as the same table. From then on the table is
+yours. An entity already bound to the database is refused (MQ4055), so running it twice is harmless.
 
-**Entities from tables.** For designed or imported tables (or views), `materialize-entities` writes an entity per table in the
+**An entity for each table** (`materialize-entities`; in the editor, **New entities from tables…**). For designed or
+imported tables (or views), `materialize-entities` writes an entity per table in the
 package you name: the singular of the table name in Pascal case, one attribute per column, the key from the primary key, and a
 binding to the table. Foreign keys between the picked tables, or to a table an entity is already bound to, become many-to-one
 relations naming those foreign keys. A table an entity is already bound to is refused.
@@ -1131,6 +1318,117 @@ or **delete dependents**, the binding goes and the entity stays.
 | MQ4053 | error | a key delete from a table without a primary key, or a delete with no table to write |
 | MQ4054 | info | a mapping element maps an entity the database binds: the binding wins |
 | MQ4055 | error | a materialize operation is refused (something already bound, an entity in an inheritance hierarchy, a name taken) |
+
+## Storage: binding an entity
+
+An entity is either **domain only** (it has no binding: it is not stored in any database) or bound to one or more databases,
+each binding saying where it reads, which column each field reads, where it writes and how it deletes. Everything about that is
+on the entity side: the entity's **Storage** tab, the Domain model's storage actions, and a relationship's **Storage** tab.
+
+### The Storage tab
+
+Open an entity and pick **Storage**. With no binding it says **Domain only: not stored in any database.** (no warning: that is a
+choice). When a database still makes a table for it by its conventions (the older format), the note says so and points at
+**Create a table for this entity…**, which makes that table explicit.
+
+Each binding is a card, one per database:
+
+- **Source**: the table, view or query the entity reads, grouped as Tables, Views and Queries. Changing it keeps the fields,
+  constants and listed columns the new source has. A plain SQL statement as a source is not available yet: write it as a
+  view or a query of the database.
+- **Constants**: rows of a column and a value (several if you need them, such as an entity type and a tenant). Every read
+  filters on them and every insert sets them. A value that reads as a number or true/false is stored as one; an empty value is
+  NULL. **Add constant** takes the first free column.
+- **Field map**: every attribute the binding can map, own, inherited, from a stereotype, each member of a value object
+  attribute (`totalAmount`, `totalCurrency`) and the key of each to-one relationship (`customerId`), with a column picker.
+  **Map by name…** lists the attributes without a field whose name matches a free column (case and underscores ignored, so
+  `customerId` reads `customer_id`); untick any you do not want, then **Map**.
+- **Columns of the source**: every column with what accounts for it: mapped by a field, a constant, ignored, filled by the
+  database, computed, an identity, a column with a default, the soft-delete column, or **unaccounted** (in the warning color).
+  **Ignore** accounts for an unaccounted column at once; **Account for** sets ignored, filled by the database or computed,
+  or takes the listing away.
+- **Write**: **The source table** (the default for a table source), **None (read-only)**, or another table. **Delete**: **By
+  key**, **Soft delete** (a column and the value it is set to; reads then leave those rows out) or **None**; a read-only
+  binding deletes nothing.
+- **SQL**: the binding's five statements (select, select by key, insert, update, delete) for the database's dialect or another.
+- Problems: the binding's findings (MQ4044 to MQ4055) show on the card as you edit. A stored attribute no field maps is a
+  warning there too (proposed as MQ4058; the engine does not report it yet).
+
+**Add binding…** picks a database without a binding and its source; the fields start empty, so **Map by name…** is the next
+step. The trash button removes a binding (the table, view or query stays). Every gesture on the tab is one save of the entity
+and one undo step.
+
+When the entity also has an older mapping element for a database, the tab notes it ("This entity also has an older mapping
+element for main; its binding wins", or that it places the entity there by convention) with **Open** and **Delete**. Mapping
+elements stay readable in their JSON and in the Domain explorer's References.
+
+### Create a table for this entity
+
+**Create a table for this entity…** on the Storage tab, or **Create tables…** on one or several selected entities or on a
+domain (its entities and its sub-domains') in the Domain model explorer, asks for the database (and the schema, when the
+database has several), shows the plan (the tables it writes, the bindings, the older mapping elements it replaces, the
+relationships whose foreign key it names) and applies it as one batch and one undo step. Each entity gets a table of its own
+with the shape its conventions give it, every column mapped; from then on the table is yours. Entities already bound to that
+database are left as they are.
+
+### Auto-map to existing tables
+
+**Auto-map to existing tables…** (on entities, a domain, or the Storage tab) picks a database and matches each entity to a
+table by name through the naming conventions (the table case does not matter, and the plural the conventions prefer is tried
+first), then its attributes to the table's columns by name. The review list shows each entity as a **match**, a **partial
+match** (with the attributes no column matched) or **no table by that name**; pick a table or view for a miss, untick a row to
+leave it out, then apply: each included entity gets a binding, in one batch and one undo step.
+
+### Remove bindings
+
+**Remove bindings…** (on entities or a domain) removes their bindings to one database, or to every database; the entities
+become domain only there, and the tables, views and queries stay. One batch, one undo step.
+
+### New entities from tables
+
+**New entities from tables…** (the Domain model's New menu, or a domain's menu) picks a database, lists its tables and views
+no entity is bound to, and the domain the new entities go to. Each picked table or view becomes an entity named after it (the
+singular, in Pascal case), one attribute per column, its key from the primary key, bound to it; a foreign key between the
+picked tables becomes a many-to-one relationship that names it. Preview, then apply: one batch, one undo step.
+
+### Relationship storage
+
+A relationship's **Storage** tab has a section per database. When both ends' entities are bound to tables there, **Foreign key**
+lists the foreign keys that can realize it: the keys held by the dependent end's table (the many end of a one-to-many; of a
+one-to-one, the optional end, or either end when both are alike, the pick then naming which) that reference the other end's
+table. A key held the other way is not offered, and when it is the only one, the hint says which table must hold one. The
+key you pick is written to the relationship's mapping in that database; the pickers wait until the relationship's mappings
+are read, so a pick never makes a second mapping. A many-to-many names its **Junction table** and, for each end, the junction
+table's foreign key for it. Two bound ends with nothing named is MQ4011, shown in the section. While the ends are not both
+bound, the section says "Bind both ends to a table to name the foreign key"; a shape an older mapping names (Foreign key,
+Junction table, Promoted to an entity) shows there read only, and no mapping of that older format is made from here.
+
+### Tables laid out by convention (older projects)
+
+Before bindings, a database stored entities by convention: it laid out a table for each entity of the domains it listed, and
+mapping elements adjusted or added single entities. Projects made that way keep working, and the database side shows those
+tables like any other (with **Store as table files** to turn them into table files; see the Databases part of [The explorers
+and screens](#the-explorers-and-screens)). New work binds each entity on its Storage tab instead.
+
+Entities are never turned into tables on their own: a database holds only what is made in it or bound to it, and **a new
+database starts empty** (New database asks only its name, schemas and dialect; the Databases explorer shows "Empty: New
+table…, New view… or New query… adds one here" under it). Settings › Conventions has, for older projects only, a read-only
+panel **Older projects: tables laid out by convention**: one card per database whose convention still lays out tables (the
+domains it lists, or every domain for a database made before 0.3.0, whose file says nothing), the entities an older mapping
+element places one by one, and **Stop laying out by convention** per domain. Stopping shows how many tables that convention
+lays out and offers **Store as table files, then stop** (each entity is then bound to its own table file, one undo step, then
+the convention drops the domain) or **Stop without storing**. Tables it cannot store yet go with the convention (an abstract
+entity's, an inheritance hierarchy's), except a junction table, which stays while both its ends are stored there. Nothing there adds a domain: new work binds entities on
+their Storage tab, alone or in bulk with **Create tables…** and **Auto-map to existing tables…**. An entity that lands in no
+database is reported in Problems as MQ4012 (info, only once the model has a database); a domain list that the convention
+does not use (All or None) is MQ4013 (warning).
+
+### Finding domain-only and bound entities
+
+The Domain model explorer's **Filters** menu has **Storage**: **Domain only (no binding)** keeps the entities with no binding
+to any database, **Bound to a database** the others. A bound entity's row has a **Storage** folder listing its bindings,
+"main › invoices" (the database, then the table, view or query it reads), each going to its source; a domain-only entity has
+none. Generation treats a domain-only entity as stored nowhere: the C# pack writes no repository for it.
 
 ## Processes, actors and scenarios
 

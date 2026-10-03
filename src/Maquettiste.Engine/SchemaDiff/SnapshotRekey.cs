@@ -70,11 +70,11 @@ internal static partial class SnapshotRekey
                 })],
                 Indexes = [.. table.Indexes.Select(i =>
                 {
-                    var columns = i.Columns.Select(c => c with { Column = Col(c.Column) }).ToList();
+                    var columns = i.Columns.Select(c => c.Column is null ? c : c with { Column = Col(c.Column) }).ToList();
                     var include = Cols(i.Include);
                     var suffix = Suffix(i.Key);
                     var parts = i.Key[..(i.Key.Length - suffix.Length)].Split(';');
-                    parts[0] = "ix:" + string.Join(',', columns.Select(c => c.Descending ? c.Column + " desc" : c.Column));
+                    parts[0] = "ix:" + string.Join(',', columns.Select(c => SnapshotCapture.IndexColumnKey(c.Column, c.Expression) + (c.Descending ? " desc" : "")));
                     for (var p = 1; p < parts.Length; p++)
                     {
                         if (parts[p].StartsWith("include=", StringComparison.Ordinal))

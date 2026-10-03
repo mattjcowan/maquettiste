@@ -338,7 +338,7 @@ internal sealed partial class DatabaseRun
         }
         else
         {
-            ApplyNativeType(t, c, overlay?.NativeType, () => NativeType(PhysicalType(c), c.Length, c.Precision, c.Scale, scalar));
+            ApplyNativeType(t, c, overlay?.NativeType, () => NativeType(PhysicalType(c), c.Length, c.Precision, c.Scale, scalar, c.FixedLength, c.Unicode));
         }
 
         t.Columns.Add(c);
@@ -374,7 +374,7 @@ internal sealed partial class DatabaseRun
             };
             ApplyColumnFile(t, c, column);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale));
+            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale, null, c.FixedLength, c.Unicode));
             t.Columns.Add(c);
             t.ByKey[column.Id] = c;
             _run.Register(c);

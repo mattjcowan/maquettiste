@@ -1070,9 +1070,19 @@ gets a binding with every column mapped (a column no attribute can hold is liste
 the database is deleted; the relations whose foreign key is now in a designed table get a relation mapping naming it (created, or
 updated with `shape` removed). What named the projected table by its key follows: the database's queries (sources and
 `alias.<column key>` references, found through the resolved trees), other tables' foreign keys and other entities' bindings. After
-the batch is saved, the committed snapshot of each database is rekeyed (`SchemaDiff.SnapshotRekey`: table and column keys and the
-constraint and index keys derived from them, in the table and in the foreign keys of other tables), so the next schema diff sees
-the same tables and writes no migration. Refused (MQ4055): an entity already bound to the database (the idempotence check), an
+the batch is saved, the committed snapshot of each database records the keys of each stored table as an alias (`aliases`: the
+projected key, the file id, and each column's key before and after; a database without a snapshot gets an alias-only one, read as
+none), and nothing is rekeyed. The schema diff reads the snapshot through its aliases (`Generation.SnapshotAliases.Normalize`,
+which renames with `SchemaDiff.SnapshotRekey` the table and column keys and the constraint and index keys derived from them, in the
+table and in the foreign keys of other tables, in whichever direction the model's keys call for), so the next diff sees the same
+tables and writes no migration, after the materialize and after an undo that puts the projection back or a redo that stores it
+again; a saved snapshot keeps the aliases. Storing a key again after an undo (a new `materialize-tables`, not a redo) reuses the
+ids its alias recorded whenever no element holds them now: the table id (unless the entity's overlay supplies one), each column id
+from the alias's `columns` (unless an overlay column supplies it) and a key sequence's file id, so the store yields the same ids,
+the alias does not change, and the next diff holds only what changed in between (a column added and undone is one `DROP COLUMN`).
+Recording an alias for the same file again keeps the column ids it recorded for columns the table no longer has. The batch operation takes optional `expectedHashes` (id to the hash the caller read):
+given, an update or delete of a document that changed since, or that the map does not name, is a conflict, so an undo built from
+what the caller read never restores a stale version. Refused (MQ4055): an entity already bound to the database (the idempotence check), an
 abstract entity, an entity in an inheritance hierarchy (left to hand binding this round), an entity without a table of its own.
 `materialize-entities { database, tables, package }` writes, per designed or imported table or view of the database, an entity in
 the package named the singular Pascal case of the table name (the project's inflection), one attribute per column (camel case
@@ -1114,7 +1124,7 @@ no tables, so they wrote no CREATE TABLE; a bug older than bindings that the ref
 
 *Decisions where the brief left a choice.* The binding is a plain sub-element record rather than an `ElementBase` (the `source`
 name). The overlay of a materialized entity becomes the designed table under the same id rather than being deleted, so every
-reference to it survives; the snapshot is rekeyed so materialize is not a drop and a create. Foreign keys to still-projected
+reference to it survives; the snapshot records aliases so materialize (and its undo) is not a drop and a create. Foreign keys to still-projected
 tables are kept, by key, so the relation keeps its foreign key (else MQ4011); materializing the referenced entity later points
 them at its designed table. Constants are SQL literals in the statements, not parameters. Derived tables are aliased `q` without
 `AS` (Oracle refuses it; `QuerySql` writes no `AS` either). A soft delete also filters reads. A column marked `database` or
@@ -1247,7 +1257,7 @@ Per rendered file, in order: (1) normalize CRLF and CR to LF, strip a BOM, encod
 
 ## 14. Schema diff (W8)
 
-When an enabled pack has `UsesSchemaDiff`, the orchestrator loads `.maquettiste/snapshots/<database kebab name>.json` for each database, captures the current `RDatabase` and diffs them before planning. `PhysicalSnapshot` is canonical JSON: `database` (id), `name`, `dialect`, `revision`, and `tables`, `views` and `sequences` sorted by key, with columns (`key`, `name`, `type`, facets, `nativeType`, `nullable`, `default`, `defaultSql`, `identity`, `sequence`, `computed`, `computedStored`, `collation`, `comment`), `primaryKey` and `uniques` (with `clustered`), `foreignKeys`, `checks`, `indexes` and the table `comment`, all keyed by §7.3 keys. The snapshot carries every physical property of S9's table contents, and the differ compares every snapshot property, so identity-to-sequence switches, virtual-to-stored computed columns and comment changes surface as `Altered` with `PropertyChange`s.
+When an enabled pack has `UsesSchemaDiff`, the orchestrator loads `.maquettiste/snapshots/<database kebab name>.json` for each database, captures the current `RDatabase` and diffs them before planning. `PhysicalSnapshot` is canonical JSON: `database` (id), `name`, `dialect`, `revision`, and `tables`, `views` and `sequences` sorted by key, with columns (`key`, `name`, `type`, facets, `nativeType`, `nullable`, `default`, `defaultSql`, `identity`, `sequence`, `computed`, `computedStored`, `collation`, `comment`), `primaryKey` and `uniques` (with `clustered`), `foreignKeys`, `checks`, `indexes` and the table `comment`, all keyed by §7.3 keys (after 0.5.5 also `schemas`, a column's `defaultName`, a foreign key's `deferrable` and a view's `comment`; see the end of this section). The snapshot carries every physical property of S9's table contents, and the differ compares every snapshot property, so identity-to-sequence switches, virtual-to-stored computed columns and comment changes surface as `Altered` with `PropertyChange`s.
 
 ```csharp
 namespace Maquettiste.Engine.SchemaDiff;
@@ -1263,6 +1273,58 @@ public sealed record SchemaDiffResult(string Database, int FromRevision, int ToR
 ```
 
 A renamed object keeps its key and may also carry property changes. `Tables` is ordered: added tables in FK dependency order, then renamed, then altered, then dropped in reverse dependency order. `ToRevision` = `FromRevision + 1` when the diff is non-empty. After a successful apply, the snapshot is saved with `ToRevision` (dry run and check never save it); `--check` reports a non-empty diff as drift (MQ6018). A migration unit is typically `for: model`, `mode: once`, with file blocks named from `schema_diff.<db>.to_revision`, so each migration is written once and kept.
+
+**DDL coverage additions (after 0.5.5).** So a migration can write every DDL change of every object kind, the snapshot and the diff carry
+more, all additive (init properties and optional JSON members, so earlier snapshots load unchanged, a model without the new
+facets gives the same diff hashes, and only its declared schemas are new in the next snapshot saved):
+
+- The snapshot records the declared `schemas` (`key` = the schema's id, `name`), a column's `defaultName` (the name its file
+  gives its default constraint), a foreign key's `deferrable`, the primary key's `clustered` and a view's `comment`. A snapshot
+  written before `schemas` existed has none (`null`): the diff then compares no schemas until the next snapshot records them,
+  and a diff without a previous snapshot reports none (a first migration creates every schema with its tables).
+- `SchemaDiffResult.Schemas` lists added, renamed and dropped schemas (`ObjectChange`, keyed by id); they reach the hash only
+  when there are some. `TableChange.OldSchema` and `OldComment`, `ObjectChange.OldSchema` (views and sequences) and
+  `ColumnChange.OldDefaultName` give what the database has before the migration, so a drop, move or rename names the object
+  where it is.
+- The resolved model gains `RColumn.Unicode`, `FixedLength` and `DefaultName`, `RForeignKey.Deferrable` and `RCheck.Column`. A
+  column's `unicode` and `fixedLength` pick the type map's variant entry (`DialectTypeMaps.VariantKey`: `<keyword>:fixed:unicode`,
+  `:fixed:ansi`, `:fixed`, `:unicode`, `:ansi`, most specific first, else the keyword), so the native type, the snapshot and
+  MQ4005 see the variant. Validation adds MQ4056 (a DDL feature the dialect lacks, left out of the DDL), MQ4057 (unicode or
+  fixedLength on a type without the facet) and MQ4059 (a foreign key whose referenced columns of a table file are neither
+  its primary key nor one of its unique keys: a unique constraint, or a unique index without a filter except on Oracle; in
+  any order).
+
+**DDL coverage review additions (2026-10-03).** Also additive, with the same guarantees (a model without them gives the same
+snapshots and diff hashes):
+
+- Model: an index column is a `column` or an `expression` (a dialect map; `IndexColumn.Column` becomes nullable) with an
+  optional key prefix `length`; a unique constraint has `nullsNotDistinct`; a column has `identity` (`ColumnIdentity`: `seed`,
+  `increment`, `always`), read with `generated: identity`; a view has `columnList`, `withCheckOption`, `materialized` and
+  `dependsOn` (ids, like a routine's; MQ4019 and MQ4020 cover it).
+- Resolved model: `RIndexColumn.Column` is nullable, with `Expression` (the dialect's text; an expression without one leaves the
+  index out, as a check without one is left out) and `Length`; `RUnique.NullsNotDistinct`; `RColumn.IdentitySeed`,
+  `IdentityIncrement` and `IdentityAlways`; `RView.ColumnList`, `WithCheckOption`, `Materialized` and `DependsOn`, which is the
+  file's `dependsOn` followed by the other views of the database whose names the body uses as identifiers (case-insensitive, a
+  best-effort reading; the view's dependency keys gain those views).
+- Snapshot: `SnapshotIndex.Columns` is a list of `SnapshotIndexColumn` (`column` or `expression`, `descending`, `length`; the
+  JSON of a plain column is unchanged), whose index key part for an expression is `expr:` + 16 hex of its SHA-256;
+  `SnapshotConstraint.NullsNotDistinct`; `SnapshotColumn.IdentitySeed`, `IdentityIncrement`, `IdentityAlways`; `SnapshotView`
+  `columns` (the names CREATE VIEW lists), `withCheckOption`, `materialized` and `dependsOn` (the keys of the views it reads).
+- Diff: the new properties are compared like the others (`identitySeed`, `identityIncrement`, `identityAlways`,
+  `nullsNotDistinct`, a view's `columns`, `withCheckOption`, `materialized`; a view's `dependsOn` alone is no change), and
+  `ObjectChange.OldDependsOn` and `OldMaterialized` give a changed or dropped view's dependencies and materialization in the
+  committed snapshot, so a migration drops views before the views they read and drops a materialized view as one (a snapshot
+  written before views recorded `dependsOn` reads as none, and sql-ddl then takes the model's dependencies of a changed view).
+  `ObjectChange.OldColumns` and `OldUnique` give a changed or dropped unique constraint's or index's column keys and whether it was
+  a key a foreign key can rely on (an index: unique, without a filter), so a migration drops the foreign keys that rely on it first.
+- Validation: MQ4056 also covers Oracle's `ON UPDATE` and `restrict`/`set-default` actions, MySQL's `set-default`, Oracle's stored
+  computed columns, `nullsNotDistinct` outside PostgreSQL, identity options a dialect lacks, an index expression on SQL Server,
+  a key prefix length outside MySQL and a MySQL index on a text or blob column without one, a materialized view outside
+  PostgreSQL and Oracle, and `withCheckOption` on SQLite or a materialized view.
+
+What each dialect's DDL does with them (SQLite table rebuilds, SQL Server dependents dropped and added back around `ALTER
+COLUMN`, PostgreSQL views recreated around a retyped column, MySQL `MODIFY COLUMN`, the `idempotent` parameter) is the sql-ddl
+pack's business: `packs/sql-ddl/README.md` has the coverage table per dialect.
 
 ## 15. Public API for the functions layer
 

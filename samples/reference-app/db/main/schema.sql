@@ -5927,3 +5927,4 @@ CREATE VIEW northwind.open_sales_orders AS
 SELECT id, order_number, ordered_at, status, promised_delivery_on, grand_total_amount, grand_total_currency
 FROM northwind.sales_orders
 WHERE status IN ('SUBMIT', 'CONFIRM', 'HOLD', 'PARTSHIP') AND deleted_at IS NULL;
+COMMENT ON VIEW northwind.open_sales_orders IS 'Excludes soft-deleted orders.';

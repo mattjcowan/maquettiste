@@ -1,6 +1,6 @@
 // The entity editor (explorer-redesign.md 3.6): name, domain, key, base entity, Is abstract and the mark chips on
-// top; the tabs Attributes, Relationships, Indexes, Mappings, Seed data and References (and Code generation when an
-// extension schema applies). Every edit goes through the element's draft (state/drafts.ts).
+// top; the tabs Attributes, Relationships, Indexes, Storage (its bindings, editors/storage/), Inheritance, Seed data and
+// References (and Code generation when an extension schema applies). Every edit goes through the element's draft (state/drafts.ts).
 import { useMemo, useState } from "react";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { useElements, useIndex, useSettings } from "@/api/queries";
@@ -14,7 +14,6 @@ import { KindIcon } from "@/app/icons";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { indexLookup } from "@/model/index";
-import { defaultSchemaName, schemasOf } from "@/model/databaseSchemas";
 import { displayName, TYPE_KINDS, typeLabel } from "@/model/model";
 import { EDITOR_TAB_LABELS } from "@/model/labels";
 import { newId } from "@/lib/ids";
@@ -25,6 +24,7 @@ import { setOptional, useVocabularies } from "@/inspector/fields";
 import { domIdOf, EditorLayout, MarkChips, NameAndDomain, useCodeGenerationTab, useEditorContext, type EditorContext } from "./EditorFrame";
 import { baseChain, relatedOf } from "./related";
 import { SeedDataTab } from "./SeedDataTab";
+import { StorageTab } from "./storage/StorageTab";
 import {
   fieldSources,
   inHierarchy,
@@ -110,7 +110,7 @@ function EntityBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<type
           content: <RelationshipsTab id={ctx.id} domain={(ctx.json as EntityDoc).package ?? null} />,
         },
         { value: "indexes", label: EDITOR_TAB_LABELS.indexes, content: <IndexesTab {...ctx} /> },
-        { value: "mappings", label: EDITOR_TAB_LABELS.mappings, content: <MappingTab id={ctx.id} /> },
+        { value: "storage", label: EDITOR_TAB_LABELS.storage, content: <StorageTab {...ctx} /> },
         {
           value: "inheritance",
           label: EDITOR_TAB_LABELS.inheritance,
@@ -573,85 +573,6 @@ function IndexesTab({ id, json }: EditorContext) {
   );
 }
 
-function MappingTab({ id }: { id: string }) {
-  const index = useIndex();
-  const lookup = indexLookup(index.data);
-  const { openWorkspace, select } = useEditorNavigation();
-  const { mappings, tables } = relatedOf(index.data, id);
-  const databaseOf = (r: ElementSummary) => (r.database ? (lookup.nameOf(r.database) ?? r.database) : undefined);
-  // Each mapping may place the entity's table in a schema of its database (erratum E26).
-  const mappingDocs = useElements(mappings.map((m) => m.id));
-  const databaseDocs = useElements([...new Set(mappings.map((m) => m.database).filter((x): x is string => !!x))]);
-  const edits = useElementEdits();
-  return (
-    <div className="flex flex-col gap-2" data-testid="editor-mapping">
-      <p className="text-12 text-secondary">
-        Columns follow the project's conventions unless a mapping overrides them.{" "}
-        <button
-          type="button"
-          className="text-accent underline-offset-2 hover:underline"
-          onClick={() => {
-            select([id]);
-            openWorkspace("mappings");
-          }}
-        >
-          Open the Mappings screen
-        </button>
-      </p>
-      <section className="flex flex-col gap-1">
-        <SectionTitle>Customised mappings</SectionTitle>
-        {mappings.length ? (
-          <ul>
-            {mappings.map((m) => {
-              const db = m.database ? (databaseDocs.byId.get(m.database)?.json as Record<string, unknown> | undefined) : undefined;
-              const schemas = schemasOf(db);
-              const mapping = mappingDocs.byId.get(m.id)?.json as { schema?: string; entity?: string } | undefined;
-              return (
-                <li key={m.id} className="flex items-center gap-2">
-                  <ElementLink summary={m} secondary={databaseOf(m)} pin={false} />
-                  {schemas.length && mapping?.entity ? (
-                    <Select
-                      aria-label={`Schema in ${databaseOf(m) ?? ""}`}
-                      className="h-6 w-40"
-                      data-testid={`mapping-schema-${m.id}`}
-                      value={mapping.schema ?? ""}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        void edits.update(m.id, (j) => setOptional(j as Record<string, unknown>, "schema", v || undefined));
-                      }}
-                    >
-                      <option value="">{`Default schema (${defaultSchemaName(db) ?? "none"})`}</option>
-                      {schemas.map((x) => (
-                        <option key={x.id} value={x.id}>
-                          {x.name}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="text-12 text-secondary">None: every database maps this entity by convention.</p>
-        )}
-      </section>
-      {tables.length ? (
-        <section className="flex flex-col gap-1">
-          <SectionTitle>Tables</SectionTitle>
-          <ul>
-            {tables.map((t) => (
-              <li key={t.id}>
-                <ElementLink summary={t} secondary={databaseOf(t)} pin={false} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </div>
-  );
-}
-
 function InheritanceTab({ id, json, edit, flush }: EditorContext) {
   const entity = json as EntityDoc;
   const index = useIndex();
@@ -720,8 +641,8 @@ function InheritanceTab({ id, json, edit, flush }: EditorContext) {
       <section className="flex flex-col gap-1">
         <SectionTitle>Mapping strategy</SectionTitle>
         <p className="text-12 text-secondary">
-          Set on the mapping of {rootName} in each database, else read from the conventions (Settings). A database where {rootName} has no mapping follows the
-          conventions; map it first (Map to database…) to choose.
+          For an older project: set on the mapping element of {rootName} in each database that lays it out by convention, else read from the conventions
+          (Settings). An inheritance hierarchy cannot be stored as table files or bound yet, so a database without such a mapping has nothing to choose here.
         </p>
         {rows.length ? (
           <table className="w-full text-13" aria-label="Inheritance strategy per database" data-testid="editor-inheritance-strategies">

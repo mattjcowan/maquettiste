@@ -80,5 +80,5 @@
     "t:sql-ddl/_table.scriban",
     "t:sql-ddl/schema.scriban"
   ],
-  "elapsedMs": 254
+  "elapsedMs": 125
 }

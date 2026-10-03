@@ -3,7 +3,7 @@
 // save, so one undo step.
 import { useMemo } from "react";
 import { X } from "lucide-react";
-import { useIndex } from "@/api/queries";
+import { useDatabaseView, useIndex } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { KindIcon } from "@/app/icons";
@@ -23,24 +23,37 @@ export interface DependencyOption {
   name: string;
 }
 
-/** The elements of a database an object may depend on (not itself), by kind then name. A table overlay without a name of its
- * own is named after its entity. */
+/**
+ * The elements of a database an object may depend on (not itself), by kind then name. A table is named by its table name: a
+ * file without a name of its own (one that adjusts a table the model lays out) takes the resolved table's name from
+ * `tableNames` (by the laid-out key, `<owner>@<database>`), else its id; the database side never names an entity.
+ */
 export function dependencyOptions(
-  rows: readonly { id: string; kind: string; name: string; database?: string | null; entity?: string | null }[],
+  rows: readonly { id: string; kind: string; name: string; database?: string | null; entity?: string | null; relation?: string | null }[],
   database: string,
   self: string,
+  tableNames: ReadonlyMap<string, string> = new Map(),
 ): DependencyOption[] {
-  const nameOf = new Map(rows.map((r) => [r.id, r.name]));
+  const laidOutName = (r: (typeof rows)[number]) => {
+    const owner = r.entity ?? r.relation;
+    return owner ? tableNames.get(`${owner}@${database}`) : undefined;
+  };
   return rows
     .filter((r) => r.database === database && r.id !== self && (DEPENDENCY_KINDS as readonly string[]).includes(r.kind))
-    .map((r) => ({ id: r.id, kind: r.kind as ElementKind, name: r.name || (r.entity ? `${nameOf.get(r.entity) ?? r.entity} table` : r.id) }))
+    .map((r) => ({ id: r.id, kind: r.kind as ElementKind, name: r.name || laidOutName(r) || r.id }))
     .sort((a, b) => DEPENDENCY_KINDS.indexOf(a.kind) - DEPENDENCY_KINDS.indexOf(b.kind) || a.name.localeCompare(b.name));
 }
 
 export function DependsOnField({ ctx, id }: { ctx: EditorContext; id: string }) {
   const doc = ctx.json as unknown as Rec;
   const index = useIndex();
-  const options = useMemo(() => dependencyOptions(index.data ?? [], String(doc.database ?? ""), ctx.id), [index.data, doc.database, ctx.id]);
+  const database = String(doc.database ?? "");
+  const view = useDatabaseView(database || null);
+  const tables = view.data?.view?.tables;
+  const options = useMemo(
+    () => dependencyOptions(index.data ?? [], database, ctx.id, new Map((tables ?? []).map((t) => [t.key, t.name]))),
+    [index.data, database, ctx.id, tables],
+  );
   const chosen = Array.isArray(doc.dependsOn) ? (doc.dependsOn as string[]) : [];
   const byId = new Map(options.map((o) => [o.id, o]));
   const update = (dependency: string, remove: boolean) => {

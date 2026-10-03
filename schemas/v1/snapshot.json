@@ -3,7 +3,7 @@
   "title": "Physical snapshot",
   "description": "snapshots/<db>.json: the schema diff baseline.",
   "type": "object",
-  "x-order": ["$schema", "database", "name", "dialect", "revision", "tables", "views", "sequences", "types", "routines", "objects"],
+  "x-order": ["$schema", "database", "name", "dialect", "revision", "schemas", "tables", "views", "sequences", "types", "routines", "objects", "aliases"],
   "properties": {
     "$schema": {
       "$ref": "common.json#/$defs/schemaPath"
@@ -22,6 +22,26 @@
       "type": "integer",
       "default": 0,
       "minimum": 0
+    },
+    "schemas": {
+      "description": "The declared schemas, by key (the schema's id). Absent in a snapshot written before schemas were recorded: the diff then reports no schema changes until the next snapshot records them.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "x-order": ["key", "name"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["key", "name"],
+        "additionalProperties": false
+      }
     },
     "tables": {
       "type": "array",
@@ -55,7 +75,11 @@
                 "nullable",
                 "default",
                 "defaultSql",
+                "defaultName",
                 "identity",
+                "identitySeed",
+                "identityIncrement",
+                "identityAlways",
                 "sequence",
                 "computed",
                 "computedStored",
@@ -104,7 +128,21 @@
                 "defaultSql": {
                   "type": "string"
                 },
+                "defaultName": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "identity": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "identitySeed": {
+                  "type": "integer"
+                },
+                "identityIncrement": {
+                  "type": "integer"
+                },
+                "identityAlways": {
                   "type": "boolean",
                   "default": false
                 },
@@ -140,7 +178,7 @@
           },
           "primaryKey": {
             "type": "object",
-            "x-order": ["key", "name", "columns", "clustered"],
+            "x-order": ["key", "name", "columns", "clustered", "nullsNotDistinct"],
             "properties": {
               "key": {
                 "type": "string",
@@ -159,6 +197,10 @@
               },
               "clustered": {
                 "type": "boolean"
+              },
+              "nullsNotDistinct": {
+                "type": "boolean",
+                "default": false
               }
             },
             "required": ["key", "name", "columns"],
@@ -168,7 +210,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "x-order": ["key", "name", "columns", "clustered"],
+              "x-order": ["key", "name", "columns", "clustered", "nullsNotDistinct"],
               "properties": {
                 "key": {
                   "type": "string",
@@ -187,6 +229,10 @@
                 },
                 "clustered": {
                   "type": "boolean"
+                },
+                "nullsNotDistinct": {
+                  "type": "boolean",
+                  "default": false
                 }
               },
               "required": ["key", "name", "columns"],
@@ -198,7 +244,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "x-order": ["key", "name", "columns", "referencedTable", "referencedColumns", "onDelete", "onUpdate"],
+              "x-order": ["key", "name", "columns", "referencedTable", "referencedColumns", "onDelete", "onUpdate", "deferrable"],
               "properties": {
                 "key": {
                   "type": "string",
@@ -233,6 +279,10 @@
                 "onUpdate": {
                   "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
                   "default": "no-action"
+                },
+                "deferrable": {
+                  "enum": ["not-deferrable", "initially-immediate", "initially-deferred"],
+                  "default": "not-deferrable"
                 }
               },
               "required": ["key", "name", "columns", "referencedTable", "referencedColumns"],
@@ -281,18 +331,23 @@
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "x-order": ["column", "descending"],
+                    "x-order": ["column", "expression", "descending", "length"],
                     "properties": {
                       "column": {
                         "type": "string",
                         "minLength": 1
                       },
+                      "expression": {
+                        "type": "string"
+                      },
                       "descending": {
                         "type": "boolean",
                         "default": false
+                      },
+                      "length": {
+                        "type": "integer"
                       }
                     },
-                    "required": ["column"],
                     "additionalProperties": false
                   }
                 },
@@ -334,7 +389,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "x-order": ["key", "name", "schema", "body"],
+        "x-order": ["key", "name", "schema", "body", "columns", "withCheckOption", "materialized", "dependsOn", "comment"],
         "properties": {
           "key": {
             "type": "string",
@@ -348,6 +403,33 @@
             "type": "string"
           },
           "body": {
+            "type": "string"
+          },
+          "columns": {
+            "description": "The column names CREATE VIEW lists (columnList), or none.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "withCheckOption": {
+            "type": "boolean",
+            "default": false
+          },
+          "materialized": {
+            "type": "boolean",
+            "default": false
+          },
+          "dependsOn": {
+            "description": "The keys of the views of the database the view reads, so a migration drops it before them.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "comment": {
             "type": "string"
           }
         },
@@ -428,11 +510,47 @@
         "$ref": "#/$defs/definition"
       },
       "default": []
+    },
+    "aliases": {
+      "description": "The other keys a table or sequence has had, by key: what materialize-tables stored as files.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/alias"
+      }
     }
   },
   "required": ["database", "name", "dialect"],
   "additionalProperties": false,
   "$defs": {
+    "alias": {
+      "description": "Two keys of one table or sequence: the synthesized key a projected table (or a key sequence) had, and the id of the file materialize-tables stored it as. The schema diff reads the snapshot through them, so the table is one table whichever key the model gives it (stored, or put back by an undo).",
+      "type": "object",
+      "x-order": ["key", "alias", "kind", "columns"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alias": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": ["table", "sequence"],
+          "default": "table"
+        },
+        "columns": {
+          "description": "A table's column keys under the synthesized key (attribute paths) and the file's column ids.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": ["key", "alias"],
+      "additionalProperties": false
+    },
     "definition": {
       "description": "A routine, database type or SQL object: what it is and a text that changes whenever its definition for the dialect does.",
       "type": "object",

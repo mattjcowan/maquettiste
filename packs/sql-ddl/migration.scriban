@@ -27,11 +27,139 @@ if diff && diff.to_revision >= 1
       continue
     end
     statements = []
-    # Views first: a dropped or changed view may depend on columns that change below.
-    for oc in diff.views
-      if oc.kind == "dropped" || oc.kind == "altered"
-        emit(statements, view_drop(db, oc))
+    # Foreign keys dropped so a key or column can change (drop_fk_once in _migration.scriban), and their ADD CONSTRAINTs, written
+    # with the other foreign keys at the end; mq_incoming lists every table's incoming foreign keys, by the referenced table's key.
+    mq_fk_dropped = {}
+    mq_fk_readd = []
+    mq_incoming = {}
+    changes_tables = false
+    for tc in diff.tables
+      if tc.kind == "renamed" || tc.kind == "altered"
+        changes_tables = true
+        break
       end
+    end
+    if d != "sqlite"
+      if changes_tables
+        for t in db.tables
+          for f in t.foreign_keys
+            k = f.referenced_table.key
+            if !mq_incoming[k]
+              mq_incoming[k] = []
+            end
+            list = mq_incoming[k]
+            list[list.size] = { table: t, fk: f }
+          end
+        end
+      end
+    end
+    # Schema renames and new schemas first, so every later statement finds its objects where they are (moved_schema).
+    mq_schema_renames = {}
+    schemas_done = {}
+    for sc in diff.schemas
+      if sc.kind == "renamed" && d == "postgresql"
+        mq_schema_renames[sc.old_name] = sc.new_name
+      end
+      if sc.kind != "dropped"
+        schemas_done[sc.new_name] = true
+      end
+    end
+    schema_first_statements(db, diff, statements)
+    # PostgreSQL refuses to retype or drop a column a view reads, and the diff cannot tell which views read which columns: when a
+    # column is retyped or dropped, every view is dropped here and created again at the end (mq_all_views).
+    mq_all_views = false
+    unchanged_views = []
+    if d == "postgresql" && db.views.size > 0
+      for tc in diff.tables
+        if tc.kind == "renamed" || tc.kind == "altered"
+          for cc in tc.columns
+            if cc.kind == "dropped" || has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType", "collation", "strategy", "codeType"])
+              mq_all_views = true
+            end
+          end
+        end
+      end
+      if mq_all_views
+        for v in db.views
+          changed = false
+          for oc in diff.views
+            if oc.kind != "dropped" && (oc.new_name ?? oc.old_name) == v.name
+              changed = true
+            end
+          end
+          if !changed
+            unchanged_views[unchanged_views.size] = v
+          end
+        end
+      end
+    end
+    # PostgreSQL also refuses to drop a view another view reads: every view that reads one dropped or created again here (directly or
+    # through other views, by the model's dependencies) is dropped and created again with it, as it is (mq_view_dependents, which
+    # view_recreates reads; an unchanged one joins unchanged_views).
+    mq_view_dependents = {}
+    if d == "postgresql" && !mq_all_views && diff.views.size > 0
+      gone = {}
+      for oc in diff.views
+        if oc.kind == "dropped" || view_recreates(oc)
+          gone[oc.key] = true
+        end
+      end
+      grew = true
+      while grew
+        grew = false
+        for v in db.views
+          if !gone[v.id]
+            for k in view_dependency_keys(v)
+              if gone[k]
+                gone[v.id] = true
+                mq_view_dependents[v.id] = true
+                grew = true
+                break
+              end
+            end
+          end
+        end
+      end
+      for v in db.views
+        if mq_view_dependents[v.id] && !find_change(diff.views, v.id)
+          unchanged_views[unchanged_views.size] = v
+        end
+      end
+    end
+    # Views next: a dropped or changed view may depend on columns that change below. Each view goes before the views it read (the
+    # committed snapshot's dependencies for a changed or dropped view, the model's for an unchanged one, and for a changed one whose
+    # snapshot predates recorded dependencies).
+    # Idempotent: a second run finds a renamed view under its new name and an added one already there, so those names are dropped
+    # too (before the old name) when the view is created again; the view then goes before what it reads now and what it read before.
+    view_drops = []
+    recreated_views = unchanged_views.size
+    for oc in diff.views
+      again = idem() && ((oc.kind == "renamed" && view_recreates(oc)) || (oc.kind == "added" && mq_all_views))
+      if oc.kind == "dropped" || view_recreates(oc) || again
+        sql = oc.kind == "added" ? "" : view_drop(db, oc)
+        deps = oc.old_depends_on
+        if deps.size == 0 && oc.kind != "dropped" && oc.kind != "added"
+          deps = view_dependency_keys(find_named(db.views, oc.new_name ?? oc.old_name))
+        end
+        if again
+          v = find_named(db.views, oc.new_name)
+          sql = view_drop_sql(db, v.schema, v.name, materialized(v, db)) + (sql == "" ? "" : "\n\n" + sql)
+          deps = deps | array.concat view_dependency_keys(v)
+        end
+        view_drops[view_drops.size] = { key: oc.key, deps: deps, sql: sql }
+        if oc.kind != "dropped" && oc.kind != "added"
+          recreated_views = recreated_views + 1
+        end
+      end
+    end
+    for v in unchanged_views
+      view_drops[view_drops.size] = { key: v.id, deps: view_dependency_keys(v), sql: view_drop_sql(db, moved_schema(v.schema), v.name, v.materialized) }
+    end
+    for x in views_in_drop_order(view_drops)
+      emit(statements, x.sql)
+    end
+    if d == "postgresql" && recreated_views > 0
+      emit(statements, "-- Views dropped and created again lose the privileges granted on them: grant them again (this migration does not).")
     end
     # Routines that changed or left the model go too (one may read a column that changes); changed SQL objects are flagged.
     for rc in diff.routines
@@ -70,7 +198,9 @@ if diff && diff.to_revision >= 1
     end
     if creates || object_creates
       for s in schemas_to_create(db)
-        emit(statements, schema_sql(s, db))
+        if !schemas_done[s]
+          emit(statements, schema_sql(s, db))
+        end
       end
     end
     # SQL objects run before the tables (an extension), then database types in dependency order, before any column uses them. The
@@ -98,10 +228,26 @@ if diff && diff.to_revision >= 1
     # Phase 1: table renames, then foreign key drops (before the keys they reference), then the other constraint and index
     # drops and renames, then dropped tables (the diff lists them in reverse dependency order).
     produced = {}
+    rebuilds = 0
+    ms_quoted = false
+    if d == "sqlserver"
+      changed_tables = []
+      for tc in diff.tables
+        if tc.kind != "dropped"
+          changed_tables[changed_tables.size] = tc.table
+        end
+      end
+      ms_quoted = ms_needs_quoted_identifier(changed_tables)
+    end
     for tc in diff.tables
       if tc.kind == "renamed" || tc.kind == "altered"
         n = statements.size
         table_rename_statements(tc, db, statements)
+        table_move_statements(tc, db, statements)
+        table_comment_statements(tc, db, statements)
+        if sqlite_rebuild_reason(tc) != ""
+          rebuilds = rebuilds + 1
+        end
         table_phase_statements(tc, "before", ["foreign key"], statements)
         produced[tc.key] = statements.size - n
       end
@@ -115,7 +261,8 @@ if diff && diff.to_revision >= 1
     end
     for tc in diff.tables
       if tc.kind == "dropped"
-        emit(statements, "DROP TABLE " + qn(db.default_schema, tc.old_name ?? tc.key, db) + ";")
+        emit(statements, data_loss_note(tc.old_name ?? tc.key, null))
+        emit(statements, "DROP TABLE" + (idem() ? " IF EXISTS" : "") + " " + qn(moved_schema(tc.old_schema), tc.old_name ?? tc.key, db) + ";")
       end
     end
     # Phase 2: column changes.
@@ -149,6 +296,10 @@ if diff && diff.to_revision >= 1
         produced[tc.key] = produced[tc.key] + statements.size - n
       end
     end
+    # Foreign keys dropped so a key or a column could change come back first, now that every column has its new type.
+    for s in mq_fk_readd
+      emit(statements, s)
+    end
     for tc in diff.tables
       if tc.kind == "renamed" || tc.kind == "altered"
         n = statements.size
@@ -160,11 +311,23 @@ if diff && diff.to_revision >= 1
     for tc in diff.tables
       if tc.kind == "renamed" || tc.kind == "altered"
         if produced[tc.key] == 0
-          emit(statements, "-- " + tc.table.name + ": the table's schema or comment changed; review by hand.")
+          emit(statements, "-- " + tc.table.name + ": nothing to change in the database (a property the DDL does not write changed).")
         end
       end
     end
-    # New and changed routines with the new and changed views, in dependency order (see routines_and_views in _objects.scriban).
+    # Views renamed in place first (a new view may read one under its new name), then the new and changed routines with the new and
+    # changed views, in dependency order (see routines_and_views in _objects.scriban).
+    for oc in diff.views
+      v = oc.kind == "dropped" ? null : find_named(db.views, oc.new_name ?? oc.old_name)
+      if (oc.kind == "renamed" || oc.kind == "altered") && !view_recreates(oc)
+        if oc.kind == "renamed"
+          view_rename(db, oc, v, statements)
+        end
+        if has_change(oc.changes, ["comment"]) && pack.params.comments && view_comment_sql(v, db, v.comment) != "" && !(oc.kind == "renamed" && d == "sqlite")
+          emit(statements, view_comment_sql(v, db, v.comment))
+        end
+      end
+    end
     created = []
     if diff.routines.size > 0
       for r in db.routines
@@ -174,29 +337,16 @@ if diff && diff.to_revision >= 1
         end
       end
     end
-    if created.size > 0
-      for oc in diff.views
-        if oc.kind == "added" || oc.kind == "altered"
-          created[created.size] = find_named(db.views, oc.new_name ?? oc.old_name)
-        end
-      end
-      for x in in_dependency_order(created)
-        emit(statements, own_batch(x.kind == "view" ? view_sql(x, db) : routine_sql(x, db), db))
+    for oc in diff.views
+      if oc.kind == "added" || view_recreates(oc)
+        created[created.size] = find_named(db.views, oc.new_name ?? oc.old_name)
       end
     end
-    for oc in diff.views
-      if (oc.kind == "added" || oc.kind == "altered") && created.size == 0
-        v = find_named(db.views, oc.new_name ?? oc.old_name)
-        emit(statements, go != "" ? go + "\n" + view_sql(v, db) + "\n" + go : view_sql(v, db))
-      else if oc.kind == "renamed"
-        if d == "postgresql"
-          emit(statements, "ALTER VIEW " + qn(db.default_schema, oc.old_name, db) + " RENAME TO " + q(oc.new_name, db) + ";")
-        else if d == "sqlserver"
-          emit(statements, rename_object(db, schema_prefix(db.default_schema) + oc.old_name, oc.new_name, "OBJECT"))
-        else
-          emit(statements, "-- TODO (SQLite): drop view " + oc.old_name + " and create " + oc.new_name + ".")
-        end
-      end
+    for v in unchanged_views
+      created[created.size] = v
+    end
+    for x in in_dependency_order(created)
+      emit(statements, own_batch(x.kind == "view" ? view_sql(x, db) : routine_sql(x, db), db))
     end
     if diff.objects.size > 0
       object_change_statements(db, diff, "after", statements)
@@ -212,16 +362,58 @@ if diff && diff.to_revision >= 1
         type_drop(db, tc, statements)
       end
     end
+    # Schemas that left the model, once the objects in them are gone or moved.
+    schema_drop_statements(db, diff, statements)
+    # SQL Server: every batch after a GO first checks that the migration's transaction is still open (ms_batch_guard).
+    ms_batches = false
+    if d == "sqlserver" && statements.size > 0
+      for i in 0..(statements.size - 1)
+        guarded = ms_batch_guard(statements[i])
+        if guarded != statements[i]
+          ms_batches = true
+          statements[i] = guarded
+        end
+      end
+    end
 -}}
 {{- capture content -}}
+{{- if d == "sqlite" && pack.params.sqliteBail == true -}}
+.bail on
+{{ end -}}
 -- Migration {{ rev | math.format "0000" }} of database {{ db.name }} ({{ dialect_title(db) }}): schema revision {{ diff.from_revision }} to {{ diff.to_revision }}.
 -- Written once by Maquettiste (sql-ddl/migration) from the schema diff. It is yours now: review it, adjust it and commit it.
--- Lines marked TODO need a decision the diff cannot make (data conversions, SQLite table rebuilds).
+-- Lines marked TODO need a decision the diff cannot make (data conversions, sequence restarts).
+{{- if d == "sqlite" && pack.params.sqliteBail != true }}
+-- Run it so it stops at the first error: sqlite3 -bail (the sqliteBail parameter writes ".bail on" at the top for the sqlite3 shell).
+{{- end }}
+{{- if idem() && d == "sqlite" && changes_tables }}
+-- SQLite has no guard for renames, added and dropped columns or rebuilds: run this migration once.
+{{- else if idem() && d == "oracle" }}
+-- Oracle has no guards here: run this migration once.
+{{- end }}
 {{- if d == "sqlserver" }}
 
+-- One transaction across the batches: XACT_ABORT rolls it back on an error, and a batch that finds it gone turns execution off
+-- (SET NOEXEC ON), so no later batch runs outside it.
 SET XACT_ABORT ON;
+{{- if ms_quoted }}
+SET QUOTED_IDENTIFIER ON;
+{{- end }}
 BEGIN TRANSACTION;
+{{- else if d == "oracle" }}
+
+-- Oracle commits each DDL statement: run the script once, top to bottom.
+{{- else if d == "mysql" }}
+
+-- MySQL commits each DDL statement on its own (an implicit commit), so BEGIN and COMMIT do not make this script atomic: run it once,
+-- top to bottom, and restore a backup if a statement fails.
+BEGIN;
 {{- else }}
+{{- if rebuilds > 0 }}
+
+-- SQLite rebuilds tables below: foreign keys are not enforced while they are rebuilt, and checked before the commit.
+PRAGMA foreign_keys = OFF;
+{{- end }}
 
 BEGIN;
 {{- end }}
@@ -229,8 +421,29 @@ BEGIN;
 
 {{ s }}
 {{- end }}
+{{- if rebuilds > 0 }}
+
+-- The rebuilds must leave every foreign key satisfied: a violation (PRAGMA foreign_key_check lists them) makes the trigger below
+-- roll the whole migration back, whether or not the runner stops at the first error.
+CREATE TEMP TABLE mq_foreign_key_check (violations INTEGER);
+CREATE TEMP TRIGGER mq_foreign_key_check BEFORE INSERT ON mq_foreign_key_check WHEN NEW.violations > 0
+BEGIN SELECT RAISE(ROLLBACK, 'foreign keys broken by the rebuilds (PRAGMA foreign_key_check lists them): the migration was rolled back'); END;
+INSERT INTO mq_foreign_key_check SELECT count(*) FROM pragma_foreign_key_check;
+DROP TABLE mq_foreign_key_check;
+{{- end }}
+{{- if d != "oracle" }}
 
 {{ d == "sqlserver" ? "COMMIT TRANSACTION;" : "COMMIT;" }}
+{{- end }}
+{{- if rebuilds > 0 }}
+PRAGMA foreign_keys = ON;
+{{- end }}
+{{- if d == "sqlserver" && ms_batches }}
+GO
+-- A compile error in the last batch skips its COMMIT and leaves the transaction open: roll it back.
+IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+SET NOEXEC OFF;
+{{- end }}
 {{ end -}}
 {{- file path content -}}
 {{-

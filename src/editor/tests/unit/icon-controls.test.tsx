@@ -59,7 +59,7 @@ describe("icon-only controls", () => {
       await settle();
       total += expectLabelled(`explorer ${view}`);
     }
-    for (const path of ["/entities", "/reference-data", "/database", "/mappings", "/generate"]) {
+    for (const path of ["/entities", "/reference-data", "/database", "/generate"]) {
       window.history.pushState(null, "", path);
       act(() => window.dispatchEvent(new PopStateEvent("popstate")));
       await settle();
@@ -85,7 +85,7 @@ describe("icon-only controls", () => {
     const editor = await screen.findByRole("region", { name: "Editor: Invoice" }, { timeout: 5000 });
     await settle();
     let total = expectLabelled("entity editor");
-    for (const tab of ["Relationships", "Indexes", "Mappings", "Seed data", "Code generation", "References"]) {
+    for (const tab of ["Relationships", "Indexes", "Storage", "Seed data", "Code generation", "References"]) {
       const el = within(editor).queryByRole("tab", { name: tab });
       if (!el) continue;
       act(() => el.click());

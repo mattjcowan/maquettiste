@@ -98,7 +98,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         foreach (var (key, table) in oldTables)
         {
             if (!newTables.ContainsKey(key))
-                dropped.Add(new TableChange(ChangeKind.Dropped, key, table.Name, null, null, [], [], [], [], [], []));
+                dropped.Add(new TableChange(ChangeKind.Dropped, key, table.Name, null, null, [], [], [], [], [], []) { OldSchema = table.Schema, OldComment = table.Comment });
         }
 
         var tables = new List<TableChange>(added.Count + renamed.Count + altered.Count + dropped.Count);
@@ -109,8 +109,15 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         dropOrder.Reverse();
         tables.AddRange(dropOrder);
 
-        var views = CompareObjects(before?.Views ?? [], after.Views, v => v.Key, v => v.Name, ViewProperties);
-        var sequences = CompareObjects(before?.Sequences ?? [], after.Sequences, s => s.Key, s => s.Name, SequenceProperties);
+        var views = WithOldViews(WithOldSchemas(CompareObjects(before?.Views ?? [], after.Views, v => v.Key, v => v.Name, ViewProperties), before?.Views, v => v.Key, v => v.Schema),
+            before?.Views);
+        var sequences = WithOldSchemas(CompareObjects(before?.Sequences ?? [], after.Sequences, s => s.Key, s => s.Name, SequenceProperties), before?.Sequences,
+            s => s.Key, s => s.Schema);
+        // Schemas are compared only when both snapshots record them (a snapshot written by 0.5.5 or earlier has none, and a first migration
+        // creates every schema with its tables).
+        var schemas = before?.Schemas is { } oldSchemas && after.Schemas is { } newSchemas
+            ? CompareObjects(oldSchemas, newSchemas, s => s.Key, s => s.Name, (_, _) => [])
+            : [];
 
         // The database's own properties have no slot on SchemaDiffResult; a change to them still makes the diff non-empty
         // (the committed snapshot is stale) and reaches the hash.
@@ -120,12 +127,13 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         var routines = CompareDefinitions(before?.Routines ?? [], after.Routines);
         var objects = CompareDefinitions(before?.Objects ?? [], after.Objects);
         var isEmpty = !databaseChanged && tables.Count == 0 && views.Count == 0 && sequences.Count == 0 && types.Count == 0 && routines.Count == 0
-            && objects.Count == 0;
+            && objects.Count == 0 && schemas.Count == 0;
         var from = before?.Revision ?? 0;
         var to = isEmpty ? from : from + 1;
-        var hash = Hash(before, after, from, to, tables, oldTables, newTables, views, sequences, types, routines, objects);
+        var hash = Hash(before, after, from, to, tables, oldTables, newTables, views, sequences, types, routines, objects, schemas);
         return new SchemaDiffResult(current?.Name ?? after.Name, from, to, isEmpty, hash, tables, views, sequences)
         {
+            Schemas = schemas,
             Types = types,
             Routines = routines,
             Objects = objects,
@@ -147,10 +155,12 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         var primaryKey = CompareObjects<SnapshotConstraint>(
             old.PrimaryKey is null ? [] : [old.PrimaryKey], table.PrimaryKey is null ? [] : [table.PrimaryKey],
             c => c.Key, c => c.Name, ConstraintProperties);
-        var uniques = CompareObjects(old.Uniques, table.Uniques, c => c.Key, c => c.Name, ConstraintProperties);
+        var uniques = WithOldKeys(CompareObjects(old.Uniques, table.Uniques, c => c.Key, c => c.Name, ConstraintProperties), old.Uniques, c => c.Key,
+            c => [.. c.Columns], _ => true);
         var foreignKeys = CompareObjects(old.ForeignKeys, table.ForeignKeys, f => f.Key, f => f.Name, ForeignKeyProperties);
         var checks = CompareObjects(old.Checks, table.Checks, c => c.Key, c => c.Name, CheckProperties);
-        var indexes = CompareObjects(old.Indexes, table.Indexes, i => i.Key, i => i.Name, IndexProperties);
+        var indexes = WithOldKeys(CompareObjects(old.Indexes, table.Indexes, i => i.Key, i => i.Name, IndexProperties), old.Indexes, i => i.Key,
+            i => [.. i.Columns.Select(c => c.Column)], i => i.Unique && i.Where is null);
 
         var isRenamed = !string.Equals(old.Name, table.Name, StringComparison.Ordinal);
         // Schema and comment changes have no list of their own on TableChange; they still make the table Altered.
@@ -160,7 +170,43 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         if (!isRenamed && !ownChanged && !anyChild)
             return null;
         return new TableChange(isRenamed ? ChangeKind.Renamed : ChangeKind.Altered, table.Key, old.Name, table.Name, rTable,
-            columns, primaryKey, uniques, foreignKeys, checks, indexes);
+            columns, primaryKey, uniques, foreignKeys, checks, indexes) { OldSchema = old.Schema, OldComment = old.Comment };
+    }
+
+    /// <summary>
+    /// Sets <see cref="ObjectChange.OldColumns"/> and <see cref="ObjectChange.OldUnique"/> on every change of a unique constraint or index
+    /// that existed before, so a migration drops the foreign keys that rely on a key before it drops the key.
+    /// </summary>
+    private static List<ObjectChange> WithOldKeys<T>(List<ObjectChange> changes, IReadOnlyList<T> oldItems, Func<T, string> key, Func<T, IReadOnlyList<string?>> columns,
+        Func<T, bool> unique)
+    {
+        if (changes.Count == 0)
+            return changes;
+        var old = ByKey(oldItems, key);
+        return [.. changes.Select(c => c.Kind != ChangeKind.Added && old.TryGetValue(c.Key, out var item) ? c with { OldColumns = columns(item), OldUnique = unique(item) } : c)];
+    }
+
+    /// <summary>Sets <see cref="ObjectChange.OldSchema"/> on every change of a view or sequence that existed before.</summary>
+    private static List<ObjectChange> WithOldSchemas<T>(List<ObjectChange> changes, IReadOnlyList<T>? oldItems, Func<T, string> key, Func<T, string?> schema)
+    {
+        if (changes.Count == 0 || oldItems is null)
+            return changes;
+        var old = ByKey(oldItems, key);
+        return [.. changes.Select(c => c.Kind != ChangeKind.Added && old.TryGetValue(c.Key, out var item) ? c with { OldSchema = schema(item) } : c)];
+    }
+
+    /// <summary>
+    /// Sets <see cref="ObjectChange.OldDependsOn"/> and <see cref="ObjectChange.OldMaterialized"/> on every change of a view that existed
+    /// before, so a migration drops views that read others first and drops a materialized view as one.
+    /// </summary>
+    private static List<ObjectChange> WithOldViews(List<ObjectChange> changes, IReadOnlyList<SnapshotView>? oldViews)
+    {
+        if (changes.Count == 0 || oldViews is null)
+            return changes;
+        var old = ByKey(oldViews, v => v.Key);
+        return [.. changes.Select(c => c.Kind != ChangeKind.Added && old.TryGetValue(c.Key, out var view)
+            ? c with { OldDependsOn = view.DependsOn, OldMaterialized = view.Materialized }
+            : c)];
     }
 
     /// <summary>
@@ -226,13 +272,13 @@ internal sealed class SchemaDiffer : ISchemaDiffer
             var properties = ColumnProperties(old, column);
             var isRenamed = !string.Equals(old.Name, column.Name, StringComparison.Ordinal);
             if (isRenamed || properties.Count > 0)
-                changed.Add(new ColumnChange(isRenamed ? ChangeKind.Renamed : ChangeKind.Altered, column.Key, old.Name, column.Name, properties, rColumn));
+                changed.Add(new ColumnChange(isRenamed ? ChangeKind.Renamed : ChangeKind.Altered, column.Key, old.Name, column.Name, properties, rColumn) { OldDefaultName = old.DefaultName });
         }
 
         foreach (var column in oldColumns)
         {
             if (ReferenceEquals(oldByKey[column.Key], column) && !newByKey.ContainsKey(column.Key))
-                dropped.Add(new ColumnChange(ChangeKind.Dropped, column.Key, column.Name, null, [], null));
+                dropped.Add(new ColumnChange(ChangeKind.Dropped, column.Key, column.Name, null, [], null) { OldDefaultName = column.DefaultName });
         }
 
         return [.. added, .. changed, .. dropped];
@@ -382,7 +428,11 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         if (!PlainValues.JsonEquals(a.Default, b.Default))
             list.Add(new PropertyChange("default", PlainValues.From(a.Default), PlainValues.From(b.Default)));
         Property(list, "defaultSql", a.DefaultSql, b.DefaultSql);
+        Property(list, "defaultName", a.DefaultName, b.DefaultName);
         Property(list, "identity", a.Identity, b.Identity);
+        Property(list, "identitySeed", a.IdentitySeed, b.IdentitySeed);
+        Property(list, "identityIncrement", a.IdentityIncrement, b.IdentityIncrement);
+        Property(list, "identityAlways", a.IdentityAlways, b.IdentityAlways);
         Property(list, "sequence", a.Sequence, b.Sequence);
         Property(list, "computed", a.Computed, b.Computed);
         Property(list, "computedStored", a.ComputedStored, b.ComputedStored);
@@ -398,6 +448,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         var list = new List<PropertyChange>();
         Property(list, "columns", a.Columns, b.Columns);
         Property(list, "clustered", a.Clustered, b.Clustered);
+        Property(list, "nullsNotDistinct", a.NullsNotDistinct, b.NullsNotDistinct);
         return list;
     }
 
@@ -409,6 +460,8 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         Property(list, "referencedColumns", a.ReferencedColumns, b.ReferencedColumns);
         Property(list, "onDelete", PlainValues.Kebab(a.OnDelete), PlainValues.Kebab(b.OnDelete));
         Property(list, "onUpdate", PlainValues.Kebab(a.OnUpdate), PlainValues.Kebab(b.OnUpdate));
+        if (a.Deferrable != b.Deferrable)
+            list.Add(new PropertyChange("deferrable", PlainValues.Kebab(a.Deferrable), PlainValues.Kebab(b.Deferrable)));
         return list;
     }
 
@@ -435,6 +488,10 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         var list = new List<PropertyChange>();
         Property(list, "schema", a.Schema, b.Schema);
         Property(list, "body", a.Body, b.Body);
+        Property(list, "columns", a.Columns, b.Columns);
+        Property(list, "withCheckOption", a.WithCheckOption, b.WithCheckOption);
+        Property(list, "materialized", a.Materialized, b.Materialized);
+        Property(list, "comment", a.Comment, b.Comment);
         return list;
     }
 
@@ -452,9 +509,14 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         return list;
     }
 
-    /// <summary>Index columns as plain strings: the column key, followed by <c> desc</c> when descending.</summary>
-    internal static IReadOnlyList<string> IndexColumns(IReadOnlyList<IndexColumn> columns) =>
-        [.. columns.Select(c => c.Descending ? c.Column + " desc" : c.Column)];
+    /// <summary>
+    /// Index columns as plain strings: the column key (an expression in parentheses), its prefix length in parentheses, then
+    /// <c> desc</c> when descending.
+    /// </summary>
+    internal static IReadOnlyList<string> IndexColumns(IReadOnlyList<SnapshotIndexColumn> columns) =>
+        [.. columns.Select(c => (c.Column ?? "(" + c.Expression + ")")
+            + (c.Length is { } length ? "(" + length.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")" : "")
+            + (c.Descending ? " desc" : ""))];
 
     private static void Property<T>(List<PropertyChange> list, string name, T a, T b)
     {
@@ -476,7 +538,8 @@ internal sealed class SchemaDiffer : ISchemaDiffer
     /// </summary>
     private static string Hash(PhysicalSnapshot? before, PhysicalSnapshot after, int from, int to, List<TableChange> tables,
         SortedDictionary<string, SnapshotTable> oldTables, SortedDictionary<string, SnapshotTable> newTables, List<ObjectChange> views,
-        List<ObjectChange> sequences, List<DefinitionChange> types, List<DefinitionChange> routines, List<DefinitionChange> objects)
+        List<ObjectChange> sequences, List<DefinitionChange> types, List<DefinitionChange> routines, List<DefinitionChange> objects,
+        List<ObjectChange> schemas)
     {
         using var h = new HashBuilder();
         h.Add("mq-schema-diff-2").Add(after.Database).Add(after.Name).Add(PlainValues.Kebab(after.Dialect)).Add(from).Add(to);
@@ -519,6 +582,13 @@ internal sealed class SchemaDiffer : ISchemaDiffer
                     AddProperties(h, change.Changes);
                 }
             }
+        }
+
+        // Schema changes reach the hash only when there are some, so every diff without them keeps the hash it had before.
+        if (schemas.Count > 0)
+        {
+            h.Add("schemas");
+            AddObjects(h, schemas);
         }
 
         return h.Finish();

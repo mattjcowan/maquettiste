@@ -21,6 +21,6 @@ CREATE TABLE dbo.invoices (
     CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)
 );
 CREATE INDEX ix_invoices_issued_on ON dbo.invoices (issued_on);
-EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'# Invoice
+BEGIN DECLARE @mq_rc1 int; EXEC @mq_rc1 = sys.sp_addextendedproperty @name = N'MS_Description', @value = N'# Invoice
 
-A bill issued to a customer. Its number is assigned when it is issued and never reused.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoices';
+A bill issued to a customer. Its number is assigned when it is issued and never reused.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoices'; IF @mq_rc1 <> 0 THROW 50000, N'sys.sp_addextendedproperty failed: the migration stops here.', 1; END;

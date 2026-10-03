@@ -49,7 +49,12 @@ public sealed class DialectTests
         foreach (var dialect in Enum.GetValues<Dialect>())
         {
             var map = DialectTypeMaps.Default(dialect);
-            Assert.Equal(BuiltinTypes.All.Order(StringComparer.Ordinal), map.Keys.Order(StringComparer.Ordinal));
+            Assert.Equal(BuiltinTypes.All.Order(StringComparer.Ordinal), map.Keys.Where(k => !k.Contains(':', StringComparison.Ordinal)).Order(StringComparer.Ordinal));
+            // Variant entries: fixed-length strings and binaries, Unicode and single-byte strings and texts.
+            Assert.All(map.Keys.Where(k => k.Contains(':', StringComparison.Ordinal)), k => Assert.Contains(k, (string[])
+                ["string:fixed", "string:unicode", "string:ansi", "string:fixed:unicode", "string:fixed:ansi", "text:unicode", "text:ansi", "binary:fixed"]));
+            Assert.Contains("string:fixed", map.Keys);
+            Assert.Contains("binary:fixed", map.Keys);
         }
     }
 

@@ -536,7 +536,7 @@ internal static class DatabaseViews
         table.PrimaryKey is { } key ? new KeyView(key.Name, [.. key.Columns.Select(c => c.Key)]) : null,
         [.. table.Uniques.Select(u => new KeyView(u.Name, [.. u.Columns.Select(c => c.Key)]))],
         [.. table.ForeignKeys.Select(ForeignKey)],
-        [.. table.Indexes.Select(i => new IndexView(i.Name, [.. i.Columns.Select(c => new IndexColumnView(c.Column.Key, c.Descending))], i.Unique, i.Where))],
+        [.. table.Indexes.Select(i => new IndexView(i.Name, [.. i.Columns.Select(c => new IndexColumnView(c.Column?.Key ?? "(" + c.Expression + ")", c.Descending))], i.Unique, i.Where))],
         OrNull(table.DisplayName),
         OrNull(table.PluralName),
         table.Description,

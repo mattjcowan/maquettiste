@@ -88,21 +88,25 @@ internal sealed partial class DatabaseRun
                     Id = x.Spec.Id,
                     Name = x.Spec.Name ?? RenderWithName(_conv.UniqueName, t, x.Columns!, x.Spec.NameToken),
                     Columns = [.. x.Columns!],
+                    NullsNotDistinct = x.Spec.NullsNotDistinct,
                 })];
-            var indexes = t.Indexes.Select(i => (Spec: i, Columns: i.Columns.Select(c => (Column: t.Resolve(c.Column), c.Descending)).ToList(),
+            var indexes = t.Indexes.Select(i => (Spec: i, Columns: i.Columns.Select(c => (Column: c.Column is null ? null : t.Resolve(c.Column), c.Descending, c.Expression, c.Length)).ToList(),
                     Include: i.Include.Select(t.Resolve).ToList()))
-                .Where(x => x.Columns.Count > 0 && x.Columns.All(c => c.Column is not null) && x.Include.All(c => c is not null))
+                .Where(x => x.Columns.Count > 0 && x.Columns.All(c => c.Column is not null || c.Expression is not null) && x.Include.All(c => c is not null))
                 .ToList();
             // An index a table file declares (overlay or designed table) overrides the index an attribute's `indexed` flag synthesizes on the
-            // same columns, so a file can change its sort order, method or name without producing a second index of the same name.
-            var fileColumnSets = indexes.Where(x => x.Spec.FromFile).Select(x => Joined(x.Columns.Select(c => c.Column!))).ToHashSet(StringComparer.Ordinal);
+            // same columns, so a file can change its sort order, method or name without producing a second index of the same name. An
+            // expression is named "expr" in a conventional index name.
+            static string IndexColumnNames(IEnumerable<(RColumn? Column, bool Descending, string? Expression, int? Length)> columns) =>
+                string.Join('_', columns.Select(c => c.Column?.Name ?? "expr"));
+            var fileColumnSets = indexes.Where(x => x.Spec.FromFile && x.Columns.All(c => c.Column is not null)).Select(x => Joined(x.Columns.Select(c => c.Column!))).ToHashSet(StringComparer.Ordinal);
             indexes.RemoveAll(x => !x.Spec.FromFile && fileColumnSets.Contains(Joined(x.Columns.Select(c => c.Column!))));
             t.Table.Indexes = [.. indexes
                 .Select(x => new RIndex
                 {
                     Id = x.Spec.Id,
-                    Name = x.Spec.Name ?? Render(_conv.IndexName, ("table", t.Table.Name), ("columns", Joined(x.Columns.Select(c => c.Column!)))),
-                    Columns = [.. x.Columns.Select(c => new RIndexColumn { Column = c.Column!, Descending = c.Descending })],
+                    Name = x.Spec.Name ?? Render(_conv.IndexName, ("table", t.Table.Name), ("columns", IndexColumnNames(x.Columns))),
+                    Columns = [.. x.Columns.Select(c => new RIndexColumn { Column = c.Column, Expression = c.Column is null ? c.Expression : null, Descending = c.Descending, Length = c.Length })],
                     Include = [.. x.Include!],
                     Where = x.Spec.Where,
                     Unique = x.Spec.Unique,
@@ -113,6 +117,7 @@ internal sealed partial class DatabaseRun
                 Id = c.Id,
                 Name = c.Name ?? Render(_conv.CheckName, ("table", t.Table.Name), ("name", c.Ordinal.ToString(CultureInfo.InvariantCulture))),
                 Expression = c.Expression,
+                Column = c.Column is null ? null : t.Resolve(c.Column),
             })];
         }
 

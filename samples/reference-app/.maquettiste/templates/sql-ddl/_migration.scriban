@@ -16,9 +16,9 @@ func alter_prefix(t)
   ret "ALTER TABLE " + qt(t)
 end
 
-# sp_rename for SQL Server; kind is COLUMN, INDEX or OBJECT.
+# sp_rename for SQL Server, its return code checked (ms_checked); kind is COLUMN, INDEX or OBJECT.
 func rename_object(db, qualified_old, new_name, kind)
-  ret "EXEC sp_rename " + lit(qualified_old, db) + ", " + lit(new_name, db) + ", " + lit(kind, db) + ";"
+  ret ms_checked("sp_rename " + lit(qualified_old, db) + ", " + lit(new_name, db) + ", " + lit(kind, db), db) + ";"
 end
 
 func schema_prefix(schema)
@@ -53,7 +53,7 @@ func find_named(list, name)
   ret null
 end
 
-# The name of the default constraint SQL Server gets for a column (column_def in _sql.scriban).
+# The name of the default constraint SQL Server gets for a column by convention (default_name in _sql.scriban).
 func df_name(table_name, column_name)
   ret "df_" + table_name + "_" + column_name
 end
@@ -69,103 +69,696 @@ func rename_default_sql(t, old_df, new_df)
   ret "IF OBJECT_ID(" + lit(schema_prefix(t.schema) + old_df, $db) + ", 'D') IS NOT NULL " + rename_object($db, schema_prefix(t.schema) + old_df, new_df, "OBJECT")
 end
 
-# One added, dropped, renamed or altered column of table t; old_table is the table's name before a rename, or null.
-func column_statements(t, cc, old_table, out)
+# The schema a table, view or sequence is in once the migration's schema renames ran (PostgreSQL renames schemas in place; the
+# other dialects move each object, see migration.scriban): the new name of a renamed schema, else the name itself.
+func moved_schema(schema)
+  if schema && mq_schema_renames && mq_schema_renames[schema]
+    ret mq_schema_renames[schema]
+  end
+  ret schema
+end
+
+# " IF EXISTS" (with its leading space) for the idempotent parameter where the dialect has it in DROP INDEX.
+func if_exists(db)
+  ret idem() && (db.dialect == "postgresql" || db.dialect == "sqlserver" || db.dialect == "sqlite") ? " IF EXISTS" : ""
+end
+
+# " IF EXISTS" for the idempotent parameter in ALTER TABLE, ALTER INDEX, ALTER VIEW and ALTER SEQUENCE, which only PostgreSQL has.
+func alter_if_exists(db)
+  ret idem() && db.dialect == "postgresql" ? " IF EXISTS" : ""
+end
+
+# The ColumnChange of a table change for a column key, or null.
+func column_change(tc, key)
+  for x in tc.columns
+    if x.key == key
+      ret x
+    end
+  end
+  ret null
+end
+
+# Whether SQLite can add a column with ALTER TABLE ... ADD COLUMN: not a key column, not NOT NULL without a default, no expression
+# or CURRENT_* default, not a stored computed column.
+func sqlite_can_add(c)
+  $dflt = default_sql(c, c.table.database)
+  if c.is_primary_key || (c.computed && c.computed_stored) || (!c.nullable && $dflt == "" && !c.computed)
+    ret false
+  end
+  ret !($dflt | string.starts_with "(") && !($dflt | string.contains "CURRENT_")
+end
+
+# Why a SQLite table must be rebuilt (it cannot alter a column or change a key or constraint in place), or "" when it need not be.
+# SQLite ignores lengths and precisions, so a facet change without a new native type needs nothing; a comment lives in the script.
+func sqlite_rebuild_reason(tc)
+  if tc.table.database.dialect != "sqlite" || (tc.kind != "renamed" && tc.kind != "altered")
+    ret ""
+  end
+  $why = ""
+  for cc in tc.columns
+    if cc.kind == "added" && !sqlite_can_add(cc.column)
+      $why = $why + (($why == "") ? "" : ", ") + "add " + cc.column.name
+    else if (cc.kind == "renamed" || cc.kind == "altered") && has_change(cc.changes, ["type", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "strategy", "codeType"])
+      $why = $why + (($why == "") ? "" : ", ") + cc.new_name + " " + change_list(cc.changes)
+    end
+  end
+  if tc.primary_key.size + tc.uniques.size + tc.foreign_keys.size + tc.checks.size > 0
+    $why = $why + (($why == "") ? "" : ", ") + "keys and constraints"
+  end
+  ret $why
+end
+
+# The statements that rebuild a SQLite table under its current definition (SQLite's documented procedure): create it under a
+# temporary name, copy the rows of the columns it keeps (from their old names), drop the old table, rename the new one and create
+# its indexes and the triggers the model holds for it. migration.scriban turns foreign key enforcement off around the transaction;
+# legacy_alter_table is on for the rename only, so views and other tables' foreign keys keep pointing at the table's name while every
+# other rename of the migration still updates them. An added NOT NULL column without a default takes a NULL placeholder, which fails
+# on the first row until the reviewer gives it a value (the TODO says so).
+func sqlite_rebuild(tc, reason, out)
+  $t = tc.table
+  $db = $t.database
+  $tmp = "_mq_new_" + $t.name
+  emit(out, "-- Rebuild " + $t.name + " (SQLite cannot change it in place: " + reason + ").")
+  for cc in tc.columns
+    if cc.kind == "dropped"
+      emit(out, data_loss_note($t.name, cc.old_name ?? cc.key))
+    else if cc.kind != "added"
+      narrowing_notes($t, cc, out)
+    end
+  end
+  emit(out, include "_table.scriban" $t null $tmp)
+  $targets = ""
+  $sources = ""
+  for c in $t.columns
+    $cc = column_change(tc, c.key)
+    if c.computed
+      continue
+    end
+    $source = q(($cc && $cc.old_name) ? $cc.old_name : c.name, $db)
+    if $cc && $cc.kind == "added"
+      if c.nullable || default_sql(c, $db) != "" || c.identity
+        continue
+      end
+      emit(out, "-- TODO: " + c.name + " is NOT NULL without a default: replace the NULL placeholder below with each row's value (it fails on the first row as it is).")
+      $source = "NULL /* TODO: " + c.name + " */"
+    end
+    $targets = $targets + ($targets == "" ? "" : ", ") + q(c.name, $db)
+    $sources = $sources + ($sources == "" ? "" : ", ") + $source
+  end
+  emit(out, "INSERT INTO " + q($tmp, $db) + " (" + $targets + ")\nSELECT " + $sources + " FROM " + qt($t) + ";")
+  emit(out, "DROP TABLE " + qt($t) + ";")
+  emit(out, "PRAGMA legacy_alter_table = ON;\nALTER TABLE " + q($tmp, $db) + " RENAME TO " + q($t.name, $db) + ";\nPRAGMA legacy_alter_table = OFF;")
+  for ix in $t.indexes
+    emit(out, index_sql(ix, $t))
+  end
+  # SQLite drops a table's triggers with the table: the triggers the model holds as SQL objects that depend on it are created again
+  # (unless this migration creates them anyway, as new or changed objects); others are the reviewer's.
+  $again = 0
+  for o in $db.objects
+    if (o.object_kind | string.downcase) == "trigger" && !find_change(diff.objects, o.id)
+      for dep in o.depends_on
+        if dep.kind == "table" && dep.key == $t.key
+          emit(out, object_sql(o, $db))
+          $again = $again + 1
+        end
+      end
+    end
+  end
+  emit(out, "-- SQLite dropped the triggers of " + $t.name + " with the old table" + ($again > 0 ? "; the model's are created again above" : "") + ": recreate any other trigger on it by hand.")
+end
+
+# A "data loss" note before a statement that drops a column (column given) or a table (column null).
+func data_loss_note(table_name, column_name)
+  if column_name
+    ret "-- Data loss: dropping column " + table_name + "." + column_name + " deletes its values."
+  end
+  ret "-- Data loss: dropping table " + table_name + " deletes its rows."
+end
+
+# The function that counts a value's characters in the dialect, for data checks.
+func length_function(db)
+  case db.dialect
+    when "sqlserver"
+      ret "LEN"
+    when "mysql"
+      ret "CHAR_LENGTH"
+  end
+  ret "length"
+end
+
+# Whether a native type stores Unicode text in a national character type (SQL Server and Oracle nchar, nvarchar, nvarchar2, nclob, ntext).
+func national_type(native)
+  $n = (native ?? "") | string.downcase
+  ret ($n | string.starts_with "nchar") || ($n | string.starts_with "nvarchar") || ($n | string.starts_with "nclob") || ($n | string.starts_with "ntext")
+end
+
+# "1" followed by n zeros: the smallest value with n + 1 integer digits.
+func power_of_ten(n)
+  $s = "1"
+  for i in 1..n
+    $s = $s + "0"
+  end
+  ret n > 0 ? $s : "1"
+end
+
+# TODO lines with a data-check query for a column change that can lose data: a shorter length, a smaller precision or scale, a switch
+# from Unicode to single-byte text (SQL Server, Oracle) or another native type. Written before the statement that changes the column.
+func narrowing_notes(t, cc, out)
   $db = t.database
   $d = $db.dialect
+  # SQLite keeps any value in any column (lengths and precisions are not enforced).
+  if $d == "sqlite"
+    ret
+  end
+  $c = cc.column
+  $name = cc.new_name ?? $c.name
+  $col = q(cc.old_name ?? $name, $db)
+  $where = t.name + "." + $name
+  $facets = false
+  for ch in cc.changes
+    if ch.property == "length" && ch.new != null && (ch.old == null || ch.new < ch.old)
+      $facets = true
+      emit(out, "-- TODO: " + $where + " gets shorter (length: " + (ch.old ?? "unbounded") + " -> " + ch.new + "); longer values are cut or refused. Check first: SELECT count(*) FROM " + qt(t) + " WHERE " + length_function($db) + "(" + $col + ") > " + ch.new + ";")
+    else if (ch.property == "precision" || ch.property == "scale") && ch.old != null && (ch.new == null || ch.new < ch.old)
+      $facets = true
+      if $c.type == "decimal" && $c.precision != null
+        $scale = $c.scale ?? 0
+        emit(out, "-- TODO: " + $where + " holds fewer digits (" + ch.property + ": " + ch.old + " -> " + (ch.new ?? "null") + "); values that do not fit are refused or rounded. Check first: SELECT count(*) FROM " + qt(t) + " WHERE abs(" + $col + ") >= " + power_of_ten($c.precision - $scale) + " OR " + $col + " <> round(" + $col + ", " + $scale + ");")
+      else
+        emit(out, "-- TODO: " + $where + " holds fewer digits (" + ch.property + ": " + ch.old + " -> " + (ch.new ?? "null") + "); check that every value fits before running this.")
+      end
+    end
+  end
+  # A larger scale without as many more digits of precision leaves fewer digits before the point: (10,2) -> (10,4) holds values
+  # below 10^6, no longer below 10^8.
+  if !$facets && $c.type == "decimal" && $c.precision != null
+    $p = null
+    $sc = null
+    for ch in cc.changes
+      if ch.property == "precision"
+        $p = ch
+      else if ch.property == "scale"
+        $sc = ch
+      end
+    end
+    $old_p = $p ? $p.old : $c.precision
+    if $sc && $sc.old != null && $sc.new != null && $sc.new > $sc.old && $old_p != null && ($c.precision - $sc.new) < ($old_p - $sc.old)
+      $facets = true
+      emit(out, "-- TODO: " + $where + " holds fewer digits before the point (precision " + $old_p + " -> " + $c.precision + ", scale " + $sc.old + " -> " + $sc.new + "); larger values are refused. Check first: SELECT count(*) FROM " + qt(t) + " WHERE abs(" + $col + ") >= " + power_of_ten($c.precision - $sc.new) + ";")
+    end
+  end
+  for ch in cc.changes
+    if ch.property == "nativeType"
+      if ($d == "sqlserver" || $d == "oracle") && national_type(ch.old) && !national_type(ch.new)
+        $back = $d == "sqlserver" ? "CAST(CAST(" + $col + " AS " + ch.new + ") AS " + ch.old + ")" : "TO_NCHAR(TO_CHAR(" + $col + "))"
+        emit(out, "-- TODO: " + $where + " switches from Unicode to single-byte text (" + ch.old + " -> " + ch.new + "); characters outside the code page become '?'. Check first: SELECT count(*) FROM " + qt(t) + " WHERE " + $back + " <> " + $col + ";")
+      else if !$facets && !has_change(cc.changes, ["type", "length", "precision", "scale", "strategy", "codeType"])
+        emit(out, "-- TODO: " + $where + " changes its native type (" + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + "); check that every value converts before running this.")
+      end
+    end
+  end
+end
+
+# A column comment statement for a changed comment, or a note where the dialect keeps comments in the definition only.
+func column_comment_statement(t, c, name, out)
+  $db = t.database
+  $d = $db.dialect
+  if $d == "postgresql"
+    emit(out, "COMMENT ON COLUMN " + qt(t) + "." + q(name, $db) + " IS " + (c.comment ? lit(c.comment, $db) : "NULL") + ";")
+  else if $d == "oracle"
+    emit(out, "COMMENT ON COLUMN " + qt(t) + "." + q(name, $db) + " IS " + lit(c.comment ?? "", $db) + ";")
+  else if $d == "sqlserver"
+    emit(out, ms_description($db, "TABLE", t.schema, t.name, name, c.comment))
+  else if $d == "sqlite"
+    emit(out, "-- " + t.name + "." + name + ": the column comment changed; SQLite keeps comments in the schema script only.")
+  end
+end
+
+# Whether a list of resolved columns holds a column (by key).
+func has_column(list, c)
+  for x in list
+    if x.key == c.key
+      ret true
+    end
+  end
+  ret false
+end
+
+# Whether a table change lists a constraint or index by name (changed objects are dropped and added by their own phases).
+func lists_change(changes, name)
+  for oc in changes
+    if oc.old_name == name || oc.new_name == name
+      ret true
+    end
+  end
+  ret false
+end
+
+# Whether a SQL expression reads a column, by its name as a whole word (best effort: a string literal or another table's column of
+# the same name counts too).
+func reads_column(expression, name)
+  $pattern = "(?i)(?<![A-Za-z0-9_$#])" + (name | regex.escape) + "(?![A-Za-z0-9_$#])"
+  ret ((expression ?? "") | regex.match $pattern).size > 0
+end
+
+# The table change of the diff for a table key, or null.
+func table_change_of(key)
+  for x in diff.tables
+    if x.key == key
+      ret x
+    end
+  end
+  ret null
+end
+
+# Drops a foreign key once per migration (the column, key and table phases may each need it gone) and queues its ADD CONSTRAINT,
+# which migration.scriban writes with the other foreign keys once every column and key has its new type (mq_fk_readd). A key the
+# diff changes itself, or one of a table the diff adds or drops, is left to its own phase; idempotent, a key of an added table is
+# dropped too when the table exists (a second run finds it created).
+func drop_fk_once(t, f, out)
+  $tc = table_change_of(t.key)
+  $added = $tc && $tc.kind == "added"
+  if $tc && (($added && !idem()) || $tc.kind == "dropped" || lists_change($tc.foreign_keys, f.name))
+    ret
+  end
+  $k = t.key + "|" + f.name
+  if mq_fk_dropped[$k]
+    ret
+  end
+  mq_fk_dropped[$k] = true
+  $db = t.database
+  $drop = drop_constraint_sql(t, "foreign key", f.name)
+  if $added && $db.dialect == "sqlserver"
+    $drop = "IF OBJECT_ID(" + ms_object(t.schema, t.name, $db) + ", N'U') IS NOT NULL " + $drop
+  else if $added && $db.dialect == "postgresql"
+    $drop = "ALTER TABLE IF EXISTS " + qt(t) + " DROP CONSTRAINT IF EXISTS " + q(f.name, $db) + ";"
+  end
+  emit(out, $drop)
+  mq_fk_readd[mq_fk_readd.size] = add_constraint_sql(t, f.name, foreign_key_body(f, $db))
+end
+
+# The foreign keys of other tables (and the table itself) that reference a table, optionally only those that reference a column of
+# it, as { table, fk } pairs.
+func incoming_fks(t, c)
+  $result = []
+  for x in (mq_incoming[t.key] ?? [])
+    if !c || has_column(x.fk.referenced_columns, c)
+      $result[$result.size] = x
+    end
+  end
+  ret $result
+end
+
+# Whether a foreign key referencing the columns refs (keys, in its order) relies on a key or index with the columns keys (null for
+# an expression column): MySQL on any index whose first columns are the referenced ones in that order, the other dialects on a key
+# with exactly those columns.
+func relies_on(refs, keys, d)
+  if keys.size < refs.size || (d != "mysql" && keys.size != refs.size)
+    ret false
+  end
+  if d == "mysql"
+    for i in 0..(refs.size - 1)
+      if keys[i] != refs[i]
+        ret false
+      end
+    end
+    ret true
+  end
+  for k in refs
+    if !(keys | array.contains k)
+      ret false
+    end
+  end
+  ret true
+end
+
+# Drops the foreign keys of other tables (and the table's own) that rely on a unique constraint or index of t the migration drops
+# (to change or remove it), and queues them to be added back with the other foreign keys (drop_fk_once): PostgreSQL, SQL Server,
+# MySQL and Oracle refuse to drop a key a foreign key relies on. oc is the constraint or index change; MySQL relies on any index,
+# the others on a unique key (an index: without a filter).
+func drop_fks_relying_on(t, oc, out)
+  $d = t.database.dialect
+  if $d == "sqlite" || (!oc.old_unique && $d != "mysql")
+    ret
+  end
+  for x in incoming_fks(t, null)
+    if relies_on(x.fk.referenced_columns | array.map "key", oc.old_columns, $d)
+      drop_fk_once(x.table, x.fk, out)
+    end
+  end
+end
+
+# SQL Server: what depends on a column that the migration does not change itself, as { drop, add } statement pairs, so ALTER COLUMN
+# can run between them (SQL Server refuses it while they exist): unique constraints, checks (column checks and table checks whose
+# expression reads the column), indexes (keys or included), computed columns that read it (with their own indexes and constraints)
+# and the primary key. Foreign keys on the column and those of other tables that reference it are dropped here once and added back
+# after every column changed (drop_fk_once), since a key and the columns that reference it must agree on the type.
+func ms_column_dependents(tc, c, out, pairs, retype)
+  $t = tc.table
+  $db = $t.database
+  for x in incoming_fks($t, c)
+    drop_fk_once(x.table, x.fk, out)
+  end
+  for f in $t.foreign_keys
+    if has_column(f.columns, c)
+      drop_fk_once($t, f, out)
+    end
+  end
+  ms_column_constraints(tc, c, pairs)
+  computed_dependents(tc, c, pairs)
+  # Retyping an identity column rewrites every row, which SQL Server refuses while the table has a persisted computed column; and a
+  # retype that converts values fails while the table has a filtered index (error 1934, whatever the session's SET options).
+  if c.identity && retype
+    for comp in $t.columns
+      if comp.computed && comp.computed_stored && !reads_column(comp.computed, c.name) && !column_change(tc, comp.key)
+        ms_column_constraints(tc, comp, pairs)
+        pairs[pairs.size] = { drop: alter_prefix($t) + " DROP COLUMN " + q(comp.name, $db) + ";", add: add_column_sql($t, comp) }
+      end
+    end
+  end
+  if retype
+    for ix in $t.indexes
+      if ix.where && !lists_change(tc.indexes, ix.name)
+        $listed = false
+        for x in pairs
+          if x.index == ix.name
+            $listed = true
+          end
+        end
+        if !$listed
+          pairs[pairs.size] = { drop: drop_index_sql($t, ix.name), add: index_sql(ix, $t), index: ix.name }
+        end
+      end
+    end
+  end
+  if $t.primary_key && has_column($t.primary_key.columns, c) && tc.primary_key.size == 0
+    for x in incoming_fks($t, null)
+      drop_fk_once(x.table, x.fk, out)
+    end
+    pairs[pairs.size] = { drop: drop_constraint_sql($t, "primary key", $t.primary_key.name), add: add_constraint_sql($t, $t.primary_key.name, constraint_body($t, "primary key", $t.primary_key.name)) }
+  end
+end
+
+# The computed columns of a table that read a column (and are not changed themselves), each with its constraints and indexes, as
+# { drop, add } pairs: SQL Server and PostgreSQL refuse to retype a column a computed column reads, so it is dropped first and
+# added again (at the end of the table) after.
+func computed_dependents(tc, c, pairs)
+  $t = tc.table
+  for comp in $t.columns
+    if comp.computed && comp.key != c.key && reads_column(comp.computed, c.name) && !column_change(tc, comp.key)
+      ms_column_constraints(tc, comp, pairs)
+      pairs[pairs.size] = { drop: alter_prefix($t) + " DROP COLUMN " + q(comp.name, $t.database) + ";", add: add_column_sql($t, comp) }
+    end
+  end
+end
+
+# The unique constraints, checks and indexes of a table that use a column, as { drop, add } pairs (see ms_column_dependents).
+func ms_column_constraints(tc, c, pairs)
+  $t = tc.table
+  for u in $t.uniques
+    if has_column(u.columns, c) && !lists_change(tc.uniques, u.name)
+      pairs[pairs.size] = { drop: drop_constraint_sql($t, "unique", u.name), add: add_constraint_sql($t, u.name, unique_body(u, $t.database)) }
+    end
+  end
+  for k in $t.checks
+    if ((k.column && k.column.key == c.key) || (!k.column && reads_column(k.expression, c.name))) && !lists_change(tc.checks, k.name)
+      pairs[pairs.size] = { drop: drop_constraint_sql($t, "check", k.name), add: add_constraint_sql($t, k.name, "CHECK (" + k.expression + ")") }
+    end
+  end
+  for ix in $t.indexes
+    $uses = has_column(ix.include, c)
+    for ic in ix.columns
+      if ic.column && ic.column.key == c.key
+        $uses = true
+      end
+    end
+    if $uses && !lists_change(tc.indexes, ix.name)
+      pairs[pairs.size] = { drop: drop_index_sql($t, ix.name), add: index_sql(ix, $t), index: ix.name }
+    end
+  end
+end
+
+# ALTER TABLE ... ADD of a new column: ADD COLUMN, ADD on SQL Server, ADD (...) on Oracle; guarded when idempotent (PostgreSQL IF
+# NOT EXISTS, SQL Server COL_LENGTH, MySQL information_schema).
+func add_column_sql(t, c)
+  $db = t.database
+  $d = $db.dialect
+  if $d == "oracle"
+    ret alter_prefix(t) + " ADD (" + column_def(c) + ");"
+  else if $d == "sqlserver"
+    $s = alter_prefix(t) + " ADD " + column_def(c) + ";"
+    ret idem() ? "IF COL_LENGTH(" + ms_object(t.schema, t.name, $db) + ", " + lit(c.name, $db) + ") IS NULL " + $s : $s
+  else if $d == "mysql" && idem()
+    ret my_guard($db, "NOT " + my_exists_column(t, c.name), alter_prefix(t) + " ADD COLUMN " + column_def(c) + ";")
+  end
+  ret alter_prefix(t) + " ADD COLUMN " + (idem() && $d == "postgresql" ? "IF NOT EXISTS " : "") + column_def(c) + ";"
+end
+
+# ALTER TABLE ... DROP COLUMN, guarded when idempotent (PostgreSQL and SQL Server IF EXISTS, MySQL information_schema).
+func drop_column_sql(t, name)
+  $db = t.database
+  $d = $db.dialect
+  $s = alter_prefix(t) + " DROP COLUMN" + (idem() && ($d == "postgresql" || $d == "sqlserver") ? " IF EXISTS" : "") + " " + q(name, $db) + ";"
+  ret idem() && $d == "mysql" ? my_guard($db, my_exists_column(t, name), $s) : $s
+end
+
+# The rename of a column: sp_rename on SQL Server, RENAME COLUMN elsewhere; guarded when idempotent (the old name still exists).
+func rename_column_sql(t, old, name)
+  $db = t.database
+  $d = $db.dialect
+  if $d == "sqlserver"
+    $s = rename_object($db, schema_prefix(t.schema) + t.name + "." + old, name, "COLUMN")
+    ret idem() ? "IF COL_LENGTH(" + ms_object(t.schema, t.name, $db) + ", " + lit(old, $db) + ") IS NOT NULL " + $s : $s
+  end
+  $s = alter_prefix(t) + " RENAME COLUMN " + q(old, $db) + " TO " + q(name, $db) + ";"
+  if idem() && $d == "postgresql"
+    ret pg_do_if(pg_exists_column(t, old, false), $s)
+  else if idem() && $d == "mysql"
+    ret my_guard($db, my_exists_column(t, old), $s)
+  end
+  ret $s
+end
+
+# The identity statements of a column change outside SQLite (rebuilt) and MySQL (MODIFY): PostgreSQL ADD GENERATED ... AS IDENTITY with
+# a restart after the largest value the column holds, DROP IDENTITY, SET GENERATED / SET START WITH / SET INCREMENT BY; Oracle MODIFY
+# with START WITH LIMIT VALUE; SQL Server cannot add, drop or change an identity in place (TODO lines).
+func identity_statements(t, cc, c, col, out)
+  $db = t.database
+  $d = $db.dialect
+  $added = has_change(cc.changes, ["identity"]) && c.identity
+  $dropped = has_change(cc.changes, ["identity"]) && !c.identity
+  $options = !has_change(cc.changes, ["identity"]) && c.identity && has_change(cc.changes, ["identitySeed", "identityIncrement", "identityAlways"])
+  if $d == "postgresql"
+    if $added
+      $s = alter_prefix(t) + " ALTER COLUMN " + col + " ADD " + identity_clause(c) + ";"
+      emit(out, idem() ? pg_do_if("NOT " + pg_exists_column(t, c.name, true), $s) : $s)
+      # The identity starts at its seed whatever the column holds: restart it after the largest value, so the next insert gets a new one.
+      emit(out, "DO $$ BEGIN PERFORM setval(pg_get_serial_sequence(" + lit(qt(t), $db) + ", " + lit(c.name, $db) + "), GREATEST(COALESCE(MAX(" + col + "), 0) + 1, " + (c.identity_seed ?? 1) + "), false) FROM " + qt(t) + "; END $$;")
+    else if $dropped
+      emit(out, alter_prefix(t) + " ALTER COLUMN " + col + " DROP IDENTITY IF EXISTS;")
+    else if $options
+      $set = ""
+      if has_change(cc.changes, ["identityAlways"])
+        $set = $set + " SET GENERATED " + (c.identity_always ? "ALWAYS" : "BY DEFAULT")
+      end
+      if has_change(cc.changes, ["identityIncrement"])
+        $set = $set + " SET INCREMENT BY " + (c.identity_increment ?? 1)
+      end
+      if has_change(cc.changes, ["identitySeed"])
+        $set = $set + " SET START WITH " + (c.identity_seed ?? 1)
+      end
+      emit(out, alter_prefix(t) + " ALTER COLUMN " + col + $set + ";")
+      if has_change(cc.changes, ["identitySeed"])
+        emit(out, "-- TODO: " + t.name + "." + c.name + " starts at " + (c.identity_seed ?? 1) + " only after ALTER TABLE " + qt(t) + " ALTER COLUMN " + col + " RESTART; restart it if the values should begin again.")
+      end
+    end
+  else if $d == "oracle"
+    if $added
+      emit(out, alter_prefix(t) + " MODIFY (" + col + " GENERATED " + (c.identity_always ? "ALWAYS" : "BY DEFAULT") + " AS IDENTITY (START WITH LIMIT VALUE" + (c.identity_increment != null ? " INCREMENT BY " + c.identity_increment : "") + "));")
+    else if $dropped
+      emit(out, alter_prefix(t) + " MODIFY (" + col + " DROP IDENTITY);")
+    else if $options
+      # The next value stays after the largest one the column holds unless the seed itself changed.
+      $start = has_change(cc.changes, ["identitySeed"]) ? "START WITH " + (c.identity_seed ?? 1) : "START WITH LIMIT VALUE"
+      emit(out, alter_prefix(t) + " MODIFY (" + col + " GENERATED " + (c.identity_always ? "ALWAYS" : "BY DEFAULT") + " AS IDENTITY (" + $start + (c.identity_increment != null ? " INCREMENT BY " + c.identity_increment : "") + "));")
+    end
+  else if $d == "sqlserver" && ($added || $dropped || $options)
+    if $options && has_change(cc.changes, ["identitySeed"]) && !has_change(cc.changes, ["identityIncrement"])
+      emit(out, "-- TODO: " + t.name + "." + c.name + " identity seed " + change_list(cc.changes) + ": DBCC CHECKIDENT (" + lit(schema_prefix(t.schema) + t.name, $db) + ", RESEED, " + (c.identity_seed ?? 1) + ") if the values should begin again.")
+    else
+      emit(out, "-- TODO: " + t.name + "." + c.name + ": SQL Server cannot add, drop or change an identity in place (" + change_list(cc.changes) + "); create a new column or table and copy the rows.")
+    end
+  end
+end
+
+# One added, dropped, renamed or altered column of a table change. Not called for a SQLite table that is rebuilt (sqlite_rebuild
+# covers its columns).
+func column_statements(tc, cc, out)
+  $t = tc.table
+  $old_table = tc.old_name
+  $db = $t.database
+  $d = $db.dialect
   if cc.kind == "added"
-    emit(out, alter_prefix(t) + ($d == "sqlserver" ? " ADD " : " ADD COLUMN ") + column_def(cc.column) + ";")
-    if !cc.column.nullable && default_sql(cc.column, $db) == "" && !cc.column.identity
-      emit(out, "-- TODO: " + cc.column.name + " is NOT NULL without a default; fill existing rows first.")
+    emit(out, add_column_sql($t, cc.column))
+    if pack.params.comments && cc.column.comment && $d != "mysql" && $d != "sqlite"
+      emit(out, comment_sql($t, cc.column, cc.column.comment))
+    end
+    if !cc.column.nullable && default_sql(cc.column, $db) == "" && !cc.column.identity && !cc.column.computed
+      emit(out, "-- TODO: " + cc.column.name + " is NOT NULL without a default; fill existing rows first (the ADD above fails on a table with rows).")
     end
     ret
   end
   if cc.kind == "dropped"
     $old_col = cc.old_name ?? cc.key
+    emit(out, data_loss_note($t.name, $old_col))
     if $d == "sqlserver"
-      emit(out, drop_default_sql(t, df_name(t.name, $old_col)))
-      if old_table && old_table != t.name
-        emit(out, drop_default_sql(t, df_name(old_table, $old_col)))
+      if cc.old_default_name
+        emit(out, drop_default_sql($t, cc.old_default_name))
+      else
+        emit(out, drop_default_sql($t, df_name($t.name, $old_col)))
+        if $old_table && $old_table != $t.name
+          emit(out, drop_default_sql($t, df_name($old_table, $old_col)))
+        end
       end
     end
-    emit(out, alter_prefix(t) + " DROP COLUMN " + q($old_col, $db) + ";")
+    emit(out, drop_column_sql($t, $old_col))
     ret
   end
-  $name = cc.new_name ?? cc.column.name
+  $c = cc.column
+  $name = cc.new_name ?? $c.name
+  # SQL Server: the default constraint's name now (after the table rename renamed conventional names) and after this migration.
+  $df_now = cc.old_default_name ?? df_name($t.name, cc.old_name ?? $name)
+  $df = default_name($c, $t.name)
   if cc.old_name && cc.old_name != $name
-    if $d == "sqlserver"
-      emit(out, rename_object($db, schema_prefix(t.schema) + t.name + "." + cc.old_name, $name, "COLUMN"))
-      if default_sql(cc.column, $db) != "" || has_change(cc.changes, ["default", "defaultSql"])
-        emit(out, rename_default_sql(t, df_name(t.name, cc.old_name), df_name(t.name, $name)))
-      end
-    else
-      emit(out, alter_prefix(t) + " RENAME COLUMN " + q(cc.old_name, $db) + " TO " + q($name, $db) + ";")
-    end
+    emit(out, rename_column_sql($t, cc.old_name, $name))
+  end
+  if $d == "sqlserver" && $df_now != $df && (default_sql($c, $db) != "" || has_change(cc.changes, ["default", "defaultSql", "defaultName"]))
+    emit(out, rename_default_sql($t, $df_now, $df))
   end
   if cc.changes.size == 0
     ret
   end
-  $c = cc.column
   $col = q($name, $db)
   if $d == "sqlite"
-    # SQLite ignores lengths and precisions, so a facet change without a new native type needs nothing.
-    if has_change(cc.changes, ["type", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "comment"])
-      emit(out, "-- TODO (SQLite cannot alter a column; rebuild " + t.name + "): " + $name + " " + change_list(cc.changes))
+    # A SQLite table with anything but a comment change is rebuilt instead (sqlite_rebuild_reason).
+    if has_change(cc.changes, ["comment"]) && pack.params.comments
+      column_comment_statement($t, $c, $name, out)
+    end
+    ret
+  end
+  $retype = has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType", "strategy", "codeType", "collation"])
+  narrowing_notes($t, cc, out)
+  $physical = ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "comment", "strategy", "codeType"]
+  if $d == "mysql"
+    # MySQL redefines the whole column; its comment is part of the definition. A key and the columns that reference it must agree on
+    # the type, so the foreign keys on the column and those that reference it are dropped first and added back after every column.
+    if $retype
+      for x in incoming_fks($t, $c)
+        drop_fk_once(x.table, x.fk, out)
+      end
+      for f in $t.foreign_keys
+        if has_column(f.columns, $c)
+          drop_fk_once($t, f, out)
+        end
+      end
+    end
+    if has_change(cc.changes, $physical)
+      emit(out, alter_prefix($t) + " MODIFY COLUMN " + column_def($c) + ";")
+    end
+    if has_change(cc.changes, ["identitySeed"]) && $c.identity && $c.identity_seed != null
+      emit(out, alter_prefix($t) + " AUTO_INCREMENT = " + $c.identity_seed + ";")
+    end
+    for ch in cc.changes
+      if ch.property == "type"
+        emit(out, "-- TODO: convert existing values of " + $t.name + "." + $name + " (type: " + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + "); MODIFY COLUMN converts each value as it can.")
+      end
     end
     ret
   end
   $native = column_type($c)
-  $retype = has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType", "strategy", "codeType"])
   $renull = has_change(cc.changes, ["nullable"])
   $redefault = has_change(cc.changes, ["default", "defaultSql"])
   $dflt = default_sql($c, $db)
-  $df = df_name(t.name, $name)
-  # SQL Server refuses ALTER COLUMN while a default constraint depends on the column: drop it first and add it back after.
-  $readd = false
-  if $d == "sqlserver" && ($redefault || (($retype || $renull) && $dflt != ""))
-    emit(out, drop_default_sql(t, $df))
-    $readd = $dflt != ""
+  # A new type without COLLATE takes the database's default collation, so a column with its own keeps it.
+  $collate = ""
+  if $c.collation
+    $collate = " COLLATE " + collation_sql($c.collation, $db)
   end
-  if $retype
-    if $d == "postgresql"
-      emit(out, alter_prefix(t) + " ALTER COLUMN " + $col + " TYPE " + $native + " USING " + $col + "::" + $native + ";")
-    else
-      emit(out, alter_prefix(t) + " ALTER COLUMN " + $col + " " + $native + ($c.nullable ? " NULL" : " NOT NULL") + ";")
+  if $d == "oracle"
+    if $retype
+      emit(out, alter_prefix($t) + " MODIFY (" + $col + " " + $native + ");")
     end
-    # A change of logical type keeps each stored value as the cast leaves it; the reviewer decides whether values change
-    # meaning (for example integer ids that become codes) and converts them before dropping anything they depend on.
-    for ch in cc.changes
-      if ch.property == "type"
-        emit(out, "-- TODO: convert existing values of " + t.name + "." + $name + " (type: " + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + "); the cast keeps each value as it is.")
+    if $renull
+      emit(out, alter_prefix($t) + " MODIFY (" + $col + ($c.nullable ? " NULL" : " NOT NULL") + ");")
+    end
+    if $redefault
+      emit(out, alter_prefix($t) + " MODIFY (" + $col + " DEFAULT " + ($dflt == "" ? "NULL" : $dflt) + ");")
+    end
+    identity_statements($t, cc, $c, $col, out)
+  else
+    # SQL Server refuses ALTER COLUMN while a default constraint depends on the column: drop it first and add it back after. What
+    # else depends on the column (ms_column_dependents) goes the same way.
+    $readd = false
+    $dependents = []
+    if $d == "sqlserver" && ($retype || $renull)
+      ms_column_dependents(tc, $c, out, $dependents, $retype)
+    else if $d == "postgresql" && $retype
+      computed_dependents(tc, $c, $dependents)
+    end
+    for x in $dependents
+      emit(out, x.drop)
+    end
+    if $d == "sqlserver" && ($redefault || (($retype || $renull) && $dflt != ""))
+      emit(out, drop_default_sql($t, $df))
+      $readd = $dflt != ""
+    end
+    if $retype
+      if $d == "postgresql"
+        # USING casts explicitly when the logical type or the native type itself changes; a new length, precision or scale needs none.
+        $using = has_change(cc.changes, ["type", "strategy", "codeType"]) || (has_change(cc.changes, ["nativeType"]) && !has_change(cc.changes, ["length", "precision", "scale"]))
+        emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " TYPE " + $native + $collate + ($using ? " USING " + $col + "::" + $native : "") + ";")
+      else
+        emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " " + $native + $collate + ($c.nullable ? " NULL" : " NOT NULL") + ";")
+      end
+    else if $renull
+      if $d == "postgresql"
+        emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + ($c.nullable ? " DROP NOT NULL;" : " SET NOT NULL;"))
+      else
+        emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " " + $native + $collate + ($c.nullable ? " NULL" : " NOT NULL") + ";")
       end
     end
-  else if $renull
-    if $d == "postgresql"
-      emit(out, alter_prefix(t) + " ALTER COLUMN " + $col + ($c.nullable ? " DROP NOT NULL;" : " SET NOT NULL;"))
-    else
-      emit(out, alter_prefix(t) + " ALTER COLUMN " + $col + " " + $native + ($c.nullable ? " NULL" : " NOT NULL") + ";")
+    if $redefault && $d != "sqlserver"
+      emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + ($dflt == "" ? " DROP DEFAULT;" : " SET DEFAULT " + $dflt + ";"))
+    else if $readd
+      $s = alter_prefix($t) + " ADD CONSTRAINT " + q($df, $db) + " DEFAULT " + $dflt + " FOR " + $col + ";"
+      emit(out, idem() ? "IF OBJECT_ID(" + lit(schema_prefix($t.schema) + $df, $db) + ", 'D') IS NULL " + $s : $s)
     end
+    for x in $dependents
+      emit(out, x.add)
+    end
+    identity_statements($t, cc, $c, $col, out)
   end
-  if $redefault && $d != "sqlserver"
-    emit(out, alter_prefix(t) + " ALTER COLUMN " + $col + ($dflt == "" ? " DROP DEFAULT;" : " SET DEFAULT " + $dflt + ";"))
-  else if $readd
-    emit(out, alter_prefix(t) + " ADD CONSTRAINT " + q($df, $db) + " DEFAULT " + $dflt + " FOR " + $col + ";")
+  # A change of logical type keeps each stored value as the cast leaves it; the reviewer decides whether values change
+  # meaning (for example integer ids that become codes) and converts them before dropping anything they depend on.
+  if $retype
+    for ch in cc.changes
+      if ch.property == "type"
+        emit(out, "-- TODO: convert existing values of " + $t.name + "." + $name + " (type: " + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + "); the cast keeps each value as it is.")
+      end
+    end
   end
   if has_change(cc.changes, ["comment"]) && pack.params.comments
-    if $d == "postgresql"
-      emit(out, "COMMENT ON COLUMN " + qt(t) + "." + $col + " IS " + ($c.comment ? lit($c.comment, $db) : "NULL") + ";")
-    else
-      emit(out, "-- TODO: update the MS_Description of " + t.name + "." + $name + " (sp_updateextendedproperty).")
-    end
+    column_comment_statement($t, $c, $name, out)
   end
+  $handled = ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "defaultName", "comment", "collation", "strategy", "codeType", "identity", "identitySeed", "identityIncrement", "identityAlways"]
   $rest = []
   for ch in cc.changes
-    if !has_change([ch], ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "comment"])
+    if !has_change([ch], $handled)
       $rest[$rest.size] = ch
     end
   end
   if $rest.size > 0
-    emit(out, "-- TODO: " + t.name + "." + $name + " " + change_list($rest))
+    emit(out, "-- TODO: " + $t.name + "." + $name + " " + change_list($rest))
   end
 end
 
@@ -174,12 +767,12 @@ func constraint_body(t, group, name)
   $db = t.database
   if group == "primary key"
     if t.primary_key && t.primary_key.name == name
-      ret "PRIMARY KEY (" + cols(t.primary_key.columns, $db) + ")"
+      ret "PRIMARY KEY" + pk_clustering(t) + " (" + cols(t.primary_key.columns, $db) + ")"
     end
   else if group == "unique"
     $u = find_named(t.uniques, name)
     if $u
-      ret "UNIQUE (" + cols($u.columns, $db) + ")"
+      ret unique_body($u, $db)
     end
   else if group == "foreign key"
     $f = find_named(t.foreign_keys, name)
@@ -195,41 +788,79 @@ func constraint_body(t, group, name)
   ret ""
 end
 
+# ALTER TABLE ... DROP of a primary key, unique, foreign key or check constraint. MySQL has a statement per kind (DROP PRIMARY KEY,
+# DROP INDEX, DROP FOREIGN KEY, DROP CONSTRAINT for a check); the others DROP CONSTRAINT, IF EXISTS when idempotent.
+func drop_constraint_sql(t, group, name)
+  $db = t.database
+  if $db.dialect == "mysql"
+    case group
+      when "primary key"
+        $s = alter_prefix(t) + " DROP PRIMARY KEY;"
+        ret idem() ? my_guard($db, my_exists_constraint(t, "PRIMARY", "PRIMARY KEY"), $s) : $s
+      when "unique"
+        $s = alter_prefix(t) + " DROP INDEX " + q(name, $db) + ";"
+        ret idem() ? my_guard($db, my_exists_index(t, name), $s) : $s
+      when "foreign key"
+        $s = alter_prefix(t) + " DROP FOREIGN KEY " + q(name, $db) + ";"
+        ret idem() ? my_guard($db, my_exists_constraint(t, name, "FOREIGN KEY"), $s) : $s
+    end
+    $s = alter_prefix(t) + " DROP CONSTRAINT " + q(name, $db) + ";"
+    ret idem() ? my_guard($db, my_exists_constraint(t, name, null), $s) : $s
+  end
+  ret alter_prefix(t) + " DROP CONSTRAINT" + (idem() && ($db.dialect == "postgresql" || $db.dialect == "sqlserver") ? " IF EXISTS" : "") + " " + q(name, $db) + ";"
+end
+
 # One primary key, unique, foreign key or check change, for one phase: "before" drops and renames, "after" adds (a changed
-# constraint is dropped before and added after).
+# constraint is dropped before and added after). MySQL renames a unique constraint as an index, cannot rename a foreign key or a
+# check (dropped and added again) and ignores a primary key's name. Not called for a SQLite table, which is rebuilt.
 func constraint_statements(t, oc, group, phase, out)
   $db = t.database
   $d = $db.dialect
   $old = oc.old_name ?? oc.new_name
   $name = oc.new_name ?? oc.old_name
-  if $d == "sqlite"
-    if phase == "before"
-      emit(out, "-- TODO (SQLite cannot change constraints in place; rebuild " + t.name + "): " + oc.kind + " " + group + " " + $name + (oc.changes.size > 0 ? " (" + change_list(oc.changes) + ")" : ""))
-    end
+  $renamed_only = oc.kind == "renamed" && oc.changes.size == 0
+  if $d == "mysql" && $renamed_only && group == "primary key"
     ret
   end
-  $recreate = oc.kind == "added" || oc.kind == "dropped" || oc.changes.size > 0
+  $recreate = oc.kind == "added" || oc.kind == "dropped" || oc.changes.size > 0 || ($d == "mysql" && $renamed_only && group != "unique")
   if phase == "before"
-    if oc.kind == "dropped" || (oc.kind != "added" && oc.changes.size > 0)
-      emit(out, alter_prefix(t) + " DROP CONSTRAINT " + q($old, $db) + ";")
+    if oc.kind == "dropped" || (oc.kind != "added" && $recreate)
+      # A primary key cannot be dropped while foreign keys reference it: those are dropped first and added back with the other
+      # foreign keys (drop_fk_once).
+      if group == "primary key"
+        for x in incoming_fks(t, null)
+          drop_fk_once(x.table, x.fk, out)
+        end
+      else if group == "unique"
+        drop_fks_relying_on(t, oc, out)
+      end
+      emit(out, drop_constraint_sql(t, group, $old))
     else if !$recreate
-      if $d == "postgresql"
-        emit(out, alter_prefix(t) + " RENAME CONSTRAINT " + q($old, $db) + " TO " + q($name, $db) + ";")
+      if $d == "mysql"
+        $s = alter_prefix(t) + " RENAME INDEX " + q($old, $db) + " TO " + q($name, $db) + ";"
+        emit(out, idem() ? my_guard($db, my_exists_index(t, $old), $s) : $s)
+      else if $d == "sqlserver"
+        $s = rename_object($db, schema_prefix(t.schema) + $old, $name, "OBJECT")
+        emit(out, idem() ? "IF OBJECT_ID(" + ms_object(t.schema, $old, $db) + ") IS NOT NULL " + $s : $s)
       else
-        emit(out, rename_object($db, schema_prefix(t.schema) + $old, $name, "OBJECT"))
+        $s = alter_prefix(t) + " RENAME CONSTRAINT " + q($old, $db) + " TO " + q($name, $db) + ";"
+        emit(out, idem() && $d == "postgresql" ? pg_do_if("EXISTS (SELECT 1 FROM pg_constraint WHERE conname = " + lit($old, $db) + " AND conrelid = " + lit(qt(t), $db) + "::regclass)", $s) : $s)
       end
     end
-  else if oc.kind == "added" || (oc.kind != "dropped" && oc.changes.size > 0)
-    emit(out, alter_prefix(t) + " ADD CONSTRAINT " + q($name, $db) + " " + constraint_body(t, group, $name) + ";")
+  else if oc.kind == "added" || (oc.kind != "dropped" && $recreate)
+    emit(out, add_constraint_sql(t, $name, constraint_body(t, group, $name)))
   end
 end
 
 func drop_index_sql(t, name)
   $db = t.database
   if $db.dialect == "sqlserver"
-    ret "DROP INDEX " + q(name, $db) + " ON " + qt(t) + ";"
+    ret "DROP INDEX" + if_exists($db) + " " + q(name, $db) + " ON " + qt(t) + ";"
+  else if $db.dialect == "mysql"
+    $s = "DROP INDEX " + q(name, $db) + " ON " + qt(t) + ";"
+    ret idem() ? my_guard($db, my_exists_index(t, name), $s) : $s
   end
-  ret "DROP INDEX " + qn(t.schema, name, $db) + ";"
+  ret "DROP INDEX" + if_exists($db) + " " + qn(t.schema, name, $db) + ";"
 end
 
 # One index change, for one phase: "before" drops and renames, "after" creates (a changed index, or any non-new index on SQLite,
@@ -242,12 +873,17 @@ func index_statements(t, oc, phase, out)
   $recreate = oc.kind == "added" || oc.kind == "dropped" || oc.changes.size > 0 || $d == "sqlite"
   if phase == "before"
     if oc.kind != "added" && $recreate
+      drop_fks_relying_on(t, oc, out)
       emit(out, drop_index_sql(t, $old))
     else if !$recreate
-      if $d == "postgresql"
-        emit(out, "ALTER INDEX " + qn(t.schema, $old, $db) + " RENAME TO " + q($name, $db) + ";")
+      if $d == "postgresql" || $d == "oracle"
+        emit(out, "ALTER INDEX" + alter_if_exists($db) + " " + qn(t.schema, $old, $db) + " RENAME TO " + q($name, $db) + ";")
+      else if $d == "mysql"
+        $s = alter_prefix(t) + " RENAME INDEX " + q($old, $db) + " TO " + q($name, $db) + ";"
+        emit(out, idem() ? my_guard($db, my_exists_index(t, $old), $s) : $s)
       else
-        emit(out, rename_object($db, schema_prefix(t.schema) + t.name + "." + $old, $name, "INDEX"))
+        $s = rename_object($db, schema_prefix(t.schema) + t.name + "." + $old, $name, "INDEX")
+        emit(out, idem() ? "IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = " + lit($old, $db) + " AND object_id = OBJECT_ID(" + ms_object(t.schema, t.name, $db) + ")) " + $s : $s)
       end
     end
   else if oc.kind != "dropped" && $recreate
@@ -255,14 +891,17 @@ func index_statements(t, oc, phase, out)
   end
 end
 
-# The rename of a renamed table (with its SQL Server default constraints, which carry the table name).
+# The rename of a renamed table (with its SQL Server default constraints that carry the table name by convention), from its schema
+# before the migration (after the schema renames).
 func table_rename_statements(tc, db, out)
   $t = tc.table
   if !tc.old_name || tc.old_name == $t.name
     ret
   end
+  $schema = moved_schema(tc.old_schema)
   if db.dialect == "sqlserver"
-    emit(out, rename_object(db, schema_prefix($t.schema) + tc.old_name, $t.name, "OBJECT"))
+    $s = rename_object(db, schema_prefix($schema) + tc.old_name, $t.name, "OBJECT")
+    emit(out, idem() ? "IF OBJECT_ID(" + ms_object($schema, tc.old_name, db) + ", N'U') IS NOT NULL " + $s : $s)
     for c in $t.columns
       $cc = null
       for x in tc.columns
@@ -270,20 +909,70 @@ func table_rename_statements(tc, db, out)
           $cc = x
         end
       end
+      if c.default_name || ($cc && $cc.old_default_name)
+        continue
+      end
       if default_sql(c, db) != "" || ($cc && has_change($cc.changes, ["default", "defaultSql"]))
         $old_col = ($cc && $cc.old_name) ? $cc.old_name : c.name
         emit(out, rename_default_sql($t, df_name(tc.old_name, $old_col), df_name($t.name, $old_col)))
       end
     end
   else
-    emit(out, "ALTER TABLE " + qn($t.schema, tc.old_name, db) + " RENAME TO " + q($t.name, db) + ";")
+    $s = "ALTER TABLE" + alter_if_exists(db) + " " + qn($schema, tc.old_name, db) + " RENAME TO " + q($t.name, db) + ";"
+    emit(out, idem() && db.dialect == "mysql" ? my_guard(db, my_exists_table($schema, tc.old_name, db), $s) : $s)
+  end
+end
+
+# The move of a table to another schema: PostgreSQL SET SCHEMA, SQL Server ALTER SCHEMA ... TRANSFER, MySQL RENAME TABLE across
+# databases; Oracle cannot move a table to another user. Nothing when a PostgreSQL schema rename already moved it.
+func table_move_statements(tc, db, out)
+  $t = tc.table
+  $from = moved_schema(tc.old_schema)
+  if $from == $t.schema || db.dialect == "sqlite"
+    ret
+  end
+  $d = db.dialect
+  if $d == "postgresql"
+    emit(out, "ALTER TABLE" + alter_if_exists(db) + " " + qn($from, $t.name, db) + " SET SCHEMA " + q($t.schema, db) + ";")
+  else if $d == "sqlserver"
+    $s = "ALTER SCHEMA " + q($t.schema, db) + " TRANSFER " + qn($from, $t.name, db) + ";"
+    emit(out, idem() ? "IF OBJECT_ID(" + ms_object($from, $t.name, db) + ", N'U') IS NOT NULL " + $s : $s)
+  else if $d == "mysql"
+    $s = "RENAME TABLE " + qn($from, $t.name, db) + " TO " + qt($t) + ";"
+    emit(out, idem() ? my_guard(db, my_exists_table($from, $t.name, db), $s) : $s)
+  else
+    emit(out, "-- TODO: move table " + $t.name + " from schema " + ($from ?? "(default)") + " to " + ($t.schema ?? "(default)") + " (create it there and copy the rows).")
+  end
+end
+
+# The statement for a changed table comment: COMMENT ON TABLE (PostgreSQL, Oracle), MS_Description (SQL Server), the table option
+# (MySQL); a note on SQLite, which keeps comments in the schema script only.
+func table_comment_statements(tc, db, out)
+  $t = tc.table
+  if !pack.params.comments || tc.old_comment == $t.comment
+    ret
+  end
+  $d = db.dialect
+  if $d == "postgresql"
+    emit(out, "COMMENT ON TABLE " + qt($t) + " IS " + ($t.comment ? lit($t.comment, db) : "NULL") + ";")
+  else if $d == "oracle"
+    emit(out, "COMMENT ON TABLE " + qt($t) + " IS " + lit($t.comment ?? "", db) + ";")
+  else if $d == "sqlserver"
+    emit(out, ms_description(db, "TABLE", $t.schema, $t.name, null, $t.comment))
+  else if $d == "mysql"
+    emit(out, alter_prefix($t) + " COMMENT = " + lit($t.comment ?? "", db) + ";")
+  else
+    emit(out, "-- " + $t.name + ": the table comment changed; SQLite keeps comments in the schema script only.")
   end
 end
 
 # The constraint and index statements of a renamed or altered table for one phase ("before" or "after"), limited to the groups
-# listed ("foreign key", "check", "unique", "primary key", "index").
+# listed ("foreign key", "check", "unique", "primary key", "index"). Nothing for a SQLite table that is rebuilt.
 func table_phase_statements(tc, phase, groups, out)
   $t = tc.table
+  if $t.database.dialect == "sqlite" && sqlite_rebuild_reason(tc) != ""
+    ret
+  end
   for g in groups
     case g
       when "foreign key"
@@ -311,30 +1000,117 @@ func table_phase_statements(tc, phase, groups, out)
 end
 
 # The column statements of a renamed or altered table: drops first, so a column that is replaced by one of the same name (a
-# new identity, such as a relation whose id changed) is dropped before it is added again.
+# new identity, such as a relation whose id changed) is dropped before it is added again. A SQLite table that cannot take its
+# changes in place is rebuilt instead.
 func table_column_statements(tc, out)
+  $reason = sqlite_rebuild_reason(tc)
+  if $reason != ""
+    sqlite_rebuild(tc, $reason, out)
+    ret
+  end
   for cc in tc.columns
     if cc.kind == "dropped"
-      column_statements(tc.table, cc, tc.old_name, out)
+      column_statements(tc, cc, out)
     end
   end
   for cc in tc.columns
     if cc.kind != "dropped"
-      column_statements(tc.table, cc, tc.old_name, out)
+      column_statements(tc, cc, out)
     end
   end
 end
 
-func view_drop(db, oc)
-  ret "DROP VIEW " + qn(db.default_schema, oc.old_name ?? oc.key, db) + ";"
+# Whether a view change needs the view dropped and created again: a new body, schema, column list, check option or materialization
+# (a rename alone is renamed in place, a comment alone is commented; Oracle renames no materialized view), or any change when every
+# view is recreated (mq_all_views) or the view reads one that is (mq_view_dependents, see migration.scriban).
+func view_recreates(oc)
+  if oc.kind != "altered" && oc.kind != "renamed"
+    ret false
+  end
+  ret mq_all_views || (mq_view_dependents && mq_view_dependents[oc.key]) || has_change(oc.changes, ["body", "schema", "columns", "withCheckOption", "materialized"]) || (oc.kind == "renamed" && oc.old_materialized && db.dialect == "oracle")
 end
 
+# DROP VIEW, or DROP MATERIALIZED VIEW for one that was materialized (PostgreSQL, Oracle), of a view by its schema and name.
+func view_drop_sql(db, schema, name, was_materialized)
+  $mat = was_materialized && (db.dialect == "postgresql" || db.dialect == "oracle")
+  ret "DROP " + ($mat ? "MATERIALIZED VIEW" : "VIEW") + (idem() && db.dialect != "oracle" ? " IF EXISTS" : "") + " " + qn(schema, name, db) + ";"
+end
+
+func view_drop(db, oc)
+  ret view_drop_sql(db, moved_schema(oc.old_schema), oc.old_name ?? oc.key, oc.old_materialized)
+end
+
+# The keys of the views a view reads (its resolved dependsOn).
+func view_dependency_keys(v)
+  $keys = []
+  for dep in v.depends_on
+    if dep.kind == "view"
+      $keys[$keys.size] = dep.id
+    end
+  end
+  ret $keys
+end
+
+# Views to drop, as { key, deps, sql } items, in the order to drop them: every view before the views it reads (the reverse of
+# ddl_order over their dependencies), so PostgreSQL never refuses to drop a view another one still reads.
+func views_in_drop_order(items)
+  if items.size < 2
+    ret items
+  end
+  $index = {}
+  for x in items
+    $index[x.key] = for.index
+  end
+  capture $spec
+    for x in items
+      if !for.first
+        ";"
+      end
+      for k in x.deps
+        if !for.first
+          ","
+        end
+        ($index[k] == null || k == x.key) ? "x" : $index[k]
+      end
+    end
+  end
+  $result = []
+  for i in (ddl_order ("" + $spec)) | array.reverse
+    $result[$result.size] = items[i]
+  end
+  ret $result
+end
+
+# The rename of a view: ALTER VIEW (PostgreSQL), sp_rename (SQL Server), RENAME TABLE (MySQL), RENAME (Oracle); SQLite cannot rename
+# a view, so it is dropped and created again.
+func view_rename(db, oc, v, out)
+  $d = db.dialect
+  $schema = moved_schema(oc.old_schema)
+  if $d == "postgresql"
+    emit(out, "ALTER " + (materialized(v, db) ? "MATERIALIZED VIEW" : "VIEW") + alter_if_exists(db) + " " + qn($schema, oc.old_name, db) + " RENAME TO " + q(oc.new_name, db) + ";")
+  else if $d == "sqlserver"
+    $s = rename_object(db, schema_prefix($schema) + oc.old_name, oc.new_name, "OBJECT")
+    emit(out, idem() ? "IF OBJECT_ID(" + ms_object($schema, oc.old_name, db) + ", N'V') IS NOT NULL " + $s : $s)
+  else if $d == "mysql"
+    $s = "RENAME TABLE " + qn($schema, oc.old_name, db) + " TO " + qn(v.schema, oc.new_name, db) + ";"
+    emit(out, idem() ? my_guard(db, my_exists_table($schema, oc.old_name, db), $s) : $s)
+  else if $d == "oracle"
+    emit(out, "RENAME " + q(oc.old_name, db) + " TO " + q(oc.new_name, db) + ";")
+  else
+    emit(out, "DROP VIEW" + (idem() ? " IF EXISTS" : "") + " " + q(oc.old_name, db) + ";")
+    emit(out, view_sql(v, db))
+  end
+end
+
+# The statements of a sequence change: CREATE, DROP, a rename, a move to another schema and ALTER SEQUENCE for changed options. A
+# changed start is written as START WITH on PostgreSQL (it takes effect at the next RESTART) and left to the reviewer elsewhere; a
+# changed type is ALTER SEQUENCE ... AS on PostgreSQL and a note elsewhere.
 func sequence_statements(db, oc, out)
   $d = db.dialect
   $old = oc.old_name ?? oc.new_name
   $name = oc.new_name ?? oc.old_name
-  if $d == "sqlite"
-    emit(out, "-- SQLite has no sequences (" + oc.kind + " " + $name + ").")
+  if $d == "sqlite" || $d == "mysql"
+    emit(out, "-- " + dialect_title(db) + " has no sequences (" + oc.kind + " " + $name + ").")
     ret
   end
   $s = find_named(db.sequences, $name)
@@ -342,19 +1118,119 @@ func sequence_statements(db, oc, out)
     emit(out, sequence_sql($s, db))
     ret
   end
+  $from = moved_schema(oc.old_schema)
   if oc.kind == "dropped"
-    emit(out, "DROP SEQUENCE " + qn(db.default_schema, $old, db) + ";")
+    emit(out, "DROP SEQUENCE" + (idem() && $d != "oracle" ? " IF EXISTS" : "") + " " + qn($from, $old, db) + ";")
     ret
+  end
+  # SQL Server cannot rename or move a sequence a default constraint uses: those defaults are dropped first and added back after.
+  $users = []
+  if $d == "sqlserver" && ($old != $name || $from != $s.schema)
+    for t in db.tables
+      for c in t.columns
+        if c.sequence && c.sequence.id == oc.key && !c.identity
+          $users[$users.size] = c
+          emit(out, drop_default_sql(t, default_name(c, t.name)))
+        end
+      end
+    end
   end
   if $old != $name
     if $d == "postgresql"
-      emit(out, "ALTER SEQUENCE " + qn($s.schema, $old, db) + " RENAME TO " + q($name, db) + ";")
+      emit(out, "ALTER SEQUENCE" + alter_if_exists(db) + " " + qn($from, $old, db) + " RENAME TO " + q($name, db) + ";")
+    else if $d == "oracle"
+      emit(out, "RENAME " + q($old, db) + " TO " + q($name, db) + ";")
     else
-      emit(out, rename_object(db, schema_prefix($s.schema) + $old, $name, "OBJECT"))
+      $r = rename_object(db, schema_prefix($from) + $old, $name, "OBJECT")
+      emit(out, idem() ? "IF OBJECT_ID(" + ms_object($from, $old, db) + ", N'SO') IS NOT NULL " + $r : $r)
     end
   end
-  if oc.changes.size > 0
-    emit(out, "-- TODO: sequence " + $name + " " + change_list(oc.changes))
+  if $from != $s.schema
+    if $d == "postgresql"
+      emit(out, "ALTER SEQUENCE" + alter_if_exists(db) + " " + qn($from, $name, db) + " SET SCHEMA " + q($s.schema, db) + ";")
+    else if $d == "sqlserver"
+      $r = "ALTER SCHEMA " + q($s.schema, db) + " TRANSFER " + qn($from, $name, db) + ";"
+      emit(out, idem() ? "IF OBJECT_ID(" + ms_object($from, $name, db) + ", N'SO') IS NOT NULL " + $r : $r)
+    else
+      emit(out, "-- TODO: move sequence " + $name + " to schema " + ($s.schema ?? "(default)") + " (create it there and drop the old one).")
+    end
+  end
+  for c in $users
+    emit(out, alter_prefix(c.table) + " ADD CONSTRAINT " + q(default_name(c, c.table.name), db) + " DEFAULT " + default_sql(c, db) + " FOR " + q(c.name, db) + ";")
+  end
+  $options = ""
+  $notes = []
+  for ch in oc.changes
+    case ch.property
+      when "type"
+        if $d == "postgresql"
+          $options = $options + " AS " + $s.native_type
+        else
+          $notes[$notes.size] = "type " + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + " (drop and create the sequence to change it)"
+        end
+      when "increment"
+        $options = $options + " INCREMENT BY " + $s.increment
+      when "min"
+        $options = $options + ($s.min != null ? " MINVALUE " + $s.min : ($d == "oracle" ? " NOMINVALUE" : " NO MINVALUE"))
+      when "max"
+        $options = $options + ($s.max != null ? " MAXVALUE " + $s.max : ($d == "oracle" ? " NOMAXVALUE" : " NO MAXVALUE"))
+      when "cycle"
+        $options = $options + ($s.cycle ? " CYCLE" : ($d == "oracle" ? " NOCYCLE" : " NO CYCLE"))
+      when "cache"
+        if $s.cache != null
+          $options = $options + " CACHE " + $s.cache
+        else
+          $options = $options + ($d == "postgresql" ? " CACHE 1" : ($d == "oracle" ? " NOCACHE" : " CACHE"))
+        end
+      when "start"
+        if $d == "postgresql"
+          $options = $options + " START WITH " + $s.start
+        else
+          $notes[$notes.size] = "start " + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + " (RESTART WITH " + $s.start + " if the sequence should begin again)"
+        end
+    end
+  end
+  if $options != ""
+    emit(out, "ALTER SEQUENCE " + qn($s.schema, $name, db) + $options + ";")
+  end
+  for n in $notes
+    emit(out, "-- TODO: sequence " + $name + " " + n)
+  end
+end
+
+# The statements of the schema changes that run first: PostgreSQL renames a schema in place; SQL Server and MySQL cannot, so the new
+# schema is created here, each object moves on its own and the old schema is dropped at the end (schema_drop_statements).
+func schema_first_statements(db, diff, out)
+  for sc in diff.schemas
+    if sc.kind == "added" || sc.kind == "renamed"
+      $new = sc.new_name
+      if sc.kind == "renamed" && db.dialect == "postgresql"
+        $s = "ALTER SCHEMA " + q(sc.old_name, db) + " RENAME TO " + q($new, db) + ";"
+        emit(out, idem() ? pg_do_if("EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = " + lit(sc.old_name, db) + ")", $s) : $s)
+      else if creates_schemas(db) && !builtin_schema($new, db)
+        emit(out, schema_sql($new, db))
+      else if db.dialect == "oracle"
+        emit(out, "-- Oracle schemas are users: " + sc.kind + " schema " + $new + " by hand.")
+      end
+    end
+  end
+end
+
+# DROP SCHEMA for the schemas that left the model, and for the old name of a schema SQL Server renamed by moving its objects; MySQL
+# drops a schema with everything still in it, so it is left to the reviewer there.
+func schema_drop_statements(db, diff, out)
+  for sc in diff.schemas
+    if sc.kind == "dropped" || (sc.kind == "renamed" && db.dialect != "postgresql")
+      if db.dialect == "postgresql" || db.dialect == "sqlserver"
+        if !builtin_schema(sc.old_name, db)
+          emit(out, "DROP SCHEMA" + (idem() ? " IF EXISTS" : "") + " " + q(sc.old_name, db) + ";")
+        end
+      else if db.dialect == "mysql"
+        emit(out, "-- TODO: schema " + sc.old_name + " left the model; DROP SCHEMA " + q(sc.old_name, db) + " once nothing in it is needed (it drops what is left).")
+      else if db.dialect == "oracle"
+        emit(out, "-- Oracle schemas are users: drop schema " + sc.old_name + " by hand.")
+      end
+    end
   end
 end
 
@@ -366,6 +1242,21 @@ func find_change(changes, id)
     end
   end
   ret null
+end
+
+# SQL Server: a statement with GO batch separators, each followed by a batch that rolls the migration's transaction back after an
+# error and turns execution off (SET NOEXEC ON) when the transaction is gone, so no later batch runs outside it (XACT_ABORT already
+# rolled it back on a run-time error; a compile error leaves @@ERROR set). The script turns execution on again at its end.
+func ms_batch_guard(text)
+  $g = "IF @@ERROR <> 0 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\nIF @@TRANCOUNT = 0 SET NOEXEC ON;\nGO"
+  $t = text | string.replace "\nGO\n" ("\nGO\n" + $g + "\n")
+  if $t | string.starts_with "GO\n"
+    $t = "GO\n" + $g + "\n" + ($t | string.slice 3)
+  end
+  if $t | string.ends_with "\nGO"
+    $t = $t + "\n" + $g
+  end
+  ret $t
 end
 
 # A statement that must run in a batch of its own on SQL Server (CREATE FUNCTION, PROCEDURE, VIEW or TRIGGER): wrapped in GO there.
@@ -387,7 +1278,8 @@ end
 func type_change_statements(db, t, tc, out)
   $d = db.dialect
   if tc.kind == "added"
-    emit(out, type_sql(t, db))
+    # SQL Server compiles a batch before it runs it, so a table in the same batch cannot use a type the batch creates.
+    emit(out, own_batch(type_sql(t, db), db))
     ret
   end
   if !t.is_created
@@ -395,9 +1287,11 @@ func type_change_statements(db, t, tc, out)
   end
   if tc.old_name != tc.new_name
     if $d == "postgresql"
-      emit(out, "ALTER " + (tc.old_kind == "domain" ? "DOMAIN " : "TYPE ") + qn(tc.old_schema, tc.old_name, db) + " RENAME TO " + q(tc.new_name, db) + ";")
+      $s = "ALTER " + (tc.old_kind == "domain" ? "DOMAIN " : "TYPE ") + qn(tc.old_schema, tc.old_name, db) + " RENAME TO " + q(tc.new_name, db) + ";"
+      emit(out, idem() ? pg_do_if("EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = " + lit(tc.old_name, db) + " AND n.nspname = " + (tc.old_schema ? lit(tc.old_schema, db) : "current_schema()") + ")", $s) : $s)
     else if $d == "sqlserver"
-      emit(out, rename_object(db, schema_prefix(tc.old_schema) + tc.old_name, tc.new_name, "USERDATATYPE"))
+      $s = rename_object(db, schema_prefix(tc.old_schema) + tc.old_name, tc.new_name, "USERDATATYPE")
+      emit(out, idem() ? "IF TYPE_ID(" + ms_object(tc.old_schema, tc.old_name, db) + ") IS NOT NULL " + $s : $s)
     end
   end
   if has_change(tc.changes, ["kind", "definition", "schema"])

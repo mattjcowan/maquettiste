@@ -29,6 +29,7 @@ import { placeOf } from "@/search/engine";
 import { chipsOf, withoutQualifier } from "@/search/query";
 import { applyScope, chipCount, sameChips, scopeOf, type ExplorerFilter, type FilterScope } from "./filter";
 import type { ExplorerId } from "./tree";
+import { STORAGE_LABELS } from "@/editors/storage/labels";
 
 type ListKey = "kinds" | "tags" | "categories" | "stereotypes";
 
@@ -113,6 +114,15 @@ export function FilterBar({
     ...filter.stereotypes.map((v) => ({ key: `s:${v}`, label: `«${v}»`, remove: () => toggleIn("stereotypes", v) })),
     ...(filter.errors ? [{ key: "e", label: "Has errors", remove: () => setFilter({ ...filter, errors: false }) }] : []),
     ...(filter.diagram ? [{ key: "g", label: `On ${diagramName}`, remove: () => setFilter({ ...filter, diagram: null }) }] : []),
+    ...(filter.storage
+      ? [
+          {
+            key: "b",
+            label: filter.storage === "bound" ? STORAGE_LABELS.filterBound : STORAGE_LABELS.filterDomainOnly,
+            remove: () => setFilter({ ...filter, storage: null }),
+          },
+        ]
+      : []),
   ];
   const inUse = (s: FilterScope) => count > 0 && sameChips(filter, applyScope(filter, s));
 
@@ -179,6 +189,22 @@ export function FilterBar({
             >
               On this diagram
             </DropdownMenuCheckboxItem>
+            {id === "domain-model" ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Storage</DropdownMenuLabel>
+                {(["domain-only", "bound"] as const).map((v) => (
+                  <DropdownMenuCheckboxItem
+                    key={v}
+                    data-testid={`filter-storage-${v}`}
+                    checked={filter.storage === v}
+                    onCheckedChange={(on) => setFilter({ ...filter, storage: on ? v : null })}
+                  >
+                    {v === "bound" ? STORAGE_LABELS.filterBound : STORAGE_LABELS.filterDomainOnly}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuLabel>Kinds</DropdownMenuLabel>
             {kinds.map((k) => (

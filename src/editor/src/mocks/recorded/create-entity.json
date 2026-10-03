@@ -1,7 +1,7 @@
 {
   "outcome": "saved",
-  "id": "01M3ZM6APN7Y12XYAQXX220BTT",
-  "hash": "c4b6d3b8f4e5f5bdc28c670e0d70fa5f466a8e04a7689f242b37f3cbbce24669",
+  "id": "01M40H3F83NQRV6PH6HNG3S4JQ",
+  "hash": "cfd9c2ad67072a3b0f4860d695e981b77ad9e04a42324922140d7ca3f1c256a1",
   "current": {
     "element": {
       "kind": "entity",
@@ -49,7 +49,7 @@
       ],
       "bindings": [],
       "$schema": "../../.schema/v1/entity.json",
-      "id": "01M3ZM6APN7Y12XYAQXX220BTT",
+      "id": "01M40H3F83NQRV6PH6HNG3S4JQ",
       "name": "Refund",
       "displayName": null,
       "pluralName": null,
@@ -62,12 +62,12 @@
       "source": null
     },
     "path": ".maquettiste/model/entities/refund.json",
-    "hash": "c4b6d3b8f4e5f5bdc28c670e0d70fa5f466a8e04a7689f242b37f3cbbce24669",
-    "dependencyHash": "5bf179d98200cfd52c368af21061cd4b6a167f67ea394b6a321ee950a47fde8b",
+    "hash": "cfd9c2ad67072a3b0f4860d695e981b77ad9e04a42324922140d7ca3f1c256a1",
+    "dependencyHash": "1e0a7e12d1b1ed49551ca79470f605122c656f6d0f11322bef69af8de7555c3d",
     "json": {
       "$schema": "../../.schema/v1/entity.json",
       "kind": "entity",
-      "id": "01M3ZM6APN7Y12XYAQXX220BTT",
+      "id": "01M40H3F83NQRV6PH6HNG3S4JQ",
       "name": "Refund",
       "package": "01J92P0V01KDRN8GX5PGYCNKSX",
       "key": {
@@ -91,10 +91,10 @@
   "changes": {
     "changed": [
       {
-        "id": "01M3ZM6APN7Y12XYAQXX220BTT",
+        "id": "01M40H3F83NQRV6PH6HNG3S4JQ",
         "kind": "entity",
         "path": ".maquettiste/model/entities/refund.json",
-        "hash": "c4b6d3b8f4e5f5bdc28c670e0d70fa5f466a8e04a7689f242b37f3cbbce24669"
+        "hash": "cfd9c2ad67072a3b0f4860d695e981b77ad9e04a42324922140d7ca3f1c256a1"
       }
     ],
     "deleted": [],

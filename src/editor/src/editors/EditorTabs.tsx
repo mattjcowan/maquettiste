@@ -7,7 +7,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { iconLabel } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Crosshair, X } from "lucide-react";
-import { useIndex } from "@/api/queries";
+import { useQueryClient } from "@tanstack/react-query";
+import { keys, useIndex } from "@/api/queries";
+import type { DatabaseViewResult } from "@/api/types";
+import { isLaidOutKey } from "@/workspaces/database/tableParts";
 import { cn } from "@/lib/cn";
 import { useServices } from "@/app/context";
 import { KindIcon } from "@/app/icons";
@@ -103,6 +106,10 @@ export function EditorTabBar({ workspace }: { workspace: Workspace }) {
   const drafts = useEditor(store, (s) => s.drafts);
   const index = useIndex();
   const lookup = indexLookup(index.data);
+  const qc = useQueryClient();
+  // A table the model lays out has an editor by its key (no file): its name is the resolved table's.
+  const laidOutName = (key: string) =>
+    qc.getQueryData<DatabaseViewResult>(keys.databaseView(key.slice(key.lastIndexOf("@") + 1)))?.view?.tables.find((t) => t.key === key)?.name ?? "table";
   const collapsed = useEditor(store, (s) => s.tabsCollapsed);
   const [menu, setMenu] = useState<TabMenu | null>(null);
   if (!editors.tabs.length) return null;
@@ -146,7 +153,7 @@ export function EditorTabBar({ workspace }: { workspace: Workspace }) {
         </button>
         {editors.tabs.map((tab) => {
           const summary = lookup.byId.get(tab.id);
-          const name = displayName(summary ?? { id: tab.id, kind: tab.kind, name: "" });
+          const name = isLaidOutKey(tab.id) ? laidOutName(tab.id) : displayName(summary ?? { id: tab.id, kind: tab.kind, name: "" });
           const dirty = UNSAVED.has(drafts[tab.id]?.status ?? "");
           const selected = editors.active === tab.key;
           return (
@@ -339,7 +346,8 @@ export function EditorArea() {
   useEffect(() => {
     if (!index.data) return;
     const byId = indexLookup(index.data).byId;
-    for (const tab of store.getState().editors.tabs) if (!byId.has(tab.id)) store.getState().updateEditors((s) => closeElement(s, tab.id));
+    for (const tab of store.getState().editors.tabs)
+      if (!byId.has(tab.id) && !isLaidOutKey(tab.id)) store.getState().updateEditors((s) => closeElement(s, tab.id));
   }, [index.data, store]);
 
   const tab = activeTab(editors);

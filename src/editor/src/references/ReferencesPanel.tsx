@@ -16,7 +16,7 @@ import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { cn } from "@/lib/cn";
 import { KIND_LABELS } from "@/model/labels";
-import { groupReferences, indexReferences, referenceCount, type SubName } from "./data";
+import { groupReferences, indexReferences, referenceCount, sideReferences, type SubName } from "./data";
 
 export function ReferencesPanel() {
   const { store, queryClient } = useServices();
@@ -38,8 +38,10 @@ export function ReferencesPanel() {
     return typeof item?.name === "string" ? item.name : undefined;
   };
   const complete = !!server.data;
+  // A database-side element lists only its side's referrers (references/data.ts).
+  const shown = useMemo(() => sideReferences(byId.get(target ?? "")?.kind, server.data ?? fast, (id) => byId.get(id)?.kind), [server.data, fast, byId, target]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- subName reads the query cache; the list follows the data
-  const rows = useMemo(() => groupReferences(server.data ?? fast, byId, subName), [server.data, fast, byId]);
+  const rows = useMemo(() => groupReferences(shown, byId, subName), [shown, byId]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ROW = useMemo(() => rowHeight(), []);
   const virtualizer = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW, overscan: 20 });

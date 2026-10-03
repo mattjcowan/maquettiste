@@ -4,7 +4,8 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// Physical rules on table, view and sequence files (MQ4001 to MQ4008, MQ4010, MQ4016, and MQ3013, MQ3017, MQ3019 on designed columns).
+/// Physical rules on table, view and sequence files (MQ4001 to MQ4008, MQ4010, MQ4016, MQ4056, MQ4057, MQ4059, and MQ3013, MQ3017, MQ3019 on
+/// designed columns).
 /// These rules see only what files state: names produced by conventions for synthesized tables, columns and constraints are not
 /// checked against the identifier limit here (they need the resolver's casing and inflection; see README, open contract gap).
 /// </summary>
@@ -127,6 +128,115 @@ internal static class PhysicalRules
 
         for (var i = 0; i < table.ForeignKeys.Count; i++)
             CheckForeignKey(context, table, i, Resolves, report);
+        for (var i = 0; i < table.Checks.Count; i++)
+        {
+            if (table.Checks[i].Column is { } checkColumn && !Resolves(checkColumn))
+                report.Add("MQ4008", $"Check constraint names column '{checkColumn}', which is not a column of this table.", Ptr.At("/checks", i) + "/column", table.Checks[i].Id);
+        }
+
+        if (database is not null)
+            CheckDialectFeatures(database, table, report);
+    }
+
+    /// <summary>MQ4056: the DDL features of a table file its database's dialect does not have (the sql-ddl pack leaves them out).</summary>
+    private static void CheckDialectFeatures(Database database, Table table, Report report)
+    {
+        var d = database.Dialect;
+        var dialect = DialectInfo.Name(d);
+        void Add(string what, string pointer, string? id, string leaves = "it") =>
+            report.Add("MQ4056", $"{what}, which {dialect} (database '{database.Name}') does not have; the DDL leaves {leaves} out.", pointer, id);
+
+        if (table.PrimaryKey is { Clustered: not null } && d != Dialect.SqlServer)
+            Add("The primary key sets clustered", "/primaryKey/clustered", table.Id);
+        for (var i = 0; i < table.ForeignKeys.Count; i++)
+        {
+            var fk = table.ForeignKeys[i];
+            var pointer = Ptr.At("/foreignKeys", i);
+            var name = fk.Name ?? fk.Id;
+            if (fk.Deferrable != Deferrability.NotDeferrable && d is Dialect.SqlServer or Dialect.MySql)
+                Add($"Foreign key '{name}' is deferrable", pointer + "/deferrable", fk.Id);
+            // Oracle has ON DELETE CASCADE and ON DELETE SET NULL only; MySQL's InnoDB refuses SET DEFAULT.
+            if (d == Dialect.Oracle && fk.OnUpdate != ReferentialAction.NoAction)
+                Add($"Foreign key '{name}' has ON UPDATE {ResolutionActionName(fk.OnUpdate)}", pointer + "/onUpdate", fk.Id);
+            if (d == Dialect.Oracle && fk.OnDelete is ReferentialAction.Restrict or ReferentialAction.SetDefault)
+                Add($"Foreign key '{name}' has ON DELETE {ResolutionActionName(fk.OnDelete)}", pointer + "/onDelete", fk.Id);
+            if (d == Dialect.MySql && fk.OnDelete == ReferentialAction.SetDefault)
+                Add($"Foreign key '{name}' has ON DELETE set-default", pointer + "/onDelete", fk.Id);
+            if (d == Dialect.MySql && fk.OnUpdate == ReferentialAction.SetDefault)
+                Add($"Foreign key '{name}' has ON UPDATE set-default", pointer + "/onUpdate", fk.Id);
+        }
+
+        for (var i = 0; i < table.Uniques.Count; i++)
+        {
+            if (table.Uniques[i].NullsNotDistinct && d != Dialect.PostgreSql)
+                Add($"Unique constraint '{table.Uniques[i].Name ?? table.Uniques[i].Id}' sets nullsNotDistinct", Ptr.At("/uniques", i) + "/nullsNotDistinct", table.Uniques[i].Id);
+        }
+
+        for (var i = 0; i < table.Columns.Count; i++)
+        {
+            var column = table.Columns[i];
+            var pointer = Ptr.At("/columns", i);
+            if (column.Computed is not null && column.ComputedStored && d == Dialect.Oracle)
+                Add($"Column '{column.Name}' is a stored computed column (Oracle computes every virtual column on read)", pointer + "/computedStored", column.Id);
+            if (column.Generated != ColumnGeneration.Identity || column.Identity is not { } identity)
+                continue;
+            if (identity.Seed is not null && d == Dialect.Sqlite)
+                Add($"Column '{column.Name}' sets an identity seed", pointer + "/identity/seed", column.Id);
+            if (identity.Increment is not null && d is Dialect.Sqlite or Dialect.MySql)
+                Add($"Column '{column.Name}' sets an identity increment", pointer + "/identity/increment", column.Id);
+            if (identity.Always && d is Dialect.Sqlite or Dialect.MySql)
+                Add($"Column '{column.Name}' is an identity generated always", pointer + "/identity/always", column.Id);
+        }
+
+        for (var i = 0; i < table.Indexes.Count; i++)
+        {
+            var index = table.Indexes[i];
+            var pointer = Ptr.At("/indexes", i);
+            var name = index.Name ?? index.Id;
+            for (var j = 0; j < index.Columns.Count; j++)
+            {
+                var ic = index.Columns[j];
+                var columnPointer = Ptr.At(pointer + "/columns", j);
+                if (ic.Column is null && d == Dialect.SqlServer)
+                    Add($"Index '{name}' indexes an expression (index a computed column instead)", columnPointer + "/expression", index.Id, "the index");
+                if (ic.Length is not null && d != Dialect.MySql)
+                    Add($"Index '{name}' sets a key prefix length", columnPointer + "/length", index.Id);
+                if (ic.Length is null && d == Dialect.MySql && ic.Column is { } key
+                    && table.Columns.FirstOrDefault(c => c.Id == key) is { } indexed && NeedsKeyLength(indexed))
+                    report.Add("MQ4056", $"Index '{name}' indexes the {indexed.Type ?? indexed.NativeType} column '{indexed.Name}' without a key prefix length, which {dialect} (database '{database.Name}') requires; set the index column's length, or the DDL leaves the index out.", columnPointer + "/length", index.Id);
+            }
+
+            if (index.Include.Count > 0 && d is not (Dialect.PostgreSql or Dialect.SqlServer))
+                Add($"Index '{name}' has include columns", pointer + "/include", index.Id);
+            if (index.Where is not null && d is Dialect.MySql or Dialect.Oracle)
+                Add($"Index '{name}' is partial (where)", pointer + "/where", index.Id);
+            var method = index.Method switch
+            {
+                IndexMethod.Default => true,
+                IndexMethod.Clustered => d is Dialect.SqlServer or Dialect.PostgreSql,
+                IndexMethod.Btree => d is Dialect.PostgreSql or Dialect.MySql,
+                IndexMethod.Hash => d is Dialect.PostgreSql or Dialect.MySql,
+                _ => d == Dialect.PostgreSql,
+            };
+            if (!method)
+                Add($"Index '{name}' uses the method {ResolutionMethodName(index.Method)}", pointer + "/method", index.Id);
+        }
+    }
+
+    private static string ResolutionMethodName(IndexMethod method) => Resolution.ResolutionValues.Kebab(method);
+
+    private static string ResolutionActionName(ReferentialAction action) => Resolution.ResolutionValues.Kebab(action);
+
+    /// <summary>Whether MySQL indexes a column only with a key prefix length: text and blob types (text, binary that is not fixed).</summary>
+    private static bool NeedsKeyLength(Column column)
+    {
+        if (column.NativeType is { } native)
+        {
+            var lower = native.ToLowerInvariant();
+            return lower.Contains("text", StringComparison.Ordinal) || lower.Contains("blob", StringComparison.Ordinal);
+        }
+
+        return column.Type == "text" || (column.Type == "binary" && !column.FixedLength);
     }
 
     /// <summary>
@@ -167,6 +277,10 @@ internal static class PhysicalRules
             return;
         }
 
+        if (column.Unicode is not null && keyword is not ("string" or "text"))
+            report.Add("MQ4057", $"Column '{column.Name}' sets unicode, which only string and text columns have.", pointer + "/unicode", column.Id);
+        if (column.FixedLength && keyword is not ("string" or "binary"))
+            report.Add("MQ4057", $"Column '{column.Name}' sets fixedLength, which only string and binary columns have.", pointer + "/fixedLength", column.Id);
         var type = new EffectiveType(keyword, null, null, null);
         AttributeRules.CheckFacets(type, column.Length, column.Precision, column.Scale, null, "Column '" + column.Name + "'", pointer, column.Id, report);
         if (column.Default is { } literal && literal.ValueKind != System.Text.Json.JsonValueKind.Null
@@ -179,11 +293,12 @@ internal static class PhysicalRules
             report.Add("MQ3017", $"The default of column '{column.Name}' looks like a credential ({why}); secrets never belong in the model.", pointer + "/default", column.Id);
     }
 
-    private static void CheckColumnList(IReadOnlyList<string> columns, string pointer, string what, string elementId, Func<string, bool> resolves, Report report, string suffix = "")
+    private static void CheckColumnList(IReadOnlyList<string?> columns, string pointer, string what, string elementId, Func<string, bool> resolves, Report report, string suffix = "")
     {
         for (var i = 0; i < columns.Count; i++)
         {
-            if (!resolves(columns[i]))
+            // An index expression has no column.
+            if (columns[i] is { } column && !resolves(column))
                 report.Add("MQ4008", $"{what} names column '{columns[i]}', which is not a column of this table.", Ptr.At(pointer, i) + suffix, elementId);
         }
     }
@@ -215,6 +330,8 @@ internal static class PhysicalRules
 
             if (table.Origin != TableOrigin.Synthesized)
                 CheckForeignKeyTypes(table, fk, pointer, referenced, ids, report);
+            if (fk.ReferencesColumns.All(ids.ContainsKey))
+                CheckReferencedKey(model, fk, pointer, referenced, ids, report);
         }
         else
         {
@@ -229,6 +346,53 @@ internal static class PhysicalRules
                     report.Add("MQ4008", $"Foreign key references column key '{key}', which does not name a column of the referenced table.", Ptr.At(pointer + "/referencesColumns", i), fk.Id);
             }
         }
+    }
+
+    /// <summary>
+    /// MQ4059: the referenced columns are the referenced table's primary key or one of its unique keys (a unique constraint, or a
+    /// unique index without a filter; Oracle takes a constraint only), in any order, each named once; MySQL (and MariaDB) also needs an
+    /// index whose first columns are the referenced columns in the order the foreign key names them (the primary key, a unique
+    /// constraint or any index). Without referenced columns the key is the primary key (a table without one is the resolver's MQ4008).
+    /// </summary>
+    private static void CheckReferencedKey(ModelSnapshot model, ForeignKey fk, string pointer, Table referenced, Dictionary<string, Column> ids, Report report)
+    {
+        if (fk.ReferencesColumns.Count == 0)
+            return;
+        var names = string.Join(", ", fk.ReferencesColumns.Select(c => ids[c].Name));
+        var wanted = fk.ReferencesColumns.ToHashSet(StringComparer.Ordinal);
+        if (wanted.Count != fk.ReferencesColumns.Count)
+        {
+            var twice = fk.ReferencesColumns.GroupBy(c => c, StringComparer.Ordinal).First(g => g.Count() > 1).Key;
+            report.Add("MQ4059",
+                $"Foreign key '{fk.Name ?? fk.Id}' references ({names}) of table '{referenced.Name}', naming column '{ids[twice].Name}' more than once; reference each column of the key once.",
+                pointer + "/referencesColumns", fk.Id);
+            return;
+        }
+
+        bool Same(IReadOnlyCollection<string> columns) => columns.Count == wanted.Count && columns.ToHashSet(StringComparer.Ordinal).SetEquals(wanted);
+
+        var dialect = model.Get<Database>(referenced.Database)?.Dialect;
+        var oracle = dialect == Dialect.Oracle;
+        if (!((referenced.PrimaryKey is { } pk && Same(pk.Columns)) || referenced.Uniques.Any(u => Same(u.Columns))
+            || (!oracle && referenced.Indexes.Any(i => i.Unique && i.Where is null && i.Columns.All(c => c.Column is not null)
+                && Same([.. i.Columns.Select(c => c.Column!)])))))
+        {
+            report.Add("MQ4059",
+                $"Foreign key '{fk.Name ?? fk.Id}' references ({names}) of table '{referenced.Name}', which is neither its primary key nor one of its unique keys; reference its key, or add a unique constraint on those columns.",
+                pointer + "/referencesColumns", fk.Id);
+            return;
+        }
+
+        if (dialect != Dialect.MySql)
+            return;
+        bool Leads(IReadOnlyList<string> columns) => columns.Count >= fk.ReferencesColumns.Count
+            && columns.Take(fk.ReferencesColumns.Count).SequenceEqual(fk.ReferencesColumns, StringComparer.Ordinal);
+        if ((referenced.PrimaryKey is { } key && Leads(key.Columns)) || referenced.Uniques.Any(u => Leads(u.Columns))
+            || referenced.Indexes.Any(i => i.Columns.TakeWhile(c => c.Column is not null).Select(c => c.Column!).ToList() is var leading && Leads(leading)))
+            return;
+        report.Add("MQ4059",
+            $"Foreign key '{fk.Name ?? fk.Id}' references ({names}) of table '{referenced.Name}' in an order no index of it starts with; MySQL needs an index whose first columns are the referenced ones in the same order: reference them in the key's order, or add such an index.",
+            pointer + "/referencesColumns", fk.Id);
     }
 
     private static void CheckForeignKeyTypes(Table table, ForeignKey fk, string pointer, Table referenced, Dictionary<string, Column> referencedIds, Report report)
@@ -434,6 +598,16 @@ internal static class PhysicalRules
         var dialect = DialectInfo.Name(database.Dialect);
         if (!view.Body.ContainsKey(dialect) && !view.Body.ContainsKey("*"))
             report.Add("MQ4010", $"View '{view.Name}' has no body for {dialect} (database '{database.Name}') and no \"*\" body.", "/body");
+        DatabaseObjectRules.CheckDependsOn(context, view.Database, view.DependsOn, report);
+        DatabaseObjectRules.CheckCycle(context, view, "View", report);
+        void Add(string what, string pointer) =>
+            report.Add("MQ4056", $"View '{view.Name}' {what}, which {dialect} (database '{database.Name}') does not have; the DDL leaves it out.", pointer, view.Id);
+        if (view.Materialized && database.Dialect is not (Dialect.PostgreSql or Dialect.Oracle))
+            Add("is materialized", "/materialized");
+        if (view.WithCheckOption && database.Dialect == Dialect.Sqlite)
+            Add("has WITH CHECK OPTION", "/withCheckOption");
+        else if (view.WithCheckOption && view.Materialized && database.Dialect is Dialect.PostgreSql or Dialect.Oracle)
+            Add("is materialized with WITH CHECK OPTION (a materialized view is not written through)", "/withCheckOption");
     }
 
     /// <summary>Checks a sequence file.</summary>
@@ -450,5 +624,7 @@ internal static class PhysicalRules
             report.Add("MQ3013", $"Sequence '{sequence.Name}' has type '{sequence.Type}'; a sequence is int16, int32, int64 or decimal.", "/type");
         if (sequence.Min is { } min && sequence.Max is { } max && min > max)
             report.Add("MQ3013", $"Sequence '{sequence.Name}' has min greater than max.", "/min");
+        if (context.Model.Get<Database>(sequence.Database) is { Dialect: Dialect.Sqlite or Dialect.MySql } noSequences)
+            report.Add("MQ4056", $"Sequence '{sequence.Name}' is in database '{noSequences.Name}', and {DialectInfo.Name(noSequences.Dialect)} has no sequences; the DDL leaves it out.", "/name", sequence.Id);
     }
 }

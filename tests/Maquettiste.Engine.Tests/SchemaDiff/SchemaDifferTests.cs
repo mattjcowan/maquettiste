@@ -469,4 +469,74 @@ public sealed class SchemaDifferTests
         Assert.Equal(true, map["a"]);
         Assert.Equal([1L, 2.5m], (IEnumerable<object?>)map["b"]!);
     }
+
+    [Fact]
+    public void Capture_records_default_names_deferral_clustering_view_comments_and_declared_schemas()
+    {
+        var db = Model((customer, invoice, views, _) =>
+        {
+            invoice.Col("a-total").DefaultName = "total_default";
+            invoice.ForeignKeys[0].Deferrable = "initially-deferred";
+            customer.PrimaryKey!.Clustered = true;
+            views[0].Comment = "Open invoices.";
+        });
+        db.Schemas = new RList<RSchema>([new RSchema { Id = "s1", Name = "public", IsDeclared = true }, new RSchema { Id = "s0", Name = "implicit" }], []);
+
+        var snapshot = _differ.Capture(db, 1);
+
+        var invoice = snapshot.Tables[0];
+        Assert.Equal("total_default", invoice.Columns[2].DefaultName);
+        Assert.Equal(Deferrability.InitiallyDeferred, Assert.Single(invoice.ForeignKeys).Deferrable);
+        Assert.True(snapshot.Tables[1].PrimaryKey!.Clustered);
+        Assert.Equal("Open invoices.", Assert.Single(snapshot.Views).Comment);
+        Assert.Equal(["s1"], snapshot.Schemas!.Select(s => s.Key));
+    }
+
+    [Fact]
+    public void Default_name_deferral_and_view_comment_changes_are_reported_with_what_they_were()
+    {
+        var before = _differ.Capture(Model((_, invoice, _, _) => invoice.Col("a-total").DefaultName = "total_default"), 1);
+
+        var diff = _differ.Diff(before, Model((customer, invoice, views, _) =>
+        {
+            invoice.Col("a-total").DefaultName = "total_dflt";
+            invoice.ForeignKeys[0].Deferrable = "initially-immediate";
+            customer.Comment = "Who we bill.";
+            customer.Schema = "billing";
+            views[0].Comment = "Open invoices.";
+        }));
+
+        var invoice = diff.Tables.Single(t => t.Key == InvoiceKey);
+        var column = Assert.Single(invoice.Columns);
+        Assert.Equal(("defaultName", "total_default", "total_dflt"), (column.Changes[0].Property, column.Changes[0].Old, column.Changes[0].New));
+        Assert.Equal("total_default", column.OldDefaultName);
+        var fk = Assert.Single(invoice.ForeignKeys);
+        Assert.Equal(("deferrable", "not-deferrable", "initially-immediate"), (fk.Changes[0].Property, fk.Changes[0].Old, fk.Changes[0].New));
+        var customer = diff.Tables.Single(t => t.Key == CustomerKey);
+        Assert.Equal(("public", null), (customer.OldSchema, customer.OldComment));
+        var view = Assert.Single(diff.Views);
+        Assert.Equal(("comment", "public"), (Assert.Single(view.Changes).Property, view.OldSchema));
+    }
+
+    [Fact]
+    public void Schemas_are_compared_only_when_both_snapshots_record_them()
+    {
+        static RDatabase With(RDatabase db, params (string Id, string Name)[] schemas)
+        {
+            db.Schemas = new RList<RSchema>([.. schemas.Select(s => new RSchema { Id = s.Id, Name = s.Name, IsDeclared = true })], []);
+            return db;
+        }
+
+        var before = _differ.Capture(With(Model(), ("s1", "sales"), ("s2", "archive")), 1);
+        var diff = _differ.Diff(before, With(Model(), ("s1", "shop"), ("s3", "audit")));
+
+        Assert.False(diff.IsEmpty);
+        Assert.Equal([(ChangeKind.Added, "s3"), (ChangeKind.Renamed, "s1"), (ChangeKind.Dropped, "s2")], diff.Schemas.Select(c => (c.Kind, c.Key)));
+        Assert.Equal(("sales", "shop"), (diff.Schemas[1].OldName, diff.Schemas[1].NewName));
+        Assert.NotEqual(_differ.Diff(before, With(Model(), ("s1", "sales"), ("s2", "archive"))).Hash, diff.Hash);
+
+        // A snapshot written before schemas were recorded (or no snapshot at all) reports none.
+        Assert.True(_differ.Diff(before with { Schemas = null }, With(Model(), ("s1", "shop"))).IsEmpty);
+        Assert.Empty(_differ.Diff(null, With(Model(), ("s1", "shop"))).Schemas);
+    }
 }

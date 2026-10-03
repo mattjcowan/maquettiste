@@ -32,6 +32,7 @@ import { GeneralSettings } from "./GeneralSettings";
 import { StrategiesHint } from "./StrategiesHint";
 import { ValidationSettings } from "./ValidationSettings";
 import { CommentsConvention } from "./CommentsConvention";
+import { TablesByConvention } from "./DatabaseConvention";
 
 const TABS = ["general", "tags", "categories", "stereotypes", "conventions", "locales", "validation", "project", "explorer"] as const;
 
@@ -66,6 +67,7 @@ export function SettingsWorkspace() {
             <>
               <StrategiesHint />
               <ConventionsSettings />
+              <TablesByConvention />
             </>
           ) : t === "locales" ? (
             <LocalesSettings />

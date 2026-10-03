@@ -33,7 +33,14 @@ public sealed record PropertyChange(string Property, object? Old, object? New);
 /// <param name="NewName">The new name (not for dropped).</param>
 /// <param name="Changes">Property changes.</param>
 /// <param name="Column">The current column (not for dropped).</param>
-public sealed record ColumnChange(ChangeKind Kind, string Key, string? OldName, string? NewName, IReadOnlyList<PropertyChange> Changes, RColumn? Column);
+public sealed record ColumnChange(ChangeKind Kind, string Key, string? OldName, string? NewName, IReadOnlyList<PropertyChange> Changes, RColumn? Column)
+{
+    /// <summary>
+    /// The name the committed snapshot gives the column's default constraint (not for added; <see langword="null"/> for the template's
+    /// convention), so a migration can rename or drop the constraint the database has.
+    /// </summary>
+    public string? OldDefaultName { get; init; }
+}
 
 /// <summary>A change to a key, constraint, index, view or sequence.</summary>
 /// <param name="Kind">The change kind.</param>
@@ -41,7 +48,26 @@ public sealed record ColumnChange(ChangeKind Kind, string Key, string? OldName, 
 /// <param name="OldName">The old name (not for added).</param>
 /// <param name="NewName">The new name (not for dropped).</param>
 /// <param name="Changes">Property changes.</param>
-public sealed record ObjectChange(ChangeKind Kind, string Key, string? OldName, string? NewName, IReadOnlyList<PropertyChange> Changes);
+public sealed record ObjectChange(ChangeKind Kind, string Key, string? OldName, string? NewName, IReadOnlyList<PropertyChange> Changes)
+{
+    /// <summary>For a view or sequence (not added): its schema name before the change, or <see langword="null"/> for none.</summary>
+    public string? OldSchema { get; init; }
+
+    /// <summary>For a view (not added): the keys of the views it read before the change, so a migration drops it before them.</summary>
+    public IReadOnlyList<string> OldDependsOn { get; init; } = [];
+
+    /// <summary>For a view (not added): whether it was materialized, so a migration drops it as such.</summary>
+    public bool OldMaterialized { get; init; }
+
+    /// <summary>
+    /// For a unique constraint or an index (not added): its column keys before the change, in order (an index's expression column is
+    /// <c>null</c>), so a migration knows which foreign keys rely on a key it drops.
+    /// </summary>
+    public IReadOnlyList<string?> OldColumns { get; init; } = [];
+
+    /// <summary>For a unique constraint or an index (not added): whether it was a key a foreign key can rely on (an index: unique, without a filter).</summary>
+    public bool OldUnique { get; init; }
+}
 
 /// <summary>A table change.</summary>
 /// <param name="Kind">The change kind.</param>
@@ -66,7 +92,14 @@ public sealed record TableChange(
     IReadOnlyList<ObjectChange> Uniques,
     IReadOnlyList<ObjectChange> ForeignKeys,
     IReadOnlyList<ObjectChange> Checks,
-    IReadOnlyList<ObjectChange> Indexes);
+    IReadOnlyList<ObjectChange> Indexes)
+{
+    /// <summary>The table's schema name before the change (not for added), or <see langword="null"/> for none.</summary>
+    public string? OldSchema { get; init; }
+
+    /// <summary>The table's comment before the change (not for added), or <see langword="null"/> for none.</summary>
+    public string? OldComment { get; init; }
+}
 
 /// <summary>
 /// The structured diff of one database, as templates see it in <c>schema_diff</c>. <see cref="Tables"/> lists added tables in
@@ -90,6 +123,12 @@ public sealed record SchemaDiffResult(
     IReadOnlyList<ObjectChange> Views,
     IReadOnlyList<ObjectChange> Sequences)
 {
+    /// <summary>
+    /// Declared schema changes (key: the schema's id): added, renamed, then dropped, each by key. Empty when either snapshot
+    /// predates schema recording, or there is no previous snapshot (a first migration creates every schema with its tables).
+    /// </summary>
+    public IReadOnlyList<ObjectChange> Schemas { get; init; } = [];
+
     /// <summary>Database type changes: added, renamed, altered, then dropped, each by key.</summary>
     public IReadOnlyList<DefinitionChange> Types { get; init; } = [];
 

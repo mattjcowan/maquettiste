@@ -1,7 +1,16 @@
-// The view editor: General (name, schema, comment and the marks), Body (one SQL editor per dialect the body holds, with Add
+// The view editor: General (name, schema, comment, the marks and the DDL options: the column list, WITH CHECK OPTION, materialized,
+// what the view depends on, and the views its body names, which the scripts order by without being told), Body (one SQL editor per dialect the body holds, with Add
 // dialect for the others; a body is saved when its editor loses focus, on Ctrl+S or with Save, one undo step each), Columns (the
-// optional declared columns), Code generation and References.
+// optional declared columns; renaming one renames it in the bindings that read the view by that name, in the same batch), Code
+// generation and References.
+import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { useDatabaseView } from "@/api/queries";
+import { CheckboxField } from "@/components/ui/checkbox";
+import { SectionTitle } from "@/components/ui/misc";
+import { useQueryClient } from "@tanstack/react-query";
+import { useServices } from "@/app/context";
+import { renameViewColumn } from "@/workspaces/database/columnRename";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
 import { CommonFields } from "@/inspector/fields";
@@ -10,7 +19,9 @@ import { BUILTIN_TYPES } from "@/model/model";
 import { EDITOR_TAB_LABELS } from "@/model/labels";
 import { viewBodyTemplate } from "@/explorer/databaseCreate";
 import { domIdOf, EditorLayout, useCodeGenerationTab, useEditorContext, type EditorContext } from "../EditorFrame";
-import { addViewColumn, removeViewColumn } from "./databaseDocs";
+import { addViewColumn, inferredViewDependencies, removeViewColumn, setViewOption, viewOptionNote, type ViewOption } from "./databaseDocs";
+import { DependsOnField } from "./DependsOn";
+import { useProblems } from "@/editors/process/shared";
 import { DialectBodies } from "./DialectBodies";
 import { CommentField, CommitInput, DatabaseLine, SchemaField } from "./fields";
 
@@ -41,6 +52,7 @@ function ViewBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeof
               <CommonFields {...form} inEditorHeader />
               <SchemaField {...form} />
               <CommentField {...form} />
+              <ViewDdlOptions ctx={ctx} />
             </div>
           ),
         },
@@ -67,7 +79,78 @@ function ViewBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeof
   );
 }
 
+/** The view's DDL options, its dependencies and the views its body names; each change one save, so one undo step. */
+function ViewDdlOptions({ ctx }: { ctx: EditorContext }) {
+  const doc = ctx.json as unknown as Rec;
+  const id = domIdOf(ctx.id);
+  const database = String(doc.database ?? "");
+  const view = useDatabaseView(database || null).data?.view;
+  const dialect = view?.dialect ?? "postgresql";
+  const body = (doc.body as Record<string, string> | undefined) ?? {};
+  const text = body[dialect] ?? body["*"] ?? "";
+  const views = view?.views;
+  const inferred = useMemo(() => inferredViewDependencies(text, views ?? [], ctx.id), [text, views, ctx.id]);
+  const chosen = Array.isArray(doc.dependsOn) ? (doc.dependsOn as string[]) : [];
+  // The last save's problems, else the model's validation of the view (its warnings too).
+  const all = useProblems(ctx.id, ctx.diagnostics);
+  const set = (option: ViewOption, on: boolean) => {
+    ctx.edit((j) => void setViewOption(j as unknown as Rec, option, on));
+    ctx.flush();
+  };
+  const problems = all.filter((d) => ["/columnList", "/withCheckOption", "/materialized", "/dependsOn"].some((p) => (d.jsonPointer ?? "").startsWith(p)));
+  const note = viewOptionNote(dialect, doc);
+  const options: [ViewOption, string][] = [
+    ["columnList", "Column list (CREATE VIEW names the Columns tab's columns)"],
+    ["withCheckOption", "With check option (an insert or update through the view must satisfy its WHERE)"],
+    ["materialized", "Materialized (the view stores its rows: PostgreSQL and Oracle)"],
+  ];
+  return (
+    <div className="flex flex-col gap-2" data-testid="view-ddl-options">
+      <SectionTitle>DDL</SectionTitle>
+      {options.map(([option, label]) => (
+        <CheckboxField key={option} id={`${id}-${option}`} label={label} checked={doc[option] === true} onChange={(v) => set(option, v)} />
+      ))}
+      {note ? (
+        <p className="text-11 text-secondary" data-testid="view-ddl-note">
+          {note}
+        </p>
+      ) : null}
+      {problems.length ? (
+        <ul role="alert" className="flex flex-col gap-0.5 text-12 text-danger" data-testid="view-ddl-problems">
+          {problems.map((d, i) => (
+            <li key={i} className={d.severity === "error" ? undefined : "text-secondary"}>
+              <span className="font-mono">{d.rule}</span> {d.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <DependsOnField ctx={ctx} id={id} />
+      <div className="flex flex-col gap-1" data-testid="view-inferred-dependencies">
+        <span className="text-12 font-medium text-secondary">Found in the body</span>
+        {inferred.length ? (
+          <ul className="flex flex-wrap gap-1">
+            {inferred.map((v) => (
+              <li key={v.id} className="rounded-control border border-default px-1 font-mono text-12" data-testid={`view-inferred-${v.name}`}>
+                {v.schema ? `${v.schema}.` : ""}
+                {v.name}
+                {chosen.includes(v.id) ? <span className="ml-1 font-sans text-11 text-secondary">(also named)</span> : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-12 text-secondary">The body names no other view of the database.</p>
+        )}
+        <p className="text-11 text-secondary">
+          Views the body names are created first without being listed under Depends on; list what the body reaches in a way this reading misses.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ColumnsTab({ ctx }: { ctx: EditorContext }) {
+  const services = useServices();
+  const qc = useQueryClient();
   const doc = ctx.json as unknown as Rec;
   const columns = (Array.isArray(doc.columns) ? doc.columns : []) as Rec[];
   const update = (mutate: (doc: Rec) => void) => {
@@ -111,7 +194,8 @@ function ColumnsTab({ ctx }: { ctx: EditorContext }) {
                     className="h-6 text-12"
                     value={String(c.name ?? "")}
                     onCommit={(v) => {
-                      if (v.trim()) update((j) => void (at(j, i).name = v.trim()));
+                      // The bindings that read the view by this column's name follow, in the same batch.
+                      if (v.trim() && v.trim() !== String(c.name ?? "")) void renameViewColumn(services, qc, ctx.id, i, v);
                     }}
                   />
                 </td>

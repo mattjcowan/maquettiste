@@ -4,7 +4,10 @@
 // query reads goes away (the Invoice entity loses its soft-delete stereotype, so invoices.deleted_at is gone) and the problem
 // shows in the SQL tab and in Problems, then the editor fixes it (the condition removed) and the SQL renders again.
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, test, keepDdlOpen } from "./fixtures";
+
+// The DDL preview is hidden by default; these specs read it.
+test.beforeEach(({ page }) => keepDdlOpen(page));
 
 const editor = (page: Page) => page.getByTestId("element-editor");
 const tab = (page: Page, name: string) => editor(page).getByRole("tab", { name, exact: true }).click();
@@ -39,7 +42,7 @@ test("the billing InvoicesByCustomer: its tabs, its SQL, a default edited, and a
   await page.getByTestId("database-query-InvoicesByCustomer").click();
   await expect(page.getByTestId("ddl-preview-unit")).toHaveText("query SQL · InvoicesByCustomer");
   await expect(page.getByTestId("ddl-preview").getByTestId("code-text-sql")).toContainText("LIMIT @limit OFFSET @offset");
-  await expect(page.getByTestId("inspector").getByTestId("query-fields")).toContainText("Each row is Invoice; 1 source; 4 parameters; 1 collection");
+  await expect(page.getByTestId("inspector").getByTestId("query-fields")).toContainText("Each row has 6 fields; 1 source; 4 parameters; 1 collection");
 
   // Show the SQL: the editor opens on its SQL tab.
   await page.getByTestId("query-open-sql").click();
@@ -152,15 +155,18 @@ test("a field the entity does not have is listed with Remove, and another result
   expect(await setSelect(page, [...select, { attribute: "01J92P0V0X1EDKMF6X5RA8NZWG", expression: { column: "i.notes" } }])).toBe("saved");
   await tab(page, "Select");
   const unknown = editor(page).getByTestId("query-field-unknown");
-  await expect(unknown).toHaveText("01J92P0V0X1EDKMF6X5RA8NZWG (not on the entity)");
+  await expect(unknown).toHaveText("01J92P0V0X1EDKMF6X5RA8NZWG (not in the shape)");
   await editor(page).getByRole("button", { name: "Remove field 01J92P0V0X1EDKMF6X5RA8NZWG", exact: true }).click();
   await expect.poll(async () => ((await queryJson(page)).select as unknown[]).length).toBe(select.length);
   await expect(unknown).toHaveCount(0);
 
-  // Customer has none of Invoice's own attributes: each of those fields becomes a field of its own name, its expression kept;
-  // createdAt comes from the audited stereotype both entities carry, so its field keeps filling it.
+  // A query is the database's: General says the older result entity is set, and Remove turns every field that filled an
+  // attribute into a field of its own name (its expression kept), and the lines collection into a collection named lines.
   await tab(page, "General");
-  await editor(page).getByLabel("Result entity").selectOption({ label: "Customer" });
+  await expect(editor(page).getByLabel("Result entity")).toHaveCount(0);
+  const older = editor(page).getByTestId("query-older-result-entity");
+  await expect(older).toHaveText(/An older result entity is set; bind the entity to this query on its Storage tab instead\./);
+  await older.getByRole("button", { name: "Remove" }).click();
   await expect
     .poll(async () => ((await queryJson(page)).select as { attribute?: string; name?: string }[]).map((f) => [f.attribute ?? null, f.name]))
     .toEqual([
@@ -169,9 +175,32 @@ test("a field the entity does not have is listed with Remove, and another result
       [null, "issuedOn"],
       [null, "status"],
       [null, "notes"],
-      ["01J92P0V26XYZRDQ8FJ6KZXT6S", undefined],
+      [null, "createdAt"],
     ]);
+  const json = await queryJson(page);
+  expect(json.entity).toBeUndefined();
+  const collection = (json.collections as { attribute: string; entity?: string; query: { select: { attribute?: string; name?: string }[] } }[])[0];
+  expect(collection.attribute).toBe("lines");
+  expect(collection.entity).toBeUndefined();
+  expect(collection.query.select.map((f) => [f.attribute ?? null, f.name])).toEqual([
+    [null, "id"],
+    [null, "quantity"],
+    [null, "description"],
+  ]);
+  await expect(older).toHaveCount(0);
+  // Nothing about entities is left in the editor; the select list is the row, and the SQL is the same statement.
   await tab(page, "Select");
   await expect(editor(page).getByTestId("query-field-number")).toBeVisible();
   await expect(editor(page).getByTestId("query-field-unknown")).toHaveCount(0);
+  await tab(page, "Collections");
+  await expect(editor(page).getByLabel("Collection 1 element entity")).toHaveCount(0);
+  await expect(editor(page).getByLabel("Collection 1 name")).toHaveValue("lines");
+  await expect(editor(page)).not.toContainText(/entit/i);
+  await tab(page, "SQL");
+  await expect(editor(page).getByTestId("query-sql-statement").getByTestId("code-text-sql")).toContainText(
+    "SELECT i.id AS id, i.number AS number, i.issued_on AS issuedOn, i.status AS status, i.notes AS notes, i.created_at AS createdAt",
+  );
+  // One undo puts the result entity back.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(async () => (await queryJson(page)).entity).toBe(INVOICE);
 });

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -156,6 +157,192 @@ public sealed class MaterializeTests
         Assert.Equal(["db/main/billing/tables/customers.sql", "db/main/billing/tables/invoices.sql"],
             second.Changes.Where(c => c.Kind == FileChangeKind.Modified).Select(c => c.Path));
         Assert.DoesNotContain("-- Maps entity", r.Repo.ReadFile("db/main/billing/tables/invoices.sql"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Undoing_and_redoing_a_materialize_writes_no_migration_and_rewrites_no_snapshot_key()
+    {
+        await using var r = EditorRepo.Create();
+        Assert.Equal(RunOutcome.Succeeded, (await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct)).Outcome);
+        int Migrations() => r.Repo.ListFiles().Count(p => p.Contains("/migrations/", StringComparison.Ordinal));
+        var migrations = Migrations();
+        var snapshotPath = r.Repo.ListFiles().Single(p => p.EndsWith("snapshots/main.json", StringComparison.Ordinal));
+        string Keys() => string.Join(",", JsonNode.Parse(r.Repo.ReadFile(snapshotPath))!["tables"]!.AsArray().Select(t => (string)t!["key"]!));
+        var keys = Keys();
+
+        // The editor's way: what the operation will change is read first; undo puts it back, redo applies the result again.
+        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [EditorRepo.InvoiceId, EditorRepo.CustomerId]), Ct);
+        var priors = plan.Updates.Concat(plan.Deletes).ToDictionary(c => c.Id, c => r.Store.Current!.GetDocument(c.Id)!.Json.GetRawText(), StringComparer.Ordinal);
+        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId));
+        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
+        var items = stored.Items.Where(i => i.Id is not null).ToList();
+        var after = items.ToDictionary(i => i.Id!, i => i.Current?.Json.GetRawText(), StringComparer.Ordinal);
+        var hashes = items.ToDictionary(i => i.Id!, i => i.Hash, StringComparer.Ordinal);
+
+        // The snapshot keeps its keys and records the aliases.
+        Assert.Equal(keys, Keys());
+        var aliases = JsonNode.Parse(r.Repo.ReadFile(snapshotPath))!["aliases"]!.AsArray();
+        Assert.Contains(aliases, a => (string)a!["key"]! == EditorRepo.InvoiceId + "@" + EditorRepo.MainDatabaseId && (string)a["alias"]! == EditorRepo.OverlayTableId);
+
+        async Task Step(Func<string, string?> from, Func<string, string?> to, Func<string, string?> hash)
+        {
+            var ops = new List<string>();
+            foreach (var id in after.Keys.Concat(priors.Keys).Distinct(StringComparer.Ordinal))
+            {
+                var (was, becomes) = (from(id), to(id));
+                if (becomes is null)
+                    ops.Add($$"""{"op":"delete","id":"{{id}}","expectedHash":"{{hash(id)}}"}""");
+                else if (was is null)
+                    ops.Add($$"""{"op":"create","element":{{becomes}}}""");
+                else
+                    ops.Add($$"""{"op":"update","id":"{{id}}","expectedHash":"{{hash(id)}}","element":{{becomes}}}""");
+            }
+
+            var result = await ApplyAsync(r, string.Join(",", ops));
+            Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+            foreach (var item in result.Items.Where(i => i.Id is not null))
+                hashes[item.Id!] = item.Hash;
+        }
+
+        foreach (var round in new[] { "stored", "undone", "redone" })
+        {
+            if (round == "undone")
+                await Step(id => after.GetValueOrDefault(id), id => priors.GetValueOrDefault(id), id => hashes.GetValueOrDefault(id));
+            else if (round == "redone")
+                await Step(id => priors.GetValueOrDefault(id), id => after.GetValueOrDefault(id), id => hashes.GetValueOrDefault(id));
+            var run = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
+            Assert.Equal(RunOutcome.Succeeded, run.Outcome);
+            Assert.True(migrations == Migrations(), $"{round}: a migration was written: " + string.Join(", ", run.Changes.Select(c => c.Path)));
+        }
+
+        Assert.Equal(keys, Keys());
+    }
+
+    /// <summary>
+    /// Storing a table again after an undo (a new materialize, not a redo) reuses the ids the committed snapshot's alias recorded for
+    /// the projected key: the table's (customers has no overlay, so the store draws it) and every column's (invoices keeps its overlay's
+    /// table id, but most of its columns have no overlay entry). The snapshot then reads as the same table, so the next migration drops
+    /// only the column added and undone in between, and without that column there is no migration at all; twice over.
+    /// </summary>
+    [Theory]
+    [InlineData("customers", true)]
+    [InlineData("invoices", true)]
+    [InlineData("customers", false)]
+    [InlineData("invoices", false)]
+    public async Task Storing_a_table_again_after_an_undo_reuses_its_ids_so_the_next_migration_drops_only_what_was_undone(string tableName, bool addColumn)
+    {
+        await using var r = EditorRepo.Create();
+        async Task<IReadOnlyList<string>> Generate()
+        {
+            var run = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
+            Assert.Equal(RunOutcome.Succeeded, run.Outcome);
+            return [.. run.Changes.Where(c => c.Kind == FileChangeKind.Added && c.Path.Contains("/migrations/", StringComparison.Ordinal))
+                .Select(c => r.Repo.ReadFile(c.Path))];
+        }
+
+        await Generate();
+        string[] entities = [EditorRepo.InvoiceId, EditorRepo.CustomerId];
+        string? firstId = null;
+        for (var cycle = 1; cycle <= 2; cycle++)
+        {
+            var undoStore = await StoreAsync(r, entities);
+            var table = r.Store.Current!.All<Table>().Single(t => t.Name == tableName);
+            firstId ??= table.Id;
+            Assert.Equal(firstId, table.Id);
+            if (addColumn)
+            {
+                var document = (await r.Store.GetElementAsync(table.Id, Ct))!;
+                var stored = document.Json.GetRawText();
+                var edited = JsonNode.Parse(stored)!.AsObject();
+                edited["columns"]!.AsArray().Add(new JsonObject { ["id"] = "01K6REST00000000000000000" + cycle, ["name"] = "scratch_" + cycle, ["type"] = "string", ["length"] = 20 });
+                var added = await r.Store.SaveAsync(table.Id, Encoding.UTF8.GetBytes(edited.ToJsonString()), document.Hash, ChangeSource.Editor, Ct);
+                Assert.True(added.Outcome == SaveOutcome.Saved, string.Join("; ", added.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+                var adding = Assert.Single(await Generate());
+                Assert.Contains("scratch_" + cycle, adding, StringComparison.Ordinal);
+                var undone = await r.Store.SaveAsync(table.Id, Encoding.UTF8.GetBytes(stored), added.Hash!, ChangeSource.Editor, Ct);
+                Assert.Equal(SaveOutcome.Saved, undone.Outcome);
+            }
+            else
+            {
+                Assert.Empty(await Generate());
+            }
+
+            await undoStore();
+            var undoAgain = await StoreAsync(r, entities);
+            Assert.Equal(firstId, r.Store.Current!.All<Table>().Single(t => t.Name == tableName).Id);
+            var migrations = await Generate();
+            if (addColumn)
+            {
+                // (PostgreSQL: dropping a column drops every view first and creates it again after, whichever table it reads.)
+                var migration = Assert.Single(migrations);
+                Assert.Single(Regex.Matches(migration, "DROP COLUMN"));
+                Assert.Contains("scratch_" + cycle, migration, StringComparison.Ordinal);
+                foreach (var statement in new[] { "DROP TABLE", "CREATE TABLE", "ADD COLUMN", "ADD CONSTRAINT", "DROP CONSTRAINT", "INDEX" })
+                    Assert.False(migration.Contains(statement, StringComparison.Ordinal), $"cycle {cycle}, {statement}:\n{migration}");
+            }
+            else
+            {
+                Assert.True(migrations.Count == 0, $"cycle {cycle}: " + string.Join("\n", migrations));
+            }
+
+            // Back to the projection for the next cycle; generating there writes nothing either.
+            await undoAgain();
+            Assert.Empty(await Generate());
+        }
+    }
+
+    /// <summary>Applies materialize-tables the editor's way and returns its undo (what the operation changed, put back).</summary>
+    private static async Task<Func<Task>> StoreAsync(EditorRepo r, string[] entities)
+    {
+        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, entities), Ct);
+        var priors = plan.Updates.Concat(plan.Deletes).ToDictionary(c => c.Id, c => r.Store.Current!.GetDocument(c.Id)!.Json.GetRawText(), StringComparer.Ordinal);
+        var stored = await ApplyAsync(r, Tables(entities));
+        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        var after = stored.Items.Where(i => i.Id is not null).ToDictionary(i => i.Id!, i => i.Current?.Json.GetRawText(), StringComparer.Ordinal);
+        return async () =>
+        {
+            var ops = new List<string>();
+            foreach (var id in after.Keys.Concat(priors.Keys).Distinct(StringComparer.Ordinal))
+            {
+                var (was, becomes) = (after.GetValueOrDefault(id), priors.GetValueOrDefault(id));
+                var hash = r.Store.Current!.GetDocument(id)?.Hash;
+                if (becomes is null)
+                    ops.Add($$"""{"op":"delete","id":"{{id}}","expectedHash":"{{hash}}"}""");
+                else if (was is null)
+                    ops.Add($$"""{"op":"create","element":{{becomes}}}""");
+                else
+                    ops.Add($$"""{"op":"update","id":"{{id}}","expectedHash":"{{hash}}","element":{{becomes}}}""");
+            }
+
+            var result = await ApplyAsync(r, string.Join(",", ops));
+            Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        };
+    }
+
+    [Fact]
+    public async Task With_the_hashes_the_caller_read_a_document_changed_since_or_not_read_is_a_conflict()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [EditorRepo.InvoiceId]), Ct);
+        var read = plan.Updates.Concat(plan.Deletes).ToDictionary(c => c.Id, c => r.Store.Current!.GetDocument(c.Id)!.Hash, StringComparer.Ordinal);
+        string Op(IReadOnlyDictionary<string, string> hashes) =>
+            Tables(EditorRepo.InvoiceId)[..^1] + ",\"expectedHashes\":{" + string.Join(",", hashes.Select(p => $"\"{p.Key}\":\"{p.Value}\"")) + "}}";
+
+        // Another save changes the invoice entity after it was read: the operation is a conflict and writes nothing.
+        var invoice = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
+        var edited = JsonNode.Parse(invoice.Json.GetRawText())!.AsObject();
+        edited["displayName"] = "Invoice (edited)";
+        var save = await r.Store.SaveAsync(EditorRepo.InvoiceId, Encoding.UTF8.GetBytes(edited.ToJsonString()), invoice.Hash, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, save.Outcome);
+        var files = r.Files();
+        var stale = await ApplyAsync(r, Op(read));
+        Assert.Equal(SaveOutcome.Conflict, stale.Outcome);
+        Assert.Equal(files, r.Files());
+
+        // Not naming a document the operation changes is a conflict too; the hashes read now go through.
+        var fresh = plan.Updates.Concat(plan.Deletes).ToDictionary(c => c.Id, c => r.Store.Current!.GetDocument(c.Id)!.Hash, StringComparer.Ordinal);
+        Assert.Equal(SaveOutcome.Conflict, (await ApplyAsync(r, Op(fresh.Where(p => p.Key != EditorRepo.InvoiceId).ToDictionary(p => p.Key, p => p.Value)))).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await ApplyAsync(r, Op(fresh))).Outcome);
     }
 
     [Fact]

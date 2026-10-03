@@ -1,7 +1,10 @@
 // The Database screen's DDL preview assumes no pack by name: it renders the enabled pack that has a unit rendered per
 // database (a unit named schema or table first), or that pack's each-table unit for a selected table, and says which in
 // its header. Renamed, the pack is still found; with no such pack enabled, the pane says so instead of hiding.
-import { expect, test } from "./fixtures";
+import { expect, test, keepDdlOpen } from "./fixtures";
+
+// The DDL preview is hidden by default; these specs read it.
+test.beforeEach(({ page }) => keepDdlOpen(page));
 
 test("the DDL preview names the pack and unit it renders, follows a renamed pack, and says when none applies", async ({ page }) => {
   await page.goto("/database");

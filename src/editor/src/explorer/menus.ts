@@ -7,19 +7,22 @@ import { CREATE_LABELS, DOMAIN_CREATE, EXPLORER_CREATE, folderCreate, type Creat
 import { PROMOTABLE_KINDS } from "./promote";
 import { DATABASE_CREATE, DATABASE_CREATE_LABELS, databaseFolderCreate, SCHEMA_ELEMENT_KINDS, type DatabaseObjectKind } from "./databaseCreate";
 import { TYPE_MENU, type TypeActionId } from "@/workspaces/reference-data/typeMenu";
+import { storageMenuItems, type StorageActionId } from "@/editors/storage/menuItems";
+import type { TablePartKind } from "@/workspaces/database/tableParts";
 
 export type MenuActionId =
   | "open"
   | "open-database"
-  | "open-mappings"
   | `new-db:${DatabaseObjectKind}`
+  | `new-part:${TablePartKind}`
+  | "rename-part"
+  | "delete-part"
   | "show-in-database"
   | "show-on-canvas"
   | "add-to-diagram"
   | "add-with-related"
   | "where-used"
   | "go-to-table"
-  | "go-to-entity"
   | "go-to-ends"
   | `new:${CreateKind}`
   | "duplicate"
@@ -28,7 +31,6 @@ export type MenuActionId =
   | "search-in-domain"
   | "favorite"
   | "move"
-  | "map-to-database"
   | "apply-stereotype"
   | "tag"
   | "set-category"
@@ -44,7 +46,8 @@ export type MenuActionId =
   | "verify-scenarios"
   | "export-xstate"
   | "import-xstate"
-  | `type:${TypeActionId}`;
+  | `type:${TypeActionId}`
+  | StorageActionId;
 
 export interface MenuItem {
   id: MenuActionId;
@@ -75,9 +78,25 @@ export interface MenuTarget {
   processDiagram?: boolean;
   /** The explorer the row is listed in (a reference type's seed, listed under its type, is renamed with the type). */
   home?: ExplorerId;
-  /** A table row with a file of its own (designed or imported): it opens in the table editor. */
+  /** A table row with a file of its own (designed or imported). */
   designed?: boolean;
+  /** A row under a table: the kind of part it stands for (a folder of them, or one part). */
+  part?: TablePartKind;
+  /** A "Referenced by" row or folder: another table's foreign key (opened, not edited, from here). */
+  incoming?: boolean;
 }
+
+/** The New actions on a table and on its part folders. */
+export const NEW_PART_LABELS: Record<TablePartKind, string> = {
+  column: "New column",
+  "primary-key": "New primary key",
+  unique: "New unique constraint",
+  index: "New index",
+  "foreign-key": "New foreign key",
+  check: "New check",
+};
+const NEW_ON_TABLE: TablePartKind[] = ["column", "unique", "index", "foreign-key", "check"];
+const newPart = (kind: TablePartKind): MenuItem => item(`new-part:${kind}`, NEW_PART_LABELS[kind]);
 
 const item = (id: MenuActionId, label: string, multi = false, danger = false): MenuItem => ({ id, label, multi, danger });
 const create = (kind: CreateKind): MenuItem => item(`new:${kind}`, CREATE_LABELS[kind]);
@@ -118,6 +137,11 @@ export function isRenamable(kind: string | undefined, home?: string): boolean {
 }
 
 function single(t: MenuTarget): MenuItem[] {
+  // A table's part folders and parts (Columns, Primary key, Unique constraints, Indexes, Foreign keys, Checks, Referenced by).
+  if (t.part && t.type === "folder")
+    return t.incoming ? [item("open", "Open"), item("expand-all", "Expand all")] : [item("open", "Open"), newPart(t.part), item("expand-all", "Expand all")];
+  if (t.part && t.type === "item")
+    return t.incoming ? [item("open", "Open")] : [item("open", "Open"), item("rename-part", "Rename"), item("delete-part", "Delete", false, true)];
   // A kind folder of a database (Tables, Views, Sequences, Routines, Types, Objects, Queries, or a table group in it): its New action.
   const inDatabase = t.home === "databases" && (t.type === "folder" || t.type === "group") ? databaseFolderCreate(t.kind) : null;
   if (inDatabase)
@@ -140,7 +164,7 @@ function single(t: MenuTarget): MenuItem[] {
           item("expand-all", "Expand all"),
           item("rename", "Rename"),
           item("move", "Move to domain…"),
-          item("map-to-database", "Map to database…", true),
+          ...storageMenuItems(t),
           item("export-seeds", "Export this domain's seed data"),
           item("import-seeds", "Import seed data…"),
           item("delete", "Delete", false, true),
@@ -148,13 +172,8 @@ function single(t: MenuTarget): MenuItem[] {
       : [item("expand-all", "Expand all")];
   if (t.type === "database")
     return t.element
-      ? [
-          item("open-database", "Open Database screen"),
-          item("open-mappings", "Open mappings"),
-          ...DATABASE_CREATE.map(createInDatabase),
-          item("expand-all", "Expand all"),
-        ]
-      : [item("open-database", "Open Database screen"), item("open-mappings", "Open mappings"), item("expand-all", "Expand all")];
+      ? [item("open-database", "Open Database screen"), ...DATABASE_CREATE.map(createInDatabase), item("expand-all", "Expand all")]
+      : [item("open-database", "Open Database screen"), item("expand-all", "Expand all")];
   if (t.type === "group" && t.domainGroup && t.explorer === "processes")
     return [create("process"), item("import-xstate", PROCESS_LABELS.importXState), item("expand-all", "Expand all")];
   if (t.type === "group" && t.domainGroup) return [create("diagram"), item("expand-all", "Expand all")];
@@ -162,11 +181,15 @@ function single(t: MenuTarget): MenuItem[] {
   // A schema holds everything but queries, which have no schema (they show under the default one, and the database row adds them).
   if (t.type === "schema") return [...SCHEMA_ELEMENT_KINDS.map(createInDatabase), item("expand-all", "Expand all")];
   if (t.type === "group" || t.type === "root") return [item("expand-all", "Expand all")];
+  // A table: its New part actions and Rename; a table file also Favorite, Used and Delete (its delete plan).
   if (t.type === "table")
     return [
       item("open", "Open"),
-      ...(t.designed ? [item("show-in-database", "Show in Database screen")] : []),
-      ...(t.linked ? [item("go-to-entity", "Go to entity")] : []),
+      item("show-in-database", "Show in Database screen"),
+      ...NEW_ON_TABLE.map(newPart),
+      ...(t.designed ? [item("where-used", USED_LABEL)] : []),
+      item("rename", "Rename"),
+      ...(t.designed ? [item("favorite", t.favorite ? "Remove from favorites" : "Add to favorites"), item("delete", "Delete", true, true)] : []),
     ];
   if (!t.element) return [item("open", "Open")];
   if (t.kind && PROCESS_KINDS.has(t.kind)) return processMenu(t);
@@ -182,7 +205,7 @@ function single(t: MenuTarget): MenuItem[] {
     ].sort((a, b) => Number(!!a.danger) - Number(!!b.danger));
   if (t.kind === "entity") {
     out.push(item("add-to-diagram", "Add to diagram", true), item("add-with-related", "Add with related…", true), item("show-on-canvas", "Show on canvas"));
-    out.push(item("where-used", USED_LABEL), item("map-to-database", "Map to database…", true));
+    out.push(item("where-used", USED_LABEL), ...storageMenuItems(t));
     out.push(item("edit-seed-data", "Edit seed data"), item("import-seed-csv", "Import seed CSV…"));
     if (t.linked) out.push(item("go-to-table", "Go to table"));
   } else if (t.kind === "relation") out.push(item("add-to-diagram", "Add to diagram", true), item("go-to-ends", "Go to ends"), item("where-used", USED_LABEL));

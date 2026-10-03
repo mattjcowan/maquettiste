@@ -5,6 +5,7 @@ import type { Diagnostic } from "@/api/types";
 import Ajv2020 from "ajv/dist/2020";
 import { schemaValidator } from "../contract";
 import { referencesOf, subElementIds } from "./refs";
+import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
 
 type Json = Record<string, unknown>;
 export interface ModelEntry {
@@ -286,6 +287,9 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
       if (e.onDelete === "set-null" && e.min === 1) out.push(diag("MQ3011", "error", "set-null on a required end.", entry, `/ends/${i}/onDelete`));
     });
   }
+  // MQ4057 a column facet its type does not have; MQ4056 a DDL feature the database's dialect lacks (PhysicalRules.cs).
+  if (kind === "table") out.push(...tableFacetDiagnostics(json, entry, ctx.lookup));
+  if (kind === "view") out.push(...viewDialectDiagnostics(json, entry, ctx.lookup));
   // MQ9203 enum drift
   if (kind === "process" && ctx.lookup) {
     const drift = enumDrift(json, ctx.lookup);
@@ -446,5 +450,151 @@ function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationC
       ),
     );
   }
+  return out;
+}
+
+const DIALECT_NAMES: Record<string, string> = { postgresql: "PostgreSQL", sqlserver: "SQL Server", mysql: "MySQL", sqlite: "SQLite", oracle: "Oracle" };
+
+/** Whether MySQL indexes a column only with a key prefix length: text and blob types (PhysicalRules.NeedsKeyLength). */
+function needsKeyLength(column: Json): boolean {
+  if (typeof column.nativeType === "string") {
+    const lower = column.nativeType.toLowerCase();
+    return lower.includes("text") || lower.includes("blob");
+  }
+  return column.type === "text" || (column.type === "binary" && column.fixedLength !== true);
+}
+
+/** MQ4056 on a view file, as PhysicalRules.CheckView reports it: materialized and WITH CHECK OPTION where the dialect lacks them. */
+function viewDialectDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationContext["lookup"]): Diagnostic[] {
+  const database = typeof json.database === "string" ? lookup?.(json.database)?.json : undefined;
+  if (!database) return [];
+  const d = typeof database.dialect === "string" ? database.dialect : "postgresql";
+  const out: Diagnostic[] = [];
+  const add = (what: string, pointer: string) =>
+    out.push(
+      diag(
+        "MQ4056",
+        "warning",
+        `View '${String(json.name)}' ${what}, which ${DIALECT_NAMES[d] ?? d} (database '${String(database.name)}') does not have; the DDL leaves it out.`,
+        entry,
+        pointer,
+      ),
+    );
+  const materializes = d === "postgresql" || d === "oracle";
+  if (json.materialized === true && !materializes) add("is materialized", "/materialized");
+  if (json.withCheckOption === true && d === "sqlite") add("has WITH CHECK OPTION", "/withCheckOption");
+  else if (json.withCheckOption === true && json.materialized === true && materializes)
+    add("is materialized with WITH CHECK OPTION (a materialized view is not written through)", "/withCheckOption");
+  return out;
+}
+
+/** MQ4057, MQ4059 and MQ4056 on a table file, as PhysicalRules.CheckColumnValues, CheckReferencedKey and CheckDialectFeatures report them. */
+function tableFacetDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationContext["lookup"]): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  arr(json.columns).forEach((c, i) => {
+    const type = typeof c.type === "string" ? c.type : null;
+    if (!type) return;
+    if (typeof c.unicode === "boolean" && type !== "string" && type !== "text")
+      out.push(diag("MQ4057", "error", `Column '${String(c.name)}' sets unicode, which only string and text columns have.`, entry, `/columns/${i}/unicode`));
+    if (c.fixedLength === true && type !== "string" && type !== "binary")
+      out.push(
+        diag("MQ4057", "error", `Column '${String(c.name)}' sets fixedLength, which only string and binary columns have.`, entry, `/columns/${i}/fixedLength`),
+      );
+  });
+  const database = typeof json.database === "string" ? lookup?.(json.database)?.json : undefined;
+  if (!database) return out;
+  const d = typeof database.dialect === "string" ? database.dialect : "postgresql";
+  // MQ4059: a foreign key's referenced columns are a key of the referenced table file (PhysicalRules.CheckReferencedKey).
+  arr(json.foreignKeys).forEach((fk, i) => {
+    const refs = Array.isArray(fk.referencesColumns) ? (fk.referencesColumns as unknown[]).map(String) : [];
+    const target = typeof fk.referencesTable === "string" ? lookup?.(fk.referencesTable)?.json : undefined;
+    if (!refs.length || !target || target.kind !== "table" || target.origin === "synthesized") return;
+    const columns = arr(target.columns);
+    if (!refs.every((r) => columns.some((c) => c.id === r))) return;
+    const problem = referencedKeyProblem(keysOfDocument(target), refs, d);
+    if (!problem) return;
+    const nameOf = (r: string) => String(columns.find((c) => c.id === r)?.name ?? r);
+    out.push(
+      diag(
+        "MQ4059",
+        "error",
+        referencedKeyMessage(problem, String(fk.name ?? fk.id), String(target.name), refs, nameOf),
+        entry,
+        `/foreignKeys/${i}/referencesColumns`,
+      ),
+    );
+  });
+  const lacks = (what: string, pointer: string, leaves = "it") =>
+    out.push(
+      diag(
+        "MQ4056",
+        "warning",
+        `${what}, which ${DIALECT_NAMES[d] ?? d} (database '${String(database.name)}') does not have; the DDL leaves ${leaves} out.`,
+        entry,
+        pointer,
+      ),
+    );
+  const pk = json.primaryKey as Json | undefined;
+  if (pk && typeof pk.clustered === "boolean" && d !== "sqlserver") lacks("The primary key sets clustered", "/primaryKey/clustered");
+  arr(json.foreignKeys).forEach((fk, i) => {
+    if (typeof fk.deferrable === "string" && fk.deferrable !== "not-deferrable" && (d === "sqlserver" || d === "mysql"))
+      lacks(`Foreign key '${String(fk.name ?? fk.id)}' is deferrable`, `/foreignKeys/${i}/deferrable`);
+    // Oracle has ON DELETE CASCADE and ON DELETE SET NULL only; MySQL's InnoDB refuses SET DEFAULT.
+    const fkName = String(fk.name ?? fk.id);
+    const onDelete = typeof fk.onDelete === "string" ? fk.onDelete : "no-action";
+    const onUpdate = typeof fk.onUpdate === "string" ? fk.onUpdate : "no-action";
+    if (d === "oracle" && onUpdate !== "no-action") lacks(`Foreign key '${fkName}' has ON UPDATE ${onUpdate}`, `/foreignKeys/${i}/onUpdate`);
+    if (d === "oracle" && (onDelete === "restrict" || onDelete === "set-default"))
+      lacks(`Foreign key '${fkName}' has ON DELETE ${onDelete}`, `/foreignKeys/${i}/onDelete`);
+    if (d === "mysql" && onDelete === "set-default") lacks(`Foreign key '${fkName}' has ON DELETE set-default`, `/foreignKeys/${i}/onDelete`);
+    if (d === "mysql" && onUpdate === "set-default") lacks(`Foreign key '${fkName}' has ON UPDATE set-default`, `/foreignKeys/${i}/onUpdate`);
+  });
+  arr(json.uniques).forEach((u, i) => {
+    if (u.nullsNotDistinct === true && d !== "postgresql")
+      lacks(`Unique constraint '${String(u.name ?? u.id)}' sets nullsNotDistinct`, `/uniques/${i}/nullsNotDistinct`);
+  });
+  arr(json.columns).forEach((c, i) => {
+    const pointer = `/columns/${i}`;
+    if (c.computed !== undefined && c.computedStored === true && d === "oracle")
+      lacks(`Column '${String(c.name)}' is a stored computed column (Oracle computes every virtual column on read)`, `${pointer}/computedStored`);
+    const identity = c.identity as Json | undefined;
+    if (c.generated !== "identity" || !identity || typeof identity !== "object") return;
+    if (identity.seed !== undefined && d === "sqlite") lacks(`Column '${String(c.name)}' sets an identity seed`, `${pointer}/identity/seed`);
+    if (identity.increment !== undefined && (d === "sqlite" || d === "mysql"))
+      lacks(`Column '${String(c.name)}' sets an identity increment`, `${pointer}/identity/increment`);
+    if (identity.always === true && (d === "sqlite" || d === "mysql"))
+      lacks(`Column '${String(c.name)}' is an identity generated always`, `${pointer}/identity/always`);
+  });
+  arr(json.indexes).forEach((ix, i) => {
+    const name = String(ix.name ?? ix.id);
+    arr(ix.columns).forEach((ic, j) => {
+      const pointer = `/indexes/${i}/columns/${j}`;
+      if (typeof ic.column !== "string" && d === "sqlserver")
+        lacks(`Index '${name}' indexes an expression (index a computed column instead)`, `${pointer}/expression`, "the index");
+      if (typeof ic.length === "number" && d !== "mysql") lacks(`Index '${name}' sets a key prefix length`, `${pointer}/length`);
+      const indexed = typeof ic.column === "string" ? arr(json.columns).find((c) => c.id === ic.column) : undefined;
+      if (typeof ic.length !== "number" && d === "mysql" && indexed && needsKeyLength(indexed))
+        out.push(
+          diag(
+            "MQ4056",
+            "warning",
+            `Index '${name}' indexes the ${String(indexed.type ?? indexed.nativeType)} column '${String(indexed.name)}' without a key prefix length, which ${DIALECT_NAMES[d] ?? d} (database '${String(database.name)}') requires; set the index column's length, or the DDL leaves the index out.`,
+            entry,
+            `${pointer}/length`,
+          ),
+        );
+    });
+    if (arr(ix.include).length && d !== "postgresql" && d !== "sqlserver") lacks(`Index '${name}' has include columns`, `/indexes/${i}/include`);
+    if (typeof ix.where === "string" && (d === "mysql" || d === "oracle")) lacks(`Index '${name}' is partial (where)`, `/indexes/${i}/where`);
+    const method = typeof ix.method === "string" ? ix.method : "default";
+    const ok =
+      method === "default" ||
+      (method === "clustered"
+        ? d === "sqlserver" || d === "postgresql"
+        : method === "btree" || method === "hash"
+          ? d === "postgresql" || d === "mysql"
+          : d === "postgresql");
+    if (!ok) lacks(`Index '${name}' uses the method ${method}`, `/indexes/${i}/method`);
+  });
   return out;
 }

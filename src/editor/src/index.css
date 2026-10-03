@@ -232,6 +232,23 @@
 .mq-link-handle.connectingfrom {
   transform: translate(50%, -50%) scale(1.5);
 }
+/* The database diagram's foreign key handles (TableNode): a dot on the right of each column row and of the header, shown
+   while the pointer is on the row or the dot has the keyboard focus, and while a drag runs from it. */
+.mq-col-handle {
+  cursor: crosshair;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+li:hover > .mq-col-handle,
+[data-table-header]:hover > .mq-col-handle,
+.mq-col-handle:focus-visible,
+.mq-col-handle.connectingfrom {
+  opacity: 1;
+}
+.mq-col-handle:focus-visible {
+  outline: 2px solid var(--mq-accent);
+  outline-offset: 1px;
+}
 /* The chart draws its edges above the open containers they cross (zIndex 1000 in StatechartCanvas, plus the nesting
    depth of the states they join); a leaf state sits above every edge, so they end at its border, its transition handle
    takes the pointer, and a drop on it finds it. */

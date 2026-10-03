@@ -1,6 +1,6 @@
-// New query…: from the Database screen's New menu, a query whose rows are invoices is created over the invoices table (its key
-// selected) and opens in its editor; Sources adds a join to customers and fills its condition from the foreign key, Select fills
-// the attributes from the same-named columns, Parameters adds a parameter, Filter compares a column with it, Group and order
+// New query…: from the Database screen's New menu, a query is created over the invoices table (its first column selected, an ad
+// hoc row: a query is the database's and the dialog says nothing of entities) and opens in its editor; Sources adds a join to
+// customers and fills its condition from the foreign key, Select adds a field and points it at a column, Parameters adds a parameter, Filter compares a column with it, Group and order
 // adds an order, and the SQL tab renders each step and follows a change; undo takes them back one at a time, the explorer lists
 // the query under Queries, and the inspector's delete removes it through the delete plan (nothing refers to it).
 import type { Page } from "@playwright/test";
@@ -42,18 +42,18 @@ test("New query… creates a query, the editor joins, fills, filters and orders 
   await expect(dialog).toHaveAttribute("data-kind", "query");
   await expect(dialog.getByLabel("Schema")).toHaveCount(0);
   await dialog.getByLabel("Name").fill("CustomerInvoices");
-  await dialog.getByLabel("Result entity").selectOption({ label: "Invoice" });
-  // The source follows the entity to its table, the alias to the table's name.
-  await expect(dialog.getByLabel("From")).toHaveValue(`01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4`);
+  await expect(dialog.getByLabel("Result entity")).toHaveCount(0);
+  await expect(dialog).not.toContainText(/entit/i);
+  // The alias follows the source's name.
+  await dialog.getByLabel("From").selectOption(`01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4`);
   await expect(dialog.getByLabel("Alias")).toHaveValue("i");
   await page.getByTestId("new-db-create").click();
   await expect(dialog).toHaveCount(0);
 
   await expect(editor(page)).toHaveAttribute("data-kind", "query");
   await expect(page.getByTestId("editor-title")).toHaveText("CustomerInvoices");
-  await expect
-    .poll(async () => (await queryDoc(page, "CustomerInvoices"))?.select)
-    .toEqual([{ attribute: INVOICE_ID, expression: { column: `i.${INVOICE_ID}` } }]);
+  await expect.poll(async () => (await queryDoc(page, "CustomerInvoices"))?.select).toEqual([{ name: "id", expression: { column: `i.${INVOICE_ID}` } }]);
+  await expect.poll(async () => (await queryDoc(page, "CustomerInvoices"))?.entity).toBeUndefined();
 
   // Sources: a join to the related table, its condition from the foreign key.
   await tab(page, "Sources");
@@ -69,14 +69,13 @@ test("New query… creates a query, the editor joins, fills, filters and orders 
     });
   await expect(editor(page).getByLabel("Query join 1 on left: column").locator("option:checked")).toHaveText("i.customer_id");
 
-  // Select: the attributes from the invoices' same-named columns.
+  // Select: the fields are the row; a new field, pointed at the invoices' number.
   await tab(page, "Select");
-  await expect(editor(page).getByTestId("query-attribute-number")).toContainText("Select number");
-  await editor(page).getByRole("button", { name: "Fill from columns by name" }).click();
-  await page.getByRole("menuitem", { name: "i (invoices)" }).click();
-  await expect(editor(page).getByLabel("Field number: column").locator("option:checked")).toHaveText("i.number");
-  await expect(editor(page).getByLabel("Field issuedOn: column").locator("option:checked")).toHaveText("i.issued_on");
-  await expect.poll(async () => ((await queryDoc(page, "CustomerInvoices"))?.select as unknown[]).length).toBeGreaterThan(5);
+  await expect(editor(page).getByTestId("query-field-id")).toBeVisible();
+  await editor(page).getByRole("button", { name: "Add field" }).click();
+  await expect.poll(async () => ((await queryDoc(page, "CustomerInvoices"))?.select as unknown[]).length).toBe(2);
+  await editor(page).getByLabel("Field id2: column").selectOption({ label: "i.number" });
+  await expect(editor(page).getByLabel("Field id2: column").locator("option:checked")).toHaveText("i.number");
 
   // Parameters: one, renamed and typed.
   await tab(page, "Parameters");
@@ -143,7 +142,7 @@ test("New query… creates a query, the editor joins, fills, filters and orders 
     await chevron(tree.getByTestId("explorer-folder-Queries")).click();
   await tree.getByTestId("explorer-row-CustomerInvoices").click();
   await expect(page.getByTestId("inspector-title")).toHaveText("CustomerInvoices");
-  await expect(page.getByTestId("inspector").getByTestId("query-fields")).toContainText("Each row is Invoice; 2 sources; 1 parameter; 0 collections");
+  await expect(page.getByTestId("inspector").getByTestId("query-fields")).toContainText("Each row has 2 fields; 2 sources; 1 parameter; 0 collections");
   await page.getByRole("button", { name: "Delete CustomerInvoices" }).click();
   await expect(page.getByTestId("delete-plan-dialog")).toHaveCount(0);
   await expect(tree.getByTestId("explorer-row-CustomerInvoices")).toHaveCount(0);

@@ -73,7 +73,9 @@ describe("context menus (1.8)", () => {
       "add-with-related",
       "show-on-canvas",
       "where-used",
-      "map-to-database",
+      "storage:auto-map",
+      "storage:create-tables",
+      "storage:remove-bindings",
       "edit-seed-data",
       "import-seed-csv",
       "go-to-table",
@@ -102,12 +104,17 @@ describe("context menus (1.8)", () => {
     expect(ids([{ type: "domain", kind: "package", element: true }])).toContain("new:entity");
     expect(ids([{ type: "domain", kind: "package", element: true }])).toContain("search-in-domain");
     expect(ids([{ type: "domain", kind: "package", element: true }])).toEqual(expect.arrayContaining(["export-seeds", "import-seeds"]));
+    // The entity side's storage, in bulk over a domain (erratum E43).
+    expect(ids([{ type: "domain", kind: "package", element: true }])).toEqual(
+      expect.arrayContaining(["storage:entities-from-tables", "storage:auto-map", "storage:create-tables", "storage:remove-bindings"]),
+    );
+    // Mapping happens on the Storage tab and through those actions only: no Map to database… anywhere.
+    expect(ids([{ type: "domain", kind: "package", element: true }])).not.toContain("map-to-database");
     expect(menuFor([entity]).find((i) => i.id === "favorite")?.label).toBe("Add to favorites");
     expect(menuFor([{ ...entity, favorite: true }]).find((i) => i.id === "favorite")?.label).toBe("Remove from favorites");
     expect(ids([{ type: "folder", kind: "entity", element: false }])).toEqual(["new:entity", "select-all", "expand-all"]);
     expect(ids([{ type: "database", kind: "database", element: true }])).toEqual([
       "open-database",
-      "open-mappings",
       "new-db:schema",
       "new-db:table",
       "new-db:view",
@@ -118,7 +125,7 @@ describe("context menus (1.8)", () => {
       "new-db:sql-object",
       "expand-all",
     ]);
-    expect(ids([{ type: "table", kind: "table", element: false, linked: true }])).toEqual(["open", "go-to-entity"]);
+    expect(ids([{ type: "table", kind: "table", element: false, linked: true }])).not.toContain("go-to-entity");
     expect(menuFor([entity]).find((i) => i.id === "delete")?.danger).toBe(true);
   });
 
@@ -126,7 +133,9 @@ describe("context menus (1.8)", () => {
     expect(ids([entity, { ...entity, linked: false }])).toEqual([
       "add-to-diagram",
       "add-with-related",
-      "map-to-database",
+      "storage:auto-map",
+      "storage:create-tables",
+      "storage:remove-bindings",
       "apply-stereotype",
       "tag",
       "set-category",

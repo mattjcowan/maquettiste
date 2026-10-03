@@ -34,3 +34,23 @@ export async function openEditor(page: Page, path = "/"): Promise<void> {
 
 export const workspace = (page: Page, name: string): Promise<void> =>
   page.getByRole("navigation", { name: "Explorers" }).getByRole("button", { name, exact: true }).click();
+
+/**
+ * The Database screen opens with its DDL preview hidden behind its edge; the specs that read the preview start as someone who
+ * opened it once (the saved layout lists no hidden panel). Only when nothing is saved yet, so a reload keeps what the test did.
+ */
+export async function keepDdlOpen(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      if (!localStorage.getItem("mq.layout")) localStorage.setItem("mq.layout", JSON.stringify({ collapsed: [] }));
+    } catch {
+      // about:blank has no storage.
+    }
+  });
+}
+
+/** Opens the Database screen's DDL preview from its edge, as a person would. */
+export async function showDdl(page: Page): Promise<void> {
+  await page.getByTestId("show-ddl").click();
+  await expect(page.getByTestId("ddl-preview")).toBeVisible();
+}
