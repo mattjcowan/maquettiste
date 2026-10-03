@@ -111,7 +111,8 @@ docker run --rm --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<new 
 
 `init` refreshes the JSON schema copies under `.maquettiste/.schema/` and keeps everything else. If you registered the
 agent server, run `init --mcp --docker mattjcowan/maquettiste:<new tag> --skill` instead. That also replaces the
-`.mcp.json` entry with the new tag, refreshes the modeling skill and removes the `mcp.sh` wrapper an earlier version
+`.mcp.json` entry with the new tag, refreshes the modeling skill (a copy edited by hand is left alone, with the new version in
+`SKILL.md.new`; your own conventions belong in `CONVENTIONS.md` beside it) and removes the `mcp.sh` wrapper an earlier version
 wrote. Commit the compose file and what `init` changed, so the whole team moves together.
 
 A new version never rewrites your model files. It may report new validation findings, and the next plan may render

@@ -31,6 +31,7 @@ With the tool installed (`dotnet tool install -g Maquettiste.Cli`, or as a local
 maquettiste init --agent-setup     # both of the following
 maquettiste init --mcp             # .mcp.json: registers the server
 maquettiste init --skill           # .claude/skills/maquettiste-modeling/SKILL.md: the modeling skill
+maquettiste init --skill --check   # in CI: exit 2 when the skill is missing, stale or edited by hand
 ```
 
 `init --mcp` writes (or merges into) the project-scoped `.mcp.json` that Claude Code and other MCP clients read:
@@ -55,7 +56,26 @@ the server in the project folder, the server finds the repository from there, an
 and members of an existing `.mcp.json` are kept in order; an existing `maquettiste` entry is never replaced (the Docker form below replaces it); a file that is not
 a JSON object (not valid JSON, duplicate keys, or an `mcpServers` that is not an object) is left alone with a hint and exit 0. `init --skill` writes the skill that ships with
 the installed version and refreshes it when the tool is upgraded. Both files are setup writes of the engine's path policy
-(a symbolic link that leads out of the repository is refused, exit 4). Without init, `claude mcp add maquettiste -- maquettiste mcp`
+(a symbolic link that leads out of the repository is refused, exit 4).
+
+The skill file belongs to the engine. Right after its front matter it carries a marker line,
+`<!-- maquettiste-skill: version=<release>; sha256=<hash> -->` (the hash of the whole file without that line), and a paragraph
+saying that the file is generated and rewritten by `init --skill`, and that the repository's own modeling conventions go in
+`CONVENTIONS.md` next to it. Its last section tells the agent to read that file after the skill and to let it win where the two
+disagree. `init` never writes or deletes `CONVENTIONS.md`. On each run `init --skill` compares the file on disk with what it would
+write:
+
+| The file on disk | `init --skill` |
+| --- | --- |
+| missing | writes it (`created`) |
+| the same, line endings aside | keeps it (`kept ... (current)`) |
+| untouched: a valid marker line, or the exact bytes an earlier release wrote (every release since 0.1.0 is known) | rewrites it (`updated ... (from the 0.5.4 version to <release>)`) |
+| anything else: edited by hand | leaves it alone, writes the new version to `SKILL.md.new` beside it and prints `skill not updated: ... was edited by hand; the new version is in SKILL.md.new (diff them, move your additions to CONVENTIONS.md, then run init --skill --force)`; exit 0 |
+
+`--force` overwrites an edited file. A leftover `SKILL.md.new` is removed once the skill is current (unless it was edited too).
+`init --skill --check` writes nothing (not even `.maquettiste/`), prints one line (`skill current`, `skill missing`, `skill stale`
+or `skill edited`) and exits 2 unless the skill is current, like `generate --check`. `--check` takes no other option, and `--force`
+needs `--skill` or `--agent-setup`. Without init, `claude mcp add maquettiste -- maquettiste mcp`
 registers the server for the current user only.
 
 Start `claude` in the repository, approve the project server when asked (or check with `/mcp`), and ask for a model change:
@@ -208,7 +228,8 @@ claude -p "Call mcp__maquettiste__get_model_index with kind entity and reply wit
 # Customer, InvoiceLine, Invoice, Payment, Product
 ```
 
-The skill is in `skills/maquettiste-modeling/` here; the server also serves it as a resource and a prompt (below).
+The skill is in `skills/maquettiste-modeling/` here (without the header, which `init --skill` adds); the server also serves it as
+a resource and a prompt, followed by the repository's `CONVENTIONS.md` (below).
 
 ### Tried end to end
 
@@ -525,6 +546,9 @@ the package records of `get_resolved_model { "scope": "packages" }`. Add `kind` 
 
 The modeling conventions (`skills/maquettiste-modeling/SKILL.md`, embedded in the CLI, without its front matter) are served as the
 resource `maquettiste://conventions` (`text/markdown`) and as the prompt `modeling-conventions`, so any MCP client can read them.
+When the repository has `.claude/skills/maquettiste-modeling/CONVENTIONS.md`, both end with it: a `---` separator, the heading
+`# This repository's conventions (CONVENTIONS.md)` and the file's text, read again on every request, so an MCP client sees what the
+skill file tells an agent to read. At most its first 64 KB are included, with a note saying so when the file is longer.
 The server's instructions summarize the workflow.
 
 ## Notes

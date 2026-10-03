@@ -11,7 +11,7 @@ namespace Maquettiste.Cli.Commands;
 
 /// <summary>
 /// <c>maquettiste init [--pack sql-ddl|csharp-dapper|none] [--name &lt;name&gt;] [--hooks] [--mcp] [--skill] [--agent-setup]
-/// [--docker &lt;image&gt; [--runtime docker|podman]]</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
+/// [--docker &lt;image&gt; [--runtime docker|podman]] [--force]</c>, and <c>maquettiste init --skill --check</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
 /// <para>
 /// Creates <c>.maquettiste/</c> with the phase 1 folders, <c>maquettiste.json</c> (format 1, output roots <c>db</c> and
 /// <c>src/Generated</c>), the JSON schemas in <c>.schema/v1/</c> and the starter pack. The project is named by <c>--name</c>, else
@@ -23,7 +23,9 @@ namespace Maquettiste.Cli.Commands;
 /// Idempotent: existing files are kept, except <c>.schema/v1</c>, which is refreshed; on a project that already has its settings, a starter
 /// pack is scaffolded only when <c>--pack</c> names it, so a re-run of plain <c>init</c> never puts back a pack the team removed.
 /// <c>--gitignore</c> was removed in 0.5.5 and is refused with that hint. <c>--hooks</c> installs the post-checkout and post-merge hooks; <c>--mcp</c> registers <c>maquettiste mcp</c> in
-/// <c>.mcp.json</c>; <c>--skill</c> installs the modeling skill under <c>.claude/skills/</c>; <c>--agent-setup</c> does both; and
+/// <c>.mcp.json</c>; <c>--skill</c> installs the modeling skill under <c>.claude/skills/</c>, refreshing a copy nobody edited and
+/// leaving one edited by hand alone (<c>SKILL.md.new</c> beside it) unless <c>--force</c>, and with <c>--check</c> only compares it
+/// (exit 2 when missing, stale or edited); <c>--agent-setup</c> does both; and
 /// <c>--docker &lt;image&gt;</c> registers the server as a <c>docker run</c> of that image (<c>podman run</c> with <c>--runtime podman</c>)
 /// and removes the <c>mcp.sh</c> wrapper earlier versions wrote (<see cref="AgentSetup"/>).
 /// </para>
@@ -46,13 +48,23 @@ internal static class InitCommand
     /// <returns>The exit code.</returns>
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
-        context.Line.Expect("init", 1, "--pack", "--hooks", "--gitignore", "--mcp", "--skill", "--agent-setup", "--name", "--docker", "--runtime");
+        context.Line.Expect("init", 1, "--pack", "--hooks", "--gitignore", "--mcp", "--skill", "--agent-setup", "--name", "--docker", "--runtime", "--force", "--check");
         if (context.Line.Has("--gitignore"))
         {
             throw new UsageException("--gitignore was removed in 0.5.5: init no longer touches .gitignore. To keep generated folders out of git, "
                 + "add a pack unit in block mode that writes the lines (see 'Managed blocks' in the user guide), or edit .gitignore yourself.");
         }
 
+        var skill = context.Line.Has("--skill") || context.Line.Has("--agent-setup");
+        if (context.Line.Has("--check"))
+        {
+            if (!context.Line.Has("--skill") || new[] { "--pack", "--hooks", "--mcp", "--agent-setup", "--name", "--docker", "--runtime", "--force" }.Any(context.Line.Has))
+                throw new UsageException("--check goes with --skill alone: maquettiste init --skill --check compares the modeling skill with this version's and writes nothing.");
+            return await AgentSetup.CheckSkillAsync(context.Out, context.RepoRoot(search: false), ct).ConfigureAwait(false);
+        }
+
+        if (context.Line.Has("--force") && !skill)
+            throw new UsageException("--force goes with --skill (or --agent-setup): it overwrites a modeling skill that was edited by hand.");
         if (context.Line.Value("--name") is { } given && string.IsNullOrWhiteSpace(given))
             throw new UsageException("--name needs a project name.");
         var dockerImage = context.Line.Value("--docker");
@@ -122,8 +134,8 @@ internal static class InitCommand
             await InstallHooksAsync(files, repo, report, ct).ConfigureAwait(false);
         if (context.Line.Has("--mcp") || context.Line.Has("--agent-setup") || dockerImage is not null)
             await AgentSetup.WriteMcpConfigAsync(files, repo, dockerImage, runtime, report, ct).ConfigureAwait(false);
-        if (context.Line.Has("--skill") || context.Line.Has("--agent-setup"))
-            await AgentSetup.WriteSkillAsync(files, repo, report, ct).ConfigureAwait(false);
+        if (skill)
+            await AgentSetup.WriteSkillAsync(files, repo, context.Line.Has("--force"), report, ct).ConfigureAwait(false);
 
         foreach (var line in report)
             context.Info(line);

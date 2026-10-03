@@ -52,6 +52,8 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             // Only removed: init deletes the wrapper script that earlier versions wrote here.
             Path.Combine(_repoRoot, "mcp.sh"),
             Path.Combine(_repoRoot, ".claude", "skills", "maquettiste-modeling", "SKILL.md"),
+            // The new version of a skill edited by hand, beside it; CONVENTIONS.md in the same folder is never written.
+            Path.Combine(_repoRoot, ".claude", "skills", "maquettiste-modeling", "SKILL.md.new"),
         ];
         _hasSettings = settings is not null;
         var roots = new List<(string, bool, OutputRootInfo)>();
@@ -155,7 +157,7 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             case WriteTarget.Setup:
             {
                 if (!_setupPaths.Any(p => string.Equals(p, full, FileSystemPaths.Comparison)))
-                    return Refuse(full, null, "setup writes are limited to the post-checkout and post-merge hooks, .mcp.json, mcp.sh and .claude/skills/maquettiste-modeling/SKILL.md");
+                    return Refuse(full, null, "setup writes are limited to the post-checkout and post-merge hooks, .mcp.json, mcp.sh and .claude/skills/maquettiste-modeling/SKILL.md (and SKILL.md.new)");
                 try
                 {
                     var realRepo = FileSystemPaths.RealPath(_repoRoot);

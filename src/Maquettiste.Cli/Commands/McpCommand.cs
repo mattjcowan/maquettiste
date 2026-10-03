@@ -36,7 +36,7 @@ internal static class McpCommand
             var generation = new GenerationService(store, options);
             var tools = new ModelTools(store, generation, repo, TextWriter.Synchronized(context.Error),
                 context.Environment.GetEnvironmentVariable(WorkspaceInfo.Variable));
-            var serverOptions = McpServerSetup.CreateOptions(tools);
+            var serverOptions = McpServerSetup.CreateOptions(tools, repo);
             context.Info($"maquettiste: serving {repo} over MCP (stdio).");
 
             // Every request read is answered before the end of stdin stops the server (echo request | maquettiste mcp).

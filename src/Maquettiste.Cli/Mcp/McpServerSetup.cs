@@ -36,12 +36,17 @@ internal static class McpServerSetup
         stable code (not-found, conflict, invalid, referenced, stale, bad-request, ...) and the engine's diagnostics.
         """;
 
+    /// <summary>The most of the repository's <c>CONVENTIONS.md</c> the conventions resource and prompt carry, in bytes.</summary>
+    public const int ProjectConventionsLimit = 64 * 1024;
+
     /// <summary>Creates the server options.</summary>
     /// <param name="tools">The tool implementations.</param>
+    /// <param name="repoRoot">The repository root, where the conventions resource and prompt look for the repository's own conventions.</param>
     /// <returns>The options.</returns>
-    public static McpServerOptions CreateOptions(ModelTools tools)
+    public static McpServerOptions CreateOptions(ModelTools tools, string repoRoot)
     {
         ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(repoRoot);
         var toolCollection = new McpServerPrimitiveCollection<McpServerTool>(StringComparer.Ordinal);
         var methods = typeof(ModelTools).GetMethods(BindingFlags.Public | BindingFlags.Instance)
             .Where(m => m.GetCustomAttribute<McpServerToolAttribute>() is not null)
@@ -56,22 +61,22 @@ internal static class McpServerSetup
         var conventions = ReadConventions();
         var resources = new McpServerResourceCollection()
         {
-            McpServerResource.Create(() => conventions, new McpServerResourceCreateOptions
+            McpServerResource.Create(() => WithProjectConventions(conventions, repoRoot), new McpServerResourceCreateOptions
             {
                 UriTemplate = ConventionsUri,
                 Name = "conventions",
                 Title = "Maquettiste modeling conventions",
-                Description = "How a Maquettiste model is laid out (kinds, folders, ids, canonical JSON) and the workflow to change it, validate it and generate code.",
+                Description = "How a Maquettiste model is laid out (kinds, folders, ids, canonical JSON) and the workflow to change it, validate it and generate code, followed by the repository's own conventions (CONVENTIONS.md) when it has them.",
                 MimeType = "text/markdown",
             }),
         };
         var prompts = new McpServerPrimitiveCollection<McpServerPrompt>(StringComparer.Ordinal)
         {
-            McpServerPrompt.Create(() => conventions, new McpServerPromptCreateOptions
+            McpServerPrompt.Create(() => WithProjectConventions(conventions, repoRoot), new McpServerPromptCreateOptions
             {
                 Name = ConventionsPrompt,
                 Title = "Maquettiste modeling conventions",
-                Description = "The modeling conventions as a prompt, to read before changing the model.",
+                Description = "The modeling conventions as a prompt, followed by the repository's own conventions when it has them, to read before changing the model.",
             }),
         };
 
@@ -182,6 +187,52 @@ internal static class McpServerSetup
         JsonValueKind.Null => "null",
         _ => "missing",
     };
+
+    /// <summary>
+    /// Appends the repository's own conventions, <c>.claude/skills/maquettiste-modeling/CONVENTIONS.md</c>, read fresh on each request,
+    /// after a separator and a heading; the text is unchanged when the file does not exist or is empty. At most
+    /// <see cref="ProjectConventionsLimit"/> bytes are read, and a note says so when the file is longer.
+    /// </summary>
+    /// <param name="conventions">The embedded conventions (<see cref="ReadConventions"/>).</param>
+    /// <param name="repoRoot">The repository root.</param>
+    /// <returns>The Markdown text, LF line endings.</returns>
+    public static string WithProjectConventions(string conventions, string repoRoot)
+    {
+        ArgumentNullException.ThrowIfNull(conventions);
+        ArgumentNullException.ThrowIfNull(repoRoot);
+        var path = Path.Combine(repoRoot, Commands.AgentSetup.ConventionsPath.Replace('/', Path.DirectorySeparatorChar));
+        const string Heading = "\n\n---\n\n# This repository's conventions (CONVENTIONS.md)\n\n";
+        string text;
+        bool truncated;
+        try
+        {
+            if (!File.Exists(path))
+                return conventions;
+            var buffer = new byte[ProjectConventionsLimit + 1];
+            int length;
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                length = stream.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
+            truncated = length > ProjectConventionsLimit;
+            if (truncated)
+            {
+                // Cut before the character that straddles the limit.
+                length = ProjectConventionsLimit;
+                while (length > 0 && (buffer[length] & 0xC0) == 0x80)
+                    length--;
+            }
+
+            text = new UTF8Encoding(false).GetString(buffer, 0, length).TrimStart('\uFEFF').Replace("\r\n", "\n", StringComparison.Ordinal).Trim('\n');
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return conventions.TrimEnd('\n') + Heading + "CONVENTIONS.md exists but could not be read: " + e.Message + "\n";
+        }
+
+        if (text.Length == 0)
+            return conventions;
+        return conventions.TrimEnd('\n') + Heading + text + "\n"
+            + (truncated ? "\n(CONVENTIONS.md is longer than 64 KB; only its first 64 KB are shown here. Read the file for the rest.)\n" : "");
+    }
 
     /// <summary>Returns the modeling conventions (the embedded <c>skills/maquettiste-modeling/SKILL.md</c>) without its front matter.</summary>
     /// <returns>The Markdown text, LF line endings.</returns>

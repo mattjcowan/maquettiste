@@ -21,14 +21,6 @@ public sealed class AgentSetupTests
 
         """;
 
-    private static string RepoSkill()
-    {
-        var folder = AppContext.BaseDirectory;
-        while (!File.Exists(Path.Combine(folder, "maquettiste.slnx")))
-            folder = Path.GetDirectoryName(folder) ?? throw new InvalidOperationException("repository root not found");
-        return File.ReadAllText(Path.Combine(folder, "skills", "maquettiste-modeling", "SKILL.md")).Replace("\r\n", "\n", StringComparison.Ordinal);
-    }
-
     [Fact]
     public async Task Init_mcp_registers_the_installed_tool_and_writes_nothing_else_for_agents()
     {
@@ -346,34 +338,13 @@ public sealed class AgentSetupTests
     }
 
     [Fact]
-    public async Task Init_skill_installs_the_modeling_skill_and_refreshes_an_older_copy()
-    {
-        using var repo = CliRepo.Empty();
-        var result = await repo.RunAsync("init", "--skill");
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal(RepoSkill(), repo.Read(AgentSetup.SkillPath));
-        Assert.StartsWith("---\nname: maquettiste-modeling\n", repo.Read(AgentSetup.SkillPath), StringComparison.Ordinal);
-        Assert.Contains("created " + AgentSetup.SkillPath, result.Error, StringComparison.Ordinal);
-        Assert.False(File.Exists(repo.PathOf(".mcp.json")));
-
-        var again = await repo.RunAsync("init", "--skill");
-        Assert.Contains("kept " + AgentSetup.SkillPath + " (current)", again.Error, StringComparison.Ordinal);
-
-        repo.Write(AgentSetup.SkillPath, "old\n");
-        var refreshed = await repo.RunAsync("init", "--skill");
-        Assert.Equal(0, refreshed.ExitCode);
-        Assert.Equal(RepoSkill(), repo.Read(AgentSetup.SkillPath));
-        Assert.Contains("updated " + AgentSetup.SkillPath, refreshed.Error, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task Init_agent_setup_does_both_and_the_skill_path_cannot_escape_the_repo()
     {
         using var repo = CliRepo.Empty();
         var result = await repo.RunAsync("init", "--agent-setup");
         Assert.Equal(0, result.ExitCode);
         Assert.True(File.Exists(repo.PathOf(".mcp.json")));
-        Assert.Equal(RepoSkill(), repo.Read(AgentSetup.SkillPath));
+        Assert.Equal(SkillRefreshTests.CurrentSkill(), repo.Read(AgentSetup.SkillPath));
 
         if (OperatingSystem.IsWindows())
             return;

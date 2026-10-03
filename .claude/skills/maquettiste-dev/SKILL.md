@@ -36,5 +36,9 @@ disagree with the spec, the design wins and docs/engineering/spec-errata.md reco
 - Every disk write goes through IOutputPathPolicy. Public engine signatures change only through the design docs.
 - Paths reported by file watchers on macOS come through /private/var; resolve links (WatchPaths, ModelWatcher).
 - Container-written files on a Linux bind mount need ACLs: open base bits, then setfacl for 1654 and the host user.
+- The modeling skill (skills/maquettiste-modeling/SKILL.md) is engine-owned in customer repos: `init --skill` adds a header and
+  refreshes only untouched copies. At each release, after tagging: `git fetch --tags && sh skills/shipped-skills.sh` regenerates
+  `src/Maquettiste.Cli/Commands/ShippedSkills.cs` (the hash of the skill at every v* tag); commit it with the next change. Copies
+  written with the header carry their own hash, so a missing row never turns an untouched copy into an "edited" one.
 - Commits: the owner runs name-sorted scripts under tmp/ (gitignored); write `tmp/NN-<slug>.sh` and never commit
   or push without being asked. No Co-Authored-By or signature lines.
