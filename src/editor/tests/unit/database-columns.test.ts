@@ -4,12 +4,15 @@ import { describe, expect, it } from "vitest";
 import type { ColumnView, ElementSummary, SettingsJson } from "@/api/types";
 import {
   columnDerivations,
+  columnEntryOf,
   columnFieldProblem,
   columnText,
+  emptyOverlay,
   isOverlayFor,
   logicalTypeText,
   newOverlay,
   overlayCandidates,
+  overlayChangesSomething,
   parseColumnDefault,
   physicalHint,
   setColumnField,
@@ -135,6 +138,63 @@ describe("setColumnField", () => {
     expect(setColumnField(doc, column({ key: "C1", name: "id" }), "name", "", ids)).toBe(false);
     expect(setColumnField(doc, column({ key: "C2", name: "memo" }), "description", "Inline now.", ids)).toBe(false);
     expect(setColumnField(doc, column({ key: "missing" }), "comment", "x", ids)).toBe(false);
+  });
+});
+
+describe("a column entry's marks: tags, stereotypes and the property bag", () => {
+  it("sets tags and stereotypes on the overlay entry, and an empty list removes them (and the entry with them)", () => {
+    const doc: Record<string, unknown> = { kind: "table", id: "A", database: DB, origin: "synthesized", entity: ENTITY };
+    expect(setColumnField(doc, column({}), "tags", ["pii"], ids)).toBe(true);
+    expect(setColumnField(doc, column({}), "stereotypes", ["audited"], ids)).toBe(true);
+    expect(doc.columns).toEqual([{ id: expect.any(String), attribute: ATTR, tags: ["pii"], stereotypes: ["audited"] }]);
+    setColumnField(doc, column({}), "tags", [], ids);
+    setColumnField(doc, column({}), "stereotypes", [], ids);
+    expect(doc).not.toHaveProperty("columns");
+  });
+
+  it("applies a property edit to the entry's own properties: add, rename keeping the value, type change, remove", () => {
+    const doc: Record<string, unknown> = { kind: "table", id: "A", database: DB, origin: "synthesized", entity: ENTITY };
+    setColumnField(doc, column({}), "properties", { op: "set", key: "owner", value: "finance" }, ids);
+    setColumnField(doc, column({}), "properties", { op: "set", key: "priority", value: "3" }, ids);
+    expect(columnEntryOf(doc, column({}))).toEqual({ id: expect.any(String), attribute: ATTR, properties: { owner: "finance", priority: "3" } });
+    setColumnField(doc, column({}), "properties", { op: "set", key: "team", value: "finance", from: "owner" }, ids);
+    setColumnField(doc, column({}), "properties", { op: "set", key: "priority", value: 3 }, ids);
+    expect(columnEntryOf(doc, column({}))?.properties).toEqual({ team: "finance", priority: 3 });
+    setColumnField(doc, column({}), "properties", { op: "remove", key: "team" }, ids);
+    setColumnField(doc, column({}), "properties", { op: "remove", key: "priority" }, ids);
+    expect(doc).not.toHaveProperty("columns");
+  });
+
+  it("edits a designed column's marks in its own entry, keeping its other properties", () => {
+    const doc: Record<string, unknown> = {
+      kind: "table",
+      id: "T",
+      name: "ledger",
+      database: DB,
+      origin: "designed",
+      columns: [{ id: "C1", name: "id", type: "int64", properties: { classification: "internal" } }],
+    };
+    expect(setColumnField(doc, column({ key: "C1", name: "id" }), "properties", { op: "set", key: "owner", value: "finance" }, ids)).toBe(true);
+    expect(setColumnField(doc, column({ key: "C1", name: "id" }), "tags", ["billing"], ids)).toBe(true);
+    expect((doc.columns as object[])[0]).toEqual({
+      id: "C1",
+      name: "id",
+      type: "int64",
+      properties: { classification: "internal", owner: "finance" },
+      tags: ["billing"],
+    });
+    expect(columnEntryOf(doc, column({ key: "missing" }))).toBeUndefined();
+  });
+
+  it("creates an overlay for a projected table's first mark, and an empty overlay changes nothing", () => {
+    expect(newOverlay({ kind: "overlay", entity: ENTITY }, DB, column({}), "properties", { op: "set", key: "owner", value: "" }, ids)?.columns).toEqual([
+      { id: expect.any(String), attribute: ATTR, properties: { owner: "" } },
+    ]);
+    const empty = emptyOverlay({ kind: "overlay", entity: ENTITY, attribute: "VO" }, DB, "N");
+    expect(empty).toEqual({ kind: "table", id: "N", database: DB, origin: "synthesized", entity: ENTITY, attribute: "VO" });
+    expect(overlayChangesSomething(empty)).toBe(false);
+    expect(overlayChangesSomething({ ...empty, comment: "c" })).toBe(true);
+    expect(overlayChangesSomething({ ...empty, properties: { owner: "finance" } })).toBe(true);
   });
 });
 

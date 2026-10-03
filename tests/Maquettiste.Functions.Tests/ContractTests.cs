@@ -17,7 +17,7 @@ public sealed class ContractTests
         var operations = Contract.Operations.Select(o => (o.Verb, o.Path)).Order().ToList();
 
         Assert.Equal(operations, handlers);
-        Assert.Equal(75, operations.Count); // the phase 2 subset of S16 (phase2-design.md section 3.7), E5b, E5c and E5f, reference-types-seeds-localization.md section 3.9, the branding icon's upload and read, the several-seed CSV import, the validation rule catalog, the six process operations (phase-3-design.md section 4.4), the three bulk reads (elements in pages, kinds, the resolved model), the two delete plans (one element, several), the pack removal, the pack rename, the five extension file operations and the query SQL preview
+        Assert.Equal(76, operations.Count); // the phase 2 subset of S16 (phase2-design.md section 3.7), E5b, E5c and E5f, reference-types-seeds-localization.md section 3.9, the branding icon's upload and read, the several-seed CSV import, the validation rule catalog, the six process operations (phase-3-design.md section 4.4), the three bulk reads (elements in pages, kinds, the resolved model), the two delete plans (one element, several), the pack removal, the pack rename, the five extension file operations, the query SQL preview and the run history clear
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public sealed class ContractTests
             Assert.True(responses.Count > 0, operationId);
         }
 
-        foreach (var name in new[] { "model.changed", "validation.completed", "project.changed", "templates.changed", "packs.changed", "job.progress", "job.completed", "presence.changed" })
+        foreach (var name in new[] { "model.changed", "validation.completed", "project.changed", "templates.changed", "packs.changed", "job.progress", "job.completed", "jobs.cleared", "presence.changed" })
             Assert.NotNull(Contract.OpenApi["webhooks"]![name]!["post"]!["requestBody"]!["content"]!["application/json"]!["schema"]);
     }
 }

@@ -69,6 +69,30 @@ export class MockJobQueue {
     return this.order.map((id) => clone(this.jobs.get(id)!));
   }
 
+  /**
+   * Clears the history as JobQueue.ClearHistoryAsync does: every finished job, and every plan no queued or running apply job
+   * names (while a plan job runs, a plan no cleared job names stays too).
+   */
+  clearHistory(): { jobs: number; plans: number } {
+    const live = (id: string) => ["queued", "running"].includes(this.jobs.get(id)!.state);
+    const keep = new Set(
+      this.order
+        .filter(live)
+        .map((id) => this.requests.get(id)?.planId)
+        .filter((p): p is string => !!p),
+    );
+    const planRunning = this.order.some((id) => live(id) && this.jobs.get(id)!.kind === "plan" && this.jobs.get(id)!.state === "running");
+    const finished = this.order.filter((id) => !live(id));
+    const named = new Set(finished.map((id) => this.jobs.get(id)!.planResult?.plan?.id).filter((p): p is string => !!p));
+    for (const id of finished) {
+      this.jobs.delete(id);
+      this.requests.delete(id);
+    }
+    this.order.splice(0, this.order.length, ...this.order.filter((id) => this.jobs.has(id)));
+    const plans = this.generation.deletePlans((id) => !keep.has(id) && (!planRunning || named.has(id)));
+    return { jobs: finished.length, plans };
+  }
+
   cancel(id: string): "ok" | "not-found" | "finished" {
     const job = this.jobs.get(id);
     if (!job) return "not-found";

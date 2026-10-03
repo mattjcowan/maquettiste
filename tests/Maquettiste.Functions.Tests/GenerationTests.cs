@@ -204,6 +204,27 @@ public sealed class GenerationTests
     }
 
     [Fact]
+    public async Task Clearing_the_history_removes_finished_jobs_and_plans_and_tells_every_window()
+    {
+        await using var host = EditorHost.Create();
+        host.StartBackground();
+        var queued = await host.SendJsonAsync("POST", "/api/generate/plan", "{}");
+        var planId = (await CompletedAsync(host, queued.Json["id"]!.GetValue<string>()))["planId"]!.GetValue<string>();
+
+        var cleared = await host.SendAsync(TestRequest.Local("DELETE", "/api/jobs"));
+
+        Assert.Equal(200, cleared.Status);
+        Contract.AssertResponse(cleared, "/api/jobs");
+        Assert.Equal(1, cleared.Json["jobs"]!.GetValue<int>());
+        Assert.Equal(1, cleared.Json["plans"]!.GetValue<int>());
+        var published = Assert.Single(host.Published("jobs.cleared"));
+        Contract.AssertEvent("jobs.cleared", published.Payload);
+        Assert.Equal(1, published.Payload["plans"]!.GetValue<int>());
+        Assert.Empty((await host.GetAsync("/api/jobs")).Json.AsArray());
+        Assert.Equal(404, (await host.GetAsync("/api/generate/plan/" + planId)).Status);
+    }
+
+    [Fact]
     public async Task A_seventeenth_queued_job_is_503_queue_full_with_retry_after()
     {
         await using var host = EditorHost.Create(); // no worker: jobs stay queued

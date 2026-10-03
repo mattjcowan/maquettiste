@@ -7,7 +7,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { GenerationRequest, JobInfo, RealtimeJobCompleted, RunOutcome } from "@/api/types";
 import * as endpoints from "@/api/endpoints";
 import { keys } from "@/api/queries";
-import type { EditorStore } from "@/state/store";
+import type { EditorStore, GenerationState } from "@/state/store";
 import type { RealtimeClient } from "./events";
 
 export function isFinished(job: Pick<JobInfo, "state">): boolean {
@@ -32,6 +32,19 @@ export function describeOutcome(job: JobInfo | RealtimeJobCompleted): string {
   return `${what} ${outcome}`;
 }
 
+type RunSelection = Pick<GenerationState, "planJob" | "planId" | "applyJob">;
+
+/**
+ * The run selection after the run history was cleared (DELETE /api/jobs): every finished job and every plan no queued or
+ * running job names are gone, so a finished plan or apply job is dropped, and the plan with them unless an apply of it still
+ * runs. A plan job still running stays (its plan comes when it finishes). `live` says whether a job is queued or running.
+ */
+export function selectionAfterClear(g: RunSelection, live: (id: string) => boolean): RunSelection {
+  const planJob = g.planJob && live(g.planJob) ? g.planJob : null;
+  const applyJob = g.applyJob && live(g.applyJob) ? g.applyJob : null;
+  return { planJob, applyJob, planId: applyJob ? g.planId : null };
+}
+
 type Listener = (job: JobInfo) => void;
 
 export class JobTracker {
@@ -45,6 +58,23 @@ export class JobTracker {
   onFinished(listener: Listener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** The run history was cleared: the selection drops what is gone (selectionAfterClear) and the history is read again. */
+  historyCleared(): void {
+    const { queryClient, store } = this.deps;
+    // A job this window never read is kept: only a record seen finished is known to be gone.
+    const live = (id: string) => {
+      const job = queryClient.getQueryData<JobInfo>(keys.job(id));
+      return !job || !isFinished(job);
+    };
+    const before = store.getState().generation;
+    const next = selectionAfterClear(before, live);
+    if (next.planJob !== before.planJob || next.planId !== before.planId || next.applyJob !== before.applyJob) {
+      store.getState().setGeneration(next);
+      if (before.planId && !next.planId && store.getState().diff?.planId === before.planId) store.getState().showDiff(null);
+    }
+    void queryClient.invalidateQueries({ queryKey: keys.jobs });
   }
 
   startPlan(request: GenerationRequest): Promise<JobInfo> {

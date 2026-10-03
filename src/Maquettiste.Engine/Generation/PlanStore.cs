@@ -160,15 +160,23 @@ internal sealed class PlanStore(EngineOptions options, IOutputPathPolicy paths)
             _files.DeleteFolder(folder);
     }
 
+    /// <summary>The ids of the plan folders, newest first, finished or not.</summary>
+    /// <returns>The ids.</returns>
+    internal List<string> Ids() =>
+        Directory.Exists(Folder)
+            ? [.. Directory.EnumerateDirectories(Folder).Select(Path.GetFileName).OfType<string>().Where(IdFormat.IsValid).OrderDescending(StringComparer.Ordinal)]
+            : [];
+
+    /// <summary>Whether a plan folder holds its <c>plan.json</c> (a plan still being made has none).</summary>
+    /// <param name="planId">The plan id.</param>
+    /// <returns><see langword="true"/> for a finished plan.</returns>
+    internal bool IsFinished(string planId) => PlanFolder(planId) is { } folder && File.Exists(Path.Combine(folder, "plan.json"));
+
     /// <summary>Deletes all but the newest <see cref="Keep"/> plan folders; <paramref name="keepId"/> is always kept.</summary>
     /// <param name="keepId">A plan to keep.</param>
     internal void Prune(string keepId)
     {
-        if (!Directory.Exists(Folder))
-            return;
-        var ids = Directory.EnumerateDirectories(Folder).Select(Path.GetFileName).OfType<string>().Where(IdFormat.IsValid)
-            .OrderDescending(StringComparer.Ordinal).ToList();
-        foreach (var id in ids.Skip(Keep))
+        foreach (var id in Ids().Skip(Keep))
         {
             if (string.Equals(id, keepId, StringComparison.Ordinal))
                 continue;

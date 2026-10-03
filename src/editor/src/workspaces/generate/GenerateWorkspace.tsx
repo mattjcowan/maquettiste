@@ -2,7 +2,8 @@
 // progress and Cancel; the plan summarized per pack and its changes grouped by unit with the reason each renders
 // (PlanExplain.tsx, generation-ui.md 4), filtered by kind, pack, unit and text, hand edits and conflicts flagged; selecting a file opens its
 // diff in the bottom panel. Apply queues the plan by id; the result is the apply job's
-// applyResult.outcome, never its state. Run history lists GET /api/jobs.
+// applyResult.outcome, never its state. Run history lists GET /api/jobs; Clear empties it (DELETE /api/jobs), which also
+// removes the stored plans, so a plan not yet applied must be made again.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CircleAlert, CircleCheck, Play, Square, Wand2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -13,6 +14,7 @@ import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
 import { isFinished, jobOutcome } from "@/realtime/jobs";
 import { Button, iconLabel } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Badge, EmptyState, SectionTitle, Spinner, Toolbar } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
 import { X } from "lucide-react";
@@ -97,6 +99,8 @@ function PlanScreen() {
     [packs, enabled, summaries.data],
   );
   const running = [planJob.data, applyJob.data].find((j) => j && !isFinished(j)) ?? null;
+  const [confirmClear, setConfirmClear] = useState(false);
+  const historyLive = !!running || (history.data ?? []).some((j) => !isFinished(j));
 
   useEffect(() => {
     const off = jobs.onFinished((job) => {
@@ -159,6 +163,20 @@ function PlanScreen() {
       await endpoints.cancelJob(running.id);
     } catch (error) {
       store.getState().notify(`Cancel failed: ${(error as Error).message}`, "error");
+    }
+  };
+
+  const clearHistory = async () => {
+    setConfirmClear(false);
+    try {
+      const cleared = await endpoints.clearJobHistory();
+      qc.setQueryData<JobInfo[]>(keys.jobs, (list) => list?.filter((j) => !isFinished(j)));
+      jobs.historyCleared();
+      const runs = `${cleared.jobs} ${cleared.jobs === 1 ? "run" : "runs"}`;
+      const plans = `${cleared.plans} stored ${cleared.plans === 1 ? "plan" : "plans"}`;
+      store.getState().notify(`Run history cleared: ${runs} and ${plans} removed.`);
+    } catch (error) {
+      store.getState().notify(`The run history could not be cleared: ${(error as Error).message}`, "error");
     }
   };
 
@@ -264,7 +282,20 @@ function PlanScreen() {
             </>
           ) : null}
           <ExplainForm planId={generation.planId} plan={plan.data ?? null} ask={ask} />
-          <h3 className="flex h-6 shrink-0 items-center px-2 text-12 font-semibold">Run history</h3>
+          <div className="flex h-6 shrink-0 items-center justify-between px-2">
+            <h3 className="text-12 font-semibold">Run history</h3>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 px-1.5"
+              title="Clear the run history and its stored plans"
+              disabled={busy || historyLive || !history.data?.length}
+              onClick={() => setConfirmClear(true)}
+              data-testid="clear-run-history"
+            >
+              Clear
+            </Button>
+          </div>
           <ol className="shrink-0" data-testid="history">
             {(history.data ?? []).map((job) => (
               <li key={job.id} className="flex h-6 items-center gap-2 border-t border-default px-2 text-12">
@@ -276,6 +307,21 @@ function PlanScreen() {
             {!history.data?.length ? <li className="px-2 text-12 text-secondary">No runs yet.</li> : null}
           </ol>
         </aside>
+        <Dialog open={confirmClear} onOpenChange={setConfirmClear}>
+          <DialogContent title="Clear the run history?">
+            <div className="flex flex-col gap-2" data-testid="clear-run-history-dialog">
+              <p className="text-12 text-secondary">The finished runs and their stored plans are deleted; a plan not yet applied must be made again.</p>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={() => setConfirmClear(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="danger" onClick={() => void clearHistory()} data-testid="clear-run-history-confirm">
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

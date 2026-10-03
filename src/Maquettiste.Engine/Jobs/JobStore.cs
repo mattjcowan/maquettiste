@@ -95,6 +95,17 @@ internal sealed class JobStore(EngineOptions options, IOutputPathPolicy paths)
         }
     }
 
+    /// <summary>Deletes a job record.</summary>
+    /// <param name="id">The job id.</param>
+    /// <returns><see langword="true"/> when a record was deleted.</returns>
+    public bool Delete(string id)
+    {
+        if (FileOf(id) is not { } file || !File.Exists(file))
+            return false;
+        _files.Delete(file);
+        return true;
+    }
+
     private List<string> Ids() =>
         Directory.Exists(Folder)
             ? [.. Directory.EnumerateFiles(Folder, "*.json").Select(Path.GetFileNameWithoutExtension).OfType<string>().Where(IdFormat.IsValid)

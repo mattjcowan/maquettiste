@@ -1115,7 +1115,14 @@ export interface paths {
         get: operations["listJobs"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Clear the run history and its stored plans
+         * @description Deletes every finished job record (succeeded, failed, cancelled) and every stored plan that no queued or running job
+         *     names. Queued and running jobs and the plan an apply job of theirs names are kept; so is a plan still being made and,
+         *     while a plan job runs, every plan no cleared job names. Applying needs the stored plan, so a plan not yet applied must be
+         *     made again. Sends `jobs.cleared` to every connection.
+         */
+        delete: operations["clearJobHistory"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1627,6 +1634,26 @@ export interface webhooks {
          * @description Delivered over the host hub `/_host/realtime`, not as an HTTP request. Names the packs of the templates.changed events just sent.
          */
         post: operations["realtimePacksChanged"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "jobs.cleared": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Realtime event `jobs.cleared` (group: (all))
+         * @description Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent after `DELETE /api/jobs` cleared the run history; read `GET /api/jobs` again.
+         */
+        post: operations["realtimeJobsCleared"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4059,6 +4086,13 @@ export interface components {
          * @enum {string}
          */
         JobState: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        /** @description What `DELETE /api/jobs` removed; also the `jobs.cleared` payload. */
+        JobHistoryCleared: {
+            /** @description The finished job records removed. */
+            jobs: number;
+            /** @description The stored plans removed. */
+            plans: number;
+        };
         /** @description A finished job read back keeps no per-file or per-unit list (`planResult.plan.units` and `.changes`, `applyResult.result.changes` are empty); read the plan for them. It keeps `applyResult.staleUnits`, `.stalePaths` and every diagnostic, so it can be large; the `job.completed` event is a summary for that reason. Judge a finished job by `planResult.outcome` or `applyResult.outcome`, not by `state`. */
         JobInfo: {
             id: components["schemas"]["Ulid"];
@@ -9927,6 +9961,27 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
         };
     };
+    clearJobHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobHistoryCleared"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
     getJob: {
         parameters: {
             query?: never;
@@ -11051,6 +11106,28 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RealtimePacksChanged"];
+            };
+        };
+        responses: {
+            /** @description Not applicable; realtime events have no response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    realtimeJobsCleared: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobHistoryCleared"];
             };
         };
         responses: {

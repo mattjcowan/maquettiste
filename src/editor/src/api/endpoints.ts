@@ -14,6 +14,7 @@ import type {
   ElementSummary,
   GenerationPlan,
   GenerationRequest,
+  JobHistoryCleared,
   JobInfo,
   ModelJson,
   NewModelDocument,
@@ -267,6 +268,12 @@ export async function listJobs(): Promise<JobInfo[]> {
 
 export async function getJob(id: string): Promise<JobInfo> {
   const { data, response } = await api().GET("/api/jobs/{id}", { params: { path: { id } } });
+  return must(data, response);
+}
+
+/** Clears the run history: every finished job and every stored plan no queued or running job names (maintainer). */
+export async function clearJobHistory(): Promise<JobHistoryCleared> {
+  const { data, response } = await api().DELETE("/api/jobs");
   return must(data, response);
 }
 

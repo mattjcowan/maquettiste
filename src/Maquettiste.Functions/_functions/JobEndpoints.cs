@@ -19,6 +19,28 @@ public static class JobEndpoints
         return Api.Json(await queue.ListAsync(ct).ConfigureAwait(false));
     });
 
+    /// <summary>
+    /// Clears the run history: every finished job record and every stored plan no queued or running job names; then publishes
+    /// <c>jobs.cleared</c>.
+    /// </summary>
+    /// <param name="context">The request.</param>
+    /// <param name="queue">The job queue.</param>
+    /// <param name="events">The realtime events.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the counts removed.</returns>
+    [HttpDelete("/api/jobs")]
+    public static Task<IResult> Clear(HttpContext context, JobQueue queue, EditorEvents events, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(queue);
+        ArgumentNullException.ThrowIfNull(events);
+        if (Api.Require(context, "maintainer") is { } forbidden)
+            return forbidden;
+        var cleared = await queue.ClearHistoryAsync(ct).ConfigureAwait(false);
+        await events.PublishJobsClearedAsync(cleared, CancellationToken.None).ConfigureAwait(false);
+        return Api.Json(cleared);
+    });
+
     /// <summary>A job's state, progress, result or error. Judge a finished job by its run outcome, not its state.</summary>
     /// <param name="context">The request.</param>
     /// <param name="id">The job id.</param>

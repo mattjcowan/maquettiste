@@ -22,6 +22,11 @@ The job queue's internals behind `JobQueue` (engine root; host-contracts require
   finished ones from memory until their record is written, then from disk; the list is newest first (queued time, then id).
 - `Cancel`: a queued job is removed and recorded `Cancelled`; a running one has its token cancelled (the run returns within one
   second). Unknown or finished jobs return `false`.
+- `ClearHistoryAsync` (2026-10-02): deletes every finished job record and every finished plan folder that no queued or running
+  job names, and returns the counts (`JobHistoryCleared`). Queued and running jobs, records a restart would resume and the plan an
+  apply job of theirs names stay; so does a plan folder still being made, and, while a plan job runs, every plan no cleared job
+  names (the running job's is one). It holds the record writer's lock, and a finished job whose record is not written yet has its
+  pending writes dropped. Applying needs the plan folder, so a plan not yet applied must be made again after a clear.
 - `OnProgress`, `OnCompleted`: handlers run one after another; progress goes through a 256-entry channel that drops the oldest
   updates when handlers fall behind; handler exceptions are swallowed.
 - Resume after a restart: the first `RunAsync` queues again, ahead of new jobs and in their original order (running ones first),

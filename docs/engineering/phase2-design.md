@@ -133,6 +133,7 @@ One handler maps to one engine call (two where noted). Every body that mirrors a
 | getPlanDiff | `GET /api/generate/plan/{id}/diff?path=` | `GenerateEndpoints.Diff` | `GetPlanDiffAsync` → `text/x-diff` | 200/404 |
 | startApply | `POST /api/generate/apply` | `GenerateEndpoints.Apply` | `TryEnqueue(new JobRequest(Apply, null, planId))` | 202/503 |
 | listJobs, getJob, cancelJob | `GET /api/jobs`, `GET`, `DELETE /api/jobs/{id}` | `JobEndpoints.List`, `Get`, `Cancel` | `ListAsync`, `GetAsync`, `Cancel` (+ `GetAsync` for the body: 404 unknown, 409 `job-finished`) | 200; 200/404; 202/404/409 |
+| clearJobHistory (2026-10-02) | `DELETE /api/jobs` (maintainer) | `JobEndpoints.Clear` | `ClearHistoryAsync`, then `jobs.cleared` to every connection | 200 `{ jobs, plans }` |
 | previewTemplate | `POST /api/templates/preview` | `TemplateEndpoints.Preview` | `PreviewAsync(pack, unit, elementId)` | 200/400 |
 | reportPresence | `PUT /api/presence` | `PresenceEndpoints.Report` | none: checks the connection belongs to the caller (`IRealtime.Connections`), stores, publishes | 204/404 |
 

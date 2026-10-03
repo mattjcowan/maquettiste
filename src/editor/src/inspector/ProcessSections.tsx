@@ -35,6 +35,8 @@ import { ActorTypeField, ActorUsesList } from "@/editors/actor/ActorEditor";
 import { useCodeGenerationTab } from "@/editors/EditorFrame";
 import { ChipsEditor, TextField, type FormProps } from "./fields";
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
+import { PropertyBag } from "./PropertyBag";
+import { declaredKeys, editProperties } from "./propertyBag";
 
 type Rec = Record<string, unknown>;
 
@@ -62,7 +64,8 @@ export function ProcessInspectorSection(props: FormProps) {
 function ProcessSection({ props }: { props: FormProps }) {
   const index = useIndex();
   const summary = indexLookup(index.data).byId.get(props.id);
-  const codeGeneration = useCodeGenerationTab({ ...props, kind: "process", summary, name: String((props.json as Rec).name ?? "") });
+  // The inspector shows the process's property bag under its own fields.
+  const codeGeneration = useCodeGenerationTab({ ...props, kind: "process", summary, name: String((props.json as Rec).name ?? "") }, { propertyBag: false });
   const source = (props.json as Rec).source;
   return (
     <section className="flex flex-col gap-2" aria-label="Process" data-testid="inspector-process">
@@ -197,7 +200,7 @@ function StateSection({ pc, state }: { pc: ProcessContext; state: StateDoc }) {
       />
       {extensions.length ? (
         <>
-          <SectionTitle>Properties</SectionTitle>
+          <SectionTitle>Custom properties</SectionTitle>
           <SchemaForm
             extensions={extensions}
             json={state as unknown as Rec as never}
@@ -214,6 +217,12 @@ function StateSection({ pc, state }: { pc: ProcessContext; state: StateDoc }) {
           />
         </>
       ) : null}
+      <PropertyBag
+        idPrefix={dom}
+        properties={state.properties}
+        declared={declaredKeys(extensions)}
+        onEdit={(e) => edit((s) => editProperties(s as unknown as Rec, e))}
+      />
     </section>
   );
 }

@@ -1,5 +1,5 @@
 // Generate workspace (mock project): the plan summary lines, the changes grouped by unit and their filters, the
-// per-file diff in the bottom panel, apply by plan id, job progress in Output, and run history.
+// per-file diff in the bottom panel, apply by plan id, job progress in Output, run history, and clearing it.
 import { expect, test } from "./fixtures";
 
 test("plan, read a diff, apply, output and history", async ({ page }) => {
@@ -50,4 +50,25 @@ test("plan, read a diff, apply, output and history", async ({ page }) => {
   await expect(page.getByTestId("plan-summary")).not.toContainText("to modify");
   await expect(page.getByTestId("apply")).toBeDisabled();
   await expect(page.getByTestId("plan-nothing-to-write")).toContainText("Apply has nothing to do");
+});
+
+test("clear the run history after a plan", async ({ page }) => {
+  await page.goto("/generate");
+  await expect(page.getByTestId("generate-workspace")).toBeVisible();
+  await page.getByTestId("plan").click();
+  await expect(page.getByTestId("plan-summary")).toContainText("sql-ddl:");
+  await expect(page.getByTestId("apply")).toBeEnabled();
+  const clear = page.getByTestId("clear-run-history");
+  await expect(clear).toBeEnabled();
+  await expect(clear).toHaveAttribute("title", "Clear the run history and its stored plans");
+
+  await clear.click();
+  await expect(page.getByTestId("clear-run-history-dialog")).toContainText("a plan not yet applied must be made again");
+  await page.getByTestId("clear-run-history-confirm").click();
+
+  await expect(page.getByTestId("history")).toHaveText("No runs yet.");
+  await expect(page.getByTestId("apply")).toBeDisabled();
+  await expect(page.getByText("No plan yet")).toBeVisible();
+  await expect(clear).toBeDisabled();
+  await expect(page.getByText(/Run history cleared: \d+ runs? and \d+ stored plans? removed\./)).toBeVisible();
 });

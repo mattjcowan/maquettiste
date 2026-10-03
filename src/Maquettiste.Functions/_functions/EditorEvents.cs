@@ -11,7 +11,7 @@ namespace Maquettiste.Functions;
 
 /// <summary>
 /// Publishes the editor's realtime events (phase2-design.md section 3.6): <c>model.changed</c>, <c>validation.completed</c>,
-/// <c>project.changed</c>, <c>job.progress</c>, <c>job.completed</c> and <c>presence.changed</c>, each within the hub's 256 KB, and keeps
+/// <c>project.changed</c>, <c>job.progress</c>, <c>job.completed</c>, <c>jobs.cleared</c> and <c>presence.changed</c>, each within the hub's 256 KB, and keeps
 /// the background services' state for <c>GET /api/health</c>.
 /// </summary>
 public sealed class EditorEvents
@@ -217,6 +217,16 @@ public sealed class EditorEvents
     {
         ArgumentNullException.ThrowIfNull(job);
         return _realtime.PublishToGroupAsync("job:" + job.Id, "job.completed", JobCompletedEvent.From(job), Api.JsonOptions, ct);
+    }
+
+    /// <summary>Publishes <c>jobs.cleared</c> to every connection, so each window reads the run history again.</summary>
+    /// <param name="cleared">What the clear removed.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>A task.</returns>
+    public Task PublishJobsClearedAsync(JobHistoryCleared cleared, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(cleared);
+        return _realtime.PublishAsync("jobs.cleared", cleared, Api.JsonOptions, ct);
     }
 
     /// <summary>Publishes <c>presence.changed</c> (every live editor connection and its selection) to <c>editors</c>.</summary>

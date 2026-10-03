@@ -31,6 +31,8 @@ import {
   type FormProps,
 } from "./fields";
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
+import { ElementPropertyBag } from "./PropertyBag";
+import { declaredKeys } from "./propertyBag";
 import { emptyTitle, inspectorContext, type InspectorContext } from "./context";
 import { OpenTableButton, TableInspector } from "./TableInspector";
 import { DatabaseTypeFields, QueryFields, RoutineFields, SchemaField, SequenceFields, SqlObjectFields, ViewFields } from "@/editors/database/fields";
@@ -301,6 +303,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
                   />
                 </div>
               ) : null}
+              <ElementPropertyBag id={id} json={json} edit={edit} flush={() => void flush()} declared={declaredKeys(extensions)} />
               {![
                 "entity",
                 "relation",

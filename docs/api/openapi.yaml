@@ -4009,6 +4009,26 @@ paths:
                   $ref: '#/components/schemas/JobInfo'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+    delete:
+      tags: [jobs]
+      operationId: clearJobHistory
+      summary: Clear the run history and its stored plans
+      description: |
+        Deletes every finished job record (succeeded, failed, cancelled) and every stored plan that no queued or running job
+        names. Queued and running jobs and the plan an apply job of theirs names are kept; so is a plan still being made and,
+        while a plan job runs, every plan no cleared job names. Applying needs the stored plan, so a plan not yet applied must be
+        made again. Sends `jobs.cleared` to every connection.
+      x-maquettiste-role: maintainer
+      x-maquettiste-engine: JobQueue.ClearHistoryAsync
+      responses:
+        '200':
+          description: What was removed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobHistoryCleared'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/jobs/{id}:
     parameters:
@@ -5201,6 +5221,23 @@ webhooks:
           application/json:
             schema:
               $ref: '#/components/schemas/RealtimePacksChanged'
+      responses:
+        '200':
+          description: Not applicable; realtime events have no response.
+  jobs.cleared:
+    post:
+      tags: [realtime]
+      operationId: realtimeJobsCleared
+      summary: 'Realtime event `jobs.cleared` (group: (all))'
+      description: 'Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent after `DELETE /api/jobs` cleared the run history; read `GET /api/jobs` again.'
+      x-realtime-group: '(all)'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobHistoryCleared'
       responses:
         '200':
           description: Not applicable; realtime events have no response.
@@ -10185,6 +10222,20 @@ components:
       type: string
       enum: [queued, running, succeeded, failed, cancelled]
       description: Where the job is in its life, not whether the run did what was asked. `succeeded` means the run completed and produced a result, whatever its outcome (`JobQueue` maps only the `cancelled` and `failed` run outcomes to other states), so a `stale`, `invalid`, `conflicts`, `drift` or `busy` run is `succeeded` too. The run's result is `planResult.outcome` or `applyResult.outcome`.
+    JobHistoryCleared:
+      x-engine-record: Maquettiste.Engine.JobHistoryCleared
+      description: What `DELETE /api/jobs` removed; also the `jobs.cleared` payload.
+      type: object
+      required: [jobs, plans]
+      properties:
+        jobs:
+          description: The finished job records removed.
+          type: integer
+          minimum: 0
+        plans:
+          description: The stored plans removed.
+          type: integer
+          minimum: 0
     JobInfo:
       x-engine-record: Maquettiste.Engine.JobInfo
       description: A finished job read back keeps no per-file or per-unit list (`planResult.plan.units` and `.changes`, `applyResult.result.changes` are empty); read the plan for them. It keeps `applyResult.staleUnits`, `.stalePaths` and every diagnostic, so it can be large; the `job.completed` event is a summary for that reason. Judge a finished job by `planResult.outcome` or `applyResult.outcome`, not by `state`.

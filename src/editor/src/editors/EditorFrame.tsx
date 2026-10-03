@@ -25,6 +25,8 @@ import { useDraftDocument } from "@/inspector/useDraft";
 import { markDomainOf } from "@/model/vocabularies";
 import { ChipsEditor, setOptional, TextField, useVocabularies, type FormProps } from "@/inspector/fields";
 import { applicableExtensions, SchemaForm } from "@/inspector/SchemaForm";
+import { ElementPropertyBag } from "@/inspector/PropertyBag";
+import { declaredKeys } from "@/inspector/propertyBag";
 import { statusBadge, useInspectorContext } from "@/inspector/Inspector";
 import { showsElement } from "@/inspector/context";
 import { setView, type EditorKind } from "./tabs";
@@ -358,8 +360,9 @@ function GenerationHintsEditor({ id, json, edit, flush }: EditorContext) {
 }
 
 /** The Code generation tab: per-pack generation hints, then the custom properties from the extension schemas that
- * apply (SchemaForm). Every editor kind's document has `generation`, so the tab always shows. */
-export function useCodeGenerationTab(ctx: EditorContext): EditorSubTab {
+ * apply (SchemaForm), then the property bag of the free keys (`propertyBag: false` leaves it to a host that shows its own).
+ * Every editor kind's document has `generation`, so the tab always shows. */
+export function useCodeGenerationTab(ctx: EditorContext, options: { propertyBag?: boolean } = {}): EditorSubTab {
   const project = useProject();
   const vocab = useVocabularies(ctx.kind);
   const stereotypes = ((ctx.json as { stereotypes?: string[] }).stereotypes ?? []) as string[];
@@ -393,6 +396,9 @@ export function useCodeGenerationTab(ctx: EditorContext): EditorSubTab {
             }
           />
         ) : null}
+        {options.propertyBag === false ? null : (
+          <ElementPropertyBag id={domIdOf(ctx.id)} json={ctx.json} edit={ctx.edit} flush={ctx.flush} declared={declaredKeys(extensions)} />
+        )}
       </div>
     ),
   };

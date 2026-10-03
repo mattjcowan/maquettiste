@@ -79,6 +79,7 @@ export type FileChange = S["FileChange"];
 export type FileChangeKind = S["FileChangeKind"];
 export type RunOutcome = S["RunOutcome"];
 export type JobInfo = S["JobInfo"];
+export type JobHistoryCleared = S["JobHistoryCleared"];
 export type JobState = S["JobState"];
 export type ProgressUpdate = S["ProgressUpdate"];
 export type PreviewRequest = S["PreviewRequest"];

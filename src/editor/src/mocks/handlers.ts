@@ -610,6 +610,11 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       return HttpResponse.json(job, { status: 202, headers: { Location: `/api/jobs/${job.id}` } });
     }),
     http.get("/api/jobs", () => HttpResponse.json(jobs.list())),
+    http.delete("/api/jobs", () => {
+      const cleared = jobs.clearHistory();
+      backend.realtime.publish("jobs.cleared", cleared);
+      return HttpResponse.json(cleared);
+    }),
     http.get("/api/jobs/{id}", ({ params }) => {
       const job = jobs.get(params.id);
       if (!job) return problem(404, "not-found", `No job has the id ${params.id}.`);

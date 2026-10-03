@@ -7,12 +7,23 @@
 // The physical side is free (the owner: "a database table column could say text, and a mapped entity field could say string
 // 255 ... nothing should prevent that"): an overlay entry may carry the column's type, length, precision, scale, native type,
 // nullability, default, comment, description and name, whatever the attribute it derives from says. The attribute's length is
-// validation, the column's is storage; nothing compares them.
+// validation, the column's is storage; nothing compares them. A column entry also carries its own marks: tags, stereotypes and
+// the property bag (free keys), set the same way.
 import type { ColumnView, ElementSummary, TableView } from "@/api/types";
+import { applyPropertyEdit, type PropertyEdit } from "@/inspector/propertyBag";
 
 type Json = Record<string, unknown>;
 
 export type ColumnField = "name" | "type" | "length" | "precision" | "scale" | "nativeType" | "nullable" | "default" | "comment" | "description";
+
+/** The column entry's marks, set in the table inspector's column section. */
+export type ColumnMarkField = "tags" | "stereotypes" | "properties";
+
+/** Every column field an edit may set. */
+export type ColumnEditField = ColumnField | ColumnMarkField;
+
+/** A field's new value: text or a flag for the physical fields, a list for tags and stereotypes, an edit of the property bag. */
+export type ColumnValue = string | boolean | readonly string[] | PropertyEdit;
 
 /** The column fields every table may set, in the order the grid and the inspector show them. */
 export const COLUMN_FIELDS: readonly ColumnField[] = [
@@ -32,8 +43,8 @@ export const COLUMN_FIELDS: readonly ColumnField[] = [
 const FACETS: Partial<Record<ColumnField, number>> = { length: 1, precision: 1, scale: 0 };
 
 /** Why a typed value cannot be saved in a field, or null: a facet is a whole number (empty clears it). */
-export function columnFieldProblem(field: ColumnField, raw: string): string | null {
-  const least = FACETS[field];
+export function columnFieldProblem(field: ColumnEditField, raw: string): string | null {
+  const least = FACETS[field as ColumnField];
   if (least === undefined) return null;
   const text = raw.trim();
   if (text === "") return null;
@@ -125,7 +136,10 @@ const entries = (doc: Json): Json[] => (Array.isArray(doc.columns) ? (doc.column
 const changesSomething = (entry: Json) => Object.keys(entry).some((k) => k !== "id" && k !== "attribute");
 
 /** The value a field takes in the file: undefined removes it (the synthesized or engine value applies again). */
-function fileValue(column: ColumnView, field: ColumnField, value: string | boolean): unknown {
+function fileValue(column: ColumnView, field: ColumnEditField, value: ColumnValue, entry: Json): unknown {
+  if (field === "tags" || field === "stereotypes") return Array.isArray(value) && value.length ? [...(value as string[])] : undefined;
+  if (field === "properties")
+    return typeof value === "object" && !Array.isArray(value) ? applyPropertyEdit(entry.properties, value as PropertyEdit) : entry.properties;
   if (field === "nullable") return value === true;
   const text = String(value);
   if (field in FACETS) return text.trim() === "" ? undefined : Number(text.trim());
@@ -142,18 +156,18 @@ function fileValue(column: ColumnView, field: ColumnField, value: string | boole
  * designed table the column is its entry by id, and a required member (name, type) is not cleared. Returns false when the
  * document has no place for the edit (a designed column that is not in the file, a description kept in a sidecar file).
  */
-export function setColumnField(doc: Json, column: ColumnView, field: ColumnField, value: string | boolean, newId: () => string): boolean {
+export function setColumnField(doc: Json, column: ColumnView, field: ColumnEditField, value: ColumnValue, newId: () => string): boolean {
   if (typeof value === "string" && columnFieldProblem(field, value)) return false;
   const overlay = doc.origin === "synthesized";
   const list = entries(doc);
-  let entry = list.find((c) => (overlay ? c.attribute === column.key || (c.attribute === undefined && c.id === column.key) : c.id === column.key));
+  let entry = columnEntryOf(doc, column);
   if (!entry) {
     if (!overlay) return false;
     entry = { id: newId(), attribute: column.key };
     list.push(entry);
   }
   if (field === "description" && entry.description && typeof entry.description === "object") return false;
-  const next = fileValue(column, field, value);
+  const next = fileValue(column, field, value, entry);
   if (next === undefined) {
     if (!overlay && (field === "name" || field === "type")) return false;
     delete entry[field];
@@ -165,22 +179,42 @@ export function setColumnField(doc: Json, column: ColumnView, field: ColumnField
   return true;
 }
 
+/** A column's own entry in a table document (an overlay's by the synthesized key it overrides, else by id), or undefined. */
+export function columnEntryOf(doc: Json | undefined, column: Pick<ColumnView, "key">): Json | undefined {
+  if (!doc) return undefined;
+  const overlay = doc.origin === "synthesized";
+  return entries(doc).find((c) => (overlay ? c.attribute === column.key || (c.attribute === undefined && c.id === column.key) : c.id === column.key));
+}
+
+/** The members that say what an overlay overrides: an overlay holding nothing else changes nothing. */
+const OVERLAY_IDENTITY = new Set(["$schema", "kind", "id", "database", "origin", "entity", "attribute", "relation"]);
+
+/** Whether a table overlay changes anything (a member beyond what names the table it overrides). */
+export function overlayChangesSomething(doc: Json): boolean {
+  return Object.keys(doc).some((k) => !OVERLAY_IDENTITY.has(k));
+}
+
+/** An overlay for a synthesized table that changes nothing yet. */
+export function emptyOverlay(target: Extract<TableFileTarget, { kind: "overlay" }>, databaseId: string, id: string): Json {
+  return {
+    kind: "table",
+    id,
+    database: databaseId,
+    origin: "synthesized",
+    ...("relation" in target ? { relation: target.relation } : { entity: target.entity, ...(target.attribute ? { attribute: target.attribute } : {}) }),
+  };
+}
+
 /** A new overlay for a synthesized table holding one column's edit, or null when the edit changes nothing. */
 export function newOverlay(
   target: Extract<TableFileTarget, { kind: "overlay" }>,
   databaseId: string,
   column: ColumnView,
-  field: ColumnField,
-  value: string | boolean,
+  field: ColumnEditField,
+  value: ColumnValue,
   newId: () => string,
 ): Json | null {
-  const doc: Json = {
-    kind: "table",
-    id: newId(),
-    database: databaseId,
-    origin: "synthesized",
-    ...("relation" in target ? { relation: target.relation } : { entity: target.entity, ...(target.attribute ? { attribute: target.attribute } : {}) }),
-  };
+  const doc = emptyOverlay(target, databaseId, newId());
   setColumnField(doc, column, field, value, newId);
   return doc.columns ? doc : null;
 }

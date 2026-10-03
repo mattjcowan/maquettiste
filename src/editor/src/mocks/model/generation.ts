@@ -618,6 +618,17 @@ export class MockGeneration {
     while (this.plans.size > 20) this.plans.delete(this.plans.keys().next().value!);
   }
 
+  /** Deletes the stored plans `remove` accepts (JobQueue.ClearHistoryAsync); returns how many. */
+  deletePlans(remove: (id: string) => boolean): number {
+    let removed = 0;
+    for (const id of [...this.plans.keys()])
+      if (remove(id)) {
+        this.plans.delete(id);
+        removed++;
+      }
+    return removed;
+  }
+
   getPlan(id: string, units: boolean): GenerationPlan | null {
     const stored = this.plans.get(id);
     if (!stored) return null;

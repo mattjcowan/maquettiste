@@ -2,6 +2,7 @@
 import type {
   ChangeSet,
   ElementSummary,
+  JobHistoryCleared,
   RealtimeJobCompleted,
   RealtimeJobProgress,
   RealtimeModelChanged,
@@ -18,6 +19,7 @@ export interface RealtimeEventMap {
   "project.changed": RealtimeProjectChanged;
   "job.progress": RealtimeJobProgress;
   "job.completed": RealtimeJobCompleted;
+  "jobs.cleared": JobHistoryCleared;
   "presence.changed": RealtimePresenceChanged;
   "site.deployed": RealtimeSiteDeployed;
   "templates.changed": components["schemas"]["RealtimeTemplatesChanged"];
@@ -31,6 +33,7 @@ export const REALTIME_EVENTS: RealtimeEventName[] = [
   "project.changed",
   "job.progress",
   "job.completed",
+  "jobs.cleared",
   "presence.changed",
   "site.deployed",
   "templates.changed",

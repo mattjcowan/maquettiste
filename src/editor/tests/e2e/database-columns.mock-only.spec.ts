@@ -155,7 +155,8 @@ test("the Databases side inspects the table, and a column's physical fields edit
   const inspector = page.getByTestId("table-inspector");
   await expect(inspector.getByTestId("inspector-title")).toHaveText("customers");
   await expect(inspector.getByTestId("table-inspector-owner")).toContainText("Projected from entity Customer");
-  await expect(inspector.getByTestId("table-inspector-no-file")).toBeVisible();
+  // Without a file the table's fields still edit: the first edit creates its overlay.
+  await expect(inspector.getByTestId("table-inspector-no-file")).toHaveText("Projected from Customer: edits go to the table's overlay file.");
 
   // The grid says what each column derives from, and that its type is storage.
   await expect(cell(page, "name", "attribute")).toHaveText("Customer.name");

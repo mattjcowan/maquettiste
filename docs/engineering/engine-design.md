@@ -1213,12 +1213,14 @@ public sealed class JobQueue : IAsyncDisposable             // (23–28) W6
     public Task<JobInfo?> GetAsync(string id, CancellationToken ct);   // in-memory jobs without I/O; finished jobs from CacheDirectory/jobs/<id>.json (27)
     public Task<IReadOnlyList<JobInfo>> ListAsync(CancellationToken ct);
     public bool Cancel(string id);
+    public Task<JobHistoryCleared> ClearHistoryAsync(CancellationToken ct);  // finished records, and finished plans no queued or running job names
     public Task RunAsync(CancellationToken stoppingToken);  // one job at a time; the [BackgroundService] awaits this
     public IDisposable OnProgress(Func<JobInfo, ProgressUpdate, ValueTask> handler);
     public IDisposable OnCompleted(Func<JobInfo, ValueTask> handler); }
 public enum JobKind { Plan, Apply }
 public enum JobState { Queued, Running, Succeeded, Failed, Cancelled }
 public sealed record JobRequest(JobKind Kind, GenerationRequest? Plan, string? PlanId);
+public sealed record JobHistoryCleared(int Jobs, int Plans);   // 2026-10-02, DELETE /api/jobs
 public sealed record JobInfo(string Id, JobKind Kind, JobState State, int? QueuePosition, ProgressUpdate? Progress,
     PlanResult? PlanResult, ApplyResult? ApplyResult, string? Error,
     DateTimeOffset QueuedUtc, DateTimeOffset? StartedUtc, DateTimeOffset? FinishedUtc);   // from EngineOptions.TimeProvider

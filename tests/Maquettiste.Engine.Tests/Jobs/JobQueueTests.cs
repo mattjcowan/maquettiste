@@ -261,6 +261,88 @@ public sealed class JobQueueTests
         Assert.Equal([b.Id, a.Id], list.Select(j => j.Id));
     }
 
+    [Fact]
+    public async Task Clearing_the_history_removes_finished_records_and_their_plans()
+    {
+        await using var h = await Harness.CreateAsync();
+        var direct = (await h.Fixture.Service.PlanAsync(new GenerationRequest(), null, Ct)).Plan!;
+        var loop = h.StartAsync();
+        Assert.True(h.Queue.TryEnqueue(new JobRequest(JobKind.Plan, new GenerationRequest(), null), out var a));
+        var planned = await h.WaitAsync(a.Id);
+        Assert.True(h.Queue.TryEnqueue(new JobRequest(JobKind.Apply, null, planned.PlanResult!.Plan!.Id), out var b));
+        await h.WaitAsync(b.Id);
+
+        var cleared = await h.Queue.ClearHistoryAsync(Ct);
+        await h.StopAsync(loop);
+
+        Assert.Equal(new JobHistoryCleared(2, 2), cleared);
+        Assert.Empty(await h.Queue.ListAsync(Ct));
+        Assert.Empty(Directory.EnumerateFiles(Path.Combine(h.Fixture.Repo.CacheDirectory, "jobs")));
+        Assert.Null(await h.Fixture.Service.GetPlanAsync(direct.Id, Ct));
+        Assert.Null(await h.Fixture.Service.GetPlanAsync(planned.PlanResult.Plan.Id, Ct));
+        Assert.Equal(new JobHistoryCleared(0, 0), await h.Queue.ClearHistoryAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Clearing_the_history_keeps_a_queued_job_and_the_plan_it_applies()
+    {
+        await using var h = await Harness.CreateAsync();
+        var kept = (await h.Fixture.Service.PlanAsync(new GenerationRequest(), null, Ct)).Plan!;
+        var dropped = (await h.Fixture.Service.PlanAsync(new GenerationRequest(), null, Ct)).Plan!;
+        var loop = h.StartAsync();
+        Assert.True(h.Queue.TryEnqueue(new JobRequest(JobKind.Plan, new GenerationRequest(), null), out var finished));
+        await h.WaitAsync(finished.Id);
+        await h.StopAsync(loop);
+        Assert.True(h.Queue.TryEnqueue(new JobRequest(JobKind.Apply, null, kept.Id), out var queued));
+
+        var cleared = await h.Queue.ClearHistoryAsync(Ct);
+
+        Assert.Equal(new JobHistoryCleared(1, 2), cleared);
+        Assert.Equal([queued.Id], (await h.Queue.ListAsync(Ct)).Select(j => j.Id));
+        Assert.Null(await h.Fixture.Service.GetPlanAsync(dropped.Id, Ct));
+        Assert.NotNull(await h.Fixture.Service.GetPlanAsync(kept.Id, Ct));
+
+        // The kept plan's stored bytes are intact: the queued apply writes them.
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var run = h.Queue.RunAsync(stop.Token);
+        var applied = await h.WaitAsync(queued.Id);
+        await stop.CancelAsync();
+        await run.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        Assert.Equal(RunOutcome.Succeeded, applied.ApplyResult!.Outcome);
+        Assert.Equal(3, h.Fixture.Outputs().Count);
+    }
+
+    [Fact]
+    public async Task Clearing_the_history_while_a_plan_job_runs_keeps_that_job_and_its_plan()
+    {
+        await using var h = await Harness.CreateAsync();
+        var loop = h.StartAsync();
+        Assert.True(h.Queue.TryEnqueue(new JobRequest(JobKind.Plan, new GenerationRequest(), null), out var earlier));
+        var made = (await h.WaitAsync(earlier.Id)).PlanResult!.Plan!.Id;
+        var unnamed = (await h.Fixture.Service.PlanAsync(new GenerationRequest(), null, Ct)).Plan!;
+        var gate = new TaskCompletionSource();
+        var entered = new TaskCompletionSource();
+        h.Fixture.Renderer.BeforeUnit = async (_, ct) =>
+        {
+            entered.TrySetResult();
+            await gate.Task.WaitAsync(ct);
+        };
+        Assert.True(h.Queue.TryEnqueue(new JobRequest(JobKind.Plan, new GenerationRequest(), null), out var running));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+
+        var cleared = await h.Queue.ClearHistoryAsync(Ct);
+
+        Assert.Equal(new JobHistoryCleared(1, 1), cleared);
+        Assert.Null(await h.Fixture.Service.GetPlanAsync(made, Ct));
+        Assert.NotNull(await h.Fixture.Service.GetPlanAsync(unnamed.Id, Ct));
+        Assert.Equal(JobState.Running, Assert.Single(await h.Queue.ListAsync(Ct)).State);
+        gate.TrySetResult();
+        var done = await h.WaitAsync(running.Id);
+        await h.StopAsync(loop);
+        Assert.Equal(JobState.Succeeded, done.State);
+        Assert.NotNull(await h.Fixture.Service.GetPlanAsync(done.PlanResult!.Plan!.Id, Ct));
+    }
+
     private static async Task Poll(Func<bool> condition)
     {
         for (var i = 0; i < 600 && !condition(); i++)

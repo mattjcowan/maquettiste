@@ -1,14 +1,18 @@
 // The inspector on the Databases side (the Database screen, the Databases explorer): the TABLE, by its resolved key, never the
 // entity it derives from (the entity shows in the Domain model). Properties: the table's physical fields (name, schema,
-// origin, comment, description, category, stereotypes, tags) edited in its file like any table document, read-only with a
-// note for a projected table that has no file; what the table derives from (or is bound to), with a way to the entity; and,
-// when a column is picked in the grid, that column's physical fields, written through the grid's own path (useTableFile: the
-// file of a designed or imported table, the overlay of a projected one, created on the first edit), one save per commit.
-// The attribute's type and length are validation; the column's are storage; they may differ, and nothing compares them.
-import { useEffect, useMemo, useRef, useState } from "react";
+// origin, comment, description, category, stereotypes, tags), its custom properties and its property bag, edited in its file
+// like any table document; a projected table without a file shows the same fields, and its first edit creates its overlay
+// (one undo step). What the table derives from (or is bound to), with a way to the entity; and, when a column is picked in
+// the grid, that column's physical fields, tags, stereotypes and property bag, written through the grid's own path
+// (useTableFile: the file of a designed or imported table, the overlay of a projected one, created on the first edit), one
+// save per commit. JSON: the file, or for a projected table without one the resolved table, read-only, with a way to create
+// the file. The attribute's type and length are validation; the column's are storage; they may differ, and nothing compares them.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { useDatabaseView, useElements, useIndex } from "@/api/queries";
-import type { ColumnView, Diagnostic, TableView } from "@/api/types";
+import { useDatabaseView, useElements, useIndex, useProject } from "@/api/queries";
+import type { ColumnView, Diagnostic, ModelJson, StereotypeDoc, TableView } from "@/api/types";
+import { CodeView } from "@/code";
+import { clone } from "@/lib/json";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, SectionTitle, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
@@ -19,10 +23,23 @@ import { useEditorNavigation } from "@/app/navigation";
 import { BUILTIN_TYPES } from "@/model/model";
 import { schemasOf } from "@/model/databaseSchemas";
 import { USED_LABEL } from "@/model/labels";
-import { columnText, physicalHint, tableKeyOfDoc, type ColumnField, type Derivation } from "@/workspaces/database/columnEdits";
+import {
+  columnEntryOf,
+  columnText,
+  emptyOverlay,
+  physicalHint,
+  tableKeyOfDoc,
+  type ColumnEditField,
+  type ColumnField,
+  type ColumnValue,
+  type Derivation,
+} from "@/workspaces/database/columnEdits";
 import { useColumnDerivations, useTableFile } from "@/workspaces/database/useTableFile";
-import { CommonFields, setOptional, TextField, type FormProps } from "./fields";
+import { ChipsEditor, CommonFields, setOptional, TextField, useVocabularies, type FormProps } from "./fields";
 import { useDraftDocument } from "./useDraft";
+import { applicableExtensions, SchemaForm } from "./SchemaForm";
+import { ElementPropertyBag, PropertyBag } from "./PropertyBag";
+import { declaredKeys } from "./propertyBag";
 import { DeleteButton, JsonTab, References, statusBadge } from "./Inspector";
 
 type Rec = Record<string, unknown>;
@@ -70,10 +87,10 @@ function TableInspectorBody({
   const file = useTableFile(table, database);
   const derivations = useColumnDerivations(table);
   const draft = useDraftDocument(file.fileId);
+  const doc = useTableDocument(table, database, file, draft);
   const index = useIndex();
   const [tab, setTab] = useState<TableTab>("properties");
-  const tabs: TableTab[] = file.fileId ? ["properties", "json", "references"] : ["properties", "references"];
-  const shownTab = tabs.includes(tab) ? tab : "properties";
+  const tabs: TableTab[] = ["properties", "json", "references"];
   const picked = column ? (table.columns.find((c) => c.key === column) ?? null) : null;
   const owner = table.entityId ?? table.relationId;
   const ownerRow = owner ? index.data?.find((r) => r.id === owner) : undefined;
@@ -113,7 +130,7 @@ function TableInspectorBody({
           </ul>
         ) : null}
       </header>
-      <Tabs value={shownTab} onValueChange={(next) => setTab(next as TableTab)} className="flex min-h-0 flex-1 flex-col">
+      <Tabs value={tab} onValueChange={(next) => setTab(next as TableTab)} className="flex min-h-0 flex-1 flex-col">
         <TabsList aria-label="Inspector views">
           {tabs.map((t) => (
             <TabsTrigger key={t} value={t}>
@@ -131,22 +148,29 @@ function TableInspectorBody({
                 tables={tables}
                 column={picked}
                 derivation={derivations.get(picked.key) ?? null}
+                entry={file.fileJson ? (columnEntryOf(file.fileJson, picked) ?? null) : null}
                 write={file.write}
                 onGo={openEntity}
               />
             ) : (
               <p className="text-12 text-secondary" data-testid="table-inspector-column-hint">
-                Pick a column in the Columns grid to see and edit its physical fields here.
+                Pick a column in the Columns grid to see and edit its fields here.
               </p>
             )}
-            <TableSection database={database} table={table} fileId={file.fileId} pending={file.pending} draft={draft} ownerName={ownerName} />
+            <TableSection database={database} table={table} doc={doc} ownerName={ownerName} />
           </div>
         </TabsContent>
-        {file.fileId ? (
-          <TabsContent value="json" className="flex min-h-0 flex-col p-0">
-            {draft.json ? <JsonTab json={draft.json} onChange={(next) => draft.edit(() => next)} /> : <Spinner label="Loading the table's file" />}
-          </TabsContent>
-        ) : null}
+        <TabsContent value="json" className="flex min-h-0 flex-col p-0">
+          {file.fileId ? (
+            draft.json ? (
+              <JsonTab json={draft.json} onChange={(next) => draft.edit(() => next)} />
+            ) : (
+              <Spinner label="Loading the table's file" />
+            )
+          ) : (
+            <ResolvedJson table={table} create={() => file.writeTable(() => undefined, { force: true })} />
+          )}
+        </TabsContent>
         <TabsContent value="references" className="overflow-auto p-2">
           {file.fileId ? (
             <References id={file.fileId} />
@@ -183,81 +207,203 @@ function OwnerLine({ table, ownerName, onGo }: { table: TableView; ownerName: st
   );
 }
 
-/** The table's own fields: edited in its file, or read-only with a note when it has none. */
-function TableSection({
-  database,
-  table,
-  fileId,
-  pending,
-  draft,
-  ownerName,
-}: {
-  database: string;
-  table: TableView;
-  fileId: string | null;
-  pending: boolean;
-  draft: ReturnType<typeof useDraftDocument>;
-  ownerName: string | null;
-}) {
+/** The document the table's own fields edit: its file's draft, or, for a projected table without a file, a local overlay. */
+interface TableDocument {
+  /** The file's id, or a stable dom id for the overlay still to create. */
+  id: string;
+  hasFile: boolean;
+  json: ModelJson | undefined;
+  form: FormProps | null;
+}
+
+/**
+ * The table's own document for its fields. With a file: its draft (saved 600 ms after the last keystroke, or on blur).
+ * Without one (a projected table): an overlay kept here; edits apply to it at once and are written together on blur, Enter,
+ * a pick, or 600 ms after the last keystroke, as one write of the table's file, the first of which creates the overlay (one
+ * undo step). The local overlay shows until the file's own document is loaded.
+ */
+function useTableDocument(
+  table: TableView,
+  database: string,
+  file: ReturnType<typeof useTableFile>,
+  draft: ReturnType<typeof useDraftDocument>,
+): TableDocument {
+  const target = file.target;
+  const base = useMemo(() => (target?.kind === "overlay" ? (emptyOverlay(target, database, "") as unknown as ModelJson) : null), [target, database]);
+  const [local, setLocal] = useState<ModelJson | null>(null);
+  const current = useRef<ModelJson | null>(null);
+  const queued = useRef<((json: ModelJson) => ModelJson | void)[]>([]);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The latest writer: useTableFile's functions change with every render, the flush must not.
+  const writer = useRef(file.writeTable);
+  writer.current = file.writeTable;
+  const live = !!file.fileId && !!draft.json;
+
+  const flushLocal = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    const updates = queued.current.splice(0);
+    if (!updates.length) return;
+    void writer.current((doc) => {
+      const identity = { id: doc.id, kind: doc.kind, database: doc.database, origin: doc.origin };
+      for (const update of updates) {
+        const next = update(doc as unknown as ModelJson) as unknown as Record<string, unknown> | undefined;
+        if (next && next !== doc) {
+          for (const k of Object.keys(doc)) delete doc[k];
+          Object.assign(doc, next, identity);
+        }
+      }
+    });
+  }, []);
+
+  // Once the file's own document shows, the local overlay is done with (an undo of the create starts a new one).
+  useEffect(() => {
+    if (!live) return;
+    flushLocal();
+    current.current = null;
+    setLocal(null);
+  }, [live, flushLocal]);
+  // Leaving the table writes what was typed.
+  useEffect(() => () => flushLocal(), [flushLocal]);
+
+  const editLocal = useCallback(
+    (update: (json: ModelJson) => ModelJson | void) => {
+      if (!base) return;
+      const working = clone(current.current ?? base);
+      const next = (update(working) ?? working) as ModelJson;
+      current.current = next;
+      setLocal(next);
+      queued.current.push(update);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(flushLocal, 600);
+    },
+    [base, flushLocal],
+  );
+
+  if (live)
+    return {
+      id: file.fileId!,
+      hasFile: true,
+      json: draft.json,
+      form: {
+        id: file.fileId!,
+        json: draft.json!,
+        doc: draft.element.data,
+        edit: draft.edit,
+        flush: () => void draft.flush(),
+        diagnostics: draft.draft?.diagnostics ?? [],
+      },
+    };
+  const id = `overlay-${table.key}`.replace(/[^A-Za-z0-9_-]/g, "_");
+  const json = local ?? base ?? undefined;
+  // A file whose document is still loading (and no local edits to show meanwhile) waits.
+  if (!json || (file.fileId && !local) || (!file.fileId && file.pending && !local)) return { id, hasFile: !!file.fileId, json: undefined, form: null };
+  return { id, hasFile: !!file.fileId, json, form: { id, json, doc: undefined, edit: editLocal, flush: flushLocal, diagnostics: [] } };
+}
+
+/** The table's own fields: edited in its file, or in the overlay a projected table without one gets on its first edit. */
+function TableSection({ database, table, doc, ownerName }: { database: string; table: TableView; doc: TableDocument; ownerName: string | null }) {
   const dbDoc = useElements([database]).byId.get(database)?.json as Rec | undefined;
+  const project = useProject();
+  const vocab = useVocabularies("table");
   const schemas = schemasOf(dbDoc);
   const origin = table.origin === "synthesized" ? "projected" : table.origin;
-  if (fileId && draft.json) {
-    const json = draft.json as unknown as Rec;
-    const props: FormProps = {
-      id: fileId,
-      json: draft.json,
-      doc: draft.element.data,
-      edit: draft.edit,
-      flush: () => void draft.flush(),
-      diagnostics: draft.draft?.diagnostics ?? [],
-    };
-    return (
-      <div className="flex flex-col gap-2" data-testid="table-inspector-table">
-        <SectionTitle>Table</SectionTitle>
-        <ReadOnly label="Origin" value={json.origin === "synthesized" ? "projected, with an overlay file" : origin} />
-        <CommonFields {...props} />
-        <Field label="Schema" htmlFor={`${fileId}-schema`}>
-          <Select
-            id={`${fileId}-schema`}
-            value={String(json.schema ?? "")}
-            onChange={(e) => {
-              draft.edit((j) => setOptional(j as unknown as Rec, "schema", e.target.value));
-              void draft.flush();
-            }}
-          >
-            <option value="">(the database's default{table.schema ? `: ${table.schema}` : ""})</option>
-            {schemas.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <TextField
-          id={`${fileId}-comment`}
-          label="Comment"
-          value={String(json.comment ?? "")}
-          placeholder={table.comment ?? undefined}
-          onChange={(v) => draft.edit((j) => setOptional(j as unknown as Rec, "comment", v))}
-          onBlur={() => void draft.flush()}
-        />
-      </div>
-    );
+  if (!doc.form) return <Spinner label="Loading the table's file" />;
+  const props = doc.form;
+  const json = props.json as unknown as Rec;
+  const stereotypeKeys = ((json.stereotypes as string[] | undefined) ?? []) as string[];
+  const extensions = applicableExtensions(project.data?.extensions ?? [], "table", stereotypeKeys);
+  const defaults: Record<string, { value: unknown; from: string }> = {};
+  for (const key of stereotypeKeys) {
+    const st = vocab.allStereotypes.find((x) => x.key === key) as StereotypeDoc | undefined;
+    for (const [name, value] of Object.entries((st?.defaultProperties as Record<string, unknown> | undefined) ?? {})) defaults[name] ??= { value, from: key };
   }
-  if (fileId || pending) return <Spinner label="Loading the table's file" />;
   return (
     <div className="flex flex-col gap-2" data-testid="table-inspector-table">
       <SectionTitle>Table</SectionTitle>
-      <p className="text-12 text-secondary" data-testid="table-inspector-no-file">
-        {ownerName ? `Projected from ${ownerName} with no file of its own, ` : "No file of its own, "}
-        so these values are read-only. A column edit (in the grid or above) creates the table's overlay; its JSON then holds the table's own fields.
-      </p>
-      <ReadOnly label="Name" value={table.name} mono />
-      <ReadOnly label="Schema" value={table.schema ?? "(the database's default)"} mono />
-      <ReadOnly label="Origin" value={origin} />
-      <ReadOnly label="Comment" value={table.comment ?? ""} />
-      <ReadOnly label="Description" value={table.description ?? ""} />
+      {doc.hasFile ? null : (
+        <p className="text-12 text-secondary" data-testid="table-inspector-no-file">
+          {ownerName ? `Projected from ${ownerName}` : "Projected table"}: edits go to the table's overlay file.
+        </p>
+      )}
+      <ReadOnly label="Origin" value={json.origin === "synthesized" && doc.hasFile ? "projected, with an overlay file" : origin} />
+      <CommonFields {...props} />
+      <Field label="Schema" htmlFor={`${props.id}-schema`}>
+        <Select
+          id={`${props.id}-schema`}
+          value={String(json.schema ?? "")}
+          onChange={(e) => {
+            props.edit((j) => setOptional(j as unknown as Rec, "schema", e.target.value));
+            props.flush();
+          }}
+        >
+          <option value="">(the database's default{table.schema ? `: ${table.schema}` : ""})</option>
+          {schemas.map((sc) => (
+            <option key={sc.id} value={sc.id}>
+              {sc.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <TextField
+        id={`${props.id}-comment`}
+        label="Comment"
+        value={String(json.comment ?? "")}
+        placeholder={table.comment ?? undefined}
+        onChange={(v) => props.edit((j) => setOptional(j as unknown as Rec, "comment", v))}
+        onBlur={props.flush}
+      />
+      {extensions.length ? (
+        <div className="flex flex-col gap-2">
+          <SectionTitle>Custom properties</SectionTitle>
+          <SchemaForm
+            idPrefix={`${props.id}-prop`}
+            extensions={extensions}
+            json={props.json}
+            defaults={defaults}
+            onChange={(name, value) =>
+              props.edit((j) => {
+                const record = j as { properties?: Record<string, unknown> };
+                const next = { ...(record.properties ?? {}) };
+                if (value === undefined) delete next[name];
+                else next[name] = value;
+                if (Object.keys(next).length) record.properties = next;
+                else delete record.properties;
+              })
+            }
+          />
+        </div>
+      ) : null}
+      <ElementPropertyBag id={props.id} json={props.json} edit={props.edit} flush={props.flush} declared={declaredKeys(extensions)} />
+    </div>
+  );
+}
+
+/** A projected table without a file: the resolved table as read-only JSON, and the way to create its file (the overlay). */
+function ResolvedJson({ table, create }: { table: TableView; create: () => Promise<boolean> }) {
+  const [creating, setCreating] = useState(false);
+  const text = useMemo(() => JSON.stringify(table, null, 2), [table]);
+  if (creating) return <Spinner label="Creating the table's file" />;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="table-inspector-resolved-json">
+      <div className="flex items-center gap-2 border-b border-default px-2 py-1">
+        <p className="min-w-0 flex-1 text-12 text-secondary">The resolved table, read-only: this projected table has no file yet.</p>
+        <Button
+          size="sm"
+          data-testid="table-inspector-create-file"
+          onClick={() => {
+            setCreating(true);
+            void create().then((ok) => {
+              if (!ok) setCreating(false);
+            });
+          }}
+        >
+          Create the table's file
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <CodeView language="json" label="Resolved table JSON" value={text} readOnly />
+      </div>
     </div>
   );
 }
@@ -283,12 +429,17 @@ function referencedOf(table: TableView, tables: TableView[], column: ColumnView)
   return null;
 }
 
-/** The picked column's physical fields, each committed (blur, Enter, a pick) as one write through the grid's path. */
+/**
+ * The picked column's physical fields, tags, stereotypes and property bag, each committed (blur, Enter, a pick) as one write
+ * through the grid's path. The bag shows the column entry's own properties (`entry`, from the table's file), never the
+ * stereotypes' defaults the resolved column merges in.
+ */
 function ColumnSection({
   table,
   tables,
   column,
   derivation,
+  entry,
   write,
   onGo,
 }: {
@@ -296,9 +447,12 @@ function ColumnSection({
   tables: TableView[];
   column: ColumnView;
   derivation: Derivation | null;
-  write: (column: ColumnView, field: ColumnField, value: string | boolean) => void;
+  /** The column's own entry in the table's file, or null (no file, or an overlay that does not change the column). */
+  entry: Rec | null;
+  write: (column: ColumnView, field: ColumnEditField, value: ColumnValue) => void;
   onGo: (id: string) => boolean;
 }) {
+  const vocab = useVocabularies("column");
   const id = `col-${table.key}-${column.key}`.replace(/[^A-Za-z0-9_-]/g, "_");
   const hint = physicalHint(column, derivation);
   const referenced = column.isForeignKey ? referencedOf(table, tables, column) : null;
@@ -359,6 +513,22 @@ function ColumnSection({
       <CommitField id={`${id}-default`} label="Default" value={columnText(column, "default")} mono onCommit={(v) => commit("default", v)} />
       <CommitField id={`${id}-comment`} label="Comment" value={columnText(column, "comment")} onCommit={(v) => commit("comment", v)} />
       <CommitField id={`${id}-description`} label="Description" value={columnText(column, "description")} long onCommit={(v) => commit("description", v)} />
+      <ChipsEditor
+        label="Stereotypes"
+        values={column.stereotypes ?? []}
+        options={vocab.stereotypes.map((st) => ({ value: st.key, label: `«${st.key}»` }))}
+        allowFree={false}
+        empty="No stereotype applies to a column yet; Settings › Stereotypes declares them."
+        onChange={(values) => write(column, "stereotypes", values)}
+      />
+      <ChipsEditor
+        label="Tags"
+        values={column.tags ?? []}
+        options={vocab.tags}
+        allowFree={!vocab.strictTags}
+        onChange={(values) => write(column, "tags", values)}
+      />
+      <PropertyBag idPrefix={id} properties={entry ? entry.properties : column.properties} onEdit={(edit) => write(column, "properties", edit)} />
     </div>
   );
 }

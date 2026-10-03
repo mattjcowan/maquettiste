@@ -115,6 +115,16 @@ the column that stores it says), **JSON** (the element's document, editable) and
 reference it; a row goes to the referring element). The inspector remembers the tab you chose for each kind of
 element; a kind without the chosen tab shows Properties.
 
+Every element's Properties end with its **property bag**, titled Properties: free key and value pairs of your own, kept in
+the element's `properties` beside the custom properties a schema declares (see "Custom properties" under "Extending the
+model and the generation"). **Add property** adds a row with its cursor in the key; a row has a key, a value, a type
+(**Text** by default, **Number** or **True/false**, which store a JSON number or boolean; a value saved otherwise shows its
+type) and a remove button. A key is required and unique: a missing or repeated one is said under its row and nothing saves
+until it is fixed; renaming a key keeps its value. Each change saves when you leave the field or press Enter (a type, a
+true/false pick and a removal at once), one undo step each. A key that a custom property schema declares keeps its typed
+field in Custom properties and is never a row of the bag. An element editor's **Code generation** tab, a state selected in
+a process and a table's column show the same bag.
+
 ### Search and filters
 
 The **Search the model** box filters the explorer as you type: rows that do not match are hidden, their domains and
@@ -433,11 +443,15 @@ database shows on the Database screen at once. The explorers remember which rows
   column picked in the grid (a click or the arrow keys) the **Column** section follows: "Derived from attribute
   Invoice.number (string(32))" with **Go to entity**, or "Follows the referenced column customers.id (uuid)" for a
   foreign key, then the column's Name, Type, Length, Precision, Scale, Native type, Nullable, Default, Comment and
-  Description, each saved through the same file as the grid, one undo step per field (on Enter or when you leave it).
+  Description, each saved through the same file as the grid, one undo step per field (on Enter or when you leave it),
+  then its Stereotypes (those that apply to columns), Tags and property bag, kept in the column's own entry.
   The **Table** section edits the table's own fields in its file: origin, name, display and plural names, description,
-  category, stereotypes, tags, schema and comment; a table made from an entity with no file of its own shows them read
-  only, with a note that a column edit creates its file. **JSON** shows the table's file when it has one, and **Used**
-  lists what references it.
+  category, stereotypes, tags, schema, comment, its custom properties and its property bag. A table made from an entity
+  with no file of its own edits the same way, with the note "Projected from Customer: edits go to the table's overlay
+  file": its first edit (a table field or a column's) creates the overlay file holding just that change, one undo step,
+  and later edits go to the same file. **JSON** is on every table: the table's file when it has one; for a projected
+  table without one, the resolved table as read-only JSON with **Create the table's file**, which creates an overlay that
+  changes nothing yet and shows its JSON, editable. **Used** lists what references it.
 
   **Creating a table, a view, a sequence or another database object.** A database's New actions are **New schema…**,
   **New table…**, **New view…**, **New sequence…**, **New routine…**, **New query…**, **New database type…** and **New SQL
@@ -927,7 +941,7 @@ database shows on the Database screen at once. The explorers remember which rows
   one save per seed and locale: if one of those saves fails the rows stay imported, and Undo takes back the rows, not
   the translations (fix or remove them in the Translations section or with `maquettiste l10n`).
 - **Generate**: Plan renders every template unit and shows what would change, grouped by unit with the reason each
-  renders (see "How the plan explains itself" below); pick a file to see its diff; Apply writes the plan. Generation runs as a job and reports progress; the run history stays in the panel. The Generate
+  renders (see "How the plan explains itself" below); pick a file to see its diff; Apply writes the plan. Generation runs as a job and reports progress; the run history stays in the panel. Clear, beside the Run history heading, deletes the finished runs and their stored plans (not while a run is queued or running), so a plan you have not applied must be made again. The Generate
   explorer and the pack editor (below) show and change what each pack does.
 - **Settings**: the project's settings, one tab each; the tab you left is the one Settings opens on next time.
   - **General**: the project's name and branding (below).
@@ -1993,9 +2007,11 @@ For example, `.maquettiste/extensions/retention.json` gives every entity with th
 The inspector of an audited entity then shows a **Custom properties** section with a **retentionDays** field. The section
 has one field per property: a text box, a number box, a checkbox for a boolean, a picker for an `enum`, and comma-separated
 values for an array. A value saves into the element's `properties` (`"properties": { "retentionDays": 365 }`); a stereotype's
-`defaultProperties` show as the field's placeholder and apply when the element sets no value of its own. For attributes,
-enum members and columns the properties are validated and reach the templates the same way; edit them in the element's
-JSON. Validation reports a value that does not match as MQ5001 on `/properties/<name>`, and templates read the merged value
+`defaultProperties` show as the field's placeholder and apply when the element sets no value of its own. Keys no schema
+declares are the element's property bag, edited under the custom properties (free keys, text values unless you pick
+Number or True/false) and read by templates the same way. For attributes and enum members the properties are validated
+and reach the templates the same way; edit them in the element's JSON. A table column's own properties edit in the
+table inspector's column section, as a property bag. Validation reports a value that does not match as MQ5001 on `/properties/<name>`, and templates read the merged value
 as `entity.properties.retentionDays`.
 
 ### Script rules (`extensions/rules/*.js`)

@@ -33,6 +33,8 @@ public sealed class JobQueue : IAsyncDisposable
     private readonly LinkedList<JobEntry> _queued = new();
     private readonly Dictionary<string, JobEntry> _live = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JobEntry> _unsaved = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _cleared = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _persistLock = new(1, 1);
     private readonly SemaphoreSlim _signal = new(0);
     private readonly Channel<(JobEntry Entry, JobRecord Record, bool Final)> _persist =
         Channel.CreateUnbounded<(JobEntry, JobRecord, bool)>(new UnboundedChannelOptions { SingleReader = true });
@@ -166,6 +168,80 @@ public sealed class JobQueue : IAsyncDisposable
         return true;
     }
 
+    /// <summary>
+    /// Clears the run history: deletes every finished job record (succeeded, failed, cancelled) and every finished plan folder that no
+    /// queued or running job refers to. A queued or running job, its record and the plan an apply job of it names are kept; so is a
+    /// plan folder still being made (no <c>plan.json</c>), and, while a plan job runs, every plan no cleared job names (the running
+    /// job's own plan is among them). Applying a plan needs its folder, so a plan not yet applied must be made again.
+    /// </summary>
+    /// <param name="ct">Cancellation, observed before anything is deleted.</param>
+    /// <returns>How many job records and plans were removed.</returns>
+    public async Task<JobHistoryCleared> ClearHistoryAsync(CancellationToken ct)
+    {
+        // Holding the persist lock, no record is written meanwhile: a job that finished but whose record is not written yet is in
+        // _unsaved, and its pending records are skipped once it is marked cleared.
+        await _persistLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var records = await _store.ListAsync(ct).ConfigureAwait(false);
+            HashSet<string> live;
+            HashSet<string> keepPlans;
+            bool planRunning;
+            List<JobEntry> unsaved;
+            lock (_gate)
+            {
+                live = [.. _live.Keys];
+                keepPlans = [.. _live.Values.Select(e => e.Request.PlanId).OfType<string>()];
+                planRunning = _live.Values.Any(e => e.Request.Kind == JobKind.Plan && e.State == JobState.Running);
+                unsaved = [.. _unsaved.Values];
+                foreach (var entry in unsaved)
+                    _cleared.Add(entry.Id);
+                _unsaved.Clear();
+            }
+
+            var cleared = unsaved.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+            var named = unsaved.Select(e => e.PlanResult?.Plan?.Id).OfType<string>().ToHashSet(StringComparer.Ordinal);
+            foreach (var record in records)
+            {
+                var id = record.Job.Id;
+                if (live.Contains(id))
+                    continue;
+                if (record.Job.State is JobState.Queued or JobState.Running && !cleared.Contains(id))
+                {
+                    // A job the next process resumes.
+                    if (record.Request.PlanId is { } planId)
+                        keepPlans.Add(planId);
+                    continue;
+                }
+
+                if (record.Job.PlanResult?.Plan?.Id is { } made)
+                    named.Add(made);
+                if (Quietly(() => _store.Delete(id)))
+                    cleared.Add(id);
+            }
+
+            var plans = 0;
+            var store = _generation.Services.Plans;
+            foreach (var planId in store.Ids())
+            {
+                if (keepPlans.Contains(planId) || !store.IsFinished(planId) || (planRunning && !named.Contains(planId)))
+                    continue;
+                if (Quietly(() =>
+                    {
+                        store.Delete(planId);
+                        return true;
+                    }))
+                    plans++;
+            }
+
+            return new JobHistoryCleared(cleared.Count, plans);
+        }
+        finally
+        {
+            _persistLock.Release();
+        }
+    }
+
     /// <summary>Runs jobs one at a time until stopped.</summary>
     /// <param name="stoppingToken">Stops the loop; a running job is cancelled and returns within one second.</param>
     /// <returns>A task that completes when stopped.</returns>
@@ -290,32 +366,56 @@ public sealed class JobQueue : IAsyncDisposable
     {
         while (_persist.Reader.TryRead(out var item))
         {
+            await _persistLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
             try
             {
-                await _store.SaveAsync(item.Record, CancellationToken.None).ConfigureAwait(false);
+                await PersistOneAsync(item.Entry, item.Record, item.Final).ConfigureAwait(false);
+            }
+            finally
+            {
+                _persistLock.Release();
+            }
+        }
+    }
+
+    private async Task PersistOneAsync(JobEntry entry, JobRecord record, bool final)
+    {
+        lock (_gate)
+        {
+            // ClearHistoryAsync removed this finished job before its records were written: they are dropped.
+            if (_cleared.Contains(entry.Id))
+            {
+                if (final)
+                    _cleared.Remove(entry.Id);
+                return;
+            }
+        }
+
+        try
+        {
+            await _store.SaveAsync(record, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The cache is best effort: the job itself already ran.
+        }
+
+        if (!final)
+            return;
+        lock (_gate)
+        {
+            if (_unsaved.TryGetValue(entry.Id, out var unsaved) && ReferenceEquals(unsaved, entry))
+                _unsaved.Remove(entry.Id);
+        }
+
+        if (Interlocked.Increment(ref _finishedSincePrune) % 32 == 0)
+        {
+            try
+            {
+                await _store.PruneAsync(CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // The cache is best effort: the job itself already ran.
-            }
-
-            if (!item.Final)
-                continue;
-            lock (_gate)
-            {
-                if (_unsaved.TryGetValue(item.Entry.Id, out var unsaved) && ReferenceEquals(unsaved, item.Entry))
-                    _unsaved.Remove(item.Entry.Id);
-            }
-
-            if (Interlocked.Increment(ref _finishedSincePrune) % 32 == 0)
-            {
-                try
-                {
-                    await _store.PruneAsync(CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                }
             }
         }
     }
@@ -466,6 +566,19 @@ public sealed class JobQueue : IAsyncDisposable
         }
     }
 
+    /// <summary>Runs a deletion; a file in use or refused counts as not deleted.</summary>
+    private static bool Quietly(Func<bool> delete)
+    {
+        try
+        {
+            return delete();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     private static async Task Quietly(Task task)
     {
         try
@@ -499,6 +612,11 @@ public sealed class JobQueue : IAsyncDisposable
         }
     }
 }
+
+/// <summary>What <see cref="JobQueue.ClearHistoryAsync"/> removed.</summary>
+/// <param name="Jobs">The finished job records removed.</param>
+/// <param name="Plans">The stored plans removed.</param>
+public sealed record JobHistoryCleared(int Jobs, int Plans);
 
 /// <summary>A job kind.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<JobKind>))]

@@ -155,6 +155,8 @@ export function connectRealtime(deps: SyncDeps): () => void {
     realtime.on("job.completed", (summary) => {
       void jobs.onCompleted(summary);
     }),
+    // DELETE /api/jobs, here or in another window: the history is read again and a removed plan is no longer selected.
+    realtime.on("jobs.cleared", () => jobs.historyCleared()),
   );
 
   offs.push(realtime.on("presence.changed", (payload) => store.getState().setPresence(payload.editors)));
