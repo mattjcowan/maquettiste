@@ -53,7 +53,7 @@ for (const p of PACKS) compareTrees(join(repoRoot, "packs", p), join(mq, "templa
 
 // The domain's promised shape (phase2-design.md section 7.1).
 const s = first.stats;
-const expect = { packages: 12, entities: 200, enums: 23, referenceTypes: 2, valueObjects: 8, diagrams: 12 };
+const expect = { packages: 12, entities: 202, enums: 23, referenceTypes: 2, valueObjects: 8, diagrams: 12 };
 for (const [k, v] of Object.entries(expect)) if (s[k] !== v) problems.push(`expected ${v} ${k}, built ${s[k]}`);
 
 if (problems.length) {

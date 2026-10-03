@@ -664,6 +664,102 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4044",
+    "defaultSeverity": "error",
+    "description": "A binding's source is not a table, view or query of its database, or its write table is not a table of its database.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4045",
+    "defaultSeverity": "error",
+    "description": "A binding names what it cannot resolve: a field attribute that is neither an attribute of the entity, a value object member nor a to-one relation end; a column its source does not have; a listed or soft-delete column of no table it uses; or an attribute or column mapped twice.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4046",
+    "defaultSeverity": "error",
+    "description": "A binding that writes maps no field for one of the entity's key attributes, so updates and deletes cannot find their row.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4047",
+    "defaultSeverity": "warning",
+    "description": "A column of a binding's source or write table is accounted for by nothing: no field maps it, no constant sets it, columns does not list it, and it is not an identity, computed or defaulted column.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4048",
+    "defaultSeverity": "error",
+    "description": "A binding's constant names a column its source does not have, so it cannot filter what the binding reads.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4049",
+    "defaultSeverity": "error",
+    "description": "A binding that writes has a constant whose column is not in the table it writes, so an insert cannot set it.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4050",
+    "defaultSeverity": "error",
+    "description": "An entity has two bindings to one database; an entity has one binding per database.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4051",
+    "defaultSeverity": "warning",
+    "description": "A binding's constant (or soft-delete value) cannot fit its column: the wrong type, too long, out of range, or NULL in a column that is not nullable.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4052",
+    "defaultSeverity": "error",
+    "description": "A binding writes a table other than its source, and that table has no column for one of the key fields.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4053",
+    "defaultSeverity": "error",
+    "description": "A binding deletes by key from a table without a primary key, or deletes (by key or softly) without a table to write.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4054",
+    "defaultSeverity": "info",
+    "description": "An entity mapping element maps an entity to a database where the entity has a binding: the binding wins and the mapping is ignored.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4055",
+    "defaultSeverity": "error",
+    "description": "A materialize operation is refused: an entity already bound to the database, a table an entity is already bound to, an entity in an inheritance hierarchy, a name already taken, or an id that is not what the operation takes.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",

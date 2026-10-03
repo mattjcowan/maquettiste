@@ -297,6 +297,21 @@ export function compile(domain) {
     });
   }
 
+  // An entity's binding to a designed table of the database (erratum E43): its constants, field map (attribute -> column) and the
+  // columns it accounts for without a field. A bound entity is never projected.
+  const bindingOf = (entity, b, attrs) => {
+    const t = db.tables?.[b.table];
+    if (!t) throw new Error(`${entity}: binding names unknown table ${b.table}`);
+    const col = (cn) => { if (!t.columns[cn]) throw new Error(`${entity}: table ${b.table} has no column ${cn}`); return id(`table:${b.table}.${cn}`); };
+    const attr = (an) => { const a = attrs.find((x) => x.name === an); if (!a) throw new Error(`${entity}: binding names unknown attribute ${an}`); return a.id; };
+    return {
+      id: id(`binding:${entity}`), database: dbId, source: id(`table:${b.table}`),
+      constants: Object.entries(b.constants ?? {}).map(([cn, value]) => ({ column: col(cn), value })),
+      fields: Object.entries(b.fields ?? {}).map(([an, cn]) => ({ attribute: attr(an), column: col(cn) })),
+      columns: Object.entries(b.columns ?? {}).map(([cn, status]) => ({ column: col(cn), status })),
+    };
+  };
+
   // Entities: pass 1 registers names and ids, pass 2 builds documents.
   for (const p of packages) {
     for (const [name, e] of Object.entries(p.entities ?? {})) {
@@ -343,11 +358,12 @@ export function compile(domain) {
         attributes: names.map((n) => { const a = attrs.find((x) => x.name === n); if (!a) throw new Error(`${name}: alternate key ${akName} names unknown ${n}`); return a.id; }),
       }));
       ent.attrs = attrs;
+      const binding = e.binding ? bindingOf(name, e.binding, attrs) : undefined;
       ent.doc = {
         kind: "entity", id: ent.id, name, displayName: e.displayName ?? sentence(name), pluralName: e.pluralName ?? pluralize(sentence(name)),
         package: pkgOf(p.package, name), abstract: e.abstract, base: e.base ? entityRef(e.base, name).id : undefined, description: e.description.trim(),
         stereotypes: e.stereotypes, tags: e.tags, category: categoryOf.get(p.package), key, alternateKeys: alternateKeys.length ? alternateKeys : undefined,
-        attributes: attrs,
+        attributes: attrs, bindings: binding ? [binding] : undefined,
       };
     }
   }

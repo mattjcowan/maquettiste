@@ -76,11 +76,13 @@ public sealed record PackageRecord(string Id, string Kind, string Name, string? 
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+/// <param name="Bindings">The entity's bindings, one per database it is bound to, by database name (erratum E43).</param>
 public sealed record EntityRecord(string Id, string Kind, string Name, string? Package, bool IsAbstract, string? Base, IReadOnlyList<string> Derived,
     IReadOnlyList<AttributeRecord> Attributes, KeyRecord? Key, IReadOnlyList<AlternateKeyRecord> AlternateKeys, IReadOnlyList<NavigationRecord> Navigations,
     IReadOnlyList<string> Relations, IReadOnlyList<EntityMappingRecord> Mappings, bool IsPromoted, string? PromotedFrom, IReadOnlyList<string> Seeds,
     string? Lifecycle, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
-    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
+    IReadOnlyList<EntityBindingRecord> Bindings);
 
 /// <summary>A resolved attribute of an entity, value object, relation, process context or event payload.</summary>
 /// <param name="Id">The attribute id.</param>
@@ -776,7 +778,7 @@ public static class ResolvedRecords
 
         if (all || scope == "entities")
         {
-            foreach (var e in model.Entities.Where(e => databaseName is null || e.Mappings.ContainsKey(databaseName)))
+            foreach (var e in model.Entities.Where(e => databaseName is null || e.Mappings.ContainsKey(databaseName) || e.Bindings.ContainsKey(databaseName)))
                 yield return new Entry("entity", e.Name, e.Id, () => context.Entity(e));
         }
 
@@ -943,7 +945,8 @@ public static class ResolvedRecords
                 [.. e.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new EntityMappingRecord(m.Value.Database.Id, m.Value.Table.Key, m.Value.Inheritance,
                     m.Value.DiscriminatorColumn?.Key, Plain(m.Value.DiscriminatorValue), [.. m.Value.Columns.Select(c => new ColumnMappingRecord(c.AttributePath, c.Column.Key))]))],
                 e.IsPromoted, e.PromotedFrom?.Id, Ids(e.Seeds), e.Lifecycle?.Id,
-                e.DisplayName, e.PluralName, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation);
+                e.DisplayName, e.PluralName, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation,
+                [.. e.Bindings.OrderBy(b => b.Key, StringComparer.Ordinal).Select(b => BindingViews.Record(b.Value))]);
         }
 
         public AttributeRecord Attribute(RAttribute a, IReadOnlySet<string>? key = null) => new(

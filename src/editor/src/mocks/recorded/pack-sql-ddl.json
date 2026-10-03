@@ -2,14 +2,16 @@
   "name": "sql-ddl",
   "enabled": true,
   "output": "db",
-  "hash": "0b77d4a015236fef4e4d7489eba6cc10e87a248df45308487296ef09a388382c",
+  "hash": "bc91e4e14d0b77d44e839e1cd180160219d936a03cbf4d412025c228ec4d50e0",
   "document": {
     "name": "sql-ddl",
     "version": "1.0.0",
     "engine": ">=1.0 <2.0",
-    "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
+    "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
     "parameters": {
       "comments": true,
+      "objectScripts": false,
+      "processTables": false,
       "quoting": "",
       "referenceStrategy": "lookup-table",
       "schemaScript": "inline",
@@ -45,6 +47,36 @@
         "for": "select databases",
         "output": "{{ kebab database.name }}/seed.sql",
         "mode": "regions"
+      },
+      {
+        "id": "process-tables",
+        "template": "process-tables.scriban",
+        "for": "each process"
+      },
+      {
+        "id": "view",
+        "template": "view.scriban",
+        "for": "each view"
+      },
+      {
+        "id": "sequence",
+        "template": "sequence.scriban",
+        "for": "each sequence"
+      },
+      {
+        "id": "routine",
+        "template": "routine.scriban",
+        "for": "each routine"
+      },
+      {
+        "id": "database-type",
+        "template": "database-type.scriban",
+        "for": "each database type"
+      },
+      {
+        "id": "sql-object",
+        "template": "sql-object.scriban",
+        "for": "each sql object"
       }
     ]
   },
@@ -52,6 +84,20 @@
     {
       "name": "comments",
       "default": true,
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
+      "name": "objectScripts",
+      "default": false,
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
+      "name": "processTables",
+      "default": false,
       "value": null,
       "schema": null,
       "required": false
@@ -92,15 +138,15 @@
   "files": [
     {
       "path": "README.md",
-      "size": 15146,
-      "hash": "213e8fa8110df70d4715fabc642a14877fffd5b8b671bd56b1239f30b97e3040",
+      "size": 23268,
+      "hash": "2168013b4b24a330cbaab3bf419324ef917bbf62ce7729cf0f2d3594c6af54ed",
       "role": "other",
       "usedBy": []
     },
     {
       "path": "_migration.scriban",
-      "size": 13299,
-      "hash": "928aee95c4201eb1e2df1fd06cf22ac1379b1f6f00a16167dd5f7f1b596df7cc",
+      "size": 16873,
+      "hash": "37b29d8cc6cab32c3266203e77c68459574ffd89c6198823ce966adabed7dad5",
       "role": "partial",
       "usedBy": [
         "include:migration.scriban"
@@ -108,19 +154,24 @@
     },
     {
       "path": "_objects.scriban",
-      "size": 4371,
-      "hash": "e339eed0c21399c0439e995167f85cf3de0e92c06d459c4d19f26c9028dc444c",
+      "size": 13046,
+      "hash": "0e7f1ff9a1498e243f5d2d27f6cbc2b86dcf789bd3dfdfd51e53a09427b4f05e",
       "role": "partial",
       "usedBy": [
+        "include:database-type.scriban",
         "include:migration.scriban",
+        "include:routine.scriban",
         "include:schema.scriban",
-        "include:seed.scriban"
+        "include:seed.scriban",
+        "include:sequence.scriban",
+        "include:sql-object.scriban",
+        "include:view.scriban"
       ]
     },
     {
       "path": "_reference.scriban",
-      "size": 25173,
-      "hash": "bedd2dd2b20b7d170d13b9053d6b8bfdbc270434943c821b2ed4bd0b668d1047",
+      "size": 25474,
+      "hash": "5d63a0305407b4101cb3950d6f3f204baa14b7072c0a4e314a29e10f93fc2a14",
       "role": "partial",
       "usedBy": [
         "include:migration.scriban",
@@ -134,21 +185,36 @@
       "hash": "722451ac8b8101b61aec2460ab9e2496d9b32aa6db2510366ef64d2f05e22412",
       "role": "partial",
       "usedBy": [
+        "include:database-type.scriban",
         "include:migration.scriban",
+        "include:process-tables.scriban",
+        "include:routine.scriban",
         "include:schema.scriban",
         "include:seed.scriban",
-        "include:table.scriban"
+        "include:sequence.scriban",
+        "include:sql-object.scriban",
+        "include:table.scriban",
+        "include:view.scriban"
       ]
     },
     {
       "path": "_table.scriban",
-      "size": 2192,
-      "hash": "c3b076451691d21c51398530d8ea505fa33a2a97233f8e1c56cc878f5c51c185",
+      "size": 2330,
+      "hash": "65c5ad28ceb433a0f95dfb75afce042e872be8e3ddec26bea8ac5cc568443ba1",
       "role": "partial",
       "usedBy": [
         "include:migration.scriban",
         "include:schema.scriban",
         "include:table.scriban"
+      ]
+    },
+    {
+      "path": "database-type.scriban",
+      "size": 1035,
+      "hash": "40743cac1d7fd6af47e2f0676a67ad88cd49d85bce69c0e6674a0d0aaa2b36f5",
+      "role": "template",
+      "usedBy": [
+        "unit:database-type"
       ]
     },
     {
@@ -160,8 +226,8 @@
     },
     {
       "path": "migration.scriban",
-      "size": 6587,
-      "hash": "db31daa06dc7458f7ffacf18164fc8540013df27acb847e7d441e69aac5fc150",
+      "size": 8790,
+      "hash": "f35f040cd54953a97800b87b3d55b4c1d9c1530cd54625a9ae93b96f557f9c98",
       "role": "template",
       "usedBy": [
         "unit:migration"
@@ -169,15 +235,33 @@
     },
     {
       "path": "pack.json",
-      "size": 1365,
-      "hash": "0b77d4a015236fef4e4d7489eba6cc10e87a248df45308487296ef09a388382c",
+      "size": 2139,
+      "hash": "bc91e4e14d0b77d44e839e1cd180160219d936a03cbf4d412025c228ec4d50e0",
       "role": "manifest",
       "usedBy": []
     },
     {
+      "path": "process-tables.scriban",
+      "size": 3392,
+      "hash": "cc81f95f2fdec065a9aab34295d3daf500b301c0a8e1907249b5cc44bd3e4ac4",
+      "role": "template",
+      "usedBy": [
+        "unit:process-tables"
+      ]
+    },
+    {
+      "path": "routine.scriban",
+      "size": 964,
+      "hash": "5f78377283c804643ade8b6db4149747db39fb309195f5065807bbb69198ad25",
+      "role": "template",
+      "usedBy": [
+        "unit:routine"
+      ]
+    },
+    {
       "path": "schema.scriban",
-      "size": 2359,
-      "hash": "81e2a36e011ca3c2d5ca64482b2f31b30fbeb471e46a49803cdb0666aa08decf",
+      "size": 2961,
+      "hash": "bbbcd92caa1b27d5e67be2341fc0d15a7dae9924880a4024b5a9da03af839296",
       "role": "template",
       "usedBy": [
         "unit:schema"
@@ -193,14 +277,63 @@
       ]
     },
     {
+      "path": "sequence.scriban",
+      "size": 787,
+      "hash": "e9d668b988aac7e97f5523847d010d596d53dc686f923c2740b1a671c6886cef",
+      "role": "template",
+      "usedBy": [
+        "unit:sequence"
+      ]
+    },
+    {
+      "path": "sql-object.scriban",
+      "size": 829,
+      "hash": "d070b22e7a585a8f8d64163d07cc92f8216baaf71884c8c120a759d9873e4ab9",
+      "role": "template",
+      "usedBy": [
+        "unit:sql-object"
+      ]
+    },
+    {
       "path": "table.scriban",
-      "size": 563,
-      "hash": "8c15daa510450eaa7351967c5573ee7e4e48f76e7de065b420da1d4963157708",
+      "size": 589,
+      "hash": "bdb63a7513972e5ac432d4bdbafd8f3ca5230cdb68edba4322fc0e42d78dd87b",
       "role": "template",
       "usedBy": [
         "unit:table"
       ]
+    },
+    {
+      "path": "view.scriban",
+      "size": 732,
+      "hash": "801e42c1abecf9caa822aee544b539469d8a5f3f7a5d6a3b0c2062a38bddd0f2",
+      "role": "template",
+      "usedBy": [
+        "unit:view"
+      ]
     }
   ],
-  "diagnostics": []
+  "diagnostics": [],
+  "registrations": [
+    {
+      "kind": "helper",
+      "name": "ddl_cycle_breaks",
+      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js"
+    },
+    {
+      "kind": "helper",
+      "name": "ddl_order",
+      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js"
+    },
+    {
+      "kind": "helper",
+      "name": "reference_realization",
+      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js"
+    },
+    {
+      "kind": "selector",
+      "name": "databases",
+      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js"
+    }
+  ]
 }

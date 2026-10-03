@@ -454,6 +454,25 @@ internal sealed class PackRepo : IDisposable
     }
 
     /// <summary>
+    /// The bindings fixture (erratum E43) with both example packs: designed tables bound one to one (Product, an identity key), with a
+    /// soft delete (Customer), shared through an entity_type constant (ProductNote and CustomerNote), and a read-only entity over a
+    /// query (CustomerSummary); no entity is projected. With <paramref name="sqlite"/>, the database is SQLite, so the generated
+    /// repositories run against an in-memory database (CompileTests).
+    /// </summary>
+    /// <param name="sqlite">Whether the database is SQLite instead of PostgreSQL.</param>
+    /// <returns>The repo.</returns>
+    public static PackRepo Bindings(bool sqlite = false)
+    {
+        var repo = new PackRepo();
+        CopyTree(Fixtures.Path("models", "bindings", ".maquettiste"), repo.Repo.ModelRoot);
+        foreach (var pack in Packs)
+            CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", pack), Path.Combine(repo.Repo.ModelRoot, "templates", pack));
+        if (sqlite)
+            repo.EditJson(".maquettiste/model/databases/main/database.json", database => database["dialect"] = "sqlite");
+        return repo;
+    }
+
+    /// <summary>
     /// A fixture model (<c>tests/fixtures/models/&lt;fixture&gt;</c>) with only the TypeScript sample pack
     /// (<c>samples/typescript-pack</c>), writing to the root <c>web</c>. Relative imports end in <c>.ts</c>, so node runs
     /// the output with its type stripping, and zod schemas are off, so the output needs no package beyond node's types.

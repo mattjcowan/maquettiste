@@ -1,0 +1,85 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1JYBMSWAXM6ZBKKR15MS760",
+  "name": "CustomerRemark",
+  "displayName": "Customer remark",
+  "pluralName": "Customer remarks",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A short remark on a customer, kept in the shared remarks table with subject_type 'customer'.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M2B8MQYN8Z9XJTFXMWSSH7XK"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2B8MQYN8Z9XJTFXMWSSH7XK",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the customer remark."
+    },
+    {
+      "id": "01M30XJG4ACQMZ8GBJYMPH6APQ",
+      "name": "customerId",
+      "type": "uuid",
+      "required": true,
+      "description": "Key of the customer the remark is about."
+    },
+    {
+      "id": "01M1QMHEGTG98VYNAQRHQJC3Q3",
+      "name": "body",
+      "type": "text",
+      "required": true,
+      "description": "Remark text."
+    },
+    {
+      "id": "01M29A4YYS2P1TH0YZVVC90J32",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "readOnly": true,
+      "description": "When the remark was written; the database sets it."
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M26ZF2BBWKSCDZ6QTVHCF830",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M2JRG9KN181F9H4KQ18D8FNR",
+      "constants": [
+        {
+          "column": "01M1EHW1K2VGVZZE4EBWZR1EDR",
+          "value": "customer"
+        }
+      ],
+      "fields": [
+        {
+          "attribute": "01M2B8MQYN8Z9XJTFXMWSSH7XK",
+          "column": "01M1V0NZ2AP7B701CTKYADPWJG"
+        },
+        {
+          "attribute": "01M30XJG4ACQMZ8GBJYMPH6APQ",
+          "column": "01M30YKNAPZEAS291SPYZNBY1S"
+        },
+        {
+          "attribute": "01M1QMHEGTG98VYNAQRHQJC3Q3",
+          "column": "01M36KWVW8EWPW1937S70EZ8CS"
+        },
+        {
+          "attribute": "01M29A4YYS2P1TH0YZVVC90J32",
+          "column": "01M2GYPX3V3C1QEFA90D3RVRNX"
+        }
+      ],
+      "columns": [
+        {
+          "column": "01M2GYPX3V3C1QEFA90D3RVRNX",
+          "status": "database"
+        }
+      ]
+    }
+  ]
+}

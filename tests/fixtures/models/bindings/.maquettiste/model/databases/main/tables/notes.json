@@ -1,0 +1,62 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000019",
+  "name": "notes",
+  "database": "01K6BFX0000000000000000002",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000014",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000015",
+      "name": "entity_type",
+      "type": "string",
+      "length": 32,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000016",
+      "name": "entity_id",
+      "type": "string",
+      "length": 40,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000017",
+      "name": "body",
+      "type": "text",
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000018",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "nullable": false,
+      "defaultSql": {
+        "*": "CURRENT_TIMESTAMP"
+      }
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000014"
+    ]
+  },
+  "indexes": [
+    {
+      "id": "01K6BFX0000000000000000020",
+      "columns": [
+        {
+          "column": "01K6BFX0000000000000000015"
+        },
+        {
+          "column": "01K6BFX0000000000000000016"
+        }
+      ]
+    }
+  ]
+}

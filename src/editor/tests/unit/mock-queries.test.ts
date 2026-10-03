@@ -129,11 +129,13 @@ describe("the billing queries", () => {
 
   it("render the same against the engine's recorded view", () => {
     const backend = new MockBackend();
-    const view = (recorded as unknown as { view: DatabaseView }).view;
-    expect(view.queries).toBeUndefined();
+    // The recording carries the engine's own queries: the mock resolves them again over the recorded tables and agrees.
+    const { queries: engine, ...rest } = (recorded as unknown as { view: DatabaseView }).view;
+    const view = rest as DatabaseView;
     const result = resolveQueries(view, backend.model.docs());
     expect(result.diagnostics).toEqual([]);
     expectGolden({ ...view, queries: result.queries });
+    expect(result.queries.map((q) => q.sql)).toEqual(engine!.map((q) => q.sql));
   });
 
   it("follow each dialect's quoting, paging, spelling and literals", () => {

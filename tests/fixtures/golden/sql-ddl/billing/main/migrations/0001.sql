@@ -86,6 +86,17 @@ CREATE TABLE billing.payment_invoice (
     CONSTRAINT fk_payment_invoice_invoices_id FOREIGN KEY (invoices_id) REFERENCES billing.invoices (id) ON DELETE CASCADE
 );
 
+CREATE TABLE billing.notes (
+    id uuid NOT NULL,
+    entity_type varchar(32) NOT NULL,
+    entity_id uuid NOT NULL,
+    body text NOT NULL,
+    created_at timestamptz(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_notes PRIMARY KEY (id)
+);
+CREATE INDEX ix_notes_entity_type_entity_id ON billing.notes (entity_type, entity_id);
+COMMENT ON TABLE billing.notes IS 'Free-text notes on invoices and customers: one table, told apart by entity_type.';
+
 CREATE VIEW billing.outstanding_invoices AS
 select id, number, issued_on from billing.invoices where status = 'I';
 

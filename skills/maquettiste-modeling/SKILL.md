@@ -14,7 +14,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | Folder | Element | Notes |
 | --- | --- | --- |
 | packages/ | domain (package) | groups elements; may nest through `parent` |
-| entities/ | entity, with attributes and keys | `stereotypes` add virtual attributes (audited, soft-delete, tenant-scoped) |
+| entities/ | entity, with attributes, keys and `bindings` (one per database: how it reads and writes) | `stereotypes` add virtual attributes (audited, soft-delete, tenant-scoped) |
 | relations/ | named relation with ends (roles, cardinality) and optional attributes | many-to-many or attributed relations become junction tables |
 | enums/ | closed value set with codes, stored as an integer or a string | data that grows or needs a lookup table is a reference type |
 | types/ | value objects and custom scalar types | reusable across attributes |
@@ -26,7 +26,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | databases/<db>/types/ | database type (`kind: "database-type"`): a domain, composite, enum or range the database owns | a column uses it by naming its id or name in `nativeType` |
 | databases/<db>/objects/ | SQL object (`kind: "sql-object"`): a trigger, grant, extension or anything else, statements per dialect | `phase` before or after the tables; `dependsOn` orders it |
 | databases/<db>/queries/ | query (`kind: "query"`): `from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`, `collections` as JSON trees over the database's tables and views, with an `entity` as the row shape or, without one, the select list | column refs are `alias.<column key>` (the key `get_database_view` lists: an attribute id, a designed column's id), names accepted; never SQL text but an `sql` expression per dialect |
-| mappings/ | entity-to-table bindings that conventions cannot express | |
+| mappings/ | projection overrides of older models, and relation mappings (`foreignKey`, junctions) | new work binds entities in their own file instead |
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
 | actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; not in a domain |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
@@ -62,7 +62,8 @@ clobber a concurrent edit or leave a dangling id.
      (an element rename also moves its file).
 4. Check: a successful save already returns `diagnostics`; `validate` (optionally scoped by `elementIds`) checks the model.
    For a query, `preview_query_sql` returns the SQL it renders (for its database's dialect or another) with the diagnostics
-   (MQ4021 to MQ4043) that point at the node to fix.
+   (MQ4021 to MQ4043) that point at the node to fix. For an entity's binding, `preview_binding_sql` returns its select,
+   insert, update and delete statements; `validate` reports MQ4044 to MQ4054 for bindings.
    Custom property schemas (`extensions/<name>.json`) and script rules (`extensions/rules/<name>.js`, findings `x/<id>`, run by `validate`) are files: `list_extension_files`, `read_extension_file`, `write_extension_file` (with `expectedHash`, `new` to create; a rule's syntax error comes back at once), `move_extension_file`, `delete_extension_file`.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
    per database; `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as
@@ -140,6 +141,16 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   `packages` is empty). MQ4012 (info) names an entity that lands in no database; MQ4013 (warning) a `packages` list that
   `all` or `none` does not use. Never add a database or a mapping just to silence MQ4012: which entities become tables,
   and how, is the user's decision.
+- Bind entities explicitly. The database knows nothing about entities; an entity's `bindings` (one per database) say where it
+  reads (`source`: a table, a view or a query of that database), its `constants` (a filter on every read and a value on every
+  insert: how several entities share one table through an `entity_type` column), which column each attribute reads
+  (`fields`), the columns no field maps (`columns`: `ignored`, `database` or `computed`; leaving one out is MQ4047), where it
+  writes (`write`, `"none"` for a read-only entity) and how it deletes (`delete`: `key`, `soft` or `none`). A bound entity is
+  never projected. To turn an entity the database projects into a table of its own, use materialize instead of relying on
+  projection: `get_materialize_status`, `preview_materialize`, then `apply_batch` with `{"op":"materialize-tables",
+  "database":...,"entities":[...]}`; to make entities from existing tables, `{"op":"materialize-entities","database":...,
+  "tables":[...],"package":...}`. From a terminal: `maquettiste model materialize tables|entities ... --dry-run`. Which
+  tables to materialize, and when, is the user's decision.
 - Reference data (units, countries, statuses that grow) is a reference type with its rows in a seed; an entity's
   starting rows are a seed of that entity. Deleting an element deletes its seeds and translations in the same save.
 - The engine creates no table or column for reference data on its own: the packs decide the physical form, from the

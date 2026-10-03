@@ -79,6 +79,7 @@ internal static class ModelIndexer
         _ when type == typeof(ProcessGate) => "gate",
         _ when type == typeof(GateMeaning) => "meaning",
         _ when type == typeof(ScenarioStep) => "step",
+        _ when type == typeof(EntityBinding) => "binding",
         _ when type == typeof(AlternateKey) || type == typeof(UniqueConstraint) || type == typeof(ForeignKey)
             || type == typeof(CheckConstraint) || type == typeof(TableIndex) => "key",
         _ => null,
@@ -763,6 +764,7 @@ internal static class ModelIndexer
             ReferenceCode c => c.Id,
             ReferenceLabel l => l.Id,
             IProcessNode n => n.Id,
+            EntityBinding b => b.Id,
             _ => null,
         };
 

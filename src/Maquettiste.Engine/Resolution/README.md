@@ -98,8 +98,16 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   the routines and database types it uses, the result and collection entities; the database lists add `k:query`
   (engine-design.md section 7, "Queries").
 
+- Bindings (`DatabaseRun.Bindings.cs`, `ResolvedBindings.cs`, 2026-10-02, erratum E43): an entity's binding to the database
+  is collected before placement, so the entity is never projected there (a mapping element for it is MQ4054 and ignored); a
+  binding that writes or reads a designed table gives the entity a `ViaBinding` placement on that table for relations only (no
+  entity mapping, no `RTable.Entity`, no attribute columns). After the queries each binding resolves into `REntityBinding` on
+  `REntity.Bindings` and on the `BoundBy` of the tables, views and queries it uses, and reports MQ4044 to MQ4053 with the
+  pointer of its entry; the objects it names list the entity's file among their dependency keys (engine-design.md section 7,
+  "Bindings and materialize").
+
 Tests: `tests/Maquettiste.Engine.Tests/Resolution/` (golden billing model in `Golden/billing/resolved.txt`, rewritten with
-`MAQUETTISTE_UPDATE_GOLDEN=1`).
+`MAQUETTISTE_UPDATE_GOLDEN=1`; bindings in `BindingTests.cs`).
 
 ## Index overrides from table files (integration fix, 2026-09-28)
 

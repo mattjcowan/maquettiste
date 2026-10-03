@@ -20,6 +20,7 @@ internal sealed partial class ResolveRun
     private readonly Dictionary<string, List<RNavigation>> _navigations = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<RRelation>> _relationsByEntity = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SortedDictionary<string, REntityMapping>> _entityMappings = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SortedDictionary<string, REntityBinding>> _entityBindings = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SortedDictionary<string, RRelationMapping>> _relationMappings = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SortedDictionary<string, RSequence>> _keySequences = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Database, string Element), Mapping> _mappings = [];
@@ -108,6 +109,9 @@ internal sealed partial class ResolveRun
         mapping.TemplateDefined = TemplateDefinedOf(entity.Attributes, database, entity.Id);
         Map(_entityMappings, entity.Id)[database] = mapping;
     }
+
+    /// <summary>Records an entity's binding to a database (erratum E43).</summary>
+    public void SetEntityBinding(REntity entity, string database, REntityBinding binding) => Map(_entityBindings, entity.Id)[database] = binding;
 
     /// <summary>Records a relation's mapping in a database.</summary>
     public void SetRelationMapping(RRelation relation, string database, RRelationMapping mapping)
@@ -679,6 +683,7 @@ internal sealed partial class ResolveRun
         r.Relations = new RList<RRelation>(relations, relations.Count == 0 ? deps.ToList() : new DependencySet(Keys).AddRange(deps.ToList()).AddRange(_entityMembership).ToList());
         r.Derived = new RList<REntity>(derivedByBase.TryGetValue(r, out var derivedList) ? derivedList : [], [Keys.Referrers(r.Id)]);
         r.Mappings = _entityMappings.TryGetValue(r.Id, out var mappings) ? SortedMap(mappings) : ImmutableSortedDictionary<string, REntityMapping>.Empty;
+        r.Bindings = _entityBindings.TryGetValue(r.Id, out var bindings) ? SortedMap(bindings) : ImmutableSortedDictionary<string, REntityBinding>.Empty;
         if (r.Key is { } key && _keySequences.TryGetValue(r.Id, out var sequences))
             key.Sequences = SortedMap(sequences);
         return navigations;

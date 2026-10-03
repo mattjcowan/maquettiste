@@ -1,0 +1,62 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BFX0000000000000000032",
+  "name": "Customer",
+  "package": "01K6BFX0000000000000000001",
+  "description": "A customer; deleting one only marks it deleted.",
+  "key": {
+    "attributes": [
+      "01K6BFX0000000000000000028"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000028",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000029",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000030",
+      "name": "email",
+      "type": "string",
+      "length": 254
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BFX0000000000000000031",
+      "database": "01K6BFX0000000000000000002",
+      "source": "01K6BFX0000000000000000013",
+      "fields": [
+        {
+          "attribute": "01K6BFX0000000000000000028",
+          "column": "01K6BFX0000000000000000009"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000029",
+          "column": "01K6BFX0000000000000000010"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000030",
+          "column": "01K6BFX0000000000000000011"
+        }
+      ],
+      "delete": {
+        "soft": {
+          "column": "01K6BFX0000000000000000012",
+          "value": true
+        }
+      }
+    }
+  ]
+}

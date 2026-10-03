@@ -1,5 +1,5 @@
 {
-  "id": "01M3PNSXJGXGSMDKF3X1C6SRB6",
+  "id": "01M3ZM68H657E41WA5WAEKBH4Y",
   "request": {
     "mode": "apply",
     "packs": null,
@@ -23,7 +23,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/table:01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "1bfcf0a6549b3ea0559a31eb674b8d847100ba4dd072f4afd3af15cbd90fd9ea",
+      "newHash": "e1bd550d2adb018663949fb752236d61190cc0aa9a199e92fbe171ccac001d6f",
       "diff": null
     },
     {
@@ -41,7 +41,16 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/table:01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "fd10b3882620caf2dcf93c38239e25b1980e5fe0fa256cb876d71dbaba0efd21",
+      "newHash": "1403b0912fffe89bd8728d627036a87313957eb3ff1e8fb25d8d4eaac69c9b95",
+      "diff": null
+    },
+    {
+      "path": "db/main/billing/tables/notes.sql",
+      "kind": "added",
+      "pack": "sql-ddl",
+      "unitKey": "sql-ddl/table:01K6BND0000000000000000001",
+      "oldHash": null,
+      "newHash": "9999907c0d44f5bb617a5c9f2676e6c52c5b4d4e967cd03b21dafcac00d98f25",
       "diff": null
     },
     {
@@ -77,7 +86,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/migration:01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "o:481d586e1ded7263ab66e03049f7b38456cb23aed82d00308a723dd491ffbe7e",
+      "newHash": "o:4b6951c6db4b690f870a67a03067afcd90b4123e81ac7a5512f6b2be771881f1",
       "diff": null
     },
     {
@@ -86,7 +95,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/schema:01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "bb50749bd3908cdb43f74088a1f54766fe4ad431f653fa10f1ce952dce46bf6c",
+      "newHash": "9b03ac1658b328fe813efb12d5f2529bb375070d2aac9d4aaf6e6c16bd5ea65e",
       "diff": null
     },
     {
@@ -104,7 +113,7 @@
       "pack": "csharp-dapper",
       "unitKey": "csharp-dapper/registrations",
       "oldHash": null,
-      "newHash": "87056b9d6d823a13709eba6618c91d3ffba5bbed306b399c5064743cd917d7b0",
+      "newHash": "791f13145fecbfc223da06145cc294a74ab0af541eb7f63d4cc3943cef325a0a",
       "diff": null
     },
     {
@@ -162,6 +171,33 @@
       "diff": null
     },
     {
+      "path": "src/Generated/Billing/CustomerNote.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/entity:01K6BND0000000000000000020",
+      "oldHash": null,
+      "newHash": "o:3d13e3c6e3872f70eff79e07033e6b72b4cadebe4a519b9dbf4b0f2329be2f9c",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Billing/CustomerNote.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/entity:01K6BND0000000000000000020",
+      "oldHash": null,
+      "newHash": "5fba5b7a6032c36ba298f65d6bb8806d823cdc5946c71515eede1dfd7642639c",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Billing/CustomerNoteRepository.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/repository:01K6BND0000000000000000020",
+      "oldHash": null,
+      "newHash": "0ab24f1273fae1cd424e6baaa2a968a4c26923f9f4c21e5c62652c070af1e3cb",
+      "diff": null
+    },
+    {
       "path": "src/Generated/Billing/CustomerRepository.g.cs",
       "kind": "added",
       "pack": "csharp-dapper",
@@ -213,6 +249,33 @@
       "unitKey": "csharp-dapper/repository:01J92P0V0GWFR78HZH0P8Z3GY7",
       "oldHash": null,
       "newHash": "7b2a71c174cf9e32ec993eb496396eecd850332c4b71a96ec43874109744646a",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Billing/InvoiceNote.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/entity:01K6BND0000000000000000010",
+      "oldHash": null,
+      "newHash": "o:93eb1246fa9f5cd5c283b9cec4e81e0b834b13d39c0aa4a587701e459f7a1db7",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Billing/InvoiceNote.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/entity:01K6BND0000000000000000010",
+      "oldHash": null,
+      "newHash": "414d48cb37b9c7d964d892689549e5b6b3d3d1f21f772f1831f2b818f52acba0",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Billing/InvoiceNoteRepository.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/repository:01K6BND0000000000000000010",
+      "oldHash": null,
+      "newHash": "e91f315865799d528f32da93c2e2049eab80592f7a7136d4d46f715e60553c7f",
       "diff": null
     },
     {
@@ -270,12 +333,75 @@
       "diff": null
     },
     {
+      "path": "src/Generated/Billing/RevenueMonth.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/entity:01K6BND0000000000000000030",
+      "oldHash": null,
+      "newHash": "o:8af1a282623a280d03ae072170e3b88396d33c5d3d684ae2b438df5039646ef6",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Billing/RevenueMonth.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/entity:01K6BND0000000000000000030",
+      "oldHash": null,
+      "newHash": "da144946d31723ccb54e3f61a3f0056d9f68ea38e5ddc497f91bfa46e96a0e94",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Billing/RevenueMonthRepository.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/repository:01K6BND0000000000000000030",
+      "oldHash": null,
+      "newHash": "b0a3e4eec1c8ec770cb3bf726f78c61d928084d0565d7699206ec29fbac1dd01",
+      "diff": null
+    },
+    {
       "path": "src/Generated/DapperTypeHandlers.g.cs",
       "kind": "added",
       "pack": "csharp-dapper",
       "unitKey": "csharp-dapper/type-handlers",
       "oldHash": null,
       "newHash": "2db3e8b4e9f1605836186f55858914df7974fb62584873d25bb38dc7f1def234",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Queries/FindCustomersWithIssuedInvoicesQuery.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/query:01K6QRY0000000000000000003",
+      "oldHash": null,
+      "newHash": "f569a09c2bdcf559eb8b5c19fcc1455b9d5b3de5a0b50baa33d99d9f962afc1a",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Queries/InvoicesByCustomerQuery.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/query:01K6QRY0000000000000000001",
+      "oldHash": null,
+      "newHash": "5a8f936584e132da93536190143c6cf6f9fd86bf13aa7b50253b5ce586e3b99e",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Queries/QueryRegistrations.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/registrations",
+      "oldHash": null,
+      "newHash": "77ace9fdc3ad48fa1dd93610a5f7932e47f08493e5c683d4c9dc46f48585f869",
+      "diff": null
+    },
+    {
+      "path": "src/Generated/Queries/RevenueByMonthQuery.g.cs",
+      "kind": "added",
+      "pack": "csharp-dapper",
+      "unitKey": "csharp-dapper/query:01K6QRY0000000000000000002",
+      "oldHash": null,
+      "newHash": "81da8ad40e9a47baa27bc8b5f37d9df71011bf182be5cb7d9354e1bb4b5ef54a",
       "diff": null
     }
   ],

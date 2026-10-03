@@ -117,7 +117,8 @@ internal static class BuiltinHelpers
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_tag", "in_category", "lookup",
         "banner", "file", "row", "row_uuid", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
-        "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters");
+        "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
+        "binding_sql", "binding_sql_parameters");
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
     public static readonly FrozenSet<string> Variables = FrozenSet.Create(StringComparer.Ordinal,
@@ -181,6 +182,8 @@ internal static class BuiltinHelpers
         Add(builtins, "query_sql", 1, 3, (c, a) => QuerySqlText(c, "query_sql", a));
         Add(builtins, "query_collection_sql", 1, 3, (c, a) => QuerySqlText(c, "query_collection_sql", a));
         Add(builtins, "query_sql_parameters", 1, 3, (c, a) => QuerySqlText(c, "query_sql_parameters", a));
+        Add(builtins, "binding_sql", 2, 4, (c, a) => BindingSqlText(c, "binding_sql", a));
+        Add(builtins, "binding_sql_parameters", 2, 4, (c, a) => BindingSqlText(c, "binding_sql_parameters", a));
         Add(builtins, "indent", 2, 2, (_, a) => Indent(AsText(a[0]), IndentPrefix(a[1])));
         Add(builtins, "dedent", 1, 1, (_, a) => Dedent(AsText(a[0])));
         Add(builtins, "escape_md", 1, 1, (_, a) => EscapeMarkdown(AsText(a[0])));
@@ -623,6 +626,47 @@ internal static class BuiltinHelpers
                 query = parent;
             return query;
         }
+    }
+
+    /// <summary>
+    /// <c>binding_sql(binding, statement, dialect?, options?)</c>: one statement of an entity binding (<c>select</c>,
+    /// <c>select-by-key</c>, <c>insert</c>, <c>update</c>, <c>delete</c>) as <see cref="BindingSql"/> renders it for the binding's
+    /// database's dialect or the one named (a name or a database), empty when the binding does not have it; <c>options</c> takes
+    /// <c>placeholder</c> (<c>@</c>, <c>:</c> or <c>$</c>). <c>binding_sql_parameters(binding, statement, dialect?, options?)</c> (the
+    /// options may stand in the dialect's place) returns the statement's parameter names in placeholder order.
+    /// </summary>
+    private static object BindingSqlText(TrackingTemplateContext context, string name, IReadOnlyList<object?> args)
+    {
+        if (args.Count == 3 && args[2] is IDictionary<string, object?>)
+            args = [args[0], args[1], null, args[2]];
+        if (args[0] is not REntityBinding binding)
+            throw new RenderHelperException("MQ6006", $"`{name}` takes a binding (entity.bindings[database name]), not a {TemplateValues.TypeName(args[0])}.");
+        var statement = AsText(args[1]);
+        var dialect = args.Count > 2 ? args[2] switch
+        {
+            null => null,
+            RDatabase database => database.Dialect,
+            var other => AsText(other) is { Length: > 0 } text ? text : null,
+        } : null;
+        var options = QuerySqlOptions.Default;
+        if (args.Count > 3 && args[3] is IDictionary<string, object?> map)
+            options = new QuerySqlOptions { Placeholder = map.TryGetValue("placeholder", out var placeholder) && placeholder is not null ? AsText(placeholder) : "@" };
+        else if (args.Count > 3 && args[3] is not null)
+            throw new RenderHelperException("MQ6006", $"`{name}` takes its options as an object ({{ placeholder: \"@\" }}).");
+        context.Recorder.RecordObject(binding);
+        QuerySqlText result;
+        try
+        {
+            result = BindingSql.Render(binding, statement, dialect, options);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new RenderHelperException("MQ6006", $"`{name}`: " + ex.Message);
+        }
+
+        if (result.Diagnostics.Count > 0)
+            throw new RenderHelperException(result.Diagnostics[0].Rule, result.Diagnostics[0].Message);
+        return name == "binding_sql_parameters" ? new ScriptArray(result.Parameters) : result.Sql;
     }
 
     /// <summary>Parses a dialect name or fails the render with MQ6006.</summary>

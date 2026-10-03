@@ -3,7 +3,7 @@
 # Two databases: northwind_schema gets db/main/schema.sql, northwind_migrations gets every db/main/migrations/*.sql in
 # order; both then get db/main/seed.sql (northwind_schema twice: the seed must be rerunnable). Every script runs with
 # ON_ERROR_STOP=1. Afterwards both databases must hold exactly the tables, views and sequences that schema.sql creates,
-# and, when NW_EXPECT is set, that count too (for example "209 tables, 1 views, 3 sequences"). Run from anywhere.
+# and, when NW_EXPECT is set, that count too (for example "210 tables, 1 views, 3 sequences"). Run from anywhere.
 #
 #   samples/reference-app/tools/db-apply.sh [project dir]    # default: samples/reference-app
 #   samples/reference-app/tools/db-apply.sh --down           # remove the container
@@ -27,7 +27,9 @@ else
     docker run -d --name "$name" -e POSTGRES_PASSWORD=postgres "$image" >/dev/null
   fi
   i=0
-  until docker exec "$name" psql -U postgres -tAc 'SELECT 1' >/dev/null 2>&1; do
+  # Probe over TCP: on first start the image runs a temporary server on the local socket only (for its init scripts),
+  # then restarts; a socket probe can succeed against that one and the next statement then finds no server.
+  until docker exec -e PGPASSWORD=postgres "$name" psql -h 127.0.0.1 -U postgres -tAc 'SELECT 1' >/dev/null 2>&1; do
     i=$((i + 1)); [ $i -lt 60 ] || { echo "PostgreSQL did not start" >&2; exit 1; }; sleep 1
   done
   psql() { docker exec -i "$name" psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }

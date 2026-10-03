@@ -58,7 +58,7 @@ test("a database with tables: deleting with dependents takes its tables, views, 
 
   const dialog = page.getByTestId("delete-plan-dialog");
   const deletes = dialog.getByTestId("delete-plan-deletes");
-  await expect(deletes).toContainText("Will be deleted (13)");
+  await expect(deletes).toContainText("Will be deleted (14)");
   for (const name of [
     "Invoice register",
     "outstanding_invoices",
@@ -73,10 +73,11 @@ test("a database with tables: deleting with dependents takes its tables, views, 
     "InvoicesByCustomer",
     "RevenueByMonth",
     "FindCustomersWithIssuedInvoices",
+    "notes",
   ])
     await expect(deletes).toContainText(name);
   await expect(deletes).toContainText("needs database main");
-  await expect(dialog.getByTestId("delete-with-dependents")).toHaveText("Delete with 13 dependents");
+  await expect(dialog.getByTestId("delete-with-dependents")).toHaveText("Delete with 14 dependents");
 
   await dialog.getByTestId("delete-with-dependents").click();
   await expect(dialog).toHaveCount(0);

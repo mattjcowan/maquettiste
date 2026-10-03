@@ -160,6 +160,12 @@ public sealed class RTable : RAnnotated
 
     /// <summary>Whether the table is a relation's junction table.</summary>
     public bool IsJunction { get; internal set; }
+
+    /// <summary>
+    /// The entity bindings that read or write the table (erratum E43), by (entity name, entity id): the entities that materialize from
+    /// it, several when constants (an entity type column) tell them apart. The table itself knows nothing about them.
+    /// </summary>
+    public IReadOnlyList<REntityBinding> BoundBy { get; internal set; } = [];
 }
 
 /// <summary>A resolved primary key.</summary>
@@ -389,6 +395,9 @@ public sealed class RView : RAnnotated
 
     /// <summary>The comment.</summary>
     public string? Comment { get; internal set; }
+
+    /// <summary>The entity bindings that read the view (erratum E43), by (entity name, entity id).</summary>
+    public IReadOnlyList<REntityBinding> BoundBy { get; internal set; } = [];
 }
 
 /// <summary>A column of a resolved view.</summary>

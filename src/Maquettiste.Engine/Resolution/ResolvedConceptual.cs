@@ -66,6 +66,9 @@ public sealed class REntity : RElement
     /// <summary>Mappings by database name.</summary>
     public IReadOnlyDictionary<string, REntityMapping> Mappings { get; internal set; } = FrozenDictionary<string, REntityMapping>.Empty;
 
+    /// <summary>Bindings by database name (erratum E43): how the entity reads from and writes to each database it is bound to.</summary>
+    public IReadOnlyDictionary<string, REntityBinding> Bindings { get; internal set; } = FrozenDictionary<string, REntityBinding>.Empty;
+
     /// <summary>Whether the entity was generated from a promoted relation.</summary>
     public bool IsPromoted { get; internal set; }
 

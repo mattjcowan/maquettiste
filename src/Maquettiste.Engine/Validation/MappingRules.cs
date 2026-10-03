@@ -14,6 +14,9 @@ internal static class MappingRules
     /// <param name="report">The report.</param>
     public static void CheckEntityPlacement(ValidationContext context, Entity entity, Report report)
     {
+        // A binding places the entity in its database (erratum E43).
+        if (entity.Bindings.Any(b => context.Model.Get<Database>(b.Database) is not null))
+            return;
         var any = false;
         foreach (var database in context.Model.All<Database>())
         {

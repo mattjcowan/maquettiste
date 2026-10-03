@@ -6,6 +6,7 @@
         "package": "01J92P0V01KDRN8GX5PGYCNKSX",
         "abstract": false,
         "base": null,
+        "lifecycle": null,
         "key": {
           "attributes": [
             "01J92P0V11B0FJNJV9V21CSEM1"
@@ -133,6 +134,7 @@
             "source": null
           }
         ],
+        "bindings": [],
         "$schema": "../../.schema/v1/entity.json",
         "id": "01J92P0V0HEGSC6MW92CST5KA6",
         "name": "Payment",
@@ -204,6 +206,7 @@
         "package": "01J92P0V01KDRN8GX5PGYCNKSX",
         "abstract": false,
         "base": null,
+        "lifecycle": null,
         "key": {
           "attributes": [
             "01J92P0V0Q9EK961M5HAQ3C5MY"
@@ -391,6 +394,7 @@
             "source": null
           }
         ],
+        "bindings": [],
         "$schema": "../../.schema/v1/entity.json",
         "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
         "name": "Invoice",

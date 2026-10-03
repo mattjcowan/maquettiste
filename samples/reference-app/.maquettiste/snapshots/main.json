@@ -3,7 +3,7 @@
   "database": "01M34AZ3RECQSPQQX1DXTCN03G",
   "name": "main",
   "dialect": "postgresql",
-  "revision": 3,
+  "revision": 4,
   "tables": [
     {
       "key": "01M1D4CTN6F0HS5SZQC5VH8H2N@01M34AZ3RECQSPQQX1DXTCN03G",
@@ -19038,6 +19038,73 @@
         }
       ],
       "comment": "An authority that levies sales tax - a country, state, county or city."
+    },
+    {
+      "key": "01M2JRG9KN181F9H4KQ18D8FNR",
+      "name": "remarks",
+      "schema": "northwind",
+      "columns": [
+        {
+          "key": "01M1V0NZ2AP7B701CTKYADPWJG",
+          "name": "id",
+          "type": "uuid",
+          "nativeType": "uuid",
+          "comment": "Remark key."
+        },
+        {
+          "key": "01M1EHW1K2VGVZZE4EBWZR1EDR",
+          "name": "subject_type",
+          "type": "string",
+          "length": 32,
+          "nativeType": "varchar(32)",
+          "comment": "What the remark is about, customer or sales-order."
+        },
+        {
+          "key": "01M30YKNAPZEAS291SPYZNBY1S",
+          "name": "subject_id",
+          "type": "uuid",
+          "nativeType": "uuid",
+          "comment": "Key of the customer or sales order."
+        },
+        {
+          "key": "01M36KWVW8EWPW1937S70EZ8CS",
+          "name": "body",
+          "type": "text",
+          "nativeType": "text",
+          "comment": "Remark text."
+        },
+        {
+          "key": "01M2GYPX3V3C1QEFA90D3RVRNX",
+          "name": "created_at",
+          "type": "datetimeoffset",
+          "precision": 6,
+          "nativeType": "timestamptz(6)",
+          "defaultSql": "CURRENT_TIMESTAMP",
+          "comment": "When the remark was written."
+        }
+      ],
+      "primaryKey": {
+        "key": "pk",
+        "name": "pk_remarks",
+        "columns": [
+          "01M1V0NZ2AP7B701CTKYADPWJG"
+        ]
+      },
+      "indexes": [
+        {
+          "key": "ix:01M1EHW1K2VGVZZE4EBWZR1EDR,01M30YKNAPZEAS291SPYZNBY1S",
+          "name": "ix_remarks_subject",
+          "columns": [
+            {
+              "column": "01M1EHW1K2VGVZZE4EBWZR1EDR"
+            },
+            {
+              "column": "01M30YKNAPZEAS291SPYZNBY1S"
+            }
+          ]
+        }
+      ],
+      "comment": "Written by the order desk; read on the customer and order pages."
     },
     {
       "key": "01M2JSECEQ3FD3TKWAQR961TJ0@01M34AZ3RECQSPQQX1DXTCN03G",

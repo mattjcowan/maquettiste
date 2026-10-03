@@ -1,8 +1,13 @@
 {{-
-# A Dapper repository per mapped entity, written as a file block so entities without a usable mapping produce no file.
+# A Dapper repository per mapped or bound entity, written as a file block so entities without a usable mapping produce no file.
+# A bound entity's repository comes from its binding (_binding.scriban, erratum E43).
 include "_csharp.scriban"
 include "_dapper.scriban"
-if has_repository(entity)
+if dapper_binding(entity)
+  if has_repository(entity)
+    include "_binding.scriban"
+  end
+else if has_repository(entity)
   name = type_name(entity)
   m = dapper_mapping(entity)
   t = m.table

@@ -1,0 +1,78 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BFX0000000000000000038",
+  "name": "ProductNote",
+  "package": "01K6BFX0000000000000000001",
+  "description": "A note on a product, in the shared notes table with entity_type 'product'.",
+  "key": {
+    "attributes": [
+      "01K6BFX0000000000000000033"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000033",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000034",
+      "name": "sku",
+      "type": "string",
+      "length": 40,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000035",
+      "name": "body",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000036",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "readOnly": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BFX0000000000000000037",
+      "database": "01K6BFX0000000000000000002",
+      "source": "01K6BFX0000000000000000019",
+      "constants": [
+        {
+          "column": "01K6BFX0000000000000000015",
+          "value": "product"
+        }
+      ],
+      "fields": [
+        {
+          "attribute": "01K6BFX0000000000000000033",
+          "column": "01K6BFX0000000000000000014"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000034",
+          "column": "01K6BFX0000000000000000016"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000035",
+          "column": "01K6BFX0000000000000000017"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000036",
+          "column": "01K6BFX0000000000000000018"
+        }
+      ],
+      "columns": [
+        {
+          "column": "01K6BFX0000000000000000018",
+          "status": "database"
+        }
+      ]
+    }
+  ]
+}

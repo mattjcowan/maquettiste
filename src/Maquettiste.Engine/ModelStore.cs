@@ -207,7 +207,7 @@ public sealed partial class ModelStore : IAsyncDisposable
                 continue;
             }
 
-            if (IsSchemaOperation(o.Op) || IsProcessOperation(o.Op))
+            if (IsSchemaOperation(o.Op) || IsProcessOperation(o.Op) || IsMaterializeOperation(o.Op))
             {
                 schemaOps = true;
                 continue;
@@ -968,6 +968,20 @@ public enum BatchOp
     [JsonStringEnumMemberName("set-default-schema")] SetDefaultSchema,
 
     /// <summary>
+    /// <c>materialize-tables</c>: for each of <c>entities</c>, a designed table of <c>database</c> with the shape the entity's projection
+    /// has, and a binding of the entity to it (erratum E43); the entity's overlay folds into the table and its mapping to the database
+    /// is deleted. Refused (MQ4055) for an entity already bound to the database.
+    /// </summary>
+    [JsonStringEnumMemberName("materialize-tables")] MaterializeTables,
+
+    /// <summary>
+    /// <c>materialize-entities</c>: for each of <c>tables</c> (designed or imported tables and views of <c>database</c>), an entity in
+    /// <c>package</c> with one attribute per column, its key from the primary key and a binding (erratum E43); foreign keys between them
+    /// become many-to-one relations. Refused (MQ4055) for a table an entity is already bound to.
+    /// </summary>
+    [JsonStringEnumMemberName("materialize-entities")] MaterializeEntities,
+
+    /// <summary>
     /// <c>sync-enum</c>: makes the members of the enum bound by lifecycle process <c>id</c> its bound states in document order, keeping
     /// the ids, codes and descriptions of the members it keeps (phase-3-design.md section 2.3). A removal of a member a default,
     /// allowed values, a seed cell or a scenario value uses refuses the operation (MQ9019), as does another operation of the batch
@@ -1005,9 +1019,14 @@ public enum BatchOp
 /// child state (set-initial).</param>
 /// <param name="Default">The schema id that becomes the default when the removed schema is the default (remove-schema).</param>
 /// <param name="Resolution">What a delete does with references to the element (delete); absent means <see cref="DeleteResolution.Refuse"/>.</param>
+/// <param name="Database">The database id (materialize-tables, materialize-entities).</param>
+/// <param name="Entities">The entity ids (materialize-tables).</param>
+/// <param name="Tables">The table and view ids (materialize-entities).</param>
+/// <param name="Package">The package id the entities go to (materialize-entities).</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
-    string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null);
+    string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
+    string? Database = null, IReadOnlyList<string>? Entities = null, IReadOnlyList<string>? Tables = null, string? Package = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

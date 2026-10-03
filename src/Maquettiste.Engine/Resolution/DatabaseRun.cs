@@ -87,6 +87,7 @@ internal sealed partial class DatabaseRun
     {
         foreach (var schema in _db.Schemas)
             _schemaNames.TryAdd(schema.Id, schema.Name);
+        CollectBindings();
         CollectPhysicalFiles();
         ComputePlacements();
         CreateEntityTables();
@@ -152,6 +153,7 @@ internal sealed partial class DatabaseRun
                 Comment = view.Comment,
             };
             var deps = new DependencySet(_run.Keys).Element(view.Id).Element(_db.Id).Referrers(view.Id).Add(TypeMaps);
+            AddBinderKeys(deps, view.Id);
             _run.FillPhysicalAnnotations(r, view, deps);
             r.Dependencies = deps.ToList();
             _views.Add((r, view.Id));
@@ -328,6 +330,11 @@ internal sealed partial class DatabaseRun
     private void AddTable(TableBuild t)
     {
         _run.FillPhysicalAnnotations(t.Table, t.Source ?? t.Overlay, t.Deps);
+        AddBinderKeys(t.Deps, t.Table.Key);
+        if (t.Source is { } designedFile)
+            AddBinderKeys(t.Deps, designedFile.Id);
+        if (t.Overlay is { } overlayFile)
+            AddBinderKeys(t.Deps, overlayFile.Id);
         _tables.TryAdd(t.Table.Key, t);
         _tableOrder.Add(t);
         _run.Register(t.Table);
@@ -349,6 +356,26 @@ internal sealed partial class DatabaseRun
         {
             var source = _run.EntitySource(entity.Id)!;
             var mapping = _run.MappingOf(_db.Id, entity.Id);
+            if (_bindingByEntity.ContainsKey(entity.Id))
+            {
+                // A binding wins over projection (erratum E43): the entity never gets a table here, and a mapping element for the
+                // same entity and database is ignored.
+                if (mapping is not null)
+                {
+                    _run.AddDiagnostic("MQ4054", $"Mapping '{mapping.Name}' maps entity '{entity.Name}' to database '{_db.Name}', where the entity has a binding; the binding wins and the mapping is ignored. Delete the mapping.",
+                        mapping.Id, "/entity");
+                }
+
+                if (BindingHost(entity.Id) is { } host)
+                {
+                    var bound = new Placement(entity, source, null) { Bound = true, ViaBinding = true, Table = host };
+                    _placements[entity.Id] = bound;
+                    _placementOrder.Add(bound);
+                }
+
+                continue;
+            }
+
             if (!DatabaseScope.Places(_run.Model, _db, source.Package, mapping))
                 continue;
             var placement = new Placement(entity, source, mapping);
@@ -467,7 +494,8 @@ internal sealed partial class DatabaseRun
             _run.Ct.ThrowIfCancellationRequested();
             if (p.Bound)
             {
-                MatchBoundColumns(p);
+                if (!p.ViaBinding)
+                    MatchBoundColumns(p);
                 continue;
             }
 

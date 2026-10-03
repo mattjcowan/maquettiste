@@ -1,0 +1,56 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BND0000000000000000030",
+  "name": "RevenueMonth",
+  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "description": "Invoiced revenue per month, read through the RevenueByMonth query; read-only.",
+  "key": {
+    "attributes": [
+      "01K6BND0000000000000000031"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01K6BND0000000000000000031",
+      "name": "month",
+      "type": "date",
+      "required": true
+    },
+    {
+      "id": "01K6BND0000000000000000032",
+      "name": "invoiceCount",
+      "type": "int64",
+      "required": true
+    },
+    {
+      "id": "01K6BND0000000000000000033",
+      "name": "revenue",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BND0000000000000000034",
+      "database": "01J92P0V1QRN2181XM2ZWE02W4",
+      "source": "01K6QRY0000000000000000002",
+      "fields": [
+        {
+          "attribute": "01K6BND0000000000000000031",
+          "column": "month"
+        },
+        {
+          "attribute": "01K6BND0000000000000000032",
+          "column": "invoiceCount"
+        },
+        {
+          "attribute": "01K6BND0000000000000000033",
+          "column": "revenue"
+        }
+      ]
+    }
+  ]
+}

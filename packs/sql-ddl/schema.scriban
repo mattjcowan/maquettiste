@@ -14,7 +14,8 @@ natives = []
 native_type_prelude(db, natives)
 tables = db.tables
 spec = dependency_spec(tables)
-order = ddl_order spec
+# One table gives the spec "", which ddl_order reads as no tables.
+order = tables.size == 1 ? [0] : (ddl_order spec)
 breaks = ddl_cycle_breaks spec
 skip = cycle_skip(tables, breaks, db)
 deferred = []

@@ -23,7 +23,7 @@ public sealed class FullRunTests
         Assert.Equal(outputs.Count, result.FilesWritten);
         Assert.Equal(0, result.FilesDeleted);
         Assert.Equal(0, result.UnitsSkipped);
-        Assert.Equal(60, result.UnitsRendered); // e2e 36, billing-demo 23, migrations 1
+        Assert.Equal(86, result.UnitsRendered); // e2e 52, billing-demo 33, migrations 1
 
         // Every mode and every pack produced its files.
         foreach (var path in new[]
@@ -110,7 +110,7 @@ public sealed class FullRunTests
         var forced = await repo.ApplyAsync(force: true);
         Assert.Equal(first.UnitsRendered, forced.UnitsRendered);
         Assert.All(forced.Changes, c => Assert.Equal(FileChangeKind.Kept, c.Kind)); // once files and companions: rendered, kept
-        Assert.Equal(15, forced.Changes.Count); // 5 scaffold files, 5 e2e companions, 5 billing-demo companions
+        Assert.Equal(24, forced.Changes.Count); // 8 scaffold files, 8 e2e companions, 8 billing-demo companions
         Assert.Equal(0, forced.FilesWritten);
         Assert.Equal(times, repo.WriteTimes());
 
@@ -125,7 +125,7 @@ public sealed class FullRunTests
         var check = await repo.RunAsync(GenerationMode.Check);
         E2ERepo.AssertOutcome(RunOutcome.Succeeded, check);
         Assert.All(check.Changes, c => Assert.Equal(FileChangeKind.Kept, c.Kind)); // once files and companions, under every root
-        Assert.Equal(15, check.Changes.Count);
+        Assert.Equal(24, check.Changes.Count);
         Assert.Equal(times, repo.WriteTimes());
     }
 

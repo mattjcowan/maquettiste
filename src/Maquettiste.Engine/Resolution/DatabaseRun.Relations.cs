@@ -106,10 +106,11 @@ internal sealed partial class DatabaseRun
                 bound.Host.Deps.AddRange(relationDeps);
                 phys.Foreign.Add(bound);
             }
-            else if (m?.ForeignKey is not null || !pp.Bound)
+            else if (m?.ForeignKey is not null || !pp.Bound || dp.ViaBinding || pp.ViaBinding)
             {
-                // Both ends bound with no foreign key named is W2's MQ4011; the resolver reports the cases W2 cannot see: a bound
-                // dependent whose principal is synthesized, and a named foreign key that is not in this database.
+                // Both ends bound to designed tables with no foreign key named is W2's MQ4011; the resolver reports the cases W2 cannot
+                // see: a bound dependent whose principal is synthesized, a named foreign key that is not in this database, and an end
+                // bound by an entity binding (erratum E43), which W2 does not read.
                 _run.AddDiagnostic("MQ4011", m?.ForeignKey is { } missing
                     ? $"Relation '{rel.Name}' names foreign key '{missing}', which no table of database '{_db.Name}' declares; the relation has no foreign key there."
                     : $"Relation '{rel.Name}' has its dependent end '{dependent.Role}' bound to table '{dp.Table?.Table.Name}' in database '{_db.Name}' but names no foreign key (Mapping.ForeignKey); the relation has no foreign key there.",

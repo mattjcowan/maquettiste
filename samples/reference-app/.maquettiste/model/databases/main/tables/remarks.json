@@ -1,0 +1,71 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M2JRG9KN181F9H4KQ18D8FNR",
+  "name": "remarks",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Short remarks on customers and sales orders, one table for both; subject_type tells them apart (entities CustomerRemark and SalesOrderRemark are bound to it).",
+  "columns": [
+    {
+      "id": "01M1V0NZ2AP7B701CTKYADPWJG",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Remark key."
+    },
+    {
+      "id": "01M1EHW1K2VGVZZE4EBWZR1EDR",
+      "name": "subject_type",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "What the remark is about, customer or sales-order."
+    },
+    {
+      "id": "01M30YKNAPZEAS291SPYZNBY1S",
+      "name": "subject_id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Key of the customer or sales order."
+    },
+    {
+      "id": "01M36KWVW8EWPW1937S70EZ8CS",
+      "name": "body",
+      "type": "text",
+      "nullable": false,
+      "comment": "Remark text."
+    },
+    {
+      "id": "01M2GYPX3V3C1QEFA90D3RVRNX",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "nullable": false,
+      "defaultSql": {
+        "*": "CURRENT_TIMESTAMP"
+      },
+      "comment": "When the remark was written."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_remarks",
+    "columns": [
+      "01M1V0NZ2AP7B701CTKYADPWJG"
+    ]
+  },
+  "indexes": [
+    {
+      "id": "01M228SS8GZRTNC8DDDHEGK079",
+      "name": "ix_remarks_subject",
+      "columns": [
+        {
+          "column": "01M1EHW1K2VGVZZE4EBWZR1EDR"
+        },
+        {
+          "column": "01M30YKNAPZEAS291SPYZNBY1S"
+        }
+      ]
+    }
+  ],
+  "comment": "Written by the order desk; read on the customer and order pages."
+}

@@ -25,7 +25,7 @@ internal static class ModelCommand
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
         var line = context.Line;
-        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export, stats or delete.");
+        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export, stats, delete or materialize.");
         switch (verb)
         {
             case "export":
@@ -38,8 +38,18 @@ internal static class ModelCommand
             case "delete":
                 line.Expect("model delete", 3, "--resolution", "--dry-run", "--format");
                 break;
+            case "materialize":
+                var what = line.Positionals.Count > 2 ? line.Positionals[2] : throw new UsageException("'model materialize' needs tables or entities.");
+                if (what is not ("tables" or "entities"))
+                    throw new UsageException($"Unknown materialize direction '{what}': use tables or entities.");
+                if (line.Positionals.Count < 4)
+                    throw new UsageException(what == "tables" ? "'model materialize tables' needs at least one entity." : "'model materialize entities' needs at least one table or view.");
+                line.Expect("model materialize " + what, line.Positionals.Count, what == "tables"
+                    ? ["--database", "--schema", "--dry-run", "--format"]
+                    : ["--database", "--package", "--dry-run", "--format"]);
+                break;
             default:
-                throw new UsageException($"Unknown model verb '{verb}': use export, stats or delete.");
+                throw new UsageException($"Unknown model verb '{verb}': use export, stats, delete or materialize.");
         }
 
         if (await ProjectGuard.RepoAsync(context).ConfigureAwait(false) is not { } repo)
@@ -51,6 +61,8 @@ internal static class ModelCommand
             var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
             if (verb == "delete")
                 return await DeleteAsync(context, store, snapshot, ct).ConfigureAwait(false);
+            if (verb == "materialize")
+                return await MaterializeAsync(context, store, snapshot, ct).ConfigureAwait(false);
             if (verb == "stats")
                 return await StatsAsync(context, snapshot, ct).ConfigureAwait(false);
             var ndjson = line.Choice("--format", "json", "json", "ndjson") == "ndjson";
@@ -198,6 +210,100 @@ internal static class ModelCommand
             _ => "maquettiste: nothing was deleted.",
         }).ConfigureAwait(false);
         return outcome == SaveOutcome.Conflict ? Program.ExitCodes.Conflicts : Program.ExitCodes.Invalid;
+    }
+
+    /// <summary>
+    /// <c>model materialize tables|entities</c> (erratum E43): resolves the names given (ids or names) and plans the operation; with
+    /// <c>--dry-run</c> prints the plan, else applies it as the batch operation, all or nothing.
+    /// </summary>
+    private static async Task<int> MaterializeAsync(GlobalContext context, ModelStore store, Engine.Model.ModelSnapshot snapshot, CancellationToken ct)
+    {
+        var line = context.Line;
+        var tables = line.Positionals[2] == "tables";
+        var json = line.Choice("--format", "text", "text", "json") == "json";
+        var database = One(snapshot, "database", line.Value("--database") ?? throw new UsageException("--database is required."), null);
+        var ids = new List<string>();
+        foreach (var name in line.Positionals.Skip(3))
+            ids.Add(tables ? One(snapshot, "entity", name, null) : One(snapshot, "table or view", name, database));
+        string? schema = null;
+        if (tables && line.Value("--schema") is { } schemaName)
+        {
+            var db = snapshot.Get<Engine.Model.Database>(database)!;
+            schema = db.Schemas.FirstOrDefault(s => s.Id == schemaName || string.Equals(s.Name, schemaName, StringComparison.OrdinalIgnoreCase))?.Id
+                ?? throw new UsageException($"database '{db.Name}' has no schema '{schemaName}'.");
+        }
+
+        string? package = null;
+        if (!tables)
+            package = One(snapshot, "package", line.Value("--package") ?? throw new UsageException("--package is required."), null);
+        var request = new MaterializeRequest(tables ? "materialize-tables" : "materialize-entities", database, ids, schema, package);
+        var plan = await store.PlanMaterializeAsync(request, ct).ConfigureAwait(false);
+        BatchResult? result = null;
+        if (!line.Has("--dry-run") && plan.Valid)
+        {
+            var operation = new BatchOperation(tables ? BatchOp.MaterializeTables : BatchOp.MaterializeEntities, null, null, null, Schema: schema,
+                Database: database, Entities: tables ? ids : null, Tables: tables ? null : ids, Package: package);
+            result = await store.ApplyBatchAsync(new ModelBatch([operation]), ChangeSource.Cli, ct).ConfigureAwait(false);
+        }
+
+        if (json)
+        {
+            var body = result is null ? JsonSerializer.Serialize(plan, Options) : JsonSerializer.Serialize(new { plan, result }, Options);
+            await context.Out.WriteLineAsync(body).ConfigureAwait(false);
+        }
+        else
+        {
+            await context.Out.WriteAsync(MaterializeText(plan, result is null)).ConfigureAwait(false);
+            foreach (var d in (result?.Items.SelectMany(i => i.Diagnostics) ?? plan.Diagnostics).Where(d => d.Severity == Engine.Diagnostics.DiagnosticSeverity.Error))
+                await context.Error.WriteLineAsync(DiagnosticOutput.Line(d)).ConfigureAwait(false);
+        }
+
+        await context.Out.FlushAsync(ct).ConfigureAwait(false);
+        if (result is null)
+            return plan.Valid ? Program.ExitCodes.Success : Program.ExitCodes.Invalid;
+        if (result.Outcome == SaveOutcome.Saved)
+        {
+            context.Info(string.Create(CultureInfo.InvariantCulture,
+                $"Materialized: {result.Changes?.Changed.Count ?? 0} changed or created, {result.Changes?.Deleted.Count ?? 0} deleted."));
+            return Program.ExitCodes.Success;
+        }
+
+        await context.Error.WriteLineAsync("maquettiste: nothing was written.").ConfigureAwait(false);
+        return result.Outcome == SaveOutcome.Conflict ? Program.ExitCodes.Conflicts : Program.ExitCodes.Invalid;
+    }
+
+    /// <summary>The one element of a kind an id or name names (a table or view: of the database); a usage error otherwise.</summary>
+    private static string One(Engine.Model.ModelSnapshot snapshot, string kind, string wanted, string? database)
+    {
+        bool Fits(Engine.Model.Element e) => kind switch
+        {
+            "table or view" => (e is Engine.Model.Table t && t.Database == database) || (e is Engine.Model.View v && v.Database == database),
+            _ => e.KindName == kind,
+        };
+        var byId = snapshot.Get<Engine.Model.Element>(wanted);
+        if (byId is not null && Fits(byId))
+            return byId.Id;
+        var matches = snapshot.Documents.Select(d => d.Element).Where(e => Fits(e) && string.Equals(e.Name, wanted, StringComparison.OrdinalIgnoreCase)).ToList();
+        return matches.Count == 1 ? matches[0].Id
+            : throw new UsageException(matches.Count == 0 ? $"no {kind} has the id or name '{wanted}'." : $"'{wanted}' names {matches.Count} elements of kind {kind}; pass one id.");
+    }
+
+    /// <summary>A materialize plan as lines: what is created, changed and deleted, the notes, and what blocks it.</summary>
+    private static string MaterializeText(MaterializePlan plan, bool dryRun)
+    {
+        var text = new StringBuilder();
+        text.Append(plan.Operation).Append(plan.Valid ? (dryRun ? " would:\n" : ":\n") : " cannot go ahead:\n");
+        foreach (var c in plan.Creates)
+            text.Append(CultureInfo.InvariantCulture, $"  create {c.Kind} {c.Name} ({c.Because})\n");
+        foreach (var c in plan.Updates)
+            text.Append(CultureInfo.InvariantCulture, $"  change {c.Kind} {c.Name} ({c.Because})\n");
+        foreach (var c in plan.Deletes)
+            text.Append(CultureInfo.InvariantCulture, $"  delete {c.Kind} {c.Name} ({c.Because})\n");
+        foreach (var note in plan.Notes)
+            text.Append("  note: ").Append(note).Append('\n');
+        foreach (var d in plan.Diagnostics.Where(d => d.Severity != Engine.Diagnostics.DiagnosticSeverity.Error))
+            text.Append("  ").Append(d.Rule).Append(": ").Append(d.Message).Append('\n');
+        return text.ToString();
     }
 
     /// <summary>The plan as lines: what is deleted, removed and cleared, the settings entries, warnings, and what blocks it.</summary>

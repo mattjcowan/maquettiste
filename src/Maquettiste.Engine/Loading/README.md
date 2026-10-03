@@ -64,3 +64,9 @@ The model loader (stage 1), the index cache, the file-name policy, the change pl
   `EnumerateModelFiles()` the files a full load would look at; `ModelStore.LastFileStamps()` forwards to the store's loader. Both are
   computed on request, so hosts that never ask pay nothing (Generation/README.md, "Last-run record").
 
+- **Materialize (2026-10-02, erratum E43).** `Materializer` plans the batch operations `materialize-tables` and
+  `materialize-entities` against one snapshot (resolving it, for tables with every picked entity projected through a mapping
+  element added in memory) and returns creates, updates and deletes that `ModelStore` adds to the batch's changes, so they apply
+  all or nothing with the rest; the overlay of a materialized entity becomes its designed table under the same id, and after the
+  save `SnapshotRekey` rewrites the committed snapshot's keys. `ChangePlanner.Cascade` treats a reference from an entity's binding
+  as removable in both resolutions: the binding (or the one field, constant or listed column) goes and the entity stays.

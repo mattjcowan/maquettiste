@@ -90,6 +90,32 @@ CREATE TABLE dbo.payment_invoice (
     CONSTRAINT fk_payment_invoice_invoices_id FOREIGN KEY (invoices_id) REFERENCES dbo.invoices (id) ON DELETE CASCADE
 );
 
+CREATE TABLE dbo.invoice_notes (
+    id uniqueidentifier NOT NULL,
+    invoice_id uniqueidentifier NOT NULL,
+    body nvarchar(max) NOT NULL,
+    created_at datetimeoffset(6) NULL,
+    CONSTRAINT pk_invoice_notes PRIMARY KEY (id)
+);
+EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'A note on an invoice. Stored in the shared notes table with entity_type ''invoice''.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoice_notes';
+
+CREATE TABLE dbo.customer_notes (
+    id uniqueidentifier NOT NULL,
+    customer_id uniqueidentifier NOT NULL,
+    body nvarchar(max) NOT NULL,
+    created_at datetimeoffset(6) NULL,
+    CONSTRAINT pk_customer_notes PRIMARY KEY (id)
+);
+EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'A note on a customer. Stored in the shared notes table with entity_type ''customer''.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'customer_notes';
+
+CREATE TABLE dbo.revenue_months (
+    month date NOT NULL,
+    invoice_count bigint NOT NULL,
+    revenue decimal(18,2) NOT NULL,
+    CONSTRAINT pk_revenue_months PRIMARY KEY (month)
+);
+EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Invoiced revenue per month, read through the RevenueByMonth query; read-only.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'revenue_months';
+
 GO
 CREATE FUNCTION dbo.invoice_total(@invoice_id uniqueidentifier)
 RETURNS decimal(18,2)

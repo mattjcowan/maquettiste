@@ -101,6 +101,7 @@ public sealed record ConventionPackageView(string PackageId, string? Schema);
 /// <param name="Category">The category's id, or <see langword="null"/>.</param>
 /// <param name="Properties">The custom properties: stereotype defaults merged under the file's own.</param>
 /// <param name="Generation">The generation hints, by pack name or <c>"*"</c>.</param>
+/// <param name="BoundBy">The entity bindings that read or write the table (erratum E43): the entities that materialize from it.</param>
 public sealed record TableView(
     string Key,
     string Name,
@@ -123,7 +124,8 @@ public sealed record TableView(
     IReadOnlyList<string> Tags,
     string? Category,
     IReadOnlyDictionary<string, object?> Properties,
-    IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyDictionary<string, GenerationHints> Generation,
+    IReadOnlyList<BoundByView> BoundBy);
 
 /// <summary>One resolved view, projected from <see cref="RView"/>.</summary>
 /// <param name="Id">The view file's id.</param>
@@ -140,6 +142,7 @@ public sealed record TableView(
 /// <param name="Category">As <see cref="TableView.Category"/>.</param>
 /// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
 /// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
+/// <param name="BoundBy">The entity bindings that read the view (erratum E43).</param>
 public sealed record ViewView(
     string Id,
     string Name,
@@ -154,7 +157,8 @@ public sealed record ViewView(
     IReadOnlyList<string> Tags,
     string? Category,
     IReadOnlyDictionary<string, object?> Properties,
-    IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyDictionary<string, GenerationHints> Generation,
+    IReadOnlyList<BoundByView> BoundBy);
 
 /// <summary>A declared column of a view.</summary>
 /// <param name="Name">The name.</param>
@@ -540,7 +544,8 @@ internal static class DatabaseViews
         table.Tags,
         table.Category?.Id,
         table.Properties,
-        table.Generation);
+        table.Generation,
+        BindingViews.BoundBy(table.BoundBy, table));
 
     private static ViewView View(RView view) => new(
         view.Id,
@@ -556,7 +561,8 @@ internal static class DatabaseViews
         view.Tags,
         view.Category?.Id,
         view.Properties,
-        view.Generation);
+        view.Generation,
+        BindingViews.BoundBy(view.BoundBy, view));
 
     private static SequenceView Sequence(RSequence sequence) => new(
         sequence.Id,

@@ -137,6 +137,26 @@ public sealed class LifecycleTests
     }
 
     [Fact]
+    public async Task A_migration_that_adds_one_table_creates_it()
+    {
+        // One added table gives an empty foreign-key spec, which ddl_order reads as no tables: the migration (and a schema script
+        // of a one-table database) must still create it.
+        using var repo = PackRepo.Billing();
+        var notes = repo.Read(".maquettiste/model/databases/main/tables/notes.json");
+        File.Delete(repo.PathOf(".maquettiste/model/databases/main/tables/notes.json"));
+        foreach (var entity in new[] { "invoice-note", "customer-note" })
+            File.Delete(repo.PathOf(".maquettiste/model/entities/" + entity + ".json"));
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        repo.Repo.WriteFile(".maquettiste/model/databases/main/tables/notes.json", notes);
+
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+
+        var migration = repo.Read("db/main/migrations/0002.sql");
+        Assert.Contains("CREATE TABLE billing.notes (", migration, StringComparison.Ordinal);
+        Assert.Contains("CREATE INDEX ix_notes_entity_type_entity_id ON billing.notes (entity_type, entity_id);", migration, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Owned_files_keep_their_edits_and_regions_keep_their_bodies()
     {
         using var repo = PackRepo.Billing();
@@ -175,7 +195,8 @@ public sealed class LifecycleTests
 
         var pg = repo.Read("db/main/schema.sql").Split('\n').Where(l => l.StartsWith("\\ir ", StringComparison.Ordinal)).ToList();
         Assert.Equal(
-            ["\\ir billing/tables/customers.sql", "\\ir billing/tables/invoices.sql", "\\ir billing/tables/products.sql", "\\ir billing/tables/invoice_lines.sql", "\\ir billing/tables/payments.sql", "\\ir billing/tables/payment_invoice.sql"],
+            ["\\ir billing/tables/customers.sql", "\\ir billing/tables/invoices.sql", "\\ir billing/tables/products.sql", "\\ir billing/tables/invoice_lines.sql", "\\ir billing/tables/notes.sql",
+                "\\ir billing/tables/payments.sql", "\\ir billing/tables/payment_invoice.sql"],
             pg);
         foreach (var line in pg)
             Assert.True(File.Exists(repo.PathOf("db/main/" + line[4..])), line);

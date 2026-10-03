@@ -275,6 +275,39 @@ database:
         - name: ix_integration_outbox_pending
           columns: [occurred_at]
           where: relayed_at IS NULL
+    remarks:
+      description: Short remarks on customers and sales orders, one table for both; subject_type tells them apart (entities CustomerRemark and SalesOrderRemark are bound to it).
+      comment: Written by the order desk; read on the customer and order pages.
+      columns:
+        id:
+          type: uuid
+          nullable: false
+          comment: Remark key.
+        subject_type:
+          type: string
+          length: 32
+          nullable: false
+          comment: What the remark is about, customer or sales-order.
+        subject_id:
+          type: uuid
+          nullable: false
+          comment: Key of the customer or sales order.
+        body:
+          type: text
+          nullable: false
+          comment: Remark text.
+        created_at:
+          type: datetimeoffset
+          nullable: false
+          defaultSql:
+            "*": "CURRENT_TIMESTAMP"
+          comment: When the remark was written.
+      primaryKey:
+        name: pk_remarks
+        columns: [id]
+      indexes:
+        - name: ix_remarks_subject
+          columns: [subject_type, subject_id]
   # Queries over the tables (written as data; see the guide's Queries): the entity or ad hoc row each returns, its sources,
   # select list and conditions. Names resolve when the model is built: entity and source names to ids, a field's attribute
   # to the attribute of the query's (or the collection's) entity, a collection's attribute to the end its navigation leads to.

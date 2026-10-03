@@ -54,6 +54,7 @@ internal sealed partial class DatabaseRun
         {
             _run.Ct.ThrowIfCancellationRequested();
             var deps = new DependencySet(_run.Keys).Element(file.Id).Referrers(file.Id).Element(_db.Id).Add(TypeMaps).Add(Conventions);
+            AddBinderKeys(deps, file.Id);
             var query = new RQuery { Id = file.Id, Name = file.Name, Database = _rdb, Settings = _run.Settings, Definition = file };
             _run.FillPhysicalAnnotations(query, file, deps);
             new QueryBuilder(this, file, query, deps, sources, routines).Build();

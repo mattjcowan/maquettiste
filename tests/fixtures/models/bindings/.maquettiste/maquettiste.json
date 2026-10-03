@@ -1,0 +1,26 @@
+{
+  "$schema": ".schema/v1/maquettiste.json",
+  "formatVersion": 1,
+  "name": "bindings",
+  "outputs": {
+    "allow": [
+      {
+        "path": "db"
+      },
+      {
+        "path": "src/Generated"
+      }
+    ]
+  },
+  "packs": {
+    "csharp-dapper": {
+      "output": "src/Generated",
+      "parameters": {
+        "namespace": "Shop.Model"
+      }
+    },
+    "sql-ddl": {
+      "output": "db"
+    }
+  }
+}

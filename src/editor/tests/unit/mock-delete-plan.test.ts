@@ -52,6 +52,7 @@ describe("mock delete plan", () => {
       "sequence",
       "sql-object",
       "table",
+      "table",
       "view",
     ]);
     expect(model.delete(MAIN, hash(model, MAIN), "delete-dependents").outcome).toBe("saved");

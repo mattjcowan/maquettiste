@@ -2,6 +2,8 @@
   "element": {
     "kind": "diagram",
     "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "process": null,
+    "membership": "explicit",
     "members": [
       {
         "element": "01J92P0V0ETQKXXP951CMMNHH3",

@@ -21,6 +21,7 @@
     "key",
     "alternateKeys",
     "attributes",
+    "bindings",
     "properties",
     "generation",
     "source"
@@ -116,6 +117,181 @@
       "x-sort": "order",
       "items": {
         "$ref": "common.json#/$defs/attribute"
+      },
+      "default": []
+    },
+    "bindings": {
+      "description": "How the entity reads from and writes to databases, one binding per database (erratum E43). A binding wins over any projection of the entity into its database.",
+      "type": "array",
+      "items": {
+        "title": "Binding",
+        "description": "How the entity reads from and writes to one database (erratum E43): where it reads, the constant columns, the field map, the columns it accounts for without a field, where it writes back and how it deletes. One per database (MQ4050).",
+        "type": "object",
+        "x-order": [
+          "id",
+          "database",
+          "source",
+          "constants",
+          "fields",
+          "columns",
+          "write",
+          "delete",
+          "description",
+          "tags",
+          "properties"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "database": {
+            "description": "The id of the database.",
+            "$ref": "common.json#/$defs/id"
+          },
+          "source": {
+            "description": "What the entity reads: the id of a table (or a synthesized table key), a view or a query of the database.",
+            "type": "string",
+            "minLength": 1
+          },
+          "constants": {
+            "description": "Columns with a fixed value: a filter on every read and a value on every insert.",
+            "type": "array",
+            "items": {
+              "title": "Binding constant",
+              "type": "object",
+              "x-order": ["column", "value"],
+              "properties": {
+                "column": {
+                  "description": "A column of the source (and of the write table): its key or physical name.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "value": {
+                  "description": "The value; absent or null is SQL NULL.",
+                  "type": ["string", "number", "boolean", "null"]
+                }
+              },
+              "required": ["column"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "fields": {
+            "description": "The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key) and the source column it reads.",
+            "type": "array",
+            "items": {
+              "title": "Binding field",
+              "type": "object",
+              "x-order": ["attribute", "column"],
+              "properties": {
+                "attribute": {
+                  "description": "An attribute id of the entity, attributeId.memberId, or the id of the relation end a to-one navigation leads to.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "column": {
+                  "description": "A column of the source: its key or physical name.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": ["attribute", "column"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "columns": {
+            "description": "Source columns no field maps, each accounted for: ignored, filled by the database (never written) or computed.",
+            "type": "array",
+            "items": {
+              "title": "Binding column",
+              "type": "object",
+              "x-order": ["column", "status"],
+              "properties": {
+                "column": {
+                  "description": "A column of the source or the write table: its key or physical name.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "enum": ["ignored", "database", "computed"]
+                }
+              },
+              "required": ["column", "status"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "write": {
+            "description": "Where the entity writes: { \"table\": id } or \"none\". Absent: the source when it is a table, none when it is a view or a query.",
+            "oneOf": [
+              {
+                "const": "none"
+              },
+              {
+                "title": "Binding write table",
+                "type": "object",
+                "x-order": ["table"],
+                "properties": {
+                  "table": {
+                    "description": "The id of a table of the database (or a synthesized table key).",
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["table"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "delete": {
+            "description": "How the entity deletes: \"key\", { \"soft\": { \"column\", \"value\" } } or \"none\". Absent: key when the binding writes, none otherwise.",
+            "oneOf": [
+              {
+                "enum": ["key", "none"]
+              },
+              {
+                "title": "Binding soft delete",
+                "type": "object",
+                "x-order": ["soft"],
+                "properties": {
+                  "soft": {
+                    "type": "object",
+                    "x-order": ["column", "value"],
+                    "properties": {
+                      "column": {
+                        "description": "A column of the write table: its key or physical name.",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "value": {
+                        "description": "The value set; absent or null is SQL NULL.",
+                        "type": ["string", "number", "boolean", "null"]
+                      }
+                    },
+                    "required": ["column"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["soft"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "description": {
+            "$ref": "common.json#/$defs/description"
+          },
+          "tags": {
+            "$ref": "common.json#/$defs/tagList",
+            "default": []
+          },
+          "properties": {
+            "$ref": "common.json#/$defs/properties",
+            "default": {}
+          }
+        },
+        "required": ["id", "database", "source"],
+        "additionalProperties": false
       },
       "default": []
     },

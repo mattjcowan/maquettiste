@@ -16,7 +16,7 @@
 #          generates into a second copy (diff -r)
 # build    dotnet build tmp/gate2/src/ReferenceApp.Data -c Release -warnaserror
 # ddl      tools/db-apply.sh on the copy: schema.sql + seed twice, migrations + seed, in two databases, each must hold
-#          209 tables, 1 view, 3 sequences (host psql when PGHOST is set, as in CI; else a throwaway postgres:16 container)
+#          210 tables, 1 view, 3 sequences (host psql when PGHOST is set, as in CI; else a throwaway postgres:16 container)
 # down     remove the editor, its volume and the db-apply container
 #
 # Environment: MAQUETTISTE_IMAGE (default mattjcowan/maquettiste:dev), MAQUETTISTE_PORT (default 8097),
@@ -130,7 +130,7 @@ step_build() {
 
 step_ddl() {
   # db-apply.sh uses the host psql when PGHOST is set (CI's service container), else a throwaway postgres:16 container.
-  NW_EXPECT="209 tables, 1 views, 3 sequences" "$here/db-apply.sh" "$dir"
+  NW_EXPECT="210 tables, 1 views, 3 sequences" "$here/db-apply.sh" "$dir"
 }
 
 step_down() {

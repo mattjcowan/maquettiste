@@ -57,6 +57,8 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "set-lifecycle" => BatchOp.SetLifecycle,
                     "set-initial" => BatchOp.SetInitial,
                     "refresh-scenario" => BatchOp.RefreshScenario,
+                    "materialize-tables" => BatchOp.MaterializeTables,
+                    "materialize-entities" => BatchOp.MaterializeEntities,
                     _ => BatchOp.Delete,
                 };
                 operations.Add(new BatchOperation(
@@ -74,12 +76,21 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                         "delete-dependents" => DeleteResolution.DeleteDependents,
                         "refuse" => DeleteResolution.Refuse,
                         _ => null,
-                    }));
+                    },
+                    Database: Text(item, "database"),
+                    Entities: Texts(item, "entities"),
+                    Tables: Texts(item, "tables"),
+                    Package: Text(item, "package")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);
         }
     }
+
+    private static IReadOnlyList<string>? Texts(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
+            ? [.. value.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!)]
+            : null;
 
     private static string? Text(JsonElement item, string name) =>
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

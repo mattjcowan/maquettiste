@@ -20,7 +20,7 @@ public sealed class McpBulkToolTests
 
         var kinds = await session.OkAsync("get_model_kinds");
         var entityCount = (int)kinds["kinds"]!.AsArray().Single(k => (string)k!["kind"]! == "entity")!["count"]!;
-        Assert.Equal(5, entityCount);
+        Assert.Equal(8, entityCount);
         Assert.Null(kinds["packages"]);
         var byPackage = await session.OkAsync("get_model_kinds", new { by = "package" });
         Assert.Equal((int)kinds["total"]!, byPackage["packages"]!.AsArray().Sum(p => (int)p!["count"]!));
@@ -41,7 +41,7 @@ public sealed class McpBulkToolTests
         }
         while (cursor is not null);
 
-        Assert.Equal(["Customer", "Invoice", "InvoiceLine", "Payment", "Product"], names);
+        Assert.Equal(["Customer", "CustomerNote", "Invoice", "InvoiceLine", "InvoiceNote", "Payment", "Product", "RevenueMonth"], names);
 
         var read = await session.OkAsync("get_elements", new { ids = new[] { InvoiceNotes, Unknown, McpSession.Customer } });
         Assert.Equal([McpSession.Customer, Invoice], read["items"]!.AsArray().Select(i => (string)i!["id"]!));
@@ -61,10 +61,13 @@ public sealed class McpBulkToolTests
         await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
 
         var entities = await session.OkAsync("get_resolved_model", new { scope = "entities", limit = 3 });
-        Assert.Equal(["Customer", "Invoice", "InvoiceLine"], entities["items"]!.AsArray().Select(i => (string)i!["name"]!));
+        Assert.Equal(["Customer", "CustomerNote", "Invoice"], entities["items"]!.AsArray().Select(i => (string)i!["name"]!));
         Assert.Empty(entities["diagnostics"]!.AsArray());
-        var rest = await session.OkAsync("get_resolved_model", new { scope = "entities", limit = 3, cursor = (string)entities["next"]! });
-        Assert.Equal(["Payment", "Product"], rest["items"]!.AsArray().Select(i => (string)i!["name"]!));
+        var rest = await session.OkAsync("get_resolved_model", new { scope = "entities", limit = 10, cursor = (string)entities["next"]! });
+        Assert.Equal(["InvoiceLine", "InvoiceNote", "Payment", "Product", "RevenueMonth"], rest["items"]!.AsArray().Select(i => (string)i!["name"]!));
+        var note = rest["items"]!.AsArray().Single(i => (string)i!["name"]! == "InvoiceNote")!;
+        Assert.Empty(note["mappings"]!.AsArray());
+        Assert.Equal(("table", "notes", "key"), ((string)note["bindings"]![0]!["sourceKind"]!, (string)note["bindings"]![0]!["sourceName"]!, (string)note["bindings"]![0]!["delete"]!));
         Assert.Null(rest["next"]);
         var customer = entities["items"]![0]!;
         Assert.True((bool)customer["attributes"]!.AsArray().Single(a => (string)a!["name"]! == "id")!["isKey"]!);
@@ -77,6 +80,30 @@ public sealed class McpBulkToolTests
         Assert.True(JsonNode.DeepEquals(view["view"]!["tables"], database["tables"]));
         var tables = await session.OkAsync("get_resolved_model", new { scope = "tables", limit = 1000 });
         Assert.Equal(database["tables"]!.AsArray().Count, tables["items"]!.AsArray().Count);
+    }
+
+    [Fact]
+    public async Task Bindings_preview_their_sql_and_materialize_previews_and_applies_through_a_batch()
+    {
+        const string invoiceNote = "01K6BND0000000000000000010", binding = "01K6BND0000000000000000015";
+        await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
+
+        var sql = await session.OkAsync("preview_binding_sql", new { entity = invoiceNote, binding, dialect = "sqlserver" });
+        Assert.Equal("sqlserver", (string)sql["preview"]!["dialect"]!);
+        Assert.Contains("N'invoice'", (string)sql["preview"]!["insert"]!["sql"]!, StringComparison.Ordinal);
+        Assert.Equal("not-a-binding", (await session.ErrorAsync("preview_binding_sql", new { entity = invoiceNote, binding = Unknown })).Code);
+
+        var status = await session.OkAsync("get_materialize_status", new { database = MainDatabase });
+        Assert.Contains(status["entities"]!.AsArray(), e => (string)e!["name"]! == "Invoice" && (bool)e["projected"]!);
+        Assert.Equal(2, status["sources"]!.AsArray().Single(s => (string)s!["name"]! == "notes")!["boundBy"]!.AsArray().Count);
+
+        var preview = await session.OkAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice } });
+        Assert.True((bool)preview["valid"]!);
+        Assert.Contains(preview["updates"]!.AsArray(), u => (string)u!["kind"]! == "table" && (string)u["name"]! == "invoices");
+        var applied = await session.OkAsync("apply_batch", new { operations = new[] { new { op = "materialize-tables", database = MainDatabase, entities = new[] { Invoice } } } });
+        Assert.Equal("saved", (string)applied["outcome"]!);
+        var again = await session.ErrorAsync("apply_batch", new { operations = new[] { new { op = "materialize-tables", database = MainDatabase, entities = new[] { Invoice } } } });
+        Assert.Equal("invalid", again.Code);
     }
 
     [Fact]

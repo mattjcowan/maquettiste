@@ -135,7 +135,7 @@ public sealed class IncrementalTests
         await repo.ApplyAsync();
         var before = await PlanAsync(repo);
         var readers = before.Units.Where(u => u.ReadKeys.Contains("t:e2e/types/csharp.json")).Select(u => u.Key).Order(StringComparer.Ordinal).ToList();
-        Assert.Equal(5, readers.Count);
+        Assert.Equal(8, readers.Count);
         Assert.All(readers, k => Assert.StartsWith("e2e/types:", k, StringComparison.Ordinal));
 
         var map = Path.Combine(repo.Repo.ModelRoot, "templates", "e2e", "types", "csharp.json");
@@ -146,7 +146,7 @@ public sealed class IncrementalTests
         var plan = await PlanAsync(repo);
         Assert.Equal(readers, plan.Units.Where(u => !u.Skipped).Select(u => u.Key).Order(StringComparer.Ordinal));
         var result = await repo.ApplyAsync();
-        Assert.Equal(5, result.UnitsRendered);
+        Assert.Equal(8, result.UnitsRendered);
         Assert.Contains("System.Guid Id,", repo.Repo.ReadFile("db/e2e/types/Customer.cs"), StringComparison.Ordinal);
         await AssertIncrementalEqualsForcedAsync(repo);
     }
@@ -158,7 +158,7 @@ public sealed class IncrementalTests
         await repo.ApplyAsync();
         var before = await PlanAsync(repo);
         var users = before.Units.Where(u => u.ReadKeys.Contains("t:billing-demo/_property.scriban")).Select(u => u.Key).Order(StringComparer.Ordinal).ToList();
-        Assert.Equal(5, users.Count);
+        Assert.Equal(8, users.Count);
         Assert.All(users, k => Assert.StartsWith("billing-demo/entity:", k, StringComparison.Ordinal));
 
         var partial = Path.Combine(repo.Repo.ModelRoot, "templates", "billing-demo", "_property.scriban");
@@ -166,7 +166,7 @@ public sealed class IncrementalTests
         var plan = await PlanAsync(repo);
         Assert.Equal(users, plan.Units.Where(u => !u.Skipped).Select(u => u.Key).Order(StringComparer.Ordinal));
         var result = await repo.ApplyAsync();
-        Assert.Equal(5, result.UnitsRendered);
+        Assert.Equal(8, result.UnitsRendered);
         Assert.Contains("{ get; set; }", repo.Repo.ReadFile("src/Generated/demo/src/Billing/Customer.g.cs"), StringComparison.Ordinal);
 
         // A unit's own template is part of its static hash: editing it re-renders that unit's instances only.

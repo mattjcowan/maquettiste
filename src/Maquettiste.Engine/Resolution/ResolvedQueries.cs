@@ -70,6 +70,22 @@ public sealed class RQuery : RAnnotated
     /// </summary>
     public IReadOnlyList<IResolvedObject> Uses { get; internal set; } = [];
 
+    /// <summary>The entity bindings that read the query (erratum E43), by (entity name, entity id); empty for a nested query.</summary>
+    public IReadOnlyList<REntityBinding> BoundBy { get; internal set; } = [];
+
+    /// <summary>
+    /// A copy without the ordering, for a derived table (a binding's select over the query, erratum E43): an order inside a derived
+    /// table means nothing, and SQL Server refuses one without paging. A paged query keeps its order, which the paging needs.
+    /// </summary>
+    internal RQuery ForDerivedTable()
+    {
+        if (OrderBy.Count == 0 || Paging is not null)
+            return this;
+        var copy = (RQuery)MemberwiseClone();
+        copy.OrderBy = [];
+        return copy;
+    }
+
     /// <summary>The project settings, for rendering casts in another dialect's type map.</summary>
     internal Model.ProjectSettings? Settings { get; set; }
 

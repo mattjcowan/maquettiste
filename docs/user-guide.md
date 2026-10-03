@@ -989,6 +989,149 @@ database shows on the Database screen at once. The explorers remember which rows
   moves into the picker, whose arrows change the value. The same catalog is `GET /api/validation/rules` and the MCP tool
   `list_validation_rules`.
 
+## Binding entities to tables, views and queries
+
+A database knows nothing about entities: it holds tables, views, routines, types and queries, each with its own columns. An
+entity says how it reads from and writes to a database in its own file, with a **binding** per database (`bindings` in the
+entity's JSON). A binding is written down whole: where the entity reads, the columns that carry a fixed value, which column each
+field reads, what happens to the columns no field maps, where it writes back and how it deletes. An entity with a binding to a
+database is never projected into it: no table follows the entity there, whatever the database's convention or a mapping
+element says (such a mapping element is reported as MQ4054 and ignored). Models without bindings keep working as before.
+
+The editor's screens for bindings and materialize come with the next round; until then, write bindings in the entity's file (or
+with the agent tools) and materialize from the command line, the API or the agent tools, as below.
+
+### The file shape
+
+```json
+{
+  "kind": "entity",
+  "id": "01K6BND0000000000000000010",
+  "name": "InvoiceNote",
+  "key": { "attributes": ["01K6BND0000000000000000011"], "strategy": "uuid-v7" },
+  "attributes": [
+    { "id": "01K6BND0000000000000000011", "name": "id", "type": "uuid", "required": true },
+    { "id": "01K6BND0000000000000000012", "name": "invoiceId", "type": "uuid", "required": true },
+    { "id": "01K6BND0000000000000000013", "name": "body", "type": "text", "required": true },
+    { "id": "01K6BND0000000000000000014", "name": "createdAt", "type": "datetimeoffset", "readOnly": true }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BND0000000000000000015",
+      "database": "01J92P0V1QRN2181XM2ZWE02W4",
+      "source": "01K6BND0000000000000000001",
+      "constants": [{ "column": "01K6BND0000000000000000003", "value": "invoice" }],
+      "fields": [
+        { "attribute": "01K6BND0000000000000000011", "column": "01K6BND0000000000000000002" },
+        { "attribute": "01K6BND0000000000000000012", "column": "01K6BND0000000000000000004" },
+        { "attribute": "01K6BND0000000000000000013", "column": "01K6BND0000000000000000005" },
+        { "attribute": "01K6BND0000000000000000014", "column": "01K6BND0000000000000000006" }
+      ],
+      "columns": [{ "column": "01K6BND0000000000000000006", "status": "database" }]
+    }
+  ]
+}
+```
+
+- `database`: the database. One binding per database (two are MQ4050).
+- `source`: what the entity reads, the id of a table, a view or a query of that database (a table a projection still
+  synthesizes may be named by its key, `<entity id>@<database id>`).
+- `constants`: columns with a fixed value, as many as you need (an entity type, a tenant): every read filters on them and
+  every insert sets them. A value is a string, a number or true/false; leaving it out means NULL.
+- `fields`: each field names an attribute of the entity (inherited and stereotype attributes included), a member of a value
+  object attribute as `attributeId.memberId`, or the relation end a to-one navigation leads to (for its key), and the source
+  column it reads, by the column's id or key or by its name.
+- `columns`: the source columns no field maps, each with why: `ignored` (the entity does not use it), `database` (the
+  database fills it, by a default or a trigger, and it is never written) or `computed`. A field's column may be listed too:
+  `database` or `computed` then means the field is read but never written, as `created_at` above.
+- `write`: `{ "table": <table id> }` or `"none"`. Without it the entity writes its source when that is a table and nowhere
+  when it is a view or a query. A write table other than the source matches each field's column by key, then by name.
+- `delete`: `"key"` (the default when the entity writes), `{ "soft": { "column": <column>, "value": <value> } }` (sets the
+  column instead; reads then leave out the rows it marked) or `"none"`.
+- `description`, `tags` and `properties` annotate the binding like any other part of the model.
+
+Every column of the source must be accounted for: a field, a constant, a `columns` entry, or a column that fills itself (an
+identity, a computed column, a column with a default). Any other column is warning MQ4047, so nothing a table holds goes
+unnoticed.
+
+### One table, several entities
+
+The billing sample keeps notes on invoices and on customers in one table, `notes (id, entity_type, entity_id, body,
+created_at)`. `InvoiceNote` above and `CustomerNote` both bind to it; their constants (`entity_type = 'invoice'` and
+`entity_type = 'customer'`) tell their rows apart: reading invoice notes never returns a customer note, inserting one sets the
+type, and updates and deletes find their row by key and type. The table lists both entities: the database view shows
+`boundBy` on each table, view and query, with each binding's constants.
+
+### A read-only entity over a query
+
+An entity can read a query of the database: its fields name the query's columns (its select list's names). The billing
+sample's `RevenueMonth` reads the `RevenueByMonth` query (month, invoice count, revenue); a query source does not write, so
+the generated repository has `GetAsync` and `ListAsync` (taking the query's parameters first) and no insert, update or delete.
+
+### What the statements look like
+
+The engine renders each binding's five statements for any dialect: `select`, `select-by-key`, `insert`, `update` and
+`delete`. Parameters are named after the fields; constants are literals; the columns the database fills are never written,
+and a generated key comes back from the insert (`RETURNING`, `OUTPUT INSERTED`, or `SELECT LAST_INSERT_ID()` on MySQL):
+
+```sh
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/model/entities/01K6BND0000000000000000010/bindings/01K6BND0000000000000000015/sql?dialect=postgresql"
+# {"preview":{"select":{"sql":"SELECT t.id AS id, t.entity_id AS invoiceId, t.body AS body, t.created_at AS createdAt\nFROM billing.notes t\nWHERE t.entity_type = 'invoice'", ...},
+#  "insert":{"sql":"INSERT INTO billing.notes (id, entity_id, body, entity_type)\nVALUES (@id, @invoiceId, @body, 'invoice')", ...}, ...}}
+```
+
+Templates use the same text through `binding_sql binding "insert"` (and `binding_sql_parameters`), with `entity.bindings["main"]`;
+the csharp-dapper pack builds a bound entity's repository from it.
+
+### Materialize, both ways
+
+**Tables from entities.** For an entity the database projects today, `materialize-tables` writes a designed table with
+exactly the shape the projection has (columns, keys, uniques, checks, indexes, foreign keys, comments) and binds the entity to
+it, every column mapped. The table's overlay, when there was one, becomes the designed table and keeps its id, so queries and
+keys naming it keep working; the entity's mapping element for the database is deleted; relations whose foreign key is now in the
+designed table name it in their relation mapping; and the committed schema snapshot follows, so the next generation writes no
+migration (the DDL is the same table). From then on the table is yours. An entity already bound to the database is refused
+(MQ4055), so running it twice is harmless.
+
+**Entities from tables.** For designed or imported tables (or views), `materialize-entities` writes an entity per table in the
+package you name: the singular of the table name in Pascal case, one attribute per column, the key from the primary key, and a
+binding to the table. Foreign keys between the picked tables, or to a table an entity is already bound to, become many-to-one
+relations naming those foreign keys. A table an entity is already bound to is refused.
+
+```sh
+maquettiste model materialize tables --database main Invoice Customer --dry-run   # what it would do
+maquettiste model materialize tables --database main Invoice Customer             # do it
+maquettiste model materialize entities --database main --package Billing suppliers supplier_contacts --dry-run
+```
+
+Over the API: `GET /api/model/databases/{id}/materialize` lists the entities with no binding to the database (and whether
+each is projected there) and the tables and views with the entities bound to each; `POST /api/model/databases/{id}/materialize/preview`
+with `{ "op": "materialize-tables", "entities": [...] }` or `{ "op": "materialize-entities", "tables": [...], "package": "..." }`
+shows the plan (creates, updates, deletes, notes, diagnostics) without writing; `POST /api/model/batch` applies it with
+`{ "op": "materialize-tables", "database": "...", "entities": [...] }`. The agent tools are `get_materialize_status`,
+`preview_materialize` and `apply_batch` (docs/mcp.md).
+
+Deleting a table, view, query or database a binding names is refused while the binding names it; with **remove references**
+or **delete dependents**, the binding goes and the entity stays.
+
+### The rules for bindings
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| MQ4044 | error | the source is not a table, view or query of the binding's database, or the write table is not a table of it |
+| MQ4045 | error | a field names nothing of the entity, a column the source does not have, a listed column of no table the binding uses, or maps an attribute or a column twice |
+| MQ4046 | error | a binding that writes maps no field for a key attribute |
+| MQ4047 | warning | a column of the source or write table is accounted for by nothing |
+| MQ4048 | error | a constant names a column the source does not have |
+| MQ4049 | error | a binding that writes has a constant whose column is not in the write table |
+| MQ4050 | error | two bindings to one database |
+| MQ4051 | warning | a constant (or soft-delete value) does not fit its column |
+| MQ4052 | error | a write table other than the source has no column for a key field |
+| MQ4053 | error | a key delete from a table without a primary key, or a delete with no table to write |
+| MQ4054 | info | a mapping element maps an entity the database binds: the binding wins |
+| MQ4055 | error | a materialize operation is refused (something already bound, an entity in an inheritance hierarchy, a name taken) |
+
 ## Processes, actors and scenarios
 
 A **process** is a statechart: a **lifecycle** describes the states of one entity (its subject), usually bound to an
@@ -1828,7 +1971,7 @@ line, then the tables of the database `main` as the generator sees them, one per
 
 ```sh
 maquettiste model stats
-# entity                         5
+# entity                         8
 # ...
 maquettiste model export --kind entity --fields name,attributes --format ndjson > entities.ndjson
 maquettiste model export --resolved --scope tables --database main --format ndjson > tables.ndjson

@@ -2,11 +2,24 @@
   "name": "billing",
   "formatVersion": 1,
   "engineVersion": "1.0.0",
+  "productVersion": "0.5.5",
+  "build": "0.5.5",
+  "workspace": null,
+  "branch": null,
+  "worktree": null,
+  "repository": null,
   "mode": "local",
   "settings": {
     "$schema": ".schema/v1/maquettiste.json",
     "formatVersion": 1,
     "name": "billing",
+    "branding": {
+      "icon": null,
+      "colors": {
+        "light": null,
+        "dark": null
+      }
+    },
     "outputs": {
       "allow": [
         {
@@ -47,7 +60,8 @@
       "valueObjectCollectionStorage": null,
       "relationsWithAttributes": null,
       "inheritance": null,
-      "referenceStorage": null
+      "referenceStorage": null,
+      "comments": null
     },
     "databases": {},
     "typeMaps": {},
@@ -90,7 +104,7 @@
       "scopes": []
     }
   },
-  "settingsHash": "695f8e249265560b146d7b54f3a083a26131a540fc392959840b46a62f7ae82c",
+  "settingsHash": "f02e13b44dcc14aced46747e25c34d88735ff38cf735d898486014bfb0e03820",
   "databases": [
     {
       "id": "01J92P0V1QRN2181XM2ZWE02W4",
@@ -110,12 +124,15 @@
       "name": "csharp-dapper",
       "version": "1.0.0",
       "engine": ">=1.0 <2.0",
-      "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package.",
+      "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package; for processes, the states, definition and contracts, handlers, services, machine and store as pairs, HTTP endpoints with regions, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario; optionally, a managed block in an ignore file that keeps the generated folder out of version control.",
       "parameters": {
         "database": "",
+        "endpointsFolder": "",
         "generatedFolder": "",
+        "gitignorePath": "",
         "namespace": "App.Model",
-        "partialFolder": ""
+        "partialFolder": "",
+        "testsFolder": ""
       },
       "parameterSchema": null,
       "scripts": [],
@@ -130,6 +147,8 @@
           "mode": "pair",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": {
             "template": "entity.partial.scriban",
             "output": "{{ join_path pack.params.partialFolder (package_folder entity) ((pascal entity.name) + \".cs\") }}"
@@ -145,6 +164,8 @@
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         },
@@ -157,6 +178,8 @@
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         },
@@ -169,6 +192,8 @@
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         },
@@ -181,6 +206,8 @@
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         },
@@ -204,6 +231,22 @@
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "query",
+          "template": "query.scriban",
+          "for": "each query",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"Queries\" ((cs_class (pascal query.name)) + \"Query.g.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         },
@@ -216,6 +259,8 @@
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         },
@@ -228,6 +273,258 @@
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "process-states",
+          "template": "process-states.scriban",
+          "for": "each process",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"States.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "process-definition",
+          "template": "process-definition.scriban",
+          "for": "each process",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Definition.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "process-contracts",
+          "template": "process-contracts.scriban",
+          "for": "each process",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Contracts.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "process-handlers",
+          "template": "process-handlers.scriban",
+          "for": "each process",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Handlers.g.cs\") }}",
+          "mode": "pair",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": {
+            "template": "process-handlers.partial.scriban",
+            "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Handlers.cs\") }}"
+          },
+          "transforms": []
+        },
+        {
+          "id": "process-services",
+          "template": "process-services.scriban",
+          "for": "each process",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Services.g.cs\") }}",
+          "mode": "pair",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": {
+            "template": "process-services.partial.scriban",
+            "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Services.cs\") }}"
+          },
+          "transforms": []
+        },
+        {
+          "id": "process-machine",
+          "template": "process-machine.scriban",
+          "for": "each process",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Machine.g.cs\") }}",
+          "mode": "pair",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": {
+            "template": "process-machine.partial.scriban",
+            "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Machine.cs\") }}"
+          },
+          "transforms": []
+        },
+        {
+          "id": "process-store",
+          "template": "process-store.scriban",
+          "for": "each process",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Store.g.cs\") }}",
+          "mode": "pair",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": {
+            "template": "process-store.partial.scriban",
+            "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Store.cs\") }}"
+          },
+          "transforms": []
+        },
+        {
+          "id": "process-endpoints",
+          "template": "process-endpoints.scriban",
+          "for": "each process",
+          "where": null,
+          "output": null,
+          "mode": "regions",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "dispatch",
+          "template": "dispatch.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "dispatch-companion",
+          "template": "dispatch.partial.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "once",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "dispatch-registry",
+          "template": "dispatch-registry.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "dispatch-behaviours",
+          "template": "dispatch-behaviours.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "interpreter",
+          "template": "interpreter.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "interpreter-companion",
+          "template": "interpreter.partial.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "once",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "actors",
+          "template": "actors.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "scenario-tests",
+          "template": "scenario-tests.scriban",
+          "for": "each scenario",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "gitignore",
+          "template": "gitignore.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "block",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": true,
           "companion": null,
           "transforms": []
         }
@@ -238,9 +535,11 @@
       "name": "sql-ddl",
       "version": "1.0.0",
       "engine": ">=1.0 <2.0",
-      "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
+      "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
       "parameters": {
         "comments": true,
+        "objectScripts": false,
+        "processTables": false,
         "quoting": "",
         "referenceStrategy": "lookup-table",
         "schemaScript": "inline",
@@ -263,6 +562,8 @@
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         },
@@ -275,6 +576,8 @@
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         },
@@ -287,6 +590,8 @@
           "mode": "once",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         },
@@ -299,6 +604,92 @@
           "mode": "regions",
           "formatter": null,
           "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "process-tables",
+          "template": "process-tables.scriban",
+          "for": "each process",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "view",
+          "template": "view.scriban",
+          "for": "each view",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "sequence",
+          "template": "sequence.scriban",
+          "for": "each sequence",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "routine",
+          "template": "routine.scriban",
+          "for": "each routine",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "database-type",
+          "template": "database-type.scriban",
+          "for": "each database type",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "sql-object",
+          "template": "sql-object.scriban",
+          "for": "each sql object",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "createFile": false,
           "companion": null,
           "transforms": []
         }
@@ -328,5 +719,7 @@
       "required": []
     }
   ],
-  "git": null
+  "git": null,
+  "iconHash": null,
+  "projectKey": "f9eedd51f9019645"
 }

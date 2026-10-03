@@ -2797,6 +2797,119 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /api/model/entities/{id}/bindings/{bindingId}/sql:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+      - name: bindingId
+        in: path
+        required: true
+        description: The binding's id (`bindings[i].id` in the entity's file).
+        schema:
+          $ref: '#/components/schemas/Ulid'
+    get:
+      tags: [databases]
+      operationId: getBindingSql
+      summary: The statements of one entity binding for a dialect
+      description: |
+        Renders an entity's binding to a database (erratum E43) as parameterised SQL for the database's dialect, or the one
+        named: `select` (every row, the constants as a filter, soft-deleted rows left out; a query source is a derived table),
+        `selectByKey`, `insert` (the written fields and the constants, without the columns the database fills; generated keys
+        come back through `RETURNING`, `OUTPUT INSERTED` or `SELECT LAST_INSERT_ID()`), `update` (by key, the constants in the
+        where clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a
+        read-only binding has no insert, update or delete). Parameters are named after the fields. A model with errors returns
+        `preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: GenerationService.GetBindingSqlAsync(entityId, bindingId, dialect, options)
+      parameters:
+        - name: dialect
+          in: query
+          description: postgresql, sqlserver, mysql, sqlite or oracle; absent for the binding's database's.
+          schema:
+            type: string
+        - name: placeholder
+          in: query
+          description: The placeholder style, `@name` (default), `:name` or `$1`.
+          schema:
+            type: string
+            enum: ['@', ':', '$']
+            default: '@'
+      responses:
+        '200':
+          description: The statements, or the diagnostics that prevented them.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BindingSqlResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/model/databases/{id}/materialize:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    get:
+      tags: [databases]
+      operationId: getMaterializeStatus
+      summary: What can be materialized in one database
+      description: |
+        What the database's materialize screens list (erratum E43): the entities with no binding to the database, each flagged
+        `projected` when the database still projects a table for it (by convention or a mapping element), and the database's
+        designed and imported tables and its views with the entity bindings that read or write each (`boundBy`; several entities
+        on one table are told apart by their constants). Materialize with the batch operations `materialize-tables` and
+        `materialize-entities` (`POST /api/model/batch`), after a look at `POST .../materialize/preview`. The MCP tool
+        `get_materialize_status` answers the same.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.GetMaterializeStatusAsync(databaseId)
+      responses:
+        '200':
+          description: The status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterializeStatus'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/model/databases/{id}/materialize/preview:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    post:
+      tags: [databases]
+      operationId: previewMaterialize
+      summary: What a materialize operation would do
+      description: |
+        Plans a materialize operation over the route's database and validates the result, writing nothing: the body is the batch
+        operation without its database, `{ "op": "materialize-tables", "entities": [...], "schema"?: <schema id> }` (a designed
+        table per entity with the shape its projection has, and a binding) or `{ "op": "materialize-entities", "tables": [...],
+        "package": <package id> }` (an entity per table or view, bound to it, and a relation per foreign key between them). A
+        refusal (an entity or table already bound) is MQ4055 in `diagnostics`. The MCP tool `preview_materialize` answers the same.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.PlanMaterializeAsync(request)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaterializeBody'
+      responses:
+        '200':
+          description: The plan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterializePlan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /api/databases/{id}/view:
     parameters:
       - $ref: '#/components/parameters/ElementId'
@@ -7051,8 +7164,13 @@ components:
         state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the
         `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step,
         or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at
-        `/operations/<n>`.
-      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, sync-enum, set-lifecycle, set-initial, refresh-scenario]
+        `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional
+        `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay
+        folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the
+        committed schema snapshot is rekeyed) and `materialize-entities` (`tables`, `package`: an entity per designed or imported
+        table or view, bound to it, and a many-to-one relation per foreign key between them); they expand the same way, and a
+        refusal (an entity or table already bound) is MQ4055 at `/operations/<n>`.
+      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, sync-enum, set-lifecycle, set-initial, refresh-scenario]
     BatchOperation:
       x-engine-record: Maquettiste.Engine.BatchOperation
       type: object
@@ -7089,6 +7207,22 @@ components:
           type: [string, 'null']
         default:
           description: The schema id that becomes the default when the removed schema is the default (`remove-schema`).
+          type: [string, 'null']
+        database:
+          description: The database id (`materialize-tables`, `materialize-entities`).
+          type: [string, 'null']
+        entities:
+          description: The entity ids (`materialize-tables`).
+          type: [array, 'null']
+          items:
+            type: string
+        tables:
+          description: The table and view ids (`materialize-entities`).
+          type: [array, 'null']
+          items:
+            type: string
+        package:
+          description: The package id the new entities go to (`materialize-entities`).
           type: [string, 'null']
     ModelBatch:
       x-engine-record: Maquettiste.Engine.ModelBatch
@@ -7497,6 +7631,11 @@ components:
           lifecycle:
             type: [string, 'null']
             description: The id of the process that is its lifecycle.
+          bindings:
+            type: array
+            description: The entity's bindings (erratum E43), one per database it is bound to, by database name. A bound entity has no mapping in that database.
+            items:
+              $ref: '#/components/schemas/EntityBindingRecord'
     AttributeRecord:
       x-engine-record: Maquettiste.Engine.AttributeRecord
       description: A resolved attribute.
@@ -8968,6 +9107,11 @@ components:
           description: The generation hints by pack name or `*`.
           additionalProperties:
             $ref: '#/components/schemas/GenerationHintsView'
+        boundBy:
+          type: array
+          description: The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before.
+          items:
+            $ref: '#/components/schemas/BoundByView'
     ViewView:
       x-engine-record: Maquettiste.Engine.ViewView
       description: One resolved view, with the annotations of its file (as `TableView`).
@@ -9014,6 +9158,11 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/GenerationHintsView'
+        boundBy:
+          type: array
+          description: The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before.
+          items:
+            $ref: '#/components/schemas/BoundByView'
     ViewColumnView:
       x-engine-record: Maquettiste.Engine.ViewColumnView
       type: object
@@ -9568,6 +9717,11 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/GenerationHintsView'
+        boundBy:
+          type: array
+          description: The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before.
+          items:
+            $ref: '#/components/schemas/BoundByView'
     QueryParameterView:
       x-engine-record: Maquettiste.Engine.QueryParameterView
       description: A parameter of a query.
@@ -9706,6 +9860,337 @@ components:
           type: [string, 'null']
         nativeType:
           type: [string, 'null']
+    BoundByView:
+      x-engine-record: Maquettiste.Engine.BoundByView
+      description: An entity bound to a table, view or query (erratum E43).
+      type: object
+      required: [entityId, entityName, bindingId, reads, writes, constants]
+      properties:
+        entityId:
+          $ref: '#/components/schemas/Ulid'
+        entityName:
+          type: string
+        bindingId:
+          $ref: '#/components/schemas/Ulid'
+        reads:
+          type: boolean
+          description: Whether it is the binding's source.
+        writes:
+          type: boolean
+          description: Whether it is the binding's write table.
+        constants:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingConstantView'
+    BindingConstantView:
+      x-engine-record: Maquettiste.Engine.BindingConstantView
+      description: A constant column of a binding (a filter on every read, a value on every insert).
+      type: object
+      required: [column, value]
+      properties:
+        column:
+          type: string
+        value:
+          description: A string, number or bool; null is SQL NULL.
+    EntityBindingRecord:
+      x-engine-record: Maquettiste.Engine.EntityBindingRecord
+      description: A resolved entity binding (erratum E43).
+      type: object
+      required: [id, database, sourceKind, source, sourceName, writeTable, delete, softDeleteColumn, softDeleteValue, constants, fields, columns, writeColumns]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        database:
+          $ref: '#/components/schemas/Ulid'
+        sourceKind:
+          oneOf:
+            - type: string
+              enum: [table, view, query]
+            - type: 'null'
+        source:
+          type: string
+          description: The source table's key, or the view's or query's id.
+        sourceName:
+          type: string
+        writeTable:
+          type: [string, 'null']
+          description: The key of the table the binding writes; null when it does not write.
+        delete:
+          type: string
+          enum: [key, soft, none]
+        softDeleteColumn:
+          type: [string, 'null']
+        softDeleteValue:
+          description: The value a soft delete sets.
+        constants:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingConstantView'
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingFieldRecord'
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingColumnRecord'
+        writeColumns:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingColumnRecord'
+    BindingFieldRecord:
+      x-engine-record: Maquettiste.Engine.BindingFieldRecord
+      type: object
+      required: [name, attribute, attributeId, memberId, endId, column, columnKey, writeColumn, type, nullable, isKey, isGenerated, inInsert, inUpdate]
+      properties:
+        name:
+          type: string
+        attribute:
+          type: string
+        attributeId:
+          type: [string, 'null']
+        memberId:
+          type: [string, 'null']
+        endId:
+          type: [string, 'null']
+        column:
+          type: string
+        columnKey:
+          type: [string, 'null']
+        writeColumn:
+          type: [string, 'null']
+        type:
+          type: [string, 'null']
+        nullable:
+          type: boolean
+        isKey:
+          type: boolean
+        isGenerated:
+          type: boolean
+        inInsert:
+          type: boolean
+        inUpdate:
+          type: boolean
+    BindingColumnRecord:
+      x-engine-record: Maquettiste.Engine.BindingColumnRecord
+      type: object
+      required: [name, key, status, field]
+      properties:
+        name:
+          type: string
+        key:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [field, constant, ignored, database, computed, identity, default, soft-delete, unaccounted]
+        field:
+          type: [string, 'null']
+    BindingSqlResult:
+      x-engine-record: Maquettiste.Engine.BindingSqlResult
+      type: object
+      required: [preview, diagnostics]
+      properties:
+        preview:
+          oneOf:
+            - $ref: '#/components/schemas/BindingSqlPreview'
+            - type: 'null'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    BindingSqlPreview:
+      x-engine-record: Maquettiste.Engine.BindingSqlPreview
+      type: object
+      required: [entityId, bindingId, database, dialect, select, selectByKey, insert, update, delete]
+      properties:
+        entityId:
+          $ref: '#/components/schemas/Ulid'
+        bindingId:
+          $ref: '#/components/schemas/Ulid'
+        database:
+          $ref: '#/components/schemas/Ulid'
+        dialect:
+          type: string
+          enum: [postgresql, sqlserver, mysql, sqlite, oracle]
+        select:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+        selectByKey:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+        insert:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+        update:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+        delete:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+    BindingStatement:
+      x-engine-record: Maquettiste.Engine.BindingStatement
+      type: object
+      required: [sql, parameters]
+      properties:
+        sql:
+          type: string
+        parameters:
+          type: array
+          items:
+            type: string
+    MaterializeBody:
+      x-engine-record: Maquettiste.Functions.MaterializeBody
+      description: A materialize batch operation without its database.
+      type: object
+      required: [op]
+      properties:
+        op:
+          type: string
+          enum: [materialize-tables, materialize-entities]
+        entities:
+          type: array
+          items:
+            type: string
+        tables:
+          type: array
+          items:
+            type: string
+        schema:
+          type: [string, 'null']
+        package:
+          type: [string, 'null']
+    MaterializePlan:
+      x-engine-record: Maquettiste.Engine.MaterializePlan
+      type: object
+      required: [operation, database, valid, creates, updates, deletes, notes, diagnostics]
+      properties:
+        operation:
+          type: string
+        database:
+          type: string
+        valid:
+          type: boolean
+        creates:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterializeChange'
+        updates:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterializeChange'
+        deletes:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterializeChange'
+        notes:
+          type: array
+          items:
+            type: string
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    MaterializeChange:
+      x-engine-record: Maquettiste.Engine.MaterializeChange
+      type: object
+      required: [id, kind, name, because]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+          description: The file's repo-relative path today; absent for a create.
+        because:
+          type: string
+        element:
+          type: object
+          additionalProperties: true
+          description: The document that would be written; absent for a delete.
+    MaterializeStatus:
+      x-engine-record: Maquettiste.Engine.MaterializeStatus
+      type: object
+      required: [database, databaseName, entities, sources]
+      properties:
+        database:
+          $ref: '#/components/schemas/Ulid'
+        databaseName:
+          type: string
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterializeEntityStatus'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterializeSourceStatus'
+    MaterializeEntityStatus:
+      x-engine-record: Maquettiste.Engine.MaterializeEntityStatus
+      type: object
+      required: [id, name, package, projected, table]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        package:
+          type: [string, 'null']
+        projected:
+          type: boolean
+        table:
+          type: [string, 'null']
+    MaterializeSourceStatus:
+      x-engine-record: Maquettiste.Engine.MaterializeSourceStatus
+      type: object
+      required: [id, kind, name, schema, origin, boundBy]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [table, view]
+        name:
+          type: string
+        schema:
+          type: [string, 'null']
+        origin:
+          type: string
+        boundBy:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterializeBinder'
+    MaterializeBinder:
+      x-engine-record: Maquettiste.Engine.MaterializeBinder
+      type: object
+      required: [entity, entityName, binding, constants]
+      properties:
+        entity:
+          type: string
+        entityName:
+          type: string
+        binding:
+          type: string
+        constants:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterializeConstant'
+    MaterializeConstant:
+      x-engine-record: Maquettiste.Engine.MaterializeConstant
+      type: object
+      required: [column]
+      properties:
+        column:
+          type: string
+        value:
+          description: The value; absent for NULL.
     QuerySqlResult:
       x-engine-record: Maquettiste.Engine.QuerySqlResult
       type: object

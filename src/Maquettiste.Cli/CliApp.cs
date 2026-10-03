@@ -193,6 +193,12 @@ public sealed class CliApp(CliEnvironment environment)
                                 Delete an element: --resolution refuse|remove-references|delete-dependents (default refuse;
                                   delete-dependents also deletes what cannot exist without it), --dry-run (print what the
                                   delete would do and write nothing), --format text|json
+          model materialize tables --database <id|name> <entity...>
+                                Write a designed table per entity with its projection's shape and bind the entity to it:
+                                  --schema <id|name>, --dry-run (print the plan and write nothing), --format text|json
+          model materialize entities --database <id|name> --package <id|name> <table...>
+                                Write an entity per table or view, bound to it, and a relation per foreign key between them:
+                                  --dry-run, --format text|json
           mcp                   Serve the model to agents over the Model Context Protocol (stdio; see docs/mcp.md)
 
         Global options:

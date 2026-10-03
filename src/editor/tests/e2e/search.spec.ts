@@ -19,7 +19,7 @@ test("filter mode hides non-matches and counts the other explorers' matches", as
   await expect(tree.getByTestId("explorer-domain-Billing")).toHaveAttribute("aria-expanded", "true");
   await expect(tree.getByTestId("explorer-domain-Catalog")).toHaveCount(0);
   // A kind folder shows how many of its members match.
-  await expect(tree.getByTestId("explorer-folder-Entities").first().locator('[data-part="count"]')).toHaveText(/^2 of \d+$/);
+  await expect(tree.getByTestId("explorer-folder-Entities").first().locator('[data-part="count"]')).toHaveText(/^3 of \d+$/); // Invoice, InvoiceLine and InvoiceNote
   // The matched text is marked.
   await expect(tree.getByTestId("explorer-row-InvoiceLine").locator("mark")).toHaveText("Invoice");
 

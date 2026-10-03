@@ -8,7 +8,7 @@
     "relationId": null,
     "isJunction": false,
     "isLookup": false,
-    "comment": null,
+    "comment": "Someone we bill.",
     "columns": [
       {
         "key": "01J92P0V0KGPC29TQQG8R57EBM",
@@ -31,6 +31,7 @@
         "default": null,
         "computedStored": false,
         "sequenceId": null,
+        "dbTypeId": null,
         "collation": null,
         "comment": null,
         "displayName": null,
@@ -63,6 +64,7 @@
         "default": null,
         "computedStored": false,
         "sequenceId": null,
+        "dbTypeId": null,
         "collation": null,
         "comment": null,
         "displayName": null,
@@ -95,6 +97,7 @@
         "default": null,
         "computedStored": false,
         "sequenceId": null,
+        "dbTypeId": null,
         "collation": null,
         "comment": null,
         "displayName": null,
@@ -127,6 +130,7 @@
         "default": null,
         "computedStored": false,
         "sequenceId": null,
+        "dbTypeId": null,
         "collation": null,
         "comment": null,
         "displayName": null,
@@ -159,6 +163,7 @@
         "default": null,
         "computedStored": false,
         "sequenceId": null,
+        "dbTypeId": null,
         "collation": null,
         "comment": null,
         "displayName": null,
@@ -191,6 +196,7 @@
         "default": null,
         "computedStored": false,
         "sequenceId": null,
+        "dbTypeId": null,
         "collation": null,
         "comment": null,
         "displayName": null,
@@ -226,7 +232,8 @@
     "tags": [],
     "category": null,
     "properties": {},
-    "generation": {}
+    "generation": {},
+    "boundBy": []
   },
   "diagnostics": [],
   "partial": false

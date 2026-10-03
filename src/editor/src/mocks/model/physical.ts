@@ -288,6 +288,8 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       (d) =>
         d.kind === "entity" &&
         d.abstract !== true &&
+        // A binding to the database wins over projection (erratum E43); the mock does not resolve bindings further.
+        !(Array.isArray(d.bindings) && d.bindings.some((b) => (b as Json | null)?.database === databaseId)) &&
         placesEntity(
           convention,
           typeof d.package === "string" ? d.package : null,

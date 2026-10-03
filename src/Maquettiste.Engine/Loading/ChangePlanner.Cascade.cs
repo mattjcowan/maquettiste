@@ -95,6 +95,26 @@ internal sealed partial class ChangePlanner
         }
 
         var narrow = mode == DeleteResolution.DeleteDependents;
+
+        // A reference from an entity's binding (erratum E43) never deletes the entity, in either resolution: the binding goes (a field, a
+        // constant or a listed column only that entry), and the entity stays with its other bindings.
+        if (referrer.Element is Entity && BindingPart(reference.JsonPointer) is { } bindingPart)
+        {
+            var drop = new CascadeOp(bindingPart, true, reference, index);
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != bindingPart && !IsUnder(o.Pointer, bindingPart)), drop];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
+                {
+                    if (pointer.Length > 0 && (pointer == bindingPart || IsUnder(pointer, bindingPart)))
+                        _cascadeQueue.Enqueue((index, subId, mode));
+                }
+
+                return;
+            }
+        }
+
         var clear = new CascadeOp(reference.JsonPointer, false, reference, index);
         var reason = TryOps(referrer, [.. ops, clear], narrow, out var widening);
         if (reason is null)
@@ -142,6 +162,19 @@ internal sealed partial class ChangePlanner
     }
 
     private void Commit(string referrerId, List<CascadeOp> ops) => _cascadeOps[referrerId] = ops;
+
+    /// <summary>
+    /// The part of an entity's binding a reference at <paramref name="pointer"/> takes with it: the field, constant or listed column
+    /// entry it sits in, else the whole binding; <see langword="null"/> outside <c>bindings</c>.
+    /// </summary>
+    private static string? BindingPart(string pointer)
+    {
+        if (!pointer.StartsWith("/bindings/", StringComparison.Ordinal) || !JsonPointer.TryParse(pointer, out var segments) || segments.Length < 3)
+            return null;
+        if (segments.Length >= 4 && segments[2] is "fields" or "constants" or "columns")
+            return JsonPointer.Build(segments[..4]);
+        return JsonPointer.Build(segments[..2]);
+    }
 
     private bool Readable(string id, Working current)
     {
@@ -370,8 +403,11 @@ internal sealed partial class ChangePlanner
                 {
                     var sub = DocumentReader.Scan(document.Json).Ids.Where(x => x.Pointer == op.Pointer).Select(x => x.Id).FirstOrDefault();
                     var subKind = sub is not null && _snapshot.TryGetEntry(sub, out var entry) ? entry.Kind : null;
+                    var because = document.Element.Kind == ElementKind.Entity && op.Pointer.StartsWith("/bindings/", StringComparison.Ordinal)
+                        ? (subKind == "binding" ? "the binding" : "this entry of its binding") + " needs " + Label(op.Reference.ToId) + "; the entity stays"
+                        : "needs " + Label(op.Reference.ToId);
                     removes.Add(new DeletePlanRemove(referrerId, document.Element.KindName, NameOf(document.Element), op.Pointer,
-                        Part(document.Json, op.Pointer, subKind, ShortName(op.Reference.ToId)), sub, subKind, "needs " + Label(op.Reference.ToId)));
+                        Part(document.Json, op.Pointer, subKind, ShortName(op.Reference.ToId)), sub, subKind, because));
                 }
                 else if (document.Element.Kind == ElementKind.Diagram && op.Reference.Field == "element")
                 {
@@ -490,6 +526,8 @@ internal sealed partial class ChangePlanner
         "checks" => "check",
         "rows" => "row",
         "fields" => "field",
+        "constants" => "constant",
+        "bindings" => "binding",
         "steps" => "step",
         "states" => "state",
         "transitions" => "transition",

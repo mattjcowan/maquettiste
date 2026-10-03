@@ -1,0 +1,40 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000013",
+  "name": "customers",
+  "database": "01K6BFX0000000000000000002",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000009",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000010",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000011",
+      "name": "email",
+      "type": "string",
+      "length": 254
+    },
+    {
+      "id": "01K6BFX0000000000000000012",
+      "name": "is_deleted",
+      "type": "bool",
+      "nullable": false,
+      "default": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000009"
+    ]
+  }
+}

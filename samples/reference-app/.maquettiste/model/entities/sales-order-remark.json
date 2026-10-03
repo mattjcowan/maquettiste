@@ -1,0 +1,85 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2FKBP4PXE31YXS7BKY0SXHG",
+  "name": "SalesOrderRemark",
+  "displayName": "Sales order remark",
+  "pluralName": "Sales order remarks",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A short remark on a sales order, kept in the shared remarks table with subject_type 'sales-order'.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1TS9MKXFDT5J745J39VB8Z3"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1TS9MKXFDT5J745J39VB8Z3",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales order remark."
+    },
+    {
+      "id": "01M1RAEFK37BSW1A6CRJ4P30J2",
+      "name": "salesOrderId",
+      "type": "uuid",
+      "required": true,
+      "description": "Key of the sales order the remark is about."
+    },
+    {
+      "id": "01M1PKXDS4BXATVY34GMF528VY",
+      "name": "body",
+      "type": "text",
+      "required": true,
+      "description": "Remark text."
+    },
+    {
+      "id": "01M2G8Z9CEAWTBBPRN1WXYFF9D",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "readOnly": true,
+      "description": "When the remark was written; the database sets it."
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M1RD83FM56EQBJWKH4TGFJ0W",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M2JRG9KN181F9H4KQ18D8FNR",
+      "constants": [
+        {
+          "column": "01M1EHW1K2VGVZZE4EBWZR1EDR",
+          "value": "sales-order"
+        }
+      ],
+      "fields": [
+        {
+          "attribute": "01M1TS9MKXFDT5J745J39VB8Z3",
+          "column": "01M1V0NZ2AP7B701CTKYADPWJG"
+        },
+        {
+          "attribute": "01M1RAEFK37BSW1A6CRJ4P30J2",
+          "column": "01M30YKNAPZEAS291SPYZNBY1S"
+        },
+        {
+          "attribute": "01M1PKXDS4BXATVY34GMF528VY",
+          "column": "01M36KWVW8EWPW1937S70EZ8CS"
+        },
+        {
+          "attribute": "01M2G8Z9CEAWTBBPRN1WXYFF9D",
+          "column": "01M2GYPX3V3C1QEFA90D3RVRNX"
+        }
+      ],
+      "columns": [
+        {
+          "column": "01M2GYPX3V3C1QEFA90D3RVRNX",
+          "status": "database"
+        }
+      ]
+    }
+  ]
+}

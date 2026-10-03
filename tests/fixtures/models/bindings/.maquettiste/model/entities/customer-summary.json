@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BFX0000000000000000049",
+  "name": "CustomerSummary",
+  "package": "01K6BFX0000000000000000001",
+  "description": "An active customer as the ActiveCustomers query reads it; read-only.",
+  "key": {
+    "attributes": [
+      "01K6BFX0000000000000000045"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000045",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000046",
+      "name": "displayName",
+      "type": "string",
+      "length": 120,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000047",
+      "name": "email",
+      "type": "string",
+      "length": 254
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BFX0000000000000000048",
+      "database": "01K6BFX0000000000000000002",
+      "source": "01K6BFX0000000000000000021",
+      "fields": [
+        {
+          "attribute": "01K6BFX0000000000000000045",
+          "column": "customerId"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000046",
+          "column": "displayName"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000047",
+          "column": "email"
+        }
+      ]
+    }
+  ]
+}

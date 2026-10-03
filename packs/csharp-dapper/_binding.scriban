@@ -1,0 +1,271 @@
+{{-
+# The repository of an entity with a binding (erratum E43), included by repository.scriban: reads through the binding's select
+# statements (its constants applied, so several entities share one table), writes through its insert and update (constants set,
+# the columns the database fills left out), and deletes through its delete (by key, or the soft-delete update). A binding that
+# does not write gets a read-only repository: no Insert, Update or Delete. Needs _csharp.scriban and _dapper.scriban.
+b = dapper_binding(entity)
+name = type_name(entity)
+db = b.database
+d = db.dialect
+numeric = ["int16", "int32", "int64", "decimal", "double", "float"]
+insert_sql = binding_sql b "insert"
+update_sql = binding_sql b "update"
+delete_sql = binding_sql b "delete"
+writes = insert_sql != ""
+
+# C# expression reading a field's attribute (not a value object member) from its row property; a number of another type is cast.
+func bind_read(a, f)
+  $src = "row." + (cs_ident f.name)
+  $read = read_value(a, $src, f.type, bind_nullable(f))
+  if $read == $src && f.type && a.type.builtin && f.type != a.type.builtin && (numeric | array.contains f.type) && (numeric | array.contains a.type.builtin)
+    ret "(" + (type_of a "csharp") + ")" + $src
+  end
+  ret $read
+end
+
+# "Name = expression" for each field: attributes, value objects built from their member fields, and relation keys.
+func bind_assignments(e, fields)
+  $result = []
+  $objects = []
+  for f in fields
+    if f.end
+      $result[$result.size] = ((cs_ident (pascal f.name)) + " = row." + (cs_ident f.name))
+    else if f.member
+      if !($objects | array.contains f.attribute)
+        $objects[$objects.size] = f.attribute
+      end
+    else if f.attribute && !f.attribute.collection
+      $result[$result.size] = (prop_name(f.attribute, type_name(e)) + " = " + bind_read(f.attribute, f))
+    end
+  end
+  for vo in $objects
+    $parts = []
+    $tests = []
+    for f in fields
+      if f.member && f.attribute == vo
+        $parts[$parts.size] = (prop_name(f.member, type_name(vo.type.value_object)) + " = " + read_value(f.member, "row." + (cs_ident f.name), f.type, bind_nullable(f)))
+        $tests[$tests.size] = ("row." + (cs_ident f.name) + " is null")
+      end
+    end
+    $created = "new " + (type_of vo.type "csharp") + " { " + ($parts | array.join ", ") + " }"
+    if !vo.required
+      $created = "(" + ($tests | array.join " && ") + " ? null : " + $created + ")"
+    end
+    $result[$result.size] = (prop_name(vo, type_name(e)) + " = " + $created)
+  end
+  ret $result
+end
+
+# C# expression writing a field's row property from the entity.
+func bind_write(e, f)
+  if f.end
+    ret "entity." + (cs_ident (pascal f.name))
+  end
+  $a = f.attribute
+  $access = "entity." + prop_name($a, type_name(e))
+  $optional = !$a.required
+  $owner = $a
+  if f.member
+    $access = $access + ($optional ? "?." : ".") + prop_name(f.member, type_name($a.type.value_object))
+    $optional = $optional || !f.member.required
+    $owner = f.member
+  end
+  if f.type == "json"
+    if $optional || $a.collection
+      ret $access + " is null ? null : JsonSerializer.Serialize(" + $access + ")"
+    end
+    ret "JsonSerializer.Serialize(" + $access + ")"
+  end
+  if $owner.type.kind == "enum"
+    if f.type == "string" || f.type == "text"
+      ret $access + ($optional && !$owner.required ? "?" : "") + ".ToCode()"
+    end
+    ret "(" + bind_row_type(f) + ")" + $access
+  end
+  ret $access
+end
+
+# Method parameters and the anonymous object's members: the source query's parameters, then the key fields.
+query_params = []
+query_args = []
+if b.source_query
+  for p in b.source_query.parameters
+    $t = type_of p.code_type "csharp"
+    query_params[query_params.size] = ((p.collection ? "IEnumerable<" + $t + ">" : $t) + " " + (cs_ident p.name))
+    query_args[query_args.size] = ((cs_ident p.name) + " = " + (cs_ident p.name))
+  end
+end
+key_params = []
+key_args = []
+order_by = []
+for f in b.key
+  key_params[key_params.size] = ((type_of f.attribute "csharp") + " " + (cs_ident f.name))
+  key_args[key_args.size] = ((cs_ident f.name) + " = " + (cs_ident f.name))
+  order_by[order_by.size] = (sql_quote f.name db)
+end
+paging = d == "sqlserver" ? "OFFSET @mq_skip ROWS FETCH NEXT @mq_take ROWS ONLY" : "LIMIT @mq_take OFFSET @mq_skip"
+get_params = (query_params | array.concat key_params | array.add "CancellationToken cancellationToken = default") | array.join ", "
+list_params = (query_params | array.add "int mq_skip = 0" | array.add "int mq_take = 100" | array.add "CancellationToken cancellationToken = default") | array.join ", "
+delete_params = (key_params | array.add "CancellationToken cancellationToken = default") | array.join ", "
+generated = b.generated.size == 1 ? b.generated[0] : null
+key_strategy = entity.key ? entity.key.strategy : ""
+key_attr = (b.key.size == 1 && !b.key[0].is_generated) ? b.key[0].attribute : null
+uses = []
+for a in entity.attributes
+  uses[uses.size] = a
+end
+usings = namespaces_used(entity, uses)
+source_text = b.source_kind + " " + b.source_name
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Dapper;
+{{- for u in usings }}
+using {{ u }};
+{{- end }}
+
+namespace {{ ns(entity) }};
+
+/// <summary>Reads {{ if writes }}and writes {{ end }}<see cref="{{ name }}"/> rows through its binding to {{ source_text }} (database {{ db.name }}, {{ d }}).</summary>
+public partial interface I{{ name }}Repository
+{
+    /// <summary>Returns the entity with the given key, or null.</summary>
+    Task<{{ name }}?> GetAsync({{ get_params }});
+
+    /// <summary>Returns a page of entities in key order.</summary>
+    Task<IReadOnlyList<{{ name }}>> ListAsync({{ list_params }});
+{{- if writes }}
+
+    /// <summary>Inserts the entity{{ if generated }} and sets its database-generated key{{ end }}.</summary>
+    Task InsertAsync({{ name }} entity, CancellationToken cancellationToken = default);
+{{- end }}
+{{- if update_sql != "" }}
+
+    /// <summary>Updates the entity; returns false when no row has its key.</summary>
+    Task<bool> UpdateAsync({{ name }} entity, CancellationToken cancellationToken = default);
+{{- end }}
+{{- if delete_sql != "" }}
+
+    /// <summary>{{ if b.delete == "soft" }}Marks the entity with the given key deleted{{ else }}Deletes the entity with the given key{{ end }}; returns false when there was none.</summary>
+    Task<bool> DeleteAsync({{ delete_params }});
+{{- end }}
+}
+
+/// <summary>The Dapper implementation of <see cref="I{{ name }}Repository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
+public partial class {{ name }}Repository(IDbConnection connection, IDbTransaction? transaction = null) : I{{ name }}Repository
+{
+    private const string SelectSql = """
+{{ indent (binding_sql b "select-by-key") 8 }}
+        """;
+
+    private const string ListSql = """
+{{ indent (binding_sql b "select") 8 }}
+        ORDER BY {{ order_by | array.join ", " }} {{ paging }}
+        """;
+{{- if writes }}
+
+    private const string InsertSql = """
+{{ indent insert_sql 8 }}
+        """;
+{{- end }}
+{{- if update_sql != "" }}
+
+    private const string UpdateSql = """
+{{ indent update_sql 8 }}
+        """;
+{{- end }}
+{{- if delete_sql != "" }}
+
+    private const string DeleteSql = """
+{{ indent delete_sql 8 }}
+        """;
+{{- end }}
+
+    /// <inheritdoc/>
+    public async Task<{{ name }}?> GetAsync({{ get_params }})
+    {
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { {{ query_args | array.concat key_args | array.join ", " }} }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        return row is null ? null : Row.ToEntity(row);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<{{ name }}>> ListAsync({{ list_params }})
+    {
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { {{ query_args | array.add "mq_skip" | array.add "mq_take" | array.join ", " }} }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        return rows.Select(Row.ToEntity).ToList();
+    }
+{{- if writes }}
+
+    /// <inheritdoc/>
+    public async Task InsertAsync({{ name }} entity, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+{{- if key_attr && key_strategy == "uuid-v7" && key_attr.type.builtin == "uuid" }}
+        if (entity.{{ prop_name(key_attr, name) }} == Guid.Empty)
+            entity.{{ prop_name(key_attr, name) }} = Guid.CreateVersion7();
+{{- else if key_attr && key_strategy == "ulid" && (key_attr.type.builtin == "ulid" || key_attr.type.builtin == "string") }}
+        if (string.IsNullOrEmpty(entity.{{ prop_name(key_attr, name) }}))
+            entity.{{ prop_name(key_attr, name) }} = UlidGenerator.NewUlid();
+{{- end }}
+{{- if generated && generated.attribute }}
+        entity.{{ prop_name(generated.attribute, name) }} = await connection.ExecuteScalarAsync<{{ type_of generated.attribute "csharp" }}>(new CommandDefinition(InsertSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- else }}
+        await connection.ExecuteAsync(new CommandDefinition(InsertSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- end }}
+    }
+{{- end }}
+{{- if update_sql != "" }}
+
+    /// <inheritdoc/>
+    public async Task<bool> UpdateAsync({{ name }} entity, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+{{- if update_sql | string.starts_with "SELECT" }}
+        return await connection.ExecuteScalarAsync<long>(new CommandDefinition(UpdateSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- else }}
+        return await connection.ExecuteAsync(new CommandDefinition(UpdateSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- end }}
+    }
+{{- end }}
+{{- if delete_sql != "" }}
+
+    /// <inheritdoc/>
+    public async Task<bool> DeleteAsync({{ delete_params }})
+    {
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { {{ key_args | array.join ", " }} }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+    }
+{{- end }}
+
+    /// <summary>One row of {{ source_text }} as the binding reads and writes it, field by field.</summary>
+    private sealed class Row
+    {
+{{- for f in b.fields }}
+        public {{ bind_row_type(f) }} {{ cs_ident f.name }} { get; set; }{{ if !bind_nullable(f) && !(cs_value_type bind_row_type(f)) }} = default!;{{ end }}
+{{- end }}
+
+        public static {{ name }} ToEntity(Row row) => new()
+        {
+{{- for line in bind_assignments(entity, b.fields) }}
+            {{ line }},
+{{- end }}
+        };
+{{- if writes }}
+
+        public static Row From({{ name }} entity) => new()
+        {
+{{- for f in b.fields }}
+            {{ cs_ident f.name }} = {{ bind_write(entity, f) }},
+{{- end }}
+        };
+{{- end }}
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder (package_folder entity) (name + "Repository.g.cs")) content -}}

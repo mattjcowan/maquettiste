@@ -1,13 +1,13 @@
 {
-  "id": "01M3PNSZBRQN99J331Y5EYQJPR",
+  "id": "01M3ZM69BXJ54G00JD5KBR71HF",
   "kind": "apply",
   "state": "succeeded",
   "queuePosition": null,
   "progress": {
     "stage": "write",
-    "done": 29,
-    "total": 29,
-    "currentPath": "db/main/billing/tables/payment_invoice.sql",
+    "done": 43,
+    "total": 43,
+    "currentPath": "db/main/billing/tables/notes.sql",
     "pack": "sql-ddl"
   },
   "planResult": null,
@@ -16,51 +16,51 @@
     "staleUnits": [],
     "stalePaths": [],
     "result": {
-      "runId": "01M3PNSZBSKRNN13K4MEW1N4J7",
+      "runId": "01M3ZM69C26TZQVDSQP3EPR9EW",
       "mode": "apply",
       "outcome": "succeeded",
       "changes": [],
-      "unitsRendered": 23,
+      "unitsRendered": 43,
       "unitsSkipped": 0,
-      "filesWritten": 29,
+      "filesWritten": 43,
       "filesDeleted": 0,
       "diagnostics": [],
       "timings": [
         {
           "stage": "load",
-          "wall": "00:00:00.0006647",
-          "busy": "00:00:00.0006647",
-          "items": 26
+          "wall": "00:00:00.0432919",
+          "busy": "00:00:00.0432919",
+          "items": 33
         },
         {
           "stage": "validate",
-          "wall": "00:00:00.0006603",
-          "busy": "00:00:00.0006603",
-          "items": 26
+          "wall": "00:00:00.0008921",
+          "busy": "00:00:00.0008921",
+          "items": 33
         },
         {
           "stage": "resolve",
-          "wall": "00:00:00.0011261",
-          "busy": "00:00:00.0011261",
-          "items": 26
+          "wall": "00:00:00.0019451",
+          "busy": "00:00:00.0019451",
+          "items": 33
         },
         {
           "stage": "plan",
-          "wall": "00:00:00.0061525",
-          "busy": "00:00:00.0043615",
-          "items": 25
+          "wall": "00:00:00.1041636",
+          "busy": "00:00:00.1014591",
+          "items": 45
         },
         {
           "stage": "write",
-          "wall": "00:00:00.0254722",
-          "busy": "00:00:00.0254722",
-          "items": 29
+          "wall": "00:00:00.0483343",
+          "busy": "00:00:00.0483343",
+          "items": 43
         }
       ]
     }
   },
   "error": null,
-  "queuedUtc": "2026-09-29T13:31:29.5281993+00:00",
-  "startedUtc": "2026-09-29T13:31:29.5283318+00:00",
-  "finishedUtc": "2026-09-29T13:31:29.6026223+00:00"
+  "queuedUtc": "2026-10-03T00:56:25.725504+00:00",
+  "startedUtc": "2026-10-03T00:56:25.7283428+00:00",
+  "finishedUtc": "2026-10-03T00:56:25.9671232+00:00"
 }

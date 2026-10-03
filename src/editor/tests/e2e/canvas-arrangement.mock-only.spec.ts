@@ -54,7 +54,7 @@ test("zoom is saved in the diagram and restored on the way back; viewing a domai
     .toBeCloseTo(zoomed, 3);
 
   await page.locator("#diagram-picker").selectOption({ label: "All of Billing" });
-  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
   await page.waitForTimeout(600);
   expect(await domainDiagram(page)).toBeNull();
 
@@ -66,7 +66,7 @@ test("zoom is saved in the diagram and restored on the way back; viewing a domai
 test("arranging All of Billing creates the domain's diagram; a new related entity is placed beside its relation and nothing moves", async ({ page }) => {
   await openEditor(page);
   await page.locator("#diagram-picker").selectOption({ label: "All of Billing" });
-  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
   await page.waitForTimeout(600);
 
   // Drag Payment down: the first arrangement creates the diagram "Billing" and the canvas becomes it.
@@ -80,8 +80,8 @@ test("arranging All of Billing creates the domain's diagram; a new related entit
   const created = await domainDiagram(page);
   expect(created).not.toBeNull();
   const entityMembers = created!.members.filter((m) => m.x !== undefined);
-  expect(entityMembers).toHaveLength(4);
-  expect(created!.members).toHaveLength(7); // four entities and the three relationships between them
+  expect(entityMembers).toHaveLength(7);
+  expect(created!.members).toHaveLength(10); // seven entities (with the binding examples) and the three relationships
   expect(created!.viewport).toEqual({ x: expect.any(Number), y: expect.any(Number), zoom: expect.any(Number) });
   await page.waitForTimeout(600);
   const dragged = await boxOf(page, "Payment");
@@ -128,7 +128,7 @@ test("arranging All of Billing creates the domain's diagram; a new related entit
   );
   expect(saved).toBe("saved");
   await expect(card(page, "Refund")).toBeVisible();
-  await expect(page.locator(".react-flow__node")).toHaveCount(5);
+  await expect(page.locator(".react-flow__node")).toHaveCount(8);
   await expect(page.getByTestId("save-status")).toHaveText("Saved");
 
   // Payment kept its place; Refund sits beside it and overlaps no card.
@@ -140,7 +140,7 @@ test("arranging All of Billing creates the domain's diagram; a new related entit
   const gapY = Math.max(refund.y - (payment.y + payment.height), payment.y - (refund.y + refund.height), 0);
   expect(gapX + gapY).toBeGreaterThan(0);
   expect(gapX + gapY).toBeLessThan(120);
-  for (const name of ["Customer", "Invoice", "InvoiceLine", "Payment"]) {
+  for (const name of ["Customer", "Invoice", "InvoiceLine", "Payment", "InvoiceNote", "CustomerNote", "RevenueMonth"]) {
     const other = await boxOf(page, name);
     const overlap =
       refund.x < other.x + other.width && other.x < refund.x + refund.width && refund.y < other.y + other.height && other.y < refund.y + refund.height;
@@ -163,34 +163,34 @@ test("positions the browser kept for a domain's canvas move into the domain's di
   await openEditor(page);
   await page.locator("#diagram-picker").selectOption({ label: "All of Billing" });
   await expect(page.locator("#diagram-picker option:checked")).toHaveText("Billing");
-  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
   const created = await domainDiagram(page);
   expect(created!.members.find((m) => m.element === PAYMENT)).toMatchObject({ x: 1000, y: 700 });
   // The others were placed beside it and saved; the browser's copy is gone.
-  await expect.poll(async () => (await domainDiagram(page))?.members.filter((m) => m.x !== undefined).length).toBe(4);
+  await expect.poll(async () => (await domainDiagram(page))?.members.filter((m) => m.x !== undefined).length).toBe(7);
   expect(await page.evaluate((pkg) => localStorage.getItem(`mq.pos.pkg.${pkg}`), BILLING)).toBeNull();
 });
 
 test("Auto-layout on All of Billing creates the domain's diagram; Undo removes it and the canvas is All of Billing again", async ({ page }) => {
   await openEditor(page);
   await page.locator("#diagram-picker").selectOption({ label: "All of Billing" });
-  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
   await page.getByTestId("auto-layout").click();
   await expect(page.locator("#diagram-picker option:checked")).toHaveText("Billing");
   const created = await domainDiagram(page);
-  expect(created!.members.filter((m) => m.x !== undefined)).toHaveLength(4);
+  expect(created!.members.filter((m) => m.x !== undefined)).toHaveLength(7);
   expect(created!.membership).toBe("package");
 
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.locator("#diagram-picker option:checked")).toHaveText("All of Billing");
   await expect.poll(() => domainDiagram(page)).toBeNull();
-  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
 });
 
 test("the domain's diagram is found by its membership, not its name: renamed, All of Billing still opens it", async ({ page }) => {
   await openEditor(page);
   await page.locator("#diagram-picker").selectOption({ label: "All of Billing" });
-  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  await expect(page.locator(".react-flow__node")).toHaveCount(7);
   await page.getByTestId("auto-layout").click();
   await expect(page.locator("#diagram-picker option:checked")).toHaveText("Billing");
 

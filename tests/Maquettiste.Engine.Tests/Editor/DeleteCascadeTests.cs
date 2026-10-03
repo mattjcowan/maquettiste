@@ -22,6 +22,10 @@ public sealed class DeleteCascadeTests
     private const string InvoicesByCustomerId = "01K6QRY0000000000000000001";
     private const string RevenueByMonthId = "01K6QRY0000000000000000002";
     private const string FindCustomersWithIssuedInvoicesId = "01K6QRY0000000000000000003";
+    private const string NotesTableId = "01K6BND0000000000000000001";
+    private const string InvoiceNoteId = "01K6BND0000000000000000010";
+    private const string CustomerNoteId = "01K6BND0000000000000000020";
+    private const string RevenueMonthId = "01K6BND0000000000000000030";
 
     private static CancellationToken Ct => EditorRepo.Ct;
 
@@ -86,9 +90,13 @@ public sealed class DeleteCascadeTests
         var result = await r.Store.DeleteAsync(database.Element.Id, database.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
 
         Assert.Equal(SaveOutcome.Saved, plan.Outcome);
-        Assert.Equal([SequenceId, EditorRepo.OverlayTableId, ViewId, SettlesMappingId, InvoiceMappingId, InvoicesByCustomerId, RevenueByMonthId, FindCustomersWithIssuedInvoicesId],
+        Assert.Equal([SequenceId, EditorRepo.OverlayTableId, ViewId, SettlesMappingId, InvoiceMappingId, NotesTableId, InvoicesByCustomerId, RevenueByMonthId,
+                FindCustomersWithIssuedInvoicesId],
             plan.Deletes.Select(d => d.Id));
         Assert.All(plan.Deletes, d => Assert.Equal("needs database main", d.Because));
+        // The entities bound to the database lose their binding and stay (erratum E43).
+        Assert.Equal([InvoiceNoteId, CustomerNoteId, RevenueMonthId], plan.Removes.Select(x => x.Id).Order(StringComparer.Ordinal));
+        Assert.All(plan.Removes, x => Assert.Equal(("binding", "/bindings/0", "the binding needs database main; the entity stays"), (x.SubKind, x.Pointer, x.Because)));
         Assert.Equal("/databases/main", Assert.Single(plan.Settings).Pointer);
         var warning = Assert.Single(plan.Warnings);
         Assert.Equal(("sql-ddl", "table"), (warning.Pack, warning.Unit));
@@ -131,7 +139,9 @@ public sealed class DeleteCascadeTests
             ],
             plan.Deletes.Select(d => d.Id));
         Assert.Equal(affected.Order(StringComparer.Ordinal), result.Changes!.Deleted.Order(StringComparer.Ordinal));
-        Assert.Equal([DiagramId], result.Changes.Changed.Select(c => c.Id));
+        // RevenueMonth reads the deleted RevenueByMonth query: its binding goes and the entity stays.
+        Assert.Equal([DiagramId, RevenueMonthId], result.Changes.Changed.Select(c => c.Id));
+        Assert.Empty(r.Store.Current!.Get<Entity>(RevenueMonthId)!.Bindings);
         var diagram = r.Store.Current!.Get<Diagram>(DiagramId)!;
         Assert.DoesNotContain(diagram.Members, m => affected.Contains(m.Element));
         var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
@@ -196,7 +206,8 @@ public sealed class DeleteCascadeTests
         Assert.Equal(queries.Order(StringComparer.Ordinal), cleared.Refused.Select(x => x.Id).Distinct().Order(StringComparer.Ordinal)); // a source is required
         Assert.Equal(queries.Order(StringComparer.Ordinal), plan.Deletes.Select(d => d.Id).Order(StringComparer.Ordinal));
         Assert.All(plan.Deletes, d => Assert.Equal(("query", "needs table Invoice register"), (d.Kind, d.Because)));
-        Assert.Empty(plan.Removes);
+        var binding = Assert.Single(plan.Removes); // RevenueMonth reads the RevenueByMonth query
+        Assert.Equal((RevenueMonthId, "/bindings/0", "binding"), (binding.Id, binding.Pointer, binding.SubKind));
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.All(queries, id => Assert.Null(r.Store.Current!.GetDocument(id)));
         var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
@@ -226,7 +237,7 @@ public sealed class DeleteCascadeTests
         Assert.Equal(10, plan.Deletes.Count); // refers to, then Invoice's three relations, overlay, two mappings and the three queries over it
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.Equal(12, result.Changes!.Deleted.Count);
-        Assert.Equal([DiagramId], result.Changes.Changed.Select(c => c.Id));
+        Assert.Equal([DiagramId, RevenueMonthId], result.Changes.Changed.Select(c => c.Id));
     }
 
     [Fact]

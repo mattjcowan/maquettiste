@@ -1,0 +1,51 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000007",
+  "name": "products",
+  "database": "01K6BFX0000000000000000002",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000003",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity"
+    },
+    {
+      "id": "01K6BFX0000000000000000004",
+      "name": "sku",
+      "type": "string",
+      "length": 40,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000005",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000006",
+      "name": "price",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 2,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000003"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01K6BFX0000000000000000008",
+      "columns": [
+        "01K6BFX0000000000000000004"
+      ]
+    }
+  ]
+}

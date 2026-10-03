@@ -53,6 +53,10 @@ Every element and attribute needs a description; the build fails without one.
   (`name=sales_order_contains_lines`); without it, `<entity words> <role words>`.
 - `mapping` (only where conventions are not enough): `inheritance` (`tph`, `tpt`), `discriminator`, `storage`
   (`attribute: int|string|lookup|json|table|embedded`), `prefix` (`attribute: column_prefix_`).
+- `binding` binds the entity to a designed table of `main` (erratum E43) instead of projecting it: `table` (the designed
+  table's name), `constants` (`column: value`, a filter on every read and a value on every insert), `fields`
+  (`attribute: column`, the surrogate `id` included) and `columns` (`column: ignored|database|computed`, the columns no
+  field maps). The entity gets no table of its own; `remarks` is shared by `CustomerRemark` and `SalesOrderRemark` this way.
 - `overlay` is a synthesized table overlay in `main`: `columns` (`attribute: {nativeType, defaultSql, sequence, comment}`),
   `checks` (`name: SQL`), `indexes` (`{name, columns: [attribute [desc]], where, unique}`).
 

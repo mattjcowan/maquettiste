@@ -11,6 +11,42 @@
     "stereotypes": []
   },
   {
+    "id": "01K6QRY0000000000000000003",
+    "kind": "query",
+    "name": "FindCustomersWithIssuedInvoices",
+    "package": null,
+    "tags": [],
+    "hash": "a181723a81998134ee6d594fa04d16b266197f0be75ae8e79ba600f80c8d5885",
+    "path": ".maquettiste/model/databases/main/queries/find-customers-with-issued-invoices.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
+    "id": "01K6QRY0000000000000000001",
+    "kind": "query",
+    "name": "InvoicesByCustomer",
+    "package": null,
+    "tags": [],
+    "hash": "6dfa59f04e59f7e8b283319155303b15c54c1cddac4698e964a774b12a8a9ae0",
+    "path": ".maquettiste/model/databases/main/queries/invoices-by-customer.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
+    "id": "01K6QRY0000000000000000002",
+    "kind": "query",
+    "name": "RevenueByMonth",
+    "package": null,
+    "tags": [],
+    "hash": "b78de777c2af7201e2b81daf0cbf1771b705df74750bf1e3769eb8ebd453f16c",
+    "path": ".maquettiste/model/databases/main/queries/revenue-by-month.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
     "id": "01J92P0V1S972MSFDJ8G6V6MWT",
     "kind": "sequence",
     "name": "invoice_number_seq",
@@ -41,6 +77,18 @@
     "entity": "01J92P0V0FJ23CGSNKM7P1W5V7"
   },
   {
+    "id": "01K6BND0000000000000000001",
+    "kind": "table",
+    "name": "notes",
+    "package": null,
+    "tags": [],
+    "hash": "57f8335d169391f345b5c19e6dbef90d5dd01c48c51d063bf1de8bbf71d7bf4e",
+    "path": ".maquettiste/model/databases/main/tables/notes.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
     "id": "01J92P0V1YZ4YP352KD1A50FXS",
     "kind": "view",
     "name": "outstanding_invoices",
@@ -63,6 +111,17 @@
     "category": null,
     "stereotypes": [],
     "memberCount": 8
+  },
+  {
+    "id": "01K6BND0000000000000000020",
+    "kind": "entity",
+    "name": "CustomerNote",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "55c3a1fbcbbce6893e08e5e4c944879824987b048bc1b4c4c5eefa8e21fa9412",
+    "path": ".maquettiste/model/entities/customer-note.json",
+    "category": null,
+    "stereotypes": []
   },
   {
     "id": "01J92P0V0ETQKXXP951CMMNHH3",
@@ -90,6 +149,17 @@
     "hash": "5e21b73617381f8ff27e372b5fcb7bd0257fde13c8b93d44dbe788a8a05cdc00",
     "path": ".maquettiste/model/entities/invoice-line.json",
     "category": "01J92P0V06TYE8P8990AV35A8K",
+    "stereotypes": []
+  },
+  {
+    "id": "01K6BND0000000000000000010",
+    "kind": "entity",
+    "name": "InvoiceNote",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "03505cbd6cd9b3efc554fcdfc0354f4bf1c4a6a25ee031af87ecb3a2e39ac443",
+    "path": ".maquettiste/model/entities/invoice-note.json",
+    "category": null,
     "stereotypes": []
   },
   {
@@ -134,6 +204,17 @@
     "stereotypes": [
       "soft-delete"
     ]
+  },
+  {
+    "id": "01K6BND0000000000000000030",
+    "kind": "entity",
+    "name": "RevenueMonth",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "53f8d68d169ccae85de2b7e26c6ff7a403c6871de87f233b7bc89ae709cd5d6e",
+    "path": ".maquettiste/model/entities/revenue-month.json",
+    "category": null,
+    "stereotypes": []
   },
   {
     "id": "01J92P0V05WQDH2GZG539D9VG1",

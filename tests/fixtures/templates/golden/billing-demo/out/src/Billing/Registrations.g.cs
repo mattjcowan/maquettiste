@@ -6,8 +6,11 @@ public static class BillingRegistrations
     public static readonly string[] Entities =
     [
         "Customer",
+        "CustomerNote",
         "Invoice",
         "InvoiceLine",
+        "InvoiceNote",
         "Payment",
+        "RevenueMonth",
     ];
 }

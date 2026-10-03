@@ -10,9 +10,12 @@ XMLHttpRequest: pascal=XmlHttpRequest camel=xmlHttpRequest snake=xml_http_reques
 
 ## inflection
 Customer: pluralize(element)=Customers singularize(element)=Customer pluralize(name)=Customers singularize(plural)=Customer
+CustomerNote: pluralize(element)=CustomerNotes singularize(element)=CustomerNote pluralize(name)=CustomerNotes singularize(plural)=CustomerNote
 Invoice: pluralize(element)=Invoices singularize(element)=Invoice pluralize(name)=Invoices singularize(plural)=Invoice
 InvoiceLine: pluralize(element)=InvoiceLines singularize(element)=InvoiceLine pluralize(name)=InvoiceLines singularize(plural)=InvoiceLine
+InvoiceNote: pluralize(element)=InvoiceNotes singularize(element)=InvoiceNote pluralize(name)=InvoiceNotes singularize(plural)=InvoiceNote
 Payment: pluralize(element)=Payments singularize(element)=Payment pluralize(name)=Payments singularize(plural)=Payment
+RevenueMonth: pluralize(element)=RevenueMonths singularize(element)=RevenueMonth pluralize(name)=RevenueMonths singularize(plural)=RevenueMonth
 Product: pluralize(element)=Products singularize(element)=Product pluralize(name)=Products singularize(plural)=Product
 words: people categories status address
 
@@ -23,6 +26,10 @@ Customer.email: csharp=string postgresql=varchar(254) sqlserver=nvarchar(254) my
 Customer.customerSince: csharp=DateOnly? postgresql=date sqlserver=date mysql=date
 Customer.createdAt: csharp=DateTimeOffset postgresql=timestamptz(6) sqlserver=datetimeoffset(6) mysql=datetime(6)
 Customer.updatedAt: csharp=DateTimeOffset? postgresql=timestamptz(6) sqlserver=datetimeoffset(6) mysql=datetime(6)
+CustomerNote.id: csharp=Guid postgresql=uuid sqlserver=uniqueidentifier mysql=char(36)
+CustomerNote.customerId: csharp=Guid postgresql=uuid sqlserver=uniqueidentifier mysql=char(36)
+CustomerNote.body: csharp=string postgresql=text sqlserver=nvarchar(max) mysql=longtext
+CustomerNote.createdAt: csharp=DateTimeOffset? postgresql=timestamptz(6) sqlserver=datetimeoffset(6) mysql=datetime(6)
 Invoice.id: csharp=Guid postgresql=uuid sqlserver=uniqueidentifier mysql=char(36)
 Invoice.number: csharp=string postgresql=varchar(32) sqlserver=nvarchar(32) mysql=varchar(32)
 Invoice.issuedOn: csharp=DateOnly postgresql=date sqlserver=date mysql=date
@@ -36,12 +43,19 @@ InvoiceLine.id: csharp=Ulid postgresql=char(26) sqlserver=char(26) mysql=char(26
 InvoiceLine.quantity: csharp=int postgresql=integer sqlserver=int mysql=int
 InvoiceLine.unitPrice: csharp=Money postgresql=jsonb sqlserver=nvarchar(max) mysql=json
 InvoiceLine.description: csharp=string? postgresql=varchar(500) sqlserver=nvarchar(500) mysql=varchar(500)
+InvoiceNote.id: csharp=Guid postgresql=uuid sqlserver=uniqueidentifier mysql=char(36)
+InvoiceNote.invoiceId: csharp=Guid postgresql=uuid sqlserver=uniqueidentifier mysql=char(36)
+InvoiceNote.body: csharp=string postgresql=text sqlserver=nvarchar(max) mysql=longtext
+InvoiceNote.createdAt: csharp=DateTimeOffset? postgresql=timestamptz(6) sqlserver=datetimeoffset(6) mysql=datetime(6)
 Payment.id: csharp=long postgresql=bigint sqlserver=bigint mysql=bigint
 Payment.amount: csharp=Money postgresql=jsonb sqlserver=nvarchar(max) mysql=json
 Payment.receivedAt: csharp=DateTimeOffset postgresql=timestamptz(6) sqlserver=datetimeoffset(6) mysql=datetime(6)
 Payment.reference: csharp=string? postgresql=varchar(64) sqlserver=nvarchar(64) mysql=varchar(64)
 Payment.createdAt: csharp=DateTimeOffset postgresql=timestamptz(6) sqlserver=datetimeoffset(6) mysql=datetime(6)
 Payment.updatedAt: csharp=DateTimeOffset? postgresql=timestamptz(6) sqlserver=datetimeoffset(6) mysql=datetime(6)
+RevenueMonth.month: csharp=DateOnly postgresql=date sqlserver=date mysql=date
+RevenueMonth.invoiceCount: csharp=long postgresql=bigint sqlserver=bigint mysql=bigint
+RevenueMonth.revenue: csharp=decimal postgresql=numeric(18,2) sqlserver=decimal(18,2) mysql=decimal(18,2)
 Product.id: csharp=Guid postgresql=uuid sqlserver=uniqueidentifier mysql=char(36)
 Product.sku: csharp=string postgresql=varchar(40) sqlserver=nvarchar(40) mysql=varchar(40)
 Product.name: csharp=string postgresql=varchar(200) sqlserver=nvarchar(200) mysql=varchar(200)
@@ -59,6 +73,7 @@ database main (postgresql, quoting reserved):
   customers: id, name, email, customer_since, created_at, updated_at
   invoice_lines: id, quantity, unit_price_amount, unit_price_currency, description, invoice_id, product_id
   invoices: id, number, issued_on, total_amount, total_currency, status, notes, created_at, updated_at, deleted_at, customer_id
+  notes: id, entity_type, entity_id, body, created_at
   payment_invoice: payments_id, invoices_id, allocated_amount, allocated_currency
   payments: id, amount_amount, amount_currency, received_at, reference, created_at, updated_at
   products: id, sku, name, list_price_amount, list_price_currency, deleted_at
@@ -92,16 +107,22 @@ json: quote \" backslash \\ newline \n tab \t accent é <tag> & more
 ## json
 {"a":[true,null,"x"],"b":1,"c":{"y":"é <>&","z":1.5}}
 Customer properties: {"retentionDays":2555}
+CustomerNote properties: {}
 Invoice properties: {"retentionDays":3650}
 InvoiceLine properties: {}
+InvoiceNote properties: {}
 Payment properties: {"retentionDays":2555}
+RevenueMonth properties: {}
 Product properties: {}
 
 ## predicates
 Customer: audited=true soft-delete=false pii=true billing=true receivables=true catalog=false
+CustomerNote: audited=false soft-delete=false pii=false billing=false receivables=false catalog=false
 Invoice: audited=true soft-delete=true pii=false billing=true receivables=true catalog=false
 InvoiceLine: audited=false soft-delete=false pii=false billing=false receivables=true catalog=false
+InvoiceNote: audited=false soft-delete=false pii=false billing=false receivables=false catalog=false
 Payment: audited=true soft-delete=false pii=false billing=false receivables=true catalog=false
+RevenueMonth: audited=false soft-delete=false pii=false billing=false receivables=false catalog=false
 Product: audited=false soft-delete=true pii=false billing=false receivables=false catalog=true
 
 ## lookup
@@ -111,9 +132,12 @@ missing: true
 ## pack helpers (JavaScript)
 HELLO! PIPED!
 Customer: id, name, email, customerSince, createdAt, updatedAt
+CustomerNote: id, customerId, body, createdAt
 Invoice: id, number, issuedOn, total, status, notes, createdAt, updatedAt, deletedAt
 InvoiceLine: id, quantity, unitPrice, description
+InvoiceNote: id, invoiceId, body, createdAt
 Payment: id, amount, receivedAt, reference, createdAt, updatedAt
+RevenueMonth: month, invoiceCount, revenue
 Product: id, sku, name, listPrice, deletedAt
 describe: alpha=Customer;list=[1, 2, 3];zeta=6; list=1,2,3
 

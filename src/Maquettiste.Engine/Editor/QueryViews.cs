@@ -32,6 +32,7 @@ namespace Maquettiste.Engine;
 /// <param name="Category">As <see cref="TableView.Category"/>.</param>
 /// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
 /// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
+/// <param name="BoundBy">The entity bindings that read the query (erratum E43).</param>
 public sealed record QueryView(
     string Id,
     string Name,
@@ -57,7 +58,8 @@ public sealed record QueryView(
     IReadOnlyList<string> Tags,
     string? Category,
     IReadOnlyDictionary<string, object?> Properties,
-    IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyDictionary<string, GenerationHints> Generation,
+    IReadOnlyList<BoundByView> BoundBy);
 
 /// <summary>A parameter of a query.</summary>
 /// <param name="Name">The name.</param>
@@ -178,7 +180,8 @@ internal static class QueryViews
             query.Tags,
             query.Category?.Id,
             query.Properties,
-            query.Generation);
+            query.Generation,
+            BindingViews.BoundBy(query.BoundBy, query));
     }
 
     /// <summary>The statements of a query for a dialect, with what the dialect cannot render.</summary>

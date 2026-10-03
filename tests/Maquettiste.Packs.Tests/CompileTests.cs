@@ -38,6 +38,95 @@ public sealed class CompileTests
         Assert.True(run.ExitCode == 0 && run.Output.Contains("round trip ok", StringComparison.Ordinal), run.Output);
     }
 
+    [Fact]
+    public async Task Csharp_dapper_binding_repositories_compile_for_postgresql_and_round_trip_on_sqlite()
+    {
+        // Repositories from bindings (erratum E43): the PostgreSQL output compiles, and on SQLite every repository operation runs.
+        using (var postgres = PackRepo.Bindings())
+        {
+            await postgres.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+            var library = Path.Combine(postgres.Repo.Root, "compile");
+            WriteProject(library, postgres.PathOf("src/Generated"), program: null);
+            await BuildOrSkipAsync(library);
+        }
+
+        using var repo = PackRepo.Bindings(sqlite: true);
+        await repo.GenerateCleanlyAsync();
+        var project = Path.Combine(repo.Repo.Root, "roundtrip");
+        WriteProject(project, repo.PathOf("src/Generated"), BindingRoundTripProgram);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet,
+            [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll"), repo.PathOf("db/main/schema.sql")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("bindings round trip ok", StringComparison.Ordinal), run.Output);
+    }
+
+    private const string BindingRoundTripProgram = """
+        using System;
+        using System.IO;
+        using System.Linq;
+        using Dapper;
+        using Microsoft.Data.Sqlite;
+        using Shop.Model;
+        using Shop.Model.Shop;
+
+        // One to one with an identity key, a soft delete, two entities sharing a table through a constant, and a read-only entity
+        // over a query, against an in-memory SQLite database built from the sql-ddl schema.
+        DapperTypeHandlers.Register();
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = File.ReadAllText(args[0]);
+            command.ExecuteNonQuery();
+        }
+
+        void Check(bool condition, string what)
+        {
+            if (!condition)
+                throw new InvalidOperationException("Round trip failed: " + what);
+        }
+
+        var products = new ProductRepository(connection);
+        var product = new Product { Sku = "SKU-1", Name = "Widget", Price = 9.99m };
+        await products.InsertAsync(product);
+        Check(product.Id > 0, "identity key returned by the insert");
+        product.Price = 12.5m;
+        Check(await products.UpdateAsync(product), "update by key");
+        Check((await products.GetAsync(product.Id))!.Price == 12.5m, "get after update");
+        Check((await products.ListAsync()).Count == 1, "list");
+
+        var customers = new CustomerRepository(connection);
+        var ada = new Customer { Name = "Ada", Email = "ada@example.com" };
+        var bob = new Customer { Name = "Bob" };
+        await customers.InsertAsync(ada);
+        await customers.InsertAsync(bob);
+        Check(ada.Id != Guid.Empty, "uuid-v7 key assigned on insert");
+        Check(await customers.DeleteAsync(bob.Id), "soft delete");
+        Check(await customers.GetAsync(bob.Id) is null, "a soft-deleted row is not read");
+        Check((await customers.ListAsync()).Select(c => c.Name).SequenceEqual(["Ada"]), "list leaves soft-deleted rows out");
+        Check(await connection.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM customers") == 2, "the soft-deleted row stays");
+
+        var productNotes = new ProductNoteRepository(connection);
+        var customerNotes = new CustomerNoteRepository(connection);
+        var first = new ProductNote { Sku = "SKU-1", Body = "Popular" };
+        var second = new CustomerNote { CustomerId = ada.Id.ToString(), Body = "Pays on time" };
+        await productNotes.InsertAsync(first);
+        await customerNotes.InsertAsync(second);
+        Check(await connection.ExecuteScalarAsync<string>("SELECT entity_type FROM notes WHERE id = @id", new { id = first.Id }) == "product", "the constant is set on insert");
+        Check((await productNotes.ListAsync()).Single().Body == "Popular", "a shared table reads its own rows only");
+        Check(await productNotes.GetAsync(second.Id) is null, "the constant filters reads by key");
+        Check((await customerNotes.GetAsync(second.Id))!.CreatedAt is not null, "the database fills created_at");
+        Check(!await productNotes.DeleteAsync(second.Id), "the constant filters deletes");
+        Check(await customerNotes.DeleteAsync(second.Id), "delete by key");
+
+        var summaries = new CustomerSummaryRepository(connection);
+        var active = await summaries.ListAsync("%");
+        Check(active.Select(s => s.DisplayName).SequenceEqual(["Ada"]), "a read-only entity over a query");
+        Check((await summaries.GetAsync("A%", ada.Id))!.Email == "ada@example.com", "get by key over a query");
+        Console.WriteLine("bindings round trip ok");
+        """;
+
     private static void WriteProject(string folder, string generated, string? program)
     {
         Directory.CreateDirectory(folder);
@@ -181,7 +270,7 @@ public sealed class CompileTests
         Check(await invoices.DeleteAsync(invoice.Id), "delete");
         Check(await invoices.GetAsync(invoice.Id) is null, "get after delete");
         Check(!await invoices.DeleteAsync(invoice.Id), "second delete");
-        Check(BillingRepositories.All.Count == 5 && CatalogRepositories.All.Single().Implementation == typeof(ProductRepository), "registrations");
+        Check(BillingRepositories.All.Count == 8 && CatalogRepositories.All.Single().Implementation == typeof(ProductRepository), "registrations");
         Console.WriteLine("round trip ok");
 
         """;

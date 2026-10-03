@@ -1,0 +1,68 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01K6BFX0000000000000000021",
+  "name": "ActiveCustomers",
+  "database": "01K6BFX0000000000000000002",
+  "description": "The customers that are not deleted, with a name matching a pattern.",
+  "parameters": [
+    {
+      "name": "namePattern",
+      "type": "string",
+      "default": "%"
+    }
+  ],
+  "from": {
+    "source": "01K6BFX0000000000000000013",
+    "alias": "c"
+  },
+  "select": [
+    {
+      "name": "customerId",
+      "expression": {
+        "column": "c.id"
+      }
+    },
+    {
+      "name": "displayName",
+      "expression": {
+        "column": "c.name"
+      }
+    },
+    {
+      "name": "email",
+      "expression": {
+        "column": "c.email"
+      }
+    }
+  ],
+  "where": {
+    "and": [
+      {
+        "op": "eq",
+        "left": {
+          "column": "c.is_deleted"
+        },
+        "right": {
+          "value": false
+        }
+      },
+      {
+        "op": "like",
+        "left": {
+          "column": "c.name"
+        },
+        "right": {
+          "param": "namePattern"
+        }
+      }
+    ]
+  },
+  "orderBy": [
+    {
+      "expression": {
+        "column": "c.name"
+      }
+    }
+  ]
+}

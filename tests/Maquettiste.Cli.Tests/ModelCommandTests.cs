@@ -13,14 +13,14 @@ public sealed class ModelCommandTests
         var json = await repo.RunAsync("model", "export", "--kind", "entity", "--fields", "name,attributes");
         Assert.True(json.ExitCode == 0, json.Error);
         var array = JsonNode.Parse(json.Out)!.AsArray();
-        Assert.Equal(["Customer", "Invoice", "InvoiceLine", "Payment", "Product"], array.Select(d => (string)d!["name"]!));
+        Assert.Equal(["Customer", "CustomerNote", "Invoice", "InvoiceLine", "InvoiceNote", "Payment", "Product", "RevenueMonth"], array.Select(d => (string)d!["name"]!));
         Assert.All(array, d => Assert.Equal(["attributes", "id", "kind", "name"], d!.AsObject().Select(p => p.Key).Order(StringComparer.Ordinal)));
-        Assert.Contains("Exported 5 documents.", json.Error, StringComparison.Ordinal);
+        Assert.Contains("Exported 8 documents.", json.Error, StringComparison.Ordinal);
 
         var ndjson = await repo.RunAsync("model", "export", "--package", "Billing", "--format", "ndjson");
         Assert.True(ndjson.ExitCode == 0, ndjson.Error);
         var lines = Text.Lines(ndjson.Out);
-        Assert.Equal(13, lines.Length);
+        Assert.Equal(16, lines.Length);
         // A child package names its parent in parent; every other member names the package in package.
         Assert.All(lines.Select(l => JsonNode.Parse(l)!), d => Assert.Equal("01J92P0V01KDRN8GX5PGYCNKSX", (string)d[(string)d["kind"]! == "package" ? "parent" : "package"]!));
         Assert.Contains(lines, l => (string)JsonNode.Parse(l)!["name"]! == "Invoice");
@@ -28,7 +28,7 @@ public sealed class ModelCommandTests
         var output = Path.Combine(repo.Temp.Root, "out", "entities.ndjson");
         var toFile = await repo.RunAsync("model", "export", "--kind", "entity", "--format", "ndjson", "--out", output);
         Assert.True(toFile.ExitCode == 0, toFile.Error);
-        Assert.Equal(5, Text.Lines(File.ReadAllText(output)).Length);
+        Assert.Equal(8, Text.Lines(File.ReadAllText(output)).Length);
 
         var missing = await repo.RunAsync("model", "export", "--ids", "01J92P0V0FJ23CGSNKM7P1W5V9");
         Assert.Equal(1, missing.ExitCode);
@@ -43,7 +43,7 @@ public sealed class ModelCommandTests
         var entities = await repo.RunAsync("model", "export", "--resolved", "--scope", "entities", "--format", "ndjson");
         Assert.True(entities.ExitCode == 0, entities.Error);
         var records = Text.Lines(entities.Out).Select(l => JsonNode.Parse(l)!).ToList();
-        Assert.Equal(5, records.Count);
+        Assert.Equal(8, records.Count);
         Assert.All(records, r => Assert.Equal("entity", (string)r["kind"]!));
         Assert.Contains(records[0]["attributes"]!.AsArray(), a => (bool)a!["isKey"]!);
 
@@ -76,13 +76,44 @@ public sealed class ModelCommandTests
     }
 
     [Fact]
+    public async Task Materialize_previews_with_dry_run_applies_and_refuses_what_is_bound()
+    {
+        using var repo = CliRepo.Billing();
+        var invoice = repo.PathOf(".maquettiste/model/entities/invoice.json");
+        var before = File.ReadAllText(invoice);
+
+        var dry = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--dry-run");
+        Assert.True(dry.ExitCode == 0, dry.Error);
+        Assert.StartsWith("materialize-tables would:", dry.Out, StringComparison.Ordinal);
+        Assert.Contains("change table invoices", dry.Out, StringComparison.Ordinal);
+        Assert.Contains("delete mapping Invoice in main", dry.Out, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllText(invoice));
+
+        var applied = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--format", "json");
+        Assert.True(applied.ExitCode == 0, applied.Error);
+        Assert.Equal("saved", (string)JsonNode.Parse(applied.Out)!["result"]!["outcome"]!);
+        Assert.Contains("\"bindings\"", File.ReadAllText(invoice), StringComparison.Ordinal);
+
+        var again = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice");
+        Assert.Equal(1, again.ExitCode);
+        Assert.Contains("MQ4055", again.Error, StringComparison.Ordinal);
+
+        var entities = await repo.RunAsync("model", "materialize", "entities", "--database", "main", "--package", "Billing", "notes", "--dry-run");
+        Assert.Equal(1, entities.ExitCode);
+        Assert.Contains("already bound by entity", entities.Error, StringComparison.Ordinal);
+        Assert.Equal(4, (await repo.RunAsync("model", "materialize", "tables", "--database", "main")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("model", "materialize", "views", "--database", "main", "x")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("model", "materialize", "entities", "--database", "main", "--schema", "x", "notes")).ExitCode);
+    }
+
+    [Fact]
     public async Task Stats_counts_the_kinds_and_per_package()
     {
         using var repo = CliRepo.Billing();
 
         var text = await repo.RunAsync("model", "stats");
         Assert.True(text.ExitCode == 0, text.Error);
-        Assert.Contains(Text.Lines(text.Out), l => l.StartsWith("entity ", StringComparison.Ordinal) && l.EndsWith(" 5", StringComparison.Ordinal));
+        Assert.Contains(Text.Lines(text.Out), l => l.StartsWith("entity ", StringComparison.Ordinal) && l.EndsWith(" 8", StringComparison.Ordinal));
         Assert.StartsWith("total ", Text.Lines(text.Out)[^1], StringComparison.Ordinal);
 
         var json = await repo.RunAsync("model", "stats", "--by", "package", "--format", "json");

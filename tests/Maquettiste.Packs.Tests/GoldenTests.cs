@@ -70,6 +70,17 @@ public sealed class GoldenTests
     }
 
     [Fact]
+    public async Task Both_packs_over_the_bindings_fixture_match_the_golden_trees()
+    {
+        // Repositories from bindings (erratum E43): one to one with an identity key, a soft delete, two entities sharing a table
+        // through a constant, a read-only entity over a query; the tables are designed, so sql-ddl writes them as they are.
+        using var repo = PackRepo.Bindings();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Fixtures.Path("golden", "csharp-dapper", "bindings"), repo.PathOf("src/Generated"));
+        Golden.AssertMatches(Fixtures.Path("golden", "sql-ddl", "bindings"), repo.PathOf("db"));
+    }
+
+    [Fact]
     public async Task Sql_ddl_for_postgresql_sql_server_and_sqlite_matches_the_golden_tree()
     {
         using var repo = PackRepo.BillingDialects();

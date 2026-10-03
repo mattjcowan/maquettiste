@@ -14,9 +14,12 @@ public static partial class BillingRepositories
     public static IReadOnlyList<(Type Service, Type Implementation)> All { get; } =
     [
         (typeof(ICustomerRepository), typeof(CustomerRepository)),
+        (typeof(ICustomerNoteRepository), typeof(CustomerNoteRepository)),
         (typeof(IInvoiceRepository), typeof(InvoiceRepository)),
         (typeof(IInvoiceLineRepository), typeof(InvoiceLineRepository)),
+        (typeof(IInvoiceNoteRepository), typeof(InvoiceNoteRepository)),
         (typeof(IPaymentRepository), typeof(PaymentRepository)),
+        (typeof(IRevenueMonthRepository), typeof(RevenueMonthRepository)),
     ];
 
     /// <summary>Calls <paramref name="register"/> once per repository.</summary>

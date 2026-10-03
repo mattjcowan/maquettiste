@@ -1,102 +1,36 @@
 {
   "unit": {
-    "key": "csharp-dapper/entity:01J92P0V0ETQKXXP951CMMNHH3",
-    "inputHash": "c3c9b0a8cf70e1b29f22f05431558797a0e84d9f33c5637e3a682ad58f5347d2",
+    "key": "csharp-dapper/actors",
+    "inputHash": "8df1b5eb27a0b89728cf50bcd2d70f59bce0fd39481a5e28216f21497dd7b59e",
     "readKeys": [
-      "e:01J92P0V01KDRN8GX5PGYCNKSX",
-      "e:01J92P0V04TDYE2C73WMNXVDBV",
-      "e:01J92P0V0ETQKXXP951CMMNHH3",
-      "e:01J92P0V1QRN2181XM2ZWE02W4",
-      "e:01J92P0V23WVT7FBW527GR7GX5",
-      "e:01J92P0V245JG9WK55YJE2QWWV",
-      "e:01J92P0V25BX5TMQ8N9F6AJE61",
-      "k:database",
-      "r:01J92P0V0ETQKXXP951CMMNHH3",
-      "r:01J92P0V1QRN2181XM2ZWE02W4",
-      "s:conventions",
-      "s:inflection",
-      "s:typeMaps",
+      "k:process",
       "t:csharp-dapper/_csharp.scriban",
-      "t:csharp-dapper/_dapper.scriban",
-      "t:csharp-dapper/entity.partial.scriban",
-      "t:csharp-dapper/entity.scriban",
-      "t:csharp-dapper/types/csharp.json"
+      "t:csharp-dapper/_process.scriban",
+      "t:csharp-dapper/actors.scriban"
     ],
     "skipped": false,
-    "outputs": [
-      {
-        "path": "src/Generated/Billing/Customer.g.cs",
-        "contentHash": "2abfe941da822a487dc3f4b301459b8c239f525a00b18a48b31b016176fc5c82",
-        "manifestHash": "2abfe941da822a487dc3f4b301459b8c239f525a00b18a48b31b016176fc5c82",
-        "mode": "pair",
-        "role": "main",
-        "root": {
-          "path": "src/Generated"
-        },
-        "diskHashAtPlan": null
-      },
-      {
-        "path": "src/Generated/Billing/Customer.cs",
-        "contentHash": "fcb7734055150d7dffd027ed678bd5e7ab46fafef01fcefc954fb3851076e5b3",
-        "manifestHash": "o:fcb7734055150d7dffd027ed678bd5e7ab46fafef01fcefc954fb3851076e5b3",
-        "mode": "pair",
-        "role": "companion",
-        "root": {
-          "path": "src/Generated"
-        },
-        "diskHashAtPlan": null
-      }
-    ],
+    "outputs": [],
     "pack": "csharp-dapper",
-    "unit": "entity",
-    "template": "entity.scriban",
-    "elementId": "01J92P0V0ETQKXXP951CMMNHH3",
+    "unit": "actors",
+    "template": "actors.scriban",
+    "elementId": null,
     "reason": "new",
     "causes": [],
     "causeCount": 0
   },
   "groups": [
     {
-      "kind": "element",
-      "keys": [
-        "e:01J92P0V01KDRN8GX5PGYCNKSX",
-        "e:01J92P0V04TDYE2C73WMNXVDBV",
-        "e:01J92P0V0ETQKXXP951CMMNHH3",
-        "e:01J92P0V1QRN2181XM2ZWE02W4",
-        "e:01J92P0V23WVT7FBW527GR7GX5",
-        "e:01J92P0V245JG9WK55YJE2QWWV",
-        "e:01J92P0V25BX5TMQ8N9F6AJE61"
-      ]
-    },
-    {
       "kind": "kind-set",
       "keys": [
-        "k:database"
-      ]
-    },
-    {
-      "kind": "referrers",
-      "keys": [
-        "r:01J92P0V0ETQKXXP951CMMNHH3",
-        "r:01J92P0V1QRN2181XM2ZWE02W4"
-      ]
-    },
-    {
-      "kind": "setting",
-      "keys": [
-        "s:conventions",
-        "s:inflection",
-        "s:typeMaps"
+        "k:process"
       ]
     },
     {
       "kind": "template",
       "keys": [
         "t:csharp-dapper/_csharp.scriban",
-        "t:csharp-dapper/_dapper.scriban",
-        "t:csharp-dapper/entity.partial.scriban",
-        "t:csharp-dapper/entity.scriban",
-        "t:csharp-dapper/types/csharp.json"
+        "t:csharp-dapper/_process.scriban",
+        "t:csharp-dapper/actors.scriban"
       ]
     }
   ],

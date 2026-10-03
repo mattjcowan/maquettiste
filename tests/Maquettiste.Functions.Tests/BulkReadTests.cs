@@ -55,17 +55,17 @@ public sealed class BulkReadTests
         var entities = await host.GetAsync("/api/model/elements?kind=entity&fields=name,attributes");
         Contract.AssertResponse(entities, "/api/model/elements");
         var rows = entities.Json["items"]!.AsArray();
-        Assert.Equal(["Customer", "Invoice", "InvoiceLine", "Payment", "Product"], rows.Select(r => r!["json"]!["name"]!.GetValue<string>()));
+        Assert.Equal(["Customer", "CustomerNote", "Invoice", "InvoiceLine", "InvoiceNote", "Payment", "Product", "RevenueMonth"], rows.Select(r => r!["json"]!["name"]!.GetValue<string>()));
         Assert.All(rows, r => Assert.Equal(["attributes", "id", "kind", "name"], r!["json"]!.AsObject().Select(p => p.Key).Order(StringComparer.Ordinal)));
         Assert.Null(entities.Json["next"]);
 
         var billing = await host.GetAsync("/api/model/elements?kind=entity&package=billing");
         Assert.DoesNotContain("Product", billing.Json["items"]!.AsArray().Select(r => r!["json"]!["name"]!.GetValue<string>()));
-        Assert.Equal(4, billing.Json["items"]!.AsArray().Count);
+        Assert.Equal(7, billing.Json["items"]!.AsArray().Count);
         var byId = await host.GetAsync("/api/model/elements?kind=entity&package=" + EditorHost.BillingPackageId);
         Assert.True(JsonNode.DeepEquals(billing.Json["items"], byId.Json["items"]));
-        // The name filter matches Customer and the two queries whose names say customer (FindCustomersWithIssuedInvoices, InvoicesByCustomer).
-        Assert.Equal([EditorHost.CustomerId, "01K6QRY0000000000000000003", "01K6QRY0000000000000000001"],
+        // The name filter matches Customer, CustomerNote and the two queries whose names say customer (FindCustomersWithIssuedInvoices, InvoicesByCustomer).
+        Assert.Equal([EditorHost.CustomerId, "01K6BND0000000000000000020", "01K6QRY0000000000000000003", "01K6QRY0000000000000000001"],
             (await host.GetAsync("/api/model/elements?query=CUSTOM")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
         Assert.Contains(EditorHost.CustomerId, (await host.GetAsync("/api/model/elements?tag=pii")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
         Assert.Contains(EditorHost.InvoiceId, (await host.GetAsync("/api/model/elements?stereotype=audited")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
@@ -108,7 +108,7 @@ public sealed class BulkReadTests
     {
         await using var host = EditorHost.Create();
         var first = await host.GetAsync("/api/model/elements?kind=entity&limit=2&fields=name");
-        Assert.Equal(["Customer", "Invoice"], Names(first));
+        Assert.Equal(["Customer", "CustomerNote"], Names(first));
         var cursor = first.Json["next"]!.GetValue<string>();
 
         // One entity sorts before the cursor and one after it.
@@ -127,10 +127,15 @@ public sealed class BulkReadTests
 
         var second = await host.GetAsync("/api/model/elements?kind=entity&limit=2&fields=name&cursor=" + cursor);
         Assert.Equal(200, second.Status);
-        Assert.Equal(["InvoiceLine", "Payment"], Names(second));
-        var third = await host.GetAsync("/api/model/elements?kind=entity&limit=2&fields=name&cursor=" + second.Json["next"]!.GetValue<string>());
-        Assert.Equal(["Product", "Zebra"], Names(third));
-        Assert.Null(third.Json["next"]);
+        Assert.Equal(["Invoice", "InvoiceLine"], Names(second));
+        var rest = new List<string>();
+        for (var page = second; page.Json["next"] is { } next;)
+        {
+            page = await host.GetAsync("/api/model/elements?kind=entity&limit=2&fields=name&cursor=" + next.GetValue<string>());
+            rest.AddRange(Names(page));
+        }
+
+        Assert.Equal(["InvoiceNote", "Payment", "Product", "RevenueMonth", "Zebra"], rest);
     }
 
     [Fact]
@@ -145,7 +150,7 @@ public sealed class BulkReadTests
         Assert.Equal(index.Count, kinds.Json["total"]!.GetValue<int>());
         Assert.Null(kinds.Json["packages"]);
         var counts = kinds.Json["kinds"]!.AsArray().ToDictionary(k => k!["kind"]!.GetValue<string>(), k => k!["count"]!.GetValue<int>());
-        Assert.Equal(5, counts["entity"]);
+        Assert.Equal(8, counts["entity"]);
         Assert.Equal(index.GroupBy(s => s.Kind).Select(g => g.Key).Order(StringComparer.Ordinal), counts.Keys);
         Assert.Equal(index.Count, counts.Values.Sum());
 
@@ -156,7 +161,7 @@ public sealed class BulkReadTests
         Assert.Equal(index.Count, packages.Sum(p => p!["count"]!.GetValue<int>()));
         var billing = packages.Single(p => p!["package"]?.GetValue<string>() == EditorHost.BillingPackageId)!;
         Assert.Equal("Billing", billing["name"]!.GetValue<string>());
-        Assert.Equal(4, billing["kinds"]!.AsArray().Single(k => k!["kind"]!.GetValue<string>() == "entity")!["count"]!.GetValue<int>());
+        Assert.Equal(7, billing["kinds"]!.AsArray().Single(k => k!["kind"]!.GetValue<string>() == "entity")!["count"]!.GetValue<int>());
     }
 
     [Fact]
@@ -188,7 +193,7 @@ public sealed class BulkReadTests
 
         var entities = await host.GetAsync("/api/model/index?kind=entity&package=Billing");
         Contract.AssertResponse(entities, "/api/model/index");
-        Assert.Equal(4, entities.Json.AsArray().Count);
+        Assert.Equal(7, entities.Json.AsArray().Count);
         Assert.Null(entities.ETag);
 
         var whole = await host.GetAsync("/api/model/index");
@@ -207,7 +212,7 @@ public sealed class BulkReadTests
         Contract.AssertResponse(response, "/api/model/resolved");
         Assert.Empty(response.Json["diagnostics"]!.AsArray());
         var items = response.Json["items"]!.AsArray();
-        Assert.Equal(["Customer", "Invoice", "InvoiceLine", "Payment", "Product"], items.Select(i => i!["name"]!.GetValue<string>()));
+        Assert.Equal(["Customer", "CustomerNote", "Invoice", "InvoiceLine", "InvoiceNote", "Payment", "Product", "RevenueMonth"], items.Select(i => i!["name"]!.GetValue<string>()));
         var customer = items[0]!;
         Assert.Equal("entity", customer["kind"]!.GetValue<string>());
         var email = customer["attributes"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == "email")!;
@@ -263,7 +268,7 @@ public sealed class BulkReadTests
         Assert.All(tableRecords, t => Assert.Equal(t!["id"]!.GetValue<string>(), t["table"]!["key"]!.GetValue<string>()));
 
         var mapped = await host.GetAsync("/api/model/resolved?scope=entities&database=" + EditorHost.MainDatabaseId);
-        Assert.Equal(5, mapped.Json["items"]!.AsArray().Count);
+        Assert.Equal(8, mapped.Json["items"]!.AsArray().Count); // the five mapped entities and the three bound ones
 
         var notADatabase = await host.GetAsync("/api/model/resolved?database=" + EditorHost.InvoiceId);
         Assert.Equal(404, notADatabase.Status);
@@ -301,6 +306,46 @@ public sealed class BulkReadTests
         Assert.Equal("not-found", (await host.GetAsync("/api/model/queries/" + Unknown + "/sql")).ProblemCode);
         Assert.Equal("bad-request", (await host.GetAsync("/api/model/queries/" + invoicesByCustomer + "/sql?dialect=cobol")).ProblemCode);
         Assert.Equal("bad-request", (await host.GetAsync("/api/model/queries/" + invoicesByCustomer + "/sql?placeholder=%3F")).ProblemCode);
+    }
+
+    [Fact]
+    public async Task Bindings_show_on_the_tables_their_sql_comes_back_and_materialize_previews_without_writing()
+    {
+        const string invoiceNote = "01K6BND0000000000000000010", binding = "01K6BND0000000000000000015", notes = "01K6BND0000000000000000001";
+        await using var host = EditorHost.Create();
+
+        var view = await host.GetAsync("/api/databases/" + EditorHost.MainDatabaseId + "/view");
+        Contract.AssertResponse(view, "/api/databases/{id}/view");
+        var table = view.Json["view"]!["tables"]!.AsArray().Single(t => t!["key"]!.GetValue<string>() == notes)!;
+        Assert.Equal(["CustomerNote", "InvoiceNote"], table["boundBy"]!.AsArray().Select(b => b!["entityName"]!.GetValue<string>()));
+        Assert.Equal("invoice", table["boundBy"]![1]!["constants"]![0]!["value"]!.GetValue<string>());
+        Assert.Single(view.Json["view"]!["queries"]!.AsArray().Single(q => q!["name"]!.GetValue<string>() == "RevenueByMonth")!["boundBy"]!.AsArray());
+
+        var sql = await host.GetAsync("/api/model/entities/" + invoiceNote + "/bindings/" + binding + "/sql?dialect=sqlite");
+        Assert.Equal(200, sql.Status);
+        Contract.AssertResponse(sql, "/api/model/entities/{id}/bindings/{bindingId}/sql");
+        Assert.Equal("DELETE FROM notes\nWHERE id = @id AND entity_type = 'invoice'", sql.Json["preview"]!["delete"]!["sql"]!.GetValue<string>());
+        Assert.Equal("not-a-binding", (await host.GetAsync("/api/model/entities/" + invoiceNote + "/bindings/" + Unknown + "/sql")).ProblemCode);
+        Assert.Equal("not-an-entity", (await host.GetAsync("/api/model/entities/" + notes + "/bindings/" + binding + "/sql")).ProblemCode);
+        Assert.Equal("bad-request", (await host.GetAsync("/api/model/entities/" + invoiceNote + "/bindings/" + binding + "/sql?dialect=cobol")).ProblemCode);
+
+        var status = await host.GetAsync("/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize");
+        Assert.Equal(200, status.Status);
+        Contract.AssertResponse(status, "/api/model/databases/{id}/materialize");
+        Assert.Contains(status.Json["entities"]!.AsArray(), e => e!["name"]!.GetValue<string>() == "Invoice" && e["projected"]!.GetValue<bool>());
+        Assert.Equal("not-a-database", (await host.GetAsync("/api/model/databases/" + EditorHost.InvoiceId + "/materialize")).ProblemCode);
+
+        var preview = await host.SendJsonAsync("POST", "/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize/preview",
+            new JsonObject { ["op"] = "materialize-tables", ["entities"] = new JsonArray(EditorHost.InvoiceId) });
+        Assert.Equal(200, preview.Status);
+        Contract.AssertResponse(preview, "/api/model/databases/{id}/materialize/preview");
+        Assert.True(preview.Json["valid"]!.GetValue<bool>());
+        Assert.Equal("table", preview.Json["updates"]![0]!["kind"]!.GetValue<string>());
+        var refused = await host.SendJsonAsync("POST", "/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize/preview",
+            new JsonObject { ["op"] = "materialize-tables", ["entities"] = new JsonArray(invoiceNote) });
+        Assert.Equal("MQ4055", refused.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
+        Assert.Equal("bad-request", (await host.SendJsonAsync("POST", "/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize/preview",
+            new JsonObject { ["op"] = "materialize-entities" })).ProblemCode);
     }
 
     [Fact]
@@ -353,7 +398,7 @@ public sealed class BulkReadTests
         Assert.NotEmpty(response.Json["diagnostics"]!.AsArray());
         Assert.All(response.Json["diagnostics"]!.AsArray(), d => Assert.Equal("error", d!["severity"]!.GetValue<string>()));
         // The documents are still there to read.
-        Assert.Equal(5, (await host.GetAsync("/api/model/elements?kind=entity")).Json["items"]!.AsArray().Count);
+        Assert.Equal(8, (await host.GetAsync("/api/model/elements?kind=entity")).Json["items"]!.AsArray().Count);
     }
 
     private static string[] Names(TestResponse response) => [.. response.Json["items"]!.AsArray().Select(r => r!["json"]!["name"]!.GetValue<string>())];

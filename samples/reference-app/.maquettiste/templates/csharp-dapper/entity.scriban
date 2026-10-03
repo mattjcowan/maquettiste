@@ -21,6 +21,7 @@ for c in storage_columns(entity, m)
     storage[storage.size] = c
   end
 end
+binding_keys = bind_key_fields(entity)
 -}}
 {{ header() }}
 using System;
@@ -42,6 +43,13 @@ namespace {{ ns(entity) }};
     // Columns of table {{ m.table.name }} (database {{ m.database.name }}) that no attribute maps, such as foreign keys.
 {{- for c in storage }}
     public {{ row_type(c) }} {{ row_prop(c) }} { get; set; }{{ if !c.nullable && !(cs_value_type row_type(c)) }} = default!;{{ end }}
+{{- end }}
+{{- end }}
+{{- if binding_keys.size > 0 }}
+
+    // Keys of the relations the entity's binding maps (they lead to the related entities' keys).
+{{- for f in binding_keys }}
+    public {{ bind_row_type(f) }} {{ cs_ident (pascal f.name) }} { get; set; }{{ if !bind_nullable(f) && !(cs_value_type bind_row_type(f)) }} = default!;{{ end }}
 {{- end }}
 {{- end }}
 }

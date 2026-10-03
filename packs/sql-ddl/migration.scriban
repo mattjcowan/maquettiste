@@ -137,7 +137,8 @@ if diff && diff.to_revision >= 1
     added_spec = dependency_spec(added)
     added_breaks = ddl_cycle_breaks added_spec
     added_skip = cycle_skip(added, added_breaks, db)
-    for i in (ddl_order added_spec)
+    # One added table gives the spec "", which ddl_order reads as no tables.
+    for i in (added.size == 1 ? [0] : (ddl_order added_spec))
       emit(statements, include "_table.scriban" added[i] added_skip)
     end
     cycle_fk_statements(added, added_breaks, db, statements)

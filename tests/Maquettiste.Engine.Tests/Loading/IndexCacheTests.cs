@@ -42,7 +42,7 @@ public sealed class IndexCacheTests
         var loader = h.NewLoader();
         var warm = (await LoadAsync(loader)).Snapshot;
 
-        Assert.Equal(32, loader.LastStatistics.FromCache);
+        Assert.Equal(36, loader.LastStatistics.FromCache);
         Assert.Equal(0, loader.LastStatistics.ReadFromDisk);
         Assert.Equal(0, loader.LastStatistics.SchemaEvaluations);
         Assert.False(loader.LastStatistics.CacheWritten); // nothing changed
@@ -91,7 +91,7 @@ public sealed class IndexCacheTests
         var loader = h.NewLoader();
         var verified = (await LoadAsync(loader, verify: true)).Snapshot;
         Assert.Equal("What we SELL.", verified.Get<Package>(Billing.IdOf(verified, "package", "Catalog"))!.Description!.Text);
-        Assert.Equal(32, loader.LastStatistics.ReadFromDisk);
+        Assert.Equal(36, loader.LastStatistics.ReadFromDisk);
         Assert.Equal(0, loader.LastStatistics.FromCache);
         Assert.Equal(1, loader.LastStatistics.SchemaEvaluations); // content-addressed: the other records are still trusted
     }
@@ -118,12 +118,12 @@ public sealed class IndexCacheTests
         await File.WriteAllBytesAsync(second.CachePath, bytes.AsSpan(0, bytes.Length / 2).ToArray(), Ct);
         var third = h.NewLoader();
         Assert.Empty((await LoadAsync(third)).Snapshot.LoadDiagnostics);
-        Assert.Equal(32, third.LastStatistics.ReadFromDisk);
+        Assert.Equal(36, third.LastStatistics.ReadFromDisk);
 
         await File.WriteAllTextAsync(third.CachePath, "MQIX not really", Ct);
         var fourth = h.NewLoader();
         Assert.Empty((await LoadAsync(fourth)).Snapshot.LoadDiagnostics);
-        Assert.Equal(32, fourth.LastStatistics.ReadFromDisk);
+        Assert.Equal(36, fourth.LastStatistics.ReadFromDisk);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public sealed class IndexCacheTests
 
         var model = (await LoadAsync(loader)).Snapshot;
 
-        Assert.Equal(29, model.Documents.Count);
+        Assert.Equal(33, model.Documents.Count);
         Assert.False(loader.LastStatistics.CacheWritten);
         Assert.False(File.Exists(loader.CachePath));
     }
@@ -158,7 +158,7 @@ public sealed class IndexCacheTests
         var reopened = h.NewLoader();
         await LoadAsync(reopened);
         Assert.Equal(1, reopened.LastStatistics.ReadFromDisk);
-        Assert.Equal(31, reopened.LastStatistics.FromCache);
+        Assert.Equal(35, reopened.LastStatistics.FromCache);
     }
 
     [Fact]

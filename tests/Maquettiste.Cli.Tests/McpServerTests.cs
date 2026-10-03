@@ -11,10 +11,10 @@ public sealed class McpSurfaceTests
     private static readonly string[] Tools =
     [
         "apply_batch", "apply_plan", "create_element", "create_seed", "delete_element", "delete_extension_file", "delete_pack", "delete_pack_file", "explain_unit",
-        "export_process", "export_seed_csv", "get_database_view", "get_element", "get_elements", "get_model_index", "get_model_kinds", "get_pack",
+        "export_process", "export_seed_csv", "get_database_view", "get_element", "get_elements", "get_materialize_status", "get_model_index", "get_model_kinds", "get_pack",
         "get_pack_outputs", "get_plan", "get_plan_diff", "get_project", "get_references", "get_resolved_model", "get_schema", "get_settings", "get_template_context",
         "get_translations", "import_process", "import_seed_csv", "list_extension_files", "list_pack_files", "list_packs", "list_validation_rules",
-        "localization_status", "move_extension_file", "move_pack_file", "new_pack", "plan", "preview_query_sql", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
+        "localization_status", "move_extension_file", "move_pack_file", "new_pack", "plan", "preview_binding_sql", "preview_materialize", "preview_query_sql", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
         "reference_type_usage", "rename_pack", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
         "sync_enum_from_process", "unit_paths", "validate", "verify_scenarios", "write_extension_file", "write_pack_file",
     ];
@@ -263,9 +263,9 @@ public sealed class McpReadTests
 
         var index = (await session.OkAsync("get_model_index")).AsArray();
         Assert.True(index.Count > 20, index.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        Assert.Equal(5, (await session.OkAsync("get_model_index", new { kind = "entity" })).AsArray().Count);
-        // The name filter matches Customer and the two queries whose names say customer.
-        Assert.Equal(new[] { McpSession.Customer, "01K6QRY0000000000000000003", "01K6QRY0000000000000000001" }.Order(StringComparer.Ordinal),
+        Assert.Equal(8, (await session.OkAsync("get_model_index", new { kind = "entity" })).AsArray().Count);
+        // The name filter matches Customer, CustomerNote and the two queries whose names say customer.
+        Assert.Equal(new[] { McpSession.Customer, "01K6BND0000000000000000020", "01K6QRY0000000000000000003", "01K6QRY0000000000000000001" }.Order(StringComparer.Ordinal),
             Ids(await session.OkAsync("get_model_index", new { query = "CUSTOM" })).Order(StringComparer.Ordinal));
         Assert.Contains(McpSession.Customer, Ids(await session.OkAsync("get_model_index", new { package = "Billing", kind = "entity" })));
         Assert.Equal(

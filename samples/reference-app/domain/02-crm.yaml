@@ -260,6 +260,18 @@ entities:
       party: Party! cascade back=notes name=party_note_concerns_party | Party the note is about.
       author: UserAccount name=party_note_is_written_by_author | Who wrote the note.
 
+  CustomerRemark:
+    description: A short remark on a customer, kept in the shared remarks table with subject_type 'customer'.
+    attributes:
+      customerId: uuid! | Key of the customer the remark is about.
+      body: text! | Remark text.
+      createdAt: datetimeoffset readonly | When the remark was written; the database sets it.
+    binding:
+      table: remarks
+      constants: { subject_type: customer }
+      fields: { id: id, customerId: subject_id, body: body, createdAt: created_at }
+      columns: { created_at: database }
+
   Campaign:
     description: A marketing campaign, such as a spring catalog mailing or a trade show.
     stereotypes: [audited]

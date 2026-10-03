@@ -286,6 +286,41 @@ public sealed partial class GenerationService
     }
 
     /// <summary>
+    /// The five statements of an entity's binding for a dialect (erratum E43): <c>select</c>, <c>select-by-key</c>, <c>insert</c>,
+    /// <c>update</c> and <c>delete</c>, each <see langword="null"/> when the binding does not have it. Validates and resolves like
+    /// <see cref="GetQuerySqlAsync"/>; the preview is <see langword="null"/> on a model with errors, or with MQ6017 when the entity has no
+    /// binding with the id.
+    /// </summary>
+    /// <param name="entityId">The entity's id.</param>
+    /// <param name="bindingId">The binding's id.</param>
+    /// <param name="dialect">A dialect name, or <see langword="null"/> for the binding's database's.</param>
+    /// <param name="options">The placeholder style, or <see langword="null"/> for <c>@name</c>.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The statements and diagnostics.</returns>
+    /// <exception cref="ArgumentException">The dialect is not one the renderer knows.</exception>
+    public async Task<BindingSqlResult> GetBindingSqlAsync(string entityId, string bindingId, string? dialect, QuerySqlOptions? options, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(entityId);
+        ArgumentNullException.ThrowIfNull(bindingId);
+        if (dialect is not null && !Rendering.SqlDialects.TryParse(dialect, out _))
+            throw new ArgumentException($"'{dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, ct).ConfigureAwait(false);
+        if (report.HasErrors)
+            return new BindingSqlResult(null, report.Diagnostics);
+        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
+        var diagnostics = Outcomes.Sort(report.Diagnostics.Concat(resolved.Diagnostics));
+        if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
+            return new BindingSqlResult(null, diagnostics);
+        var binding = resolved.Entities.FirstOrDefault(e => string.Equals(e.Id, entityId, StringComparison.Ordinal))?.Bindings.Values
+            .FirstOrDefault(b => string.Equals(b.Id, bindingId, StringComparison.Ordinal));
+        if (binding is null)
+            return new BindingSqlResult(null, [.. diagnostics, RuleCatalog.Create("MQ6017", $"Entity '{entityId}' has no binding with the id '{bindingId}'.", entityId)]);
+        var (preview, rendering) = BindingViews.Preview(binding, dialect, options);
+        return new BindingSqlResult(preview, Outcomes.Sort(diagnostics.Concat(rendering)));
+    }
+
+    /// <summary>
     /// Every pack under <c>templates/</c>, enabled or not, with its load diagnostics (E2, phase2-design.md section 3.8). The enabled
     /// packs are loaded exactly as a run loads them; disabled ones are only parsed and checked against <c>pack.json</c>'s schema.
     /// </summary>

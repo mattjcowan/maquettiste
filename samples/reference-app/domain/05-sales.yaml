@@ -176,6 +176,18 @@ entities:
     refs:
       author: UserAccount name=sales_order_note_is_written_by_author | Who wrote the note.
 
+  SalesOrderRemark:
+    description: A short remark on a sales order, kept in the shared remarks table with subject_type 'sales-order'.
+    attributes:
+      salesOrderId: uuid! | Key of the sales order the remark is about.
+      body: text! | Remark text.
+      createdAt: datetimeoffset readonly | When the remark was written; the database sets it.
+    binding:
+      table: remarks
+      constants: { subject_type: sales-order }
+      fields: { id: id, salesOrderId: subject_id, body: body, createdAt: created_at }
+      columns: { created_at: database }
+
   SalesOrderStatusChange:
     description: A status transition of a sales order, kept as history.
     tags: [high-volume]

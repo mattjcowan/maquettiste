@@ -25,12 +25,16 @@ public sealed partial class ModelStore
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         var work = new SchemaWork(snapshot, _options.EffectiveIdGenerator);
         var processWork = new ProcessWork(snapshot, _options.EffectiveIdGenerator, changes);
+        var materialized = new List<PlannedChange>();
+        var materializeResults = new List<MaterializeResult>();
         for (var i = 0; i < batch.Operations.Count; i++)
         {
             var o = batch.Operations[i];
-            if (!(IsSchemaOperation(o.Op) || IsProcessOperation(o.Op)) || invalid[i] is not null)
+            if (!(IsSchemaOperation(o.Op) || IsProcessOperation(o.Op) || IsMaterializeOperation(o.Op)) || invalid[i] is not null)
                 continue;
-            var (rule, refusal) = IsSchemaOperation(o.Op) ? ("MQ4015", work.Apply(o)) : ("MQ9019", processWork.Apply(o));
+            var (rule, refusal) = IsSchemaOperation(o.Op) ? ("MQ4015", work.Apply(o))
+                : IsMaterializeOperation(o.Op) ? ("MQ4055", await MaterializeAsync(snapshot, o, materialized, materializeResults, ct).ConfigureAwait(false))
+                : ("MQ9019", processWork.Apply(o));
             if (refusal is not null)
             {
                 var pointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture);
@@ -51,9 +55,13 @@ public sealed partial class ModelStore
             changes.Add(new PlannedChange(BatchOp.Update, id, expectedHash, parsed, DeleteResolution.Refuse));
         }
 
+        changes.AddRange(materialized);
         if (changes.Count == 0)
             return new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source));
-        return await ExecuteAsync(changes, source, ct).ConfigureAwait(false);
+        var result = await ExecuteAsync(changes, source, ct).ConfigureAwait(false);
+        if (result.Outcome == SaveOutcome.Saved && materializeResults.Count > 0)
+            await RekeySnapshotsAsync(materializeResults, ct).ConfigureAwait(false);
+        return result;
     }
 
     /// <summary>The documents a batch's schema operations change, as working copies.</summary>

@@ -167,6 +167,7 @@ public sealed class EntityBuilder : ElementBuilder<EntityBuilder>
     private readonly string? _package;
     private readonly AttributeList _attributes;
     private readonly List<AlternateKey> _alternateKeys = [];
+    private readonly List<EntityBinding> _bindings = [];
     private EntityKey? _key;
     private bool _abstract;
     private string? _base;
@@ -258,9 +259,19 @@ public sealed class EntityBuilder : ElementBuilder<EntityBuilder>
     /// <returns>The id.</returns>
     public string AttrId(string name) => _attributes.IdOf(name);
 
+    /// <summary>Adds a binding to a database (erratum E43); its id is assigned when it has none.</summary>
+    /// <param name="binding">The binding.</param>
+    /// <returns>This builder.</returns>
+    public EntityBuilder Bind(EntityBinding binding)
+    {
+        _bindings.Add(binding.Id.Length == 0 ? binding with { Id = Model.NewId() } : binding);
+        return this;
+    }
+
     /// <inheritdoc/>
     protected override Element CreateElement() => new Entity
     {
+        Bindings = [.. _bindings],
         Id = Id,
         Name = Name,
         Package = _package,
@@ -717,6 +728,7 @@ public sealed class MappingBuilder : ElementBuilder<MappingBuilder>
     private InheritanceStrategy? _inheritance;
     private RelationShape? _shape;
     private JsonElement? _discriminator;
+    private string? _foreignKey;
 
     internal MappingBuilder(ModelBuilder model, string name, string database, string? entity, string? relation, EntityBuilder? entityBuilder)
         : base(model, name)
@@ -725,6 +737,15 @@ public sealed class MappingBuilder : ElementBuilder<MappingBuilder>
         _entity = entity;
         _relation = relation;
         _entityBuilder = entityBuilder;
+    }
+
+    /// <summary>Names the existing foreign key that realizes a relation between bound tables.</summary>
+    /// <param name="foreignKeyId">The foreign key's id.</param>
+    /// <returns>This builder.</returns>
+    public MappingBuilder ForeignKey(string foreignKeyId)
+    {
+        _foreignKey = foreignKeyId;
+        return this;
     }
 
     /// <summary>Binds the entity to a designed table.</summary>
@@ -805,6 +826,7 @@ public sealed class MappingBuilder : ElementBuilder<MappingBuilder>
         Inheritance = _inheritance,
         DiscriminatorValue = _discriminator,
         Shape = _shape,
+        ForeignKey = _foreignKey,
         Attributes = [.. _attributes],
     };
 }

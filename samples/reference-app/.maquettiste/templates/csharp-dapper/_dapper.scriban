@@ -4,12 +4,16 @@
 # A repository reads and writes one table through a private row class with one property per column; the row converts to and
 # from the entity (embedded value objects, enum codes, JSON columns), so Dapper only ever maps flat rows.
 
-# The mapping the repositories use: the "database" parameter when set, else the first database (by name) that maps the entity.
+# The mapping the repositories use: the "database" parameter when set, else the first database (by name) that maps the entity;
+# none when that database binds the entity instead (a binding wins, see dapper_binding).
 func dapper_mapping(e)
   if pack.params.database != ""
     ret e.mappings[pack.params.database]
   end
   for db in model.databases
+    if e.bindings[db.name]
+      ret null
+    end
     $m = e.mappings[db.name]
     if $m
       ret $m
@@ -18,11 +22,33 @@ func dapper_mapping(e)
   ret null
 end
 
+# The binding the repositories use (erratum E43): the entity's binding to the "database" parameter when set, else to the first
+# database (by name) that binds or maps the entity, when it binds it there. An entity with one gets its repository from it.
+func dapper_binding(e)
+  if pack.params.database != ""
+    ret e.bindings[pack.params.database]
+  end
+  for db in model.databases
+    $b = e.bindings[db.name]
+    if $b
+      ret $b
+    end
+    if e.mappings[db.name]
+      ret null
+    end
+  end
+  ret null
+end
+
 # Whether an entity gets a repository: concrete, mapped, with a primary key, and every column it reads in its own table
-# (table-per-type hierarchies, whose rows span tables, are left to hand-written code).
+# (table-per-type hierarchies, whose rows span tables, are left to hand-written code); or bound, with its key in the field map.
 func has_repository(e)
   if e.is_abstract
     ret false
+  end
+  $b = dapper_binding(e)
+  if $b
+    ret $b.key.size > 0
   end
   $m = dapper_mapping(e)
   if !$m || !$m.table.primary_key
@@ -105,30 +131,35 @@ end
 
 # C# expression reading one simple attribute (builtin, scalar or enum; or anything stored as JSON) from its column.
 func read_simple(a, c)
-  $src = "row." + row_prop(c)
+  ret read_value(a, "row." + row_prop(c), c.type, c.nullable)
+end
+
+# C# expression reading one simple attribute from a row property (src) that holds a column of type ctype, nullable or not.
+func read_value(a, src, ctype, cnullable)
+  $src = src
   $full = type_of a "csharp"
-  if c.type == "json"
+  if ctype == "json"
     if a.collection
       ret $src + " is null ? [] : JsonSerializer.Deserialize<" + $full + ">(" + $src + ")!"
     else if a.required
-      ret "JsonSerializer.Deserialize<" + $full + ">(" + $src + (c.nullable ? "!" : "") + ")!"
+      ret "JsonSerializer.Deserialize<" + $full + ">(" + $src + (cnullable ? "!" : "") + ")!"
     end
     ret $src + " is null ? null : JsonSerializer.Deserialize<" + $full + ">(" + $src + ")"
   end
   if a.type.kind == "enum"
     $en = enum_type(a)
-    if c.type == "string" || c.type == "text"
-      if c.nullable && !a.required
+    if ctype == "string" || ctype == "text"
+      if cnullable && !a.required
         ret $src + " is null ? null : " + $en + "Codes.Parse(" + $src + ")"
       end
-      ret $en + "Codes.Parse(" + $src + (c.nullable ? "!" : "") + ")"
+      ret $en + "Codes.Parse(" + $src + (cnullable ? "!" : "") + ")"
     end
-    if c.nullable && !a.required
+    if cnullable && !a.required
       ret "(" + $en + "?)" + $src
     end
-    ret "(" + $en + ")" + $src + (c.nullable ? "!" : "")
+    ret "(" + $en + ")" + $src + (cnullable ? "!" : "")
   end
-  if c.nullable && a.required
+  if cnullable && a.required
     ret "(" + $full + ")" + $src + "!"
   end
   ret $src
@@ -249,5 +280,45 @@ end
 
 func key_param(c)
   ret cs_ident (camel c.name)
+end
+
+# ---- bindings (erratum E43) ------------------------------------------------------------------------------------------------
+# A bound entity's repository reads into a private Row class whose properties are the binding's field names (the select's
+# aliases and the statements' parameters), so Dapper maps both ways without renaming.
+
+# Whether a field's row property is nullable: the column is, or the attribute (or value object member) is optional.
+func bind_nullable(f)
+  if f.nullable
+    ret true
+  end
+  if f.member
+    ret !f.member.required || !f.attribute.required
+  end
+  if f.attribute
+    ret !f.attribute.required
+  end
+  ret false
+end
+
+# The C# type of a field's row property: its column's type keyword (JSON held as text), nullable as bind_nullable says.
+func bind_row_type(f)
+  $k = f.type ? f.type : "string"
+  $t = $k == "json" ? "string" : (type_of $k "csharp")
+  ret bind_nullable(f) ? $t + "?" : $t
+end
+
+# The fields of the entity's binding that hold a to-one relation's key: the entity class carries a property for each.
+func bind_key_fields(e)
+  $result = []
+  $b = dapper_binding(e)
+  if !$b
+    ret $result
+  end
+  for f in $b.fields
+    if f.end
+      $result[$result.size] = f
+    end
+  end
+  ret $result
 end
 -}}

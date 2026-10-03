@@ -47,7 +47,7 @@ test("open, select Invoice, rename, problems, DDL, plan and apply", async ({ pag
   // Database: tables and the DDL preview of the whole schema.
   await workspace(page, "Databases");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
-  await expect(page.locator(".react-flow__node")).toHaveCount(6);
+  await expect(page.locator(".react-flow__node")).toHaveCount(7); // six tables and the designed notes table
   const ddl = page.getByTestId("ddl-preview");
   await expect(ddl).toContainText("sql-ddl/schema");
   await expect(ddl).toContainText("CREATE SCHEMA IF NOT EXISTS billing;");

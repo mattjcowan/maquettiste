@@ -23,8 +23,8 @@ public sealed class BillingFixtureTests
         var model = result.Snapshot;
 
         Assert.Empty(model.LoadDiagnostics);
-        Assert.Equal(29, model.Documents.Count);
-        Assert.Equal(5, model.All<Entity>().Count);
+        Assert.Equal(33, model.Documents.Count);
+        Assert.Equal(8, model.All<Entity>().Count);
         Assert.Equal(4, model.All<Relation>().Count);
         Assert.Equal(3, model.All<Stereotype>().Count);
         Assert.Single(model.All<Database>());

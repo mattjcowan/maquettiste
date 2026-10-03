@@ -128,8 +128,14 @@ internal sealed class Placement(REntity entity, Entity source, Mapping? mapping)
     /// <summary>The table holding the entity's key row (the table a foreign key references); <see langword="null"/> for a TPC abstract entity.</summary>
     public TableBuild? Table { get; set; }
 
-    /// <summary>Whether the entity is bound to a designed or imported table (<c>Mapping.Table</c>).</summary>
+    /// <summary>Whether the entity is bound to a designed or imported table (<c>Mapping.Table</c>, or a binding: <see cref="ViaBinding"/>).</summary>
     public bool Bound { get; set; }
+
+    /// <summary>
+    /// Whether the placement comes from the entity's binding to the database (erratum E43): the entity is never projected, its
+    /// table is the binding's write (else source) table for the foreign keys of relations, and it has no entity mapping.
+    /// </summary>
+    public bool ViaBinding { get; set; }
 
     /// <summary>The key attribute ids of the hierarchy root.</summary>
     public HashSet<string> KeyIds { get; } = new(StringComparer.Ordinal);

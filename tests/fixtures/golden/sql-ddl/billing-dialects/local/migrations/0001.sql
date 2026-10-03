@@ -83,6 +83,29 @@ CREATE TABLE payment_invoice (
     CONSTRAINT fk_payment_invoice_invoices_id FOREIGN KEY (invoices_id) REFERENCES invoices (id) ON DELETE CASCADE
 );
 
+CREATE TABLE invoice_notes (
+    id text NOT NULL,
+    invoice_id text NOT NULL,
+    body text NOT NULL,
+    created_at text NULL,
+    CONSTRAINT pk_invoice_notes PRIMARY KEY (id)
+);
+
+CREATE TABLE customer_notes (
+    id text NOT NULL,
+    customer_id text NOT NULL,
+    body text NOT NULL,
+    created_at text NULL,
+    CONSTRAINT pk_customer_notes PRIMARY KEY (id)
+);
+
+CREATE TABLE revenue_months (
+    month text NOT NULL,
+    invoice_count integer NOT NULL,
+    revenue numeric NOT NULL,
+    CONSTRAINT pk_revenue_months PRIMARY KEY (month)
+);
+
 -- SQLite has no stored routines; function invoice_total is not created.
 
 CREATE TRIGGER invoices_keep_number BEFORE UPDATE OF number ON invoices FOR EACH ROW WHEN NEW.number <> OLD.number

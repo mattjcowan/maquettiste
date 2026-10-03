@@ -2,10 +2,12 @@
 
 **Owner:** P2-R. See docs/engineering/phase2-design.md section 7 and SPEC.md section 21 (gate 2).
 
-The data layer of a B2B wholesale distributor, modeled in Maquettiste and generated end to end: 200 entities in 12 packages,
+The data layer of a B2B wholesale distributor, modeled in Maquettiste and generated end to end: 202 entities in 12 packages,
 8 value objects, 5 scalar types, 23 enums, 2 reference types, 439 relations, one PostgreSQL 16 database (`main`, schema `northwind`) with
-table overlays, a designed table, a view, three sequences and two queries (a customer's open sales orders with their lines, and
-revenue by sales channel), and one subject-area diagram per package.
+table overlays, two designed tables, a view, three sequences and two queries (a customer's open sales orders with their lines, and
+revenue by sales channel), and one subject-area diagram per package. One designed table, `remarks`, is shared by two entities
+through explicit bindings (erratum E43): `CustomerRemark` and `SalesOrderRemark` are never projected, their binding's constant
+`subject_type` tells their rows apart, and their repositories come from the binding.
 
 The database file `main` has no `byConvention` member on purpose: it keeps the rule from before 0.3.0 (every entity, or the
 entities of its `packages`), and `generate --check` proves that such models still generate byte-identical output. A new
@@ -53,10 +55,10 @@ From the repository root (the CLI built with `dotnet build -c Release src/Maquet
 
 ```sh
 CLI="dotnet src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll --repo samples/reference-app"
-$CLI generate                   # db/ and src/ReferenceApp.Data/Generated/ (855 files, 209 tables) and the .gitignore block
+$CLI generate                   # db/ and src/ReferenceApp.Data/Generated/ (867 files, 210 tables) and the .gitignore block
 $CLI generate --check           # exit 0 after a generate: every output equals what the model generates (exit 2 on drift)
 dotnet build samples/reference-app/src/ReferenceApp.Data -warnaserror
-samples/reference-app/tools/db-apply.sh          # 209 tables, 1 view, 3 sequences in both databases
+samples/reference-app/tools/db-apply.sh          # 210 tables, 1 view, 3 sequences in both databases
 samples/reference-app/tools/db-apply.sh --down
 ```
 
@@ -95,7 +97,7 @@ API (`seed.mjs --compare`), runs the Playwright walk `src/editor/tests/e2e/gate2
 `Warehouse.g.cs`, runs `validate`, runs `generate --check` over every output (the editor's apply equals the CLI's output, `db/main`, `Generated/` and the
 `.gitignore` block the apply created included) and generates the whole project again with the CLI (`--force`) into a second copy,
 comparing `Generated/` with `diff -r`. Last come `dotnet build -warnaserror` of `ReferenceApp.Data` and `db-apply.sh` against PostgreSQL
-(both databases must hold 209 tables, 1 view and 3 sequences). The workflow also runs `generate --check` on this folder, so
+(both databases must hold 210 tables, 1 view and 3 sequences). The workflow also runs `generate --check` on this folder, so
 the committed `db/main` cannot go stale when a pack changes, and it runs on pull requests to main. From the repository root, with the image built and
 `npm ci && npx playwright install chromium` done in `src/editor`:
 

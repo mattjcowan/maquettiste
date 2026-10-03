@@ -46,6 +46,12 @@ public sealed record Entity : Element
 
     /// <summary>The entity's own attributes, in canonical order: the canonical writer stable-sorts them by <see cref="ModelAttribute.Order"/> (missing = 0).</summary>
     public IReadOnlyList<ModelAttribute> Attributes { get; init; } = [];
+
+    /// <summary>
+    /// How the entity reads from and writes to databases, one binding per database (erratum E43). An entity with a binding to a
+    /// database is never projected into it, whatever the database's convention or a mapping element says.
+    /// </summary>
+    public IReadOnlyList<EntityBinding> Bindings { get; init; } = [];
 }
 
 /// <summary>An entity's primary key.</summary>

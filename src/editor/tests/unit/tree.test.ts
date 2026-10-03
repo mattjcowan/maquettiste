@@ -98,12 +98,20 @@ describe("tree over the billing fixture", () => {
     const billingNode = find(forest, "domain-model", "Billing");
     expect(billingNode.type).toBe("domain");
     expect(billingNode.tooltip).toBe("Domain: Billing");
-    expect(billingNode.secondary).toBe("1 sub-domain · 5 entities");
+    expect(billingNode.secondary).toBe("1 sub-domain · 8 entities");
     expect(labels(forest, billingNode.key)).toEqual(["Catalog", "Entities", "Relationships", "Enums", "Value objects", "Custom types", "Processes"]);
     expect(find(forest, "domain-model", "Billing", "Catalog").secondary).toBe("1 entity");
-    expect(find(forest, "domain-model", "Billing", "Entities").count).toBe(4);
-    expect(labels(forest, find(forest, "domain-model", "Billing", "Entities").key)).toEqual(["Customer", "Invoice", "InvoiceLine", "Payment"]);
-    expect(forest.headers["domain-model"]).toBe("2 domains · 5 entities");
+    expect(find(forest, "domain-model", "Billing", "Entities").count).toBe(7);
+    expect(labels(forest, find(forest, "domain-model", "Billing", "Entities").key)).toEqual([
+      "Customer",
+      "CustomerNote",
+      "Invoice",
+      "InvoiceLine",
+      "InvoiceNote",
+      "Payment",
+      "RevenueMonth",
+    ]);
+    expect(forest.headers["domain-model"]).toBe("2 domains · 8 entities");
   });
 
   it("builds one tree per explorer, with no Project, Settings or Reference data row", () => {
@@ -160,14 +168,14 @@ describe("tree over the billing fixture", () => {
     expect(labels(forest, find(forest, "databases", "main", "billing", "Types").key)).toEqual(["email_address", "invoice_state"]);
     expect(labels(forest, find(forest, "databases", "main", "billing", "Objects").key)).toEqual(["reporting_read"]);
     expect(find(forest, "databases", "main", "billing").secondary).toBe(
-      "6 tables · 1 view · 1 sequence · 2 routines · 2 database types · 1 SQL object · 3 queries",
+      "7 tables · 1 view · 1 sequence · 2 routines · 2 database types · 1 SQL object · 3 queries",
     );
     const tableNames = labels(forest, find(forest, "databases", "main", "billing", "Tables").key);
     expect(tableNames).toContain("invoices");
     expect(main.secondary).toBe(
-      "6 tables · 1 view · 1 sequence · 2 routines · 2 database types · 1 SQL object · 3 queries · 2 customised mappings · 5 entities mapped",
+      "7 tables · 1 view · 1 sequence · 2 routines · 2 database types · 1 SQL object · 3 queries · 2 customised mappings · 5 entities mapped",
     );
-    expect(forest.headers.databases).toBe("1 database · 6 tables");
+    expect(forest.headers.databases).toBe("1 database · 7 tables");
     // The table overlay file is the invoices row; the junction carries its marker.
     expect(forest.place.get(rows.find((r) => r.kind === "table")!.id)).toBe(find(forest, "databases", "main", "billing", "Tables", "invoices").key);
     expect(find(forest, "databases", "main", "billing", "Tables", "payment_invoice").markers).toEqual(["junction"]);
@@ -344,9 +352,9 @@ describe("tree places", () => {
     expect(agents.icon).toBe("bot");
     expect(agents.tooltip).toBe("Entities with stereotype `aggregate-root`, from project settings");
     const entities = find(f, "domain-model", "Billing", "Entities");
-    expect(labels(f, entities.key)).toEqual(["InvoiceLine", "Payment"]);
+    expect(labels(f, entities.key)).toEqual(["CustomerNote", "InvoiceLine", "InvoiceNote", "Payment", "RevenueMonth"]);
     expect(entities.tooltip).toContain("plus 2 in Agents");
-    expect(find(f, "domain-model", "Billing").secondary).toBe("1 sub-domain · 5 entities");
+    expect(find(f, "domain-model", "Billing").secondary).toBe("1 sub-domain · 8 entities");
     expectKindFolders(f, folders);
     // A category condition matches the node's descendants.
     const invoiceCategory = rows.find((r) => r.id === IDS.invoice)!.category!;

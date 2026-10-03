@@ -1,19 +1,19 @@
 {
-  "id": "01M3PNSXGFM0CYX6MQ679KT154",
+  "id": "01M3ZM68H690NVH81BRF6HNWTN",
   "kind": "plan",
   "state": "succeeded",
   "queuePosition": null,
   "progress": {
     "stage": "write",
-    "done": 29,
-    "total": 29,
-    "currentPath": "db/main/billing/tables/payment_invoice.sql",
+    "done": 43,
+    "total": 43,
+    "currentPath": "db/main/billing/tables/notes.sql",
     "pack": "sql-ddl"
   },
   "planResult": {
     "outcome": "succeeded",
     "plan": {
-      "id": "01M3PNSXJGXGSMDKF3X1C6SRB6",
+      "id": "01M3ZM68H657E41WA5WAEKBH4Y",
       "request": {
         "mode": "apply",
         "packs": null,
@@ -36,7 +36,7 @@
   },
   "applyResult": null,
   "error": null,
-  "queuedUtc": "2026-09-29T13:31:27.6317544+00:00",
-  "startedUtc": "2026-09-29T13:31:27.6929023+00:00",
-  "finishedUtc": "2026-09-29T13:31:29.4256966+00:00"
+  "queuedUtc": "2026-10-03T00:56:24.8700898+00:00",
+  "startedUtc": "2026-10-03T00:56:24.8701151+00:00",
+  "finishedUtc": "2026-10-03T00:56:25.5229645+00:00"
 }

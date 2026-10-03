@@ -456,7 +456,7 @@ Import from a live database through the CLI or a function, reconciled by `source
 
 ## 10. Mapping and data access
 
-Conventions map the whole entity model to tables in one pass; per-element overrides handle the exceptions, and templates receive the fully resolved result, so repository generation is template work rather than engine work.
+Conventions map the whole entity model to tables in one pass; per-element overrides handle the exceptions, and templates receive the fully resolved result, so repository generation is template work rather than engine work. *(Errata E43, docs/engineering/spec-errata.md.)* The database knows nothing about entities: it holds tables, views, routines, types and queries. Each entity owns its **bindings**, one per database (where it reads: a table, a view or a query of that database; its constant columns; its field map; the columns it accounts for without a field; where it writes back; how it deletes), and an entity with a binding is never projected into that database. Projecting tables from entities is superseded for new work by **materialize**, in both directions: a designed table with the projected shape and a binding per entity, or an entity bound to each picked table; models without bindings keep resolving as before.
 
 **Project conventions** (in `maquettiste.json`, per database)
 
@@ -477,7 +477,7 @@ Conventions map the whole entity model to tables in one pass; per-element overri
 | Reference type | *(Errata E9, docs/engineering/spec-errata.md.)* Template-defined by default; a project may declare strategies in `referenceData.strategies` and choose one per project, database or type (`referenceStorage`, and `storage` keyed by database id). The engine synthesizes no table, constraint or type for them: a single-valued attribute's column is reference-typed (its physical type comes from the pack's `type_of`, and the snapshot records it as `reference`), and a collection attribute gets no column (`template_defined`) |
 | Relation | Foreign key, junction table, or promoted association entity |
 | Inheritance | Table per hierarchy (discriminator column), table per type, or table per concrete type |
-| Entity in several databases | One mapping per database (write store, reporting store) |
+| Entity in several databases | One mapping per database (write store, reporting store) *(Errata E43, docs/engineering/spec-errata.md.)* One binding per database in the entity's file: a query plus a field map, an insert and update with the map, a delete on the key; several entities may share one table through constant columns |
 
 **Queries, projections, operations and events**
 

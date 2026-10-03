@@ -1,0 +1,69 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BFX0000000000000000027",
+  "name": "Product",
+  "package": "01K6BFX0000000000000000001",
+  "description": "A product we sell, bound one to one to its table.",
+  "key": {
+    "attributes": [
+      "01K6BFX0000000000000000022"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000022",
+      "name": "id",
+      "type": "int64",
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000023",
+      "name": "sku",
+      "type": "string",
+      "length": 40,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000024",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000025",
+      "name": "price",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 2,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BFX0000000000000000026",
+      "database": "01K6BFX0000000000000000002",
+      "source": "01K6BFX0000000000000000007",
+      "fields": [
+        {
+          "attribute": "01K6BFX0000000000000000022",
+          "column": "01K6BFX0000000000000000003"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000023",
+          "column": "01K6BFX0000000000000000004"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000024",
+          "column": "01K6BFX0000000000000000005"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000025",
+          "column": "01K6BFX0000000000000000006"
+        }
+      ]
+    }
+  ]
+}

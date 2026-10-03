@@ -153,3 +153,8 @@ golden tree).
   element's key (an entity edit can move a table in or out of any database). Those units render and their unchanged output is
   not written. A finer granularity (per member, or placement keys for table lists) belongs to the resolver and the tracking
   design, not to this change.
+- **Binding statements (2026-10-02, erratum E43).** `BindingSql.Render(binding, statement, dialect?, options?)` renders an entity
+  binding's `select`, `select-by-key`, `insert`, `update` and `delete` with `QuerySql`'s quoting, literals and placeholder styles;
+  constants are literals, parameters are named after the fields (numbered after a query source's own with `$`), a query source
+  is a derived table without its order (`RQuery.ForDerivedTable`), and a statement the binding does not have is empty. The
+  helpers `binding_sql` and `binding_sql_parameters` record the binding's dependency keys like `query_sql` does.

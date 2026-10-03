@@ -43,69 +43,74 @@
       "y": 280
     },
     {
-      "element": "01M28MWSDAN18EQHNE9QHZEMFN",
+      "element": "01M2FKBP4PXE31YXS7BKY0SXHG",
       "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M28MWSDAN18EQHNE9QHZEMFN",
+      "x": 1000,
       "y": 280
     },
     {
       "element": "01M2BMWZ1QVXGP8CRGD6645WZC",
-      "x": 1000,
+      "x": 1320,
       "y": 280
     },
     {
       "element": "01M2MCP43J29YSHR3FTSX2PB4N",
-      "x": 1320,
-      "y": 280
+      "x": 40,
+      "y": 520
     },
     {
       "element": "01M202MD69QFR0PAA1BD0Y8GRP",
-      "x": 40,
+      "x": 360,
       "y": 520
     },
     {
       "element": "01M37YEM5BDAS9JA7K1XHGRYQB",
-      "x": 360,
+      "x": 680,
       "y": 520
     },
     {
       "element": "01M2RAWA2R3YTRTN2NZYY3W84T",
-      "x": 680,
+      "x": 1000,
       "y": 520
     },
     {
       "element": "01M1G2XC8VHF50WCS54G3Y5R96",
-      "x": 1000,
+      "x": 1320,
       "y": 520
     },
     {
       "element": "01M2F67H1NJPNCPERPZKKZ4Y2R",
-      "x": 1320,
-      "y": 520
-    },
-    {
-      "element": "01M33RY9G59ZRWXQSAY6YKZMCH",
       "x": 40,
       "y": 760
     },
     {
-      "element": "01M1Z07H8911C6G8XMGB68QRV0",
+      "element": "01M33RY9G59ZRWXQSAY6YKZMCH",
       "x": 360,
       "y": 760
     },
     {
-      "element": "01M1R0WN3NQVHP8WNHAT901REQ",
+      "element": "01M1Z07H8911C6G8XMGB68QRV0",
       "x": 680,
       "y": 760
     },
     {
-      "element": "01M1SZZ5FB56D5W109DHXXMACT",
+      "element": "01M1R0WN3NQVHP8WNHAT901REQ",
       "x": 1000,
       "y": 760
     },
     {
-      "element": "01M2XHGJFZKF467SJBM67ZQ9F4",
+      "element": "01M1SZZ5FB56D5W109DHXXMACT",
       "x": 1320,
       "y": 760
+    },
+    {
+      "element": "01M2XHGJFZKF467SJBM67ZQ9F4",
+      "x": 40,
+      "y": 1000
     },
     {
       "element": "01M2S1V1ZHRK062QGBNVEKCBRA"

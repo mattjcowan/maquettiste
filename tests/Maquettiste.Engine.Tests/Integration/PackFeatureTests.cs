@@ -26,7 +26,8 @@ public sealed class PackFeatureTests
 
         var result = await repo.ApplyAsync();
 
-        Assert.Equal(["db/extras/long/customer.txt", "db/extras/long/invoice-line.txt"],
+        Assert.Equal(["db/extras/long/customer-note.txt", "db/extras/long/customer.txt", "db/extras/long/invoice-line.txt", "db/extras/long/invoice-note.txt",
+                "db/extras/long/revenue-month.txt"],
             repo.Outputs().Keys.Where(p => p.StartsWith("db/extras/long/", StringComparison.Ordinal)));
         Assert.Equal("block", repo.Repo.ReadFile("db/extras/loose/block.txt"));
         var warning = Assert.Single(result.Diagnostics, d => d.Rule == "MQ6011");
@@ -61,7 +62,7 @@ public sealed class PackFeatureTests
         var failed = await repo.RunAsync();
 
         E2ERepo.AssertOutcome(RunOutcome.Invalid, failed);
-        Assert.Equal(5, failed.Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Error)); // one per entity unit
+        Assert.Equal(8, failed.Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Error)); // one per entity unit
         var error = Assert.Single(failed.Diagnostics, d => d.ElementId == E2ERepo.CustomerId);
         Assert.Equal("MQ6006", error.Rule);
         Assert.Equal(".maquettiste/templates/e2e/entity.scriban", error.FilePath);

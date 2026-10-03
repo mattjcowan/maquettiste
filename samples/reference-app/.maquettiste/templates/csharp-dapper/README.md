@@ -99,6 +99,27 @@ Not covered, by design of an example pack: navigations and junction tables (writ
 own repository class, which is `partial`), collections stored in child tables (their property is left empty), and table-per-type
 hierarchies, whose rows span tables (no repository is generated for them).
 
+### Repositories from bindings
+
+An entity with a binding (its `bindings` in the model, one per database) for the chosen database gets its repository from the
+binding instead: the chosen database is the `database` parameter, else the first database by name that binds or maps the entity.
+Its statements come from the engine (`binding_sql`), so the binding decides everything: the source it reads (a table, a view, or
+a query wrapped as a derived table), the constants (a filter on every read, a value on every insert, which is how several entities
+share one table through an `entity_type` column), the columns the database fills (never written), and the delete.
+
+| Method | SQL |
+| --- | --- |
+| `GetAsync(query parameters…, key…)` | the binding's `select-by-key` |
+| `ListAsync(query parameters…, mq_skip, mq_take)` | the binding's `select`, ordered by the key fields, with `LIMIT/OFFSET` or `OFFSET … FETCH` |
+| `InsertAsync(entity)` | the binding's `insert`: fields and constants, one database-generated key read back into the entity; `uuid-v7` and `ulid` keys filled as above |
+| `UpdateAsync(entity)` | the binding's `update`, by key with the constants in the where clause |
+| `DeleteAsync(key…)` | the binding's `delete`: by key, or the soft-delete update |
+
+A binding that does not write (a view or query source, or `write: "none"`) gets a read-only repository: no `InsertAsync`,
+`UpdateAsync` or `DeleteAsync`. The private `Row` class has one property per field, named exactly as the field, because the
+select's aliases and the statements' parameters carry the field names. A field that holds a relation's key becomes a property of
+the entity class. Entities without bindings generate exactly as before.
+
 ## Queries
 
 A query element (a query over a database's tables and views, written as data) becomes one class in `Queries/`, in the
@@ -338,6 +359,7 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 | `_dapper.scriban` | Mapping choice, the row model and the entity/row conversions. |
 | `entity.scriban`, `entity.partial.scriban` | The generated and hand-written halves of an entity. |
 | `enum.scriban`, `value-object.scriban`, `repository.scriban`, `registrations.scriban`, `type-handlers.scriban` | The other units. |
+| `_binding.scriban` | The repository of a bound entity, from its binding's statements (included by `repository.scriban`). |
 | `_process.scriban` | Shared functions of the process units: names, folders, attribute types, C# literals, the translator's input. |
 | `process-*.scriban`, `*.partial.scriban` | The process units and their companions. |
 | `dispatch*.scriban`, `interpreter*.scriban`, `actors.scriban`, `scenario-tests.scriban` | The model-level process units and the scenario tests. |

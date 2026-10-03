@@ -553,6 +553,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model/entities/{id}/bindings/{bindingId}/sql": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+                /** @description The binding's id (`bindings[i].id` in the entity's file). */
+                bindingId: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The statements of one entity binding for a dialect
+         * @description Renders an entity's binding to a database (erratum E43) as parameterised SQL for the database's dialect, or the one
+         *     named: `select` (every row, the constants as a filter, soft-deleted rows left out; a query source is a derived table),
+         *     `selectByKey`, `insert` (the written fields and the constants, without the columns the database fills; generated keys
+         *     come back through `RETURNING`, `OUTPUT INSERTED` or `SELECT LAST_INSERT_ID()`), `update` (by key, the constants in the
+         *     where clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a
+         *     read-only binding has no insert, update or delete). Parameters are named after the fields. A model with errors returns
+         *     `preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.
+         */
+        get: operations["getBindingSql"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model/databases/{id}/materialize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What can be materialized in one database
+         * @description What the database's materialize screens list (erratum E43): the entities with no binding to the database, each flagged
+         *     `projected` when the database still projects a table for it (by convention or a mapping element), and the database's
+         *     designed and imported tables and its views with the entity bindings that read or write each (`boundBy`; several entities
+         *     on one table are told apart by their constants). Materialize with the batch operations `materialize-tables` and
+         *     `materialize-entities` (`POST /api/model/batch`), after a look at `POST .../materialize/preview`. The MCP tool
+         *     `get_materialize_status` answers the same.
+         */
+        get: operations["getMaterializeStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model/databases/{id}/materialize/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What a materialize operation would do
+         * @description Plans a materialize operation over the route's database and validates the result, writing nothing: the body is the batch
+         *     operation without its database, `{ "op": "materialize-tables", "entities": [...], "schema"?: <schema id> }` (a designed
+         *     table per entity with the shape its projection has, and a binding) or `{ "op": "materialize-entities", "tables": [...],
+         *     "package": <package id> }` (an entity per table or view, bound to it, and a relation per foreign key between them). A
+         *     refusal (an entity or table already bound) is MQ4055 in `diagnostics`. The MCP tool `preview_materialize` answers the same.
+         */
+        post: operations["previewMaterialize"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/databases/{id}/view": {
         parameters: {
             query?: never;
@@ -2485,10 +2580,10 @@ export interface components {
             changes: components["schemas"]["ChangeSet"] | null;
         };
         /**
-         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`.
+         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot is rekeyed) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them); they expand the same way, and a refusal (an entity or table already bound) is MQ4055 at `/operations/<n>`.
          * @enum {string}
          */
-        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
+        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
         BatchOperation: {
             op: components["schemas"]["BatchOp"];
             id: string | null;
@@ -2510,6 +2605,14 @@ export interface components {
             target?: string | null;
             /** @description The schema id that becomes the default when the removed schema is the default (`remove-schema`). */
             default?: string | null;
+            /** @description The database id (`materialize-tables`, `materialize-entities`). */
+            database?: string | null;
+            /** @description The entity ids (`materialize-tables`). */
+            entities?: string[] | null;
+            /** @description The table and view ids (`materialize-entities`). */
+            tables?: string[] | null;
+            /** @description The package id the new entities go to (`materialize-entities`). */
+            package?: string | null;
         };
         ModelBatch: {
             operations: components["schemas"]["BatchOperation"][];
@@ -2689,6 +2792,8 @@ export interface components {
             seeds: string[];
             /** @description The id of the process that is its lifecycle. */
             lifecycle: string | null;
+            /** @description The entity's bindings (erratum E43), one per database it is bound to, by database name. A bound entity has no mapping in that database. */
+            bindings?: components["schemas"]["EntityBindingRecord"][];
         };
         /** @description A resolved attribute. */
         AttributeRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -3388,6 +3493,8 @@ export interface components {
             generation: {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
+            /** @description The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before. */
+            boundBy?: components["schemas"]["BoundByView"][];
         };
         /** @description One resolved view, with the annotations of its file (as `TableView`). */
         ViewView: {
@@ -3410,6 +3517,8 @@ export interface components {
             generation: {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
+            /** @description The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before. */
+            boundBy?: components["schemas"]["BoundByView"][];
         };
         ViewColumnView: {
             name: string;
@@ -3743,6 +3852,8 @@ export interface components {
             generation: {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
+            /** @description The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before. */
+            boundBy?: components["schemas"]["BoundByView"][];
         };
         /** @description A parameter of a query. */
         QueryParameterView: {
@@ -3811,6 +3922,150 @@ export interface components {
             parameter: string;
             type: string | null;
             nativeType: string | null;
+        };
+        /** @description An entity bound to a table, view or query (erratum E43). */
+        BoundByView: {
+            entityId: components["schemas"]["Ulid"];
+            entityName: string;
+            bindingId: components["schemas"]["Ulid"];
+            /** @description Whether it is the binding's source. */
+            reads: boolean;
+            /** @description Whether it is the binding's write table. */
+            writes: boolean;
+            constants: components["schemas"]["BindingConstantView"][];
+        };
+        /** @description A constant column of a binding (a filter on every read, a value on every insert). */
+        BindingConstantView: {
+            column: string;
+            /** @description A string, number or bool; null is SQL NULL. */
+            value: unknown;
+        };
+        /** @description A resolved entity binding (erratum E43). */
+        EntityBindingRecord: {
+            id: components["schemas"]["Ulid"];
+            database: components["schemas"]["Ulid"];
+            sourceKind: ("table" | "view" | "query") | null;
+            /** @description The source table's key, or the view's or query's id. */
+            source: string;
+            sourceName: string;
+            /** @description The key of the table the binding writes; null when it does not write. */
+            writeTable: string | null;
+            /** @enum {string} */
+            delete: "key" | "soft" | "none";
+            softDeleteColumn: string | null;
+            /** @description The value a soft delete sets. */
+            softDeleteValue: unknown;
+            constants: components["schemas"]["BindingConstantView"][];
+            fields: components["schemas"]["BindingFieldRecord"][];
+            columns: components["schemas"]["BindingColumnRecord"][];
+            writeColumns: components["schemas"]["BindingColumnRecord"][];
+        };
+        BindingFieldRecord: {
+            name: string;
+            attribute: string;
+            attributeId: string | null;
+            memberId: string | null;
+            endId: string | null;
+            column: string;
+            columnKey: string | null;
+            writeColumn: string | null;
+            type: string | null;
+            nullable: boolean;
+            isKey: boolean;
+            isGenerated: boolean;
+            inInsert: boolean;
+            inUpdate: boolean;
+        };
+        BindingColumnRecord: {
+            name: string;
+            key: string | null;
+            /** @enum {string} */
+            status: "field" | "constant" | "ignored" | "database" | "computed" | "identity" | "default" | "soft-delete" | "unaccounted";
+            field: string | null;
+        };
+        BindingSqlResult: {
+            preview: components["schemas"]["BindingSqlPreview"] | null;
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        BindingSqlPreview: {
+            entityId: components["schemas"]["Ulid"];
+            bindingId: components["schemas"]["Ulid"];
+            database: components["schemas"]["Ulid"];
+            /** @enum {string} */
+            dialect: "postgresql" | "sqlserver" | "mysql" | "sqlite" | "oracle";
+            select: components["schemas"]["BindingStatement"] | null;
+            selectByKey: components["schemas"]["BindingStatement"] | null;
+            insert: components["schemas"]["BindingStatement"] | null;
+            update: components["schemas"]["BindingStatement"] | null;
+            delete: components["schemas"]["BindingStatement"] | null;
+        };
+        BindingStatement: {
+            sql: string;
+            parameters: string[];
+        };
+        /** @description A materialize batch operation without its database. */
+        MaterializeBody: {
+            /** @enum {string} */
+            op: "materialize-tables" | "materialize-entities";
+            entities?: string[];
+            tables?: string[];
+            schema?: string | null;
+            package?: string | null;
+        };
+        MaterializePlan: {
+            operation: string;
+            database: string;
+            valid: boolean;
+            creates: components["schemas"]["MaterializeChange"][];
+            updates: components["schemas"]["MaterializeChange"][];
+            deletes: components["schemas"]["MaterializeChange"][];
+            notes: string[];
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        MaterializeChange: {
+            id: string;
+            kind: string;
+            name: string;
+            /** @description The file's repo-relative path today; absent for a create. */
+            path?: string;
+            because: string;
+            /** @description The document that would be written; absent for a delete. */
+            element?: {
+                [key: string]: unknown;
+            };
+        };
+        MaterializeStatus: {
+            database: components["schemas"]["Ulid"];
+            databaseName: string;
+            entities: components["schemas"]["MaterializeEntityStatus"][];
+            sources: components["schemas"]["MaterializeSourceStatus"][];
+        };
+        MaterializeEntityStatus: {
+            id: components["schemas"]["Ulid"];
+            name: string;
+            package: string | null;
+            projected: boolean;
+            table: string | null;
+        };
+        MaterializeSourceStatus: {
+            id: string;
+            /** @enum {string} */
+            kind: "table" | "view";
+            name: string;
+            schema: string | null;
+            origin: string;
+            boundBy: components["schemas"]["MaterializeBinder"][];
+        };
+        MaterializeBinder: {
+            entity: string;
+            entityName: string;
+            binding: string;
+            constants: components["schemas"]["MaterializeConstant"][];
+        };
+        MaterializeConstant: {
+            column: string;
+            /** @description The value; absent for NULL. */
+            value?: unknown;
         };
         QuerySqlResult: {
             preview: components["schemas"]["QuerySqlPreview"] | null;
@@ -5322,6 +5577,66 @@ export interface components {
             }[];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
+            /**
+             * @description How the entity reads from and writes to databases, one binding per database (erratum E43). A binding wins over any projection of the entity into its database.
+             * @default []
+             */
+            bindings?: {
+                id: components["schemas"]["id"];
+                /** @description The id of the database. */
+                database: components["schemas"]["id"];
+                /** @description What the entity reads: the id of a table (or a synthesized table key), a view or a query of the database. */
+                source: string;
+                /**
+                 * @description Columns with a fixed value: a filter on every read and a value on every insert.
+                 * @default []
+                 */
+                constants?: {
+                    /** @description A column of the source (and of the write table): its key or physical name. */
+                    column: string;
+                    /** @description The value; absent or null is SQL NULL. */
+                    value?: string | number | boolean | null;
+                }[];
+                /**
+                 * @description The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key) and the source column it reads.
+                 * @default []
+                 */
+                fields?: {
+                    /** @description An attribute id of the entity, attributeId.memberId, or the id of the relation end a to-one navigation leads to. */
+                    attribute: string;
+                    /** @description A column of the source: its key or physical name. */
+                    column: string;
+                }[];
+                /**
+                 * @description Source columns no field maps, each accounted for: ignored, filled by the database (never written) or computed.
+                 * @default []
+                 */
+                columns?: {
+                    /** @description A column of the source or the write table: its key or physical name. */
+                    column: string;
+                    /** @enum {unknown} */
+                    status: "ignored" | "database" | "computed";
+                }[];
+                /** @description Where the entity writes: { "table": id } or "none". Absent: the source when it is a table, none when it is a view or a query. */
+                write?: "none" | {
+                    /** @description The id of a table of the database (or a synthesized table key). */
+                    table: string;
+                };
+                /** @description How the entity deletes: "key", { "soft": { "column", "value" } } or "none". Absent: key when the binding writes, none otherwise. */
+                delete?: ("key" | "none") | {
+                    soft: {
+                        /** @description A column of the write table: its key or physical name. */
+                        column: string;
+                        /** @description The value set; absent or null is SQL NULL. */
+                        value?: string | number | boolean | null;
+                    };
+                };
+                description?: components["schemas"]["description"];
+                /** @default [] */
+                tags?: components["schemas"]["tagList"];
+                /** @default {} */
+                properties?: components["schemas"]["properties"];
+            }[];
             /** @default {} */
             properties?: components["schemas"]["properties"];
             /** @default {} */
@@ -7343,12 +7658,12 @@ export interface components {
         };
         /**
          * Model batch
-         * @description An atomic batch of element creates, updates and deletes, database schema operations and process operations, from the editor, a refactoring or an AI proposal.
+         * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations and process operations, from the editor, a refactoring or an AI proposal.
          */
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
+                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
                 id?: components["schemas"]["id"];
                 expectedHash?: string;
                 /**
@@ -7362,7 +7677,15 @@ export interface components {
                 field?: "displayName" | "pluralName" | "label" | "description";
                 /** @description The translated text, a sidecar reference, or null to remove the translation. */
                 value?: components["schemas"]["description"] | null;
-                /** @description The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema). */
+                /** @description The database id (materialize-tables, materialize-entities). */
+                database?: components["schemas"]["id"];
+                /** @description The entities that get a designed table and a binding (materialize-tables). */
+                entities?: components["schemas"]["idList"];
+                /** @description The designed or imported tables and the views that get an entity and a binding (materialize-entities). */
+                tables?: components["schemas"]["idList"];
+                /** @description The package the new entities go to (materialize-entities). */
+                package?: components["schemas"]["id"];
+                /** @description The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own). */
                 schema?: components["schemas"]["id"];
                 /** @description The schema name (add-schema, rename-schema). */
                 name?: string;
@@ -7370,7 +7693,7 @@ export interface components {
                 target?: components["schemas"]["id"];
                 /** @description The schema id that becomes the default when the removed schema is the default (remove-schema). */
                 default?: components["schemas"]["id"];
-            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
+            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
         };
         /**
          * Template pack
@@ -8761,6 +9084,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuerySqlResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getBindingSql: {
+        parameters: {
+            query?: {
+                /** @description postgresql, sqlserver, mysql, sqlite or oracle; absent for the binding's database's. */
+                dialect?: string;
+                /** @description The placeholder style, `@name` (default), `:name` or `$1`. */
+                placeholder?: "@" | ":" | "$";
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+                /** @description The binding's id (`bindings[i].id` in the entity's file). */
+                bindingId: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The statements, or the diagnostics that prevented them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingSqlResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMaterializeStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterializeStatus"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    previewMaterialize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterializeBody"];
+            };
+        };
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterializePlan"];
                 };
             };
             400: components["responses"]["BadRequest"];

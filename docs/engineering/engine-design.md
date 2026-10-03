@@ -138,7 +138,8 @@ public sealed record Package : Element { string? Parent; }                 // �
 public sealed record Entity : Element {
     string? Package; bool Abstract; string? Base;           // → Package (null = root), → Entity
     EntityKey? Key;                                         // required unless Abstract or Base (MQ3005)
-    IReadOnlyList<AlternateKey> AlternateKeys = []; IReadOnlyList<ModelAttribute> Attributes = []; }
+    IReadOnlyList<AlternateKey> AlternateKeys = []; IReadOnlyList<ModelAttribute> Attributes = [];
+    IReadOnlyList<EntityBinding> Bindings = []; }          // one per database (erratum E43, §7 "Bindings and materialize")
 public sealed record EntityKey { req IReadOnlyList<string> Attributes; IdentityStrategy Strategy = Application; }   // → ModelAttribute; sequence per database (D37)
 public enum IdentityStrategy { DatabaseIdentity, Sequence, UuidV7, Ulid, Application }   // database-identity|sequence|uuid-v7|ulid|application
 public sealed record AlternateKey { req string Id; req string Name; req IReadOnlyList<string> Attributes; }
@@ -609,7 +610,7 @@ public sealed class ResolvedModel { ModelSnapshot Source; ProjectSettings Settin
 RPackage     : QualifiedName ("Billing.Invoicing"), Parent, Children, Entities, ValueObjects, Enums, Relations
 REntity      : IsAbstract, Base, Derived, Attributes (flattened, §7.2), OwnAttributes, Key (RKey: Attributes, Strategy, Sequences (db name → RSequence)), AlternateKeys,
                Navigations, Relations, Mappings (IReadOnlyDictionary<string /*db name*/, REntityMapping>), IsPromoted, PromotedFrom (RRelation?),
-               Lifecycle (RProcess?, phase 3)
+               Lifecycle (RProcess?, phase 3), Bindings (db name → REntityBinding; erratum E43)
 RAttribute   : Owner, DeclaringEntity, Type (RType), Required, Default, DefaultExpression, Length, Precision, Scale (effective, scalar facets applied),
                Collection, Unique, Indexed, ReadOnly, Immutable, Derived, Sensitive ("pii"|"secret"|null), Validation, Order, IsInherited, IsVirtual, FromStereotype
 RType        : Kind ("builtin"|"enum"|"value-object"|"scalar"), Name, Builtin (effective keyword; null for enum/value object), Enum, ValueObject, Scalar
@@ -979,6 +980,144 @@ returning the entity, a `<Name>Row` record, or `<Name>Result` with the row and t
 `QueryClassName`'s, the template's own names start with `mq_`, entity and value types are written `global::`-qualified, and
 the class's remarks say its entity rows are read-only projections) and its `registrations` unit
 `Queries/QueryRegistrations.g.cs`; sql-ddl has nothing to write for a query.
+
+**Bindings and materialize (status: built 2026-10-02, erratum E43).** As built on 2026-10-02, after the owner's correction
+("The database doesn't know about entities. It only knows about itself and how to store data. Entities track their own mapping
+... Bindings should be explicit. An entity is a query + a map, an insert or update with a map, a delete on a PK."), an entity owns
+its **bindings**: how it reads from and writes to a database, written down whole in its own file. The database holds tables,
+views, routines, types and queries and nothing about entities; a table lists the bindings that use it (`BoundBy`) the way a
+column lists its referrers, as a fact of the model, not of the table. Projection (conventions placing an entity and synthesizing
+its table) keeps working for models that do not bind; for new work it is superseded by **materialize**, which writes a designed
+table and a binding once, after which both are the user's.
+
+*Model* (`Model/Bindings.cs`, `entity.json` `bindings`, x-order after `attributes`). `EntityBinding { req Id; req Database
+(→ Database); req Source (keyed: a table file id, a synthesized table key such as <entityId>@<databaseId>, a view id or a query
+id of that database); Constants (BindingConstant { Column (keyed); JsonElement? Value }, a JSON string, number or boolean,
+absent or null meaning SQL NULL, since the canonical writer drops nulls); Fields (BindingField { Attribute (keyed: an attribute
+id, own or inherited or virtual, attributeId.memberId, or a relation end id for a to-one navigation's key); Column (keyed: a
+column key or physical name, the rules of query column references) }); Columns (BindingColumn { Column; Status ignored|database|
+computed }); Write (BindingWrite { Table (keyed) } | "none", through a property converter; null = the source when it is a table,
+else none); Delete (BindingDelete: "key" | { "soft": { column, value } } | "none"; null = key when the binding writes, else none);
+Description; Tags; Properties }`. A binding is a sub-element (index kind `binding`, unique id); it carries description, tags and
+properties (not the whole `ElementBase`, whose `source` member would collide with the binding's). Every id it holds is a
+reference the indexer records, so renames never break a binding.
+
+*Placement.* `DatabaseRun.CollectBindings` runs first: each entity's first binding to the database is kept (a second one is
+MQ4050). An entity with a binding is never placed by convention or by a mapping element (a mapping element for it and the database
+is MQ4054, info, and ignored); when the binding writes, or reads, a designed or imported table, the entity gets a placement with
+`Bound` and `ViaBinding` set and that table (the write table, else the source), so relations resolve as for `Mapping.Table`: a
+bound dependent uses the foreign key its relation mapping names (`foreignKey`), a projected dependent of a bound principal
+references the principal's table, and a relation between bound entities with no foreign key named is MQ4011. Such a placement
+makes no entity mapping (`REntity.Mappings` has no entry for the database), sets no `RTable.Entity` and binds no column to an
+attribute. Old models without bindings resolve byte for byte (the golden tests).
+
+*Resolution* (`DatabaseRun.Bindings.cs`, `ResolvedBindings.cs`), after the queries: `REntityBinding : RAnnotated` (kind
+`binding`; `Entity`, `Database`, `SourceKind` table|view|query, `SourceTable`|`SourceView`|`SourceQuery`, `SourceName`,
+`Constants` (`RBindingConstant`: `Column`, `ColumnName`, the source column, `WriteColumn`, `Value`), `Fields` (`RBindingField`:
+`Name` (the attribute's name, `attributeMember` for a member, the navigation's name plus `Id` for an end), `Attribute`, `Member`,
+`End`, `Navigation`, the source column, `WriteColumn`, `IsKey`, `IsGenerated`, `InInsert`, `InUpdate`, `Type`, `NativeType`,
+`Nullable`), `Columns` and `WriteColumns` (`RBindingColumn`: `Name`, `Column`, `Status` field|constant|ignored|database|computed|
+identity|default|soft-delete|unaccounted, `Field`, `Constant`), `Writes`, `WriteTable`, `Delete` key|soft|none,
+`SoftDeleteColumn`, `SoftDeleteValue`, `Key`, `Generated`) on `REntity.Bindings` by database name, and `RTable.BoundBy`,
+`RView.BoundBy`, `RQuery.BoundBy` (by entity name, id). Columns are found by name, key, id or attribute id, then loosely by
+name (as queries do); a write table that is not the source matches each field's column by key, then by name. A field is
+generated (never inserted or updated) when its column is an identity, a key sequence or computed, or the binding lists it as
+`database` or `computed`; it is updated unless it is a key or its attribute is read-only or immutable. Dependency keys: the
+binding lists the database, the entity and its bases, every table, view and query it touches (their own keys) and the value
+objects and relations its fields read; the tables, views and queries a binding names list the binding entity's file (collected
+before they are created, so `BoundBy` is tracked).
+
+*Rules* (resolver findings, with the JSON pointer of the binding entry, added to every validate path like the query rules):
+MQ4044 (E) a source that is not a table, view or query of the database, or a write table that is not a table of it; MQ4045 (E) a
+field attribute that is no attribute, member or to-one end of the entity, a column the source does not have, a listed or
+soft-delete column of no table the binding uses, or an attribute or column mapped twice; MQ4046 (E) a writing binding missing a
+key attribute; MQ4047 (W) a source or write-table column nothing accounts for (no field, constant or listed status, and not an
+identity, computed or defaulted column), once per table with the names; MQ4048 (E) a constant column the source does not have;
+MQ4049 (E) a writing binding whose constant column is not in the write table; MQ4050 (E) two bindings to one database; MQ4051 (W)
+a constant or soft-delete value that does not fit its column (type, length, integer range, NULL into NOT NULL); MQ4052 (E) a write
+table other than the source without a column for a key field; MQ4053 (E) a key delete from a table without a primary key, or a
+delete without a write table; MQ4054 (I) an entity mapping element ignored because of a binding; MQ4055 (E) a materialize
+refusal. MQ4012 counts a binding as placing the entity.
+
+*SQL* (`Rendering/BindingSql.cs`, public, beside `QuerySql` and sharing its quoting, literals, placeholder styles and
+dialects): `BindingSql.Render(binding, statement, dialect?, options?)` returns a `QuerySqlText` for `select` (the fields' columns
+aliased to the field names, `FROM <table> t`, `WHERE` the constants and, with a soft delete on the source, `(col IS NULL OR col
+<> value)`; a query source is `FROM (<the query's SQL without its order, unless paged>) q`), `select-by-key`, `insert` (written
+fields and constants as literals; generated keys come back through `RETURNING col AS field` on PostgreSQL and SQLite, `OUTPUT
+INSERTED.col AS field` on SQL Server, `RETURNING col INTO :field` on Oracle and a second statement `SELECT LAST_INSERT_ID()` on
+MySQL for one identity key; no column at all is `DEFAULT VALUES`), `update` (by the key fields' write columns, constants in the
+where clause; with nothing to set, `SELECT COUNT(*)` of the matching rows) and `delete` (by key plus constants, or the soft-delete
+`UPDATE`). A statement the binding does not have is the empty string. Parameters are named after the fields; with `$` they are
+numbered after a query source's own parameters. The template helpers `binding_sql(binding, statement, dialect?, options?)` and
+`binding_sql_parameters(...)` are registered like `query_sql` (they record the binding's dependencies and fail the unit with the
+renderer's diagnostic). `RQuery.ForDerivedTable()` (internal) drops the order of an unpaged query, which SQL Server refuses in a
+derived table.
+
+*Materialize* (`Loading/Materializer.cs`, `ModelStore.Materialize.cs`). Two batch operations, applied with the batch's other
+operations all or nothing like E26's schema operations, with a preview (`ModelStore.PlanMaterializeAsync`, which plans and
+validates the change and resolves the result for the binding rules, writing nothing) and a status read
+(`ModelStore.GetMaterializeStatusAsync`): `materialize-tables { database, entities, schema? }` resolves the model with every picked
+entity projected into the database (a mapping element added in memory, an ignoring one made placing) and writes, per entity, a
+designed table with the projected table's exact shape: name, schema (the request's, else the overlay's, else the projected one),
+columns (type keyword (a reference column's code type), facets, native type when the overlay set one or it differs from the type
+map's, nullability, default, `defaultSql`, identity or sequence (a key sequence the projection synthesized becomes a sequence
+file), computed, collation, comment as resolved), the primary key, uniques, checks, indexes and foreign keys with their resolved
+names (a key to a table another entity still projects names that table's key until it is materialized too), and the overlay's
+annotations. When the entity had an overlay, the overlay file becomes the designed table and keeps its id and its column,
+constraint and index ids, so queries and keys naming it keep working; the brief's "deleted" is read as "replaced". The entity
+gets a binding with every column mapped (a column no attribute can hold is listed `ignored`, with a note); its mapping element for
+the database is deleted; the relations whose foreign key is now in a designed table get a relation mapping naming it (created, or
+updated with `shape` removed). What named the projected table by its key follows: the database's queries (sources and
+`alias.<column key>` references, found through the resolved trees), other tables' foreign keys and other entities' bindings. After
+the batch is saved, the committed snapshot of each database is rekeyed (`SchemaDiff.SnapshotRekey`: table and column keys and the
+constraint and index keys derived from them, in the table and in the foreign keys of other tables), so the next schema diff sees
+the same tables and writes no migration. Refused (MQ4055): an entity already bound to the database (the idempotence check), an
+abstract entity, an entity in an inheritance hierarchy (left to hand binding this round), an entity without a table of its own.
+`materialize-entities { database, tables, package }` writes, per designed or imported table or view of the database, an entity in
+the package named the singular Pascal case of the table name (the project's inflection), one attribute per column (camel case
+name; the column's type keyword, else the dialect map reversed from the native type, else `string`; length, precision and scale;
+`required` when not nullable), the key from the primary key (`database-identity` for one identity column; a view takes its `id`
+column, else its first, with a note), and a binding to the table; each foreign key between the picked tables, or towards a table an
+entity is already bound to, becomes a many-to-one relation (the principal end navigable from the dependent, `min` 1 when the key
+columns are not nullable, `onDelete` from the key) with a relation mapping naming the foreign key. Refused: a table an entity is
+already bound to, a synthesized table, a name the package already has. New ids come from the store's id generator.
+
+*Deletes.* A binding's references are ordinary references: deleting a table, view, query or database a binding names is refused
+with the entity among the referrers. `remove-references` and `delete-dependents` both drop the binding (a field, constant or
+listed column entry only, when the reference sits in one) and never delete the entity; the plan lists it as a removed part
+("the binding needs table notes; the entity stays").
+
+*API, MCP, CLI.* `DatabaseView` tables, views and queries carry `boundBy` (`BoundByView`: entity, binding, reads, writes,
+constants); the resolved records' `EntityRecord.Bindings` (`EntityBindingRecord` with `BindingFieldRecord` and
+`BindingColumnRecord`); the scope `entities` with a database takes bound entities too. `GET /api/model/entities/{id}/bindings/
+{bindingId}/sql?dialect=&placeholder=` (`GenerationService.GetBindingSqlAsync`, `BindingSqlResult`/`BindingSqlPreview`, the five
+statements or null), `GET /api/model/databases/{id}/materialize` (`MaterializeStatus`) and `POST /api/model/databases/{id}/
+materialize/preview` (the batch operation without its database; `MaterializePlan`); `POST /api/model/batch` takes the two
+operations (`BatchOperation` gains `Database`, `Entities`, `Tables`, `Package`; `BatchOp` gains `MaterializeTables` and
+`MaterializeEntities`). MCP: `preview_binding_sql`, `get_materialize_status`, `preview_materialize`, and `apply_batch`. CLI:
+`maquettiste model materialize tables --database <name> [--schema <name>] <entity...>` and `... entities --database <name>
+--package <name> <table...>`, each with `--dry-run` and `--format text|json`. The editor's types are regenerated; its mock treats
+bindings as data and only stops projecting a bound entity (no binding resolution in the mock this round); the editor screens come
+next round.
+
+*Generation.* csharp-dapper: `dapper_binding(e)` picks the binding of the pack's `database` parameter, else of the first database
+(by name) that binds or maps the entity; when it binds, `repository.scriban` includes `_binding.scriban`: `GetAsync` and
+`ListAsync` (key order, `mq_skip`/`mq_take` paging; a query source's parameters first) from `binding_sql` select statements, and,
+when the binding writes, `InsertAsync` (uuid-v7 and ulid keys assigned as before, one generated key read back), `UpdateAsync` and
+`DeleteAsync` from its insert, update and delete; a binding that does not write gets a read-only repository. Its private `Row`
+class has one property per field, named exactly as the field (the select's alias and the statements' parameter), so every provider
+matches parameters by their exact name. Entities without bindings generate byte for byte as before. sql-ddl writes designed tables
+as it always did (a bound entity has no projected table). sql-ddl's `schema` and `migration` units now handle a single table (a
+database with one table, a migration adding one): the foreign-key order of one table is an empty spec, which `ddl_order` reads as
+no tables, so they wrote no CREATE TABLE; a bug older than bindings that the reference application's new `remarks` table showed.
+
+*Decisions where the brief left a choice.* The binding is a plain sub-element record rather than an `ElementBase` (the `source`
+name). The overlay of a materialized entity becomes the designed table under the same id rather than being deleted, so every
+reference to it survives; the snapshot is rekeyed so materialize is not a drop and a create. Foreign keys to still-projected
+tables are kept, by key, so the relation keeps its foreign key (else MQ4011); materializing the referenced entity later points
+them at its designed table. Constants are SQL literals in the statements, not parameters. Derived tables are aliased `q` without
+`AS` (Oracle refuses it; `QuerySql` writes no `AS` either). A soft delete also filters reads. A column marked `database` or
+`computed` that a field maps is read but never written. Inheritance hierarchies are refused by materialize-tables this round.
 
 ## 8. Template packs (W6 loads and plans; W5 renders)
 

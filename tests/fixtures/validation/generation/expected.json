@@ -168,5 +168,35 @@
     "jsonPointer": null,
     "line": null,
     "column": null
+  },
+  {
+    "rule": "MQ6020",
+    "severity": "error",
+    "message": "Unit 'outputs/same' renders db/same.txt for two elements, '01J92P0V0ETQKXXP951CMMNHH3' and '01K6BND0000000000000000010': its output pattern is not unique per element.",
+    "elementId": null,
+    "filePath": "db/same.txt",
+    "jsonPointer": null,
+    "line": null,
+    "column": null
+  },
+  {
+    "rule": "MQ6020",
+    "severity": "error",
+    "message": "Unit 'outputs/same' renders db/same.txt for two elements, '01J92P0V0ETQKXXP951CMMNHH3' and '01K6BND0000000000000000020': its output pattern is not unique per element.",
+    "elementId": null,
+    "filePath": "db/same.txt",
+    "jsonPointer": null,
+    "line": null,
+    "column": null
+  },
+  {
+    "rule": "MQ6020",
+    "severity": "error",
+    "message": "Unit 'outputs/same' renders db/same.txt for two elements, '01J92P0V0ETQKXXP951CMMNHH3' and '01K6BND0000000000000000030': its output pattern is not unique per element.",
+    "elementId": null,
+    "filePath": "db/same.txt",
+    "jsonPointer": null,
+    "line": null,
+    "column": null
   }
 ]

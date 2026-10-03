@@ -34,6 +34,17 @@
       "columnCount": 11
     },
     {
+      "key": "01K6BND0000000000000000001",
+      "name": "notes",
+      "schema": "billing",
+      "origin": "designed",
+      "entityId": null,
+      "relationId": null,
+      "isJunction": false,
+      "isLookup": false,
+      "columnCount": 5
+    },
+    {
       "key": "01J92P0V1DKHD5Q02DV6S5M53D@01J92P0V1QRN2181XM2ZWE02W4",
       "name": "payment_invoice",
       "schema": "billing",

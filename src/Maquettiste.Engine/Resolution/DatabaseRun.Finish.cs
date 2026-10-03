@@ -312,7 +312,9 @@ internal sealed partial class DatabaseRun
         {
             if (used.Contains(overlay.Id))
                 continue;
-            var reason = target.StartsWith("entity:", StringComparison.Ordinal) && _placements.TryGetValue(target["entity:".Length..], out var p)
+            var reason = target.StartsWith("entity:", StringComparison.Ordinal) && _bindingByEntity.ContainsKey(target["entity:".Length..])
+                ? "the entity has a binding to this database, which wins over projection: materialize its table"
+                : target.StartsWith("entity:", StringComparison.Ordinal) && _placements.TryGetValue(target["entity:".Length..], out var p)
                 ? p.Bound ? "the entity is bound to a designed or imported table"
                 : p.Strategy == InheritanceStrategy.Tph ? "the entity is TPH-derived and its rows live in the root entity's table; put the overlay on the root entity"
                 : "the entity has no table of its own (TPC abstract)"
@@ -334,14 +336,14 @@ internal sealed partial class DatabaseRun
         _run.ForEach(_placementOrder.Count, i =>
         {
             var p = _placementOrder[i];
-            if (p.Table is not null)
+            if (p.Table is not null && !p.ViaBinding)
                 columns[i] = ColumnMappings(TablesOf(p), p.Entity.Attributes);
         });
 
         for (var i = 0; i < _placementOrder.Count; i++)
         {
             var p = _placementOrder[i];
-            if (p.Table is null)
+            if (p.Table is null || p.ViaBinding)
                 continue;
             var tph = p.Strategy == InheritanceStrategy.Tph && !p.Bound;
             var mapping = new REntityMapping
@@ -563,6 +565,7 @@ internal sealed partial class DatabaseRun
         var objects = _objects.Select(o => o.Object)
             .OrderBy(o => o.Schema ?? "", StringComparer.Ordinal).ThenBy(o => o.Name, StringComparer.Ordinal).ThenBy(o => o.Id, StringComparer.Ordinal).ToList();
         ResolveQueries(views);
+        ResolveBindings(views);
         var queries = _queries.Select(q => q.Query).OrderBy(q => q.Name, StringComparer.Ordinal).ThenBy(q => q.Id, StringComparer.Ordinal).ToList();
 
         var membership = new DependencySet(_run.Keys)

@@ -17,7 +17,7 @@
           "relationId": null,
           "isJunction": false,
           "isLookup": false,
-          "comment": null,
+          "comment": "Someone we bill.",
           "columns": [
             {
               "key": "01J92P0V0KGPC29TQQG8R57EBM",
@@ -40,6 +40,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -72,6 +73,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -104,6 +106,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -136,6 +139,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -168,6 +172,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -200,6 +205,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -235,7 +241,8 @@
           "tags": [],
           "category": null,
           "properties": {},
-          "generation": {}
+          "generation": {},
+          "boundBy": []
         },
         {
           "key": "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4",
@@ -269,6 +276,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -301,6 +309,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -333,6 +342,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -365,6 +375,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -397,6 +408,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -429,6 +441,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -461,6 +474,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -518,7 +532,8 @@
           "tags": [],
           "category": null,
           "properties": {},
-          "generation": {}
+          "generation": {},
+          "boundBy": []
         },
         {
           "key": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
@@ -529,7 +544,7 @@
           "relationId": null,
           "isJunction": false,
           "isLookup": false,
-          "comment": null,
+          "comment": "One row per issued invoice; finance reconciles it monthly.",
           "columns": [
             {
               "key": "01J92P0V0Q9EK961M5HAQ3C5MY",
@@ -552,6 +567,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -584,6 +600,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": "Assigned on issue.",
               "displayName": null,
@@ -621,6 +638,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -653,6 +671,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -685,6 +704,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -717,6 +737,7 @@
               "default": "D",
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -749,6 +770,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -781,6 +803,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -813,6 +836,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -845,6 +869,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -877,6 +902,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -946,7 +972,247 @@
             "retentionDays": 2555,
             "tablespace": "billing_data"
           },
-          "generation": {}
+          "generation": {},
+          "boundBy": []
+        },
+        {
+          "key": "01K6BND0000000000000000001",
+          "name": "notes",
+          "schema": "billing",
+          "origin": "designed",
+          "entityId": null,
+          "relationId": null,
+          "isJunction": false,
+          "isLookup": false,
+          "comment": "Free-text notes on invoices and customers: one table, told apart by entity_type.",
+          "columns": [
+            {
+              "key": "01K6BND0000000000000000002",
+              "name": "id",
+              "type": "uuid",
+              "nativeType": "uuid",
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nullable": false,
+              "defaultSql": null,
+              "identity": false,
+              "computed": null,
+              "attributeId": null,
+              "attributePath": null,
+              "isPrimaryKey": true,
+              "isForeignKey": false,
+              "isDiscriminator": false,
+              "position": 0,
+              "default": null,
+              "computedStored": false,
+              "sequenceId": null,
+              "dbTypeId": null,
+              "collation": null,
+              "comment": null,
+              "displayName": null,
+              "pluralName": null,
+              "description": null,
+              "stereotypes": [],
+              "tags": [],
+              "category": null,
+              "properties": {},
+              "generation": {}
+            },
+            {
+              "key": "01K6BND0000000000000000003",
+              "name": "entity_type",
+              "type": "string",
+              "nativeType": "varchar(32)",
+              "length": 32,
+              "precision": null,
+              "scale": null,
+              "nullable": false,
+              "defaultSql": null,
+              "identity": false,
+              "computed": null,
+              "attributeId": null,
+              "attributePath": null,
+              "isPrimaryKey": false,
+              "isForeignKey": false,
+              "isDiscriminator": false,
+              "position": 1,
+              "default": null,
+              "computedStored": false,
+              "sequenceId": null,
+              "dbTypeId": null,
+              "collation": null,
+              "comment": null,
+              "displayName": null,
+              "pluralName": null,
+              "description": null,
+              "stereotypes": [],
+              "tags": [],
+              "category": null,
+              "properties": {},
+              "generation": {}
+            },
+            {
+              "key": "01K6BND0000000000000000004",
+              "name": "entity_id",
+              "type": "uuid",
+              "nativeType": "uuid",
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nullable": false,
+              "defaultSql": null,
+              "identity": false,
+              "computed": null,
+              "attributeId": null,
+              "attributePath": null,
+              "isPrimaryKey": false,
+              "isForeignKey": false,
+              "isDiscriminator": false,
+              "position": 2,
+              "default": null,
+              "computedStored": false,
+              "sequenceId": null,
+              "dbTypeId": null,
+              "collation": null,
+              "comment": null,
+              "displayName": null,
+              "pluralName": null,
+              "description": null,
+              "stereotypes": [],
+              "tags": [],
+              "category": null,
+              "properties": {},
+              "generation": {}
+            },
+            {
+              "key": "01K6BND0000000000000000005",
+              "name": "body",
+              "type": "text",
+              "nativeType": "text",
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nullable": false,
+              "defaultSql": null,
+              "identity": false,
+              "computed": null,
+              "attributeId": null,
+              "attributePath": null,
+              "isPrimaryKey": false,
+              "isForeignKey": false,
+              "isDiscriminator": false,
+              "position": 3,
+              "default": null,
+              "computedStored": false,
+              "sequenceId": null,
+              "dbTypeId": null,
+              "collation": null,
+              "comment": null,
+              "displayName": null,
+              "pluralName": null,
+              "description": null,
+              "stereotypes": [],
+              "tags": [],
+              "category": null,
+              "properties": {},
+              "generation": {}
+            },
+            {
+              "key": "01K6BND0000000000000000006",
+              "name": "created_at",
+              "type": "datetimeoffset",
+              "nativeType": "timestamptz(6)",
+              "length": null,
+              "precision": 6,
+              "scale": null,
+              "nullable": false,
+              "defaultSql": "CURRENT_TIMESTAMP",
+              "identity": false,
+              "computed": null,
+              "attributeId": null,
+              "attributePath": null,
+              "isPrimaryKey": false,
+              "isForeignKey": false,
+              "isDiscriminator": false,
+              "position": 4,
+              "default": null,
+              "computedStored": false,
+              "sequenceId": null,
+              "dbTypeId": null,
+              "collation": null,
+              "comment": null,
+              "displayName": null,
+              "pluralName": null,
+              "description": null,
+              "stereotypes": [],
+              "tags": [],
+              "category": null,
+              "properties": {},
+              "generation": {}
+            }
+          ],
+          "primaryKey": {
+            "name": "pk_notes",
+            "columns": [
+              "01K6BND0000000000000000002"
+            ]
+          },
+          "uniques": [],
+          "foreignKeys": [],
+          "indexes": [
+            {
+              "name": "ix_notes_entity_type_entity_id",
+              "columns": [
+                {
+                  "column": "01K6BND0000000000000000003",
+                  "descending": false
+                },
+                {
+                  "column": "01K6BND0000000000000000004",
+                  "descending": false
+                }
+              ],
+              "unique": false,
+              "where": null
+            }
+          ],
+          "displayName": null,
+          "pluralName": null,
+          "description": "Free-text notes on invoices and customers: one table, told apart by entity_type.",
+          "stereotypes": [],
+          "tags": [],
+          "category": null,
+          "properties": {},
+          "generation": {},
+          "boundBy": [
+            {
+              "entityId": "01K6BND0000000000000000020",
+              "entityName": "CustomerNote",
+              "bindingId": "01K6BND0000000000000000025",
+              "reads": true,
+              "writes": true,
+              "constants": [
+                {
+                  "column": "entity_type",
+                  "value": "customer"
+                }
+              ]
+            },
+            {
+              "entityId": "01K6BND0000000000000000010",
+              "entityName": "InvoiceNote",
+              "bindingId": "01K6BND0000000000000000015",
+              "reads": true,
+              "writes": true,
+              "constants": [
+                {
+                  "column": "entity_type",
+                  "value": "invoice"
+                }
+              ]
+            }
+          ]
         },
         {
           "key": "01J92P0V1DKHD5Q02DV6S5M53D@01J92P0V1QRN2181XM2ZWE02W4",
@@ -980,6 +1246,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1012,6 +1279,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1044,6 +1312,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1076,6 +1345,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1134,7 +1404,8 @@
           "tags": [],
           "category": null,
           "properties": {},
-          "generation": {}
+          "generation": {},
+          "boundBy": []
         },
         {
           "key": "01J92P0V0HEGSC6MW92CST5KA6@01J92P0V1QRN2181XM2ZWE02W4",
@@ -1168,6 +1439,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1200,6 +1472,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1232,6 +1505,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1264,6 +1538,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1296,6 +1571,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1328,6 +1604,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1360,6 +1637,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1388,7 +1666,8 @@
           "tags": [],
           "category": null,
           "properties": {},
-          "generation": {}
+          "generation": {},
+          "boundBy": []
         },
         {
           "key": "01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4",
@@ -1422,6 +1701,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1454,6 +1734,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1486,6 +1767,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1518,6 +1800,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1550,6 +1833,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1582,6 +1866,7 @@
               "default": null,
               "computedStored": false,
               "sequenceId": null,
+              "dbTypeId": null,
               "collation": null,
               "comment": null,
               "displayName": null,
@@ -1617,7 +1902,8 @@
           "tags": [],
           "category": null,
           "properties": {},
-          "generation": {}
+          "generation": {},
+          "boundBy": []
         }
       ],
       "views": [
@@ -1654,7 +1940,8 @@
           "tags": [],
           "category": null,
           "properties": {},
-          "generation": {}
+          "generation": {},
+          "boundBy": []
         }
       ],
       "sequences": [
@@ -1678,6 +1965,659 @@
           "category": null,
           "properties": {},
           "generation": {}
+        }
+      ],
+      "routines": [],
+      "types": [],
+      "objects": [],
+      "queries": [
+        {
+          "id": "01K6QRY0000000000000000003",
+          "name": "FindCustomersWithIssuedInvoices",
+          "entityId": "01J92P0V0ETQKXXP951CMMNHH3",
+          "parameters": [
+            {
+              "name": "namePattern",
+              "type": "string",
+              "dbTypeId": null,
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nativeType": "varchar(255)",
+              "codeType": "string",
+              "collection": false,
+              "default": "%",
+              "description": null
+            }
+          ],
+          "from": {
+            "source": "01J92P0V0ETQKXXP951CMMNHH3",
+            "alias": "c",
+            "kind": "from",
+            "tableKey": "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
+            "viewId": null,
+            "name": "customers",
+            "schema": "billing",
+            "on": null
+          },
+          "joins": [],
+          "select": [
+            {
+              "name": "id",
+              "attributeId": "01J92P0V0KGPC29TQQG8R57EBM",
+              "expression": {
+                "column": "c.01J92P0V0KGPC29TQQG8R57EBM"
+              },
+              "type": "uuid",
+              "nativeType": "uuid",
+              "codeType": "uuid",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "attributeId": "01J92P0V0MS09YFZHX07JQ3KMN",
+              "expression": {
+                "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
+              },
+              "type": "string",
+              "nativeType": "varchar(120)",
+              "codeType": "string",
+              "nullable": false
+            },
+            {
+              "name": "email",
+              "attributeId": "01J92P0V0NRX99014KNVAZGPEW",
+              "expression": {
+                "column": "c.01J92P0V0NRX99014KNVAZGPEW"
+              },
+              "type": "string",
+              "nativeType": "varchar(254)",
+              "codeType": "string",
+              "nullable": false
+            },
+            {
+              "name": "createdAt",
+              "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "expression": {
+                "column": "c.01J92P0V26XYZRDQ8FJ6KZXT6S"
+              },
+              "type": "datetimeoffset",
+              "nativeType": "timestamptz(6)",
+              "codeType": "datetimeoffset",
+              "nullable": false
+            }
+          ],
+          "where": {
+            "and": [
+              {
+                "op": "ilike",
+                "left": {
+                  "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
+                },
+                "right": {
+                  "param": "namePattern"
+                }
+              },
+              {
+                "exists": {
+                  "from": {
+                    "source": "01J92P0V1T0J6RH4MY9H81NYB4",
+                    "alias": "i"
+                  },
+                  "joins": [],
+                  "select": [],
+                  "where": {
+                    "and": [
+                      {
+                        "op": "eq",
+                        "left": {
+                          "column": "i.01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM"
+                        },
+                        "right": {
+                          "column": "c.01J92P0V0KGPC29TQQG8R57EBM"
+                        }
+                      },
+                      {
+                        "op": "eq",
+                        "left": {
+                          "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+                        },
+                        "right": {
+                          "value": "I"
+                        }
+                      }
+                    ]
+                  },
+                  "groupBy": [],
+                  "orderBy": [],
+                  "distinct": false
+                }
+              }
+            ]
+          },
+          "groupBy": [],
+          "having": null,
+          "orderBy": [
+            {
+              "expression": {
+                "call": "lower",
+                "args": [
+                  {
+                    "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
+                  }
+                ]
+              },
+              "direction": "asc"
+            }
+          ],
+          "distinct": false,
+          "paging": null,
+          "collections": [],
+          "sql": "SELECT c.id AS id, c.name AS name, c.email AS email, c.created_at AS createdAt\nFROM billing.customers c\nWHERE c.name ILIKE @namePattern AND EXISTS (SELECT 1\n    FROM billing.invoices i\n    WHERE i.customer_id = c.id AND i.status = 'I')\nORDER BY LOWER(c.name) ASC",
+          "sqlParameters": [
+            "namePattern"
+          ],
+          "uses": [
+            "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
+            "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4"
+          ],
+          "displayName": null,
+          "pluralName": null,
+          "description": "Customers whose name matches a pattern, ignoring case, who have at least one issued invoice.",
+          "stereotypes": [],
+          "tags": [],
+          "category": null,
+          "properties": {},
+          "generation": {},
+          "boundBy": []
+        },
+        {
+          "id": "01K6QRY0000000000000000001",
+          "name": "InvoicesByCustomer",
+          "entityId": "01J92P0V0FJ23CGSNKM7P1W5V7",
+          "parameters": [
+            {
+              "name": "customerId",
+              "type": "uuid",
+              "dbTypeId": null,
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nativeType": "uuid",
+              "codeType": "uuid",
+              "collection": false,
+              "default": null,
+              "description": null
+            },
+            {
+              "name": "statuses",
+              "type": "string",
+              "dbTypeId": null,
+              "length": 1,
+              "precision": null,
+              "scale": null,
+              "nativeType": "varchar(1)",
+              "codeType": "string",
+              "collection": true,
+              "default": null,
+              "description": "Status codes: D, I, P or V."
+            },
+            {
+              "name": "offset",
+              "type": "int32",
+              "dbTypeId": null,
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nativeType": "integer",
+              "codeType": "int32",
+              "collection": false,
+              "default": 0,
+              "description": null
+            },
+            {
+              "name": "limit",
+              "type": "int32",
+              "dbTypeId": null,
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nativeType": "integer",
+              "codeType": "int32",
+              "collection": false,
+              "default": 50,
+              "description": null
+            }
+          ],
+          "from": {
+            "source": "01J92P0V1T0J6RH4MY9H81NYB4",
+            "alias": "i",
+            "kind": "from",
+            "tableKey": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+            "viewId": null,
+            "name": "invoices",
+            "schema": "billing",
+            "on": null
+          },
+          "joins": [],
+          "select": [
+            {
+              "name": "id",
+              "attributeId": "01J92P0V0Q9EK961M5HAQ3C5MY",
+              "expression": {
+                "column": "i.01J92P0V0Q9EK961M5HAQ3C5MY"
+              },
+              "type": "uuid",
+              "nativeType": "uuid",
+              "codeType": "uuid",
+              "nullable": false
+            },
+            {
+              "name": "number",
+              "attributeId": "01J92P0V0R3VSP7D5238DTNZX1",
+              "expression": {
+                "column": "i.01J92P0V0R3VSP7D5238DTNZX1"
+              },
+              "type": "string",
+              "nativeType": "varchar(32)",
+              "codeType": "string",
+              "nullable": false
+            },
+            {
+              "name": "issuedOn",
+              "attributeId": "01J92P0V0SNXS6PZ42VDK42HP9",
+              "expression": {
+                "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+              },
+              "type": "date",
+              "nativeType": "date",
+              "codeType": "date",
+              "nullable": false
+            },
+            {
+              "name": "status",
+              "attributeId": "01J92P0V0VB1Z49SWERMAGR4TV",
+              "expression": {
+                "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+              },
+              "type": "string",
+              "nativeType": "varchar(1)",
+              "codeType": "string",
+              "nullable": false
+            },
+            {
+              "name": "notes",
+              "attributeId": "01J92P0V0WKRGKH7YBKA2V30NC",
+              "expression": {
+                "column": "i.01J92P0V0WKRGKH7YBKA2V30NC"
+              },
+              "type": "text",
+              "nativeType": "text",
+              "codeType": "text",
+              "nullable": true
+            },
+            {
+              "name": "createdAt",
+              "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "expression": {
+                "column": "i.01J92P0V26XYZRDQ8FJ6KZXT6S"
+              },
+              "type": "datetimeoffset",
+              "nativeType": "timestamptz(6)",
+              "codeType": "datetimeoffset",
+              "nullable": false
+            }
+          ],
+          "where": {
+            "and": [
+              {
+                "op": "eq",
+                "left": {
+                  "column": "i.01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM"
+                },
+                "right": {
+                  "param": "customerId"
+                }
+              },
+              {
+                "op": "in",
+                "left": {
+                  "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+                },
+                "right": {
+                  "param": "statuses"
+                }
+              },
+              {
+                "op": "isNull",
+                "left": {
+                  "column": "i.deleted_at"
+                }
+              }
+            ]
+          },
+          "groupBy": [],
+          "having": null,
+          "orderBy": [
+            {
+              "expression": {
+                "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+              },
+              "direction": "desc"
+            },
+            {
+              "expression": {
+                "column": "i.01J92P0V0R3VSP7D5238DTNZX1"
+              },
+              "direction": "asc"
+            }
+          ],
+          "distinct": false,
+          "paging": {
+            "offset": "offset",
+            "limit": "limit"
+          },
+          "collections": [
+            {
+              "name": "lines",
+              "attribute": "01J92P0V1H4D2M1HCK82ASJEWT",
+              "entityId": "01J92P0V0GWFR78HZH0P8Z3GY7",
+              "query": {
+                "from": {
+                  "source": "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4",
+                  "alias": "l"
+                },
+                "joins": [],
+                "select": [
+                  {
+                    "attribute": "01J92P0V0X1EDKMF6X5RA8NZWG",
+                    "expression": {
+                      "column": "l.01J92P0V0X1EDKMF6X5RA8NZWG"
+                    }
+                  },
+                  {
+                    "attribute": "01J92P0V0Y049452AH0K8CDC9N",
+                    "expression": {
+                      "column": "l.01J92P0V0Y049452AH0K8CDC9N"
+                    }
+                  },
+                  {
+                    "attribute": "01J92P0V1015JY6PVQZG6MY8AS",
+                    "expression": {
+                      "column": "l.01J92P0V1015JY6PVQZG6MY8AS"
+                    }
+                  }
+                ],
+                "where": {
+                  "op": "eq",
+                  "left": {
+                    "column": "l.01J92P0V1GMF7GJPA7981CH7YG.01J92P0V0Q9EK961M5HAQ3C5MY"
+                  },
+                  "right": {
+                    "column": "i.01J92P0V0Q9EK961M5HAQ3C5MY"
+                  }
+                },
+                "groupBy": [],
+                "orderBy": [
+                  {
+                    "expression": {
+                      "column": "l.01J92P0V0X1EDKMF6X5RA8NZWG"
+                    },
+                    "direction": "asc"
+                  }
+                ],
+                "distinct": false
+              },
+              "select": [
+                {
+                  "name": "id",
+                  "attributeId": "01J92P0V0X1EDKMF6X5RA8NZWG",
+                  "expression": {
+                    "column": "l.01J92P0V0X1EDKMF6X5RA8NZWG"
+                  },
+                  "type": "ulid",
+                  "nativeType": "char(26)",
+                  "codeType": "ulid",
+                  "nullable": false
+                },
+                {
+                  "name": "quantity",
+                  "attributeId": "01J92P0V0Y049452AH0K8CDC9N",
+                  "expression": {
+                    "column": "l.01J92P0V0Y049452AH0K8CDC9N"
+                  },
+                  "type": "int32",
+                  "nativeType": "integer",
+                  "codeType": "int32",
+                  "nullable": false
+                },
+                {
+                  "name": "description",
+                  "attributeId": "01J92P0V1015JY6PVQZG6MY8AS",
+                  "expression": {
+                    "column": "l.01J92P0V1015JY6PVQZG6MY8AS"
+                  },
+                  "type": "string",
+                  "nativeType": "varchar(500)",
+                  "codeType": "string",
+                  "nullable": true
+                }
+              ],
+              "keys": [
+                {
+                  "outer": "i.01J92P0V0Q9EK961M5HAQ3C5MY",
+                  "parentField": "id",
+                  "hidden": false,
+                  "childField": "mq_key0",
+                  "parameter": "mq_keys0",
+                  "type": "uuid",
+                  "nativeType": "uuid"
+                }
+              ],
+              "sql": "SELECT l.id AS id, l.quantity AS quantity, l.description AS description, l.invoice_id AS mq_key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @mq_keys0\nORDER BY l.id ASC",
+              "sqlParameters": [
+                "mq_keys0"
+              ]
+            }
+          ],
+          "sql": "SELECT i.id AS id, i.number AS number, i.issued_on AS issuedOn, i.status AS status, i.notes AS notes, i.created_at AS createdAt\nFROM billing.invoices i\nWHERE i.customer_id = @customerId AND i.status IN @statuses AND i.deleted_at IS NULL\nORDER BY i.issued_on DESC, i.number ASC\nLIMIT @limit OFFSET @offset",
+          "sqlParameters": [
+            "customerId",
+            "statuses",
+            "offset",
+            "limit"
+          ],
+          "uses": [
+            "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+            "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4"
+          ],
+          "displayName": null,
+          "pluralName": null,
+          "description": "A customer's invoices in some statuses, newest first, a page at a time, each with its lines.",
+          "stereotypes": [],
+          "tags": [],
+          "category": null,
+          "properties": {},
+          "generation": {},
+          "boundBy": []
+        },
+        {
+          "id": "01K6QRY0000000000000000002",
+          "name": "RevenueByMonth",
+          "entityId": null,
+          "parameters": [
+            {
+              "name": "from",
+              "type": "date",
+              "dbTypeId": null,
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nativeType": "date",
+              "codeType": "date",
+              "collection": false,
+              "default": null,
+              "description": null
+            },
+            {
+              "name": "to",
+              "type": "date",
+              "dbTypeId": null,
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nativeType": "date",
+              "codeType": "date",
+              "collection": false,
+              "default": null,
+              "description": null
+            }
+          ],
+          "from": {
+            "source": "01J92P0V1T0J6RH4MY9H81NYB4",
+            "alias": "i",
+            "kind": "from",
+            "tableKey": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+            "viewId": null,
+            "name": "invoices",
+            "schema": "billing",
+            "on": null
+          },
+          "joins": [],
+          "select": [
+            {
+              "name": "month",
+              "attributeId": null,
+              "expression": {
+                "sql": {
+                  "postgresql": "CAST(date_trunc('month', i.issued_on) AS date)",
+                  "sqlite": "date(i.issued_on, 'start of month')",
+                  "sqlserver": "DATEFROMPARTS(YEAR(i.issued_on), MONTH(i.issued_on), 1)"
+                }
+              },
+              "type": "date",
+              "nativeType": "date",
+              "codeType": "date",
+              "nullable": false
+            },
+            {
+              "name": "invoiceCount",
+              "attributeId": null,
+              "expression": {
+                "call": "count"
+              },
+              "type": "int64",
+              "nativeType": "bigint",
+              "codeType": "int64",
+              "nullable": false
+            },
+            {
+              "name": "revenue",
+              "attributeId": null,
+              "expression": {
+                "call": "coalesce",
+                "args": [
+                  {
+                    "call": "sum",
+                    "args": [
+                      {
+                        "column": "i.01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ"
+                      }
+                    ]
+                  },
+                  {
+                    "value": 0
+                  }
+                ]
+              },
+              "type": "decimal",
+              "nativeType": "numeric(18,2)",
+              "codeType": "decimal",
+              "nullable": false
+            }
+          ],
+          "where": {
+            "and": [
+              {
+                "op": "ge",
+                "left": {
+                  "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+                },
+                "right": {
+                  "param": "from"
+                }
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+                },
+                "right": {
+                  "param": "to"
+                }
+              },
+              {
+                "op": "ne",
+                "left": {
+                  "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+                },
+                "right": {
+                  "value": "V"
+                }
+              }
+            ]
+          },
+          "groupBy": [
+            {
+              "sql": {
+                "postgresql": "CAST(date_trunc('month', i.issued_on) AS date)",
+                "sqlite": "date(i.issued_on, 'start of month')",
+                "sqlserver": "DATEFROMPARTS(YEAR(i.issued_on), MONTH(i.issued_on), 1)"
+              }
+            }
+          ],
+          "having": null,
+          "orderBy": [
+            {
+              "expression": {
+                "sql": {
+                  "postgresql": "CAST(date_trunc('month', i.issued_on) AS date)",
+                  "sqlite": "date(i.issued_on, 'start of month')",
+                  "sqlserver": "DATEFROMPARTS(YEAR(i.issued_on), MONTH(i.issued_on), 1)"
+                }
+              },
+              "direction": "asc"
+            }
+          ],
+          "distinct": false,
+          "paging": null,
+          "collections": [],
+          "sql": "SELECT CAST(date_trunc('month', i.issued_on) AS date) AS month, COUNT(*) AS invoiceCount, COALESCE(SUM(i.total_amount), 0) AS revenue\nFROM billing.invoices i\nWHERE i.issued_on >= @from AND i.issued_on < @to AND i.status <> 'V'\nGROUP BY CAST(date_trunc('month', i.issued_on) AS date)\nORDER BY CAST(date_trunc('month', i.issued_on) AS date) ASC",
+          "sqlParameters": [
+            "from",
+            "to"
+          ],
+          "uses": [
+            "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4"
+          ],
+          "displayName": null,
+          "pluralName": null,
+          "description": "Invoiced revenue per month between two dates, void invoices left out: an ad hoc row per month.",
+          "stereotypes": [],
+          "tags": [],
+          "category": null,
+          "properties": {},
+          "generation": {},
+          "boundBy": [
+            {
+              "entityId": "01K6BND0000000000000000030",
+              "entityName": "RevenueMonth",
+              "bindingId": "01K6BND0000000000000000034",
+              "reads": true,
+              "writes": false,
+              "constants": []
+            }
+          ]
         }
       ],
       "schemas": [
@@ -2059,7 +2999,332 @@
       "properties": {
         "retentionDays": 2555
       },
-      "generation": {}
+      "generation": {},
+      "bindings": []
+    },
+    {
+      "id": "01K6BND0000000000000000020",
+      "kind": "entity",
+      "name": "CustomerNote",
+      "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+      "isAbstract": false,
+      "base": null,
+      "derived": [],
+      "attributes": [
+        {
+          "id": "01K6BND0000000000000000021",
+          "name": "id",
+          "owner": "01K6BND0000000000000000020",
+          "declaringEntity": "01K6BND0000000000000000020",
+          "type": {
+            "kind": "builtin",
+            "name": "uuid",
+            "builtin": "uuid",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 0,
+          "isKey": true,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "id",
+          "pluralName": "ids",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        },
+        {
+          "id": "01K6BND0000000000000000022",
+          "name": "customerId",
+          "owner": "01K6BND0000000000000000020",
+          "declaringEntity": "01K6BND0000000000000000020",
+          "type": {
+            "kind": "builtin",
+            "name": "uuid",
+            "builtin": "uuid",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 1,
+          "isKey": false,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "customerId",
+          "pluralName": "customerIds",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        },
+        {
+          "id": "01K6BND0000000000000000023",
+          "name": "body",
+          "owner": "01K6BND0000000000000000020",
+          "declaringEntity": "01K6BND0000000000000000020",
+          "type": {
+            "kind": "builtin",
+            "name": "text",
+            "builtin": "text",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 2,
+          "isKey": false,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "body",
+          "pluralName": "bodies",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        },
+        {
+          "id": "01K6BND0000000000000000024",
+          "name": "createdAt",
+          "owner": "01K6BND0000000000000000020",
+          "declaringEntity": "01K6BND0000000000000000020",
+          "type": {
+            "kind": "builtin",
+            "name": "datetimeoffset",
+            "builtin": "datetimeoffset",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": false,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": true,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 3,
+          "isKey": false,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "createdAt",
+          "pluralName": "createdAts",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        }
+      ],
+      "key": {
+        "attributes": [
+          "01K6BND0000000000000000021"
+        ],
+        "strategy": "uuid-v7",
+        "sequences": []
+      },
+      "alternateKeys": [],
+      "navigations": [],
+      "relations": [],
+      "mappings": [],
+      "isPromoted": false,
+      "promotedFrom": null,
+      "seeds": [],
+      "lifecycle": null,
+      "displayName": "CustomerNote",
+      "pluralName": "CustomerNotes",
+      "description": "A note on a customer. Stored in the shared notes table with entity_type 'customer'.",
+      "tags": [],
+      "category": null,
+      "stereotypes": [],
+      "properties": {},
+      "generation": {},
+      "bindings": [
+        {
+          "id": "01K6BND0000000000000000025",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "sourceKind": "table",
+          "source": "01K6BND0000000000000000001",
+          "sourceName": "notes",
+          "writeTable": "01K6BND0000000000000000001",
+          "delete": "key",
+          "softDeleteColumn": null,
+          "softDeleteValue": null,
+          "constants": [
+            {
+              "column": "entity_type",
+              "value": "customer"
+            }
+          ],
+          "fields": [
+            {
+              "name": "id",
+              "attribute": "01K6BND0000000000000000021",
+              "attributeId": "01K6BND0000000000000000021",
+              "memberId": null,
+              "endId": null,
+              "column": "id",
+              "columnKey": "01K6BND0000000000000000002",
+              "writeColumn": "01K6BND0000000000000000002",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": true,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "customerId",
+              "attribute": "01K6BND0000000000000000022",
+              "attributeId": "01K6BND0000000000000000022",
+              "memberId": null,
+              "endId": null,
+              "column": "entity_id",
+              "columnKey": "01K6BND0000000000000000004",
+              "writeColumn": "01K6BND0000000000000000004",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "body",
+              "attribute": "01K6BND0000000000000000023",
+              "attributeId": "01K6BND0000000000000000023",
+              "memberId": null,
+              "endId": null,
+              "column": "body",
+              "columnKey": "01K6BND0000000000000000005",
+              "writeColumn": "01K6BND0000000000000000005",
+              "type": "text",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "createdAt",
+              "attribute": "01K6BND0000000000000000024",
+              "attributeId": "01K6BND0000000000000000024",
+              "memberId": null,
+              "endId": null,
+              "column": "created_at",
+              "columnKey": "01K6BND0000000000000000006",
+              "writeColumn": "01K6BND0000000000000000006",
+              "type": "datetimeoffset",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": true,
+              "inInsert": false,
+              "inUpdate": false
+            }
+          ],
+          "columns": [
+            {
+              "name": "id",
+              "key": "01K6BND0000000000000000002",
+              "status": "field",
+              "field": "id"
+            },
+            {
+              "name": "entity_type",
+              "key": "01K6BND0000000000000000003",
+              "status": "constant",
+              "field": null
+            },
+            {
+              "name": "entity_id",
+              "key": "01K6BND0000000000000000004",
+              "status": "field",
+              "field": "customerId"
+            },
+            {
+              "name": "body",
+              "key": "01K6BND0000000000000000005",
+              "status": "field",
+              "field": "body"
+            },
+            {
+              "name": "created_at",
+              "key": "01K6BND0000000000000000006",
+              "status": "field",
+              "field": "createdAt"
+            }
+          ],
+          "writeColumns": []
+        }
+      ]
     },
     {
       "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
@@ -2570,7 +3835,8 @@
       "properties": {
         "retentionDays": 3650
       },
-      "generation": {}
+      "generation": {},
+      "bindings": []
     },
     {
       "id": "01J92P0V0GWFR78HZH0P8Z3GY7",
@@ -2834,7 +4100,332 @@
       "category": "01J92P0V06TYE8P8990AV35A8K",
       "stereotypes": [],
       "properties": {},
-      "generation": {}
+      "generation": {},
+      "bindings": []
+    },
+    {
+      "id": "01K6BND0000000000000000010",
+      "kind": "entity",
+      "name": "InvoiceNote",
+      "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+      "isAbstract": false,
+      "base": null,
+      "derived": [],
+      "attributes": [
+        {
+          "id": "01K6BND0000000000000000011",
+          "name": "id",
+          "owner": "01K6BND0000000000000000010",
+          "declaringEntity": "01K6BND0000000000000000010",
+          "type": {
+            "kind": "builtin",
+            "name": "uuid",
+            "builtin": "uuid",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 0,
+          "isKey": true,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "id",
+          "pluralName": "ids",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        },
+        {
+          "id": "01K6BND0000000000000000012",
+          "name": "invoiceId",
+          "owner": "01K6BND0000000000000000010",
+          "declaringEntity": "01K6BND0000000000000000010",
+          "type": {
+            "kind": "builtin",
+            "name": "uuid",
+            "builtin": "uuid",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 1,
+          "isKey": false,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "invoiceId",
+          "pluralName": "invoiceIds",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        },
+        {
+          "id": "01K6BND0000000000000000013",
+          "name": "body",
+          "owner": "01K6BND0000000000000000010",
+          "declaringEntity": "01K6BND0000000000000000010",
+          "type": {
+            "kind": "builtin",
+            "name": "text",
+            "builtin": "text",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 2,
+          "isKey": false,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "body",
+          "pluralName": "bodies",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        },
+        {
+          "id": "01K6BND0000000000000000014",
+          "name": "createdAt",
+          "owner": "01K6BND0000000000000000010",
+          "declaringEntity": "01K6BND0000000000000000010",
+          "type": {
+            "kind": "builtin",
+            "name": "datetimeoffset",
+            "builtin": "datetimeoffset",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": false,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": true,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 3,
+          "isKey": false,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "createdAt",
+          "pluralName": "createdAts",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        }
+      ],
+      "key": {
+        "attributes": [
+          "01K6BND0000000000000000011"
+        ],
+        "strategy": "uuid-v7",
+        "sequences": []
+      },
+      "alternateKeys": [],
+      "navigations": [],
+      "relations": [],
+      "mappings": [],
+      "isPromoted": false,
+      "promotedFrom": null,
+      "seeds": [],
+      "lifecycle": null,
+      "displayName": "InvoiceNote",
+      "pluralName": "InvoiceNotes",
+      "description": "A note on an invoice. Stored in the shared notes table with entity_type 'invoice'.",
+      "tags": [],
+      "category": null,
+      "stereotypes": [],
+      "properties": {},
+      "generation": {},
+      "bindings": [
+        {
+          "id": "01K6BND0000000000000000015",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "sourceKind": "table",
+          "source": "01K6BND0000000000000000001",
+          "sourceName": "notes",
+          "writeTable": "01K6BND0000000000000000001",
+          "delete": "key",
+          "softDeleteColumn": null,
+          "softDeleteValue": null,
+          "constants": [
+            {
+              "column": "entity_type",
+              "value": "invoice"
+            }
+          ],
+          "fields": [
+            {
+              "name": "id",
+              "attribute": "01K6BND0000000000000000011",
+              "attributeId": "01K6BND0000000000000000011",
+              "memberId": null,
+              "endId": null,
+              "column": "id",
+              "columnKey": "01K6BND0000000000000000002",
+              "writeColumn": "01K6BND0000000000000000002",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": true,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "invoiceId",
+              "attribute": "01K6BND0000000000000000012",
+              "attributeId": "01K6BND0000000000000000012",
+              "memberId": null,
+              "endId": null,
+              "column": "entity_id",
+              "columnKey": "01K6BND0000000000000000004",
+              "writeColumn": "01K6BND0000000000000000004",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "body",
+              "attribute": "01K6BND0000000000000000013",
+              "attributeId": "01K6BND0000000000000000013",
+              "memberId": null,
+              "endId": null,
+              "column": "body",
+              "columnKey": "01K6BND0000000000000000005",
+              "writeColumn": "01K6BND0000000000000000005",
+              "type": "text",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "createdAt",
+              "attribute": "01K6BND0000000000000000014",
+              "attributeId": "01K6BND0000000000000000014",
+              "memberId": null,
+              "endId": null,
+              "column": "created_at",
+              "columnKey": "01K6BND0000000000000000006",
+              "writeColumn": "01K6BND0000000000000000006",
+              "type": "datetimeoffset",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": true,
+              "inInsert": false,
+              "inUpdate": false
+            }
+          ],
+          "columns": [
+            {
+              "name": "id",
+              "key": "01K6BND0000000000000000002",
+              "status": "field",
+              "field": "id"
+            },
+            {
+              "name": "entity_type",
+              "key": "01K6BND0000000000000000003",
+              "status": "constant",
+              "field": null
+            },
+            {
+              "name": "entity_id",
+              "key": "01K6BND0000000000000000004",
+              "status": "field",
+              "field": "invoiceId"
+            },
+            {
+              "name": "body",
+              "key": "01K6BND0000000000000000005",
+              "status": "field",
+              "field": "body"
+            },
+            {
+              "name": "created_at",
+              "key": "01K6BND0000000000000000006",
+              "status": "field",
+              "field": "createdAt"
+            }
+          ],
+          "writeColumns": []
+        }
+      ]
     },
     {
       "id": "01J92P0V0HEGSC6MW92CST5KA6",
@@ -3180,7 +4771,8 @@
       "properties": {
         "retentionDays": 2555
       },
-      "generation": {}
+      "generation": {},
+      "bindings": []
     },
     {
       "id": "01J92P0V0JR8BE8253SKT29ZG7",
@@ -3475,7 +5067,256 @@
         "soft-delete"
       ],
       "properties": {},
-      "generation": {}
+      "generation": {},
+      "bindings": []
+    },
+    {
+      "id": "01K6BND0000000000000000030",
+      "kind": "entity",
+      "name": "RevenueMonth",
+      "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+      "isAbstract": false,
+      "base": null,
+      "derived": [],
+      "attributes": [
+        {
+          "id": "01K6BND0000000000000000031",
+          "name": "month",
+          "owner": "01K6BND0000000000000000030",
+          "declaringEntity": "01K6BND0000000000000000030",
+          "type": {
+            "kind": "builtin",
+            "name": "date",
+            "builtin": "date",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 0,
+          "isKey": true,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "month",
+          "pluralName": "months",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        },
+        {
+          "id": "01K6BND0000000000000000032",
+          "name": "invoiceCount",
+          "owner": "01K6BND0000000000000000030",
+          "declaringEntity": "01K6BND0000000000000000030",
+          "type": {
+            "kind": "builtin",
+            "name": "int64",
+            "builtin": "int64",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 1,
+          "isKey": false,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "invoiceCount",
+          "pluralName": "invoiceCounts",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        },
+        {
+          "id": "01K6BND0000000000000000033",
+          "name": "revenue",
+          "owner": "01K6BND0000000000000000030",
+          "declaringEntity": "01K6BND0000000000000000030",
+          "type": {
+            "kind": "builtin",
+            "name": "decimal",
+            "builtin": "decimal",
+            "enum": null,
+            "valueObject": null,
+            "scalar": null,
+            "referenceType": null
+          },
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": 18,
+          "scale": 2,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": 2,
+          "isKey": false,
+          "isInherited": false,
+          "isVirtual": false,
+          "fromStereotype": null,
+          "reference": null,
+          "displayName": "revenue",
+          "pluralName": "revenues",
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {}
+        }
+      ],
+      "key": {
+        "attributes": [
+          "01K6BND0000000000000000031"
+        ],
+        "strategy": "application",
+        "sequences": []
+      },
+      "alternateKeys": [],
+      "navigations": [],
+      "relations": [],
+      "mappings": [],
+      "isPromoted": false,
+      "promotedFrom": null,
+      "seeds": [],
+      "lifecycle": null,
+      "displayName": "RevenueMonth",
+      "pluralName": "RevenueMonths",
+      "description": "Invoiced revenue per month, read through the RevenueByMonth query; read-only.",
+      "tags": [],
+      "category": null,
+      "stereotypes": [],
+      "properties": {},
+      "generation": {},
+      "bindings": [
+        {
+          "id": "01K6BND0000000000000000034",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "sourceKind": "query",
+          "source": "01K6QRY0000000000000000002",
+          "sourceName": "RevenueByMonth",
+          "writeTable": null,
+          "delete": "none",
+          "softDeleteColumn": null,
+          "softDeleteValue": null,
+          "constants": [],
+          "fields": [
+            {
+              "name": "month",
+              "attribute": "01K6BND0000000000000000031",
+              "attributeId": "01K6BND0000000000000000031",
+              "memberId": null,
+              "endId": null,
+              "column": "month",
+              "columnKey": null,
+              "writeColumn": null,
+              "type": "date",
+              "nullable": false,
+              "isKey": true,
+              "isGenerated": false,
+              "inInsert": false,
+              "inUpdate": false
+            },
+            {
+              "name": "invoiceCount",
+              "attribute": "01K6BND0000000000000000032",
+              "attributeId": "01K6BND0000000000000000032",
+              "memberId": null,
+              "endId": null,
+              "column": "invoiceCount",
+              "columnKey": null,
+              "writeColumn": null,
+              "type": "int64",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": false,
+              "inUpdate": false
+            },
+            {
+              "name": "revenue",
+              "attribute": "01K6BND0000000000000000033",
+              "attributeId": "01K6BND0000000000000000033",
+              "memberId": null,
+              "endId": null,
+              "column": "revenue",
+              "columnKey": null,
+              "writeColumn": null,
+              "type": "decimal",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": false,
+              "inUpdate": false
+            }
+          ],
+          "columns": [
+            {
+              "name": "month",
+              "key": null,
+              "status": "field",
+              "field": "month"
+            },
+            {
+              "name": "invoiceCount",
+              "key": null,
+              "status": "field",
+              "field": "invoiceCount"
+            },
+            {
+              "name": "revenue",
+              "key": null,
+              "status": "field",
+              "field": "revenue"
+            }
+          ],
+          "writeColumns": []
+        }
+      ]
     },
     {
       "id": "01J92P0V05WQDH2GZG539D9VG1",
@@ -3541,9 +5382,12 @@
       ],
       "entities": [
         "01J92P0V0ETQKXXP951CMMNHH3",
+        "01K6BND0000000000000000020",
         "01J92P0V0FJ23CGSNKM7P1W5V7",
         "01J92P0V0GWFR78HZH0P8Z3GY7",
-        "01J92P0V0HEGSC6MW92CST5KA6"
+        "01K6BND0000000000000000010",
+        "01J92P0V0HEGSC6MW92CST5KA6",
+        "01K6BND0000000000000000030"
       ],
       "valueObjects": [
         "01J92P0V0304M76KA84NE4D1TE"
