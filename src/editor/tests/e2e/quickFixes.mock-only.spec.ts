@@ -21,3 +21,29 @@ test("the MQ9203 quick fix syncs the enum after its dry run, as one change", asy
   await expect(page.getByRole("tab", { name: /Problems/ })).toContainText("0");
   await expect(page.getByTestId("problem-MQ9203")).toHaveCount(0);
 });
+
+test("a file out of canonical form is rewritten from Problems, and the rest from Settings › Validation", async ({ page }) => {
+  // `legacy`: maquettiste.json still sets the retired commit flag (MQ1010) and, with one entity file, is not canonical (MQ1003).
+  await openEditor(page, "/?mock=legacy");
+  await page.getByRole("tab", { name: /Problems/ }).click();
+  const problems = page.getByTestId("problems-list");
+  await expect(problems.getByTestId("problem-MQ1003")).toHaveCount(2);
+  await expect(problems.getByTestId("problem-MQ1003").first()).toContainText("rewrite it from the Problems panel");
+  await expect(problems.getByTestId("problem-MQ1010")).toHaveCount(1);
+  const fix = problems.getByTestId("problem-MQ1010").locator("xpath=..").getByTestId("fix-canonical");
+  await expect(fix).toHaveText("Rewrite in canonical form");
+  expect((await page.evaluate(scanIconControls as () => IconControlScan)).missing).toEqual([]);
+
+  await fix.click();
+  await expect(page.getByText("Rewrote .maquettiste/maquettiste.json in canonical form.")).toBeVisible();
+  await expect(problems.getByTestId("problem-MQ1010")).toHaveCount(0);
+  await expect(problems.getByTestId("problem-MQ1003")).toHaveCount(1);
+
+  await page.getByTestId("rail-settings").click();
+  await page.getByRole("tab", { name: "Validation" }).click();
+  const action = page.getByTestId("canonical-form-action");
+  await expect(action.getByTestId("canonical-form-count")).toHaveText("1 model file is not in canonical form.");
+  await action.getByTestId("format-all").click();
+  await expect(action.getByTestId("canonical-form-count")).toHaveText("Every model file is in canonical form.");
+  await expect(problems.getByTestId("problem-MQ1003")).toHaveCount(0);
+});

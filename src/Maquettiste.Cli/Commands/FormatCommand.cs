@@ -1,10 +1,7 @@
 using System.Globalization;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Loading;
-using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Writing;
 
@@ -86,52 +83,6 @@ internal static class FormatCommand
     /// <param name="kind">The file kind.</param>
     /// <param name="repoPath">The repo-relative path.</param>
     /// <returns>The canonical bytes.</returns>
-    internal static byte[]? Canonical(SchemaRegistry schemas, CanonicalJson json, byte[] bytes, ModelFileKind kind, string repoPath)
-    {
-        JsonDocument document;
-        try
-        {
-            document = JsonDocument.Parse(bytes, new JsonDocumentOptions { AllowTrailingCommas = false, CommentHandling = JsonCommentHandling.Disallow });
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-
-        using (document)
-        {
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
-                return null;
-            string schemaFile;
-            switch (kind)
-            {
-                case ModelFileKind.Settings:
-                    schemaFile = ModelPaths.SettingsFile;
-                    break;
-                case ModelFileKind.LocaleShard:
-                    schemaFile = DocumentReader.LocaleShardSchema;
-                    break;
-                default:
-                    if (!root.TryGetProperty("kind", out var kindValue) || kindValue.ValueKind != JsonValueKind.String || !KindInfo.TryGet(kindValue.GetString()!, out var info))
-                        return null;
-                    schemaFile = info.SchemaFile;
-                    break;
-            }
-
-            var node = JsonNode.Parse(root.GetRawText())!;
-            if (kind == ModelFileKind.Settings && RetiredSettings.Strip(node))
-            {
-                // outputs.allow[].commit (ignored since 0.5.5, MQ1010) is dropped; the rest must still pass the schema.
-                using var stripped = JsonDocument.Parse(node.ToJsonString());
-                return schemas.Evaluate(schemaFile, stripped.RootElement, repoPath).Any(d => d.Severity == DiagnosticSeverity.Error)
-                    ? null
-                    : json.Write(node, schemaFile, repoPath);
-            }
-
-            if (schemas.Evaluate(schemaFile, root, repoPath).Any(d => d.Severity == DiagnosticSeverity.Error))
-                return null;
-            return json.Write(node, schemaFile, repoPath);
-        }
-    }
+    internal static byte[]? Canonical(SchemaRegistry schemas, CanonicalJson json, byte[] bytes, ModelFileKind kind, string repoPath) =>
+        ModelFormatter.Canonical(schemas, json, bytes, kind, repoPath);
 }

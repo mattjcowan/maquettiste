@@ -491,6 +491,17 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
         return problem(400, "bad-request", `resolution must be refuse, remove-references or delete-dependents, not '${String(resolution)}'.`);
       return HttpResponse.json(model.deletePlan(ids as string[], resolution));
     }),
+    http.post("/api/model/format", async ({ request }) => {
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const paths: unknown = body.value.paths;
+      if (paths !== undefined && (!Array.isArray(paths) || paths.length > 1000 || !paths.every((p) => typeof p === "string")))
+        return problem(400, "bad-request", "paths must list at most 1000 repo-relative model files.");
+      const result = model.format(paths as string[] | undefined);
+      if (result.refused.length)
+        return problem(400, "bad-request", `Only model files can be formatted (maquettiste.json, model/**/*.json): ${result.refused.join(", ")}.`);
+      return HttpResponse.json(result);
+    }),
     http.post("/api/model/batch", async ({ request }) => {
       const body = await jsonBody(request);
       if (!body.ok) return body.response;

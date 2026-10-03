@@ -11,6 +11,8 @@ import { countBySeverity, groupProblems } from "./group";
 import { applyProblemFilter, setProblemFilter, useProblemFilter, type ProblemFilter } from "./filter";
 import { hasQuickFix } from "./quickFix";
 import { QuickFixButton } from "./QuickFixButton";
+import { CanonicalFixButton } from "./CanonicalFixButton";
+import { hasCanonicalFix } from "./canonical";
 import { Button } from "@/components/ui/button";
 import { hasEditor, setView } from "@/editors/tabs";
 import { vocabularyProblemTarget, type VocabularyProblemTarget } from "@/model/vocabularies";
@@ -159,6 +161,7 @@ export function ProblemsPanel() {
                         {d.jsonPointer ? <span className="font-mono text-11 text-secondary">{d.jsonPointer}</span> : null}
                       </button>
                       {!group.unsaved && hasQuickFix(d.rule, fixes.get(d.rule)) ? <QuickFixButton diagnostic={d} catalogFix={fixes.get(d.rule)} /> : null}
+                      {!group.unsaved && hasCanonicalFix(d) ? <CanonicalFixButton diagnostic={d} /> : null}
                       {target ? (
                         <Button
                           size="sm"

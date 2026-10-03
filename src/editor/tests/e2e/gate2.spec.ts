@@ -109,7 +109,7 @@ test("gate 2: edit the reference application in the editor, plan and apply", asy
   await workspace(page, "Generate");
   await expect(page.getByTestId("generate-workspace")).toBeVisible();
   await page.getByTestId("plan").click();
-  await expect(page.getByTestId("plan-result")).toContainText("succeeded", slow);
+  await expect(page.getByTestId("plan-result")).toContainText("Plan ready", slow);
   const summary = page.getByTestId("plan-summary");
   await expect(summary).toContainText("sql-ddl:");
   await expect(summary).toContainText("csharp-dapper:");

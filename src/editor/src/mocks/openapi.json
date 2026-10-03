@@ -3156,6 +3156,59 @@
         }
       }
     },
+    "/api/model/format": {
+      "post": {
+        "tags": [
+          "model"
+        ],
+        "operationId": "formatModel",
+        "summary": "Rewrite model files in canonical form",
+        "description": "What `maquettiste format` does, from the editor: rewrites `maquettiste.json` (dropping the retired `commit` flag of an\n`outputs.allow` entry, MQ1010), the element files under `model/` and the locale shards in canonical form, so their MQ1003\nfindings go away. `paths` absent rewrites every model file. A file already in canonical form is not touched; a file that is\nnot valid enough to rewrite (not JSON, no known kind, a schema error) is left as it is and listed in `skipped`. The files are\nwritten together through the model store, so `model.changed` follows (and `project.changed` when `maquettiste.json` was\nrewritten). A format changes no content, only bytes, so it adds no undo step. A path that is not a model file (outside the\nmodel folder, an extension, a pack file, a missing file) refuses the request with 400 and nothing is written.\n",
+        "x-maquettiste-role": "editor",
+        "x-maquettiste-engine": "ModelStore.FormatAsync(paths, ChangeSource.Editor)",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelFormatRequest"
+              },
+              "example": {
+                "paths": [
+                  ".maquettiste/maquettiste.json"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The files rewritten and the files left as they are.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelFormatResult"
+                },
+                "example": {
+                  "formatted": [
+                    ".maquettiste/maquettiste.json"
+                  ],
+                  "skipped": [],
+                  "refused": [],
+                  "total": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          }
+        }
+      }
+    },
     "/api/model/batch": {
       "post": {
         "tags": [
@@ -10611,6 +10664,58 @@
           },
           "resolution": {
             "$ref": "#/components/schemas/DeleteResolution"
+          }
+        }
+      },
+      "ModelFormatRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "paths": {
+            "description": "Repo-relative model files (`.maquettiste/maquettiste.json`, `.maquettiste/model/...`); absent for every model file.",
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ModelFormatResult": {
+        "x-engine-record": "Maquettiste.Engine.ModelFormatResult",
+        "type": "object",
+        "required": [
+          "formatted",
+          "skipped",
+          "refused",
+          "total"
+        ],
+        "properties": {
+          "formatted": {
+            "description": "The repo-relative paths rewritten in canonical form, ordinal.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skipped": {
+            "description": "The files left as they are because they are not valid enough to rewrite (validate gives the reasons).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "refused": {
+            "description": "Always empty in a 200 answer (a refused path is a 400).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "total": {
+            "description": "The model files considered.",
+            "type": "integer",
+            "minimum": 0
           }
         }
       },

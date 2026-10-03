@@ -320,7 +320,7 @@ export function rootGroups(plan: Pick<GenerationPlan, "changes">, roots: readonl
 // the first `limit` are listed and the rest counted (a project with several locales reports one MQ7204 note per shard).
 const SEVERITY_RANK: Record<string, number> = { error: 0, warning: 1, info: 2 };
 
-export type PlanNote = { severity: string; rule: string; message: string };
+export type PlanNote = { severity: string; rule: string; message: string; filePath?: string | null };
 
 export function orderDiagnostics<T extends PlanNote>(
   diagnostics: readonly T[],
@@ -341,5 +341,70 @@ export function moreNotesText(more: number, counts: Record<"error" | "warning" |
     counts.warning ? plural(counts.warning, "warning", "warnings") : "",
     counts.info ? plural(counts.info, "note", "notes") : "",
   ].filter(Boolean);
-  return `+${more} more in Problems (${parts.join(", ")} in all)`;
+  return `+${more} more (${parts.join(", ")} in all)`;
+}
+
+/** What a finding is about: rule, element, file and pointer (severity left out: a rule override changes it, not the finding). */
+type Located = { rule: string; elementId?: string | null; filePath?: string | null; jsonPointer?: string | null };
+const findingKey = (d: Located) => [d.rule, d.elementId ?? "", d.filePath ?? "", d.jsonPointer ?? ""].join("\u0000");
+
+/**
+ * The plan's diagnostics split in two: those about generation itself, listed under the plan, and the model's validation
+ * findings, which the Problems panel already lists (the plan carries both). A plan diagnostic is a model finding when the
+ * current validation report holds one with the same rule, element, file and pointer.
+ */
+export function splitPlanDiagnostics<T extends PlanNote & Located>(
+  plan: readonly T[],
+  report: readonly Located[],
+): { generation: T[]; model: T[]; counts: Record<"error" | "warning" | "info", number> } {
+  const known = new Set(report.map(findingKey));
+  const generation: T[] = [];
+  const model: T[] = [];
+  const counts = { error: 0, warning: 0, info: 0 };
+  for (const d of plan) {
+    if (!known.has(findingKey(d))) {
+      generation.push(d);
+      continue;
+    }
+    model.push(d);
+    if (d.severity in counts) counts[d.severity as keyof typeof counts] += 1;
+  }
+  return { generation, model, counts };
+}
+
+/**
+ * The one line that stands for the model findings under the plan: "3 model findings (1 warning, 2 notes) are in Problems", or,
+ * when the plan stopped on model errors, "Plan stopped: 2 model errors, see Problems". Null when there is none.
+ */
+export function modelFindingsLine(counts: Record<"error" | "warning" | "info", number>, stopped: boolean): string | null {
+  const total = counts.error + counts.warning + counts.info;
+  if (!total) return null;
+  if (stopped && counts.error) return `Plan stopped: ${plural(counts.error, "model error", "model errors")}, see Problems`;
+  const parts = [
+    counts.error ? plural(counts.error, "error", "errors") : "",
+    counts.warning ? plural(counts.warning, "warning", "warnings") : "",
+    counts.info ? plural(counts.info, "note", "notes") : "",
+  ].filter(Boolean);
+  return `${plural(total, "model finding", "model findings")} (${parts.join(", ")}) ${total === 1 ? "is" : "are"} in Problems`;
+}
+
+/**
+ * The plan's result line: "Plan ready: 15 files to write (12 added, 3 modified), 20 unchanged", or "Plan ready: nothing to
+ * write, every file matches"; files edited by hand (and so in conflict, or kept or overwritten by the hand-edit choice) are
+ * counted after. Counts that are zero are left out.
+ */
+export function planReadyText(plan: Pick<GenerationPlan, "changes">): string {
+  const count = (kind: FileChangeKind) => plan.changes.filter((c) => c.kind === kind).length;
+  const added = count("added");
+  const modified = count("modified");
+  const deleted = count("deleted");
+  const unchanged = count("unchanged") + count("kept");
+  const hand = count("hand-edited");
+  const conflicts = count("conflict");
+  const write = added + modified + deleted;
+  const tail = [hand ? `${hand} edited by hand` : "", conflicts ? `${conflicts} in conflict (edited by hand)` : ""].filter(Boolean);
+  if (!write) return tail.length ? `Plan ready: nothing to write, ${tail.join(", ")}` : "Plan ready: nothing to write, every file matches";
+  const detail = [added ? `${added} added` : "", modified ? `${modified} modified` : "", deleted ? `${deleted} deleted` : ""].filter(Boolean);
+  const rest = [unchanged ? `${unchanged} unchanged` : "", ...tail].filter(Boolean);
+  return [`Plan ready: ${plural(write, "file", "files")} to write (${detail.join(", ")})`, ...rest].join(", ");
 }

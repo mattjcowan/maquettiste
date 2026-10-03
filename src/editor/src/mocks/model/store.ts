@@ -69,6 +69,26 @@ export interface MockModelOptions {
 
 const PREFIX = ".maquettiste/";
 
+/** The indexes of the outputs.allow entries that set the retired `commit` flag (RetiredSettings.CommitEntries). */
+export function retiredCommitEntries(settings: Json): number[] {
+  const allow = (settings?.outputs as Json | undefined)?.allow;
+  if (!Array.isArray(allow)) return [];
+  return allow.flatMap((entry, i) => (entry && typeof entry === "object" && "commit" in (entry as Json) ? [i] : []));
+}
+
+/** Removes `commit` from every outputs.allow entry (RetiredSettings.Strip); whether anything was removed. */
+export function stripRetiredCommit(settings: Json): boolean {
+  const allow = (settings?.outputs as Json | undefined)?.allow;
+  if (!Array.isArray(allow)) return false;
+  let removed = false;
+  for (const entry of allow)
+    if (entry && typeof entry === "object" && "commit" in (entry as Json)) {
+      delete (entry as Json).commit;
+      removed = true;
+    }
+  return removed;
+}
+
 export function serialize(json: Json): string {
   return JSON.stringify(json, null, 2) + "\n";
 }
@@ -114,6 +134,11 @@ export class MockModel {
   version = 1;
   /** Paths written since the seed (the top bar's changed-file count). */
   readonly changedPaths = new Set<string>();
+  /**
+   * Repo paths whose bytes are not in canonical form (MQ1003; the `legacy` scenario). The mock keeps no bytes apart from its
+   * JSON, so this set stands for them: a save or a format (POST /api/model/format) clears a path.
+   */
+  readonly nonCanonical = new Set<string>();
 
   constructor(
     seed: Seed,
@@ -282,10 +307,88 @@ export class MockModel {
   /** Every diagnostic of the current model, from the incrementally maintained per-entry results. */
   private currentDiagnostics(): Diagnostic[] {
     const rules = this.rules();
-    return applyRules([...this.derived().diagnostics(), ...this.modelDiagnostics(rules)], rules);
+    return applyRules([...this.derived().diagnostics(), ...this.canonicalFindings(), ...this.modelDiagnostics(rules)], rules);
   }
 
   private findingsCache: { version: number; diagnostics: Diagnostic[] } | null = null;
+
+  /** MQ1003 for each file not in canonical form, MQ1010 for each outputs.allow entry of maquettiste.json that sets `commit`. */
+  private canonicalFindings(): Diagnostic[] {
+    const finding = (rule: string, severity: Diagnostic["severity"], message: string, elementId: string | null, filePath: string, jsonPointer: string) => ({
+      rule,
+      severity,
+      message,
+      elementId,
+      filePath,
+      jsonPointer,
+      line: null,
+      column: null,
+    });
+    const byPath = new Map([...this.entries.values()].map((e) => [e.path, e.id]));
+    const out: Diagnostic[] = [...this.nonCanonical]
+      .sort()
+      .map((path) =>
+        finding(
+          "MQ1003",
+          "warning",
+          "The file is not in canonical form: rewrite it from the Problems panel or run maquettiste format.",
+          byPath.get(path) ?? null,
+          path,
+          "",
+        ),
+      );
+    retiredCommitEntries(this.settingsJson).forEach((i) =>
+      out.push(
+        finding(
+          "MQ1010",
+          "info",
+          "`commit` is ignored since 0.5.5; remove it (maquettiste format drops it): every output root is a folder generation may write under, and which outputs to commit is the team's choice.",
+          null,
+          `${PREFIX}maquettiste.json`,
+          `/outputs/allow/${i}/commit`,
+        ),
+      ),
+    );
+    return out;
+  }
+
+  /**
+   * POST /api/model/format: rewrites model files in canonical form (ModelStore.FormatAsync). The mock writes its JSON as it always
+   * does; what changes is that the file leaves `nonCanonical`, and maquettiste.json loses the retired `commit` flags. `paths`
+   * absent means every model file; a path that is not maquettiste.json or an element file refuses the whole call.
+   */
+  format(paths?: readonly string[]): { formatted: string[]; skipped: string[]; refused: string[]; total: number } {
+    const settingsPath = `${PREFIX}maquettiste.json`;
+    const byPath = new Map([...this.entries.values()].map((e) => [e.path, e]));
+    const all = [settingsPath, ...[...byPath.keys()].sort()];
+    const refused = (paths ?? []).filter((p) => p !== settingsPath && !byPath.has(p));
+    const targets = paths ? [...new Set(paths)].filter((p) => !refused.includes(p)).sort() : all;
+    if (refused.length) return { formatted: [], skipped: [], refused, total: targets.length };
+    const formatted: string[] = [];
+    const changed: ChangeSet["changed"] = [];
+    let settings = false;
+    for (const path of targets) {
+      const stale = this.nonCanonical.delete(path);
+      if (path === settingsPath) {
+        const stripped = stripRetiredCommit(this.settingsJson);
+        if (!stale && !stripped) continue;
+        settings = true;
+      } else {
+        if (!stale) continue;
+        const entry = byPath.get(path)!;
+        changed.push({ id: entry.id, kind: entry.json.kind as ElementKind, path: entry.path, hash: entry.hash });
+      }
+      formatted.push(path);
+      this.changedPaths.add(path);
+    }
+    if (formatted.length) this.version++;
+    if (settings) {
+      this.settingsHash = sha256Hex(serialize(this.settingsJson));
+      this.options.onSettingsChanged?.(this.settingsHash);
+    }
+    if (changed.length) this.options.onChanged?.({ changed, deleted: [], source: "editor", truncated: false, isEmpty: false });
+    return { formatted: formatted.sort(), skipped: [], refused: [], total: targets.length };
+  }
 
   /**
    * What the resolver finds once the model validates without error, as the server's ModelStore.ValidateAsync adds it: the resolved
@@ -456,6 +559,8 @@ export class MockModel {
     for (const [id, entry] of candidate) {
       const old = this.entries.get(id);
       if (!old || old.hash !== entry.hash || old.path !== entry.path) {
+        // A save writes canonical bytes.
+        this.nonCanonical.delete(entry.path);
         changed.push({ id, kind: entry.json.kind as ElementKind, path: entry.path, hash: entry.hash });
         this.changedPaths.add(entry.path);
         if (old && old.path !== entry.path) this.changedPaths.add(old.path);
@@ -911,6 +1016,11 @@ export class MockModel {
   }
 
   saveSettings(json: Json, expectedHash: string): { status: number; body: SettingsSaveResult } {
+    // outputs.allow[].commit (ignored since 0.5.5, MQ1010) is dropped from what is saved, as the engine's settings save does.
+    if (json && typeof json === "object" && !Array.isArray(json)) {
+      json = clone(json);
+      stripRetiredCommit(json);
+    }
     if (normalizeHash(expectedHash) !== this.settingsHash)
       return { status: 409, body: { outcome: "conflict", hash: this.settingsHash, current: this.settingsDocument(), diagnostics: [] } };
     const validate = schemaValidator("maquettiste");
@@ -939,6 +1049,7 @@ export class MockModel {
       return { status: 200, body: { outcome: "saved", hash: this.settingsHash, current: this.settingsDocument(), diagnostics: [] } };
     this.settingsJson = clone(json);
     this.settingsHash = sha256Hex(serialize(this.settingsJson));
+    this.nonCanonical.delete(`${PREFIX}maquettiste.json`);
     this.changedPaths.add(`${PREFIX}maquettiste.json`);
     this.version++;
     this.options.onSettingsChanged?.(this.settingsHash);

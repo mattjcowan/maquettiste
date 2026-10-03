@@ -7,7 +7,8 @@ import { namesPack } from "@/workspaces/generate/packHints";
 import type { PresenceEntry, components } from "@/api/types";
 import { newId as randomId } from "@/lib/ids";
 import { MockRealtime } from "@/realtime/mock";
-import { MockModel } from "./model/store";
+import { MockModel, serialize } from "./model/store";
+import { sha256Hex } from "@/lib/sha256";
 import { MockGeneration } from "./model/generation";
 import { MockPacks } from "./model/packs";
 import { MockJobQueue, type JobClock } from "./model/jobs";
@@ -28,7 +29,20 @@ type PackRenameResult = components["schemas"]["PackRenameResult"];
 const PACK_NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 export type Scenario =
-  "conflict" | "slow" | "empty" | "medium" | "wide" | "large" | "unauthenticated" | "presence" | "invalid" | "locales" | "drift" | "lifecycle" | "chart400";
+  | "conflict"
+  | "slow"
+  | "empty"
+  | "medium"
+  | "wide"
+  | "large"
+  | "unauthenticated"
+  | "presence"
+  | "invalid"
+  | "locales"
+  | "drift"
+  | "lifecycle"
+  | "chart400"
+  | "legacy";
 
 export interface MockBackendOptions {
   scenarios?: Scenario[];
@@ -96,6 +110,9 @@ export class MockBackend {
         this.scheduleValidation();
       },
     });
+    // `legacy`: a project from before 0.5.5, whose maquettiste.json still sets the retired `commit` flag (MQ1010) and is not in
+    // canonical form (MQ1003), with one element file hand-written out of canonical form too.
+    if (this.scenarios.has("legacy")) withLegacyFiles(this.model);
     this.generation = new MockGeneration(this.model, newId);
     this.packs = new MockPacks(this.model);
     this.packAuthoring = new MockPackAuthoring(this.model, this.generation, (pack) => this.packs.registrations(pack));
@@ -293,6 +310,17 @@ export function scenariosFrom(search: string): Scenario[] {
     "drift",
     "lifecycle",
     "chart400",
+    "legacy",
   ];
   return all.filter((v): v is Scenario => (known as string[]).includes(v));
+}
+
+/** The `legacy` scenario's files: the first outputs.allow entry sets `commit`, and the settings and the first entity are not canonical. */
+function withLegacyFiles(model: MockModel): void {
+  const allow = (model.settingsJson.outputs as { allow?: Record<string, unknown>[] } | undefined)?.allow;
+  if (allow?.[0]) allow[0].commit = true;
+  model.settingsHash = sha256Hex(serialize(model.settingsJson));
+  model.nonCanonical.add(".maquettiste/maquettiste.json");
+  const entity = [...model.entries.values()].filter((e) => e.json.kind === "entity").sort((a, b) => (a.path < b.path ? -1 : 1))[0];
+  if (entity) model.nonCanonical.add(entity.path);
 }

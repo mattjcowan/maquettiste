@@ -86,6 +86,7 @@ export type PreviewRequest = S["PreviewRequest"];
 export type PreviewResult = S["PreviewResult"];
 export type RenderedFile = S["RenderedFile"];
 export type ApplyResult = S["ApplyResult"];
+export type ModelFormatResult = S["ModelFormatResult"];
 export type PlanResult = S["PlanResult"];
 export type GenerationResult = S["GenerationResult"];
 export type PlanUnit = S["PlanUnit"];

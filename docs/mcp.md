@@ -175,7 +175,7 @@ claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 60), `validate` in 55 ms,
+in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 61), `validate` in 55 ms,
 the container removed on exit. The registration (the arguments exactly, both forms and both runtimes, the merge, the replacement and the
 removal of an earlier `mcp.sh`) is covered by the CLI tests; the `/bin/sh` line was run with a stand-in `docker` reachable only
 through `$HOME/.docker/bin` from a folder behind a symbolic link (the real path mounted, stderr in the log). A Mac client started
@@ -197,7 +197,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 60 tools
+claude                               # then /mcp shows maquettiste connected with 61 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):
@@ -260,6 +260,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `list_packs` | (part of getProject) | | pack manifests and their diagnostics |
 | `get_settings` | getSettings | | `maquettiste.json`: typed settings, canonical `json`, `hash` |
 | `save_settings` | saveSettings | `settings` (whole document), `expectedHash` | the save result |
+| `format_model` | formatModel | `paths` (repo-relative model files; default every model file) | `{ formatted, skipped, refused, total }`: the files rewritten in canonical form (MQ1003 then goes away; `maquettiste.json` also loses the retired `commit` flag, MQ1010); content does not change; a path that is not a model file fails with `bad-request` and nothing is written |
 | `plan` | startPlan, run to completion | `packs`, `force`, `handEdits` (`fail`, `overwrite`, `skip`), `jobs` | `{ outcome, plan }`, the plan without its per-unit list (as a plan job's `planResult`) |
 | `get_plan` | getPlan | `planId`, `units` | a stored plan; with `units` true, every unit with its pack, unit, template, element, `reason`, `causes` and `skipped` |
 | `get_plan_diff` | getPlanDiff | `planId`, `path` | the unified diff text of one planned file |

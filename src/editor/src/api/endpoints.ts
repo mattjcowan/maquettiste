@@ -16,6 +16,7 @@ import type {
   GenerationRequest,
   JobHistoryCleared,
   JobInfo,
+  ModelFormatResult,
   ModelJson,
   NewModelDocument,
   PresenceReport,
@@ -185,6 +186,12 @@ export async function getReferences(id: string): Promise<ReferenceInfo[]> {
 
 export async function validate(scope: ValidationScope = {}): Promise<ValidationReport> {
   const { data, response } = await api().POST("/api/validate", { body: scope });
+  return must(data, response);
+}
+
+/** Rewrites model files in canonical form (`maquettiste format`); no paths: every model file and maquettiste.json. */
+export async function formatModel(paths?: string[]): Promise<ModelFormatResult> {
+  const { data, response } = await api().POST("/api/model/format", { body: paths ? { paths } : {} });
   return must(data, response);
 }
 

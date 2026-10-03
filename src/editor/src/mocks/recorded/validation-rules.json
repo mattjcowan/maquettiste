@@ -18,7 +18,7 @@
   {
     "id": "MQ1003",
     "defaultSeverity": "warning",
-    "description": "File is not in canonical form; run maquettiste format to rewrite it.",
+    "description": "File is not in canonical form: rewrite it from the Problems panel or run maquettiste format.",
     "family": "MQ10xx",
     "familyLabel": "Model files",
     "canBeOff": false

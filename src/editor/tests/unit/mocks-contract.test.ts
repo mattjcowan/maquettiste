@@ -263,6 +263,15 @@ describe("mock contract", () => {
     expect(broken.status).toBe(422);
   });
 
+  it("formats model files: 200 with what was rewritten, 400 for a path outside the model", async () => {
+    const all = await call("post", "/api/model/format", "/api/model/format", {});
+    expect(all.status).toBe(200);
+    expect((all.payload as { formatted: string[] }).formatted).toEqual([]);
+    const one = await call("post", "/api/model/format", "/api/model/format", { paths: [".maquettiste/maquettiste.json"] });
+    expect(one.status).toBe(200);
+    expect((await call("post", "/api/model/format", "/api/model/format", { paths: ["src/Generated/Customer.cs"] })).status).toBe(400);
+  });
+
   it("applies a batch, and refuses a stale one with 409", async () => {
     const { payload } = await call("get", `/api/model/elements/${IDS.invoice}`, "/api/model/elements/{id}");
     const { json, hash } = payload as { json: Json; hash: string };

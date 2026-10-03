@@ -1354,6 +1354,12 @@ step, and the panel re-validates after it:
 | MQ9105 | **Add the signer to the event's actors** |
 | MQ9205 | **Set default to** the initial state's name, on the subject's bound attribute |
 | MQ9201 | **Set lifecycle on the subject** (the subject names another lifecycle), or **Make it this entity's lifecycle** (an entity names an orchestration) |
+| MQ1003, MQ1010 | **Rewrite in canonical form**: rewrites that file (an element file, a locale file or `maquettiste.json`) the way the editor writes it, as `maquettiste format` does; `maquettiste.json` also loses the retired `commit` flags |
+
+**Rewrite in canonical form** changes no content, only the file's layout, so it adds no undo step: there is nothing to
+put back. A file that does not pass its schema is left as it is (the notice says so); fix its other problems first.
+Settings › Validation has the same for every file at once: **Rewrite all model files in canonical form**, with the
+number of files the report flags.
 
 Undo reverts a fix like any change, with one limit that applies to every save: a change that would bring an error back
 is refused, so undoing the fix of an error (Sync enum, Set initial) reports "Cannot undo" and the model stays fixed.
@@ -1599,13 +1605,34 @@ and None then act on the packs it shows. A disabled pack is listed greyed and ca
 its pack editor's header), and a pack with diagnostics shows their count. The choice is kept with the page state;
 **Plan** stays disabled while no pack is ticked. A plan covers every output root of `outputs.allow`.
 
+**Options**, next to **Plan**, holds two choices for the next plan only; nothing is saved, and the button shows a dot
+while one differs from its default:
+
+- **Re-render every file**: every unit renders again even if nothing it reads changed (the plan's Why then says
+  "Forced: the run renders every unit"). Use it after a change the plan cannot see, or to be sure. Nothing is written
+  until Apply, and Apply still writes only the files whose content differs.
+- **If a generated file was edited by hand**: **Project default** (the project's `handEdits` setting, shown in
+  brackets), **Stop and report it** (`fail`: the file is listed as a conflict and left as it is), **Overwrite it**
+  (`overwrite`: your edit is replaced) or **Keep it and skip** (`skip`: your edit stays and nothing is generated for it).
+  Apply uses the choice the plan was made with; the Apply result names it only when a file was in fact edited by hand
+  ("2 files edited by hand: overwritten (this run's choice: Overwrite it)").
+
+When the plan is made, one line says what it found: `Plan ready: 15 files to write (12 added, 3 modified), 20
+unchanged`, or `Plan ready: nothing to write, every file matches`; files edited by hand are counted at the end. A plan
+that failed or was cancelled shows its outcome and the reason instead.
+
 A plan is a dry run: it renders what needs rendering and compares it with the disk, and nothing is written until you
 apply it. Above the table, one line per pack says what it will do, for example
 `sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete` (an orphan is a file generation wrote earlier that
 no unit produces any more). Files that already hold exactly what the plan renders are counted as unchanged
 (`20 files unchanged`); when no file needs writing the line says so, `atlas-schema: 737 units, nothing to write: all
 737 files already match the disk`, a note says Apply has nothing to do, and **Apply plan** stays disabled. The table
-shows only files that change; choose **Show: unchanged** to list the others. The table groups the files by unit (`sql-ddl/table`, with its template and its counts);
+shows only files that change; choose **Show: unchanged** to list the others.
+
+Under the summary the plan lists its own notes (a file edited by hand, a formatter that failed, a locale left
+incomplete). The model's validation findings, which a plan also carries, are not repeated there: one line counts them,
+`3 model findings (2 warnings, 1 note) are in Problems`, and **Open Problems** shows them. When the model has errors the
+plan stops, and the line reads `Plan stopped: 2 model errors, see Problems`. The table groups the files by unit (`sql-ddl/table`, with its template and its counts);
 click a group to fold it. Each file shows its change, its path, its unit, its element and **Why** its unit renders:
 "New: no recorded state from an earlier run" the first time, "Customer (entity) changed" or "Template table.scriban
 changed" after an edit, "… was edited on disk" when a generated file was changed by hand. Filter by change, pack, unit
@@ -2278,8 +2305,15 @@ reminds you of this in the line it prints after its report.
 
 If a formatter rewrites a model file anyway, nothing breaks: the file still loads, as long as it is still valid JSON with the
 same content. An element file, `maquettiste.json` or a locale file that is no longer in canonical form gets the warning
-MQ1003 ("not in canonical form"); `maquettiste format` rewrites every such file in canonical form (`--check` lists them
-without writing), and the next save of the element from the editor or an agent rewrites it too. An extension schema
+MQ1003 ("not in canonical form"); **Rewrite in canonical form** on the finding in Problems rewrites that file, Settings ›
+Validation › **Rewrite all model files in canonical form** rewrites every one, `maquettiste format` does the same from the
+command line (`--check` lists them without writing), and the next save of the element from the editor or an agent
+rewrites it too.
+
+**Upgrading from 0.5.4 or earlier.** A project made before 0.5.5 usually still has `"commit": true` (or `false`) on its
+`outputs.allow` entries. 0.5.5 ignores the flag and the canonical writer drops it, so such a project shows MQ1010 (an
+information line per entry) and MQ1003 on `.maquettiste/maquettiste.json` until the file is rewritten: use the quick fix
+in Problems, the Settings action or `maquettiste format` once, and both go. An extension schema
 reformatted by hand gets no warning; its next save on the Extensions tab writes it in canonical form again. A rule script
 that a formatter only re-indents still runs as before; one that a linter's automatic fixes turn into a module (`import`,
 `export`, `require`) no longer loads and reports MQ5002 on its file.

@@ -22,6 +22,7 @@ import {
   type RuleChoice,
   type RuleOverrides,
 } from "./validationRules";
+import { CanonicalFormAction } from "./CanonicalFormAction";
 
 const CHOICE_LABEL: Record<RuleChoice, string> = { default: "Default", error: "error", warning: "warning", info: "info", off: "off" };
 
@@ -86,6 +87,7 @@ export function ValidationSettings() {
 
   return (
     <section className="flex max-w-5xl flex-col gap-2" aria-label="Validation" data-testid="validation-settings">
+      <CanonicalFormAction />
       <div className="flex items-center gap-2">
         <p className="text-12 text-secondary">
           The severity of each built-in rule and of the project&apos;s script rules, saved in maquettiste.json validation.rules. Default keeps the engine&apos;s

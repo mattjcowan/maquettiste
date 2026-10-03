@@ -484,7 +484,8 @@ export class MockGeneration {
     const request = this.request(input);
     const packs = (request.packs ?? this.enabledPacks()).filter((p) => this.model.packs.some((m) => m.name === p)).sort();
     const id = this.newId();
-    const errors = this.model.validate().diagnostics.filter((d) => d.severity === "error");
+    const report = this.model.validate().diagnostics;
+    const errors = report.filter((d) => d.severity === "error");
     if (errors.length) {
       const plan: GenerationPlan = {
         id,
@@ -511,7 +512,8 @@ export class MockGeneration {
       let kind: FileChange["kind"];
       if (disk === null) kind = "added";
       else if (file.role === "companion") kind = "kept";
-      else if (written && written.hash !== oldHash) kind = request.force || handPolicy === "overwrite" ? "modified" : "hand-edited";
+      // As WriteRun: a hand edit is hand-edited under overwrite (written) and skip (left), a conflict under fail; force changes nothing here.
+      else if (written && written.hash !== oldHash) kind = handPolicy === "fail" ? "conflict" : "hand-edited";
       else kind = oldHash === newHash ? "unchanged" : "modified";
       changes.push({ path: file.path, kind, pack: file.pack, unitKey: file.unitKey, oldHash, newHash: kind === "kept" ? oldHash : newHash, diff: null });
     }
@@ -528,8 +530,10 @@ export class MockGeneration {
       });
       diskAtPlan.set(path, sha256Hex(this.disk.get(path)!));
     }
-    const diagnostics: Diagnostic[] = changes
-      .filter((c) => c.kind === "hand-edited")
+    // As the engine's plan: the model's validation findings (warnings and notes here, the run stops on errors), then the run's own.
+    const diagnostics: Diagnostic[] = [...report];
+    for (const d of changes
+      .filter((c) => c.kind === "hand-edited" || c.kind === "conflict")
       .map((c) => ({
         rule: "MQ6009",
         severity: handPolicy === "fail" ? ("error" as const) : ("warning" as const),
@@ -539,7 +543,8 @@ export class MockGeneration {
         jsonPointer: null,
         line: null,
         column: null,
-      }));
+      })))
+      diagnostics.push(d);
     const docs = this.model.docs();
     const elementHash = (id: string | null) => (id && docs.has(id) ? sha256Hex(JSON.stringify(docs.get(id))) : null);
     const planUnits: PlanUnit[] = units.map((u) => {
@@ -644,7 +649,14 @@ export class MockGeneration {
     const change = stored.plan.changes.find((c) => c.path === path);
     const file = stored.files.get(path);
     if (!change && !file) return null;
-    if (!change || change.kind === "unchanged" || change.kind === "kept" || change.kind === "hand-edited") return "";
+    if (
+      !change ||
+      change.kind === "unchanged" ||
+      change.kind === "kept" ||
+      change.kind === "conflict" ||
+      (change.kind === "hand-edited" && stored.plan.request.handEdits !== "overwrite")
+    )
+      return "";
     const before = this.disk.get(path) ?? "";
     const after = change.kind === "deleted" ? "" : (file?.text ?? "");
     return unifiedDiff(path, before, after);
@@ -684,7 +696,8 @@ export class MockGeneration {
       if (now !== hash) stalePaths.push(path);
     }
     if (staleUnits.size || stalePaths.length) return { outcome: "stale", staleUnits: [...staleUnits].sort(), stalePaths: stalePaths.sort(), result: null };
-    if (stored.plan.changes.some((c) => c.kind === "hand-edited") && (request.handEdits ?? this.model.projectSettings().handEdits) === "fail")
+    const handPolicy = request.handEdits ?? this.model.projectSettings().handEdits;
+    if (stored.plan.changes.some((c) => c.kind === "conflict"))
       return {
         outcome: "conflicts",
         staleUnits: [],
@@ -694,7 +707,7 @@ export class MockGeneration {
     let written = 0;
     let deleted = 0;
     for (const change of stored.plan.changes) {
-      if (change.kind === "added" || change.kind === "modified") {
+      if (change.kind === "added" || change.kind === "modified" || (change.kind === "hand-edited" && handPolicy === "overwrite")) {
         const file = stored.files.get(change.path) ?? files.get(change.path);
         if (!file) continue;
         this.disk.set(change.path, file.text);

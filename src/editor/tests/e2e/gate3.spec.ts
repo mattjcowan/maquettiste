@@ -147,7 +147,7 @@ test("gate 3: simulate and record in the panel, plan and apply", async ({ page }
   await workspace(page, "Generate");
   await expect(page.getByTestId("generate-workspace")).toBeVisible();
   await page.getByTestId("plan").click();
-  await expect(page.getByTestId("plan-result")).toContainText("succeeded", slow);
+  await expect(page.getByTestId("plan-result")).toContainText("Plan ready", slow);
   const summary = page.getByTestId("plan-summary");
   await expect(summary).toContainText("csharp-dapper:");
   await expect(summary).toContainText("sql-ddl:");

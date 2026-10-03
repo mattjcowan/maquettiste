@@ -80,3 +80,27 @@ test("the plan explains itself: groups, why this file, why not, explain", async 
   await explain.getByTestId("explain-run").click();
   await expect(explain.getByTestId("explain-answer")).toContainText("unknown-unit");
 });
+
+test("the plan lists only its own notes and counts the model's findings in one line that opens Problems", async ({ page }) => {
+  // `legacy`: maquettiste.json and one entity file are not canonical (MQ1003) and the settings set commit (MQ1010).
+  await page.goto("/generate?mock=legacy");
+  await page.getByTestId("plan").click();
+  await expect(page.getByTestId("plan-result")).toContainText("Plan ready");
+  const notes = page.getByTestId("plan-notes");
+  await expect(notes.getByTestId("plan-model-findings")).toContainText(/^\d+ model findings \(.*\d+ warnings?.*\) are in Problems/);
+  // No model finding is listed again under the plan.
+  await expect(notes).not.toContainText("MQ1003");
+  await expect(notes).not.toContainText("MQ1010");
+  await page.getByTestId("tab-output").click();
+  await notes.getByTestId("plan-open-problems").click();
+  await expect(page.getByTestId("tab-problems")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("problems-list").getByTestId("problem-MQ1010")).toBeVisible();
+});
+
+test("a plan stopped by model errors says so in one line", async ({ page }) => {
+  await page.goto("/generate?mock=invalid");
+  await page.getByTestId("plan").click();
+  await expect(page.getByTestId("plan-result")).toContainText("invalid");
+  await expect(page.getByTestId("plan-model-findings")).toContainText(/^Plan stopped: \d+ model errors?, see Problems/);
+  await expect(page.getByTestId("plan-model-findings")).toHaveClass(/text-danger/);
+});

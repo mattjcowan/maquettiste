@@ -16,6 +16,36 @@ public sealed class ModelWriteTests
     }
 
     [Fact]
+    public async Task Format_rewrites_a_legacy_settings_file_without_commit_and_refuses_a_path_outside_the_model()
+    {
+        await using var host = EditorHost.Create();
+        const string settings = ".maquettiste/maquettiste.json";
+        var node = JsonNode.Parse(File.ReadAllBytes(host.PathOf(settings)))!;
+        node["outputs"]!["allow"]![0]!["commit"] = true;
+        File.WriteAllText(host.PathOf(settings), node.ToJsonString());
+        var invoice = File.ReadAllBytes(host.PathOf(".maquettiste/model/entities/invoice.json"));
+
+        var outside = await host.SendJsonAsync("POST", "/api/model/format", new JsonObject { ["paths"] = new JsonArray(settings, "src/Generated/Invoice.cs") });
+        var formatted = await host.SendJsonAsync("POST", "/api/model/format", new JsonObject { ["paths"] = new JsonArray(settings) });
+        var again = await host.SendJsonAsync("POST", "/api/model/format", new JsonObject());
+
+        Assert.Equal(400, outside.Status);
+        Assert.Equal("bad-request", outside.ProblemCode);
+        Contract.AssertResponse(outside, "/api/model/format");
+        Assert.Equal(200, formatted.Status);
+        Contract.AssertResponse(formatted, "/api/model/format");
+        Assert.Equal(settings, Assert.Single(formatted.Json["formatted"]!.AsArray())!.GetValue<string>());
+        Assert.DoesNotContain("commit", File.ReadAllText(host.PathOf(settings)), StringComparison.Ordinal);
+        Assert.Contains(host.Published("project.changed"), e => e.Payload["settingsHash"]!.GetValue<string>() == host.Store.Current!.SettingsHash);
+        Assert.Equal(200, again.Status);
+        Assert.Empty(again.Json["formatted"]!.AsArray());
+        Assert.True(again.Json["total"]!.GetValue<int>() > 1);
+        Assert.Equal(invoice, File.ReadAllBytes(host.PathOf(".maquettiste/model/entities/invoice.json")));
+        var report = await host.SendJsonAsync("POST", "/api/validate", new JsonObject());
+        Assert.DoesNotContain(report.Json["diagnostics"]!.AsArray(), d => d!["rule"]!.GetValue<string>() is "MQ1003" or "MQ1010");
+    }
+
+    [Fact]
     public async Task Create_answers_201_with_location_etag_and_the_new_document()
     {
         await using var host = EditorHost.Create();

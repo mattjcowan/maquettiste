@@ -134,7 +134,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
 
             var isCanonical = trusted ? trustedCanonical : IsCanonical(bytes, root, info.SchemaFile, repoPath);
             if (!isCanonical)
-                diagnostics.Add(RuleCatalog.Create("MQ1003", "The file is not in canonical form; the next save rewrites it, or run maquettiste format.", element.Id, repoPath, ""));
+                diagnostics.Add(RuleCatalog.Create("MQ1003", "The file is not in canonical form: rewrite it from the Problems panel or run maquettiste format.", element.Id, repoPath, ""));
 
             var (ids, sidecars) = Scan(root);
             return new ParsedFile
@@ -216,7 +216,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
 
             var isCanonical = trusted ? trustedCanonical : IsCanonical(bytes, root, ModelPaths.SettingsFile, repoPath);
             if (!isCanonical)
-                diagnostics.Add(RuleCatalog.Create("MQ1003", "The file is not in canonical form; run maquettiste format to rewrite it.", null, repoPath, ""));
+                diagnostics.Add(RuleCatalog.Create("MQ1003", "The file is not in canonical form: rewrite it from the Problems panel or run maquettiste format.", null, repoPath, ""));
             return new ParsedFile
             {
                 Settings = settings,
@@ -237,7 +237,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
     internal static ParsedFile TrustedShard(LocaleShard shard, string repoPath, bool canonical) => new()
     {
         LocaleShard = shard,
-        Diagnostics = canonical ? [] : [RuleCatalog.Create("MQ1003", "The file is not in canonical form; the next save rewrites it, or run maquettiste format.", null, repoPath, "")],
+        Diagnostics = canonical ? [] : [RuleCatalog.Create("MQ1003", "The file is not in canonical form: rewrite it from the Problems panel or run maquettiste format.", null, repoPath, "")],
         Valid = true,
         Canonical = canonical,
         SidecarReferences = LocaleShardReader.SidecarsOf(shard),
@@ -287,7 +287,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
 
             var isCanonical = trusted ? trustedCanonical : IsCanonical(bytes, root, LocaleShardSchema, repoPath);
             if (!isCanonical)
-                diagnostics.Add(RuleCatalog.Create("MQ1003", "The file is not in canonical form; the next save rewrites it, or run maquettiste format.", null, repoPath, ""));
+                diagnostics.Add(RuleCatalog.Create("MQ1003", "The file is not in canonical form: rewrite it from the Problems panel or run maquettiste format.", null, repoPath, ""));
             return new ParsedFile
             {
                 LocaleShard = shard,

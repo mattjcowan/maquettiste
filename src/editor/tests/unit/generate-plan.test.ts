@@ -8,12 +8,15 @@ import {
   flattenGroups,
   groupOf,
   groupPlan,
+  modelFindingsLine,
   moreNotesText,
   nothingToWrite,
   nothingToWriteNote,
   orderDiagnostics,
   packSummaryLine,
+  planReadyText,
   planSummary,
+  splitPlanDiagnostics,
   whySentence,
 } from "@/workspaces/generate/planModel";
 
@@ -152,6 +155,63 @@ describe("plan diagnostics under the summary", () => {
     expect(shown[0].severity).toBe("warning");
     expect(shown).toHaveLength(5);
     expect(more).toBe(3);
-    expect(moreNotesText(more, counts)).toBe("+3 more in Problems (1 warning, 7 notes in all)");
+    expect(moreNotesText(more, counts)).toBe("+3 more (1 warning, 7 notes in all)");
+  });
+});
+
+describe("the plan result line", () => {
+  const changes = (kinds: FileChange["kind"][]) => kinds.map((k, i) => change(`f${i}`, k, "sql-ddl/table:t"));
+  it("counts what Apply writes, then what already matches", () => {
+    expect(planReadyText({ changes: changes(["added", "added", "modified", "deleted", "unchanged", "unchanged", "kept"]) })).toBe(
+      "Plan ready: 4 files to write (2 added, 1 modified, 1 deleted), 3 unchanged",
+    );
+    expect(planReadyText({ changes: changes(["added"]) })).toBe("Plan ready: 1 file to write (1 added)");
+  });
+  it("says so when every file matches", () => {
+    expect(planReadyText({ changes: changes(["unchanged", "kept"]) })).toBe("Plan ready: nothing to write, every file matches");
+    expect(planReadyText({ changes: [] })).toBe("Plan ready: nothing to write, every file matches");
+  });
+  it("counts the files edited by hand after the rest, and never names the policy", () => {
+    expect(planReadyText({ changes: changes(["modified", "unchanged", "hand-edited", "conflict"]) })).toBe(
+      "Plan ready: 1 file to write (1 modified), 1 unchanged, 1 edited by hand, 1 in conflict (edited by hand)",
+    );
+    expect(planReadyText({ changes: changes(["conflict", "conflict"]) })).toBe("Plan ready: nothing to write, 2 in conflict (edited by hand)");
+  });
+});
+
+describe("plan diagnostics against the Problems panel", () => {
+  const d = (rule: string, severity: string, filePath: string | null, elementId: string | null = null, jsonPointer: string | null = "") => ({
+    rule,
+    severity,
+    message: `${rule} message`,
+    elementId,
+    filePath,
+    jsonPointer,
+  });
+  it("keeps only what the validation report does not hold, matching rule, element, file and pointer", () => {
+    const plan = [
+      d("MQ1003", "warning", ".maquettiste/maquettiste.json"),
+      d("MQ1010", "info", ".maquettiste/maquettiste.json", null, "/outputs/allow/0/commit"),
+      d("MQ9004", "warning", ".maquettiste/model/processes/a.json", "P1", "/states/0"),
+      d("MQ6024", "warning", "db/x.sql"),
+      d("MQ9004", "warning", ".maquettiste/model/processes/a.json", "P1", "/states/1"),
+    ];
+    const report = [
+      d("MQ1003", "warning", ".maquettiste/maquettiste.json"),
+      d("MQ1010", "info", ".maquettiste/maquettiste.json", null, "/outputs/allow/0/commit"),
+      // A severity override in the report does not make it another finding.
+      d("MQ9004", "error", ".maquettiste/model/processes/a.json", "P1", "/states/0"),
+    ];
+    const { generation, model, counts } = splitPlanDiagnostics(plan, report);
+    expect(generation.map((x) => `${x.rule} ${x.jsonPointer}`)).toEqual(["MQ6024 ", "MQ9004 /states/1"]);
+    expect(model).toHaveLength(3);
+    expect(counts).toEqual({ error: 0, warning: 2, info: 1 });
+  });
+  it("says how many model findings are in Problems, or that the plan stopped on model errors", () => {
+    expect(modelFindingsLine({ error: 0, warning: 2, info: 1 }, false)).toBe("3 model findings (2 warnings, 1 note) are in Problems");
+    expect(modelFindingsLine({ error: 0, warning: 1, info: 0 }, false)).toBe("1 model finding (1 warning) is in Problems");
+    expect(modelFindingsLine({ error: 2, warning: 1, info: 0 }, true)).toBe("Plan stopped: 2 model errors, see Problems");
+    expect(modelFindingsLine({ error: 1, warning: 0, info: 0 }, false)).toBe("1 model finding (1 error) is in Problems");
+    expect(modelFindingsLine({ error: 0, warning: 0, info: 0 }, true)).toBeNull();
   });
 });

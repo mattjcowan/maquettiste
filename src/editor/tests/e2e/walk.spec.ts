@@ -61,7 +61,7 @@ test("open, select Invoice, rename, problems, DDL, plan and apply", async ({ pag
   await workspace(page, "Generate");
   await page.getByTestId("plan").click();
   await expect(page.getByTestId("plan-summary")).toContainText("to add");
-  await expect(page.getByTestId("plan-result")).toContainText("succeeded");
+  await expect(page.getByTestId("plan-result")).toContainText("Plan ready");
   await page.getByTestId("apply").click();
   await expect(page.getByTestId("job-progress")).toBeVisible();
   const result = page.getByTestId("apply-result");

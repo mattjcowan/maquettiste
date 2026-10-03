@@ -367,6 +367,40 @@ public static class ModelEndpoints
         return Api.Json(result, Api.StatusOf(result.Outcome));
     });
 
+    /// <summary>
+    /// Rewrites model files in canonical form (<c>maquettiste format</c> from the editor): <c>paths</c> absent means every model file
+    /// and <c>maquettiste.json</c>. A path that is not a model file refuses the whole request (400) and nothing is written. The rewrite
+    /// goes through the store, so <c>model.changed</c> follows, and <c>project.changed</c> when <c>maquettiste.json</c> was rewritten.
+    /// </summary>
+    /// <param name="context">The request: <c>{ "paths": [...] }</c> or no body.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="events">The publisher.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the files rewritten and skipped, or 400.</returns>
+    [HttpPost("/api/model/format")]
+    public static Task<IResult> Format(HttpContext context, ModelStore store, EditorEvents events, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(events);
+        if (Api.Require(context, "editor") is { } forbidden)
+            return forbidden;
+        var (request, error) = await Api.ReadJsonAsync(context.Request, new ModelFormatRequest(null), ct).ConfigureAwait(false);
+        if (error is not null)
+            return error;
+        if (request!.Paths is { Count: > MaxFormatPaths } many)
+            return Api.BadRequest($"At most {MaxFormatPaths} paths can be formatted at once; {many.Count} were given.");
+        var result = await store.FormatAsync(request.Paths, ChangeSource.Editor, ct).ConfigureAwait(false);
+        if (result.Refused.Count > 0)
+            return Api.BadRequest("Only model files can be formatted (maquettiste.json, model/**/*.json): " + string.Join(", ", result.Refused) + ".");
+        var settings = await store.GetSettingsAsync(ct).ConfigureAwait(false);
+        if (result.Formatted.Contains(settings.Path, StringComparer.Ordinal))
+            await events.OnSettingsChangedAsync(settings.Hash, ct).ConfigureAwait(false);
+        return Api.Json(result);
+    });
+
+    private const int MaxFormatPaths = 1000;
+
     /// <summary>Every reference to the element or one of its sub-elements from another element.</summary>
     /// <param name="context">The request.</param>
     /// <param name="id">The element or sub-element id.</param>
@@ -414,3 +448,7 @@ public sealed record DeletePlanRequest(IReadOnlyList<string>? Ids, string? Resol
 /// <summary>The body of <c>POST /api/model/elements/read</c> (E5b).</summary>
 /// <param name="Ids">Element or sub-element ids, at most 200.</param>
 public sealed record ElementReadRequest(IReadOnlyList<string>? Ids);
+
+/// <summary>The body of <c>POST /api/model/format</c>.</summary>
+/// <param name="Paths">Repo-relative model files, at most 1000; absent for every model file and <c>maquettiste.json</c>.</param>
+public sealed record ModelFormatRequest(IReadOnlyList<string>? Paths);

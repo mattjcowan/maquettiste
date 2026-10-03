@@ -543,6 +543,22 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         return FromOutcome(result.Outcome, result, settings);
     }, ct);
 
+    /// <summary>Rewrites model files in canonical form (formatModel).</summary>
+    /// <param name="paths">Repo-relative model files; absent for every one.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The files rewritten and skipped.</returns>
+    [McpServerTool(Name = "format_model", Title = "Rewrite model files in canonical form", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Rewrites model files in canonical form, as maquettiste format does, so their MQ1003 warnings go away (maquettiste.json also loses the retired commit flag, MQ1010). Content does not change; a file already canonical is untouched and a file that does not pass its schema is listed in skipped. A path that is not a model file is refused and nothing is written.")]
+    public Task<CallToolResult> FormatModel(
+        [Description("Repo-relative model files (.maquettiste/maquettiste.json, .maquettiste/model/...); default: every model file.")] string[]? paths = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        var result = await _store.FormatAsync(paths, ChangeSource.Cli, ct).ConfigureAwait(false);
+        return result.Refused.Count > 0
+            ? BadRequest("Only model files can be formatted (maquettiste.json, model/**/*.json): " + string.Join(", ", result.Refused) + ".")
+            : Ok(result);
+    }, ct);
+
     /// <summary>Plans generation (startPlan, run to completion).</summary>
     /// <param name="packs">Pack names.</param>
     /// <param name="force">Whether to ignore the unit cache.</param>

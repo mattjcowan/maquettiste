@@ -405,6 +405,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model/format": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rewrite model files in canonical form
+         * @description What `maquettiste format` does, from the editor: rewrites `maquettiste.json` (dropping the retired `commit` flag of an
+         *     `outputs.allow` entry, MQ1010), the element files under `model/` and the locale shards in canonical form, so their MQ1003
+         *     findings go away. `paths` absent rewrites every model file. A file already in canonical form is not touched; a file that is
+         *     not valid enough to rewrite (not JSON, no known kind, a schema error) is left as it is and listed in `skipped`. The files are
+         *     written together through the model store, so `model.changed` follows (and `project.changed` when `maquettiste.json` was
+         *     rewritten). A format changes no content, only bytes, so it adds no undo step. A path that is not a model file (outside the
+         *     model folder, an extension, a pack file, a missing file) refuses the request with 400 and nothing is written.
+         */
+        post: operations["formatModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/model/batch": {
         parameters: {
             query?: never;
@@ -2497,6 +2523,20 @@ export interface components {
         DeletePlanRequest: {
             ids: components["schemas"]["Ulid"][];
             resolution?: components["schemas"]["DeleteResolution"];
+        };
+        ModelFormatRequest: {
+            /** @description Repo-relative model files (`.maquettiste/maquettiste.json`, `.maquettiste/model/...`); absent for every model file. */
+            paths?: string[];
+        };
+        ModelFormatResult: {
+            /** @description The repo-relative paths rewritten in canonical form, ordinal. */
+            formatted: string[];
+            /** @description The files left as they are because they are not valid enough to rewrite (validate gives the reasons). */
+            skipped: string[];
+            /** @description Always empty in a 200 answer (a refused path is a 400). */
+            refused: string[];
+            /** @description The model files considered. */
+            total: number;
         };
         DeletePlan: {
             /** @description The elements the delete names. */
@@ -8805,6 +8845,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeletePlan"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    formatModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "paths": [
+                 *         ".maquettiste/maquettiste.json"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["ModelFormatRequest"];
+            };
+        };
+        responses: {
+            /** @description The files rewritten and the files left as they are. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "formatted": [
+                     *         ".maquettiste/maquettiste.json"
+                     *       ],
+                     *       "skipped": [],
+                     *       "refused": [],
+                     *       "total": 1
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelFormatResult"];
                 };
             };
             400: components["responses"]["BadRequest"];

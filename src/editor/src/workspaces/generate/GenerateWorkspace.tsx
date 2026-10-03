@@ -8,8 +8,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { CircleAlert, CircleCheck, Play, Square, Wand2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
-import { keys, useJob, useJobs, usePacks, usePlan, useProject, useSettings } from "@/api/queries";
-import type { JobInfo } from "@/api/types";
+import { keys, useJob, useJobs, usePacks, usePlan, useProject, useSettings, useValidation } from "@/api/queries";
+import type { Diagnostic, JobInfo } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
 import { isFinished, jobOutcome } from "@/realtime/jobs";
@@ -23,7 +23,9 @@ import { PackPicker, type PickerPack } from "./PackPicker";
 import { ExplainForm, PlanChanges, type ExplainAsk, PlanSummary, UnchangedUnits, WhyPanel } from "./PlanExplain";
 import { closePackTab, EXTENSIONS_TAB } from "./packTabs";
 import { ExtensionsScreen } from "./ExtensionsScreen";
-import { moreNotesText, nothingToWrite, orderDiagnostics, type PlanNote } from "./planModel";
+import { modelFindingsLine, moreNotesText, nothingToWrite, orderDiagnostics, planReadyText, splitPlanDiagnostics, type PlanNote } from "./planModel";
+import { DEFAULT_PLAN_OPTIONS, handEditNote, planRequest, type PlanOptions } from "./planOptions";
+import { PlanOptionsButton } from "./PlanOptionsButton";
 import { discardDrafts, hasUnsaved } from "./drafts";
 
 /** Kinds an apply leaves alone: an unchanged file, and a companion that is kept as it is on disk. */
@@ -86,6 +88,8 @@ function PlanScreen() {
   const chosen = generation.chosenPacks;
   const setChosen = (next: string[]) => store.getState().setGeneration({ chosenPacks: next });
   const [busy, setBusy] = useState(false);
+  // Options apply to the next plan only (planOptions.ts); they are not saved and Apply runs with the plan's own.
+  const [options, setOptions] = useState<PlanOptions>(DEFAULT_PLAN_OPTIONS);
   // A disabled pack shows unticked in the picker, so a stored choice that names one does not send it.
   const selectedPacks = chosen ? chosen.filter((name) => enabled.includes(name)) : enabled;
   const summaries = usePacks();
@@ -125,7 +129,7 @@ function PlanScreen() {
     try {
       store.getState().setGeneration({ planJob: null, planId: null, applyJob: null });
       store.getState().showDiff(null);
-      const job = await jobs.startPlan({ packs: selectedPacks });
+      const job = await jobs.startPlan(planRequest(selectedPacks, options));
       store.getState().setGeneration({ planJob: job.id, planId: isFinished(job) ? (job.planResult?.plan?.id ?? null) : null });
     } catch (error) {
       store.getState().notify(`The plan could not start: ${(error as Error).message}`, "error");
@@ -183,6 +187,9 @@ function PlanScreen() {
   const applied = applyJob.data;
   const applyOutcome = applied && isFinished(applied) ? jobOutcome(applied) : null;
   const handDefault = settings.data?.settings.handEdits;
+  const planOutcome = planJob.data && isFinished(planJob.data) ? jobOutcome(planJob.data) : null;
+  const planReady = planOutcome === "succeeded" || planOutcome === "conflicts";
+  const handNote = applied && plan.data ? handEditNote(plan.data.changes, plan.data.request.handEdits, handDefault, applyOutcome) : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="plan-screen">
@@ -191,6 +198,7 @@ function PlanScreen() {
         <span className="text-13 font-semibold">Generate</span>
         <PackPicker packs={pickerPacks} selected={selectedPacks} onChange={setChosen} />
         <div className="ml-auto flex items-center gap-2">
+          <PlanOptionsButton value={options} onChange={setOptions} projectDefault={handDefault} disabled={!!running} />
           {running ? (
             <Button size="sm" onClick={() => void cancel()} data-testid="cancel-job">
               <Square /> Cancel
@@ -214,10 +222,19 @@ function PlanScreen() {
         <div className="flex min-h-0 flex-col gap-1.5 overflow-hidden p-2">
           {running ? <Progress job={running} /> : null}
           {planJob.data && isFinished(planJob.data) ? (
-            <div className="flex items-center gap-2 text-13" data-testid="plan-result">
-              <span>Plan</span>
-              <OutcomeBadge job={planJob.data} />
-              {handDefault ? <span className="text-12 text-secondary">hand edits: {handDefault}</span> : null}
+            <div className="flex items-center gap-2 text-13" data-testid="plan-result" role="status">
+              {planReady ? (
+                <>
+                  <CircleCheck className="size-3.5 shrink-0 text-success" aria-hidden />
+                  <span>{plan.data && generation.planId ? planReadyText(plan.data) : "Plan ready"}</span>
+                </>
+              ) : (
+                <>
+                  <span>Plan</span>
+                  <OutcomeBadge job={planJob.data} />
+                  {planJob.data.error ? <span className="text-12 text-secondary">{planJob.data.error}</span> : null}
+                </>
+              )}
             </div>
           ) : null}
           {applied && isFinished(applied) ? (
@@ -231,6 +248,11 @@ function PlanScreen() {
                   </span>
                 ) : null}
               </div>
+              {handNote ? (
+                <p className="text-12 text-secondary" data-testid="apply-hand-edits">
+                  {handNote}
+                </p>
+              ) : null}
               {applyOutcome === "stale" ? (
                 <div className="text-12">
                   <p>The model or a planned file changed since planning; nothing was written.</p>
@@ -257,7 +279,10 @@ function PlanScreen() {
                 </ul>
               ) : null}
               {applyOutcome === "conflicts" ? (
-                <p className="text-12">Some files were edited by hand; resolve them or plan with hand edits set to overwrite or skip.</p>
+                <p className="text-12">
+                  Some generated files were edited by hand and nothing was written for them. Keep your edits elsewhere, or plan again with Options, If a
+                  generated file was edited by hand: Overwrite it or Keep it and skip.
+                </p>
               ) : null}
             </div>
           ) : null}
@@ -265,7 +290,7 @@ function PlanScreen() {
             <>
               <SectionTitle>Plan summary</SectionTitle>
               <PlanSummary plan={plan.data} />
-              {plan.data.diagnostics.length ? <PlanNotes diagnostics={plan.data.diagnostics} /> : null}
+              {plan.data.diagnostics.length ? <PlanNotes diagnostics={plan.data.diagnostics} stopped={planOutcome === "invalid"} /> : null}
               <PlanChanges planId={generation.planId} plan={plan.data} onExplain={(a) => setAsk((prev) => ({ ...a, seq: (prev?.seq ?? 0) + 1 }))} />
             </>
           ) : generation.planJob && !planJob.data ? (
@@ -434,13 +459,34 @@ export function GenerateWorkspace() {
 const NOTE_TONE: Record<string, string> = { error: "text-danger", warning: "text-warning", info: "text-secondary" };
 const NOTE_BADGE: Record<string, "danger" | "warning" | "neutral"> = { error: "danger", warning: "warning", info: "neutral" };
 
-function PlanNotes({ diagnostics }: { diagnostics: readonly PlanNote[] }) {
-  const { shown, more, counts } = orderDiagnostics(diagnostics);
+function PlanNotes({ diagnostics, stopped }: { diagnostics: readonly Diagnostic[]; stopped: boolean }) {
+  const { store } = useServices();
+  const validation = useValidation();
+  // Model findings are the Problems panel's: the plan lists only what is about generation and counts the rest in one line.
+  const { generation, counts: model } = useMemo(() => splitPlanDiagnostics(diagnostics, validation.data?.diagnostics ?? []), [diagnostics, validation.data]);
+  const { shown, more, counts } = orderDiagnostics<PlanNote>(generation);
+  const line = modelFindingsLine(model, stopped);
   return (
     <ul className="text-12" data-testid="plan-notes">
+      {line ? (
+        <li className={cn("flex items-center gap-2", stopped && model.error ? "text-danger" : "text-secondary")} data-testid="plan-model-findings">
+          <span>{line}</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-5 px-1.5"
+            title="Open the Problems panel"
+            onClick={() => store.getState().setBottomTab("problems")}
+            data-testid="plan-open-problems"
+          >
+            Open Problems
+          </Button>
+        </li>
+      ) : null}
       {shown.map((d, i) => (
         <li key={i} className={NOTE_TONE[d.severity] ?? "text-secondary"} data-severity={d.severity}>
           <Badge tone={NOTE_BADGE[d.severity] ?? "neutral"}>{d.rule}</Badge> {d.message}
+          {d.filePath ? <span className="ml-1 font-mono text-11 text-secondary">{d.filePath}</span> : null}
         </li>
       ))}
       {more ? <li className="text-secondary">{moreNotesText(more, counts)}</li> : null}
