@@ -30,8 +30,13 @@ name:
 ## The assistant's AI provider
 
 The editor's assistant (docs/user-guide.md, "The assistant") uses the AI the host gives the site; Maquettiste never holds a key.
-The host's management UI answers on the same port under the host name `localhost` (`http://localhost:8080/`, sign in as the host's
-administrator): add a provider and its key under **AI › providers**, then pick it and the model under **Sites ›
+It is one container: the image is static-site-hosting with the editor site in it, and the host's management UI answers on the
+same port under the host name `localhost` (`http://localhost:8080/`), while the editor answers under `maquettiste.localhost`.
+Sign in as `admin` with the password the host generated on first boot (it asks for a new one at the first sign-in):
+
+    docker compose -f <maquettiste>/docker/compose.yaml --project-directory . exec maquettiste cat /data/config/bootstrap-password.txt
+
+Then add a provider and its key under **AI › providers**, and pick it and the model under **Sites ›
 maquettiste.localhost › AI**. The compose file passes `MAQUETTISTE_HOST_AI_URL` (default `http://localhost:${MAQUETTISTE_PORT:-8080}/`)
 so Settings › Assistant links there.
 

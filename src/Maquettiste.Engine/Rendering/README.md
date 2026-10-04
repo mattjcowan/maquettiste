@@ -42,7 +42,8 @@ golden tree).
 - **Context** (section 9): `StrictVariables`, relaxed member access, strict target access, `LoopLimit`/`RecursiveLimit` from
   `SandboxLimits`, `NewLine = "\n"`, invariant culture, snake_case names, `MemberFilter` that admits nothing (member access goes
   through the renderer's own accessors), regex timeout of `ScriptSandbox.RegexTimeout` (the script limit capped at 250 ms, as for scripts, since a match cannot be
-  interrupted by the token; a timeout fails the unit with MQ6007), and output/string limits of 64 Mi
+  interrupted by the token; `regex.match`, `matches`, `replace` and `split` are pure, so a timeout is retried once unless the
+  render is being cancelled, as for scripts; a second timeout fails the unit with MQ6007), and output/string limits of 64 Mi
   characters that throw (MQ6007) instead of Scriban's default silent truncation at 1 MiB. Variables: `model`, `element`, the
   scope alias (`package`, `entity`, `relation`, `enum`, `value_object`, `table`; other kinds use their kind name with `_`),
   `pack` (`name`, `version`, `params`), `mapping`, `mappings`, `schema_diff`, `hints`, `data`, `unit` (`id`, `key`); all are

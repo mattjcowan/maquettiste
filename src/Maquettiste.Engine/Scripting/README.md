@@ -50,6 +50,16 @@ Additions beyond section 10, all to keep the host process safe or the output det
   (a global `replace`, `split`, `matchAll`) observes the time limit and both tokens between matches. A regex timeout while a
   token is cancelled surfaces as cancellation. Because `exec` is no longer the built-in, Jint takes its spec-compliant slow
   path for `replace`, `split` and `matchAll`; results are the same.
+- The match bound is wall-clock time, so a thread that a busy machine does not schedule for 250 ms times out even on a trivial
+  pattern (CI saw `/\?$/.test(type)` fail once with MQ6007 while nine workflows shared the runner). The guard therefore tries a
+  timed-out match once more (`RegexRetry`) when the call cannot have run script code: the receiver is a plain `RegExp` (the
+  intrinsic prototype, no own property but a numeric `lastIndex`) and every argument is a primitive (no `toString`, no
+  replacer function). It restores `lastIndex` and checks the constraints (time limit, statements, both tokens) before the
+  second attempt, so the result is the one an uninterrupted match gives and cancellation is still observed within 250 ms. A
+  timeout that an inner match already retried (the `exec` calls inside a global `replace`) is not retried again by the call
+  around it. A catastrophic pattern times out twice and fails with MQ6007 after about 500 ms. Raising the 250 ms bound
+  instead was rejected: a match cannot be interrupted, so the bound is what keeps cancellation inside its one-second budget.
+  The template `regex` functions retry the same way (Rendering README).
 - `Intl.DateTimeFormat` is replaced by a constructor that adds `timeZone: 'UTC'` when the options give none (Jint takes the
   default from the host otherwise). Prototype, statics, `instanceof` and subclassing are unchanged; an explicit named zone
   still resolves through the host's time zone data.
@@ -139,7 +149,9 @@ id. `ScriptErrorException` is `internal` (its consumers, W2, W5 and W6, are in t
   guards above cover the built-ins that allocate most in one step, but other single built-in calls (a huge `join` separator,
   `JSON.stringify` of a large graph) can overshoot before the next check.
 - A regular expression running at the moment of cancellation can hold the thread for up to 250 ms (a .NET regex cannot be
-  interrupted; its match timeout is the bound).
+  interrupted; its match timeout is the bound). The retry does not extend this: cancellation is checked before it.
+- A stall longer than 250 ms that hits both attempts of one match still fails it with MQ6007; the retry makes that rare, not
+  impossible.
 - Because a converted result now counts toward the memory limit, a helper whose result is close to `ScriptMemoryBytes` can hit
   the limit during conversion where it did not before.
 - Rule scripts are recognised by path (see the table), since `CreatePool` does not say which kind of pool it builds. If W1

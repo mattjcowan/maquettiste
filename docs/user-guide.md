@@ -2222,7 +2222,9 @@ project (the newest 50, each capped in size, oldest exchanges first out); pick o
 or **Clear conversation** to delete it.
 
 **Setting up the provider (in the host, never in Maquettiste).** Maquettiste never holds an AI key. An administrator of the
-host sets it up once:
+host sets it up once, signed in to the host's management UI at `http://localhost:<port>/` (the same container and port as the
+editor; with the Docker image, the user is `admin` and the first password is in `/data/config/bootstrap-password.txt`, see
+docker/README.md):
 
 1. In the host's management UI, **AI › providers**: add a provider (kind `openai` for OpenAI and any compatible service such
    as a LiteLLM proxy, Ollama, OpenRouter or xAI; kind `anthropic` for Anthropic), its base URL, key and default model. The key

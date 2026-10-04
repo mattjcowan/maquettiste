@@ -9,11 +9,14 @@
 //
 // Every write of one table runs after the earlier ones (`enqueueTableWrite`): the column grid, the inspector, the table
 // editor's tabs and the explorer share one queue per table, so a second edit made before the first stored the table never
-// stores it twice.
+// stores it twice. A table stored in this session keeps its queue under its file's id, so an edit made on the file (the screens
+// caught up) still waits for the edit that stored it. While the database view still lists the table under the key it was
+// stored from, the screens show it by that key (`shownTable`) and keep their place (`tableIdentity`): an edit being typed when
+// the store lands is neither dropped nor moved to another table.
 import { useMemo } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
-import { applyBatchResult, databaseViewQuery, elementQuery, invalidateResolved, keys, useIndex } from "@/api/queries";
+import { applyBatchResult, databaseViewQuery, elementQuery, indexQuery, invalidateResolved, keys, useIndex } from "@/api/queries";
 import type { ElementSummary, ModelJson, TableView } from "@/api/types";
 import { clone } from "@/lib/json";
 import type { AppServices as Services } from "@/app/context";
@@ -27,9 +30,9 @@ type Json = Record<string, unknown>;
 /** Per table (database and key): the queue of its writes. */
 const queues = new Map<string, Promise<unknown>>();
 
-/** Runs `write` after the table's earlier writes (whichever screen asked for them); resolves to what it resolves to. */
+/** Runs `write` after the table's earlier writes (whichever screen asked for them, by its key or its file's); resolves to what it resolves to. */
 export function enqueueTableWrite<T>(database: string, key: string, write: () => Promise<T>): Promise<T> {
-  const queueKey = `${database}|${key}`;
+  const queueKey = `${database}|${tableIdentity(key)}`;
   const next = (queues.get(queueKey) ?? Promise.resolve()).catch(() => undefined).then(write);
   const settled = next.catch(() => undefined);
   queues.set(queueKey, settled);
@@ -62,6 +65,24 @@ export function useStorableTables(database: string | null, tables: readonly Tabl
   );
 }
 
+/**
+ * The element a laid-out table would be stored for (what the conversion names), read now: an edit made before the screen had
+ * the conversion's status (a slow answer) still stores the table instead of adjusting it with another file. `fresh` reads the
+ * status again; otherwise the status at hand is used, read only when there is none yet.
+ */
+export async function storableOwner(
+  qc: QueryClient,
+  database: string,
+  table: Pick<TableView, "key" | "origin" | "entityId" | "isJunction">,
+  fresh = true,
+): Promise<string | undefined> {
+  if (table.origin !== "synthesized") return undefined;
+  const query = { queryKey: statusKey(database), queryFn: () => endpoints.getMaterializeStatus(database) };
+  const status = fresh ? await qc.fetchQuery({ ...query, staleTime: 0 }) : await qc.ensureQueryData(query);
+  const rows = qc.getQueryData<ElementSummary[]>(keys.index) ?? (await qc.fetchQuery(indexQuery).catch(() => undefined));
+  return storableTables([table], database, status.entities, rows).get(table.key);
+}
+
 /** The tables stored in this session: old key → the file's id, so an edit queued before the screen caught up lands on the file. */
 const storedKeys = new Map<string, string>();
 /** The resolved table each of them was (its columns by their old keys), for such an edit's column names. */
@@ -69,6 +90,24 @@ const storedViews = new Map<string, TableView>();
 
 /** The file a table was stored as in this session, if it was. */
 export const storedFileOf = (key: string): string | undefined => storedKeys.get(key);
+
+/** The key a table file was stored from in this session, if it was. */
+const storedOriginOf = (file: string): string | undefined => {
+  for (const [key, stored] of storedKeys) if (stored === file) return key;
+  return undefined;
+};
+
+/** One table across its store in this session: the key it was stored from, else its own key (for a queue or a screen's mount). */
+export const tableIdentity = (key: string): string => storedOriginOf(key) ?? key;
+
+/** The table `key` names in `tables`: a file stored in this session is shown by the key it was stored from until the view lists it. */
+export function shownTable(tables: readonly TableView[] | undefined, key: string | null | undefined): TableView | null {
+  if (!tables || !key) return null;
+  const found = tables.find((t) => t.key === key);
+  if (found) return found;
+  const origin = storedOriginOf(key);
+  return origin ? (tables.find((t) => t.key === origin) ?? null) : null;
+}
 
 /** The file a table was stored as in this session, if it still is one (an undo of the store lays the table out again). */
 export async function liveStoredFile(qc: QueryClient, key: string): Promise<string | undefined> {
@@ -268,8 +307,7 @@ export function updateTable(
     const view = await qc.fetchQuery(databaseViewQuery(qc, database));
     const table = view.view?.tables.find((t) => t.key === key) ?? storedViews.get(key);
     if (!table) return false;
-    const status = await qc.fetchQuery({ queryKey: statusKey(database), queryFn: () => endpoints.getMaterializeStatus(database), staleTime: 0 });
-    const owner = storableTables([table], database, status.entities, qc.getQueryData<ElementSummary[]>(keys.index)).get(key);
+    const owner = await storableOwner(qc, database, table);
     if (!owner && !storedKeys.has(key)) {
       store.getState().notify("This table's keys and constraints are set by the model; they cannot be edited here yet.", "error");
       return false;

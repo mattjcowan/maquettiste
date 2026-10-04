@@ -160,7 +160,9 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
 
     /// <summary>
     /// The longest a single regular expression match may run: the script time limit, capped at 250 ms so a catastrophic
-    /// pattern cannot hold the thread past the one-second cancellation budget (host-contracts 26).
+    /// pattern cannot hold the thread past the one-second cancellation budget (host-contracts 26). The bound is wall-clock
+    /// time, so a timed-out match is tried once more before it fails (<see cref="RegexRetry"/>); cancellation is checked
+    /// between the attempts, so the budget holds.
     /// </summary>
     /// <param name="limits">The limits.</param>
     /// <returns>The match timeout.</returns>
@@ -274,7 +276,9 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     /// <c>'...'.match(string)</c> builds) a fixed 5 s match timeout whatever the options say, so the methods that run a match
     /// re-create an over-long .NET regex with <see cref="RegexTimeout(SandboxLimits)"/> first. Each of them also checks the
     /// engine's constraints, so a built-in that matches many times in a row (a global <c>replace</c>, <c>split</c>,
-    /// <c>matchAll</c>) still observes the time limit and both cancellation tokens between matches.
+    /// <c>matchAll</c>) still observes the time limit and both cancellation tokens between matches. A match timeout is retried
+    /// once (<see cref="RegexRetry"/>) when the call ran no script code (<see cref="IsPlainMatch"/>) and the constraints, checked
+    /// again, still allow it, so a thread stalled by a busy machine does not fail a trivial pattern.
     /// </summary>
     private void GuardRegExp()
     {
@@ -302,10 +306,49 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
                     regExp.Value = retimed.GetValue(regex, r => new Regex(r.ToString(), r.Options, bound));
                 }
 
-                return _engine.Call(original, thisObj, args);
+                var plain = IsPlainMatch(prototype, thisObj, args);
+                var lastIndex = plain ? ((JsRegExp)thisObj).Get(LastIndex) : JsValue.Undefined;
+                return RegexRetry.Run(() => _engine.Call(original, thisObj, args), () =>
+                {
+                    if (!plain)
+                        return false;
+                    _engine.Constraints.Check();
+                    ((JsRegExp)thisObj).Set(LastIndex, lastIndex, throwOnError: false);
+                    return true;
+                });
             }, length, PropertyFlag.Configurable);
             prototype.DefineOwnProperty(key, new PropertyDescriptor(guarded, PropertyFlag.Writable | PropertyFlag.Configurable));
         }
+    }
+
+    private static readonly JsString LastIndex = new("lastIndex");
+
+    /// <summary>
+    /// Whether a match call can run no script code, so a second attempt after a match timeout is invisible: the receiver is a
+    /// plain <c>RegExp</c> (the intrinsic prototype, no own property but a numeric <c>lastIndex</c>, so no own <c>exec</c>,
+    /// <c>constructor</c> or <c>flags</c>) and every argument is a primitive (no <c>toString</c> to call, no replacer function).
+    /// The only state a first attempt can change is <c>lastIndex</c>, which the retry restores.
+    /// </summary>
+    private static bool IsPlainMatch(ObjectInstance prototype, JsValue thisObj, JsValue[] args)
+    {
+        if (thisObj is not JsRegExp regExp || !ReferenceEquals(regExp.Prototype, prototype))
+            return false;
+        foreach (var key in regExp.GetOwnPropertyKeys(Types.String | Types.Symbol))
+        {
+            if (key is not JsString name || !string.Equals(name.ToString(), "lastIndex", StringComparison.Ordinal))
+                return false;
+        }
+
+        var descriptor = regExp.GetOwnProperty(LastIndex);
+        if (descriptor == PropertyDescriptor.Undefined || descriptor.IsAccessorDescriptor() || descriptor.Value is not JsNumber)
+            return false;
+        foreach (var arg in args)
+        {
+            if (arg is ObjectInstance)
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>

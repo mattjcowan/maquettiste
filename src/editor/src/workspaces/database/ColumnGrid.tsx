@@ -13,6 +13,7 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { columnText, physicalHint, type ColumnField } from "./columnEdits";
 import { useTableFile } from "./useTableFile";
+import { tableIdentity } from "./storeTables";
 import { tableKeyOf } from "@/search/engine";
 
 type GridColumn = {
@@ -78,7 +79,8 @@ export function ColumnPanel({ table, databaseId }: { table: TableView | null; da
           {collapsed ? <ChevronUp /> : <ChevronDown />}
         </Button>
       </div>
-      {!collapsed && table && databaseId ? <ColumnGrid key={table.key} table={table} databaseId={databaseId} /> : null}
+      {/* Keyed by the table across its store as a file: a cell being edited when the store lands stays open. */}
+      {!collapsed && table && databaseId ? <ColumnGrid key={tableIdentity(table.key)} table={table} databaseId={databaseId} /> : null}
     </section>
   );
 }
@@ -89,7 +91,10 @@ export function ColumnGrid({ table, databaseId }: { table: TableView; databaseId
   const { write, busy } = useTableFile(table, databaseId);
   const columns = table.columns;
   // The row the inspector shows: the one picked here (a click, the arrow keys), none until then.
-  const picked = useEditor(store, (s) => (s.inspectedTable?.key === table.key && s.inspectedTable.database === databaseId ? s.inspectedTable.column : null));
+  // The inspected table is this one by its key, or by its file's while the grid still shows it by the key it was stored from.
+  const isThisTable = (shown: { key: string; database: string } | null) =>
+    !!shown && shown.database === databaseId && tableIdentity(shown.key) === tableIdentity(table.key);
+  const picked = useEditor(store, (s) => (s.inspectedTable && isThisTable(s.inspectedTable) ? s.inspectedTable.column : null));
   const [active, setActiveCell] = useState(() => ({
     row: Math.max(
       0,
@@ -103,7 +108,7 @@ export function ColumnGrid({ table, databaseId }: { table: TableView; databaseId
     if (key === picked) return;
     // The table's editor shows the grid without the table inspected yet: the pick inspects it with that column.
     const shown = store.getState().inspectedTable;
-    if (shown?.key === table.key && shown.database === databaseId) store.getState().inspectColumn(key);
+    if (isThisTable(shown)) store.getState().inspectColumn(key);
     else store.getState().inspectTable({ database: databaseId, key: table.key, column: key }, tableKeyOf(databaseId, table.key));
   };
   const [editing, setEditing] = useState<{ value: string } | null>(null);
@@ -111,14 +116,16 @@ export function ColumnGrid({ table, databaseId }: { table: TableView; databaseId
   const editingRef = useRef(editing);
   editingRef.current = editing;
   const gridRef = useRef<HTMLTableElement>(null);
-  const pendingFocus = useRef(false);
+  // What takes the focus once rendered: the active cell, or the editor just opened (a render that does not show it yet, on a busy
+  // screen, leaves the request for the one that does).
+  const pendingFocus = useRef<"cell" | "editor" | null>(null);
 
   useEffect(() => {
-    if (!pendingFocus.current) return;
+    if (!pendingFocus.current || (pendingFocus.current === "editor" && !editing)) return;
     const cell = gridRef.current?.querySelector<HTMLElement>(`[data-cell="${active.row}:${active.col}"]`);
     const focusTarget = editing ? cell?.querySelector<HTMLElement>("input, select, textarea") : cell;
     if (!focusTarget) return;
-    pendingFocus.current = false;
+    pendingFocus.current = null;
     focusTarget.focus();
     // The caret goes after the text, so typing over a cell continues the character that opened its editor.
     if (focusTarget instanceof HTMLInputElement || focusTarget instanceof HTMLTextAreaElement)
@@ -127,7 +134,7 @@ export function ColumnGrid({ table, databaseId }: { table: TableView; databaseId
 
   const focusCell = (row: number, col: number) => {
     setActive({ row: Math.max(0, Math.min(columns.length - 1, row)), col: Math.max(0, Math.min(GRID_COLUMNS.length - 1, col)) });
-    pendingFocus.current = true;
+    pendingFocus.current = "cell";
   };
 
   const valueOf = (column: ColumnView, key: GridColumn["key"]): string => (key === "flags" || key === "nullable" ? "" : columnText(column, key));
@@ -141,7 +148,7 @@ export function ColumnGrid({ table, databaseId }: { table: TableView; databaseId
       return;
     }
     setEditing({ value: initial ?? valueOf(column, gc.key) });
-    pendingFocus.current = true;
+    pendingFocus.current = "editor";
   };
 
   const commit = (move: "down" | "right" | "left" | "none" | "blur", value = editingRef.current?.value) => {
@@ -203,8 +210,10 @@ export function ColumnGrid({ table, databaseId }: { table: TableView; databaseId
           </tr>
         </thead>
         <tbody>
+          {/* Rows by position, as the active cell is: a table stored as a file gives its columns new keys, and the row being
+              edited keeps its editor. */}
           {columns.map((column, r) => (
-            <tr key={column.key} className="h-[var(--mq-row-h)] border-t border-default" data-testid={`column-row-${column.name}`}>
+            <tr key={r} className="h-[var(--mq-row-h)] border-t border-default" data-testid={`column-row-${column.name}`}>
               {GRID_COLUMNS.map((gc, c) => {
                 const isActive = active.row === r && active.col === c;
                 const isEditing = isActive && editing !== null;

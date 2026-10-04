@@ -46,6 +46,7 @@ import { Splitter } from "@/components/ui/splitter";
 import { LIMITS } from "@/state/layout";
 import { ColumnPanel } from "./ColumnGrid";
 import { StoreTablesBanner } from "./StoreTablesBanner";
+import { shownTable } from "./storeTables";
 import { databaseTargetOf, ddlPreviewCaption, ddlPreviewTarget, emptyObjectUnitNote, NO_DDL_UNIT, type DdlObject } from "./ddlPreview";
 import { DATABASE_CREATE, DATABASE_CREATE_LABELS } from "@/explorer/databaseCreate";
 // The diagram designer (foreign keys by dragging, a picked key shown in the inspector, Delete, New table on the canvas, the
@@ -630,7 +631,7 @@ function DatabaseCanvas() {
             {designer.overlays}
           </div>
           {/* The selected table's columns, editable (a table not stored as a file yet is stored on its first edit). */}
-          <ColumnPanel table={allTables.find((t) => t.key === selectedTable) ?? null} databaseId={activeDatabase} />
+          <ColumnPanel table={shownTable(allTables, selectedTable)} databaseId={activeDatabase} />
         </div>
         {ddlCollapsed ? <EdgeToggle panel="ddl" side="right" /> : null}
         {!ddlCollapsed && (

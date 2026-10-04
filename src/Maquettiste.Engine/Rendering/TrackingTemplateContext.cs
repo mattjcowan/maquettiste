@@ -40,7 +40,8 @@ internal sealed class TrackingTemplateContext : TemplateContext
         MemberRenamer = static member => Text.Casing.Snake(member.Name);
         MemberFilter = static _ => false;
         // A regex match cannot be interrupted by the token, so it gets the scripts' bound (the script limit capped at 250 ms) to keep
-        // cancellation inside its one-second budget (host-contracts 26); a timeout fails the unit with MQ6007.
+        // cancellation inside its one-second budget (host-contracts 26); the regex functions retry a timeout once (a stalled
+        // thread), and a second one fails the unit with MQ6007.
         RegexTimeOut = Scripting.ScriptSandbox.RegexTimeout(limits);
         LimitToString = MaxTextLength;
         OnStringLimit = ScriptLimitBehavior.Throw;

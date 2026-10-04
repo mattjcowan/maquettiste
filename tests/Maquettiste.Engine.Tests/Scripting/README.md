@@ -6,7 +6,10 @@ hand (`ResolvedFixture`) and element documents with `ModelBuilder`, so they need
 - `SandboxRestrictionTests`: no CLR, host, module or file access; no string compilation; statement, time, recursion and memory
   limits (MQ6007) that `try`/`catch` cannot swallow; a catastrophic regular expression (literal, `new RegExp`, and through
   `match`, `search`, `replace`, `split`, `matchAll`, the `v` and `u` flags) stops within one second under the default limits
-  and within one second of cancelling the call; frozen globals; a faulted engine is replaced.
+  and within one second of cancelling the call; a match that times out once (a simulated stall, `RegexRetry.SimulatedStalls`)
+  is retried with the same result, at most once, never when the call may have run script code (an object argument, a replacer
+  function, an own property on the `RegExp`), and not again around an inner match that already retried; frozen globals; a
+  faulted engine is replaced.
 - `SandboxRuntimeTests`: a runaway script stops within one second of cancelling the call token or the pool's run token;
   determinism (fixed clock, seeded `Math.random`, host-culture independence, UTC as the default zone of `Intl.DateTimeFormat`
   and `Temporal.Now`, same output twice); pooling under parallel use. The time zone test can only fail on a host whose zone

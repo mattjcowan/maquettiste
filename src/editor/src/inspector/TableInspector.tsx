@@ -36,7 +36,7 @@ import {
 } from "@/workspaces/database/columnEdits";
 import { useTableFile } from "@/workspaces/database/useTableFile";
 import { useTableDoc, type TableDoc } from "@/workspaces/database/useTableDoc";
-import { storeTables } from "@/workspaces/database/storeTables";
+import { shownTable, storeTables, tableIdentity } from "@/workspaces/database/storeTables";
 import { openTableEditor } from "@/workspaces/database/openTableEditor";
 import { openEditForeignKey } from "@/workspaces/database/foreignKeys";
 import {
@@ -94,7 +94,9 @@ export function TableInspector({
   part?: TablePart | null;
 }) {
   const view = useDatabaseView(database);
-  const table = useMemo(() => view.data?.view?.tables.find((t) => t.key === tableKey) ?? null, [view.data, tableKey]);
+  // A table stored as a file a moment ago is shown by the key it was stored from until the view lists the file, in the same
+  // inspector throughout (a field being typed when the store lands keeps its text).
+  const table = useMemo(() => shownTable(view.data?.view?.tables, tableKey), [view.data, tableKey]);
   if (view.isPending) return <Spinner label="Resolving the table" />;
   if (!table)
     return (
@@ -104,7 +106,7 @@ export function TableInspector({
     );
   return (
     <TableInspectorBody
-      key={`${database}|${tableKey}`}
+      key={`${database}|${tableIdentity(tableKey)}`}
       database={database}
       table={table}
       tables={view.data?.view?.tables ?? []}

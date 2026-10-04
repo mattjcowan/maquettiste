@@ -187,6 +187,69 @@ public sealed class SandboxRestrictionTests
             Assert.Equal(cts.Token, cancelled.CancellationToken);
     }
 
+    [Theory]
+    [InlineData("/\\?$/.test('int?')", true)]
+    [InlineData("new RegExp('b').exec('abc').index", 1L)]
+    [InlineData("'Invoice42'.replace(/(\\d+)/g, '<$1>')", "Invoice<42>")]
+    [InlineData("'a,b;c'.split(/[,;]/).join('|')", "a|b|c")]
+    [InlineData("'xAy'.search(/A/)", 1L)]
+    [InlineData("(() => { const r = /a/g; r.lastIndex = 1; const hit = r.test('aa'); return hit + ':' + r.lastIndex; })()", "true:2")]
+    public void A_match_that_times_out_once_from_a_stalled_thread_is_tried_again_with_the_same_result(string expression, object expected)
+    {
+        // A busy machine can deschedule the thread past the wall-clock match bound even on a trivial pattern; one simulated
+        // stall stands for that.
+        using var pool = Scripts.Pool($"maquettiste.helper('regex', () => {expression});");
+        try
+        {
+            RegexRetry.SimulatedStalls = 1;
+            Assert.Equal(expected, pool.Helper("regex"));
+            Assert.Equal(0, RegexRetry.SimulatedStalls);
+        }
+        finally
+        {
+            RegexRetry.SimulatedStalls = 0;
+        }
+    }
+
+    [Theory]
+    [InlineData("/\\?$/.test('int?')", 2)]
+    [InlineData("/x/.test({ toString() { return 'x'; } })", 1)]
+    [InlineData("'ab'.replace(/a/, () => 'x')", 1)]
+    [InlineData("(() => { const r = /x/; Object.defineProperty(r, 'flags', { value: '' }); return r.test('x'); })()", 1)]
+    public void A_match_is_retried_at_most_once_and_never_when_it_may_have_run_script_code(string expression, int stalls)
+    {
+        using var pool = Scripts.Pool($"maquettiste.helper('regex', () => {expression});");
+        try
+        {
+            RegexRetry.SimulatedStalls = stalls;
+            var error = LimitError(pool, "regex");
+            Assert.Equal("MQ6007", error.Diagnostic.Rule);
+            Assert.Contains("regular expression", error.Diagnostic.Message, StringComparison.Ordinal);
+            Assert.Equal(0, RegexRetry.SimulatedStalls);
+        }
+        finally
+        {
+            RegexRetry.SimulatedStalls = 0;
+        }
+    }
+
+    [Fact]
+    public void A_timeout_an_inner_match_already_retried_is_not_retried_by_the_call_around_it()
+    {
+        var inner = 0;
+        var outerRetries = 0;
+        Assert.Throws<System.Text.RegularExpressions.RegexMatchTimeoutException>(() => RegexRetry.Run(
+            () => RegexRetry.Run<int>(() =>
+            {
+                inner++;
+                throw new System.Text.RegularExpressions.RegexMatchTimeoutException("a", "(a+)+$", TimeSpan.FromMilliseconds(250));
+            }, () => true),
+            () => { outerRetries++; return true; }));
+
+        Assert.Equal(2, inner);
+        Assert.Equal(0, outerRetries);
+    }
+
     [Fact]
     public void Ordinary_regular_expressions_still_work_after_the_guard()
     {

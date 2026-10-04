@@ -4,7 +4,8 @@
 // or junction table) keeps its adjustments in the file that adjusts it, found by what it adjusts and created on the first edit.
 // Every write is one save of that file, so one undo step. Writes for a table run one after another across the grid, the
 // inspector and the table editor's tabs (the one queue per table, `enqueueTableWrite`: a second edit before the first stored the
-// table, or created its file, must not store or create it again), each reading the latest file.
+// table, or created its file, must not store or create it again), each reading the latest file. An edit is made against the
+// table as shown when it was made, so one queued while the table was being stored lands on the stored file by its columns' names.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ColumnView, TableView } from "@/api/types";
@@ -24,7 +25,7 @@ import {
   type ColumnEditField,
   type ColumnValue,
 } from "./columnEdits";
-import { enqueueTableWrite, storeThenEdit, useStorableTables } from "./storeTables";
+import { enqueueTableWrite, storableOwner, storedFileOf, storeThenEdit, useStorableTables } from "./storeTables";
 import { renameTableColumn } from "./columnRename";
 
 /** Per table (database and key): the overlay a write created before the index lists it. */
@@ -70,15 +71,21 @@ export function useTableFile(table: TableView | null, databaseId: string | null)
   const [busy, setBusy] = useState(0);
 
   const run = useCallback(
-    async (write: TableWrite): Promise<boolean> => {
-      const { fileId: known, fileJson: json, pending, target: to, owner: storableAs, table: shown } = latest.current;
+    async (write: TableWrite, made: { table: TableView | null; owner: string | undefined }): Promise<boolean> => {
+      const { fileId: known, fileJson: json, pending, target: to } = latest.current;
       if (!to || !databaseId) return false;
-      // A table the model lays out: stored as a table file first, the edit then made on the file.
-      if (storableAs && shown) {
+      // An edit made on a table the model lays out (as the screen showed it when the edit was made: its column keys are that
+      // table's): stored as a table file first, the edit then made on the file. One that waited for an earlier edit to store the
+      // table lands on that file (storeThenEdit), whatever the screen shows by now. One made before the screen knew which tables
+      // can be stored reads that now.
+      const against = made.table;
+      const stored = !!against && !!storedFileOf(against.key);
+      const owner = made.owner ?? (against && !stored ? await storableOwner(qc, databaseId, against, false) : undefined);
+      if (against && (owner || stored)) {
         const done = await storeThenEdit(services, qc, {
           database: databaseId,
-          table: shown,
-          owner: storableAs,
+          table: against,
+          owner: owner ?? "",
           label: write.label,
           edit: (doc) => void write.apply(doc),
         });
@@ -117,7 +124,9 @@ export function useTableFile(table: TableView | null, databaseId: string | null)
   const enqueue = useCallback(
     (subject: string, write: TableWrite): Promise<boolean> => {
       setBusy((n) => n + 1);
-      return enqueueTableWrite(databaseId ?? "", table?.key ?? "", () => run(write))
+      // The table as shown now, when the edit is made: the write may run after the screen has moved on to the table's file.
+      const made = { table: latest.current.table, owner: latest.current.owner };
+      return enqueueTableWrite(databaseId ?? "", table?.key ?? "", () => run(write, made))
         .catch((e: unknown) => {
           store.getState().notify(`${subject}: ${(e as Error).message}`, "error");
           return false;

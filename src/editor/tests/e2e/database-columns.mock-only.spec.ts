@@ -114,6 +114,61 @@ test("edits made in quick succession on a laid-out table store it once, not twic
   expect(files[0].columns?.find((c) => c.name === "email")).toMatchObject({ comment: "Where invoices go.", description: "The address we send invoices to." });
 });
 
+// The same edits against a slow server (`?mock=slow`: every answer 400 ms late), so the order does not depend on the runner's
+// speed: storing the table takes several answers, and the second edit is made while it is under way. The screen is still loading
+// its parts then, so each key waits for the editor it is meant for.
+async function commentThenDescription(page: Page, description: string) {
+  await page.goto("/database?mock=slow");
+  // Picked and edited at once: the screen may not know yet which tables can be stored (that answer is slow too).
+  await page.getByTestId("database-table-customers").click();
+  await expect(grid(page)).toBeVisible();
+  await cell(page, "email", "comment").click();
+  await page.keyboard.press("Enter");
+  const comment = grid(page).getByRole("textbox", { name: "Comment of email" });
+  await comment.pressSequentially("Where invoices go.");
+  await comment.press("Tab");
+  await expect(cell(page, "email", "description")).toHaveAttribute("aria-selected", "true");
+  await cell(page, "email", "description").press(description[0]);
+  await grid(page).getByRole("textbox", { name: "Description of email" }).pressSequentially(description.slice(1));
+}
+
+test("an edit committed while a laid-out table is being stored lands on the stored file, its own undo step", async ({ page }) => {
+  test.setTimeout(60_000);
+  await commentThenDescription(page, "The address we send invoices to.");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("customers is now stored as a table file.")).toBeVisible({ timeout: 20_000 });
+  await expect(cell(page, "email", "description")).toHaveText("The address we send invoices to.");
+  await expect(cell(page, "email", "comment")).toHaveText("Where invoices go.");
+  const files = (await tableFiles(page)).filter((t) => t.name === "customers");
+  expect(files).toHaveLength(1);
+  expect(files[0].columns?.find((c) => c.name === "email")).toMatchObject({ comment: "Where invoices go.", description: "The address we send invoices to." });
+
+  // The description is its own step; the comment's step stored the table.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(cell(page, "email", "description")).toHaveText("");
+  await expect(cell(page, "email", "comment")).toHaveText("Where invoices go.");
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => fileOf(page, "customers"), { timeout: 15_000 }).toBeUndefined();
+});
+
+test("a cell being edited when the table's store lands keeps its editor and its text", async ({ page }) => {
+  test.setTimeout(60_000);
+  await commentThenDescription(page, "The address we send");
+  // The store lands, and the screen catches up with the file (the list marks the table again once the view lists the file).
+  await expect(page.getByText("customers is now stored as a table file.")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("database-table-customers")).toHaveAttribute("aria-current", "true");
+  const editor = grid(page).getByRole("textbox", { name: "Description of email" });
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveValue("The address we send");
+  await page.keyboard.type(" invoices to.");
+  await page.keyboard.press("Enter");
+  await expect(cell(page, "email", "description")).toHaveText("The address we send invoices to.");
+  await expect(cell(page, "email", "comment")).toHaveText("Where invoices go.");
+  const files = (await tableFiles(page)).filter((t) => t.name === "customers");
+  expect(files).toHaveLength(1);
+  expect(files[0].columns?.find((c) => c.name === "email")).toMatchObject({ comment: "Where invoices go.", description: "The address we send invoices to." });
+});
+
 test("a table with an adjusting file is stored as that file: Space toggles Null, a rename shows at once, and the panel hides", async ({ page }) => {
   await openTable(page, "invoices");
   const adjusting = (await tableFiles(page)).find((t) => t.entity === INVOICE)!;

@@ -155,19 +155,21 @@ internal static class BuiltinHelpers
         Replace(builtins, "string", "index_of", new HelperFunction("string.index_of", 2, 2, (_, a) =>
             AsText(a[0]).IndexOf(AsText(a[1]), StringComparison.Ordinal)));
         Replace(builtins, "array", "sort", new HelperFunction("array.sort", 1, 2, (c, a) => Sort(c, a[0], a.Count > 1 ? AsText(a[1]) : null)));
-        Replace(builtins, "regex", "match", new HelperFunction("regex.match", 2, 3, (c, a) =>
+        // Pure functions of their text arguments, so a match timeout (wall-clock, possibly a stalled thread) is retried once
+        // unless the render is being cancelled; a catastrophic pattern times out again and fails with MQ6007.
+        Replace(builtins, "regex", "match", new HelperFunction("regex.match", 2, 3, (c, a) => RetryMatch(c, () =>
         {
             var match = Regex.Match(AsText(a[0]), AsText(a[1]), RegexOptionsOf(a, 2), c.RegexTimeOut);
             return match.Success ? new ScriptArray(match.Groups.Cast<Group>().Select(g => (object?)g.Value)) : [];
-        }));
-        Replace(builtins, "regex", "matches", new HelperFunction("regex.matches", 2, 3, (c, a) =>
+        })));
+        Replace(builtins, "regex", "matches", new HelperFunction("regex.matches", 2, 3, (c, a) => RetryMatch(c, () =>
             new ScriptArray(Regex.Matches(AsText(a[0]), AsText(a[1]), RegexOptionsOf(a, 2), c.RegexTimeOut)
                 .Where(m => m.Success)
-                .Select(m => (object?)new ScriptArray(m.Groups.Cast<Group>().Select(g => (object?)g.Value))))));
-        Replace(builtins, "regex", "replace", new HelperFunction("regex.replace", 3, 4, (c, a) =>
-            Regex.Replace(AsText(a[0]), AsText(a[1]), AsText(a[2]), RegexOptionsOf(a, 3), c.RegexTimeOut)));
-        Replace(builtins, "regex", "split", new HelperFunction("regex.split", 2, 3, (c, a) =>
-            new ScriptArray(Regex.Split(AsText(a[0]), AsText(a[1]), RegexOptionsOf(a, 2), c.RegexTimeOut).Select(p => (object?)p))));
+                .Select(m => (object?)new ScriptArray(m.Groups.Cast<Group>().Select(g => (object?)g.Value)))))));
+        Replace(builtins, "regex", "replace", new HelperFunction("regex.replace", 3, 4, (c, a) => RetryMatch(c, () =>
+            Regex.Replace(AsText(a[0]), AsText(a[1]), AsText(a[2]), RegexOptionsOf(a, 3), c.RegexTimeOut))));
+        Replace(builtins, "regex", "split", new HelperFunction("regex.split", 2, 3, (c, a) => RetryMatch(c, () =>
+            new ScriptArray(Regex.Split(AsText(a[0]), AsText(a[1]), RegexOptionsOf(a, 2), c.RegexTimeOut).Select(p => (object?)p)))));
 
         Add(builtins, "pascal", 1, 1, (_, a) => Casing.Pascal(AsText(a[0])));
         Add(builtins, "camel", 1, 1, (_, a) => Casing.Camel(AsText(a[0])));
@@ -362,6 +364,10 @@ internal static class BuiltinHelpers
 
         return new string(chars);
     }
+
+    /// <summary>Runs a template regex function, once more after a match timeout unless the render is being cancelled.</summary>
+    private static object? RetryMatch(TemplateContext context, Func<object?> match) =>
+        Scripting.RegexRetry.Run(match, () => !context.CancellationToken.IsCancellationRequested);
 
     /// <summary>Scriban's regex option letters (<c>i m s x</c>), always culture-invariant.</summary>
     private static RegexOptions RegexOptionsOf(IReadOnlyList<object?> args, int index)
