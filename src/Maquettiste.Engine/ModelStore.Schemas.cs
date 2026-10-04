@@ -20,7 +20,8 @@ public sealed partial class ModelStore
     /// <param name="op">The operation kind.</param>
     public static bool IsSchemaOperation(BatchOp op) => op is BatchOp.AddSchema or BatchOp.RenameSchema or BatchOp.RemoveSchema or BatchOp.SetDefaultSchema;
 
-    private async Task<BatchResult> ApplyWithSchemasAsync(ModelBatch batch, List<PlannedChange> changes, SaveResult?[] invalid, ChangeSource source, CancellationToken ct)
+    private async Task<BatchResult> ApplyWithSchemasAsync(ModelBatch batch, List<PlannedChange> changes, SaveResult?[] invalid, ChangeSource source,
+        List<BatchPreviewFile>? preview, CancellationToken ct)
     {
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         var work = new SchemaWork(snapshot, _options.EffectiveIdGenerator);
@@ -58,8 +59,8 @@ public sealed partial class ModelStore
         changes.AddRange(materialized);
         if (changes.Count == 0)
             return new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source));
-        var result = await ExecuteAsync(changes, source, ct).ConfigureAwait(false);
-        if (result.Outcome == SaveOutcome.Saved && materializeResults.Count > 0)
+        var result = await ExecuteAsync(changes, source, ct, preview).ConfigureAwait(false);
+        if (result.Outcome == SaveOutcome.Saved && materializeResults.Count > 0 && preview is null)
             await RecordAliasesAsync(materializeResults, ct).ConfigureAwait(false);
         return result;
     }

@@ -1,4 +1,4 @@
-import { GitBranch, Monitor, Moon, Redo2, Search, Sun, Undo2 } from "lucide-react";
+import { GitBranch, Monitor, Moon, Redo2, Search, Sparkles, Sun, Undo2 } from "lucide-react";
 import { useProject, useSession } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/menu";
@@ -31,6 +31,7 @@ export function TopBar() {
   const line = productLine(project.data);
   // The secondary controls (git status, content locale, undo and redo, theme, live status, user) hide together.
   const hidden = useEditor(store, (s) => s.topbarCollapsed);
+  const assistantOpen = useEditor(store, (s) => s.assistantOpen);
   const branding = useBrandingView();
   const ThemeIcon = THEME_ICON[theme];
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
@@ -126,6 +127,19 @@ export function TopBar() {
             </span>
           </>
         )}
+        <Button
+          variant="ghost"
+          size="icon"
+          label="Assistant"
+          shortcut="Ctrl+I"
+          aria-pressed={assistantOpen}
+          aria-controls={assistantOpen ? "mq-assistant" : undefined}
+          className={cn(assistantOpen && "bg-accent-subtle")}
+          onClick={() => store.getState().setAssistantOpen(!assistantOpen)}
+          data-testid="assistant-toggle"
+        >
+          <Sparkles />
+        </Button>
         <PanelToggle panel="topbar" className="ml-1" />
       </div>
     </header>

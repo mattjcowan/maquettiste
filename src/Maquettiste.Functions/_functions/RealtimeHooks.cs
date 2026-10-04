@@ -41,7 +41,11 @@ public static class RealtimeHooks
         return auth.Identify(context) is not null;
     }
 
-    /// <summary>Admits signed-in callers to <c>/_host/ai/chat</c> (the phase 2 editor does not chat; the hook keeps it closed to others).</summary>
+    /// <summary>
+    /// Admits signed-in callers to <c>/_host/ai/chat</c>. The editor does not chat there: its assistant runs in the functions
+    /// (<c>POST /api/assist/chat</c>, which checks the caller itself because function calls bypass this hook); the hook keeps the
+    /// browser endpoint closed to everyone else.
+    /// </summary>
     /// <param name="context">The request.</param>
     /// <param name="auth">The sign-in state.</param>
     /// <returns><see langword="true"/> to let the caller chat.</returns>

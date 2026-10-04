@@ -247,7 +247,7 @@ internal static class AgentSetup
     public const string HeaderPrefix = "<!-- maquettiste-skill: ";
 
     /// <summary>The repo-relative path of the repository's own conventions, which <c>init</c> never writes.</summary>
-    public const string ConventionsPath = ".claude/skills/maquettiste-modeling/CONVENTIONS.md";
+    public const string ConventionsPath = AgentConventions.ProjectConventionsPath;
 
     /// <summary>What a copy of the skill on disk is, compared with the one this release writes.</summary>
     internal enum SkillState

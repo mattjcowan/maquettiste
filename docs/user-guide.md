@@ -2191,6 +2191,63 @@ shows anywhere: no switcher, no Translations section, no locale columns.
   **Fields** tab a **Translations of the fields** section for each field's display name and description (see
   Reference data).
 
+## The assistant
+
+The **Assistant** panel (the top bar's assistant button, tooltip "Assistant (Ctrl+I)", or **Ctrl+I**, which also closes it) is a chat about the model
+on the right side of the editor, backed by the AI that the host (static-site-hosting) gives the site. Ask it what the model
+holds ("which entities reference Invoice?", "why does MQ3005 fire here?"), or ask it to change the model ("add an entity
+Shipment with a key and a relation to Order").
+
+**What it can and cannot do.** It reads everything with the same read tools the MCP server has (docs/mcp.md): the project,
+the model index and documents, references, the resolved model, database views, validation, JSON schemas, query and binding
+SQL, materialize previews, stored generation plans and unit previews. Each tool call shows in the conversation as a compact
+row (its name, its arguments and a one-line result) that you can expand. It changes **the model only, and only through
+proposals**: it never writes a file itself, never runs or applies generation, and never writes template packs, extension
+files, settings or translations.
+
+**Review before write.** A change the assistant suggests arrives as a **proposal card**: a one-line summary and every file it
+would create, change or delete, each expandable to the diff view the conflict dialog uses (in one column, read-only). Nothing is written
+until you press **Apply**. Apply sends the proposal as one model batch (`POST /api/model/batch`), so it is validated, it is
+one undo step (Ctrl+Z takes it back) and every other window sees it at once. **Discard** drops it. A proposal is checked as
+a dry run before you see it, and it is pinned to the documents it read: when one of them changed since (your own edit,
+another window, git), Apply is refused as a conflict and **Ask again** asks the assistant to read them again and propose
+anew. The assistant hears whether you applied or discarded a proposal with your next message. **Apply small changes without
+asking** (in the panel, off by default, remembered per browser) applies a proposal of at most three operations and no
+deletes as soon as it arrives; it still lands as one undo step.
+
+**Context chips.** Above the message box the panel shows what it will send along: the workspace, the open element, the
+selection and a summary of the current problems. Remove a chip to leave that part out of the next message. **Stop** ends
+an answer that is still streaming; what was said so far is kept. Conversations are kept on the server, per user and per
+project (the newest 50, each capped in size, oldest exchanges first out); pick one from the list at the top of the panel, start a **New conversation**,
+or **Clear conversation** to delete it.
+
+**Setting up the provider (in the host, never in Maquettiste).** Maquettiste never holds an AI key. An administrator of the
+host sets it up once:
+
+1. In the host's management UI, **AI › providers**: add a provider (kind `openai` for OpenAI and any compatible service such
+   as a LiteLLM proxy, Ollama, OpenRouter or xAI; kind `anthropic` for Anthropic), its base URL, key and default model. The key
+   is encrypted by the host and never shown again.
+2. In **Sites › maquettiste.localhost › AI**: pick that provider and the model (and, optionally, a site system prompt).
+
+**Settings › Assistant** shows whether the site has a provider ("configured" or "not configured") and the model in use, with
+a link to the host's management UI when `MAQUETTISTE_HOST_AI_URL` is set. The compose file sets it to `http://localhost:<port>/`,
+where the host answers its management UI on the editor's own port (sign in as the host's administrator).
+The model must support tools (all current OpenAI and Anthropic models do; on Ollama, Llama 3.1+, Qwen 2.5+ and similar); with
+one that does not, the panel says "the site's model does not support tools; choose another in the host's AI settings".
+Without a provider, the panel says so and links to Settings › Assistant; the rest of the editor works as before.
+
+**House rules and budgets.** Settings › Assistant also edits the `assistant` section of `maquettiste.json`: **Instructions**
+(house rules such as naming or what to avoid, appended to the assistant's system prompt, which already carries the modeling
+conventions and the repository's `CONVENTIONS.md`), **Max turns** per answer (10 by default; the last turn must answer in
+text), **Token budget per request** (200 000 by default: every turn resends the whole conversation, so the tokens add up; once
+spent, the assistant must answer in text) and **Token budget per day per user** (2 000 000 by default, counted on the server,
+reset at midnight UTC; once spent, the panel refuses new messages until then). The panel shows today's usage.
+
+**Privacy.** What you type, the context chips you keep, and everything the assistant reads with its tools (element documents,
+database views, validation results, SQL, plans) are sent to the provider the host is configured with, under that provider's
+terms; nothing is sent while no provider is configured or while you are not using the panel. Viewers may chat and read;
+applying a proposal needs the editor role.
+
 ## Two ways to run it
 
 **Mock mode**, for looking at the editor without any backend:

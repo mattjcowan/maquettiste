@@ -245,6 +245,14 @@ name while nothing is written to the repository.
 Every tool is a thin wrapper over one engine call, named after the API operation it mirrors. A success is one text block holding
 the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.Web`: camelCase, enums as their JSON names).
 
+The read tools (`get_project`, `get_model_index`, `get_model_kinds`, `get_elements`, `get_element`, `get_references`,
+`get_resolved_model`, `get_schema`, `get_settings`, `get_database_view`, `validate`, `list_validation_rules`, `preview_query_sql`,
+`preview_binding_sql`, `get_materialize_status`, `preview_materialize`, `list_packs`, `get_plan`, `get_plan_diff`, `preview_unit`,
+`reference_type_usage`, `localization_status`) are one catalog in the engine (`AgentTools`), shared with the editor's assistant
+(docs/user-guide.md, "The assistant"): their names, descriptions, input schemas and answers are the same in both, and a change to
+one is a change to the other. The assistant has none of the write tools; it proposes model changes for the user to review
+(`propose_changes`) instead.
+
 | Tool | API operation | Arguments | Returns |
 | --- | --- | --- | --- |
 | `get_project` | getProject | | name, `productVersion` (the release, such as `0.5.3`) and `build` beside `engineVersion` (the engine contract, not the release) and `formatVersion`, `workspace` (`MAQUETTISTE_WORKSPACE`, else the git branch, else the worktree name) with `branch`, `worktree` and `repository`, settings and `settingsHash`, databases, packs, pack diagnostics, extensions (`mode` is `local`, `git` is null) |
@@ -544,7 +552,8 @@ the package records of `get_resolved_model { "scope": "packages" }`. Add `kind` 
 
 ## Conventions resource and prompt
 
-The modeling conventions (`skills/maquettiste-modeling/SKILL.md`, embedded in the CLI, without its front matter) are served as the
+The modeling conventions (`skills/maquettiste-modeling/SKILL.md`, embedded in the engine, without its front matter; the editor's
+assistant puts the same text in its system prompt) are served as the
 resource `maquettiste://conventions` (`text/markdown`) and as the prompt `modeling-conventions`, so any MCP client can read them.
 When the repository has `.claude/skills/maquettiste-modeling/CONVENTIONS.md`, both end with it: a `---` separator, the heading
 `# This repository's conventions (CONVENTIONS.md)` and the file's text, read again on every request, so an MCP client sees what the

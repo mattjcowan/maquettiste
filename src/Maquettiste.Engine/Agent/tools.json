@@ -1,0 +1,960 @@
+{
+  "tools": [
+    {
+      "name": "get_database_view",
+      "title": "Database view",
+      "description": "The resolved physical view of one database: tables (from the entities mapped to it, by its byConvention setting or by mapping elements, their relations and overlays) with columns (dbTypeId when a column uses a database type), keys, indexes and foreign keys, views, sequences, routines (parameters and result with native types), database types (nativeName, isCreated), SQL objects (phase, dependsOn) and queries (parameters, sources, the select list with types, the trees as written, collections with their keys, and the SQL for the database's dialect), as generation sees them. Each table, view, sequence, routine, database type, SQL object and query carries its own file's annotations (displayName, pluralName, description, stereotypes, tags, category, properties, generation); a synthesized table without an overlay has none.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "The database element id; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "get_element",
+      "title": "Get element",
+      "description": "One element: its canonical JSON document (json), its hash (pass it as expectedHash to save or delete), its path, the typed element and its Markdown sidecar text.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "The element id (a ULID); required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "get_elements",
+      "title": "Get elements",
+      "description": "Element documents in pages: {items: [{id, kind, path, hash, json}], next, missing}, json being the canonical document as get_element returns it. Select by ids, or by the index filters (kind, package, tag, category, stereotype, query; AND), or both; fields keeps only those top-level members of each json (id and kind are always kept), for example [\"name\", \"attributes\"]. Ordered by kind, name and id; pass next as cursor until it is null. A change between pages is fine: the next page starts after the last element read.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "Element or sub-element ids (a sub-element id reads the element that holds it), at most 1000; ids that match nothing are listed in missing.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "kind": {
+            "description": "Only this kind, for example entity, relation, enum, process, routine, database-type, sql-object, query.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "package": {
+            "description": "Only elements directly in this package, by package id or package name.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tag": {
+            "description": "Only elements with this tag.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "category": {
+            "description": "Only elements in this category.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "stereotype": {
+            "description": "Only elements with this stereotype.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "query": {
+            "description": "Only elements whose name contains this text, ignoring case.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "fields": {
+            "description": "The top-level members to keep in each document, for example [\"name\", \"package\", \"attributes\"]; id and kind are always kept. Omit for whole documents.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "cursor": {
+            "description": "The next value of the previous page.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 1000 (default 100).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      }
+    },
+    {
+      "name": "get_materialize_status",
+      "title": "Materialize status",
+      "description": "What can be materialized in one database: {database, databaseName, entities: [{id, name, package, projected, table}] (the entities with no binding to the database; projected says the database still projects a table for it by convention or a mapping element), sources: [{id, kind (table or view), name, schema, origin, boundBy: [{entity, entityName, binding, constants}]}] (its designed and imported tables and its views; boundBy empty means no entity is bound to it, several entries mean constant columns tell the entities apart)}. Then preview_materialize, and apply_batch with a materialize-tables or materialize-entities operation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "description": "The database element id; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "database"
+        ]
+      }
+    },
+    {
+      "name": "get_model_index",
+      "title": "Model index",
+      "description": "Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path). Every filter is optional and they combine with AND. Without cursor or limit the answer is the whole list; with either it is one page, {items, next}, ordered by kind, name and id: pass next as cursor until it is null. Use the index to find elements, get_elements to read their documents in bulk, get_resolved_model for what generation sees (resolved types, inherited attributes, tables), get_model_kinds for the counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "Only this kind, for example entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "package": {
+            "description": "Only elements directly in this package, by package id or package name.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tag": {
+            "description": "Only elements with this tag.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "category": {
+            "description": "Only elements in this category.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "stereotype": {
+            "description": "Only elements with this stereotype.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "query": {
+            "description": "Only elements whose name contains this text, ignoring case.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "cursor": {
+            "description": "The next value of the previous page; pages the answer.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 1000 (100 when only a cursor is given); pages the answer.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      }
+    },
+    {
+      "name": "get_model_kinds",
+      "title": "Model kinds",
+      "description": "The kinds of top-level elements present with their counts ({total, kinds: [{kind, count}]}), and with by=package the same per package (packages: [{package, name, count, kinds}], the elements in no package first), so you know what to iterate before reading in bulk.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "by": {
+            "description": "kind (default) or package.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      }
+    },
+    {
+      "name": "get_plan",
+      "title": "Get plan",
+      "description": "A stored plan: its request, packs, every file with what apply does to it (added, modified, deleted; unchanged, not-rendered and kept are left alone; hand-edited, conflict, orphaned-owned), counts by kind, units by reason, and diagnostics (and, with units, every planned unit and output).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "planId": {
+            "description": "The plan id returned by plan; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "units": {
+            "description": "Include the per-unit list (large).",
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "planId"
+        ]
+      }
+    },
+    {
+      "name": "get_plan_diff",
+      "title": "Plan diff",
+      "description": "The unified diff of one file of a stored plan (the path as it appears in the plan's changes), without rendering again.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "planId": {
+            "description": "The plan id returned by plan; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "path": {
+            "description": "The repo-relative path of a file in the plan's changes, with / separators; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "planId",
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "get_project",
+      "title": "Project",
+      "description": "The project: name, the release running (productVersion, build) beside the engine contract (engineVersion) and the model format, the workspace (MAQUETTISTE_WORKSPACE, else the git branch, else the worktree name) with the branch and worktree, settings and their hash, databases, template packs (with pack diagnostics) and extension schemas. Start here.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_references",
+      "title": "Where used",
+      "description": "Every reference to an element: the referring element id, the referring (sub-)element id, the JSON pointer and field in the referring document, and the referenced id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "The element id; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "get_resolved_model",
+      "title": "Resolved model",
+      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id. databases: the database view (tables with columns, keys, foreign keys and indexes, views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. A model with errors returns no items and the errors in diagnostics.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "description": "all (default), packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects or queries.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "database": {
+            "description": "A database id: only the entities and relations mapped to it, that database and its tables.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "cursor": {
+            "description": "The next value of the previous page.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 1000 (default 100).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      }
+    },
+    {
+      "name": "get_schema",
+      "title": "JSON schema",
+      "description": "The JSON schema (draft 2020-12) of an element kind or document, with the schema files it references (common.json) and, for an element kind, the project's extension schemas that apply to it (extensions: each constrains the element's properties object), so documents built for create_element, save_element, apply_batch or save_settings are valid.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "An element kind (entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, stereotype, tag-vocabulary, category-tree) or a document (maquettiste for the settings, batch, pack, extension); required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      }
+    },
+    {
+      "name": "get_settings",
+      "title": "Project settings",
+      "description": "The project settings (.maquettiste/maquettiste.json): the typed settings, the canonical JSON (json) and its hash for save_settings.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list_packs",
+      "title": "Template packs",
+      "description": "The template packs under .maquettiste/templates/ with their manifests (units, output roots, options) and the diagnostics of loading them.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list_validation_rules",
+      "title": "Validation rules",
+      "description": "The built-in validation rules, ordered by id: id, defaultSeverity, description, family (the hundreds group such as MQ72xx) and familyLabel, and canBeOff (false for MQ1xxx). Override a rule's severity with validation.rules in the settings (get_settings, save_settings): error, warning, info or off.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "localization_status",
+      "title": "Localization status",
+      "description": "The default locale, the declared locales and, per translated locale, its fallback chain and per shard the expected, translated, missing and stale counts (as GET /api/localization).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "preview_binding_sql",
+      "title": "Preview binding SQL",
+      "description": "The SQL an entity's binding renders to, for its database's dialect or another: {preview: {entityId, bindingId, database, dialect, select, selectByKey, insert, update, delete}, diagnostics}, each statement {sql, parameters} or null when the binding does not have it (a read-only binding has no insert, update or delete). select reads every row (the constants filter it; a query source is wrapped as a derived table), selectByKey adds the key fields, insert writes the fields and constants without the columns the database fills and returns generated keys, update sets the updatable fields by key with the constants in the where clause, delete deletes by key or runs the soft-delete update. Parameters are named after the fields (@name, or : / $ with placeholder). preview is null when the model has errors.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "entity": {
+            "description": "The entity id; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "binding": {
+            "description": "The binding id (entity.bindings[i].id); required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "dialect": {
+            "description": "postgresql, sqlserver, mysql, sqlite or oracle; omit for the binding's database's dialect.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "placeholder": {
+            "description": "The placeholder style: @ (default), : or $.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "entity",
+          "binding"
+        ]
+      }
+    },
+    {
+      "name": "preview_materialize",
+      "title": "Preview materialize",
+      "description": "What a materialize operation would do, without writing: {operation, database, valid, creates, updates, deletes (each {id, kind, name, path, because, element}: element is the document that would be written), notes, diagnostics}. op materialize-tables with entities (and an optional schema id) writes, per entity, a designed table with exactly the shape its projection has (columns, keys, uniques, checks, indexes, foreign keys, comments; its overlay folds into the table, which keeps the overlay's id), binds the entity to it, deletes its mapping to the database and points relation mappings at the foreign keys; op materialize-entities with tables (designed or imported tables and views) and package writes, per table, an entity (one attribute per column, the key from the primary key) bound to it, and a many-to-one relation per foreign key between them. An entity already bound, or a table an entity is bound to, is refused (MQ4055). Apply it with apply_batch: {\"op\":\"materialize-tables\",\"database\":...,\"entities\":[...]} or {\"op\":\"materialize-entities\",\"database\":...,\"tables\":[...],\"package\":...}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "description": "The database element id; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "op": {
+            "description": "materialize-tables or materialize-entities; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "entities": {
+            "description": "The entity ids (materialize-tables).",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "tables": {
+            "description": "The table and view ids (materialize-entities).",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "schema": {
+            "description": "The schema id of the database the tables go to (materialize-tables); omit to keep each projected table's schema.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "package": {
+            "description": "The package id the entities go to (materialize-entities).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "database",
+          "op"
+        ]
+      }
+    },
+    {
+      "name": "preview_query_sql",
+      "title": "Preview query SQL",
+      "description": "The SQL a query renders to, for its database's dialect or another: {preview: {id, name, database, dialect, sql, parameters, collections: [{name, sql, parameters, keys}]}, diagnostics}. sql uses @name placeholders (placeholder : or $ for :name or $1, $2...); a list parameter is written IN @name, for a data access library that expands lists (lists any writes = ANY(@name) on PostgreSQL). Each collection is a second statement run once for all parent rows: it takes the parent rows' key values as the list parameter mq_keys0 (mq_keys1...) and returns each row's key as mq_key0, which matches the parent row's keys[i].parentField. preview is null when the model has errors (they are in diagnostics); an sql expression without a text for the dialect is MQ4029.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "The query element id; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "dialect": {
+            "description": "postgresql, sqlserver, mysql, sqlite or oracle; omit for the query's database's dialect.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "placeholder": {
+            "description": "The placeholder style: @ (default), : or $.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "lists": {
+            "description": "How list parameters are written: expand (default) or any.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "preview_unit",
+      "title": "Preview unit",
+      "description": "Renders one unit of a pack for one element with no writes and returns each file's output path and text, the diagnostics and the keys the render read. overlay (pack-relative path to unsaved text), unitOverride (an unsaved unit with the same id) and parameters render unsaved work; a disabled pack previews too. A render that does not finish within limits.scriptTimeoutMs x 4 fails with MQ6007. An element outside the unit's scope (none for an each unit, another kind, one a selector does not return, any for a model unit) renders nothing and returns MQ6026, which names the kind the template expects.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pack": {
+            "description": "The pack name; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "unit": {
+            "description": "The unit id; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "elementId": {
+            "description": "The element id (or a resolved table key); omit for a model unit.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "overlay": {
+            "description": "Pack-relative path to unsaved text of templates, partials and scripts.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "unitOverride": {
+            "description": "An unsaved unit object (as in pack.json units) used instead of the saved one; its id must equal unit.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "template": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "for": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "where": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "tags": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "notTags": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "stereotypes": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "notStereotypes": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "categories": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "packages": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "notPackages": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "database": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "abstract": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "script": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "output": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "overwrite",
+                  "once",
+                  "regions",
+                  "pair",
+                  "block"
+                ]
+              },
+              "formatter": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "delimiters": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "open": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "close": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "open",
+                  "close"
+                ]
+              },
+              "blockComment": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createFile": {
+                "type": "boolean"
+              },
+              "companion": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "template": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "output": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "template",
+                  "output"
+                ]
+              },
+              "transforms": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "template",
+              "for"
+            ],
+            "default": null
+          },
+          "parameters": {
+            "description": "Effective parameter values used instead of the defaults and project values.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "pack",
+          "unit"
+        ]
+      }
+    },
+    {
+      "name": "reference_type_usage",
+      "title": "Reference type usage",
+      "description": "Every attribute typed by a reference type: attribute, owner, domain (the owner's package), collection, required and the effective storage choice per database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "The reference type id; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "validate",
+      "title": "Validate",
+      "description": "Validates the whole model, or only some elements, with the built-in rules and, by default, the project's script rules (extensions/rules/*.js, findings x/<id>; a rule file that does not load is MQ5002 on that file). Returns the diagnostics (rule id such as MQ3001, severity, message, element id, file path, JSON pointer, line and column) and the error, warning and info counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "elementIds": {
+            "description": "Only these element ids (and, by default, the elements that reference them); omit for the whole model.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "includeReferrers": {
+            "description": "Whether to include the elements that reference the scope (default true).",
+            "type": "boolean",
+            "default": true
+          },
+          "includeScriptRules": {
+            "description": "Whether to run the project's JavaScript rules (default true).",
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    }
+  ]
+}

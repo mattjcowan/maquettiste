@@ -218,11 +218,14 @@ export function CodeDiffEditor({
   modified,
   onMount,
   label,
+  inline = false,
 }: {
   original: string;
   modified: string;
   onMount?: (getModified: () => string) => void;
   label: string;
+  /** One column with the removed lines above the added ones, for narrow places (the assistant's proposal cards). */
+  inline?: boolean;
 }) {
   const theme = useTheme();
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
@@ -245,7 +248,7 @@ export function CodeDiffEditor({
     [],
   );
   return (
-    <div className="h-full min-h-72">
+    <div className={inline ? "h-full" : "h-full min-h-72"}>
       <DiffEditor
         keepCurrentOriginalModel
         keepCurrentModifiedModel
@@ -254,7 +257,7 @@ export function CodeDiffEditor({
         modified={modified}
         theme={theme}
         onMount={handleMount}
-        options={{ ...options, renderSideBySide: true, originalEditable: false, ariaLabel: label }}
+        options={{ ...options, renderSideBySide: !inline, originalEditable: false, readOnly: inline || options.readOnly, ariaLabel: label }}
       />
     </div>
   );

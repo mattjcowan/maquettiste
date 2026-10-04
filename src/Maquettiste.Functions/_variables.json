@@ -28,6 +28,10 @@
     "default": "${env:MAQUETTISTE_WORKSPACE}",
     "description": "The workspace name the top bar and GET /api/project show (a folder or branch name); empty means the git branch, else the worktree name."
   },
+  "MAQUETTISTE_HOST_AI_URL": {
+    "default": "${env:MAQUETTISTE_HOST_AI_URL}",
+    "description": "Where the host's management UI is, linked from Settings, Assistant (the AI provider and model are set there); empty means no link."
+  },
   "MAQUETTISTE_LOCAL_USER": {
     "default": "local",
     "description": "The user name of the local developer (presence)."

@@ -7,7 +7,7 @@
 # Run `maquettiste init` first (docs/user-guide.md "The command line"): without .maquettiste/, Docker creates the mount folder.
 #
 # NEVER delete or rename the site maquettiste.localhost in the host's management UI or API: its data folder is the bind-mounted
-# .maquettiste/ below, and static-site-hosting 0.2.0 deletes a site folder recursively, model included. Recovery is
+# .maquettiste/ below, and static-site-hosting deletes a site folder recursively, model included. Recovery is
 # `git checkout -- .maquettiste` (uncommitted model edits are lost).
 #
 # The container starts as root only to pick the user the editor runs as (docker/entrypoint.sh): the owner of .maquettiste/.
@@ -38,6 +38,9 @@ services:
       # The container's gateway is found at start; set this only where the browser's requests arrive from another address
       # (an IP address list, never *). See docker/README.md for the Mac and other setups.
       MAQUETTISTE_LOCAL_PEERS: ${MAQUETTISTE_LOCAL_PEERS:-}
+      # Where the host's management UI is (on this port with the Host localhost), linked from Settings > Assistant: the AI
+      # provider, its key and the model are set there (AI > providers; Sites > maquettiste.localhost > AI), never in Maquettiste.
+      MAQUETTISTE_HOST_AI_URL: ${MAQUETTISTE_HOST_AI_URL:-http://localhost:${MAQUETTISTE_PORT:-8080}/}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
       interval: 10s

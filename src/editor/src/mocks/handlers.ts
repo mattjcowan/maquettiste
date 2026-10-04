@@ -20,6 +20,7 @@ import { bindingSql } from "./model/bindings";
 import { parseDialect } from "./model/querySql";
 import { isUlid, readTag } from "./wire";
 import { processHandlers } from "./processHandlers";
+import { assistHandlers } from "./assist";
 // Recorded by the functions test of GET /api/validation/rules, which fails when the catalog changes without a new recording.
 import validationRules from "./recorded/validation-rules.json";
 
@@ -129,6 +130,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
   return [
     gate,
     ...processHandlers(backend, { baseUrl, recorded, pristine, answer, problem: problem as never }),
+    ...assistHandlers(backend.assist, baseUrl),
     http.get("/api/health", ({ response }) =>
       response(200).json({
         status: "ok",

@@ -1,6 +1,6 @@
 // Global keyboard: Ctrl/Cmd+K palette, Ctrl/Cmd+P quick open, Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo, F6 cycles
 // regions (rail, explorer, center, inspector, bottom; phase2-design.md 4.8), Alt+Left and Alt+Right move back and
-// forward through selections and Shift+F12 lists where the selected element is used (explorer-redesign.md 3.3).
+// forward through selections, Ctrl/Cmd+I opens or closes the assistant (even from a field) and Shift+F12 lists where the selected element is used (explorer-redesign.md 3.3).
 // Alt+Shift+E, P, J, O and H hide or show the explorer, the inspector, the bottom panel, the editor tabs and the top
 // bar's controls; on the Database screen Alt+Shift+L and D hide or show the tables list and the DDL preview, and on
 // the Generate screen Alt+Shift+F, V and U the pack editor's file list, template preview and unit help
@@ -64,6 +64,9 @@ export function useGlobalShortcuts(): void {
           e.preventDefault();
           store.getState().showReferences(id);
         }
+      } else if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        store.getState().setAssistantOpen(!store.getState().assistantOpen);
       } else if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         store.getState().setPaletteOpen(!store.getState().paletteOpen);

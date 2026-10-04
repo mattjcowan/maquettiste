@@ -36,83 +36,25 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     private readonly TextWriter _log = log ?? throw new ArgumentNullException(nameof(log));
     private readonly ModelStore _store = store ?? throw new ArgumentNullException(nameof(store));
     private readonly GenerationService _generation = generation ?? throw new ArgumentNullException(nameof(generation));
-    private readonly string _repoRoot = repoRoot ?? throw new ArgumentNullException(nameof(repoRoot));
-    private readonly SchemaRegistry _schemas = new();
+
+    /// <summary>
+    /// The read tools shared with the editor's assistant (<see cref="AgentTools"/>): <see cref="McpServerSetup"/> lists them beside this
+    /// class's own tools, with their schemas from the one catalog, so the two cannot drift.
+    /// </summary>
+    public AgentTools Catalog { get; } = new(store, generation, new AgentToolsOptions
+    {
+        RepoRoot = repoRoot ?? throw new ArgumentNullException(nameof(repoRoot)),
+        Workspace = workspace,
+        Mode = "local",
+        LogFailure = async (tool, failure, ct) =>
+        {
+            await log.WriteLineAsync($"maquettiste mcp: {tool} failed: {failure}".AsMemory(), ct).ConfigureAwait(false);
+            await log.FlushAsync(ct).ConfigureAwait(false);
+        },
+    });
 
     /// <summary>The options bodies are written with: <see cref="JsonSerializerDefaults.Web"/> and nothing else, as the API's.</summary>
     public JsonSerializerOptions JsonOptions { get; } = new(JsonSerializerDefaults.Web);
-
-    /// <summary>The project: name, versions, settings with their hash, databases, packs and extension schemas (getProject).</summary>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The project.</returns>
-    [McpServerTool(Name = "get_project", Title = "Project", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The project: name, the release running (productVersion, build) beside the engine contract (engineVersion) and the model format, the workspace (MAQUETTISTE_WORKSPACE, else the git branch, else the worktree name) with the branch and worktree, settings and their hash, databases, template packs (with pack diagnostics) and extension schemas. Start here.")]
-    public Task<CallToolResult> GetProject(CancellationToken ct) => GuardAsync(async () =>
-    {
-        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var packs = await _generation.GetPacksAsync(ct).ConfigureAwait(false);
-        var name = snapshot.Settings.Name is { Length: > 0 } n ? n : Path.GetFileName(_repoRoot);
-        var where = WorkspaceInfo.Detect(_repoRoot, workspace);
-        return Ok(new ProjectInfo(name, snapshot.Settings.FormatVersion, EngineVersion.Value, EngineVersion.Product, EngineVersion.Build, where.Workspace,
-            where.Branch, where.Worktree, where.Repository, "local", snapshot.Settings, snapshot.SettingsHash,
-            [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics, [.. snapshot.Extensions.Select(e => e.Schema)], null));
-    }, ct);
-
-    /// <summary>The element summaries, filtered, and paged when asked (getModelIndex).</summary>
-    /// <param name="kind">A kind name.</param>
-    /// <param name="package">A package id or name.</param>
-    /// <param name="tag">A tag.</param>
-    /// <param name="category">A category.</param>
-    /// <param name="stereotype">A stereotype.</param>
-    /// <param name="query">A name fragment.</param>
-    /// <param name="cursor">The previous page's next.</param>
-    /// <param name="limit">The page size.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The matching summaries, in index order; with a cursor or limit, one page of them by (kind, name, id) and the next cursor.</returns>
-    [McpServerTool(Name = "get_model_index", Title = "Model index", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path). Every filter is optional and they combine with AND. Without cursor or limit the answer is the whole list; with either it is one page, {items, next}, ordered by kind, name and id: pass next as cursor until it is null. Use the index to find elements, get_elements to read their documents in bulk, get_resolved_model for what generation sees (resolved types, inherited attributes, tables), get_model_kinds for the counts.")]
-    public Task<CallToolResult> GetModelIndex(
-        [Description("Only this kind, for example entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram.")] string? kind = null,
-        [Description("Only elements directly in this package, by package id or package name.")] string? package = null,
-        [Description("Only elements with this tag.")] string? tag = null,
-        [Description("Only elements in this category.")] string? category = null,
-        [Description("Only elements with this stereotype.")] string? stereotype = null,
-        [Description("Only elements whose name contains this text, ignoring case.")] string? query = null,
-        [Description("The next value of the previous page; pages the answer.")] string? cursor = null,
-        [Description("The page size, 1 to 1000 (100 when only a cursor is given); pages the answer.")] int? limit = null,
-        CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (limit is < 1 or > ModelPages.MaxLimit)
-            return BadRequest($"limit must be from 1 to {ModelPages.MaxLimit}.");
-        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var index = await _store.GetIndexAsync(ct).ConfigureAwait(false);
-        var rows = ModelPages.Filter(index, new ElementFilter(kind, package, tag, category, stereotype, query));
-        if (limit is null && string.IsNullOrEmpty(cursor))
-            return Ok(rows);
-        try
-        {
-            return Ok(ModelPages.PageIndex(rows, cursor, limit ?? ModelPages.DefaultLimit));
-        }
-        catch (FormatException ex)
-        {
-            return BadRequest(ex.Message);
-        }
-    }, ct);
-
-    /// <summary>One element's document and hash (getElement).</summary>
-    /// <param name="id">The element id.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The document.</returns>
-    [McpServerTool(Name = "get_element", Title = "Get element", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("One element: its canonical JSON document (json), its hash (pass it as expectedHash to save or delete), its path, the typed element and its Markdown sidecar text.")]
-    public Task<CallToolResult> GetElement([Description("The element id (a ULID); required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (string.IsNullOrEmpty(id))
-            return BadRequest("id is required.");
-        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var document = await _store.GetElementAsync(id, ct).ConfigureAwait(false);
-        return document is null ? NotFound("element", id) : Ok(document);
-    }, ct);
 
     /// <summary>Saves an element if its file still has the expected hash (saveElement).</summary>
     /// <param name="id">The element id.</param>
@@ -229,14 +171,6 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         var result = await _store.ApplyBatchAsync(parsed.Batch, ChangeSource.Cli, ct).ConfigureAwait(false);
         return FromOutcome(result.Outcome, result, null);
     }, ct);
-
-    /// <summary>The localization settings and completeness (getLocalizationStatus).</summary>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The status.</returns>
-    [McpServerTool(Name = "localization_status", Title = "Localization status", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The default locale, the declared locales and, per translated locale, its fallback chain and per shard the expected, translated, missing and stale counts (as GET /api/localization).")]
-    public Task<CallToolResult> LocalizationStatus(CancellationToken ct = default) => GuardAsync(async () =>
-        Ok(await _store.GetLocalizationStatusAsync(ct).ConfigureAwait(false)), ct);
 
     /// <summary>Translation entries of one locale (getTranslations).</summary>
     /// <param name="locale">The locale.</param>
@@ -385,144 +319,6 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         return result is null ? NotFound("reference type", type) : FromOutcome(result.Outcome, result, null);
     }, ct);
 
-    /// <summary>The attributes typed by a reference type (getReferenceTypeUsage).</summary>
-    /// <param name="id">The reference type id.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The usages.</returns>
-    [McpServerTool(Name = "reference_type_usage", Title = "Reference type usage", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Every attribute typed by a reference type: attribute, owner, domain (the owner's package), collection, required and the effective storage choice per database.")]
-    public Task<CallToolResult> ReferenceTypeUsage([Description("The reference type id; required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (string.IsNullOrEmpty(id))
-            return BadRequest("id is required.");
-        var usage = await _store.GetReferenceTypeUsageAsync(id, ct).ConfigureAwait(false);
-        return usage is null ? NotFound("reference type", id) : Ok(usage);
-    }, ct);
-
-    /// <summary>Where an element is used (getReferences).</summary>
-    /// <param name="id">The element id.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The references.</returns>
-    [McpServerTool(Name = "get_references", Title = "Where used", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Every reference to an element: the referring element id, the referring (sub-)element id, the JSON pointer and field in the referring document, and the referenced id.")]
-    public Task<CallToolResult> GetReferences([Description("The element id; required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (string.IsNullOrEmpty(id))
-            return BadRequest("id is required.");
-        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        if (await _store.GetElementAsync(id, ct).ConfigureAwait(false) is null)
-            return NotFound("element", id);
-        return Ok(await _store.GetReferencesAsync(id, ct).ConfigureAwait(false));
-    }, ct);
-
-    /// <summary>The built-in rule catalog (listValidationRules).</summary>
-    /// <returns>Every rule with its default severity, description, family and whether it can be turned off.</returns>
-    [McpServerTool(Name = "list_validation_rules", Title = "Validation rules", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The built-in validation rules, ordered by id: id, defaultSeverity, description, family (the hundreds group such as MQ72xx) and familyLabel, and canBeOff (false for MQ1xxx). Override a rule's severity with validation.rules in the settings (get_settings, save_settings): error, warning, info or off.")]
-    public CallToolResult ListValidationRules() => Ok(RuleCatalog.Describe());
-
-    /// <summary>Validates the model or a scope (validate).</summary>
-    /// <param name="elementIds">The scope.</param>
-    /// <param name="includeReferrers">Whether to include referrers.</param>
-    /// <param name="includeScriptRules">Whether to run JavaScript rules.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The report.</returns>
-    [McpServerTool(Name = "validate", Title = "Validate", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Validates the whole model, or only some elements, with the built-in rules and, by default, the project's script rules (extensions/rules/*.js, findings x/<id>; a rule file that does not load is MQ5002 on that file). Returns the diagnostics (rule id such as MQ3001, severity, message, element id, file path, JSON pointer, line and column) and the error, warning and info counts.")]
-    public Task<CallToolResult> Validate(
-        [Description("Only these element ids (and, by default, the elements that reference them); omit for the whole model.")] string[]? elementIds = null,
-        [Description("Whether to include the elements that reference the scope (default true).")] bool includeReferrers = true,
-        [Description("Whether to run the project's JavaScript rules (default true).")] bool includeScriptRules = true,
-        CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (elementIds is not null && elementIds.Any(id => !IsUlid(id)))
-            return BadRequest("elementIds must be element ids (uppercase ULIDs).");
-        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var scope = new ValidationScope(elementIds, includeReferrers, includeScriptRules);
-        return Ok(await _store.ValidateAsync(scope, ct).ConfigureAwait(false));
-    }, ct);
-
-    /// <summary>A database's physical view (getDatabaseView).</summary>
-    /// <param name="id">The database id.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The view.</returns>
-    [McpServerTool(Name = "get_database_view", Title = "Database view", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The resolved physical view of one database: tables (from the entities mapped to it, by its byConvention setting or by mapping elements, their relations and overlays) with columns (dbTypeId when a column uses a database type), keys, indexes and foreign keys, views, sequences, routines (parameters and result with native types), database types (nativeName, isCreated), SQL objects (phase, dependsOn) and queries (parameters, sources, the select list with types, the trees as written, collections with their keys, and the SQL for the database's dialect), as generation sees them. Each table, view, sequence, routine, database type, SQL object and query carries its own file's annotations (displayName, pluralName, description, stereotypes, tags, category, properties, generation); a synthesized table without an overlay has none.")]
-    public Task<CallToolResult> GetDatabaseView([Description("The database element id; required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (string.IsNullOrEmpty(id))
-            return BadRequest("id is required.");
-        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var document = await _store.GetElementAsync(id, ct).ConfigureAwait(false);
-        if (document is null)
-            return NotFound("database", id);
-        if (document.Element.Id != id || document.Element.KindName != "database")
-            return NotFound("database", id, "not-a-database");
-        return Ok(await _generation.GetDatabaseViewAsync(id, ct).ConfigureAwait(false));
-    }, ct);
-
-    /// <summary>The SQL of one query for a dialect (the editor's SQL preview).</summary>
-    /// <param name="id">The query id.</param>
-    /// <param name="dialect">The dialect, or null for the query's database's.</param>
-    /// <param name="placeholder">The placeholder style.</param>
-    /// <param name="lists">How list parameters are written.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The statements and diagnostics.</returns>
-    [McpServerTool(Name = "preview_query_sql", Title = "Preview query SQL", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The SQL a query renders to, for its database's dialect or another: {preview: {id, name, database, dialect, sql, parameters, collections: [{name, sql, parameters, keys}]}, diagnostics}. sql uses @name placeholders (placeholder : or $ for :name or $1, $2...); a list parameter is written IN @name, for a data access library that expands lists (lists any writes = ANY(@name) on PostgreSQL). Each collection is a second statement run once for all parent rows: it takes the parent rows' key values as the list parameter mq_keys0 (mq_keys1...) and returns each row's key as mq_key0, which matches the parent row's keys[i].parentField. preview is null when the model has errors (they are in diagnostics); an sql expression without a text for the dialect is MQ4029.")]
-    public Task<CallToolResult> PreviewQuerySql(
-        [Description("The query element id; required.")] string? id = null,
-        [Description("postgresql, sqlserver, mysql, sqlite or oracle; omit for the query's database's dialect.")] string? dialect = null,
-        [Description("The placeholder style: @ (default), : or $.")] string? placeholder = null,
-        [Description("How list parameters are written: expand (default) or any.")] string? lists = null,
-        CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (string.IsNullOrEmpty(id))
-            return BadRequest("id is required.");
-        var options = new QuerySqlOptions
-        {
-            Placeholder = string.IsNullOrEmpty(placeholder) ? "@" : placeholder,
-            Lists = string.IsNullOrEmpty(lists) ? "expand" : lists,
-        };
-        if (options.Placeholder is not ("@" or ":" or "$"))
-            return BadRequest($"placeholder must be @, : or $, not '{placeholder}'.");
-        if (options.Lists is not ("expand" or "any"))
-            return BadRequest($"lists must be expand or any, not '{lists}'.");
-        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var document = await _store.GetElementAsync(id, ct).ConfigureAwait(false);
-        if (document is null)
-            return NotFound("query", id);
-        if (document.Element.Id != id || document.Element.KindName != "query")
-            return NotFound("query", id, "not-a-query");
-        try
-        {
-            return Ok(await _generation.GetQuerySqlAsync(id, string.IsNullOrEmpty(dialect) ? null : dialect, options, ct).ConfigureAwait(false));
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ex.Message);
-        }
-    }, ct);
-
-    /// <summary>The template packs (part of getProject).</summary>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The packs and their diagnostics.</returns>
-    [McpServerTool(Name = "list_packs", Title = "Template packs", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The template packs under .maquettiste/templates/ with their manifests (units, output roots, options) and the diagnostics of loading them.")]
-    public Task<CallToolResult> ListPacks(CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        return Ok(await _generation.GetPacksAsync(ct).ConfigureAwait(false));
-    }, ct);
-
-    /// <summary>Reads <c>maquettiste.json</c> (getSettings).</summary>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The settings document.</returns>
-    [McpServerTool(Name = "get_settings", Title = "Project settings", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The project settings (.maquettiste/maquettiste.json): the typed settings, the canonical JSON (json) and its hash for save_settings.")]
-    public Task<CallToolResult> GetSettings(CancellationToken ct = default) => GuardAsync(async () =>
-        Ok(await _store.GetSettingsAsync(ct).ConfigureAwait(false)), ct);
-
     /// <summary>Saves <c>maquettiste.json</c> (saveSettings).</summary>
     /// <param name="settings">The whole settings document.</param>
     /// <param name="expectedHash">The hash the caller read.</param>
@@ -624,50 +420,6 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         return Ok(summary);
     }, ct);
 
-    /// <summary>A stored plan (getPlan).</summary>
-    /// <param name="planId">The plan id.</param>
-    /// <param name="units">Whether to include the per-unit list.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The plan.</returns>
-    [McpServerTool(Name = "get_plan", Title = "Get plan", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("A stored plan: its request, packs, every file with what apply does to it (added, modified, deleted; unchanged, not-rendered and kept are left alone; hand-edited, conflict, orphaned-owned), counts by kind, units by reason, and diagnostics (and, with units, every planned unit and output).")]
-    public Task<CallToolResult> GetPlan(
-        [Description("The plan id returned by plan; required.")] string? planId = null,
-        [Description("Include the per-unit list (large).")] bool units = false,
-        CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (string.IsNullOrEmpty(planId))
-            return BadRequest("planId is required.");
-        var plan = IsUlid(planId) ? await _generation.GetPlanAsync(planId, ct).ConfigureAwait(false) : null;
-        if (plan is null)
-            return NotFound("plan", planId);
-        return Ok(units ? plan : plan with { Units = [] });
-    }, ct);
-
-    /// <summary>The unified diff of one file in a stored plan (getPlanDiff).</summary>
-    /// <param name="planId">The plan id.</param>
-    /// <param name="path">The repo-relative path.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The diff text.</returns>
-    [McpServerTool(Name = "get_plan_diff", Title = "Plan diff", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The unified diff of one file of a stored plan (the path as it appears in the plan's changes), without rendering again.")]
-    public Task<CallToolResult> GetPlanDiff(
-        [Description("The plan id returned by plan; required.")] string? planId = null,
-        [Description("The repo-relative path of a file in the plan's changes, with / separators; required.")] string? path = null,
-        CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (string.IsNullOrEmpty(planId))
-            return BadRequest("planId is required.");
-        if (string.IsNullOrEmpty(path))
-            return BadRequest("path is required.");
-        if (!IsUlid(planId))
-            return NotFound("plan", planId);
-        var diff = await _generation.GetPlanDiffAsync(planId, path, ct).ConfigureAwait(false);
-        if (diff is null)
-            return Problem("not-found", 404, $"Plan {planId} has no file {path}.");
-        return new CallToolResult { Content = [new TextContentBlock { Text = diff }] };
-    }, ct);
-
     /// <summary>Applies a stored plan (startApply, run to completion).</summary>
     /// <param name="planId">The plan id.</param>
     /// <param name="ct">Cancellation.</param>
@@ -684,70 +436,6 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         var result = await _generation.ApplyAsync(planId, null, ct).ConfigureAwait(false);
         return result.Outcome == RunOutcome.Succeeded ? Ok(result) : FromRun(result.Outcome, result, ct);
     }, ct);
-
-    /// <summary>The JSON schema of a kind or document.</summary>
-    /// <param name="kind">The kind or document name.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The schema and the schemas it references.</returns>
-    [McpServerTool(Name = "get_schema", Title = "JSON schema", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The JSON schema (draft 2020-12) of an element kind or document, with the schema files it references (common.json) and, for an element kind, the project's extension schemas that apply to it (extensions: each constrains the element's properties object), so documents built for create_element, save_element, apply_batch or save_settings are valid.")]
-    public Task<CallToolResult> GetSchema(
-        [Description("An element kind (entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, stereotype, tag-vocabulary, category-tree) or a document (maquettiste for the settings, batch, pack, extension); required.")] string? kind = null,
-        CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (string.IsNullOrEmpty(kind))
-            return BadRequest("kind is required.");
-        var elementKind = KindInfo.TryGet(kind, out var info) ? info : null;
-        var file = elementKind is not null ? elementKind.SchemaFile
-            : kind.EndsWith(".json", StringComparison.Ordinal) ? kind
-            : kind + ".json";
-        if (file is null || !_schemas.FileNames.Contains(file, StringComparer.Ordinal))
-        {
-            var known = string.Join(", ", KindInfo.All.Select(k => k.Name).Concat(_schemas.FileNames.Select(f => f[..^5])).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
-            return Problem("not-found", 404, $"No schema is named '{kind}'.", "Known names: " + known + ".");
-        }
-
-        var result = new JsonObject { ["name"] = kind, ["file"] = file, ["schema"] = SchemaNode(file) };
-        var references = new JsonObject();
-        var pending = new Queue<string>([file]);
-        var seen = new HashSet<string>(StringComparer.Ordinal) { file };
-        while (pending.TryDequeue(out var current))
-        {
-            foreach (var referenced in ReferencedFiles(current))
-            {
-                if (seen.Add(referenced))
-                {
-                    references[referenced] = SchemaNode(referenced);
-                    pending.Enqueue(referenced);
-                }
-            }
-        }
-
-        result["references"] = references;
-        if (elementKind is not null)
-        {
-            // The project's extension schemas constrain `properties` too; the loader applies them on every save.
-            var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-            var extensions = snapshot.Extensions.Select(e => e.Schema)
-                .Where(e => e.AppliesTo.Kinds.Contains(elementKind.Name, StringComparer.Ordinal))
-                .Select(e => new { e.Name, e.Description, e.AppliesTo, e.Properties, e.Required, e.SchemaPath });
-            result["extensions"] = JsonSerializer.SerializeToNode(extensions.ToList(), JsonOptions);
-        }
-
-        return Text(result.ToJsonString(JsonOptions), isError: false);
-    }, ct);
-
-    private JsonNode SchemaNode(string file) => JsonNode.Parse(_schemas.GetFileBytes(file).Span)!;
-
-    private IEnumerable<string> ReferencedFiles(string file)
-    {
-        var text = Encoding.UTF8.GetString(_schemas.GetFileBytes(file).Span);
-        foreach (var name in _schemas.FileNames)
-        {
-            if (name != file && text.Contains("\"" + name, StringComparison.Ordinal))
-                yield return name;
-        }
-    }
 
     private CallToolResult Ok<T>(T value) => Text(JsonSerializer.Serialize(value, JsonOptions), isError: false);
 
@@ -877,26 +565,3 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         return true;
     }
 }
-
-/// <summary>The body of <c>get_project</c>: the editor API's <c>ProjectInfo</c> (getProject).</summary>
-/// <param name="Name">The project name.</param>
-/// <param name="FormatVersion">The model format version.</param>
-/// <param name="EngineVersion">The engine contract version (<see cref="Engine.EngineVersion.Value"/>), not the release.</param>
-/// <param name="ProductVersion">The release running (<see cref="Engine.EngineVersion.Product"/>).</param>
-/// <param name="Build">The build of the release (<see cref="Engine.EngineVersion.Build"/>).</param>
-/// <param name="Workspace">What the checkout is called (<see cref="WorkspaceInfo.Workspace"/>).</param>
-/// <param name="Branch">The git branch, when it can be read.</param>
-/// <param name="Worktree">The linked worktree's name.</param>
-/// <param name="Repository">The main checkout's folder name, for a linked worktree.</param>
-/// <param name="Mode">Always <c>local</c>.</param>
-/// <param name="Settings">The typed settings.</param>
-/// <param name="SettingsHash">The settings file hash.</param>
-/// <param name="Databases">The database summaries.</param>
-/// <param name="Packs">The pack manifests.</param>
-/// <param name="PackDiagnostics">The diagnostics of loading the packs.</param>
-/// <param name="Extensions">The extension schemas.</param>
-/// <param name="Git">Always <see langword="null"/> (the MCP server does not read git).</param>
-internal sealed record ProjectInfo(string Name, int FormatVersion, string EngineVersion, string ProductVersion, string Build, string? Workspace,
-    string? Branch, string? Worktree, string? Repository, string Mode, ProjectSettings Settings, string SettingsHash,
-    IReadOnlyList<ElementSummary> Databases, IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> PackDiagnostics,
-    IReadOnlyList<ExtensionSchema> Extensions, object? Git);

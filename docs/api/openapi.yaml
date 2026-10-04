@@ -97,6 +97,8 @@ tags:
     description: Seed CSV import and export and reference type usage (reference-types-seeds-localization.md sections 2.3 and 3.9).
   - name: processes
     description: Simulation, scenario recording and verification, XState import and export, and enum sync for processes (phase-3-design.md section 4.4).
+  - name: assist
+    description: The assistant panel (SPEC Section 14 "Assist", erratum E44) over the host's AI; proposals are applied through the model batch.
   - name: realtime
     description: Events pushed over the host's SignalR hub (`webhooks`); the browser listens with `site.realtime.on`.
 x-maquettiste-realtime:
@@ -5315,6 +5317,226 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /api/assist/status:
+    get:
+      tags: [assist]
+      operationId: getAssistStatus
+      summary: Whether the site's AI provider is configured, its model, the budgets and today's usage
+      description: |
+        The assistant (SPEC Section 14 "Assist", erratum E44) uses the host's AI (`IAiChat`): the provider, its key and the
+        model are chosen in the host's management UI (AI › providers; Sites › <site> › AI), never in Maquettiste. This
+        reports what the functions can see of it (`IAiChat.IsConfigured`, `IAiChat.Model`), the project's assistant settings
+        (`assistant` in `maquettiste.json`), the caller's tokens spent today (UTC) and whether the caller may apply
+        proposals (editor role or above).
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: none (IAiChat.IsConfigured and Model, ProjectSettings.Assistant, the functions' usage file)
+      responses:
+        '200':
+          description: The status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistStatus'
+              example:
+                configured: false
+                model: null
+                hostAiUrl: http://localhost:8090/
+                canApply: true
+                maxTurns: 10
+                tokenBudgetPerRequest: 200000
+                tokenBudgetPerDayPerUser: 2000000
+                usedToday: 0
+                hasInstructions: false
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/assist/chat:
+    post:
+      tags: [assist]
+      operationId: assistChat
+      summary: Send one message to the assistant and stream its answer (server-sent events)
+      description: |
+        Runs the agent loop on the server: the conversation (stored per user and project; the browser sends only the new
+        message and the conversation id, never tool turns, and any other member of the body is ignored), the system prompt
+        (what Maquettiste is, the modeling conventions with the repository's `CONVENTIONS.md`, and `assistant.instructions`),
+        the read tools the MCP server shares (`get_model_index`, `get_element`, `validate`, ...) and `propose_changes`. Each
+        model turn is streamed; tool calls run on the server and their results go back to the model, up to
+        `assistant.maxTurns` turns and `assistant.tokenBudgetPerRequest` tokens, after which the model must answer in text.
+        `propose_changes` never writes: the batch is checked as a dry run and stored as a proposal the user applies through
+        `POST /api/model/batch` or discards. The response is `text/event-stream`: each event is `event: <type>` and one
+        `data:` line holding an `AssistEvent` JSON object; the stream ends after `final` or `error`. Closing the request
+        stops the loop; what was answered so far is kept.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: AgentTools.CallAsync, AssistantProposals.PrepareAsync (ModelStore.PreviewBatchAsync), AssistantPrompt, IAiChat.StreamAsync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistChatRequest'
+            example:
+              conversationId: null
+              message: Add an entity Shipment to the billing domain.
+              context:
+                workspace: entities
+                elementId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                elementName: Invoice
+                elementKind: entity
+                selection: []
+                problems: { errors: 0, warnings: 0, infos: 0, top: [] }
+      responses:
+        '200':
+          description: The answer as server-sent events, one `AssistEvent` per event.
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/AssistEvent'
+              example: |
+                event: conversation
+                data: {"type":"conversation","conversationId":"01M3MNY0HTVJQSH4BX78RWN8F7","title":"Add an entity Shipment"}
+
+                event: text
+                data: {"type":"text","delta":"I will read the model first."}
+
+                event: final
+                data: {"type":"final","text":"I proposed the entity.","stopReason":"stop","turns":3,"inputTokens":5120,"outputTokens":240,"usedToday":5360,"limited":null}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The conversation is already answering another message (`assist-busy`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: The caller's token budget for the day is spent (`assist-budget-exhausted`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The site has no AI provider (`assist-not-configured`); see `GET /api/assist/status`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /api/assist/conversations:
+    get:
+      tags: [assist]
+      operationId: listAssistConversations
+      summary: The caller's conversations in this project, newest first
+      description: The newest 50 are kept per user; each is capped in size (the oldest exchanges go first).
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: none (the functions' conversation store)
+      responses:
+        '200':
+          description: The conversations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistConversationList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/assist/conversations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Ulid'
+    get:
+      tags: [assist]
+      operationId: getAssistConversation
+      summary: One conversation as the panel shows it
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: none (the functions' conversation store)
+      responses:
+        '200':
+          description: The conversation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistConversation'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [assist]
+      operationId: deleteAssistConversation
+      summary: Clear (delete) a conversation
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: none (the functions' conversation store)
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The conversation is answering a message (`assist-busy`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /api/assist/conversations/{id}/proposals/{proposalId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Ulid'
+      - name: proposalId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Ulid'
+    put:
+      tags: [assist]
+      operationId: setAssistProposalState
+      summary: Record that the user applied or discarded a proposal
+      description: |
+        The editor applies a proposal itself (`POST /api/model/batch` with the proposal's `operations`, one undo step) and then
+        records the outcome here, so the conversation shows it and the model hears of it with the next message. Only a
+        `pending` proposal changes state.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: none (the functions' conversation store)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistProposalStateRequest'
+            example:
+              state: applied
+      responses:
+        '200':
+          description: The proposal with its new state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistProposal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The proposal is no longer pending (`conflict`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
 
 webhooks:
   model.changed:
@@ -5784,6 +6006,9 @@ components:
             - superseded
             - conflict
             - internal
+            - assist-not-configured
+            - assist-budget-exhausted
+            - assist-busy
         traceId:
           type: string
     SignInRequest:
@@ -6102,6 +6327,20 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/ExplorerScope'
+        assistant:
+          description: The editor's assistant (erratum E44); an older server leaves it out. The AI provider and model are the host's, never here.
+          x-engine-record: Maquettiste.Engine.Model.AssistantSettings
+          type: object
+          required: [instructions, maxTurns, tokenBudgetPerRequest, tokenBudgetPerDayPerUser]
+          properties:
+            instructions:
+              type: [string, 'null']
+            maxTurns:
+              type: integer
+            tokenBudgetPerRequest:
+              type: integer
+            tokenBudgetPerDayPerUser:
+              type: integer
     BrandingSettings:
       x-engine-record: Maquettiste.Engine.Model.BrandingSettings
       description: The project's icon and primary color per theme in the editor (MQ8001 to MQ8003). An older server leaves it out.
@@ -12321,3 +12560,371 @@ components:
         release: 20260803-041429-5ab6
         functions: 20260803-052210-9c1f
         source: deploy
+    # ---------------------------------------------------------------- assistant (erratum E44)
+    AssistStatus:
+      description: What the functions can see of the host's AI for this site, the project's assistant settings and the caller's usage today.
+      type: object
+      required: [configured, model, hostAiUrl, canApply, maxTurns, tokenBudgetPerRequest, tokenBudgetPerDayPerUser, usedToday, hasInstructions]
+      properties:
+        configured:
+          type: boolean
+          description: '`IAiChat.IsConfigured`: the site has an AI provider in the host.'
+        model:
+          type: [string, 'null']
+          description: '`IAiChat.Model`: the model a request uses (the site''s choice or the provider''s default); null without a provider.'
+        hostAiUrl:
+          type: [string, 'null']
+          description: Where the host's management UI is (`MAQUETTISTE_HOST_AI_URL`), for the Settings link; null when unset.
+        canApply:
+          type: boolean
+          description: Whether the caller may apply proposals (editor role or above).
+        maxTurns:
+          type: integer
+        tokenBudgetPerRequest:
+          type: integer
+        tokenBudgetPerDayPerUser:
+          type: integer
+        usedToday:
+          type: integer
+          minimum: 0
+          description: The caller's input and output tokens today (UTC).
+        hasInstructions:
+          type: boolean
+          description: Whether `assistant.instructions` is set.
+    AssistContext:
+      description: What the panel says the user is looking at; the user removes chips to leave a part out. Every member is optional.
+      type: object
+      properties:
+        workspace:
+          type: [string, 'null']
+        elementId:
+          type: [string, 'null']
+        elementName:
+          type: [string, 'null']
+        elementKind:
+          type: [string, 'null']
+        selection:
+          type: [array, 'null']
+          maxItems: 200
+          items:
+            type: string
+        problems:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/AssistProblems'
+    AssistProblems:
+      type: object
+      required: [errors, warnings, infos]
+      properties:
+        errors:
+          type: integer
+          minimum: 0
+        warnings:
+          type: integer
+          minimum: 0
+        infos:
+          type: integer
+          minimum: 0
+        top:
+          type: [array, 'null']
+          maxItems: 20
+          items:
+            type: object
+            required: [rule, message]
+            properties:
+              rule:
+                type: string
+              message:
+                type: string
+              elementId:
+                type: [string, 'null']
+    AssistChatRequest:
+      description: One new user message. Tool turns are never accepted from the browser; members other than these are ignored.
+      type: object
+      required: [message]
+      properties:
+        conversationId:
+          description: The conversation to continue; null or absent starts a new one.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Ulid'
+        message:
+          type: string
+          minLength: 1
+          maxLength: 16000
+        context:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/AssistContext'
+    AssistProposalFile:
+      description: A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files).
+      x-engine-record: BatchPreviewFile
+      type: object
+      required: [path, action, id, kind, name, beforeHash, before, after]
+      properties:
+        path:
+          type: string
+        action:
+          type: string
+          enum: [created, changed, deleted]
+        id:
+          type: [string, 'null']
+        kind:
+          type: [string, 'null']
+        name:
+          type: [string, 'null']
+        beforeHash:
+          type: [string, 'null']
+        before:
+          type: [string, 'null']
+        after:
+          type: [string, 'null']
+    AssistProposal:
+      description: |
+        A model change the assistant proposed (`propose_changes`), checked by a dry run and pinned: created and updated
+        elements carry the documents the dry run would write (ids included), and updates and deletes the expected hash at
+        proposal time, so applying it writes what was shown or is refused as a conflict.
+      type: object
+      required: [id, toolCallId, summary, state, createdUtc, operations, files]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        toolCallId:
+          type: string
+        summary:
+          type: string
+        state:
+          type: string
+          enum: [pending, applied, discarded]
+        createdUtc:
+          type: string
+          format: date-time
+        operations:
+          description: "The batch operations, as `POST /api/model/batch` takes them (`{ \"operations\": [...] }`)."
+          type: array
+          items:
+            type: object
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssistProposalFile'
+    AssistProposalStateRequest:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [applied, discarded]
+    AssistEvent:
+      description: One server-sent event of `POST /api/assist/chat` (the `data:` line); `type` is also the SSE event name.
+      oneOf:
+        - $ref: '#/components/schemas/AssistConversationEvent'
+        - $ref: '#/components/schemas/AssistTextEvent'
+        - $ref: '#/components/schemas/AssistToolStartedEvent'
+        - $ref: '#/components/schemas/AssistToolFinishedEvent'
+        - $ref: '#/components/schemas/AssistProposalEvent'
+        - $ref: '#/components/schemas/AssistFinalEvent'
+        - $ref: '#/components/schemas/AssistErrorEvent'
+      discriminator:
+        propertyName: type
+        mapping:
+          conversation: '#/components/schemas/AssistConversationEvent'
+          text: '#/components/schemas/AssistTextEvent'
+          tool-started: '#/components/schemas/AssistToolStartedEvent'
+          tool-finished: '#/components/schemas/AssistToolFinishedEvent'
+          proposal: '#/components/schemas/AssistProposalEvent'
+          final: '#/components/schemas/AssistFinalEvent'
+          error: '#/components/schemas/AssistErrorEvent'
+    AssistConversationEvent:
+      description: First event of every stream.
+      type: object
+      required: [type, conversationId, title]
+      properties:
+        type:
+          const: conversation
+        conversationId:
+          $ref: '#/components/schemas/Ulid'
+        title:
+          type: string
+    AssistTextEvent:
+      description: A piece of the model's text.
+      type: object
+      required: [type, delta]
+      properties:
+        type:
+          const: text
+        delta:
+          type: string
+    AssistToolStartedEvent:
+      type: object
+      required: [type, id, name, arguments]
+      properties:
+        type:
+          const: tool-started
+        id:
+          type: string
+          description: The tool call's id.
+        name:
+          type: string
+        arguments:
+          description: The arguments the model sent (a JSON object, or a string when it was not JSON).
+    AssistToolFinishedEvent:
+      type: object
+      required: [type, id, name, isError, summary]
+      properties:
+        type:
+          const: tool-finished
+        id:
+          type: string
+        name:
+          type: string
+        isError:
+          type: boolean
+        summary:
+          type: string
+          description: One line about the result (counts, the element read, the error's title).
+    AssistProposalEvent:
+      type: object
+      required: [type, proposal]
+      properties:
+        type:
+          const: proposal
+        proposal:
+          $ref: '#/components/schemas/AssistProposal'
+    AssistFinalEvent:
+      description: The end of the answer.
+      type: object
+      required: [type, text, stopReason, turns, inputTokens, outputTokens, usedToday, limited]
+      properties:
+        type:
+          const: final
+        text:
+          type: string
+          description: The whole text of the last turn.
+        stopReason:
+          type: [string, 'null']
+        turns:
+          type: integer
+        inputTokens:
+          type: integer
+        outputTokens:
+          type: integer
+        usedToday:
+          type: integer
+        limited:
+          description: Why the model was made to answer in text, when it was (the turn cap or the request's token budget).
+          type: [string, 'null']
+          enum: [turns, budget, null]
+    AssistErrorEvent:
+      description: |
+        The answer failed: `tools-unsupported` (the site's model does not support tools; choose another in the host's AI
+        settings), `max-tokens` (the model ran out of output tokens part way through its tool calls), `provider` (the
+        provider refused or failed; `message` says how), `not-configured`, `budget-exhausted` or `internal`.
+      type: object
+      required: [type, code, message]
+      properties:
+        type:
+          const: error
+        code:
+          type: string
+          enum: [tools-unsupported, max-tokens, provider, not-configured, budget-exhausted, internal]
+        message:
+          type: string
+    AssistEntry:
+      description: One entry of a stored conversation, as the panel shows it.
+      oneOf:
+        - type: object
+          required: [type, text, context]
+          properties:
+            type:
+              const: user
+            text:
+              type: string
+            context:
+              oneOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/AssistContext'
+        - type: object
+          required: [type, text]
+          properties:
+            type:
+              const: assistant
+            text:
+              type: string
+        - type: object
+          required: [type, id, name, arguments, isError, summary]
+          properties:
+            type:
+              const: tool
+            id:
+              type: string
+            name:
+              type: string
+            arguments: {}
+            isError:
+              type: boolean
+            summary:
+              type: string
+        - type: object
+          required: [type, proposal]
+          properties:
+            type:
+              const: proposal
+            proposal:
+              $ref: '#/components/schemas/AssistProposal'
+        - type: object
+          required: [type, code, message]
+          properties:
+            type:
+              const: error
+            code:
+              type: string
+            message:
+              type: string
+    AssistConversationSummary:
+      type: object
+      required: [id, title, createdUtc, updatedUtc, entryCount]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        title:
+          type: string
+        createdUtc:
+          type: string
+          format: date-time
+        updatedUtc:
+          type: string
+          format: date-time
+        entryCount:
+          type: integer
+    AssistConversationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssistConversationSummary'
+    AssistConversation:
+      type: object
+      required: [id, title, createdUtc, updatedUtc, model, entries, truncated]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        title:
+          type: string
+        createdUtc:
+          type: string
+          format: date-time
+        updatedUtc:
+          type: string
+          format: date-time
+        model:
+          type: [string, 'null']
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssistEntry'
+        truncated:
+          type: boolean
+          description: Whether older exchanges were dropped to keep the conversation under its size cap.

@@ -1659,6 +1659,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assist/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the site's AI provider is configured, its model, the budgets and today's usage
+         * @description The assistant (SPEC Section 14 "Assist", erratum E44) uses the host's AI (`IAiChat`): the provider, its key and the
+         *     model are chosen in the host's management UI (AI › providers; Sites › <site> › AI), never in Maquettiste. This
+         *     reports what the functions can see of it (`IAiChat.IsConfigured`, `IAiChat.Model`), the project's assistant settings
+         *     (`assistant` in `maquettiste.json`), the caller's tokens spent today (UTC) and whether the caller may apply
+         *     proposals (editor role or above).
+         */
+        get: operations["getAssistStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assist/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send one message to the assistant and stream its answer (server-sent events)
+         * @description Runs the agent loop on the server: the conversation (stored per user and project; the browser sends only the new
+         *     message and the conversation id, never tool turns, and any other member of the body is ignored), the system prompt
+         *     (what Maquettiste is, the modeling conventions with the repository's `CONVENTIONS.md`, and `assistant.instructions`),
+         *     the read tools the MCP server shares (`get_model_index`, `get_element`, `validate`, ...) and `propose_changes`. Each
+         *     model turn is streamed; tool calls run on the server and their results go back to the model, up to
+         *     `assistant.maxTurns` turns and `assistant.tokenBudgetPerRequest` tokens, after which the model must answer in text.
+         *     `propose_changes` never writes: the batch is checked as a dry run and stored as a proposal the user applies through
+         *     `POST /api/model/batch` or discards. The response is `text/event-stream`: each event is `event: <type>` and one
+         *     `data:` line holding an `AssistEvent` JSON object; the stream ends after `final` or `error`. Closing the request
+         *     stops the loop; what was answered so far is kept.
+         */
+        post: operations["assistChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assist/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's conversations in this project, newest first
+         * @description The newest 50 are kept per user; each is capped in size (the oldest exchanges go first).
+         */
+        get: operations["listAssistConversations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assist/conversations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        /** One conversation as the panel shows it */
+        get: operations["getAssistConversation"];
+        put?: never;
+        post?: never;
+        /** Clear (delete) a conversation */
+        delete: operations["deleteAssistConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assist/conversations/{id}/proposals/{proposalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["schemas"]["Ulid"];
+                proposalId: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record that the user applied or discarded a proposal
+         * @description The editor applies a proposal itself (`POST /api/model/batch` with the proposal's `operations`, one undo step) and then
+         *     records the outcome here, so the conversation shows it and the model hears of it with the next message. Only a
+         *     `pending` proposal changes state.
+         */
+        put: operations["setAssistProposalState"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export interface webhooks {
     "model.changed": {
@@ -1879,7 +1997,7 @@ export interface components {
             detail?: string;
             instance?: string;
             /** @enum {string} */
-            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "not-a-query" | "invalid-icon" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "superseded" | "conflict" | "internal";
+            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "not-a-query" | "invalid-icon" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "superseded" | "conflict" | "internal" | "assist-not-configured" | "assist-budget-exhausted" | "assist-busy";
             traceId?: string;
         };
         SignInRequest: {
@@ -2044,6 +2162,13 @@ export interface components {
             explorer?: {
                 folders: components["schemas"]["ExplorerFolder"][];
                 scopes?: components["schemas"]["ExplorerScope"][];
+            };
+            /** @description The editor's assistant (erratum E44); an older server leaves it out. The AI provider and model are the host's, never here. */
+            assistant?: {
+                instructions: string | null;
+                maxTurns: number;
+                tokenBudgetPerRequest: number;
+                tokenBudgetPerDayPerUser: number;
             };
         };
         /** @description The project's icon and primary color per theme in the editor (MQ8001 to MQ8003). An older server leaves it out. */
@@ -5139,6 +5264,223 @@ export interface components {
             /** @enum {string} */
             source: "deploy" | "rollback" | "functions";
         };
+        /** @description What the functions can see of the host's AI for this site, the project's assistant settings and the caller's usage today. */
+        AssistStatus: {
+            /** @description `IAiChat.IsConfigured`: the site has an AI provider in the host. */
+            configured: boolean;
+            /** @description `IAiChat.Model`: the model a request uses (the site's choice or the provider's default); null without a provider. */
+            model: string | null;
+            /** @description Where the host's management UI is (`MAQUETTISTE_HOST_AI_URL`), for the Settings link; null when unset. */
+            hostAiUrl: string | null;
+            /** @description Whether the caller may apply proposals (editor role or above). */
+            canApply: boolean;
+            maxTurns: number;
+            tokenBudgetPerRequest: number;
+            tokenBudgetPerDayPerUser: number;
+            /** @description The caller's input and output tokens today (UTC). */
+            usedToday: number;
+            /** @description Whether `assistant.instructions` is set. */
+            hasInstructions: boolean;
+        };
+        /** @description What the panel says the user is looking at; the user removes chips to leave a part out. Every member is optional. */
+        AssistContext: {
+            workspace?: string | null;
+            elementId?: string | null;
+            elementName?: string | null;
+            elementKind?: string | null;
+            selection?: string[] | null;
+            problems?: null | components["schemas"]["AssistProblems"];
+        };
+        AssistProblems: {
+            errors: number;
+            warnings: number;
+            infos: number;
+            top?: {
+                rule: string;
+                message: string;
+                elementId?: string | null;
+            }[] | null;
+        };
+        /** @description One new user message. Tool turns are never accepted from the browser; members other than these are ignored. */
+        AssistChatRequest: {
+            /** @description The conversation to continue; null or absent starts a new one. */
+            conversationId?: null | components["schemas"]["Ulid"];
+            message: string;
+            context?: null | components["schemas"]["AssistContext"];
+        };
+        /** @description A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files). */
+        AssistProposalFile: {
+            path: string;
+            /** @enum {string} */
+            action: "created" | "changed" | "deleted";
+            id: string | null;
+            kind: string | null;
+            name: string | null;
+            beforeHash: string | null;
+            before: string | null;
+            after: string | null;
+        };
+        /**
+         * @description A model change the assistant proposed (`propose_changes`), checked by a dry run and pinned: created and updated
+         *     elements carry the documents the dry run would write (ids included), and updates and deletes the expected hash at
+         *     proposal time, so applying it writes what was shown or is refused as a conflict.
+         */
+        AssistProposal: {
+            id: components["schemas"]["Ulid"];
+            toolCallId: string;
+            summary: string;
+            /** @enum {string} */
+            state: "pending" | "applied" | "discarded";
+            /** Format: date-time */
+            createdUtc: string;
+            /** @description The batch operations, as `POST /api/model/batch` takes them (`{ "operations": [...] }`). */
+            operations: Record<string, never>[];
+            files: components["schemas"]["AssistProposalFile"][];
+        };
+        AssistProposalStateRequest: {
+            /** @enum {string} */
+            state: "applied" | "discarded";
+        };
+        /** @description One server-sent event of `POST /api/assist/chat` (the `data:` line); `type` is also the SSE event name. */
+        AssistEvent: components["schemas"]["AssistConversationEvent"] | components["schemas"]["AssistTextEvent"] | components["schemas"]["AssistToolStartedEvent"] | components["schemas"]["AssistToolFinishedEvent"] | components["schemas"]["AssistProposalEvent"] | components["schemas"]["AssistFinalEvent"] | components["schemas"]["AssistErrorEvent"];
+        /** @description First event of every stream. */
+        AssistConversationEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "conversation";
+            conversationId: components["schemas"]["Ulid"];
+            title: string;
+        };
+        /** @description A piece of the model's text. */
+        AssistTextEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+            delta: string;
+        };
+        AssistToolStartedEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "tool-started";
+            /** @description The tool call's id. */
+            id: string;
+            name: string;
+            /** @description The arguments the model sent (a JSON object, or a string when it was not JSON). */
+            arguments: unknown;
+        };
+        AssistToolFinishedEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "tool-finished";
+            id: string;
+            name: string;
+            isError: boolean;
+            /** @description One line about the result (counts, the element read, the error's title). */
+            summary: string;
+        };
+        AssistProposalEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "proposal";
+            proposal: components["schemas"]["AssistProposal"];
+        };
+        /** @description The end of the answer. */
+        AssistFinalEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "final";
+            /** @description The whole text of the last turn. */
+            text: string;
+            stopReason: string | null;
+            turns: number;
+            inputTokens: number;
+            outputTokens: number;
+            usedToday: number;
+            /**
+             * @description Why the model was made to answer in text, when it was (the turn cap or the request's token budget).
+             * @enum {string|null}
+             */
+            limited: "turns" | "budget" | null;
+        };
+        /**
+         * @description The answer failed: `tools-unsupported` (the site's model does not support tools; choose another in the host's AI
+         *     settings), `max-tokens` (the model ran out of output tokens part way through its tool calls), `provider` (the
+         *     provider refused or failed; `message` says how), `not-configured`, `budget-exhausted` or `internal`.
+         */
+        AssistErrorEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "error";
+            /** @enum {string} */
+            code: "tools-unsupported" | "max-tokens" | "provider" | "not-configured" | "budget-exhausted" | "internal";
+            message: string;
+        };
+        /** @description One entry of a stored conversation, as the panel shows it. */
+        AssistEntry: {
+            /** @constant */
+            type: "user";
+            text: string;
+            context: null | components["schemas"]["AssistContext"];
+        } | {
+            /** @constant */
+            type: "assistant";
+            text: string;
+        } | {
+            /** @constant */
+            type: "tool";
+            id: string;
+            name: string;
+            arguments: unknown;
+            isError: boolean;
+            summary: string;
+        } | {
+            /** @constant */
+            type: "proposal";
+            proposal: components["schemas"]["AssistProposal"];
+        } | {
+            /** @constant */
+            type: "error";
+            code: string;
+            message: string;
+        };
+        AssistConversationSummary: {
+            id: components["schemas"]["Ulid"];
+            title: string;
+            /** Format: date-time */
+            createdUtc: string;
+            /** Format: date-time */
+            updatedUtc: string;
+            entryCount: number;
+        };
+        AssistConversationList: {
+            items: components["schemas"]["AssistConversationSummary"][];
+        };
+        AssistConversation: {
+            id: components["schemas"]["Ulid"];
+            title: string;
+            /** Format: date-time */
+            createdUtc: string;
+            /** Format: date-time */
+            updatedUtc: string;
+            model: string | null;
+            entries: components["schemas"]["AssistEntry"][];
+            /** @description Whether older exchanges were dropped to keep the conversation under its size cap. */
+            truncated: boolean;
+        };
         /** @description A storage choice for reference data: a strategy key the project declares in referenceData.strategies (absent means template-defined) and its options. */
         storageChoice: {
             strategy?: string;
@@ -5405,6 +5747,29 @@ export interface components {
                     /** @description A diagram id: only the diagram's members. */
                     diagram?: string | null;
                 }[];
+            };
+            /**
+             * @description The editor's assistant (SPEC Section 14, erratum E44): house rules appended to its system prompt and its token budgets. The AI provider, its key and the model are the host's site AI settings, never the project's. It changes no generated output.
+             * @default {}
+             */
+            assistant?: {
+                /** @description House rules (naming, conventions, what to avoid), appended to the assistant's system prompt. */
+                instructions?: string | null;
+                /**
+                 * @description The most model turns one request takes; the last one must answer in text.
+                 * @default 10
+                 */
+                maxTurns?: number;
+                /**
+                 * @description The most input and output tokens one request spends (every turn resends the conversation); once spent, the assistant must answer in text.
+                 * @default 200000
+                 */
+                tokenBudgetPerRequest?: number;
+                /**
+                 * @description The most tokens one user spends in a UTC day; requests are refused once it is spent.
+                 * @default 2000000
+                 */
+                tokenBudgetPerDayPerUser?: number;
             };
             $defs: {
                 strategyDeclaration: {
@@ -11596,6 +11961,243 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getAssistStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "configured": false,
+                     *       "model": null,
+                     *       "hostAiUrl": "http://localhost:8090/",
+                     *       "canApply": true,
+                     *       "maxTurns": 10,
+                     *       "tokenBudgetPerRequest": 200000,
+                     *       "tokenBudgetPerDayPerUser": 2000000,
+                     *       "usedToday": 0,
+                     *       "hasInstructions": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AssistStatus"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    assistChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "conversationId": null,
+                 *       "message": "Add an entity Shipment to the billing domain.",
+                 *       "context": {
+                 *         "workspace": "entities",
+                 *         "elementId": "01J92P0V0FJ23CGSNKM7P1W5V7",
+                 *         "elementName": "Invoice",
+                 *         "elementKind": "entity",
+                 *         "selection": [],
+                 *         "problems": {
+                 *           "errors": 0,
+                 *           "warnings": 0,
+                 *           "infos": 0,
+                 *           "top": []
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["AssistChatRequest"];
+            };
+        };
+        responses: {
+            /** @description The answer as server-sent events, one `AssistEvent` per event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example event: conversation
+                     *     data: {"type":"conversation","conversationId":"01M3MNY0HTVJQSH4BX78RWN8F7","title":"Add an entity Shipment"}
+                     *
+                     *     event: text
+                     *     data: {"type":"text","delta":"I will read the model first."}
+                     *
+                     *     event: final
+                     *     data: {"type":"final","text":"I proposed the entity.","stopReason":"stop","turns":3,"inputTokens":5120,"outputTokens":240,"usedToday":5360,"limited":null}
+                     */
+                    "text/event-stream": components["schemas"]["AssistEvent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description The conversation is already answering another message (`assist-busy`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller's token budget for the day is spent (`assist-budget-exhausted`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The site has no AI provider (`assist-not-configured`); see `GET /api/assist/status`. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listAssistConversations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conversations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistConversationList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    getAssistConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The conversation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistConversation"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteAssistConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description The conversation is answering a message (`assist-busy`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setAssistProposalState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["schemas"]["Ulid"];
+                proposalId: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "state": "applied"
+                 *     }
+                 */
+                "application/json": components["schemas"]["AssistProposalStateRequest"];
+            };
+        };
+        responses: {
+            /** @description The proposal with its new state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistProposal"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description The proposal is no longer pending (`conflict`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     realtimeModelChanged: {

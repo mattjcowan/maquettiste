@@ -55,8 +55,28 @@ test("every icon-only control on the main screens has a tooltip and an accessibl
 
   // Settings, every tab.
   await page.getByTestId("rail-settings").click();
-  for (const name of ["General", "Tags", "Categories", "Stereotypes", "Conventions", "Locales", "Validation", "Type maps, outputs, formatters", "Explorer"])
+  for (const name of [
+    "General",
+    "Tags",
+    "Categories",
+    "Stereotypes",
+    "Conventions",
+    "Locales",
+    "Validation",
+    "Type maps, outputs, formatters",
+    "Explorer",
+    "Assistant",
+  ])
     await tab(name);
+
+  // The assistant drawer with a conversation: its tool row, its proposal card and the context chips.
+  await page.getByTestId("assistant-toggle").click();
+  const assistant = page.getByTestId("assistant-panel");
+  await assistant.getByTestId("assistant-input").fill("add an entity Tooltip");
+  await assistant.getByTestId("assistant-send").click();
+  await expect(assistant.getByTestId("proposal-card")).toBeVisible();
+  total += await scan("assistant");
+  await page.getByTestId("assistant-toggle").click();
 
   // The bottom panel's tabs.
   for (const name of ["Output", "Diff", "References"]) await tab(name, page.getByTestId("bottom-panel"));

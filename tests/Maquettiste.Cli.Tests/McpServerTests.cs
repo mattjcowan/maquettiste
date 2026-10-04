@@ -50,6 +50,25 @@ public sealed class McpSurfaceTests
     }
 
     [Fact]
+    public async Task The_read_tools_are_the_catalog_the_editor_assistant_shares()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+        var tools = await session.Client.ListToolsAsync(cancellationToken: ct);
+        Assert.Equal(22, Engine.AgentTools.All.Count);
+        foreach (var tool in Engine.AgentTools.All)
+        {
+            var listed = tools.Single(t => t.Name == tool.Name).ProtocolTool;
+            Assert.Equal(tool.Title, listed.Title);
+            Assert.Equal(tool.Description, listed.Description);
+            Assert.True(JsonNode.DeepEquals(JsonNode.Parse(tool.InputSchema.GetRawText()), JsonNode.Parse(listed.InputSchema.GetRawText())), tool.Name);
+            Assert.True(listed.Annotations!.ReadOnlyHint);
+            Assert.True(listed.Annotations.IdempotentHint);
+            Assert.False(listed.Annotations.OpenWorldHint);
+        }
+    }
+
+    [Fact]
     public void Docs_list_every_tool_and_the_current_count()
     {
         var root = Maquettiste.Testing.Fixtures.RepoRoot;

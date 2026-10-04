@@ -1,5 +1,5 @@
 // The Settings workspace (phase2-design.md 4.8; owner decision 7: phase 2 edits conventions and
-// vocabularies only; General (name and branding) came with the 2026-09-29 live test). The global tags and categories (vocabularies/VocabularyEditors; a domain's own are on the domain editor), stereotypes (list and form), conventions for the project and per database, locales (l10n/LocalesSettings), validation rule severities (ValidationSettings),
+// vocabularies only; General (name and branding) came with the 2026-09-29 live test). The global tags and categories (vocabularies/VocabularyEditors; a domain's own are on the domain editor), stereotypes (list and form), conventions for the project and per database, locales (l10n/LocalesSettings), validation rule severities (ValidationSettings), the assistant's house rules and budgets (AssistantSettings),
 // saved through PUT /api/project/settings with the inherited value as placeholder. Type maps,
 // output allowlist and formatters are read-only.
 import { useEffect, useMemo, useState } from "react";
@@ -31,10 +31,11 @@ import { CategoryTreeEditor, TagVocabularyEditor } from "@/vocabularies/Vocabula
 import { GeneralSettings } from "./GeneralSettings";
 import { StrategiesHint } from "./StrategiesHint";
 import { ValidationSettings } from "./ValidationSettings";
+import { AssistantSettings } from "./AssistantSettings";
 import { CommentsConvention } from "./CommentsConvention";
 import { TablesByConvention } from "./DatabaseConvention";
 
-const TABS = ["general", "tags", "categories", "stereotypes", "conventions", "locales", "validation", "project", "explorer"] as const;
+const TABS = ["general", "tags", "categories", "stereotypes", "conventions", "locales", "validation", "project", "explorer", "assistant"] as const;
 
 export function SettingsWorkspace() {
   const location = useLocation();
@@ -52,6 +53,7 @@ export function SettingsWorkspace() {
         <TabsTrigger value="validation">Validation</TabsTrigger>
         <TabsTrigger value="project">Type maps, outputs, formatters</TabsTrigger>
         <TabsTrigger value="explorer">Explorer</TabsTrigger>
+        <TabsTrigger value="assistant">Assistant</TabsTrigger>
       </TabsList>
       {TABS.map((t) => (
         <TabsContent key={t} value={t} className="overflow-auto p-2">
@@ -75,6 +77,8 @@ export function SettingsWorkspace() {
             <ValidationSettings />
           ) : t === "explorer" ? (
             <ExplorerPreferences />
+          ) : t === "assistant" ? (
+            <AssistantSettings />
           ) : (
             <ReadOnlySettings />
           )}

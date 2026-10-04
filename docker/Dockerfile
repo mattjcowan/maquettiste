@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# The Maquettiste editor image (phase2-design.md section 6): static-site-hosting 0.2.0 with the editor site zip, the engine package
+# The Maquettiste editor image (phase2-design.md section 6): static-site-hosting 0.3.0 with the editor site zip, the engine package
 # and its dependency closure in a local NuGet feed (offline first build), and an entrypoint that deploys the zip on first boot.
 # Build from the repository root with BuildKit (the default builder since Docker 23; the legacy builder drops the /data ownership
 # fix below, because /data is a declared volume of the base image):
@@ -21,12 +21,14 @@ WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY schemas/v1 schemas/v1
 COPY src/Maquettiste.Engine src/Maquettiste.Engine
+# The modeling skill is embedded in the engine (the MCP conventions resource and the assistant's system prompt share it).
+COPY skills/maquettiste-modeling/SKILL.md skills/maquettiste-modeling/SKILL.md
 COPY docker/closure docker/closure
 # PD24: one package version per engine build, <Directory.Build.props version> plus b<12 hex of the engine's inputs> (as a further
 # prerelease segment, or as the prerelease label when the version has none), so an upgraded image
 # never compiles the functions against an engine the persistent NuGet cache (/data/nuget) already holds under the same version.
 RUN base=$(dotnet msbuild src/Maquettiste.Engine -getProperty:PackageVersion) \
- && sum=$(find src/Maquettiste.Engine schemas/v1 Directory.Build.props Directory.Packages.props -type f \
+ && sum=$(find src/Maquettiste.Engine schemas/v1 skills/maquettiste-modeling/SKILL.md Directory.Build.props Directory.Packages.props -type f \
           -not -path '*/bin/*' -not -path '*/obj/*' | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-12) \
  && case "$base" in *-*) echo "$base.b$sum" ;; *) echo "$base-b$sum" ;; esac > /engine.version \
  && dotnet pack src/Maquettiste.Engine -c Release -o /feed -p:Version="$(cat /engine.version)" \
@@ -69,9 +71,9 @@ RUN mkdir -p /out && if [ -f src/editor/package.json ] && [ -f src/editor/script
     fi
 
 # ---------------------------------------------------------------- runtime
-# The runtime-functions image of static-site-hosting 0.2.0 (Ubuntu 24.04, .NET SDK 10.0.401, git, curl and setpriv; runs as app,
+# The runtime-functions image of static-site-hosting 0.3.0 (Ubuntu 24.04, .NET SDK 10.0.401, git, curl and setpriv; runs as app,
 # UID 1654; NUGET_PACKAGES=/data/nuget; VOLUME /data).
-FROM mattjcowan/static-site-hosting:0.2.0
+FROM mattjcowan/static-site-hosting:0.3.0
 USER root
 # jq edits the host's apikeys.json in the first-boot shim. The mkdir/chown makes the model mount's parents app-owned: Docker creates
 # missing parents of a mount point as root, and without this the host cannot write .staging/, releases/ or site.json on a new

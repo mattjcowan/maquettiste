@@ -59,6 +59,38 @@ public sealed record ProjectSettings
 
     /// <summary>The editor's explorer settings: project-defined folders (explorer-redesign.md section 1.6).</summary>
     public ExplorerSettings Explorer { get; init; } = new();
+
+    /// <summary>The editor's assistant: house rules and budgets (erratum E44). It changes no generated output.</summary>
+    public AssistantSettings Assistant { get; init; } = new();
+}
+
+/// <summary>
+/// The editor's assistant (SPEC Section 14 "Assist", erratum E44): the project's own instructions, appended to its system prompt, and
+/// the limits of one request and of one user's day. The provider, its key and the model are the host's (static-site-hosting's site AI
+/// settings), never the project's.
+/// </summary>
+public sealed record AssistantSettings
+{
+    /// <summary>The default turn cap of one request.</summary>
+    public const int DefaultMaxTurns = 10;
+
+    /// <summary>The default token budget of one request (input and output tokens of every turn).</summary>
+    public const int DefaultTokenBudgetPerRequest = 200_000;
+
+    /// <summary>The default token budget of one user's day (UTC).</summary>
+    public const int DefaultTokenBudgetPerDayPerUser = 2_000_000;
+
+    /// <summary>House rules (naming, conventions, what to avoid), appended to the assistant's system prompt; at most 8000 characters.</summary>
+    public string? Instructions { get; init; }
+
+    /// <summary>The most model turns one request takes before the assistant must answer in text.</summary>
+    public int MaxTurns { get; init; } = DefaultMaxTurns;
+
+    /// <summary>The most input and output tokens one request spends before the assistant must answer in text.</summary>
+    public int TokenBudgetPerRequest { get; init; } = DefaultTokenBudgetPerRequest;
+
+    /// <summary>The most tokens one user spends in a UTC day; a request is refused once it is spent.</summary>
+    public int TokenBudgetPerDayPerUser { get; init; } = DefaultTokenBudgetPerDayPerUser;
 }
 
 /// <summary>The project's branding in the editor. The engine stores and checks it (MQ8001 to MQ8003); it changes no generated output.</summary>

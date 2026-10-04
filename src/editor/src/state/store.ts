@@ -196,6 +196,8 @@ export interface EditorState {
   paletteOpen: boolean;
   /** Quick open (Ctrl/Cmd+P, explorer-redesign.md 3.1): the ranked search without the commands. */
   quickOpen: boolean;
+  /** The assistant drawer on the right (SPEC Section 14 "Assist", erratum E44; Ctrl+I). */
+  assistantOpen: boolean;
   /** Elements opened (not merely selected) from the explorer, quick open, the palette or a go-to, most recent first (a ranking tie-breaker and the
    * explorer's Recent strip, 3.3); the first 20 are kept per user in localStorage. */
   recent: string[];
@@ -295,6 +297,7 @@ export interface EditorActions {
   setTheme(theme: ThemeChoice): void;
   setPaletteOpen(open: boolean): void;
   setQuickOpen(open: boolean): void;
+  setAssistantOpen(open: boolean): void;
   noteRecent(id: string): void;
   /** Removes elements from the Recent strip (all of them when `ids` is left out). */
   clearRecent(ids?: readonly string[]): void;
@@ -439,6 +442,7 @@ export function createEditorStore(): EditorStore {
     theme: initialTheme(),
     paletteOpen: false,
     quickOpen: false,
+    assistantOpen: false,
     recent: initialRecent(),
     command: null,
     newElement: null,
@@ -619,6 +623,7 @@ export function createEditorStore(): EditorStore {
     },
     setPaletteOpen: (open) => set(open ? { paletteOpen: true, quickOpen: false } : { paletteOpen: false }),
     setQuickOpen: (open) => set(open ? { quickOpen: true, paletteOpen: false } : { quickOpen: false }),
+    setAssistantOpen: (open) => set({ assistantOpen: open }),
     noteRecent: (id) => set({ recent: withRecent(get().recent, id) }),
     clearRecent: (ids) => {
       const drop = ids ? new Set(ids) : null;

@@ -18,6 +18,10 @@ Conventions every handler follows:
   JSON only); writes need `If-Match` (`Api.TryGetIfMatch`).
 - `SignInGate` (middleware, order 0) decides local trust, cookies and tokens before any handler runs.
 - Realtime events stay under `Api.MaxEventBytes` (the host refuses payloads over 256 KB).
+- The assistant (`AssistEndpoints.cs`, `AssistService.cs`; erratum E44) is the one place that talks to the host's `IAiChat`. Its
+  handlers check the caller themselves (function calls bypass `[AiAccess]`), `POST /api/assist/chat` answers with server-sent events
+  written by an `IResult`, and conversations and per-day token usage live under the cache folder (`<cache>/assist/<user hash>/`),
+  never in the model. The loop follows the host's tool rules (host-contracts.md §1.3); the tools come from the engine's `AgentTools`.
 
 Test with `dotnet test tests/Maquettiste.Functions.Tests`; `EditorHost` runs requests through the gate and a reflection router
 the way the host does, including its `500 text/plain` for an escaped exception (`EditorHost.HostFailures`).

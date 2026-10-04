@@ -2,7 +2,7 @@
 # The Maquettiste image's entrypoint (phase2-design.md section 6.2). Runs as app (UID 1654), or as the user picked below:
 #   1. checks the host volume is writable and defaults MAQUETTISTE_LOCAL_PEERS to the container's gateway;
 #   2. decides whether the bundled site zip must be deployed (a new volume, or an image newer than the last deploy);
-#   3. seeds a deploy key into the host's apikeys.json while the host is stopped (host 0.2.0 has no bootstrap key; PD20);
+#   3. seeds a deploy key into the host's apikeys.json while the host is stopped (the host has no bootstrap key, 0.3.0 included; PD20);
 #   4. starts static-site-hosting, forwarding TERM and INT;
 #   5. deploys the zip through the host's own API when needed;
 #   6. waits for the host and exits with its status.
@@ -199,7 +199,7 @@ if [ -z "${MAQUETTISTE_LOCAL_PEERS:-}" ]; then
 fi
 
 log "WARNING: never delete or rename the site $site in the host's UI or API. Its data folder is the bind-mounted .maquettiste/," \
-    "and host 0.2.0 deletes a site folder recursively, model included (recovery: git checkout -- .maquettiste)."
+    "and the host deletes a site folder recursively, model included (recovery: git checkout -- .maquettiste)."
 
 # ---------------------------------------------------------------- 2. does the image's zip need deploying?
 needs_deploy=0
@@ -245,7 +245,7 @@ stop_host() {
   fi
 }
 
-# ---------------------------------------------------------------- 3. deploy key (host 0.2.0 shim, PD20)
+# ---------------------------------------------------------------- 3. deploy key (host shim, PD20)
 key_file="$state/deploy.key"
 if [ "$needs_deploy" = 1 ] && [ ! -s "$key_file" ]; then
   if [ ! -f /data/config/users.json ]; then

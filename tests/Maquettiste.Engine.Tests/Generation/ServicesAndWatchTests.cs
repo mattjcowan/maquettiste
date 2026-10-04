@@ -46,9 +46,11 @@ public sealed class ServicesAndWatchTests
         await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
         await f.RunAsync();
         var results = new ConcurrentQueue<GenerationResult>();
-        // The CLI's real debounce (250 ms): a burst of five notifications 20 ms apart must land inside one window even on a loaded
-        // CI runner, where a 100 ms window let a late notification start a second run.
-        var watcher = new GenerationWatcher(f.Service, new GenerationRequest(), TimeSpan.FromMilliseconds(250), (result, _) =>
+        // A burst of five notifications 20 ms apart must land inside one window even on a loaded CI runner. A 100 ms window and
+        // then the CLI's 250 ms both let a stalled Task.Delay on a macOS runner start a second run, so the test uses 1 s: what it
+        // proves is that a burst is coalesced and ignored paths never run, not the CLI's window length.
+        var window = TimeSpan.FromSeconds(1);
+        var watcher = new GenerationWatcher(f.Service, new GenerationRequest(), window, (result, _) =>
         {
             results.Enqueue(result);
             return ValueTask.CompletedTask;
@@ -57,7 +59,7 @@ public sealed class ServicesAndWatchTests
         var loop = watcher.RunAsync(stop.Token);
 
         watcher.Notify([Path.Combine(f.Repo.ModelRoot, "manifest", "basic.json"), ".maquettiste/.cache/journal.jsonl", "out/.index.txt.mq-1.tmp"]);
-        await Task.Delay(300, GenerationFixture.Ct);
+        await Task.Delay(window + TimeSpan.FromMilliseconds(300), GenerationFixture.Ct);
         Assert.Empty(results);
 
         await f.WriteModelAsync(b => Models.Shop(b, customerName: "text"));
@@ -69,7 +71,7 @@ public sealed class ServicesAndWatchTests
 
         for (var i = 0; i < 200 && results.IsEmpty; i++)
             await Task.Delay(50, GenerationFixture.Ct);
-        await Task.Delay(300, GenerationFixture.Ct);
+        await Task.Delay(window + TimeSpan.FromMilliseconds(300), GenerationFixture.Ct);
         await stop.CancelAsync();
         await loop;
 

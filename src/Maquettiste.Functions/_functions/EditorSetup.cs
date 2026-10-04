@@ -13,7 +13,7 @@ public static class EditorSetup
     /// <summary>
     /// Registers singletons only: <see cref="EditorSettings"/>, its <see cref="EngineOptions"/>, the <see cref="ModelStore"/> (no I/O,
     /// never throws for model content), the <see cref="GenerationService"/>, the <see cref="JobQueue"/> (16 queued jobs), the sign-in
-    /// state, the realtime publisher, the presence registry and the git reader. The container disposes the store and the queue.
+    /// state, the realtime publisher, the presence registry, the git reader and the assistant service. The container disposes the store and the queue.
     /// </summary>
     /// <param name="services">The functions' services.</param>
     /// <param name="variables">The site's variables.</param>
@@ -40,6 +40,7 @@ public static class EditorSetup
         services.AddSingleton<EditorEvents>();
         services.AddSingleton<PresenceRegistry>();
         services.AddSingleton<GitStatusReader>();
+        services.AddSingleton<AssistService>();
     }
 }
 
@@ -66,6 +67,9 @@ public sealed class EditorSettings
 
     /// <summary>The variable naming the local developer.</summary>
     public const string LocalUserVariable = "MAQUETTISTE_LOCAL_USER";
+
+    /// <summary>The variable naming where the host's management UI is (the assistant's Settings link to the site's AI page); empty means none.</summary>
+    public const string HostAiUrlVariable = "MAQUETTISTE_HOST_AI_URL";
 
     /// <summary>The variable naming the workspace the top bar shows (<see cref="WorkspaceInfo.Variable"/>); empty means what git says.</summary>
     public const string WorkspaceVariable = WorkspaceInfo.Variable;

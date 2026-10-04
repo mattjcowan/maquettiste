@@ -188,7 +188,25 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// is written: failed operations carry their outcome and diagnostics, and the others report <see cref="SaveOutcome.Saved"/>
     /// with no hash and no changes.
     /// </remarks>
-    public Task<BatchResult> ApplyBatchAsync(ModelBatch batch, ChangeSource source, CancellationToken ct)
+    public Task<BatchResult> ApplyBatchAsync(ModelBatch batch, ChangeSource source, CancellationToken ct) => ApplyBatchCoreAsync(batch, source, null, ct);
+
+    /// <summary>
+    /// Runs a batch as a dry run: the same parsing of hand-built elements, expansion of schema, process and materialize operations,
+    /// planning, expected-hash checks and validation as <see cref="ApplyBatchAsync"/>, but nothing is written. The result says what an
+    /// apply would answer and, when every operation would succeed, every file it would create, change or delete with the text before
+    /// and after (the assistant's proposals, erratum E44).
+    /// </summary>
+    /// <param name="batch">The batch.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The outcome per operation and, when saved, the files.</returns>
+    public async Task<BatchPreview> PreviewBatchAsync(ModelBatch batch, CancellationToken ct)
+    {
+        var files = new List<BatchPreviewFile>();
+        var result = await ApplyBatchCoreAsync(batch, ChangeSource.Editor, files, ct).ConfigureAwait(false);
+        return new BatchPreview(result.Outcome, result.Items, result.Outcome == SaveOutcome.Saved ? files : []);
+    }
+
+    private Task<BatchResult> ApplyBatchCoreAsync(ModelBatch batch, ChangeSource source, List<BatchPreviewFile>? preview, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(batch);
         var changes = new List<PlannedChange>(batch.Operations.Count);
@@ -226,11 +244,11 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
 
         if (schemaOps)
-            return ApplyWithSchemasAsync(batch, changes, invalid, source, ct);
+            return ApplyWithSchemasAsync(batch, changes, invalid, source, preview, ct);
 
         if (changes.Count == 0)
             return Task.FromResult(new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source)));
-        return ExecuteAsync(changes, source, ct);
+        return ExecuteAsync(changes, source, ct, preview);
     }
 
     /// <summary>Re-reads changed paths and updates the index (host-contracts requirement 17).</summary>
@@ -543,7 +561,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         return result.Changes with { Source = source };
     }
 
-    private async Task<BatchResult> ExecuteAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, CancellationToken ct)
+    private async Task<BatchResult> ExecuteAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, CancellationToken ct, List<BatchPreviewFile>? preview = null)
     {
         await LoadedAsync(ct).ConfigureAwait(false);
         var notifications = new List<ChangeSet>();
@@ -553,7 +571,7 @@ public sealed partial class ModelStore : IAsyncDisposable
             await _gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                result = await ExecuteCoreAsync(changes, source, notifications, ct).ConfigureAwait(false);
+                result = await ExecuteCoreAsync(changes, source, notifications, preview, ct).ConfigureAwait(false);
             }
             finally
             {
@@ -574,7 +592,8 @@ public sealed partial class ModelStore : IAsyncDisposable
         return result;
     }
 
-    private async Task<BatchResult> ExecuteCoreAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, List<ChangeSet> notifications, CancellationToken ct)
+    private async Task<BatchResult> ExecuteCoreAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, List<ChangeSet> notifications,
+        List<BatchPreviewFile>? preview, CancellationToken ct)
     {
         var paths = _paths.Value;
         var snapshot = _current!;
@@ -602,6 +621,13 @@ public sealed partial class ModelStore : IAsyncDisposable
         await ValidateAsync(plan, snapshot, ct).ConfigureAwait(false);
         if (plan.Failed)
             return Failed(plan);
+
+        if (preview is not null)
+        {
+            preview.AddRange(await PreviewFilesAsync(plan, ct).ConfigureAwait(false));
+            return new BatchResult(SaveOutcome.Saved,
+                [.. plan.Outcomes.Select(o => new SaveResult(SaveOutcome.Saved, o.Id, null, null, Sorted(o.Diagnostics), [.. o.Referrers], null))], null);
+        }
 
         ChangeSet changeSet;
         if (plan.IsNoOp)
@@ -639,6 +665,56 @@ public sealed partial class ModelStore : IAsyncDisposable
             return new SaveResult(SaveOutcome.Saved, o.Id, document?.Hash, document, Sorted(o.Diagnostics), [.. o.Referrers], changeSet);
         }).ToList();
         return new BatchResult(SaveOutcome.Saved, items, changeSet);
+    }
+
+    /// <summary>The files a plan would write and delete, ordered by path, with their text before and after.</summary>
+    private async Task<List<BatchPreviewFile>> PreviewFilesAsync(ChangePlan plan, CancellationToken ct)
+    {
+        var paths = _paths.Value;
+        var files = new List<BatchPreviewFile>();
+        foreach (var modelPath in plan.Writes.Keys.Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            var full = paths.FullPath(modelPath);
+            byte[]? before = null;
+            try
+            {
+                if (File.Exists(full))
+                    before = await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                before = null;
+            }
+
+            var after = plan.Writes.TryGetValue(modelPath, out var bytes) ? bytes : null;
+            if (after is not null && before is not null && before.AsSpan().SequenceEqual(after))
+                continue;
+            var action = after is null ? "deleted" : before is null ? "created" : "changed";
+            var (id, kind, name) = Identify(after ?? before);
+            files.Add(new BatchPreviewFile(paths.ToRepoPath(modelPath), action, id, kind, name, before is null ? null : ContentHash.Of(before),
+                before is null ? null : System.Text.Encoding.UTF8.GetString(before), after is null ? null : System.Text.Encoding.UTF8.GetString(after)));
+        }
+
+        return files;
+
+        static (string? Id, string? Kind, string? Name) Identify(byte[]? bytes)
+        {
+            if (bytes is null)
+                return (null, null, null);
+            try
+            {
+                using var document = JsonDocument.Parse(bytes);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                    return (null, null, null);
+                string? Text(string property) =>
+                    document.RootElement.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                return (Text("id"), Text("kind"), Text("name"));
+            }
+            catch (JsonException)
+            {
+                return (null, null, null); // a sidecar or another text file
+            }
+        }
     }
 
     private ChangePlan Plan(ModelSnapshot snapshot, IReadOnlyList<PlannedChange> changes, CancellationToken ct) =>
@@ -1039,6 +1115,23 @@ public sealed record ModelBatch(IReadOnlyList<BatchOperation> Operations);
 /// <param name="Batch">The batch, or <see langword="null"/> when invalid.</param>
 /// <param name="Diagnostics">Parse and schema diagnostics.</param>
 public sealed record BatchParseResult(ModelBatch? Batch, IReadOnlyList<Diagnostic> Diagnostics);
+
+/// <summary>The result of a batch's dry run (<see cref="ModelStore.PreviewBatchAsync"/>).</summary>
+/// <param name="Outcome">Saved when every operation would succeed; otherwise the first failure's outcome.</param>
+/// <param name="Items">The result per operation, as an apply would report it, with no hashes or documents.</param>
+/// <param name="Files">When saved, every file the batch would write or delete, ordered by path; empty otherwise.</param>
+public sealed record BatchPreview(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, IReadOnlyList<BatchPreviewFile> Files);
+
+/// <summary>A file a batch would write or delete.</summary>
+/// <param name="Path">The repo-relative path.</param>
+/// <param name="Action"><c>created</c>, <c>changed</c> or <c>deleted</c>.</param>
+/// <param name="Id">The element id the file holds, when it is an element document.</param>
+/// <param name="Kind">The element kind, when it is an element document.</param>
+/// <param name="Name">The element name, when it has one.</param>
+/// <param name="BeforeHash">The hash of the file on disk, or <see langword="null"/> for a created file.</param>
+/// <param name="Before">The file's text on disk, or <see langword="null"/> for a created file.</param>
+/// <param name="After">The text the batch would write, or <see langword="null"/> for a deleted file.</param>
+public sealed record BatchPreviewFile(string Path, string Action, string? Id, string? Kind, string? Name, string? BeforeHash, string? Before, string? After);
 
 /// <summary>The result of applying a batch.</summary>
 /// <param name="Outcome">Saved when every operation succeeded; otherwise the first failure's outcome, and nothing was written.</param>

@@ -15,6 +15,7 @@ import { PartDeleteHost } from "@/workspaces/database/PartDeleteDialog";
 import { useSourceRenameFollow } from "@/workspaces/database/columnRename";
 import { StorageDialogsHost } from "@/editors/storage/StorageDialogs";
 import { ConflictDialog } from "@/inspector/ConflictDialog";
+import { AssistantDrawer } from "@/assist/AssistantPanel";
 import { Splitter } from "@/components/ui/splitter";
 import { Spinner } from "@/components/ui/misc";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -285,6 +286,9 @@ function Shell() {
           </>
         )}
         {inspectorHidden && inspectorContext.mode !== "none" ? <EdgeToggle panel="inspector" side="right" /> : null}
+        <RegionBoundary name="assistant">
+          <AssistantDrawer />
+        </RegionBoundary>
       </div>
       <Notices />
       <CommandPalette />

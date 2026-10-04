@@ -1,6 +1,6 @@
 # The Maquettiste image
 
-`mattjcowan/maquettiste` is static-site-hosting 0.2.0 with the editor site (the SPA plus the `_functions/` handlers) and the
+`mattjcowan/maquettiste` is static-site-hosting 0.3.0 with the editor site (the SPA plus the `_functions/` handlers) and the
 Maquettiste engine packages baked in. On first boot the entrypoint deploys the bundled site to `maquettiste.localhost`; on a
 newer image it redeploys it and prunes the old engine package (phase2-design.md §6).
 
@@ -26,6 +26,14 @@ branch in `.git/HEAD`, else, for a linked worktree (whose `.git` file points at 
 name:
 
     MAQUETTISTE_WORKSPACE="$(git rev-parse --abbrev-ref HEAD)" MAQUETTISTE_PORT=8081 docker compose -f <maquettiste>/docker/compose.yaml --project-directory . -p billing up -d
+
+## The assistant's AI provider
+
+The editor's assistant (docs/user-guide.md, "The assistant") uses the AI the host gives the site; Maquettiste never holds a key.
+The host's management UI answers on the same port under the host name `localhost` (`http://localhost:8080/`, sign in as the host's
+administrator): add a provider and its key under **AI › providers**, then pick it and the model under **Sites ›
+maquettiste.localhost › AI**. The compose file passes `MAQUETTISTE_HOST_AI_URL` (default `http://localhost:${MAQUETTISTE_PORT:-8080}/`)
+so Settings › Assistant links there.
 
 ## Which version is running
 
@@ -61,7 +69,7 @@ written to the repository (docs/mcp.md).
 ## Never delete the site
 
 Never delete or rename the site `maquettiste.localhost` in the host's management UI or API. Its data folder is your bind-mounted
-`.maquettiste/`, and static-site-hosting 0.2.0 deletes a site folder recursively, model included. Recovery is
+`.maquettiste/`, and static-site-hosting deletes a site folder recursively, model included. Recovery is
 `git checkout -- .maquettiste`; uncommitted model edits are lost.
 
 ## File ownership

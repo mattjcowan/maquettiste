@@ -151,31 +151,6 @@ internal sealed partial class ModelTools
         return FromOutcome(result.Outcome, result, null);
     }), ct);
 
-    /// <summary>Previews one unit (previewTemplate).</summary>
-    [McpServerTool(Name = "preview_unit", Title = "Preview unit", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Renders one unit of a pack for one element with no writes and returns each file's output path and text, the diagnostics and the keys the render read. overlay (pack-relative path to unsaved text), unitOverride (an unsaved unit with the same id) and parameters render unsaved work; a disabled pack previews too. A render that does not finish within limits.scriptTimeoutMs x 4 fails with MQ6007. An element outside the unit's scope (none for an each unit, another kind, one a selector does not return, any for a model unit) renders nothing and returns MQ6026, which names the kind the template expects.")]
-    public Task<CallToolResult> PreviewUnit(
-        [Description("The pack name; required.")] string? pack = null,
-        [Description("The unit id; required.")] string? unit = null,
-        [Description("The element id (or a resolved table key); omit for a model unit.")] string? elementId = null,
-        [Description("Pack-relative path to unsaved text of templates, partials and scripts.")] Dictionary<string, string>? overlay = null,
-        [Description("An unsaved unit object (as in pack.json units) used instead of the saved one; its id must equal unit.")] PackUnit? unitOverride = null,
-        [Description("Effective parameter values used instead of the defaults and project values.")] Dictionary<string, JsonElement>? parameters = null,
-        CancellationToken ct = default) => GuardAsync(async () =>
-    {
-        if (string.IsNullOrEmpty(pack) || string.IsNullOrEmpty(unit))
-            return BadRequest("pack and unit are required.");
-        try
-        {
-            var options = new PreviewOptions { Overlay = overlay, UnitOverride = unitOverride, Parameters = parameters };
-            return Ok(await _generation.PreviewAsync(pack, unit, elementId, options, ct).ConfigureAwait(false));
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ex.Message);
-        }
-    }, ct);
-
     /// <summary>Why a unit renders or not (getPlanUnit, explainUnit).</summary>
     [McpServerTool(Name = "explain_unit", Title = "Explain unit", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Why a unit renders an element or not. With planId and key: that unit of a stored plan, its reason (new, forced, inputs, outputs, unchanged, target-missing), causes, read keys grouped by kind and a one-sentence summary (for a skipped unit, why it did not re-render). With pack, unit and elementId (omit elementId for a model unit): the first reason that applies (pack-invalid, unknown-unit, pack-disabled, unknown-element, scope, selector, skip-hint, filter) or, when planned, the plan's reason and causes, from planId when given else from a new dry-run plan of the pack.")]

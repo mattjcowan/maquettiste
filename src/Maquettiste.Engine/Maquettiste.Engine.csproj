@@ -21,6 +21,9 @@
     <EmbeddedResource Include="Resolution/Dialects/*.json" LogicalName="Maquettiste.Engine.Resolution.Dialects.%(Filename)%(Extension)" />
     <!-- W5 data files (sql_quote reserved-word lists per dialect and the like). -->
     <EmbeddedResource Include="Rendering/Resources/*" LogicalName="Maquettiste.Engine.Rendering.Resources.%(Filename)%(Extension)" />
+    <!-- The read tools maquettiste mcp and the editor's assistant share (Agent/AgentTools.cs), and the modeling conventions both serve. -->
+    <EmbeddedResource Include="Agent/tools.json" LogicalName="Maquettiste.Engine.Agent.tools.json" />
+    <EmbeddedResource Include="../../skills/maquettiste-modeling/SKILL.md" LogicalName="Maquettiste.Engine.Skills.maquettiste-modeling.SKILL.md" Link="Skills/maquettiste-modeling/SKILL.md" WithCulture="false" />
   </ItemGroup>
 
   <ItemGroup>

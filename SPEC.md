@@ -734,7 +734,7 @@ The editor is a keyboard-friendly workbench with one shell and seven workspaces,
 
 **Assist**
 
-An optional panel backed by the host's AI (`site.ai.chat` in the browser, `IAiChat` in functions). The host holds the provider key; the repo never sees it, and the editor works fully without a provider configured.
+An optional panel backed by the host's AI (`site.ai.chat` in the browser, `IAiChat` in functions). The host holds the provider key; the repo never sees it, and the editor works fully without a provider configured. *(Errata E44, docs/engineering/spec-errata.md: built as a server-side agent loop over `IAiChat` tool calling, with the MCP server's read tools and proposals reviewed as diffs before anything is written.)*
 
 - Draft an entity, relations or a process from a description, shown as a reviewable diff of model files before anything is saved.
 - Explain a validation error and propose the fix as a model change.

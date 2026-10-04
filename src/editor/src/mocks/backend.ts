@@ -19,6 +19,7 @@ import { billingSeed, emptySeed, mediumSeed } from "./model/seed";
 import { withDrift, withLifecycleProblems } from "./model/processSeed";
 import { withLargeChart } from "./model/processDiagramSeed";
 import { truncateChangeEvent } from "./wire";
+import { MockAssist } from "./assist";
 
 /**
  * `?mock=` scenarios. `medium` is the in-browser 200-entity model; `large` is the 5,000-entity model
@@ -42,7 +43,8 @@ export type Scenario =
   | "drift"
   | "lifecycle"
   | "chart400"
-  | "legacy";
+  | "legacy"
+  | "noai";
 
 export interface MockBackendOptions {
   scenarios?: Scenario[];
@@ -68,6 +70,8 @@ export class MockBackend {
   readonly localization: MockLocalization;
   /** The extensions folder: custom property schemas and script rules, whose findings join validation. */
   readonly extensions: MockExtensions;
+  /** The assistant: status, conversations and the scripted chat; `noai` leaves the site's AI not configured. */
+  readonly assist: MockAssist;
   readonly scenarios: Set<Scenario>;
   /** Whether the model came from `options.seed` (the large mock), so no engine recording applies. */
   readonly seeded: boolean;
@@ -118,6 +122,7 @@ export class MockBackend {
     this.packAuthoring = new MockPackAuthoring(this.model, this.generation, (pack) => this.packs.registrations(pack));
     this.localization = new MockLocalization(this.model, this.scenarios.has("locales"), newId);
     this.extensions = new MockExtensions(this.model, seed.files);
+    this.assist = new MockAssist(this.model, !this.scenarios.has("noai"));
     this.model.modelDiagnostics = (rules) => [...this.localization.diagnostics(rules), ...this.extensions.diagnostics()];
     this.jobs = new MockJobQueue(
       this.generation,
@@ -311,6 +316,7 @@ export function scenariosFrom(search: string): Scenario[] {
     "lifecycle",
     "chart400",
     "legacy",
+    "noai",
   ];
   return all.filter((v): v is Scenario => (known as string[]).includes(v));
 }
