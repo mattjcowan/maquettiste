@@ -101,7 +101,7 @@ ENTRYPOINT ["/opt/maquettiste/entrypoint.sh"]
 # The image's own OCI labels, replacing the base image's (last, so a new revision leaves every layer above cached). The version is
 # the release: the VersionPrefix of Directory.Build.props by default (BundleTests keeps the two in step), the tag's version when
 # publish-image.yml builds it; the revision is the commit and the creation time the commit's, passed by the workflows (empty here).
-ARG MAQUETTISTE_VERSION=0.6.0
+ARG MAQUETTISTE_VERSION=0.6.1
 ARG MAQUETTISTE_REVISION=
 ARG MAQUETTISTE_CREATED=
 LABEL org.opencontainers.image.title="Maquettiste" \
