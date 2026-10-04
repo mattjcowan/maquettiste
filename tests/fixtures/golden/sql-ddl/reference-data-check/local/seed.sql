@@ -44,7 +44,7 @@ DROP TRIGGER IF EXISTS fk_recipe_ingredient_unit_of_measure_ref_d;
 CREATE TRIGGER ck_recipe_ingredient_unit_of_measure_ref_i BEFORE INSERT ON recipe_ingredient WHEN NEW.unit_of_measure IS NOT NULL AND NEW.unit_of_measure NOT IN ('kg', 'g', 'pinch') BEGIN SELECT RAISE(ABORT, 'ck_recipe_ingredient_unit_of_measure_ref: recipe_ingredient.unit_of_measure must be a code of UnitOfMeasure'); END;
 CREATE TRIGGER ck_recipe_ingredient_unit_of_measure_ref_u BEFORE UPDATE OF unit_of_measure ON recipe_ingredient WHEN NEW.unit_of_measure IS NOT NULL AND NEW.unit_of_measure NOT IN ('kg', 'g', 'pinch') BEGIN SELECT RAISE(ABORT, 'ck_recipe_ingredient_unit_of_measure_ref: recipe_ingredient.unit_of_measure must be a code of UnitOfMeasure'); END;
 
--- Ingredient.allergens (collection of Allergen, lookup-table).
+-- ingredients_allergens (codes of Allergen, lookup-table).
 CREATE TABLE IF NOT EXISTS ingredients_allergens (
     ingredient_sku text NOT NULL,
     allergen_code TEXT NOT NULL,
@@ -65,13 +65,13 @@ DELETE FROM allergens WHERE code NOT IN ('gluten', 'nut', 'tree_nut');
 
 -- Seed rows, targets of referenced rows first; rows whose key is already there are skipped.
 
--- Seed Recipe (2 rows) into recipes.
+-- 2 rows into recipes.
 INSERT INTO recipes (code, name) VALUES
     ('bread', 'Bread'),
     ('soup', 'Soup')
 ON CONFLICT DO NOTHING;
 
--- Seed Ingredient (4 rows) into ingredients.
+-- 4 rows into ingredients.
 INSERT INTO ingredients (sku, name, default_unit, preferred_unit, substitute_sku) VALUES
     ('flour', 'Flour', 'g', 'kg', NULL),
     ('salt', 'Salt', 'g', NULL, NULL),
@@ -84,7 +84,7 @@ INSERT INTO ingredients_allergens (ingredient_sku, allergen_code) VALUES
     ('almond', 'tree_nut')
 ON CONFLICT DO NOTHING;
 
--- Seed contains (2 rows) into recipe_ingredient.
+-- 2 rows into recipe_ingredient.
 INSERT INTO recipe_ingredient (recipe_code, ingredient_sku, quantity, unit_of_measure) VALUES
     ('bread', 'flour', 500, 'g'),
     ('bread', 'salt', 0.01, 'kg')

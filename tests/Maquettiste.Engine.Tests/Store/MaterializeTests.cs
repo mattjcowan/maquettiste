@@ -154,9 +154,10 @@ public sealed class MaterializeTests
 
         Assert.Equal(RunOutcome.Succeeded, second.Outcome);
         Assert.Equal(migrations, r.Repo.ListFiles().Count(p => p.Contains("/migrations/", StringComparison.Ordinal)));
-        Assert.Equal(["db/main/billing/tables/customers.sql", "db/main/billing/tables/invoices.sql"],
-            second.Changes.Where(c => c.Kind == FileChangeKind.Modified).Select(c => c.Path));
-        Assert.DoesNotContain("-- Maps entity", r.Repo.ReadFile("db/main/billing/tables/invoices.sql"), StringComparison.Ordinal);
+        // A table's script says nothing of the entity laid out on it, so storing the tables as files changes no script.
+        Assert.Empty(second.Changes.Where(c => c.Kind == FileChangeKind.Modified).Select(c => c.Path));
+        foreach (var table in new[] { "customers", "invoices" })
+            Assert.DoesNotContain("entity", r.Repo.ReadFile($"db/main/billing/tables/{table}.sql"), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

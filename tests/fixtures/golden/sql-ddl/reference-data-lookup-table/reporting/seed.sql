@@ -59,7 +59,7 @@ IF OBJECT_ID(N'dbo.fk_recipe_ingredient_unit_of_measure_ref', N'F') IS NOT NULL 
 ALTER TABLE dbo.recipe_ingredient ADD CONSTRAINT fk_recipe_ingredient_unit_of_measure_ref FOREIGN KEY (unit_of_measure) REFERENCES dbo.units_of_measure (code);
 GO
 
--- Ingredient.allergens (collection of Allergen, lookup-table).
+-- ingredients_allergens (codes of Allergen, lookup-table).
 IF OBJECT_ID(N'dbo.ingredients_allergens', N'U') IS NULL
 CREATE TABLE dbo.ingredients_allergens (
     ingredient_sku nvarchar(32) NOT NULL,
@@ -72,7 +72,7 @@ IF OBJECT_ID(N'dbo.fk_ingredients_allergens_allergen_code_ref', N'F') IS NOT NUL
 ALTER TABLE dbo.ingredients_allergens ADD CONSTRAINT fk_ingredients_allergens_allergen_code_ref FOREIGN KEY (allergen_code) REFERENCES dbo.allergens (code);
 GO
 
--- Ingredient.packUnits (collection of UnitOfMeasure, lookup-table).
+-- ingredients_pack_units (codes of UnitOfMeasure, lookup-table).
 IF OBJECT_ID(N'dbo.ingredients_pack_units', N'U') IS NULL
 CREATE TABLE dbo.ingredients_pack_units (
     ingredient_sku nvarchar(32) NOT NULL,
@@ -95,7 +95,7 @@ GO
 
 -- Seed rows, targets of referenced rows first; rows whose key is already there are skipped.
 
--- Seed Recipe (2 rows) into recipes.
+-- 2 rows into recipes.
 INSERT INTO dbo.recipes (code, name)
 SELECT code, name FROM (VALUES
     (N'bread', N'Bread'),
@@ -103,7 +103,7 @@ SELECT code, name FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM dbo.recipes AS x WHERE x.code = v.code);
 GO
 
--- Seed Ingredient (4 rows) into ingredients.
+-- 4 rows into ingredients.
 INSERT INTO dbo.ingredients (sku, name, default_unit, preferred_unit, substitute_sku)
 SELECT sku, name, default_unit, preferred_unit, substitute_sku FROM (VALUES
     (N'flour', N'Flour', N'g', N'kg', NULL),
@@ -127,7 +127,7 @@ SELECT ingredient_sku, pack_unit_code FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM dbo.ingredients_pack_units AS x WHERE x.ingredient_sku = v.ingredient_sku AND x.pack_unit_code = v.pack_unit_code);
 GO
 
--- Seed contains (2 rows) into recipe_ingredient.
+-- 2 rows into recipe_ingredient.
 INSERT INTO dbo.recipe_ingredient (recipe_code, ingredient_sku, quantity, unit_of_measure)
 SELECT recipe_code, ingredient_sku, quantity, unit_of_measure FROM (VALUES
     (N'bread', N'flour', 500, N'g'),

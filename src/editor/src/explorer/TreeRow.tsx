@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
-import type { TreeNode } from "./tree";
+import { readAheadIdOf, type TreeNode } from "./tree";
 
 const ICONS: Record<string, LucideIcon> = {
   domain: Package,
@@ -159,6 +159,7 @@ function Highlighted({ label, search }: { label: string; search?: SearchQuery })
 export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
   const { node, depth, expandable, expanded } = props;
   const hover = useDelayedPrefetch();
+  const readAhead = readAheadIdOf(node);
   const container = CONTAINER_TYPES.has(node.type);
   const folder = node.type === "folder" || node.type === "group";
   const counted =
@@ -183,8 +184,8 @@ export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
       draggable={props.draggable}
       onClick={(e) => props.onRowClick(node.key, e)}
       onDoubleClick={() => props.onRowDoubleClick(node.key)}
-      onMouseEnter={node.id ? () => hover.start(node.id!) : undefined}
-      onMouseLeave={node.id ? hover.cancel : undefined}
+      onMouseEnter={readAhead ? () => hover.start(readAhead) : undefined}
+      onMouseLeave={readAhead ? hover.cancel : undefined}
       onContextMenu={(e) => props.onContextMenu(node.key, e)}
       onDragStart={props.draggable ? (e) => props.onDragStart(node.key, e) : undefined}
       onDragOver={(e) => props.onDragOver(node.key, e)}

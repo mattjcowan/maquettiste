@@ -15,6 +15,13 @@ const entityNames = (page: Page) =>
     return (Array.isArray(index) ? index : index.elements).filter((r) => r.kind === "entity").map((r) => r.name);
   });
 
+/** Asserts that `text` says nothing of entities. */
+function expectNoEntitiesIn(text: string, names: readonly string[], label: string): void {
+  expect(text.match(WORDING)?.[0] ?? null, `${label}: entity or mapping wording`).toBeNull();
+  const named = names.filter((n) => new RegExp(`\\b${n}\\b`).test(text));
+  expect(named, `${label}: entity names`).toEqual([]);
+}
+
 /** Asserts that `where` (its text and its tooltips) says nothing of entities. */
 async function expectNoEntities(where: Locator, names: readonly string[], label: string): Promise<void> {
   await expect(where).toBeVisible();
@@ -24,9 +31,7 @@ async function expectNoEntities(where: Locator, names: readonly string[], label:
       ...Array.from(el.querySelectorAll("[title],[aria-label]")).map((x) => `${x.getAttribute("title") ?? ""} ${x.getAttribute("aria-label") ?? ""}`),
     ].join("\n"),
   );
-  expect(text.match(WORDING)?.[0] ?? null, `${label}: entity or mapping wording`).toBeNull();
-  const named = names.filter((n) => new RegExp(`\\b${n}\\b`).test(text));
-  expect(named, `${label}: entity names`).toEqual([]);
+  expectNoEntitiesIn(text, names, label);
 }
 
 test("the Databases workspace shows no entity and no mapping anywhere", async ({ page }) => {
@@ -71,11 +76,18 @@ test("the Databases workspace shows no entity and no mapping anywhere", async ({
     await expect(page.getByTestId("editor-title")).toHaveText(table);
     const tabs = await editor.getByRole("tab").allTextContents();
     expect(tabs.length).toBeGreaterThan(5);
+    expect(tabs).toContain("DDL");
     for (const name of tabs) {
       await editor.getByRole("tab", { name, exact: true }).click();
       await expect(editor.getByRole("tab", { name, exact: true })).toHaveAttribute("data-state", "active");
       if (name === "References" && table === "notes") await expect(editor.getByText("Nothing references this element")).toBeVisible();
       await expectNoEntities(editor, names, `${table} editor, ${name}`);
+      // The generated script whole (the code view paints only the lines in view): it names the table and its database only.
+      if (name === "DDL") {
+        const ddl = editor.getByTestId("table-ddl");
+        await expect(ddl).toHaveAttribute("data-text", /CREATE TABLE/);
+        expectNoEntitiesIn((await ddl.getAttribute("data-text")) ?? "", names, `${table} editor, DDL script`);
+      }
     }
   }
 

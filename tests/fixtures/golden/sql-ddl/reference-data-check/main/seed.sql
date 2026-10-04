@@ -32,7 +32,7 @@ ALTER TABLE public.recipe_ingredient DROP CONSTRAINT IF EXISTS ck_recipe_ingredi
 ALTER TABLE public.recipe_ingredient DROP CONSTRAINT IF EXISTS fk_recipe_ingredient_unit_of_measure_ref;
 ALTER TABLE public.recipe_ingredient ADD CONSTRAINT ck_recipe_ingredient_unit_of_measure_ref CHECK (unit_of_measure IN ('kg', 'g', 'pinch'));
 
--- Ingredient.allergens (collection of Allergen, lookup-table).
+-- ingredients_allergens (codes of Allergen, lookup-table).
 CREATE TABLE IF NOT EXISTS public.ingredients_allergens (
     ingredient_sku varchar(32) NOT NULL,
     allergen_code varchar(16) NOT NULL,
@@ -48,13 +48,13 @@ DELETE FROM public.allergens WHERE code NOT IN ('gluten', 'nut', 'tree_nut');
 
 -- Seed rows, targets of referenced rows first; rows whose key is already there are skipped.
 
--- Seed Recipe (2 rows) into recipes.
+-- 2 rows into recipes.
 INSERT INTO public.recipes (code, name) VALUES
     ('bread', 'Bread'),
     ('soup', 'Soup')
 ON CONFLICT DO NOTHING;
 
--- Seed Ingredient (4 rows) into ingredients.
+-- 4 rows into ingredients.
 INSERT INTO public.ingredients (sku, name, default_unit, preferred_unit, substitute_sku) VALUES
     ('flour', 'Flour', 'g', 'kg', NULL),
     ('salt', 'Salt', 'g', NULL, NULL),
@@ -67,7 +67,7 @@ INSERT INTO public.ingredients_allergens (ingredient_sku, allergen_code) VALUES
     ('almond', 'tree_nut')
 ON CONFLICT DO NOTHING;
 
--- Seed contains (2 rows) into recipe_ingredient.
+-- 2 rows into recipe_ingredient.
 INSERT INTO public.recipe_ingredient (recipe_code, ingredient_sku, quantity, unit_of_measure) VALUES
     ('bread', 'flour', 500, 'g'),
     ('bread', 'salt', 0.01, 'kg')

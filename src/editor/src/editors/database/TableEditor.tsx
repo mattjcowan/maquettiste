@@ -340,13 +340,15 @@ function DdlTab({ database, tableKey }: { database: string; tableKey: string }) 
         ))}
       </ul>
     );
+  const text = preview.data.files.map((f) => f.text).join("\n");
+  // The whole script in data-text: the code view paints only the lines in view, so a check of what the script says reads it here.
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="table-ddl">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="table-ddl" data-text={text}>
       <p className="border-b border-default px-2 py-1 text-11 text-secondary">
         {table.pack} · {table.unit}
       </p>
       <div className="min-h-0 flex-1">
-        <CodeView language="sql" readOnly label="Table DDL" value={preview.data.files.map((f) => f.text).join("\n")} />
+        <CodeView language="sql" readOnly label="Table DDL" value={text} />
       </div>
     </div>
   );

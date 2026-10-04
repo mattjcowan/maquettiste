@@ -321,13 +321,12 @@ export class MockGeneration {
       const root = this.packOutput(ddl).path;
       for (const view of this.views()) {
         for (const table of view.tables) {
-          const entityName = table.entityId ? String(docs.get(table.entityId)?.name ?? "") : null;
           units.push({
             pack: ddl,
             unit: "table",
             elementId: table.key,
             unitKey: `${ddl}/table:${table.key}`,
-            files: [renderTable(view, table, entityName, root, docs)],
+            files: [renderTable(view, table, root, docs)],
           });
         }
         units.push({ pack: ddl, unit: "schema", elementId: view.id, unitKey: `${ddl}/schema:${view.id}`, files: [renderSchema(view, root, docs)] });

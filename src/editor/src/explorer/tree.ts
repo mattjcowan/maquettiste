@@ -1564,6 +1564,15 @@ function rollErrors(nodes: Map<string, TreeNode>, root: string) {
 
 // ------------------------------------------------------------------ element children on demand
 
+/**
+ * The document a row reads ahead when it is hovered or focused: its element or sub-element. None for a row under a table (a
+ * column, a key, an index, a check, or a folder of them): its `id` names the part within the table (a constraint's name, a
+ * column's key), not a document, and reading it would ask the server for an element that does not exist.
+ */
+export function readAheadIdOf(node: TreeNode): string | undefined {
+  return node.part ? undefined : node.id;
+}
+
 /** A node by key; an element's own row not built yet (its folder is unopened) is built on the way. */
 export function nodeOf(forest: Forest, key: string): TreeNode | undefined {
   const node = forest.nodes.get(key);

@@ -61,7 +61,7 @@ CREATE TRIGGER fk_recipe_ingredient_unit_of_measure_ref_i BEFORE INSERT ON recip
 CREATE TRIGGER fk_recipe_ingredient_unit_of_measure_ref_u BEFORE UPDATE OF unit_of_measure ON recipe_ingredient WHEN NEW.unit_of_measure IS NOT NULL AND NOT EXISTS (SELECT 1 FROM units_of_measure WHERE code = NEW.unit_of_measure) BEGIN SELECT RAISE(ABORT, 'fk_recipe_ingredient_unit_of_measure_ref: recipe_ingredient.unit_of_measure must be a code of UnitOfMeasure'); END;
 CREATE TRIGGER fk_recipe_ingredient_unit_of_measure_ref_d BEFORE DELETE ON units_of_measure WHEN EXISTS (SELECT 1 FROM recipe_ingredient WHERE unit_of_measure = OLD.code) BEGIN SELECT RAISE(ABORT, 'fk_recipe_ingredient_unit_of_measure_ref: a code still stored in recipe_ingredient.unit_of_measure cannot be deleted'); END;
 
--- Ingredient.allergens (collection of Allergen, lookup-table).
+-- ingredients_allergens (codes of Allergen, lookup-table).
 CREATE TABLE IF NOT EXISTS ingredients_allergens (
     ingredient_sku text NOT NULL,
     allergen_code TEXT NOT NULL,
@@ -77,7 +77,7 @@ CREATE TRIGGER fk_ingredients_allergens_allergen_code_ref_i BEFORE INSERT ON ing
 CREATE TRIGGER fk_ingredients_allergens_allergen_code_ref_u BEFORE UPDATE OF allergen_code ON ingredients_allergens WHEN NEW.allergen_code IS NOT NULL AND NOT EXISTS (SELECT 1 FROM allergens WHERE code = NEW.allergen_code) BEGIN SELECT RAISE(ABORT, 'fk_ingredients_allergens_allergen_code_ref: ingredients_allergens.allergen_code must be a code of Allergen'); END;
 CREATE TRIGGER fk_ingredients_allergens_allergen_code_ref_d BEFORE DELETE ON allergens WHEN EXISTS (SELECT 1 FROM ingredients_allergens WHERE allergen_code = OLD.code) BEGIN SELECT RAISE(ABORT, 'fk_ingredients_allergens_allergen_code_ref: a code still stored in ingredients_allergens.allergen_code cannot be deleted'); END;
 
--- Ingredient.packUnits (collection of UnitOfMeasure, lookup-table).
+-- ingredients_pack_units (codes of UnitOfMeasure, lookup-table).
 CREATE TABLE IF NOT EXISTS ingredients_pack_units (
     ingredient_sku text NOT NULL,
     pack_unit_code TEXT NOT NULL,
@@ -101,13 +101,13 @@ DELETE FROM units_of_measure WHERE code NOT IN ('kg', 'g', 'pinch');
 
 -- Seed rows, targets of referenced rows first; rows whose key is already there are skipped.
 
--- Seed Recipe (2 rows) into recipes.
+-- 2 rows into recipes.
 INSERT INTO recipes (code, name) VALUES
     ('bread', 'Bread'),
     ('soup', 'Soup')
 ON CONFLICT DO NOTHING;
 
--- Seed Ingredient (4 rows) into ingredients.
+-- 4 rows into ingredients.
 INSERT INTO ingredients (sku, name, default_unit, preferred_unit, substitute_sku) VALUES
     ('flour', 'Flour', 'g', 'kg', NULL),
     ('salt', 'Salt', 'g', NULL, NULL),
@@ -127,7 +127,7 @@ INSERT INTO ingredients_pack_units (ingredient_sku, pack_unit_code) VALUES
     ('almond', 'g')
 ON CONFLICT DO NOTHING;
 
--- Seed contains (2 rows) into recipe_ingredient.
+-- 2 rows into recipe_ingredient.
 INSERT INTO recipe_ingredient (recipe_code, ingredient_sku, quantity, unit_of_measure) VALUES
     ('bread', 'flour', 500, 'g'),
     ('bread', 'salt', 0.01, 'kg')

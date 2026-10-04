@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
 import type { TableSummary } from "@/api/types";
-import { buildForest, childKeys, databaseOf, nodeOf, relatedKeys, tableChildren, tableOf, type TablesInput } from "@/explorer/tree";
+import { buildForest, childKeys, databaseOf, nodeOf, readAheadIdOf, relatedKeys, tableChildren, tableOf, type TablesInput } from "@/explorer/tree";
 import { filterTables } from "@/workspaces/database/tableList";
 
 function billing() {
@@ -36,6 +36,19 @@ describe("table children", () => {
     // The primary key column says so beside its type.
     const pk = view.columns.find((c) => c.isPrimaryKey)!;
     expect(columns.find((c) => c.label === pk.name)!.secondary).toContain("PK");
+  });
+
+  it("reads ahead the table's own row, never a part under it (a part's id is a name, not a document)", () => {
+    const { backend, forest, tableKey } = billing();
+    const node = nodeOf(forest, tableKey)!;
+    const view = backend.generation.databaseTable(databaseOf(forest, tableKey)!, node.table!.key)!.table!;
+    const folders = tableChildren(forest, tableKey, view);
+    const parts = folders.flatMap((f) => [f, ...childKeys(forest, f)]).map((k) => nodeOf(forest, k)!);
+    // Keys and indexes are named rows: their id is the constraint's name.
+    const names = [...view.uniques, ...view.indexes].map((k) => k.name);
+    expect(parts.some((p) => p.type === "item" && !!p.id && names.includes(p.id))).toBe(true);
+    expect(parts.map(readAheadIdOf).filter(Boolean)).toEqual([]);
+    expect(readAheadIdOf(node)).toBe(node.id);
   });
 
   it("highlights the entity and the attribute mapped onto a column, and the entity for a table", () => {

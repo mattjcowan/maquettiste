@@ -1,20 +1,28 @@
 // Shared Playwright fixtures: every test fails on an uncaught page error or a console error, except
 // the browser's own "Failed to load resource" lines for the 4xx answers a test provokes on purpose
-// (422 for an invalid save, 409 for a conflict).
+// (422 for an invalid save, 409 for a conflict). The browser's line names no URL, so the guard also records every answer of
+// 400 or more and every request that failed (method, URL, status or reason) and prints them with the console errors.
 import { expect, test as base, type Locator, type Page } from "@playwright/test";
 
 export const test = base.extend<{ errors: string[] }>({
   errors: [
     async ({ page }, use) => {
       const errors: string[] = [];
+      const requests: string[] = [];
       page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
       page.on("console", (m) => {
         if (m.type() !== "error") return;
         if (/Failed to load resource: the server responded with a status of 4(09|22)/.test(m.text())) return;
-        errors.push(m.text());
+        const at = m.location().url;
+        errors.push(at && /^Failed to load resource/.test(m.text()) ? `${m.text()} [${at}]` : m.text());
       });
+      page.on("response", (r) => {
+        if (r.status() >= 400) requests.push(`${r.request().method()} ${r.url()} -> ${r.status()} ${r.statusText()}`.trimEnd());
+      });
+      page.on("requestfailed", (r) => requests.push(`${r.method()} ${r.url()} failed: ${r.failure()?.errorText ?? "unknown"}`));
       await use(errors);
-      expect(errors, "console errors").toEqual([]);
+      const detail = requests.length ? `\nfailed requests (in order):\n  ${requests.join("\n  ")}` : "";
+      expect(errors, `console errors${detail}`).toEqual([]);
     },
     { auto: true },
   ],

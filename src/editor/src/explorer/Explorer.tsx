@@ -66,6 +66,7 @@ import {
   forestOf,
   isExpandable,
   nodeOf,
+  readAheadIdOf,
   positionOf,
   processSecondary,
   prebuild,
@@ -424,7 +425,10 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [anchorKey, setAnchorKey] = useState<string | null>(null);
-  const [menu, setMenu] = useState<(RowMenuState & { keys: string[] }) | null>(null);
+  // The forest the menu was opened over: a part row (a column, a key, an index) lives only in the forest that loaded its
+  // table's detail, and a rebuild between the right-click and the choice (the save of another part, a table stored as a
+  // file) makes a new forest whose rows under that table are read again; the menu's part actions resolve in the old one.
+  const [menu, setMenu] = useState<(RowMenuState & { keys: string[]; forest: Forest }) | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set());
   const [moving, setMoving] = useState<string[] | null>(null);
@@ -644,26 +648,29 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     },
     [queryClient],
   );
+  /** Adds a table row's children (1.3): its detail (E5f, else the database read) as Columns, keys and indexes. */
+  const loadTable = useCallback(
+    async (f: Forest, key: string, node: TreeNode, database: string) => {
+      const [view, extras] = await Promise.all([
+        queryClient.fetchQuery(tableDetailQuery(database, node.table!.key)),
+        loadTableExtras(queryClient, database, node).catch(() => ({})),
+      ]);
+      if (view) tableChildren(f, key, view, extras);
+      loadedTables.add(node);
+    },
+    [queryClient],
+  );
   const expand = useCallback(
     async (key: string) => {
       if (!forest) return;
       const node = nodeOf(forest, key);
       if (!node || !isExpandable(forest, key)) return;
-      const loaded = loadedTables.get(forest) ?? new Set<string>();
-      loadedTables.set(forest, loaded);
-      const database = node.load === "table" && node.table ? databaseOf(forest, key) : undefined;
-      if ((database && !loaded.has(key)) || needsDocument(forest, key)) {
+      const database = tableDatabaseOf(forest, key, node);
+      if (database || needsDocument(forest, key)) {
         setLoading((s) => new Set(s).add(key));
         try {
-          if (database) {
-            // A table's children (1.3): its detail (E5f, else the database read) as Columns, keys and indexes.
-            const [view, extras] = await Promise.all([
-              queryClient.fetchQuery(tableDetailQuery(database, node.table!.key)),
-              loadTableExtras(queryClient, database, node).catch(() => ({})),
-            ]);
-            if (view) tableChildren(forest, key, view, extras);
-            loaded.add(key);
-          } else await loadDocument(forest, key, node);
+          if (database) await loadTable(forest, key, node, database);
+          else await loadDocument(forest, key, node);
         } catch {
           // The row expands with the children the index answers.
         } finally {
@@ -674,25 +681,39 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
           });
         }
       }
-      const { rows: list, open: set } = cache.current;
+      const { rows: list, open: set, forest: shown } = cache.current;
+      // A new forest arrived while the children were read (a save elsewhere, the table summaries read again): the rows on
+      // screen are its rows, and the children just added belong to the old one, so they must not be spliced in. The row is
+      // marked open and the rows are made again from the new forest, whose expanded rows read their children again.
+      if (shown !== forest) {
+        set.add(key);
+        rebuild();
+        return;
+      }
       const i = list.findIndex((r) => r.key === key);
       if (set.has(key) || i < 0) return;
       set.add(key);
       expandAt(forest, list, i, set);
       bump();
     },
-    [forest, queryClient, loadDocument],
+    [forest, loadDocument, loadTable, rebuild],
   );
   // A new forest (a rebuild, such as the one adding a chart's diagram causes, or a patch that replaced a changed row)
   // has no document children on the rows it made: every expanded row that takes them (a process's States and Events,
-  // an entity's Attributes, an enum's Members) gets them again from its document, read again when it changed.
+  // an entity's Attributes, an enum's Members) gets them again from its document, read again when it changed. An
+  // expanded table gets its Columns, keys and indexes again from its detail (a table stored as a file, or a part added,
+  // rebuilds the forest; without this the row stays expanded with nothing under it).
   const forestNow = useRef(forest);
   forestNow.current = forest;
   const reloading = useRef(new Set<string>());
   const failedDocs = useRef(new WeakSet<TreeNode>());
   useEffect(() => {
     if (!forest || cache.current.filtering) return;
-    const todo = rowsNeedingDocuments(forest, rows, open).filter((key) => {
+    const tables = rows.flatMap((r) => {
+      const node = open.has(r.key) ? nodeOf(forest, r.key) : undefined;
+      return node && tableDatabaseOf(forest, r.key, node) ? [r.key] : [];
+    });
+    const todo = [...rowsNeedingDocuments(forest, rows, open), ...tables].filter((key) => {
       const node = nodeOf(forest, key);
       return !reloading.current.has(key) && !!node && !failedDocs.current.has(node);
     });
@@ -700,9 +721,11 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     void Promise.all(
       todo.map(async (key) => {
         const node = nodeOf(forest, key)!;
+        const database = tableDatabaseOf(forest, key, node);
         reloading.current.add(key);
         try {
-          await loadDocument(forest, key, node);
+          if (database) await loadTable(forest, key, node, database);
+          else await loadDocument(forest, key, node);
           return true;
         } catch {
           failedDocs.current.add(node);
@@ -714,7 +737,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     ).then((done) => {
       if (done.some(Boolean) && forestNow.current === forest) rebuild();
     });
-  }, [forest, rows, open, loadDocument, rebuild]);
+  }, [forest, rows, open, loadDocument, loadTable, rebuild]);
   const collapse = useCallback((key: string) => {
     const { rows: list, open: set } = cache.current;
     const i = list.findIndex((r) => r.key === key);
@@ -976,7 +999,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       if (id && !selected.has(id)) select([id]);
       const targets = keys.map(targetOf).filter((t): t is MenuTarget => !!t);
       const title = keys.length > 1 ? `${keys.length} selected` : (nodeOf(forest, key)?.label ?? "");
-      setMenu({ ...at, title, items: menuFor(targets), keys });
+      setMenu({ ...at, title, items: menuFor(targets), keys, forest });
     },
     [forest, idOf, selected, own, select, targetOf],
   );
@@ -1019,8 +1042,9 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     if (start[0]) s.requestCenter(start[0]);
   };
 
-  const run = (action: MenuActionId, keys: string[]) => {
+  const run = (action: MenuActionId, keys: string[], opened: Forest | null = forest) => {
     if (!forest) return;
+    const parts = opened ?? forest;
     if (action.startsWith("type:")) {
       const ids = keys.map(idOf).filter((x): x is string => !!x);
       select(ids.slice(0, 1));
@@ -1041,7 +1065,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       return;
     }
     if (action.startsWith("new-part:")) {
-      void tableRows.newPart(forest, keys[0], action.slice(9) as TablePartKind);
+      void tableRows.newPart(parts, keys[0], action.slice(9) as TablePartKind);
       return;
     }
     if (action.startsWith("new:")) {
@@ -1072,7 +1096,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         setRenaming(key);
         break;
       case "delete-part":
-        void tableRows.deletePart(forest, key);
+        void tableRows.deletePart(parts, key);
         break;
       case "show-in-database": {
         const database = databaseOf(forest, key);
@@ -1375,7 +1399,8 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   useEffect(() => {
     const idAt = (i: number) => {
       const row = rows[i];
-      return row && forest ? nodeOf(forest, row.key)?.id : undefined;
+      const node = row && forest ? nodeOf(forest, row.key) : undefined;
+      return node ? readAheadIdOf(node) : undefined;
     };
     const own = idAt(active);
     if (own) focusPrefetch.start(own);
@@ -1543,7 +1568,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         onRun={(action) => {
           const keys = menu?.keys ?? [];
           setMenu(null);
-          run(action, keys);
+          run(action, keys, menu?.forest);
         }}
       />
       {forest ? (
@@ -1609,9 +1634,13 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   );
 }
 
-/** Table rows whose detail children were added (per forest: a rebuilt forest starts over). Document children are
- * tracked per node (tree.ts `needsDocument`), so a patched forest keeps the ones it did not replace. */
-const loadedTables = new WeakMap<Forest, Set<string>>();
+/** Table rows whose detail children were added, per node (as document children are, tree.ts `needsDocument`): a rebuilt
+ * forest makes new nodes and starts over, a patched one keeps the rows it did not replace. */
+const loadedTables = new WeakSet<TreeNode>();
+/** The database of a table row whose detail children are still to be added, or undefined (loaded, or not a table row). */
+function tableDatabaseOf(forest: Forest, key: string, node: TreeNode): string | undefined {
+  return node.load === "table" && node.table && !loadedTables.has(node) ? databaseOf(forest, key) : undefined;
+}
 /** The process rows whose Subject.attribute secondary text was read, per forest. */
 const labelledProcesses = new WeakMap<Forest, Set<string>>();
 

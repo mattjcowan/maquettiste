@@ -421,7 +421,10 @@ func reference_statements(db, out)
     end
   end
   for x in ref_collections(db)
-    out[out.size] = "-- " + x[2] + "." + x[1].name + " (collection of " + x[1].type.reference_type.name + ", " + declared_realization(x[1].type.reference_type, db) + ").\n" + collection_sql(x[0], x[1], x[2], db)
+    # Named by where the codes are kept (the array column, or the junction table), in the database's own words.
+    $rt = x[1].type.reference_type
+    $where = type_realization($rt, db) == "native" ? x[0].name + "." + (snake x[1].name) : junction_name(x[0], x[1])
+    out[out.size] = "-- " + $where + " (codes of " + $rt.name + ", " + declared_realization($rt, db) + ").\n" + collection_sql(x[0], x[1], x[2], db)
   end
   for rt in $lookups
     out[out.size] = "-- Codes no longer in the seeds of " + rt.name + ".\n" + lookup_retire_sql(rt, db)
@@ -493,8 +496,10 @@ func insert_sql(t, cols, rows, db)
   ret "INSERT INTO " + qt(t) + " (" + $list + ") VALUES\n    " + $values + ($has_key ? "\nON CONFLICT DO NOTHING" : "") + ";"
 end
 
-# The inserts of one entity or relation seed in a database (null when the target is not mapped there): the target's table,
-# then the junction rows of its reference collections. Value-object cells are left to hand-written seed data.
+# The inserts of one entity or relation seed in a database (null when the target is not mapped there, or is a relation stored as
+# a foreign key, whose values the referencing table's rows carry): the target's table, then the junction rows of its reference
+# collections. Value-object cells are left to hand-written seed data. The script speaks of tables and rows only: the seed's and
+# its target's names are the model's, not the database's.
 func seed_sql(seed, db)
   $target = seed.target
   if !$target || (seed.target.kind != "entity" && seed.target.kind != "relation")
@@ -506,7 +511,7 @@ func seed_sql(seed, db)
   end
   if $target.kind == "relation"
     if !$m.junction_table
-      ret "-- Seed " + seed.name + ": relation " + $target.name + " is a foreign key in this database; set it through the end column of the entity's seed."
+      ret null
     end
     $t = $m.junction_table
   else
@@ -597,7 +602,7 @@ func seed_sql(seed, db)
     end
     $rows[$rows.size] = "(" + $v + ")"
   end
-  $s = "-- Seed " + seed.name + " (" + seed.rows.size + " rows) into " + $t.name + ".\n" + insert_sql($t, $cols, $rows, db)
+  $s = "-- " + seed.rows.size + (seed.rows.size == 1 ? " row" : " rows") + " into " + $t.name + ".\n" + insert_sql($t, $cols, $rows, db)
   for sc in $junctions
     $jt = { name: junction_name($t, sc.attribute), schema: $t.schema, database: db }
     $jcols = []

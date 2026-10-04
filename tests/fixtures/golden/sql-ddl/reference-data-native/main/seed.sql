@@ -27,7 +27,7 @@ ALTER TABLE public.ingredients DROP CONSTRAINT IF EXISTS fk_ingredients_preferre
 ALTER TABLE public.recipe_ingredient DROP CONSTRAINT IF EXISTS ck_recipe_ingredient_unit_of_measure_ref;
 ALTER TABLE public.recipe_ingredient DROP CONSTRAINT IF EXISTS fk_recipe_ingredient_unit_of_measure_ref;
 
--- Ingredient.allergens (collection of Allergen, native).
+-- ingredients.allergens (codes of Allergen, native).
 ALTER TABLE public.ingredients ADD COLUMN IF NOT EXISTS allergens allergen_t[] NOT NULL DEFAULT '{}';
 
 -- New codes of allergen_t, then a guard against codes no longer in the seeds.
@@ -54,13 +54,13 @@ END $$;
 
 -- Seed rows, targets of referenced rows first; rows whose key is already there are skipped.
 
--- Seed Recipe (2 rows) into recipes.
+-- 2 rows into recipes.
 INSERT INTO public.recipes (code, name) VALUES
     ('bread', 'Bread'),
     ('soup', 'Soup')
 ON CONFLICT DO NOTHING;
 
--- Seed Ingredient (4 rows) into ingredients.
+-- 4 rows into ingredients.
 INSERT INTO public.ingredients (sku, name, default_unit, preferred_unit, substitute_sku, allergens) VALUES
     ('flour', 'Flour', 'g', 'kg', NULL, ARRAY['gluten']::allergen_t[]),
     ('salt', 'Salt', 'g', NULL, NULL, '{}'),
@@ -68,7 +68,7 @@ INSERT INTO public.ingredients (sku, name, default_unit, preferred_unit, substit
     ('almond', 'Almond', 'g', NULL, NULL, ARRAY['tree_nut']::allergen_t[])
 ON CONFLICT DO NOTHING;
 
--- Seed contains (2 rows) into recipe_ingredient.
+-- 2 rows into recipe_ingredient.
 INSERT INTO public.recipe_ingredient (recipe_code, ingredient_sku, quantity, unit_of_measure) VALUES
     ('bread', 'flour', 500, 'g'),
     ('bread', 'salt', 0.01, 'kg')

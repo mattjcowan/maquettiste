@@ -46,7 +46,7 @@ ALTER TABLE public.recipe_ingredient DROP CONSTRAINT IF EXISTS ck_recipe_ingredi
 ALTER TABLE public.recipe_ingredient DROP CONSTRAINT IF EXISTS fk_recipe_ingredient_unit_of_measure_ref;
 ALTER TABLE public.recipe_ingredient ADD CONSTRAINT fk_recipe_ingredient_unit_of_measure_ref FOREIGN KEY (unit_of_measure) REFERENCES public.units_of_measure (code);
 
--- Ingredient.allergens (collection of Allergen, lookup-table).
+-- ingredients_allergens (codes of Allergen, lookup-table).
 CREATE TABLE IF NOT EXISTS public.ingredients_allergens (
     ingredient_sku varchar(32) NOT NULL,
     allergen_code varchar(16) NOT NULL,
@@ -57,7 +57,7 @@ ALTER TABLE public.ingredients_allergens DROP CONSTRAINT IF EXISTS ck_ingredient
 ALTER TABLE public.ingredients_allergens DROP CONSTRAINT IF EXISTS fk_ingredients_allergens_allergen_code_ref;
 ALTER TABLE public.ingredients_allergens ADD CONSTRAINT fk_ingredients_allergens_allergen_code_ref FOREIGN KEY (allergen_code) REFERENCES public.allergens (code);
 
--- Ingredient.packUnits (collection of UnitOfMeasure, lookup-table).
+-- ingredients_pack_units (codes of UnitOfMeasure, lookup-table).
 CREATE TABLE IF NOT EXISTS public.ingredients_pack_units (
     ingredient_sku varchar(32) NOT NULL,
     pack_unit_code varchar(8) NOT NULL,
@@ -76,13 +76,13 @@ DELETE FROM public.units_of_measure WHERE code NOT IN ('kg', 'g', 'pinch');
 
 -- Seed rows, targets of referenced rows first; rows whose key is already there are skipped.
 
--- Seed Recipe (2 rows) into recipes.
+-- 2 rows into recipes.
 INSERT INTO public.recipes (code, name) VALUES
     ('bread', 'Bread'),
     ('soup', 'Soup')
 ON CONFLICT DO NOTHING;
 
--- Seed Ingredient (4 rows) into ingredients.
+-- 4 rows into ingredients.
 INSERT INTO public.ingredients (sku, name, default_unit, preferred_unit, substitute_sku) VALUES
     ('flour', 'Flour', 'g', 'kg', NULL),
     ('salt', 'Salt', 'g', NULL, NULL),
@@ -102,7 +102,7 @@ INSERT INTO public.ingredients_pack_units (ingredient_sku, pack_unit_code) VALUE
     ('almond', 'g')
 ON CONFLICT DO NOTHING;
 
--- Seed contains (2 rows) into recipe_ingredient.
+-- 2 rows into recipe_ingredient.
 INSERT INTO public.recipe_ingredient (recipe_code, ingredient_sku, quantity, unit_of_measure) VALUES
     ('bread', 'flour', 500, 'g'),
     ('bread', 'salt', 0.01, 'kg')
