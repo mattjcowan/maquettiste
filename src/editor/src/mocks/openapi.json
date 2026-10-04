@@ -7570,10 +7570,10 @@
           "assist"
         ],
         "operationId": "getAssistStatus",
-        "summary": "Whether the site's AI provider is configured, its model, the budgets and today's usage",
-        "description": "The assistant (SPEC Section 14 \"Assist\", erratum E44) uses the host's AI (`IAiChat`): the provider, its key and the\nmodel are chosen in the host's management UI (AI › providers; Sites › <site> › AI), never in Maquettiste. This\nreports what the functions can see of it (`IAiChat.IsConfigured`, `IAiChat.Model`), the project's assistant settings\n(`assistant` in `maquettiste.json`), the caller's tokens spent today (UTC) and whether the caller may apply\nproposals (editor role or above).\n",
+        "summary": "Whether the site's AI provider is configured, its kind and model, the budgets and today's usage",
+        "description": "The assistant (SPEC Section 14 \"Assist\", erratum E44) uses the host's AI (`IAiChat`): the provider, its key and the\nmodel are chosen in the host's management UI (AI › providers; Sites › <site> › AI), never in Maquettiste. This\nreports what the functions can see of it (`IAiChat.IsConfigured`, `IAiChat.ProviderKind`, `IAiChat.Model`), the project's assistant settings\n(`assistant` in `maquettiste.json`), the caller's tokens spent today (UTC) and whether the caller may apply\nproposals (editor role or above).\n",
         "x-maquettiste-role": "viewer",
-        "x-maquettiste-engine": "none (IAiChat.IsConfigured and Model, ProjectSettings.Assistant, the functions' usage file)",
+        "x-maquettiste-engine": "none (IAiChat.IsConfigured, ProviderKind and Model, ProjectSettings.Assistant, the functions' usage file)",
         "responses": {
           "200": {
             "description": "The status.",
@@ -7585,6 +7585,7 @@
                 "example": {
                   "configured": false,
                   "model": null,
+                  "providerKind": null,
                   "hostAiUrl": "http://localhost:8090/",
                   "canApply": true,
                   "maxTurns": 10,
@@ -21630,6 +21631,7 @@
         "required": [
           "configured",
           "model",
+          "providerKind",
           "hostAiUrl",
           "canApply",
           "maxTurns",
@@ -21649,6 +21651,18 @@
               "null"
             ],
             "description": "`IAiChat.Model`: the model a request uses (the site's choice or the provider's default); null without a provider."
+          },
+          "providerKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "openai",
+              "anthropic",
+              null
+            ],
+            "description": "`IAiChat.ProviderKind`: `openai` (the OpenAI-compatible chat API, which many providers and gateways serve) or `anthropic` (the Anthropic Messages API); null without a provider. The provider's name, address and key stay in the host."
           },
           "hostAiUrl": {
             "type": [

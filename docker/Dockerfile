@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# The Maquettiste editor image (phase2-design.md section 6): static-site-hosting 0.3.0 with the editor site zip, the engine package
+# The Maquettiste editor image (phase2-design.md section 6): static-site-hosting 0.4.0 with the editor site zip, the engine package
 # and its dependency closure in a local NuGet feed (offline first build), and an entrypoint that deploys the zip on first boot.
 # Build from the repository root with BuildKit (the default builder since Docker 23; the legacy builder drops the /data ownership
 # fix below, because /data is a declared volume of the base image):
@@ -71,9 +71,9 @@ RUN mkdir -p /out && if [ -f src/editor/package.json ] && [ -f src/editor/script
     fi
 
 # ---------------------------------------------------------------- runtime
-# The runtime-functions image of static-site-hosting 0.3.0 (Ubuntu 24.04, .NET SDK 10.0.401, git, curl and setpriv; runs as app,
+# The runtime-functions image of static-site-hosting 0.4.0 (Ubuntu 24.04, .NET SDK 10.0.401, git, curl and setpriv; runs as app,
 # UID 1654; NUGET_PACKAGES=/data/nuget; VOLUME /data).
-FROM mattjcowan/static-site-hosting:0.3.0
+FROM mattjcowan/static-site-hosting:0.4.0
 USER root
 # jq edits the host's apikeys.json in the first-boot shim. The mkdir/chown makes the model mount's parents app-owned: Docker creates
 # missing parents of a mount point as root, and without this the host cannot write .staging/, releases/ or site.json on a new

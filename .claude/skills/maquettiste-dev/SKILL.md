@@ -14,7 +14,7 @@ disagree with the spec, the design wins and docs/engineering/spec-errata.md reco
 - src/Maquettiste.Engine: the NuGet engine (model, loader, validator, resolver, sandbox, renderer, planner, writer,
   post-processing, schema diff). Each folder's README.md records its owner's deviations and performance notes.
 - src/Maquettiste.Cli: the dotnet tool. src/Maquettiste.Functions: the editor site's C# functions for
-  static-site-hosting 0.3.0 (27 files, under the host's 50-file and 4 MB limits). src/editor: the React SPA.
+  static-site-hosting 0.4.0 (27 files, under the host's 50-file and 4 MB limits). src/editor: the React SPA.
 - packs/: example template packs (sql-ddl, csharp-dapper). bench/: synthetic generator and harness. docker/:
   image, compose, smoke test. tests/: xunit projects plus tests/fixtures (the billing model is the shared fixture).
 

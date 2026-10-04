@@ -2229,11 +2229,15 @@ host sets it up once:
    is encrypted by the host and never shown again.
 2. In **Sites › maquettiste.localhost › AI**: pick that provider and the model (and, optionally, a site system prompt).
 
-**Settings › Assistant** shows whether the site has a provider ("configured" or "not configured") and the model in use, with
+**Settings › Assistant** shows whether the site has a provider ("configured" or "not configured"), the API it speaks
+("OpenAI-compatible API" or "Anthropic API") and the model in use, with
 a link to the host's management UI when `MAQUETTISTE_HOST_AI_URL` is set. The compose file sets it to `http://localhost:<port>/`,
 where the host answers its management UI on the editor's own port (sign in as the host's administrator).
 The model must support tools (all current OpenAI and Anthropic models do; on Ollama, Llama 3.1+, Qwen 2.5+ and similar); with
 one that does not, the panel says "the site's model does not support tools; choose another in the host's AI settings".
+Other provider failures are worded by cause: a conversation too long for the model (start a new one), too many requests
+(try again in a moment), a refused key (check the provider in the host) or a provider that is down; each also shows the
+provider's own message.
 Without a provider, the panel says so and links to Settings › Assistant; the rest of the editor works as before.
 
 **House rules and budgets.** Settings › Assistant also edits the `assistant` section of `maquettiste.json`: **Instructions**

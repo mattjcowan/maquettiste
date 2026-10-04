@@ -1667,10 +1667,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Whether the site's AI provider is configured, its model, the budgets and today's usage
+         * Whether the site's AI provider is configured, its kind and model, the budgets and today's usage
          * @description The assistant (SPEC Section 14 "Assist", erratum E44) uses the host's AI (`IAiChat`): the provider, its key and the
          *     model are chosen in the host's management UI (AI › providers; Sites › <site> › AI), never in Maquettiste. This
-         *     reports what the functions can see of it (`IAiChat.IsConfigured`, `IAiChat.Model`), the project's assistant settings
+         *     reports what the functions can see of it (`IAiChat.IsConfigured`, `IAiChat.ProviderKind`, `IAiChat.Model`), the project's assistant settings
          *     (`assistant` in `maquettiste.json`), the caller's tokens spent today (UTC) and whether the caller may apply
          *     proposals (editor role or above).
          */
@@ -5270,6 +5270,11 @@ export interface components {
             configured: boolean;
             /** @description `IAiChat.Model`: the model a request uses (the site's choice or the provider's default); null without a provider. */
             model: string | null;
+            /**
+             * @description `IAiChat.ProviderKind`: `openai` (the OpenAI-compatible chat API, which many providers and gateways serve) or `anthropic` (the Anthropic Messages API); null without a provider. The provider's name, address and key stay in the host.
+             * @enum {string|null}
+             */
+            providerKind: "openai" | "anthropic" | null;
             /** @description Where the host's management UI is (`MAQUETTISTE_HOST_AI_URL`), for the Settings link; null when unset. */
             hostAiUrl: string | null;
             /** @description Whether the caller may apply proposals (editor role or above). */
@@ -11982,6 +11987,7 @@ export interface operations {
                      * @example {
                      *       "configured": false,
                      *       "model": null,
+                     *       "providerKind": null,
                      *       "hostAiUrl": "http://localhost:8090/",
                      *       "canApply": true,
                      *       "maxTurns": 10,

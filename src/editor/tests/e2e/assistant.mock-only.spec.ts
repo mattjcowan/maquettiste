@@ -83,6 +83,15 @@ test("Discard leaves the model as it was; Ctrl+I opens and closes the drawer; Cl
   await expect(page.getByTestId("assistant-panel")).toBeVisible();
 });
 
+test("with a provider Settings › Assistant names the API it speaks and the model", async ({ page }) => {
+  await openEditor(page);
+  await page.goto("/settings/assistant");
+  const settings = page.getByTestId("assistant-settings");
+  await expect(settings.getByTestId("assistant-configured")).toHaveText("Configured");
+  await expect(settings.getByTestId("assistant-provider-kind")).toHaveText(" · OpenAI-compatible API");
+  await expect(settings.getByTestId("assistant-status")).toContainText("model mock-model");
+});
+
 test("without a provider the drawer says so and leads to Settings › Assistant", async ({ page }) => {
   await openEditor(page, "/?mock=noai");
   await page.getByTestId("assistant-toggle").click();
@@ -93,6 +102,7 @@ test("without a provider the drawer says so and leads to Settings › Assistant"
   await expect(page).toHaveURL(/\/settings\/assistant/);
   const settings = page.getByTestId("assistant-settings");
   await expect(settings.getByTestId("assistant-configured")).toHaveText("Not configured");
+  await expect(settings.getByTestId("assistant-provider-kind")).toHaveCount(0);
   await expect(settings.getByRole("link", { name: "Open the host's management UI" })).toHaveAttribute("href", "http://localhost:8090/");
 
   // The house rules save in maquettiste.json.

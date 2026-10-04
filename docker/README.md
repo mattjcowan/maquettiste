@@ -1,6 +1,6 @@
 # The Maquettiste image
 
-`mattjcowan/maquettiste` is static-site-hosting 0.3.0 with the editor site (the SPA plus the `_functions/` handlers) and the
+`mattjcowan/maquettiste` is static-site-hosting 0.4.0 with the editor site (the SPA plus the `_functions/` handlers) and the
 Maquettiste engine packages baked in. On first boot the entrypoint deploys the bundled site to `maquettiste.localhost`; on a
 newer image it redeploys it and prunes the old engine package (phase2-design.md §6).
 

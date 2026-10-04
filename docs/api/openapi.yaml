@@ -5321,15 +5321,15 @@ paths:
     get:
       tags: [assist]
       operationId: getAssistStatus
-      summary: Whether the site's AI provider is configured, its model, the budgets and today's usage
+      summary: Whether the site's AI provider is configured, its kind and model, the budgets and today's usage
       description: |
         The assistant (SPEC Section 14 "Assist", erratum E44) uses the host's AI (`IAiChat`): the provider, its key and the
         model are chosen in the host's management UI (AI › providers; Sites › <site> › AI), never in Maquettiste. This
-        reports what the functions can see of it (`IAiChat.IsConfigured`, `IAiChat.Model`), the project's assistant settings
+        reports what the functions can see of it (`IAiChat.IsConfigured`, `IAiChat.ProviderKind`, `IAiChat.Model`), the project's assistant settings
         (`assistant` in `maquettiste.json`), the caller's tokens spent today (UTC) and whether the caller may apply
         proposals (editor role or above).
       x-maquettiste-role: viewer
-      x-maquettiste-engine: none (IAiChat.IsConfigured and Model, ProjectSettings.Assistant, the functions' usage file)
+      x-maquettiste-engine: none (IAiChat.IsConfigured, ProviderKind and Model, ProjectSettings.Assistant, the functions' usage file)
       responses:
         '200':
           description: The status.
@@ -5340,6 +5340,7 @@ paths:
               example:
                 configured: false
                 model: null
+                providerKind: null
                 hostAiUrl: http://localhost:8090/
                 canApply: true
                 maxTurns: 10
@@ -12564,7 +12565,7 @@ components:
     AssistStatus:
       description: What the functions can see of the host's AI for this site, the project's assistant settings and the caller's usage today.
       type: object
-      required: [configured, model, hostAiUrl, canApply, maxTurns, tokenBudgetPerRequest, tokenBudgetPerDayPerUser, usedToday, hasInstructions]
+      required: [configured, model, providerKind, hostAiUrl, canApply, maxTurns, tokenBudgetPerRequest, tokenBudgetPerDayPerUser, usedToday, hasInstructions]
       properties:
         configured:
           type: boolean
@@ -12572,6 +12573,10 @@ components:
         model:
           type: [string, 'null']
           description: '`IAiChat.Model`: the model a request uses (the site''s choice or the provider''s default); null without a provider.'
+        providerKind:
+          type: [string, 'null']
+          enum: [openai, anthropic, null]
+          description: '`IAiChat.ProviderKind`: `openai` (the OpenAI-compatible chat API, which many providers and gateways serve) or `anthropic` (the Anthropic Messages API); null without a provider. The provider''s name, address and key stay in the host.'
         hostAiUrl:
           type: [string, 'null']
           description: Where the host's management UI is (`MAQUETTISTE_HOST_AI_URL`), for the Settings link; null when unset.

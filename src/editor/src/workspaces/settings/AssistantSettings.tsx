@@ -66,7 +66,12 @@ export function AssistantSettings() {
               <span className={cn("font-semibold", s.configured ? "text-success" : "text-warning")} data-testid="assistant-configured">
                 {s.configured ? "Configured" : "Not configured"}
               </span>
-              {s.configured ? <span className="text-secondary"> · model {s.model ?? "the provider's default"}</span> : null}
+              {s.configured ? (
+                <span className="text-secondary">
+                  {s.providerKind ? <span data-testid="assistant-provider-kind"> · {providerKindLabel(s.providerKind)}</span> : null} · model{" "}
+                  {s.model ?? "the provider's default"}
+                </span>
+              ) : null}
             </p>
             <p className="text-12 text-secondary">
               The assistant uses the AI provider of the host that serves this editor; Maquettiste never holds a key. In the host's management UI, add a provider
@@ -154,4 +159,9 @@ export function AssistantSettings() {
       </div>
     </section>
   );
+}
+
+/** The host's provider kind as the API it speaks: `openai` covers every server of the OpenAI-compatible chat API. */
+export function providerKindLabel(kind: string): string {
+  return kind === "anthropic" ? "Anthropic API" : kind === "openai" ? "OpenAI-compatible API" : kind;
 }

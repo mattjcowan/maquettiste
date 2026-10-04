@@ -70,6 +70,7 @@ public sealed class AssistTests
         Contract.AssertResponse(off, "/api/assist/status");
         Assert.False(off.Json["configured"]!.GetValue<bool>());
         Assert.Null(off.Json["model"]);
+        Assert.Null(off.Json["providerKind"]);
         Assert.Equal("http://localhost:8090/", (string?)off.Json["hostAiUrl"]);
         Assert.Equal(10, off.Json["maxTurns"]!.GetValue<int>());
         Assert.True(off.Json["canApply"]!.GetValue<bool>());
@@ -78,6 +79,9 @@ public sealed class AssistTests
         var on = await host.GetAsync("/api/assist/status");
         Assert.True(on.Json["configured"]!.GetValue<bool>());
         Assert.Equal("fake-model", (string?)on.Json["model"]);
+        Assert.Equal("openai", (string?)on.Json["providerKind"]);
+        host.Site.Ai.ProviderKind = "anthropic";
+        Assert.Equal("anthropic", (string?)(await host.GetAsync("/api/assist/status")).Json["providerKind"]);
 
         var chat = await ChatAsync(host, "Hello");
         Assert.Equal(200, chat.Status);
@@ -389,18 +393,36 @@ public sealed class AssistTests
     }
 
     [Fact]
-    public async Task A_model_without_tools_is_named_on_the_first_turn()
+    public async Task A_model_without_tools_is_named_only_when_the_host_says_so()
     {
         await using var host = EditorHost.Create();
-        var ai = new ScriptedAi(_ => throw new AiChatException("The provider refused the request: this model does not support tools.", 400, null));
+        var ai = new ScriptedAi(_ => throw new AiChatException("this model does not support tools", 400, null) { Reason = AiChatException.ToolsUnsupported });
         var events = await RunAsync(host, ai, "Hello");
         Assert.Equal("tools-unsupported", (string?)events[^1]["code"]);
         Assert.Equal("The site's model does not support tools; choose another in the host's AI settings.", (string?)events[^1]["message"]);
 
-        var other = new ScriptedAi(_ => throw new AiChatException("Rate limited.", 429, null));
-        var failed = await RunAsync(host, other, "Hello");
-        Assert.Equal("provider", (string?)failed[^1]["code"]);
-        Assert.Contains("429", (string?)failed[^1]["message"], StringComparison.Ordinal);
+        // A 400 that names tools but carries no reason is a refused tool schema (our bug), not a model to replace.
+        var schema = new ScriptedAi(_ => throw new AiChatException("tools.0.input_schema: invalid", 400, null));
+        var refused = await RunAsync(host, schema, "Hello");
+        Assert.Equal("provider", (string?)refused[^1]["code"]);
+        Assert.Equal("The site's AI provider failed (400): tools.0.input_schema: invalid", (string?)refused[^1]["message"]);
+    }
+
+    [Theory]
+    [InlineData(AiChatException.ContextTooLong, 400, "The conversation is too long for the site's model; start a new conversation (400): x")]
+    [InlineData(AiChatException.RateLimited, 429, "The site's AI provider is limiting requests; try again in a moment (429): x")]
+    [InlineData(AiChatException.Auth, 401, "The site's AI provider refused its key; check the provider in the host's AI settings (401): x")]
+    [InlineData(AiChatException.Unavailable, 503, "The site's AI provider is unavailable; try again later (503): x")]
+    [InlineData(null, 500, "The site's AI provider failed (500): x")]
+    public async Task Each_provider_failure_reason_has_its_own_message(string? reason, int status, string message)
+    {
+        await using var host = EditorHost.Create();
+        var fake = new FakeAiChat();
+        fake.Fail(new AiChatException("x", status, null) { Reason = reason });
+        var events = await RunAsync(host, fake, "Hello");
+        Assert.Equal("error", (string?)events[^1]["type"]);
+        Assert.Equal("provider", (string?)events[^1]["code"]);
+        Assert.Equal(message, (string?)events[^1]["message"]);
     }
 
     private static async Task<List<JsonObject>> RunAsync(EditorHost host, IAiChat ai, string message)
@@ -427,6 +449,8 @@ public sealed class AssistTests
         public bool IsConfigured => true;
 
         public string? Model => "scripted";
+
+        public string? ProviderKind => "openai";
 
         public Task<AiChatResponse> CompleteAsync(AiChatRequest request, CancellationToken ct = default)
         {

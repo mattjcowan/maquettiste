@@ -11,7 +11,7 @@
     <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
     <PackageVersion Include="Ulid" Version="1.4.1" />
     <!-- Phase 2 (editor functions); pinned now, referenced by no phase 1 project. -->
-    <PackageVersion Include="StaticSiteHost.Abstractions" Version="0.3.0" />
+    <PackageVersion Include="StaticSiteHost.Abstractions" Version="0.4.0" />
     <!-- CLI: maquettiste mcp (the Model Context Protocol server over stdio; docs/mcp.md). -->
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
     <!-- Tests -->

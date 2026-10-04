@@ -416,10 +416,8 @@ public sealed class AssistService
                 }
                 catch (AiChatException ex) when (!ct.IsCancellationRequested)
                 {
-                    var unsupported = turn == 1 && ex.StatusCode == 400 && ex.Message.Contains("tool", StringComparison.OrdinalIgnoreCase);
-                    await FailAsync(conversation, emit, unsupported ? "tools-unsupported" : "provider", unsupported
-                        ? "The site's model does not support tools; choose another in the host's AI settings."
-                        : "The site's AI provider failed" + (ex.StatusCode is { } status ? " (" + status.ToString(CultureInfo.InvariantCulture) + ")" : "") + ": " + ex.Message).ConfigureAwait(false);
+                    var (code, message) = DescribeFailure(ex);
+                    await FailAsync(conversation, emit, code, message).ConfigureAwait(false);
                     answered = true;
                     return;
                 }
@@ -553,6 +551,28 @@ public sealed class AssistService
                 _logger.LogError(ex, "maquettiste: the assistant could not store conversation {Id}", conversation.Id);
             }
         }
+    }
+
+    /// <summary>
+    /// The error event for a provider failure, by the host's <see cref="AiChatException.Reason"/>. Only
+    /// <see cref="AiChatException.ToolsUnsupported"/> says to choose another model: the host sets it only when the provider
+    /// said plainly that the model cannot take tools, never for a tool schema it refused. Other failures keep the provider's
+    /// message, which the host has already scrubbed of keys and addresses.
+    /// </summary>
+    internal static (string Code, string Message) DescribeFailure(AiChatException ex)
+    {
+        if (ex.Reason == AiChatException.ToolsUnsupported)
+            return ("tools-unsupported", "The site's model does not support tools; choose another in the host's AI settings.");
+        var lead = ex.Reason switch
+        {
+            AiChatException.ContextTooLong => "The conversation is too long for the site's model; start a new conversation",
+            AiChatException.RateLimited => "The site's AI provider is limiting requests; try again in a moment",
+            AiChatException.Auth => "The site's AI provider refused its key; check the provider in the host's AI settings",
+            AiChatException.Unavailable => "The site's AI provider is unavailable; try again later",
+            _ => "The site's AI provider failed",
+        };
+        var status = ex.StatusCode is { } s ? " (" + s.ToString(CultureInfo.InvariantCulture) + ")" : "";
+        return ("provider", lead + status + ": " + ex.Message);
     }
 
     private async Task FailAsync(AssistConversationFile conversation, Func<JsonObject, Task> emit, string code, string message)

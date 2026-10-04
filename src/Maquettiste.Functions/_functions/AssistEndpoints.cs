@@ -50,6 +50,7 @@ public static class AssistEndpoints
             {
                 ["configured"] = ai.IsConfigured,
                 ["model"] = ai.IsConfigured ? ai.Model : null,
+                ["providerKind"] = ai.IsConfigured ? ai.ProviderKind : null,
                 ["hostAiUrl"] = url.Length > 0 ? url : null,
                 ["canApply"] = CanApply(user),
                 ["maxTurns"] = settings.MaxTurns,

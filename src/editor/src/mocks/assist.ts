@@ -40,6 +40,7 @@ export class MockAssist {
     return {
       configured: this.configured,
       model: this.configured ? "mock-model" : null,
+      providerKind: this.configured ? "openai" : null,
       hostAiUrl: "http://localhost:8090/",
       canApply: this.canApply,
       maxTurns: typeof a.maxTurns === "number" ? a.maxTurns : 10,

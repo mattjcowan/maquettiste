@@ -215,7 +215,7 @@
         "type": "Project",
         "dependencies": {
           "Maquettiste.Engine": "[1.0.0-alpha.1, )",
-          "StaticSiteHost.Abstractions": "[0.3.0, )"
+          "StaticSiteHost.Abstractions": "[0.4.0, )"
         }
       },
       "maquettiste.testing": {
@@ -241,9 +241,9 @@
       },
       "StaticSiteHost.Abstractions": {
         "type": "CentralTransitive",
-        "requested": "[0.3.0, )",
-        "resolved": "0.3.0",
-        "contentHash": "vGKgT9mJsXVV/9tCdcbgrVmxBM2D/Wu1fmnzkadpLunIoUAqApXYEcqa+LIUN2JxpAbPYislS4Xu/ZOfKfsb7A=="
+        "requested": "[0.4.0, )",
+        "resolved": "0.4.0",
+        "contentHash": "m8XpVH/KaB4tggOxsxXNjOzVJh6afwPc+PB9QpJDiDEc9Sd6MzueFw2nQXijgRuYVdKBOn7kXT7Dr/5wFyREmQ=="
       },
       "Ulid": {
         "type": "CentralTransitive",
