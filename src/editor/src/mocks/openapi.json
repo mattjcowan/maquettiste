@@ -6175,7 +6175,7 @@
         ],
         "operationId": "previewTemplate",
         "summary": "Render one unit against one element, with no writes",
-        "description": "The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`\nfor a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.\nThe unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no\nfiles. An element outside the unit's scope (another kind than its `each`, one its selector does not return, an\nelement for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders\n(pointer `/units/<i>/for` of the pack's `pack.json`).\nWith `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the\npack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4\n(MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below\nit). Nothing is written.\n",
+        "description": "The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`\nfor a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.\nThe unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no\nfiles. An element outside the unit's scope (another kind than its `each`, one its selector does not return, an\nelement for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders\n(pointer `/units/<i>/for` of the pack's `pack.json`).\nWith `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the\npack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4\n(MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below\nit). Nothing is written.\n\nBounds (generation-ui.md section 5.2): only this unit is rendered, for this element, and no unit is planned. The\nserver keeps a preview session per pack (the model validated and resolved once per model version, shared with\nvalidation; the pack; schema diffs computed per database on first read), reused until the model, the settings, the\npack's files or the committed schema snapshots change. A unit whose one render covers the whole model (`for: model`),\na database or a locale renders all of it, so the editor sends it only when the user asks.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.PreviewAsync(pack, unit, elementId, options)",
         "parameters": [
@@ -6303,8 +6303,8 @@
           "templates"
         ],
         "operationId": "unitPaths",
-        "summary": "A unit's rendered output paths over its scope, with the count, collisions and root checks",
-        "description": "Plans the unit as the planner does (its scope, then `generation.skip` hints, then its filter), or keeps only\n`elementIds`, and renders each planned element up to `limit` (default 200, at most 2000) to report its output paths.\n`count` is the whole scope. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020 (two\nelements of the unit render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused path, and\nMQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or `parameters` it\nrenders unsaved text, which needs the maintainer role (403 below it). Nothing is written.\n",
+        "summary": "A unit's scope, and the output paths of the elements asked for, with collisions and root checks",
+        "description": "Plans this unit alone as the planner does (its scope, then `generation.skip` hints, then its filter) and renders\nnothing for that: `count` is how many elements it plans and `elements` lists them (up to `limit`, default 200, at most\n2000) with their names and kinds, which is what an element picker shows. Output paths are rendered only for\n`elementIds`, the elements the caller asks for (at most 20; more is 400): `count` and `elements` are then those of the\nlisted elements the unit plans, `rendered` how many were rendered, and `paths` their files. Without `elementIds`\nnothing is rendered (generation-ui.md section 5.2, \"Bounds\"). `wide` is true for a unit whose one render covers the\nwhole model, a database or a locale (`for: model`, `each locale`, a selector that returns databases): its paths come\nwith a preview the user asks for. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020\n(two of the rendered elements render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused\npath, and MQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or\n`parameters` it uses unsaved text, which needs the maintainer role (403 below it). Nothing is written.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.PathsAsync(pack, unit, elementIds, options, limit)",
         "parameters": [
@@ -6366,7 +6366,7 @@
         ],
         "operationId": "getTemplateContext",
         "summary": "Completion data for a unit's templates",
-        "description": "The globals a template of the unit sees (with `pack.params.*`), the members of the model and of the scope's records in snake_case, and the built-in helpers.",
+        "description": "The globals a template of the unit sees (with `pack.params.*`), the members of the model and of the scope's records in\nsnake_case, and the built-in helpers. Read from the pack alone and from the record types: no model is resolved and\nnothing is rendered.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetTemplateContextAsync(pack, unit)",
         "parameters": [
@@ -19733,17 +19733,18 @@
             "type": "string"
           },
           "elementIds": {
-            "description": "Only these elements; every planned element when absent.",
+            "description": "The elements to render (at most 20; more is 400): the answer is narrowed to those the unit plans. Without them\nnothing is rendered and the whole scope is counted and listed.\n",
             "type": [
               "array",
               "null"
             ],
+            "maxItems": 20,
             "items": {
               "type": "string"
             }
           },
           "limit": {
-            "description": "How many elements to render (default 200, at most 2000).",
+            "description": "How many elements of the scope to list in `elements` (default 200, at most 2000); listing renders nothing.",
             "type": [
               "integer",
               "null"
@@ -19841,6 +19842,32 @@
           }
         }
       },
+      "UnitElement": {
+        "x-engine-record": "Maquettiste.Engine.UnitElement",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "description": "The element id, or a resolved table key (`<entityId>@<databaseId>`).",
+            "type": "string"
+          },
+          "name": {
+            "description": "The element's name for people, as `UnitPath.elementName` gives it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "description": "The resolved kind (`entity`, `table`, `database`, `locale`, ...).",
+            "type": "string"
+          }
+        }
+      },
       "UnitPathsResult": {
         "x-engine-record": "Maquettiste.Engine.UnitPathsResult",
         "type": "object",
@@ -19849,13 +19876,17 @@
           "rendered",
           "paths",
           "diagnostics",
-          "elapsedMs"
+          "elapsedMs",
+          "elements",
+          "wide"
         ],
         "properties": {
           "count": {
+            "description": "How many elements the unit plans, or how many of `elementIds` it plans.",
             "type": "integer"
           },
           "rendered": {
+            "description": "How many elements were rendered (those of `elementIds` the unit plans).",
             "type": "integer"
           },
           "paths": {
@@ -19872,6 +19903,17 @@
           },
           "elapsedMs": {
             "type": "integer"
+          },
+          "elements": {
+            "description": "The planned elements in plan order, up to `limit`, with names and kinds; empty for a `model` unit.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnitElement"
+            }
+          },
+          "wide": {
+            "description": "Whether one render of the unit covers the whole model, a database or a locale (`for: model`, `each locale`, a\nselector that returns databases); the editor previews such a unit only when the user asks.\n",
+            "type": "boolean"
           }
         }
       },

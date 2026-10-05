@@ -690,6 +690,9 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
         unitOverride?: { id?: string; template?: string } | null;
       };
       if (typeof pack !== "string" || typeof unit !== "string") return problem(400, "bad-request", "Name the pack and the unit.");
+      // A test can make every render report as slow (MockBackend.previewElapsedMs).
+      const timed = <T extends { elapsedMs: number }>(result: T): T =>
+        backend.previewElapsedMs === null ? result : { ...result, elapsedMs: backend.previewElapsedMs };
       if (unitOverride && unitOverride.id !== unit) return problem(400, "bad-request", "unitOverride.id must equal unit.");
       if (overlay && Object.keys(overlay).some((p) => p === "pack.json" || !validPackPath(p)))
         return problem(400, "bad-request", "overlay paths must be pack files other than pack.json.");
@@ -699,16 +702,18 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
         if ("problem" in saved) return problem(400, "bad-request", saved.problem);
         const template = unitOverride?.template ?? model.packs.find((p) => p.name === pack)?.units.find((u) => u.id === unit)?.template;
         const text = template && overlay?.[template];
-        return HttpResponse.json(text === undefined || text === null ? saved : { ...saved, files: saved.files.map((f, i) => (i === 0 ? { ...f, text } : f)) });
+        return HttpResponse.json(
+          timed(text === undefined || text === null ? saved : { ...saved, files: saved.files.map((f, i) => (i === 0 ? { ...f, text } : f)) }),
+        );
       }
       // MQ6026 before any recorded answer: an element outside the unit's scope never renders (engine: UnitPlanner).
       const outOfScope = generation.previewScope(pack, unit, elementId ?? null);
-      if (outOfScope) return HttpResponse.json(outOfScope);
+      if (outOfScope) return HttpResponse.json(timed(outOfScope));
       const rec = replayable(recorded, "previewTemplate", pristine(), (r) => mentions(r, unit) && (!elementId || mentions(r, elementId)));
-      if (rec) return answer(rec) as never;
+      if (rec && backend.previewElapsedMs === null) return answer(rec) as never;
       const result = generation.preview(pack, unit, elementId ?? null);
       if ("problem" in result) return problem(400, "bad-request", result.problem);
-      return HttpResponse.json(result);
+      return HttpResponse.json(timed(result));
     }),
     http.get("/api/packs", () => HttpResponse.json(backend.packs.list())),
     http.post("/api/packs", async ({ request }) => {

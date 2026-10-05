@@ -655,7 +655,7 @@ internal sealed class MapView : IDictionary<string, object?>, IReadOnlyDictionar
         get
         {
             TouchAll();
-            return [.. _values.Select(Wrap)];
+            return [.. Enumerable.Range(0, _values.Length).Select(i => Wrap(Value(i)))];
         }
     }
 
@@ -687,7 +687,7 @@ internal sealed class MapView : IDictionary<string, object?>, IReadOnlyDictionar
         _onRead?.Invoke(key);
         if (_index.TryGetValue(key, out var i))
         {
-            value = Wrap(_values[i]);
+            value = Wrap(Value(i));
             return true;
         }
 
@@ -700,7 +700,7 @@ internal sealed class MapView : IDictionary<string, object?>, IReadOnlyDictionar
     {
         TouchAll();
         for (var i = 0; i < _keys.Length; i++)
-            yield return KeyValuePair.Create(_keys[i], Wrap(_values[i]));
+            yield return KeyValuePair.Create(_keys[i], Wrap(Value(i)));
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
@@ -736,10 +736,13 @@ internal sealed class MapView : IDictionary<string, object?>, IReadOnlyDictionar
     {
         TouchAll();
         for (var i = 0; i < _keys.Length; i++)
-            yield return KeyValuePair.Create(_keys[i], _values[i]);
+            yield return KeyValuePair.Create(_keys[i], Value(i));
     }
 
     private object? Wrap(object? value) => _context is null ? value : _context.Wrap(value);
+
+    /// <summary>An entry's value; an entry given as a <see cref="Lazy{T}"/> is computed on its first read (a preview's schema diffs).</summary>
+    private object? Value(int i) => _values[i] is Lazy<object?> lazy ? lazy.Value : _values[i];
 
     private void TouchAll()
     {

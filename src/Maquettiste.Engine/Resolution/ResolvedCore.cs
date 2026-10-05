@@ -198,8 +198,26 @@ public sealed class ResolvedModel
     /// <summary>Seeds, by (name, id).</summary>
     public RList<RSeed> Seeds { get; internal init; } = RList<RSeed>.Empty;
 
-    /// <summary>Seeds in insert order: a seed whose rows another seed's rows name comes first; ties by (dependency depth, name, id).</summary>
-    public RList<RSeed> SeedsInOrder { get; internal init; } = RList<RSeed>.Empty;
+    private RList<RSeed>? _seedsInOrder;
+
+    /// <summary>
+    /// Seeds in insert order: a seed whose rows another seed's rows name comes first; ties by (dependency depth, name, id). Ordered on
+    /// first read (it reads the rows of every seed whose cells name other rows).
+    /// </summary>
+    public RList<RSeed> SeedsInOrder
+    {
+        get
+        {
+            if (Volatile.Read(ref _seedsInOrder) is { } seeds)
+                return seeds;
+            var built = SeedsInOrderFactory?.Invoke() ?? RList<RSeed>.Empty;
+            return Interlocked.CompareExchange(ref _seedsInOrder, built, null) ?? built;
+        }
+        internal init => _seedsInOrder = value;
+    }
+
+    /// <summary>Builds <see cref="SeedsInOrder"/> on its first read.</summary>
+    internal Func<RList<RSeed>>? SeedsInOrderFactory { private get; init; }
 
     /// <summary>The declared locales (reference-types-seeds-localization.md section 3.7): the default first, then ordinal; empty
     /// without a <c>localization</c> block.</summary>

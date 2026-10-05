@@ -133,7 +133,7 @@ internal sealed partial class ResolveRun
             Relations = new RList<RRelation>(SortedRelations(), EntityMembership),
             ReferenceTypes = new RList<RReferenceType>(_referenceTypeOrder, ["k:reference-type"]),
             Seeds = new RList<RSeed>(_seedOrder, ["k:seed"]),
-            SeedsInOrder = new RList<RSeed>(_seedsInOrder, _seedsInOrderKeys),
+            SeedsInOrderFactory = _seedsInOrder,
             Processes = new RList<RProcess>(_processOrder, [ProcessKind]),
             Actors = new RList<RActor>(_actorOrder, [ActorKind]),
             Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),

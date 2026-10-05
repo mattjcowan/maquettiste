@@ -1293,6 +1293,12 @@ export interface paths {
          *     pack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4
          *     (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below
          *     it). Nothing is written.
+         *
+         *     Bounds (generation-ui.md section 5.2): only this unit is rendered, for this element, and no unit is planned. The
+         *     server keeps a preview session per pack (the model validated and resolved once per model version, shared with
+         *     validation; the pack; schema diffs computed per database on first read), reused until the model, the settings, the
+         *     pack's files or the committed schema snapshots change. A unit whose one render covers the whole model (`for: model`),
+         *     a database or a locale renders all of it, so the editor sends it only when the user asks.
          */
         post: operations["previewTemplate"];
         delete?: never;
@@ -1311,13 +1317,18 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * A unit's rendered output paths over its scope, with the count, collisions and root checks
-         * @description Plans the unit as the planner does (its scope, then `generation.skip` hints, then its filter), or keeps only
-         *     `elementIds`, and renders each planned element up to `limit` (default 200, at most 2000) to report its output paths.
-         *     `count` is the whole scope. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020 (two
-         *     elements of the unit render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused path, and
-         *     MQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or `parameters` it
-         *     renders unsaved text, which needs the maintainer role (403 below it). Nothing is written.
+         * A unit's scope, and the output paths of the elements asked for, with collisions and root checks
+         * @description Plans this unit alone as the planner does (its scope, then `generation.skip` hints, then its filter) and renders
+         *     nothing for that: `count` is how many elements it plans and `elements` lists them (up to `limit`, default 200, at most
+         *     2000) with their names and kinds, which is what an element picker shows. Output paths are rendered only for
+         *     `elementIds`, the elements the caller asks for (at most 20; more is 400): `count` and `elements` are then those of the
+         *     listed elements the unit plans, `rendered` how many were rendered, and `paths` their files. Without `elementIds`
+         *     nothing is rendered (generation-ui.md section 5.2, "Bounds"). `wide` is true for a unit whose one render covers the
+         *     whole model, a database or a locale (`for: model`, `each locale`, a selector that returns databases): its paths come
+         *     with a preview the user asks for. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020
+         *     (two of the rendered elements render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused
+         *     path, and MQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or
+         *     `parameters` it uses unsaved text, which needs the maintainer role (403 below it). Nothing is written.
          */
         post: operations["unitPaths"];
         delete?: never;
@@ -1335,7 +1346,9 @@ export interface paths {
         };
         /**
          * Completion data for a unit's templates
-         * @description The globals a template of the unit sees (with `pack.params.*`), the members of the model and of the scope's records in snake_case, and the built-in helpers.
+         * @description The globals a template of the unit sees (with `pack.params.*`), the members of the model and of the scope's records in
+         *     snake_case, and the built-in helpers. Read from the pack alone and from the record types: no model is resolved and
+         *     nothing is rendered.
          */
         get: operations["getTemplateContext"];
         put?: never;
@@ -4781,9 +4794,12 @@ export interface components {
         PathsRequest: {
             pack: string;
             unit: string;
-            /** @description Only these elements; every planned element when absent. */
+            /**
+             * @description The elements to render (at most 20; more is 400): the answer is narrowed to those the unit plans. Without them
+             *     nothing is rendered and the whole scope is counted and listed.
+             */
             elementIds?: string[] | null;
-            /** @description How many elements to render (default 200, at most 2000). */
+            /** @description How many elements of the scope to list in `elements` (default 200, at most 2000); listing renders nothing. */
             limit?: number | null;
             /** @description The unsaved unit; its `id` must equal `unit`. Needs maintainer. */
             unitOverride?: components["schemas"]["PackUnit"] | null;
@@ -4813,12 +4829,29 @@ export interface components {
             /** @description The resolved element's kind (`entity`, `table`, `view`, `locale`, ...); null for model scope. */
             elementKind: string | null;
         };
+        UnitElement: {
+            /** @description The element id, or a resolved table key (`<entityId>@<databaseId>`). */
+            id: string;
+            /** @description The element's name for people, as `UnitPath.elementName` gives it. */
+            name: string | null;
+            /** @description The resolved kind (`entity`, `table`, `database`, `locale`, ...). */
+            kind: string;
+        };
         UnitPathsResult: {
+            /** @description How many elements the unit plans, or how many of `elementIds` it plans. */
             count: number;
+            /** @description How many elements were rendered (those of `elementIds` the unit plans). */
             rendered: number;
             paths: components["schemas"]["UnitPath"][];
             diagnostics: components["schemas"]["Diagnostic"][];
             elapsedMs: number;
+            /** @description The planned elements in plan order, up to `limit`, with names and kinds; empty for a `model` unit. */
+            elements: components["schemas"]["UnitElement"][];
+            /**
+             * @description Whether one render of the unit covers the whole model, a database or a locale (`for: model`, `each locale`, a
+             *     selector that returns databases); the editor previews such a unit only when the user asks.
+             */
+            wide: boolean;
         };
         TemplateVariable: {
             name: string;

@@ -407,8 +407,10 @@ database shows on the Database screen at once. The explorers remember which rows
   selected, that pack's unit for each table; with another object picked, its unit for each view, each sequence, each
   routine, each database type or each sql object), names the pack and unit in its header, and says so when no enabled pack
   has such a unit. A pack's unit for an object may write nothing for it (the sql-ddl pack writes an object's own script
-  only when its **objectScripts** parameter is on): the preview then says so in a line above and shows the whole
-  database's script, which creates it. The diagram has most of the screen: the list starts narrow and the DDL preview
+  only when its **objectScripts** parameter is on): the preview then says so in a line above and offers the whole
+  database's script, which creates it. The whole database (nothing picked, or that fallback) renders every table, so it
+  renders only when you click **Preview the whole database**; after that it follows the model while a render takes under
+  a second, and a slower one is marked **Out of date** with **Preview again**. A picked table or object renders at once. The diagram has most of the screen: the list starts narrow and the DDL preview
   starts hidden behind the slim strip at the right edge (click it, or press Alt+Shift+D, to open it). The Tables list and
   the DDL preview each hide from the button in their header ("Hide tables list", "Hide DDL preview") or with Alt+Shift+L
   and Alt+Shift+D on this screen, come back from the slim strip they leave at the edge or the same shortcut, and resize
@@ -1877,7 +1879,13 @@ file that is otherwise yours, such as an ignore file; see "Managed blocks").
 3. On the right, the **preview** renders a unit for one element with your unsaved text, a moment after you stop
    typing: pick the **Unit** and one of the unit's elements (the picker lists only its kind: entities for an `each
    entity` unit, reference types for `each reference type`, locales for `each locale`), read the output path and the
-   text it would write, and any error is marked at its line. A preview writes nothing.
+   text it would write, and any error is marked at its line. A preview writes nothing, and it renders that one element
+   only: however large the model, writing a template never renders more than what you are looking at. To see a few
+   elements at once, **Preview a list…** lets you tick up to 20 and renders them when you click **Preview**. A unit that
+   renders once for the whole model (`for: model`), once per database (a schema or seed script) or once per locale is
+   not rendered as you type: click **Preview (renders the whole model)** (or "a whole database") when you want to see
+   it. After that it follows your typing while a render takes under a second; a slower one stays on screen marked
+   **Out of date**, with **Preview again**.
    Inside `{{ }}` the editor completes what the unit's templates can use: its variables (`model`, `element` and the
    scope's own name such as `entity`, `pack.params.<name>`), the members of the model and of the element after a dot,
    the built-in helpers and the pack's own after `|`, and the template language's functions (`string.upcase`,
@@ -2110,9 +2118,12 @@ Alt+4:
 - **Units**: a grid of the units, edited in place: id, scope, filter, template, output path, write mode, formatter.
   Beside each output pattern the grid shows how it reads, the path it gives for an **Example element** (chosen in the
   toolbar, one of the unit's own elements, the first until you pick another, kept per unit), and how many files the unit plans.
+  The count comes from the unit's scope without rendering anything; the example path is rendered for the selected row
+  only (one element), and a unit that renders once for the whole model, a database or a locale shows no example here
+  (preview it on Templates).
   The picker names each element with its kind, "Customer (entity)", or "Customer @ main" for a table a database makes
   from an entity (hover an entity for its id); past 20 elements it opens a list with a search box (type to narrow,
-  arrows and Enter to pick). When two elements would get the same path the cell says MQ6020; a
+  arrows and Enter to pick). When two elements would get the same path (an output pattern with no `{{ }}` gives every element one path) the cell says MQ6020; a
   path outside every allowed root says MQ6019. The **Unit help** panel on the right explains the focused field and the row's
   scope in plain words; drag its edge to resize it, and its header button (or Alt+Shift+U, or **Toggle unit help** in
   the palette) hides it, leaving a slim edge that brings it back. Ctrl+Enter adds a unit, Ctrl+D duplicates it, Ctrl+Delete removes it, Alt+Up and Alt+Down reorder, Ctrl+S
@@ -2140,7 +2151,16 @@ Alt+4:
   reference type to preview it" instead of the template engine's error (the server checks the same: a preview for an
   element outside the unit's scope returns MQ6026, which names the kind the template expects, and no files). The preview renders that unit for that
   element with the text you have not saved yet, about 300 ms after you stop typing. The output path it would write shows above the rendered text, and its
-  diagnostics are listed above it and marked in the editor at their line. Nothing is written by a preview.
+  diagnostics are listed above it and marked in the editor at their line. Nothing is written by a preview. The preview
+  renders one element and nothing else: the element picker comes from the unit's scope, which the server counts and
+  lists without rendering it, and no other unit of the pack is planned or rendered. **Preview a list…** (beside the
+  picker) renders up to 20 elements you tick, when you click **Preview**, each under its name; **Back to one** returns
+  to the single element. A unit whose one render covers the whole model (`for: model`), a whole database (a selector
+  that returns databases, such as sql-ddl's schema, migration and seed units) or a whole locale is never rendered as
+  you type: the pane offers **Preview (renders the whole model)** (or "a whole database"). Once you asked, it renders
+  again as you type while a render takes under a second; a slower render stays up marked **Out of date** with
+  **Preview again**. The server keeps what a preview needs (the model resolved once per change, shared with
+  validation, and the pack) until the model, the settings, the pack's files or the committed schema snapshots change.
   **Save** (or Ctrl+S) writes the file under `.maquettiste/templates/<pack>/` with the version you opened; a template
   that does not parse is still saved and its MQ6003 error marked. When the file changed on disk since you opened it
   (someone else, git, or your text editor), the save is refused and a bar offers **Keep mine** (write your text over

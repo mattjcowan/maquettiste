@@ -21,7 +21,7 @@ internal sealed partial class ResolveRun
     private readonly Dictionary<(string Type, string Database), RStorageChoice> _storageChoices = [];
     private List<RReferenceType> _referenceTypeOrder = [];
     private List<RSeed> _seedOrder = [];
-    private List<RSeed> _seedsInOrder = [];
+    private Func<RList<RSeed>>? _seedsInOrder;
     private IReadOnlyList<string> _seedsInOrderKeys = [];
 
     /// <summary>The effective storage choice of a reference type in a database.</summary>
@@ -148,7 +148,13 @@ internal sealed partial class ResolveRun
             var rows = new List<RSeedRow>(seed.Rows.Count);
             for (var i = 0; i < seed.Rows.Count; i++)
             {
-                var row = new RSeedRow { Id = seed.Rows[i].Id, Seed = s, Order = i, Values = CellValues(s.Columns, seed.Rows[i]) };
+                // A reference type's rows feed its codes and every usage now; any other seed's cells are converted on first read.
+                var source = seed.Rows[i];
+                var row = new RSeedRow { Id = source.Id, Seed = s, Order = i };
+                if (rt is not null)
+                    row.Values = CellValues(s.Columns, source);
+                else
+                    row.SetValues(() => CellValues(s.Columns, source));
                 row.Dependencies = seedKeys;
                 rows.Add(row);
                 seedRowsById.TryAdd(row.Id, row);
@@ -369,18 +375,66 @@ internal sealed partial class ResolveRun
 
     /// <summary>
     /// <see cref="RSeed.OrderedRows"/> by Kahn's algorithm (ties by file order; a cycle, which MQ7103 allows through optional cells,
-    /// is broken at its first row in file order), and <see cref="ResolvedModel.SeedsInOrder"/> by (dependency depth, name, id).
+    /// is broken at its first row in file order), and <see cref="ResolvedModel.SeedsInOrder"/> by (dependency depth, name, id). Both
+    /// are computed on first read (<see cref="SeedOrdering"/>), so the rows of a seed nothing reads are never ordered; only the
+    /// dependency keys of the insert order are set here, since they do not depend on the rows.
     /// </summary>
     private void OrderSeeds(Dictionary<string, RSeedRow> seedRowsById)
     {
-        var seedDeps = new Dictionary<RSeed, SortedSet<int>>(ReferenceEqualityComparer.Instance);
-        var index = new Dictionary<RSeed, int>(ReferenceEqualityComparer.Instance);
+        var ordering = new SeedOrdering([.. _seedOrder], seedRowsById);
         for (var i = 0; i < _seedOrder.Count; i++)
-            index[_seedOrder[i]] = i;
-        foreach (var seed in _seedOrder)
         {
-            Ct.ThrowIfCancellationRequested();
+            var at = i;
+            _seedOrder[i].SetOrderedRows(() => ordering.Of(at).Ordered);
+        }
+
+        var keys = new DependencySet(Keys).Add("k:seed");
+        foreach (var seed in _seedOrder)
+            keys.Element(seed.Id);
+        foreach (var type in _referenceTypeOrder)
+            keys.Element(type.Id);
+        _seedsInOrderKeys = keys.ToList();
+        var frozen = _seedsInOrderKeys;
+        _seedsInOrder = () => new RList<RSeed>(ordering.InsertOrder(), frozen);
+    }
+
+    /// <summary>
+    /// The row and seed order of one resolution, computed on demand and shared by every reader (thread-safe). It holds only what
+    /// ordering needs (the seeds and the row index), never the resolve run.
+    /// </summary>
+    private sealed class SeedOrdering(IReadOnlyList<RSeed> seeds, Dictionary<string, RSeedRow> seedRowsById)
+    {
+        private readonly Lazy<(RList<RSeedRow> Ordered, SortedSet<int> Across)>?[] _perSeed = new Lazy<(RList<RSeedRow>, SortedSet<int>)>?[seeds.Count];
+        private Dictionary<RSeed, int>? _index;
+
+        private Dictionary<RSeed, int> Index => LazyInitializer.EnsureInitialized(ref _index, () =>
+        {
+            var index = new Dictionary<RSeed, int>(ReferenceEqualityComparer.Instance);
+            for (var i = 0; i < seeds.Count; i++)
+                index[seeds[i]] = i;
+            return index;
+        });
+
+        /// <summary>One seed's ordered rows and the seeds (by position) its rows name.</summary>
+        public (RList<RSeedRow> Ordered, SortedSet<int> Across) Of(int i)
+        {
+            var slot = Volatile.Read(ref _perSeed[i]);
+            if (slot is null)
+            {
+                var created = new Lazy<(RList<RSeedRow>, SortedSet<int>)>(() => Order(seeds[i]), LazyThreadSafetyMode.ExecutionAndPublication);
+                slot = Interlocked.CompareExchange(ref _perSeed[i], created, null) ?? created;
+            }
+
+            return slot.Value;
+        }
+
+        private (RList<RSeedRow> Ordered, SortedSet<int> Across) Order(RSeed seed)
+        {
             var rows = seed.Rows;
+            // A seed whose columns name no other row (no end, no reference type) keeps its file order and depends on no seed: the
+            // general pass below would find no edge, so its cells are not read.
+            if (!seed.Columns.Any(c => c.End is not null || c.Attribute?.Type.ReferenceType is not null))
+                return (new RList<RSeedRow>(rows, rows.MembershipKeys), []);
             var position = new Dictionary<string, int>(rows.Count, StringComparer.Ordinal);
             for (var i = 0; i < rows.Count; i++)
                 position.TryAdd(rows[i].Id, i);
@@ -398,14 +452,13 @@ internal sealed partial class ResolveRun
                         (dependents[p] ??= []).Add(i);
                         pending[i]++;
                     }
-                    else if (owner is not null && index.TryGetValue(owner, out var other))
+                    else if (owner is not null && Index.TryGetValue(owner, out var other))
                     {
                         across.Add(other);
                     }
                 }
             }
 
-            seedDeps[seed] = across;
             var ordered = new List<RSeedRow>(rows.Count);
             var ready = new SortedSet<int>();
             var remaining = new SortedSet<int>(Enumerable.Range(0, rows.Count));
@@ -428,35 +481,32 @@ internal sealed partial class ResolveRun
                 }
             }
 
-            seed.OrderedRows = new RList<RSeedRow>(ordered, seed.Rows.MembershipKeys);
+            return (new RList<RSeedRow>(ordered, rows.MembershipKeys), across);
         }
 
-        // Depth: 0 without dependencies, else one more than the deepest seed it names; a back edge of a cycle counts as none.
-        var depth = new int[_seedOrder.Count];
-        var state = new byte[_seedOrder.Count]; // 0 new, 1 on the path, 2 done
-        int Depth(int i)
+        /// <summary>Every seed by (dependency depth, name, id): depth 0 without dependencies, else one more than the deepest seed it names; a back edge of a cycle counts as none.</summary>
+        public List<RSeed> InsertOrder()
         {
-            if (state[i] == 2)
-                return depth[i];
-            if (state[i] == 1)
-                return -1;
-            state[i] = 1;
-            var d = 0;
-            foreach (var other in seedDeps[_seedOrder[i]])
-                d = Math.Max(d, Depth(other) + 1);
-            state[i] = 2;
-            return depth[i] = d;
-        }
+            var depth = new int[seeds.Count];
+            var state = new byte[seeds.Count]; // 0 new, 1 on the path, 2 done
+            int Depth(int i)
+            {
+                if (state[i] == 2)
+                    return depth[i];
+                if (state[i] == 1)
+                    return -1;
+                state[i] = 1;
+                var d = 0;
+                foreach (var other in Of(i).Across)
+                    d = Math.Max(d, Depth(other) + 1);
+                state[i] = 2;
+                return depth[i] = d;
+            }
 
-        for (var i = 0; i < _seedOrder.Count; i++)
-            Depth(i);
-        _seedsInOrder = [.. Enumerable.Range(0, _seedOrder.Count).OrderBy(i => depth[i]).ThenBy(i => i).Select(i => _seedOrder[i])];
-        var keys = new DependencySet(Keys).Add("k:seed");
-        foreach (var seed in _seedOrder)
-            keys.Element(seed.Id);
-        foreach (var type in _referenceTypeOrder)
-            keys.Element(type.Id);
-        _seedsInOrderKeys = keys.ToList();
+            for (var i = 0; i < seeds.Count; i++)
+                Depth(i);
+            return [.. Enumerable.Range(0, seeds.Count).OrderBy(i => depth[i]).ThenBy(i => i).Select(i => seeds[i])];
+        }
     }
 
     /// <summary>Sets <see cref="RAttribute.Reference"/> on every attribute typed by a reference type, and each type's <c>used_by</c>.</summary>

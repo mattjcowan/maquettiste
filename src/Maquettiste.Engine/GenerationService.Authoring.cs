@@ -32,13 +32,29 @@ public sealed record UnitPath(string? ElementId, string Path, string Role, strin
     public string? ElementKind { get; init; }
 }
 
-/// <summary>A unit's output paths over its scope (generation-ui.md section 5.2).</summary>
-/// <param name="Count">How many elements the unit plans (after the filter and the skip hints), or the listed elements it plans.</param>
-/// <param name="Rendered">How many of them were rendered here.</param>
+/// <summary>An element a unit plans, as a scope listing names it (<c>POST /api/templates/paths</c>, <see cref="UnitPathsResult.Elements"/>).</summary>
+/// <param name="Id">The element id, or a resolved table key.</param>
+/// <param name="Name">Its name for people (<see cref="UnitPath.ElementName"/>), or <see langword="null"/>.</param>
+/// <param name="Kind">Its resolved kind.</param>
+public sealed record UnitElement(string Id, string? Name, string Kind);
+
+/// <summary>A unit's scope and the output paths of the elements asked for (generation-ui.md section 5.2, "Bounds").</summary>
+/// <param name="Count">How many elements the unit plans (after the filter and the skip hints), or how many of the listed elements it plans; counting renders nothing.</param>
+/// <param name="Rendered">How many elements were rendered here: those the request listed, at most 20.</param>
 /// <param name="Paths">The rendered paths, by element then path, ordinal.</param>
 /// <param name="Diagnostics">MQ6019, MQ6020, MQ6005, MQ6007 and the render errors.</param>
 /// <param name="ElapsedMs">Time spent.</param>
-public sealed record UnitPathsResult(int Count, int Rendered, IReadOnlyList<UnitPath> Paths, IReadOnlyList<Diagnostic> Diagnostics, long ElapsedMs);
+public sealed record UnitPathsResult(int Count, int Rendered, IReadOnlyList<UnitPath> Paths, IReadOnlyList<Diagnostic> Diagnostics, long ElapsedMs)
+{
+    /// <summary>The planned elements in plan order, up to the request's limit, with names and kinds: what an element picker lists.</summary>
+    public IReadOnlyList<UnitElement> Elements { get; init; } = [];
+
+    /// <summary>
+    /// Whether one render of the unit covers the whole model, or a whole database or locale (<c>for: model</c>, <c>each locale</c>, a
+    /// selector that returns databases): the editor previews such a unit only when asked.
+    /// </summary>
+    public bool Wide { get; init; }
+}
 
 /// <summary>Why a unit does or does not render an element (generation-ui.md section 4.3; <c>POST /api/generate/explain</c>).</summary>
 /// <param name="Pack">The pack.</param>
@@ -84,20 +100,33 @@ public sealed partial class GenerationService
 {
     private const int MaxPathElements = 2000;
 
+    /// <summary>How many elements one path listing renders at most (<c>elementIds</c>); more is refused.</summary>
+    public const int MaxRenderedPaths = 20;
+
     /// <summary>
-    /// Renders a unit's output paths over its scope, after its filter and the skip hints as the planner counts them, or over the listed
-    /// elements (generation-ui.md section 5.2). Each planned element is rendered fully (so a pattern that reads a variable the template
-    /// assigned gets its real value), up to <paramref name="limit"/>, under the preview deadline. Nothing touches disk.
+    /// A unit's scope and output paths (generation-ui.md section 5.2, "Bounds"). The scope is the elements the unit plans, after its
+    /// filter and the skip hints as the planner counts them: this unit only, planned and never rendered, listed up to
+    /// <paramref name="limit"/> (default 200, at most 2000) with each element's name and kind, and counted in full. Paths are rendered
+    /// only for <paramref name="elementIds"/>, the elements the caller asks for (at most <see cref="MaxRenderedPaths"/>; the count and the
+    /// listing are then those of the listed elements the unit plans), each fully (so a pattern that reads a variable the template
+    /// assigned gets its real value), under the preview deadline; without them nothing is rendered. A unit that renders once for the
+    /// whole model, or once per database or locale (<see cref="UnitPathsResult.Wide"/>), shows its paths in a preview the user asks
+    /// for. Nothing touches disk.
     /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="elementIds"/> lists more than <see cref="MaxRenderedPaths"/> elements, or the
+    /// unsaved text is refused.</exception>
     public async Task<UnitPathsResult> PathsAsync(string pack, string unitId, IReadOnlyList<string>? elementIds, PreviewOptions? options, int limit,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(pack);
         ArgumentNullException.ThrowIfNull(unitId);
+        var wanted = (elementIds ?? []).Distinct(StringComparer.Ordinal).ToList();
+        if (wanted.Count > MaxRenderedPaths)
+            throw new ArgumentException($"elementIds lists {wanted.Count} elements; a path listing renders at most {MaxRenderedPaths}.", nameof(elementIds));
         using var turn = TakeTurn(options?.Connection, ct);
         ct = turn.Token;
         var clock = Stopwatch.StartNew();
-        // The deadline covers the whole request: waiting for a preview slot, preparing, planning and rendering.
+        // The deadline covers the whole request: waiting for a preview slot, preparing, listing and rendering.
         var deadline = PreviewDeadlineMs();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(deadline);
@@ -118,14 +147,13 @@ public sealed partial class GenerationService
         using var held = slot;
         if (session is null)
             return new UnitPathsResult(0, 0, [], failure, clock.ElapsedMilliseconds);
-        var (prepared, loaded, unit, _, _, _, _, renderer, context) = session;
-        var single = loaded with { Manifest = loaded.Manifest with { Units = [unit] } };
-        var diagnostics = new List<Diagnostic>(UnitRules.OutputRoots(single.Manifest, loaded.Settings, prepared.Snapshot.Settings.Outputs.Allow,
+        var (prepared, loaded, unit, _, _, changed, _, renderer, context) = session;
+        var diagnostics = new List<Diagnostic>(UnitRules.OutputRoots(loaded.Manifest with { Units = [unit] }, loaded.Settings, prepared.Snapshot.Settings.Outputs.Allow,
             loaded.RelativePath + "/pack.json"));
         UnitPlan plan;
         try
         {
-            plan = await _services.Planner.PlanAsync(prepared.Resolved, new PackSet([single], []) { CheckOutputRoots = false }, _services.Scripts, null, timeout.Token).ConfigureAwait(false);
+            plan = await ScopeAsync(session, changed, timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -134,19 +162,19 @@ public sealed partial class GenerationService
             return new UnitPathsResult(0, 0, [], diagnostics, clock.ElapsedMilliseconds);
         }
         diagnostics.AddRange(plan.Diagnostics);
-        var units = plan.Units;
-        if (elementIds is { Count: > 0 })
-        {
-            var wanted = elementIds.ToHashSet(StringComparer.Ordinal);
-            units = [.. units.Where(u => u.Element is not null && wanted.Contains(u.Element.Id))];
-        }
-
+        var wide = IsWide(unit, plan.Units);
+        // Asked-for elements narrow the answer to those the unit plans, and those are rendered; else the whole scope is listed.
+        IReadOnlyList<PlannedUnit> units = wanted.Count == 0 ? plan.Units
+            : [.. plan.Units.Where(u => u.Element is not null && wanted.Contains(u.Element.Id, StringComparer.Ordinal))];
         var take = Math.Clamp(limit <= 0 ? 200 : limit, 1, MaxPathElements);
+        var elements = units.Where(u => u.Element is not null).Take(take)
+            .Select(u => new UnitElement(u.Element!.Id, NameOf(u.Element), u.Element.Kind)).ToList();
+        var toRender = wanted.Count == 0 ? [] : units;
         var paths = new List<UnitPath>();
         var rendered = 0;
         try
         {
-            foreach (var planned in units.Take(take))
+            foreach (var planned in toRender)
             {
                 var result = await renderer.RenderOneAsync(planned, context, timeout.Token).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
@@ -155,7 +183,7 @@ public sealed partial class GenerationService
                 diagnostics.AddRange(result.Diagnostics.Where(Outcomes.IsInvalid));
                 foreach (var file in result.Files)
                 {
-                    var check = prepared.Paths.Check(file.Path);
+                    var check = prepared.Paths!.Check(file.Path);
                     paths.Add(new UnitPath(planned.Element?.Id, check.Allowed ? check.NormalizedPath : file.Path,
                         file.Role == FileRole.Companion ? "companion" : "main", check.Root?.Path, check.Allowed, check.Allowed ? null : check.RuleId ?? "MQ6004")
                     {
@@ -167,19 +195,28 @@ public sealed partial class GenerationService
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            diagnostics.Add(RuleCatalog.Create("MQ6007", $"The paths of '{pack}/{unit.Id}' did not finish within {deadline} ms (limits.scriptTimeoutMs x 4); {rendered} of {units.Count} were rendered.",
+            diagnostics.Add(RuleCatalog.Create("MQ6007", $"The paths of '{pack}/{unit.Id}' did not finish within {deadline} ms (limits.scriptTimeoutMs x 4); {rendered} of {toRender.Count} were rendered.",
                 filePath: loaded.RelativePath + "/pack.json"));
         }
 
         foreach (var group in paths.GroupBy(p => p.Path, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
         {
             var exact = group.GroupBy(p => p.Path, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
-            var elements = group.Select(p => p.ElementId ?? "(model)").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+            var named = group.Select(p => p.ElementId ?? "(model)").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
             diagnostics.Add(exact is not null
-                ? RuleCatalog.Create("MQ6020", $"Unit '{pack}/{unit.Id}' renders {exact.Key} for {string.Join(" and ", elements.Select(e => "'" + e + "'"))}: its output pattern is not unique per element.",
+                ? RuleCatalog.Create("MQ6020", $"Unit '{pack}/{unit.Id}' renders {exact.Key} for {string.Join(" and ", named.Select(e => "'" + e + "'"))}: its output pattern is not unique per element.",
                     filePath: exact.Key)
                 : RuleCatalog.Create("MQ6005", $"Case-colliding output paths in unit '{pack}/{unit.Id}': {string.Join(", ", group.Select(p => p.Path).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))}.",
                     filePath: group.Key));
+        }
+
+        // A pattern with no code span is the same path for every element: MQ6020 over the whole scope, found without rendering.
+        if (unit.Output is { Length: > 0 } pattern && !pattern.Contains(unit.Delimiters?.Open ?? "{{", StringComparison.Ordinal)
+            && plan.Units.Count(u => u.Element is not null) > 1 && !diagnostics.Any(d => d.Rule == "MQ6020"))
+        {
+            diagnostics.Add(RuleCatalog.Create("MQ6020",
+                $"Unit '{pack}/{unit.Id}' renders the constant path '{pattern}' for each of its {plan.Units.Count(u => u.Element is not null)} elements: its output pattern is not unique per element.",
+                filePath: loaded.RelativePath + "/pack.json"));
         }
 
         paths.Sort((a, b) =>
@@ -187,7 +224,41 @@ public sealed partial class GenerationService
             var c = string.CompareOrdinal(a.ElementId, b.ElementId);
             return c != 0 ? c : string.CompareOrdinal(a.Path, b.Path);
         });
-        return new UnitPathsResult(units.Count, rendered, paths, Outcomes.Sort(diagnostics), clock.ElapsedMilliseconds);
+        return new UnitPathsResult(units.Count, rendered, paths, Outcomes.Sort(diagnostics), clock.ElapsedMilliseconds)
+        {
+            Elements = elements,
+            Wide = wide,
+        };
+    }
+
+    /// <summary>
+    /// Whether one render of the unit covers the whole model, or a whole database or locale: the unit renders once (<c>model</c>), or
+    /// its elements are databases or locales. Such a unit is previewed only when the user asks for it.
+    /// </summary>
+    internal static bool IsWide(PackUnit unit, IReadOnlyList<PlannedUnit> planned) =>
+        string.Equals(unit.For, "model", StringComparison.Ordinal) || string.Equals(unit.For, "each locale", StringComparison.Ordinal)
+        || (planned.Count > 0 && planned.All(p => p.Element is null or RDatabase or RLocale));
+
+    /// <summary>
+    /// The unit's scope: this unit alone planned over the resolved model (its candidates, the skip hints and its filter), never rendered.
+    /// A saved unit's listing is kept with the session; an unsaved one (a unit override, overlaid scripts or parameters) is planned anew.
+    /// </summary>
+    private Task<UnitPlan> ScopeAsync(UnitSession session, bool changed, CancellationToken ct)
+    {
+        var single = session.Loaded with { Manifest = session.Loaded.Manifest with { Units = [session.Unit] } };
+        Task<UnitPlan> Plan(CancellationToken token) =>
+            _services.Planner.PlanAsync(session.Resolved, new PackSet([single], []) { CheckOutputRoots = false }, _services.Scripts, null, token);
+        if (changed)
+            return Plan(ct);
+        var scopes = session.Session.Scopes;
+        var task = scopes.GetOrAdd(session.Unit.Id, _ => Task.Run(() => Plan(CancellationToken.None), CancellationToken.None));
+        if (task.IsFaulted || task.IsCanceled)
+        {
+            scopes.TryRemove(new KeyValuePair<string, Task<UnitPlan>>(session.Unit.Id, task));
+            task = scopes.GetOrAdd(session.Unit.Id, _ => Task.Run(() => Plan(CancellationToken.None), CancellationToken.None));
+        }
+
+        return task.WaitAsync(ct);
     }
 
     /// <summary>The name <see cref="UnitPath.ElementName"/> shows for a resolved object, or <see langword="null"/> when it has none.</summary>
@@ -311,14 +382,18 @@ public sealed partial class GenerationService
         return await _store.SaveSettingsAsync(bytes, expectedHash, ChangeSource.Editor, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Completion data for a unit's templates: variables, the members of the model and of the scope's records, and helpers.</summary>
+    /// <summary>
+    /// Completion data for a unit's templates: variables, the members of the model and of the scope's records, and helpers. Read from the
+    /// pack alone (its <c>pack.json</c>, its parameters and what its scripts register, kept per pack folder and settings) and from the
+    /// record types: no model is resolved and nothing is rendered.
+    /// </summary>
     /// <returns><see langword="null"/> when there is no such pack or unit.</returns>
     /// <exception cref="PackPathException">The name is not a pack key.</exception>
     public async Task<TemplateContextResult?> GetTemplateContextAsync(string pack, string unitId, CancellationToken ct)
     {
         var document = await GetPackAsync(pack, ct).ConfigureAwait(false);
-        var summary = document is null ? null : (await ListPacksAsync(ct).ConfigureAwait(false)).FirstOrDefault(p => string.Equals(p.Name, pack, StringComparison.Ordinal));
-        var unit = summary?.Units.FirstOrDefault(u => string.Equals(u.Id, unitId, StringComparison.Ordinal));
+        var unit = document is null ? null
+            : PackAuthoring.TryManifest(document.Document)?.Units.FirstOrDefault(u => string.Equals(u.Id, unitId, StringComparison.Ordinal));
         if (document is null || unit is null)
             return null;
         var variables = new List<TemplateVariable>

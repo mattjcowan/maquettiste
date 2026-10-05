@@ -19,8 +19,8 @@ public sealed record PreviewRequest(string? Pack, string? Unit, string? ElementI
 /// <summary>The body of <c>POST /api/templates/paths</c>.</summary>
 /// <param name="Pack">The pack.</param>
 /// <param name="Unit">The unit id.</param>
-/// <param name="ElementIds">Only these elements; every planned element when absent.</param>
-/// <param name="Limit">How many elements to render (default 200, at most 2000); the count is always the whole scope.</param>
+/// <param name="ElementIds">The elements to render (at most 20; more is 400); without them nothing is rendered and the scope is listed.</param>
+/// <param name="Limit">How many elements of the scope to list (default 200, at most 2000); listing renders nothing.</param>
 /// <param name="UnitOverride">An unsaved unit (maintainer).</param>
 /// <param name="Overlay">Unsaved pack files (maintainer).</param>
 /// <param name="Parameters">Unsaved parameter values (maintainer).</param>
@@ -80,7 +80,7 @@ public static class TemplateEndpoints
         }
     });
 
-    /// <summary>A unit's rendered output paths over its scope or the listed elements, with the count, collisions and root checks.</summary>
+    /// <summary>A unit's scope (counted and listed, never rendered) and the output paths of the elements asked for, with collisions and root checks.</summary>
     /// <param name="context">The request.</param>
     /// <param name="generation">The generation service.</param>
     /// <param name="ct">Cancellation.</param>

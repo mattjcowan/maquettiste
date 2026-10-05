@@ -442,7 +442,7 @@ internal static partial class PackAuthoring
         }
     }
 
-    private static PackManifest? TryManifest(JsonElement? document)
+    internal static PackManifest? TryManifest(JsonElement? document)
     {
         if (document is not { ValueKind: JsonValueKind.Object } element)
             return null;

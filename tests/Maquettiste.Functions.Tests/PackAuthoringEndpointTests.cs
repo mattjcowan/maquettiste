@@ -11,27 +11,33 @@ public sealed class PackAuthoringEndpointTests
     private static string TableKey => EditorHost.CustomerId + "@" + EditorHost.MainDatabaseId;
 
     [Fact]
-    public async Task Paths_list_every_planned_element_and_a_constant_pattern_is_MQ6020()
+    public async Task Paths_list_the_scope_render_only_the_elements_asked_for_and_a_constant_pattern_is_MQ6020()
     {
         await using var host = EditorHost.Create();
 
+        // The scope is counted and listed with names and kinds; nothing is rendered (generation-ui.md section 5.2, "Bounds").
         var paths = await host.SendJsonAsync("POST", "/api/templates/paths", new { pack = "sql-ddl", unit = "table" });
         Assert.Equal(200, paths.Status);
         Contract.AssertResponse(paths, "/api/templates/paths");
         var count = paths.Json["count"]!.GetValue<int>();
         Assert.True(count > 1);
-        Assert.Equal(count, paths.Json["rendered"]!.GetValue<int>());
-        Assert.All(paths.Json["paths"]!.AsArray(), p => Assert.EndsWith(".sql", p!["path"]!.GetValue<string>(), StringComparison.Ordinal));
-        Assert.DoesNotContain(paths.Json["diagnostics"]!.AsArray(), d => d!["rule"]!.GetValue<string>() == "MQ6020");
+        Assert.Equal(0, paths.Json["rendered"]!.GetValue<int>());
+        Assert.Empty(paths.Json["paths"]!.AsArray());
+        Assert.False(paths.Json["wide"]!.GetValue<bool>());
+        var elements = paths.Json["elements"]!.AsArray();
+        Assert.Equal(count, elements.Count);
+        Assert.All(elements, e => Assert.Equal("table", e!["kind"]!.GetValue<string>()));
 
         var one = await host.SendJsonAsync("POST", "/api/templates/paths", new { pack = "sql-ddl", unit = "table", elementIds = new[] { TableKey } });
-        Assert.Equal(1, one.Json["count"]!.GetValue<int>());
+        Assert.Equal((1, 1), (one.Json["count"]!.GetValue<int>(), one.Json["rendered"]!.GetValue<int>()));
         Assert.Equal(TableKey, one.Json["paths"]![0]!["elementId"]!.GetValue<string>());
+        Assert.EndsWith(".sql", one.Json["paths"]![0]!["path"]!.GetValue<string>(), StringComparison.Ordinal);
 
         var body = new JsonObject
         {
             ["pack"] = "sql-ddl",
             ["unit"] = "table",
+            ["elementIds"] = new JsonArray(elements[0]!["id"]!.GetValue<string>(), elements[1]!["id"]!.GetValue<string>()),
             ["unitOverride"] = new JsonObject { ["id"] = "table", ["template"] = "table.scriban", ["for"] = "each table", ["output"] = "same.sql" },
         };
         var same = await host.SendJsonAsync("POST", "/api/templates/paths", body.ToJsonString());
@@ -39,6 +45,8 @@ public sealed class PackAuthoringEndpointTests
         Contract.AssertResponse(same, "/api/templates/paths");
         Assert.Contains(same.Json["diagnostics"]!.AsArray(), d => d!["rule"]!.GetValue<string>() == "MQ6020");
 
+        var tooMany = new JsonObject { ["pack"] = "sql-ddl", ["unit"] = "table", ["elementIds"] = new JsonArray([.. Enumerable.Range(0, 21).Select(i => (JsonNode)JsonValue.Create("e" + i)!)]) };
+        Assert.Equal(400, (await host.SendJsonAsync("POST", "/api/templates/paths", tooMany.ToJsonString())).Status);
         Assert.Equal(400, (await host.SendJsonAsync("POST", "/api/templates/paths", new { pack = "sql-ddl" })).Status);
         var wrongId = new JsonObject { ["pack"] = "sql-ddl", ["unit"] = "table", ["unitOverride"] = new JsonObject { ["id"] = "other", ["template"] = "table.scriban", ["for"] = "each table" } };
         Assert.Equal(400, (await host.SendJsonAsync("POST", "/api/templates/paths", wrongId.ToJsonString())).Status);

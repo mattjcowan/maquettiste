@@ -69,6 +69,8 @@ test("New routine… creates a function, Parameters and Definition edit it, it i
   await expect(page.getByTestId("database-objects-count")).toHaveText("3 routines");
   await page.getByTestId("database-routine-invoice_count").click();
   await expect(page.getByTestId("ddl-preview-unit")).toHaveText("sql-ddl/routine · invoice_count");
+  // The whole database renders every table, so it renders only when asked (generation-ui.md 5.2, "Bounds").
+  await page.getByTestId("ddl-preview-whole").click();
   await expect(page.getByTestId("ddl-preview")).toContainText("CREATE FUNCTION billing.invoice_count(p_customer uuid) RETURNS integer");
   await expect(page.getByTestId("ddl-preview")).toContainText("LANGUAGE plpgsql IMMUTABLE");
   await expect(page.getByTestId("inspector").getByTestId("routine-fields")).toContainText("1 parameter; returns int32; body for postgresql");

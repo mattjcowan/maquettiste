@@ -58,6 +58,38 @@ internal sealed partial class ResolveRun
     /// <summary>Resolved relations (promotion relations excluded) in section 7.1 order.</summary>
     public IReadOnlyList<RRelation> RelationOrder => _relationOrder;
 
+    private Dictionary<string, List<(RRelation Relation, REnd End)>>? _relationsByEndId;
+
+    /// <summary>
+    /// The relations of <see cref="RelationOrder"/> with an end of this id, in that order, with the end: what a scan of
+    /// <see cref="RelationOrder"/> for the end finds, without the scan (a binding's foreign key field looked up its end by walking every
+    /// relation, which made a database with thousands of bindings and tens of thousands of relations resolve in seconds). Built on first
+    /// use, after the conceptual pass; database runs share it.
+    /// </summary>
+    /// <param name="endId">The end id.</param>
+    /// <returns>The matches, usually one.</returns>
+    public IReadOnlyList<(RRelation Relation, REnd End)> RelationsWithEnd(string endId)
+    {
+        var index = LazyInitializer.EnsureInitialized(ref _relationsByEndId, () =>
+        {
+            var built = new Dictionary<string, List<(RRelation, REnd)>>(StringComparer.Ordinal);
+            foreach (var relation in _relationOrder)
+            {
+                foreach (var end in relation.Ends)
+                {
+                    if (!built.TryGetValue(end.Id, out var list))
+                        built[end.Id] = list = new List<(RRelation, REnd)>(1);
+                    // A relation lists an end id once in a scan (FirstOrDefault): keep the first end of that id per relation.
+                    if (list.Count == 0 || !ReferenceEquals(list[^1].Item1, relation))
+                        list.Add((relation, end));
+                }
+            }
+
+            return built;
+        });
+        return index.TryGetValue(endId, out var found) ? found : [];
+    }
+
     /// <summary>The source entity of a resolved entity id.</summary>
     public Entity? EntitySource(string id) => _entitySources.GetValueOrDefault(id);
 

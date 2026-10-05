@@ -249,6 +249,17 @@ round after an edit (it rewrites one entity's description through the model stor
 (validation, each database's own resolve, the conceptual layer alone, the whole-model resolve). The numbers are in
 docs/engineering/explorer-redesign.md section 4.5.
 
+## Template previews on a large model (`time-preview`)
+
+`dotnet run -c Release --project bench/Maquettiste.Bench -- time-preview --out <dir> [--entities 3000] [--seed-rows 100000]
+[--rounds 3] [--reuse]` writes the explorer's synthetic model with that many entities, adds an entity with a seed of that many
+rows, stores every entity of the `main` database outside an inheritance hierarchy as a designed table bound to it
+(`materialize-tables`, in batches of 500), then times what the Templates tab asks for while a template is written: opening the
+`csharp-dapper/entity` and `sql-ddl/table` templates (the template context, the scope listing and one preview, sent at once), a
+warm preview, a preview after 3 s idle, the scope listing alone, and the first and second preview after a model edit, and for
+comparison a full dry-run preparation of `sql-ddl` (what Plan pays). Building the model takes about two minutes; `--reuse` measures
+an existing one. The numbers are in docs/engineering/generation-ui.md section 5.2 ("Bounds") and section 7.
+
 ## Deviations and caveats
 
 - The example packs (`sql-ddl`, `csharp-dapper`) are written into the synthetic repo, as the design asks, so the default run

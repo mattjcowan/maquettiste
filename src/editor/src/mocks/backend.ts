@@ -81,6 +81,11 @@ export class MockBackend {
   private readonly validationDelay: number;
   /** One-shot: the next element save meets a disk edit first (scenario `conflict`). */
   conflictPending: boolean;
+  /**
+   * The `elapsedMs` every template preview reports when set (tests: a slow render, which the editor does not repeat as the
+   * template is typed; `window.__mqMock.previewElapsedMs = 5000`).
+   */
+  previewElapsedMs: number | null = null;
 
   constructor(options: MockBackendOptions = {}) {
     this.scenarios = new Set(options.scenarios ?? []);

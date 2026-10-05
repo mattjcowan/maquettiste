@@ -42,6 +42,8 @@ test("New sequence… from the Database screen creates a sequence, Definition ed
   await page.getByTestId("database-sequence-ticket_seq").click();
   await expect(page.getByTestId("ddl-preview-unit")).toHaveText("sql-ddl/sequence · ticket_seq");
   const ddl = page.getByTestId("ddl-preview");
+  // The whole database renders every table, so it renders only when asked (generation-ui.md 5.2, "Bounds").
+  await page.getByTestId("ddl-preview-whole").click();
   await expect(ddl).toContainText("CREATE SEQUENCE billing.ticket_seq AS bigint START WITH 1000 INCREMENT BY 5 CYCLE;");
   // The inspector shows its definition too.
   await expect(page.getByTestId("inspector").getByTestId("sequence-fields")).toBeVisible();

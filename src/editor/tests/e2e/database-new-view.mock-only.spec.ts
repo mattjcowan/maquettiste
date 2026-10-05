@@ -76,6 +76,8 @@ test("New view… creates a view, its Body tab edits and adds dialect bodies, th
   await page.getByTestId("database-list-kind-view").click();
   await page.getByTestId("database-view-unpaid_invoices").click();
   await expect(page.getByTestId("ddl-preview-unit")).toHaveText("sql-ddl/view · unpaid_invoices");
+  // The whole database renders every table, so it renders only when asked (generation-ui.md 5.2, "Bounds").
+  await page.getByTestId("ddl-preview-whole").click();
   await expect(page.getByTestId("ddl-preview-fallback")).toContainText("writes no file for unpaid_invoices");
   await expect(page.getByTestId("ddl-preview")).toContainText("CREATE VIEW billing.unpaid_invoices AS");
   await expect(page.getByTestId("ddl-preview")).toContainText("and total > 0");

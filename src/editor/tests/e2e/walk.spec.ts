@@ -52,6 +52,8 @@ test("open, select Invoice, rename, problems, DDL, plan and apply", async ({ pag
   await showDdl(page);
   const ddl = page.getByTestId("ddl-preview");
   await expect(ddl).toContainText("sql-ddl/schema");
+  // The whole database renders every table, so it renders only when asked (generation-ui.md 5.2, "Bounds").
+  await page.getByTestId("ddl-preview-whole").click();
   await expect(ddl).toContainText("CREATE SCHEMA IF NOT EXISTS billing;");
   // Picking the invoices table previews its own DDL, with the renamed column.
   await page.getByRole("group", { name: "Table invoices", exact: true }).click();

@@ -216,6 +216,9 @@ const MODEL_MEMBERS: S["TemplateMember"][] = [
   { name: "value_objects", type: "list" },
 ];
 
+/** How many elements one path listing renders at most (GenerationService.MaxRenderedPaths). */
+const MAX_RENDERED_PATHS = 20;
+
 export class MockPackAuthoring {
   constructor(
     private readonly model: MockModel,
@@ -227,18 +230,40 @@ export class MockPackAuthoring {
     return this.model.packs.find((p) => p.name === pack)?.units.find((u) => u.id === unit) ?? null;
   }
 
+  /**
+   * The engine's bounds (generation-ui.md 5.2): the scope is counted and listed with names and kinds and never rendered;
+   * only `elementIds` (at most 20) are rendered, and the answer is then narrowed to them; `wide` marks a unit whose one
+   * render covers the whole model, a database or a locale.
+   */
   paths(request: S["PathsRequest"]): S["UnitPathsResult"] | { problem: string } {
     const { pack, unit, elementIds, limit, unitOverride } = request;
     if (unitOverride && unitOverride.id !== unit) return { problem: "unitOverride.id must equal unit." };
     const saved = this.unit(pack, unit);
     if (!saved && !unitOverride) return { problem: `Pack '${pack}' has no unit '${unit}'.` };
-    let units = this.generation.renderUnits([pack]).filter((u) => u.unit === unit);
-    if (elementIds?.length) units = units.filter((u) => u.elementId !== null && elementIds.includes(u.elementId));
+    const wanted = [...new Set(elementIds ?? [])];
+    if (wanted.length > MAX_RENDERED_PATHS)
+      return { problem: `elementIds lists ${wanted.length} elements; a path listing renders at most ${MAX_RENDERED_PATHS}.` };
+    const scope = (unitOverride ?? saved)!.for;
+    const all = this.generation.renderUnits([pack]).filter((u) => u.unit === unit);
+    const wide =
+      scope === "model" ||
+      scope === "each locale" ||
+      (all.length > 0 &&
+        all.every((u) => u.elementId === null || ["database", "locale"].includes(this.generation.elementLabel(u.elementId).elementKind ?? "")));
+    const units = wanted.length ? all.filter((u) => u.elementId !== null && wanted.includes(u.elementId)) : all;
     const take = Math.min(Math.max(limit ?? 200, 1), 2000);
+    const elements: S["UnitElement"][] = units
+      .filter((u) => u.elementId !== null)
+      .slice(0, take)
+      .map((u) => {
+        const label = this.generation.elementLabel(u.elementId);
+        return { id: u.elementId!, name: label.elementName, kind: label.elementKind ?? "element" };
+      });
     const output = unitOverride?.output ?? null;
     const constant = output !== null && output !== undefined && !output.includes("{{");
     const base = this.model.projectSettings().packs[pack]?.output || (pack === "sql-ddl" ? "db" : "src/Generated");
-    const paths: S["UnitPath"][] = units.slice(0, take).map((u) => ({
+    const rendered = wanted.length ? units : [];
+    const paths: S["UnitPath"][] = rendered.map((u) => ({
       elementId: u.elementId,
       path: constant ? `${base}/${output}` : u.files[0].path,
       role: "main",
@@ -248,6 +273,8 @@ export class MockPackAuthoring {
       ...this.generation.elementLabel(u.elementId),
     }));
     const diagnostics: Diagnostic[] = [];
+    // Two rendered elements on one path, or (found without rendering) a pattern with no code span over a scope of several.
+    const scopeCount = all.filter((u) => u.elementId !== null).length;
     if (constant && paths.length > 1)
       diagnostics.push(
         diagnostic(
@@ -256,8 +283,16 @@ export class MockPackAuthoring {
           paths[0].path,
         ),
       );
+    else if (constant && scopeCount > 1)
+      diagnostics.push(
+        diagnostic(
+          "MQ6020",
+          `Unit '${pack}/${unit}' renders the constant path '${output}' for each of its ${scopeCount} elements: its output pattern is not unique per element.`,
+          `.maquettiste/templates/${pack}/pack.json`,
+        ),
+      );
     paths.sort((a, b) => (a.elementId ?? "").localeCompare(b.elementId ?? "") || a.path.localeCompare(b.path));
-    return { count: units.length, rendered: paths.length, paths, diagnostics, elapsedMs: 4 };
+    return { count: units.length, rendered: rendered.length, paths, diagnostics, elapsedMs: 4, elements, wide };
   }
 
   context(pack: string, unitId: string): S["TemplateContextResult"] | null {

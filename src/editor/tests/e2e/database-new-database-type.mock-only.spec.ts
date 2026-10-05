@@ -64,6 +64,8 @@ test("New database type… creates an enum, its Definition edits labels and kind
   await expect(page.getByTestId("database-objects-count")).toHaveText("3 database types");
   await page.getByTestId("database-database-type-payment_method").click();
   await expect(page.getByTestId("ddl-preview-unit")).toHaveText("sql-ddl/database-type · payment_method");
+  // The whole database renders every table, so it renders only when asked (generation-ui.md 5.2, "Bounds").
+  await page.getByTestId("ddl-preview-whole").click();
   await expect(page.getByTestId("ddl-preview")).toContainText("CREATE TYPE billing.payment_method AS ENUM ('card', 'transfer', 'cash');");
   await expect(page.getByTestId("inspector").getByTestId("database-type-fields")).toContainText("Enum: card, transfer, cash");
 

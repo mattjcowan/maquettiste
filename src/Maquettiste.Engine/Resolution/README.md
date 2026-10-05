@@ -251,3 +251,15 @@ uses the whole-model `Run`. Numbers: explorer-redesign.md section 4.5 (`bench ti
 Tests: `tests/Maquettiste.Engine.Tests/Resolution/ProcessResolutionTests.cs` (golden `Golden/processes/resolved.txt` over the gate 3
 fixture, ordering, keys, the interpreter's chart, the duration rules), `Planning/ProcessScopeTests.cs`,
 `Rendering/ProcessRenderTests.cs`, `Integration/ProcessGenerationTests.cs` (incremental runs).
+
+## Large models (2026-10-05, generation-ui.md section 5.2 "Bounds")
+
+- A binding's foreign-key field (`DatabaseRun.BindingBuilder.Target`) found its relation end by walking every relation of the
+  model, once per field: a database with 2,741 bound tables in a model of 20,000 relations resolved in 15.6 s. The ends are now
+  indexed once per resolution (`ResolveRun.RelationsWithEnd`, built on first use after the conceptual pass, in `RelationOrder`
+  order, so the first match is the one the walk found): 0.8 s, and 1.4 s for the whole model (from 16.2 s).
+- Seed rows of an entity or a relation convert their cells on first read (`RSeedRow.Values`); `RSeed.OrderedRows` and
+  `ResolvedModel.SeedsInOrder` are ordered on first read (`SeedOrdering`, which holds only the seeds and the row index, never the
+  run). A seed whose columns name no other row (no end, no reference type) keeps file order without reading its cells, which is
+  what the Kahn pass gave it. A reference type's rows stay eager: its codes, `RowsByCode` and every usage need them. Generation
+  output is unchanged (the golden and determinism tests); a 100,000-row seed that no template reads is never converted.

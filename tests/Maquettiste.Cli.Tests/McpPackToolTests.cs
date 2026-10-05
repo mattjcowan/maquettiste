@@ -50,9 +50,12 @@ public sealed class McpPackToolTests
         Assert.Equal("not-selected", (string)(await session.OkAsync("explain_unit", new { pack = "ddl", unit = (string)unit["unit"]!, elementId = (string?)unit["elementId"], packs = new[] { "other" } }))["reason"]!);
         Assert.Equal("bad-request", (await session.ErrorAsync("explain_unit", new { key = "x" })).Code);
 
+        // A model unit renders the whole model once: unit_paths counts it and renders nothing; its path comes with preview_unit.
         var paths = await session.OkAsync("unit_paths", new { pack = "docs", unit = "index" });
-        Assert.Equal(1, (int)paths["count"]!);
-        Assert.EndsWith("index.md", (string)paths["paths"]![0]!["path"]!, StringComparison.Ordinal);
+        Assert.Equal((1, 0, true), ((int)paths["count"]!, (int)paths["rendered"]!, (bool)paths["wide"]!));
+        Assert.Empty(paths["paths"]!.AsArray());
+        var whole = await session.OkAsync("preview_unit", new { pack = "docs", unit = "index" });
+        Assert.EndsWith("index.md", (string)whole["files"]![0]!["path"]!, StringComparison.Ordinal);
         var context = await session.OkAsync("get_template_context", new { pack = "docs", unit = "index" });
         Assert.Contains(context["variables"]!.AsArray(), v => (string)v!["name"]! == "model");
         Assert.Equal("ddl", (string)(await session.OkAsync("get_pack_outputs", new { pack = "ddl" }))["pack"]!);
@@ -78,12 +81,22 @@ public sealed class McpPackToolTests
         var ct = TestContext.Current.CancellationToken;
         await using var session = await McpSession.StartAsync(ct: ct);
         await session.OkAsync("new_pack", new { name = "docs", from = "empty" });
-        var paths = await session.OkAsync("unit_paths", new { pack = "docs", unit = "entity" });
+        var listing = await session.OkAsync("unit_paths", new { pack = "docs", unit = "entity" });
+        Assert.NotEmpty(listing["elements"]!.AsArray());
+        Assert.All(listing["elements"]!.AsArray(), e =>
+        {
+            Assert.Equal("entity", (string)e!["kind"]!);
+            Assert.False(string.IsNullOrEmpty((string?)e["name"]));
+        });
+        var first = (string)listing["elements"]![0]!["id"]!;
+        var paths = await session.OkAsync("unit_paths", new { pack = "docs", unit = "entity", elementIds = new[] { first } });
+        Assert.Equal(1, (int)paths["rendered"]!);
         Assert.All(paths["paths"]!.AsArray(), p =>
         {
             Assert.Equal("entity", (string)p!["elementKind"]!);
             Assert.False(string.IsNullOrEmpty((string?)p["elementName"]));
         });
+        Assert.Equal("bad-request", (await session.ErrorAsync("unit_paths", new { pack = "docs", unit = "entity", elementIds = Enumerable.Range(0, 21).Select(i => "e" + i).ToArray() })).Code);
         var settings = await session.OkAsync("get_settings", new { });
         await session.OkAsync("save_pack_settings", new { pack = "docs", settings = new { enabled = false }, expectedHash = (string)settings["hash"]! });
         var pack = await session.OkAsync("get_pack", new { pack = "docs" });

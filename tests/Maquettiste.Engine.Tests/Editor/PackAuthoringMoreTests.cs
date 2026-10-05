@@ -36,25 +36,43 @@ public sealed class PackAuthoringMoreTests
     }
 
     [Fact]
-    public async Task Paths_count_the_scope_render_up_to_the_limit_and_report_collisions()
+    public async Task Paths_count_and_list_the_scope_and_render_only_the_elements_asked_for()
     {
         await using var repo = EditorRepo.Create();
         var plan = await repo.Service.PlanAsync(new GenerationRequest { Packs = ["sql-ddl"] }, null, Ct);
-        var tables = plan.Plan!.Units.Count(u => u.Unit == "table");
+        var planned = plan.Plan!.Units.Where(u => u.Unit == "table").ToList();
+        var tables = planned.Count;
 
-        var all = await repo.Service.PathsAsync("sql-ddl", "table", null, null, 0, Ct);
-        Assert.Equal((tables, tables), (all.Count, all.Rendered));
-        Assert.All(all.Paths, p => Assert.True(p.Allowed));
-        Assert.Equal(all.Paths.Select(p => p.Path).Order(StringComparer.Ordinal), plan.Plan.Units.Where(u => u.Unit == "table").SelectMany(u => u.Outputs).Select(o => o.Path).Order(StringComparer.Ordinal));
-
+        // The scope is counted and listed, never rendered (generation-ui.md section 5.2, "Bounds").
+        var listing = await repo.Service.PathsAsync("sql-ddl", "table", null, null, 0, Ct);
+        Assert.Equal((tables, 0), (listing.Count, listing.Rendered));
+        Assert.Empty(listing.Paths);
+        Assert.False(listing.Wide);
+        Assert.Equal(planned.Select(u => u.ElementId).Order(StringComparer.Ordinal), listing.Elements.Select(e => e.Id).Order(StringComparer.Ordinal));
+        Assert.All(listing.Elements, e => Assert.Equal("table", e.Kind));
         var limited = await repo.Service.PathsAsync("sql-ddl", "table", null, null, 1, Ct);
-        Assert.Equal((tables, 1), (limited.Count, limited.Rendered));
+        Assert.Equal((tables, 0, 1), (limited.Count, limited.Rendered, limited.Elements.Count));
+
+        // The elements asked for are rendered, and their paths are the plan's.
+        var asked = listing.Elements.Take(GenerationService.MaxRenderedPaths).Select(e => e.Id).ToList();
+        var some = await repo.Service.PathsAsync("sql-ddl", "table", asked, null, 0, Ct);
+        Assert.Equal((asked.Count, asked.Count), (some.Count, some.Rendered));
+        Assert.All(some.Paths, p => Assert.True(p.Allowed));
+        Assert.Equal(some.Paths.Select(p => p.Path).Order(StringComparer.Ordinal),
+            planned.Where(u => asked.Contains(u.ElementId!)).SelectMany(u => u.Outputs).Select(o => o.Path).Order(StringComparer.Ordinal));
+        var tooMany = Enumerable.Range(0, GenerationService.MaxRenderedPaths + 1).Select(i => "e" + i).ToList();
+        await Assert.ThrowsAsync<ArgumentException>(() => repo.Service.PathsAsync("sql-ddl", "table", tooMany, null, 0, Ct));
 
         var unit = (await repo.Service.ListPacksAsync(Ct)).Single(p => p.Name == "sql-ddl").Units.Single(u => u.Id == "table");
-        var same = await repo.Service.PathsAsync("sql-ddl", "table", null, new PreviewOptions { UnitOverride = unit with { Output = "../same.sql" } }, 0, Ct);
+        var same = await repo.Service.PathsAsync("sql-ddl", "table", asked.Take(2).ToList(), new PreviewOptions { UnitOverride = unit with { Output = "../same.sql" } }, 0, Ct);
         Assert.Contains(same.Diagnostics, d => d.Rule == "MQ6019");
         Assert.Contains(same.Diagnostics, d => d.Rule == "MQ6020");
         Assert.All(same.Paths, p => Assert.False(p.Allowed));
+
+        // A unit that renders once per database is wide: the editor previews it only when asked.
+        var schema = await repo.Service.PathsAsync("sql-ddl", "schema", null, null, 0, Ct);
+        Assert.True(schema.Wide);
+        Assert.Equal(0, schema.Rendered);
     }
 
     [Fact]

@@ -419,7 +419,9 @@ internal sealed class UnitRun
         globals.SetValue("hints", Hints(context, element), true);
 
         var diffs = Run.Context.SchemaDiffs;
-        var diffEntries = diffs.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => KeyValuePair.Create(p.Key, (object?)p.Value)).ToList();
+        // A preview's diffs are computed per database on first read (Generation.LazySchemaDiffs); a run's are all computed already.
+        var diffEntries = diffs is Generation.LazySchemaDiffs lazy ? lazy.LazyEntries()
+            : diffs.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => KeyValuePair.Create(p.Key, (object?)p.Value)).ToList();
         globals.SetValue("schema_diff", new MapView(diffs, diffEntries, context, name =>
         {
             // The map's key set follows the project's databases: any read (a name lookup, a miss, an enumeration, a size or a key

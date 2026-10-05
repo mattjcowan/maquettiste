@@ -109,8 +109,14 @@ public sealed class PackRemoveTests
     {
         await using var repo = EditorRepo.Create();
 
-        var tables = await repo.Service.PathsAsync("sql-ddl", "table", null, null, 0, Ct);
-        var customer = tables.Paths.Single(p => p.ElementId == EditorRepo.CustomerId + "@" + EditorRepo.MainDatabaseId);
+        var key = EditorRepo.CustomerId + "@" + EditorRepo.MainDatabaseId;
+        var listed = await repo.Service.PathsAsync("sql-ddl", "table", null, null, 0, Ct);
+        var element = listed.Elements.Single(e => e.Id == key);
+        Assert.Equal("table", element.Kind);
+        Assert.EndsWith(" (main)", element.Name, StringComparison.Ordinal);
+        var tables = await repo.Service.PathsAsync("sql-ddl", "table", [key], null, 0, Ct);
+        var customer = tables.Paths.Single(p => p.ElementId == key);
+        Assert.Equal(element.Name, customer.ElementName);
         Assert.Equal("table", customer.ElementKind);
         Assert.EndsWith(" (main)", customer.ElementName, StringComparison.Ordinal);
         Assert.DoesNotContain("@", customer.ElementName, StringComparison.Ordinal);

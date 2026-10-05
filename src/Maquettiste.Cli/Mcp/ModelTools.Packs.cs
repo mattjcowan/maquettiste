@@ -179,12 +179,12 @@ internal sealed partial class ModelTools
 
     /// <summary>A unit's output paths (unitPaths).</summary>
     [McpServerTool(Name = "unit_paths", Title = "Unit output paths", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The output paths a unit renders over its scope (after its filter and generation.skip hints, as the planner counts them) or over the listed elements: count, the paths rendered (up to limit, default 200) with their element's id, name (elementName: a table as 'customers (billing)', a locale as its tag) and kind, their root and whether the writer allows them, and MQ6019 (outside every root), MQ6020 (two elements on one path), MQ6005 and MQ6007. overlay, unitOverride and parameters use unsaved text. Nothing is written.")]
+    [Description("A unit's scope and the output paths of the elements asked for. Without elementIds: count (the elements the unit plans after its filter and generation.skip hints, as the planner counts them) and elements (up to limit, default 200, at most 2000: each element's id, name and kind), nothing rendered. With elementIds (at most 20): those elements the unit plans are rendered, and paths gives each file's path with its element's id, name (elementName: a table as 'customers (billing)', a locale as its tag) and kind, its root and whether the writer allows it. wide is true for a unit whose one render covers the whole model, a database or a locale (for: model, each locale, a selector returning databases): its paths come with preview_unit, which renders it whole. Diagnostics: MQ6019 (outside every root), MQ6020 (two elements on one path), MQ6005 and MQ6007. overlay, unitOverride and parameters use unsaved text. Nothing is written.")]
     public Task<CallToolResult> UnitPaths(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The unit id; required.")] string? unit = null,
-        [Description("Only these element ids.")] string[]? elementIds = null,
-        [Description("How many elements to render (default 200, at most 2000).")] int? limit = null,
+        [Description("The elements to render (at most 20); without them nothing is rendered.")] string[]? elementIds = null,
+        [Description("How many elements of the scope to list (default 200, at most 2000).")] int? limit = null,
         [Description("Pack-relative path to unsaved text.")] Dictionary<string, string>? overlay = null,
         [Description("An unsaved unit with the same id.")] PackUnit? unitOverride = null,
         [Description("Unsaved parameter values.")] Dictionary<string, JsonElement>? parameters = null,

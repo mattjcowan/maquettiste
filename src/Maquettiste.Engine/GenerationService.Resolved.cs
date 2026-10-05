@@ -7,12 +7,9 @@ namespace Maquettiste.Engine;
 
 public sealed partial class GenerationService
 {
-    private readonly Lock _resolvedGate = new();
-    private (ModelSnapshot Snapshot, Task<ResolvedState> Task)? _resolved;
-
     /// <summary>
     /// One page of the resolved model as flat records (<see cref="ResolvedRecords"/>), by (kind, name, id): what templates read, as data
-    /// for external systems. The model is validated and resolved once per snapshot (the last snapshot's resolved model is kept, so paging
+    /// for external systems. The model is validated and resolved once per snapshot (the store keeps the last snapshot's resolved model, so paging
     /// through it resolves once); a model with errors returns no records and the errors. Takes no run lock and writes nothing.
     /// </summary>
     /// <param name="query">The scope, the database, the cursor and the page size.</param>
@@ -30,22 +27,7 @@ public sealed partial class GenerationService
         if (!string.IsNullOrEmpty(query.Cursor))
             ModelPages.ReadCursor(query.Cursor);
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        Task<ResolvedState> task;
-        lock (_resolvedGate)
-        {
-            if (_resolved is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled)
-            {
-                task = cached.Task;
-            }
-            else
-            {
-                // The shared work runs without the caller's token, so one cancelled request does not fail the others waiting on it.
-                task = Task.Run(() => ResolveForReadAsync(snapshot), CancellationToken.None);
-                _resolved = (snapshot, task);
-            }
-        }
-
-        var state = await task.WaitAsync(ct).ConfigureAwait(false);
+        var state = await ReadableAsync(snapshot, ct).ConfigureAwait(false);
         if (state.Model is null)
             return new ResolvedPage([], null, state.Errors);
         var entries = ResolvedRecords.Entries(state.Model, query.Scope, string.IsNullOrEmpty(query.Database) ? null : query.Database);
@@ -53,12 +35,15 @@ public sealed partial class GenerationService
         return new ResolvedPage([.. page.Select(e => e.Project())], next, []);
     }
 
-    private async Task<ResolvedState> ResolveForReadAsync(ModelSnapshot snapshot)
+    /// <summary>
+    /// The snapshot's resolved model from the store's shared resolution (<see cref="ModelStore.ResolvedAsync"/>: validated and resolved
+    /// once per snapshot), or the validation or resolution errors that leave it out.
+    /// </summary>
+    private async Task<ResolvedState> ReadableAsync(ModelSnapshot snapshot, CancellationToken ct)
     {
-        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, CancellationToken.None).ConfigureAwait(false);
-        if (report.HasErrors)
-            return new ResolvedState(null, Outcomes.Sort(report.Diagnostics.Where(Outcomes.IsInvalid)));
-        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, CancellationToken.None).ConfigureAwait(false);
+        var shared = await _store.ResolvedAsync(snapshot, ct).ConfigureAwait(false);
+        if (shared.Model is not { } resolved)
+            return new ResolvedState(null, Outcomes.Sort(shared.Report.Diagnostics.Where(Outcomes.IsInvalid)));
         if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
             return new ResolvedState(null, Outcomes.Sort(resolved.Diagnostics.Where(Outcomes.IsInvalid)));
         return new ResolvedState(resolved, []);

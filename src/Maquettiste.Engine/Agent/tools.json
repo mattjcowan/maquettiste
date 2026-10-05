@@ -610,7 +610,7 @@
     {
       "name": "preview_unit",
       "title": "Preview unit",
-      "description": "Renders one unit of a pack for one element with no writes and returns each file's output path and text, the diagnostics and the keys the render read. overlay (pack-relative path to unsaved text), unitOverride (an unsaved unit with the same id) and parameters render unsaved work; a disabled pack previews too. A render that does not finish within limits.scriptTimeoutMs x 4 fails with MQ6007. An element outside the unit's scope (none for an each unit, another kind, one a selector does not return, any for a model unit) renders nothing and returns MQ6026, which names the kind the template expects.",
+      "description": "Renders one unit of a pack for one element with no writes and returns each file's output path and text, the diagnostics and the keys the render read. overlay (pack-relative path to unsaved text), unitOverride (an unsaved unit with the same id) and parameters render unsaved work; a disabled pack previews too. A render that does not finish within limits.scriptTimeoutMs x 4 fails with MQ6007. An element outside the unit's scope (none for an each unit, another kind, one a selector does not return, any for a model unit) renders nothing and returns MQ6026, which names the kind the template expects. A unit whose one render covers the whole model (for: model), a database or a locale renders all of it: preview it when its output is what you need.",
       "inputSchema": {
         "type": "object",
         "properties": {

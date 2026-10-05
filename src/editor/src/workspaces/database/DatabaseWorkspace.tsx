@@ -56,6 +56,9 @@ import { fkEnds } from "./fkEdits";
 import { fkEdgeId, fkSummary, useDiagramDesigner } from "./DiagramDesigner";
 import { filterObjects, LIST_KINDS, OBJECT_LIST_MEMBERS, type ListKind, type ObjectListKind } from "./tableList";
 import { countOf, KIND_LABELS } from "@/model/labels";
+import * as endpoints from "@/api/endpoints";
+import type { PreviewResult } from "@/api/types";
+import { useAskedPreview } from "@/workspaces/generate/widePreview";
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { foreignKey: ForeignKeyEdge };
@@ -350,13 +353,33 @@ function DatabaseCanvas() {
   const table = tables.find((t) => t.key === selectedTable) ?? null;
   const target = ddlPreviewTarget(packs.data ?? [], activeDatabase ?? null, table?.key ?? null, picked);
   const querySql = useQuerySql(target?.scope === "query" ? target.elementId : null, null);
-  const preview = usePreview(target?.pack ?? "", target?.unit ?? "", target?.elementId ?? null, !!target && target.scope !== "query" && !!view.data?.view);
+  // One object or table renders as it is picked; the whole database (nothing picked, or a picked object whose unit writes
+  // nothing for it) renders every table, so it renders only when asked (generation-ui.md 5.2, "Bounds"), and after a
+  // model change it renders again by itself only when that render was fast.
+  const preview = usePreview(
+    target?.pack ?? "",
+    target?.unit ?? "",
+    target?.elementId ?? null,
+    !!target && target.scope !== "query" && target.scope !== "database" && !!view.data?.view,
+  );
   // An object's unit that writes nothing for the pick (a pack parameter turns it off): the whole database instead.
   const objectEmpty =
     !!picked && target?.scope === picked.kind && !preview.isPlaceholderData && !!preview.data && !preview.data.files.length && !preview.data.diagnostics.length;
   const whole = objectEmpty ? databaseTargetOf(packs.data ?? [], activeDatabase ?? null) : null;
-  const wholePreview = usePreview(whole?.pack ?? "", whole?.unit ?? "", whole?.elementId ?? null, !!whole && !!view.data?.view);
-  const shownPreview = whole ? wholePreview : preview;
+  const wholeTarget = target?.scope === "database" ? target : whole;
+  // The model as the whole preview sees it: a new database view (structurally shared, so a refetch of the same view is
+  // not a change) counts as a change.
+  const viewStamp = useRef<{ of: unknown; n: number }>({ of: undefined, n: 0 });
+  if (viewStamp.current.of !== view.data) viewStamp.current = { of: view.data, n: viewStamp.current.n + 1 };
+  const wholePreview = useAskedPreview<PreviewResult>(
+    wholeTarget && view.data?.view ? JSON.stringify({ pack: wholeTarget.pack, unit: wholeTarget.unit, elementId: wholeTarget.elementId }) : null,
+    String(viewStamp.current.n),
+    async (signal) => {
+      const value = await endpoints.previewTemplate({ pack: wholeTarget!.pack, unit: wholeTarget!.unit, elementId: wholeTarget!.elementId }, signal);
+      return { value, elapsedMs: value.elapsedMs };
+    },
+  );
+  const shownPreview = wholeTarget ? { data: wholePreview.result ?? undefined, isFetching: wholePreview.pending } : preview;
   const dialect = (database.json as DatabaseDoc | undefined)?.dialect;
 
   if (project.isPending) return <EmptyState title="Loading the project…" />;
@@ -690,6 +713,21 @@ function DatabaseCanvas() {
                 ) : (
                   <Spinner label="Rendering the query" />
                 )
+              ) : wholeTarget && !wholePreview.asked ? (
+                <div className="flex flex-col items-start gap-2 p-2 text-12" data-testid="ddl-preview-whole-note">
+                  {whole && target && picked ? <p className="text-secondary">{emptyObjectUnitNote(target, picked.name)}</p> : null}
+                  <p className="text-secondary">
+                    The whole database renders every table, view and object of it in one go, so it is not rendered on its own. Pick a table or an object to see
+                    its DDL, or preview the whole database.
+                  </p>
+                  <Button size="sm" variant="primary" onClick={() => wholePreview.run()} data-testid="ddl-preview-whole">
+                    Preview the whole database
+                  </Button>
+                </div>
+              ) : wholeTarget && wholePreview.error ? (
+                <p role="alert" className="p-2 text-12 text-danger">
+                  {wholePreview.error}
+                </p>
               ) : shownPreview.data?.diagnostics.length && !shownPreview.data.files.length ? (
                 <ul className="p-2 text-12 text-danger">
                   {shownPreview.data.diagnostics.map((d, i) => (
@@ -700,6 +738,17 @@ function DatabaseCanvas() {
                 </ul>
               ) : shownPreview.data ? (
                 <div className="flex h-full min-h-0 flex-col">
+                  {wholeTarget && wholePreview.stale ? (
+                    <p role="status" className="flex items-center gap-2 border-b border-default px-2 py-1 text-11 text-warning" data-testid="ddl-preview-stale">
+                      <span className="min-w-0 flex-1">
+                        Out of date: the model changed after this render, which took {Math.round(wholePreview.elapsedMs ?? 0)} ms, so it does not render again
+                        by itself.
+                      </span>
+                      <Button size="sm" onClick={() => wholePreview.run()} data-testid="ddl-preview-again">
+                        Preview again
+                      </Button>
+                    </p>
+                  ) : null}
                   {whole && target && picked ? (
                     <p className="border-b border-default px-2 py-1 text-11 text-secondary" data-testid="ddl-preview-fallback">
                       {emptyObjectUnitNote(target, picked.name)}

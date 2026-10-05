@@ -233,16 +233,38 @@ export interface ExamplePath {
   allowed: boolean;
 }
 
-/** The example path of a unit for a chosen element (the Example element picker), from a paths answer. The element
- * defaults to the first main path in scope order when none is chosen or the chosen one is not planned. */
-export function examplePath(result: S["UnitPathsResult"] | null | undefined, elementId: string | null): ExamplePath | null {
+/** The example path of a unit for a chosen element (the Example element picker), from the paths answer that rendered it
+ * (the server renders only the elements asked for) and the unit's scope listing (its count, and MQ6020 for an output
+ * pattern that is the same for every element, found without rendering). The element defaults to the first main path
+ * when the chosen one is not rendered. */
+export function examplePath(
+  result: S["UnitPathsResult"] | null | undefined,
+  elementId: string | null,
+  listing?: S["UnitPathsResult"] | null,
+): ExamplePath | null {
   if (!result) return null;
+  const count = listing?.count ?? result.count;
   const main = result.paths.filter((p) => p.role === "main");
   const chosen = main.find((p) => p.elementId === elementId) ?? main[0];
-  if (!chosen) return { path: null, elementId: null, count: result.count, collisions: [], rule: null, allowed: true };
+  if (!chosen) return { path: null, elementId: null, count, collisions: [], rule: null, allowed: true };
   const collisions = main.filter((p) => p !== chosen && p.path === chosen.path).map((p) => p.elementId ?? "(model)");
-  const rule = chosen.rule ?? (collisions.length ? "MQ6020" : null);
-  return { path: chosen.path, elementId: chosen.elementId, count: result.count, collisions, rule, allowed: chosen.allowed };
+  const constant = [...(listing?.diagnostics ?? []), ...result.diagnostics].some((d) => d.rule === "MQ6020");
+  const rule = chosen.rule ?? (collisions.length || constant ? "MQ6020" : null);
+  return { path: chosen.path, elementId: chosen.elementId, count, collisions, rule, allowed: chosen.allowed };
+}
+
+/** A scope listing's elements in the shape the Example element choices read (`elementId`, `elementName`, `elementKind`). */
+export function listedElements(result: S["UnitPathsResult"] | null | undefined): NamedUnitPath[] {
+  return (result?.elements ?? []).map((e) => ({
+    elementId: e.id,
+    elementName: e.name,
+    elementKind: e.kind,
+    path: "",
+    role: "main",
+    root: null,
+    allowed: true,
+    rule: null,
+  }));
 }
 
 /**

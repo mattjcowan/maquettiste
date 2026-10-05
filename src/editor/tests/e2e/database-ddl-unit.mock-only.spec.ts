@@ -12,6 +12,8 @@ test("the DDL preview names the pack and unit it renders, follows a renamed pack
   await expect(screen).toBeVisible();
   const caption = page.getByTestId("ddl-preview-unit");
   await expect(caption).toHaveText("sql-ddl/schema · whole database");
+  // The whole database renders every table, so it renders only when asked (generation-ui.md 5.2, "Bounds").
+  await page.getByTestId("ddl-preview-whole").click();
   await expect(page.getByTestId("ddl-preview")).toContainText("CREATE SCHEMA");
 
   // A selected table renders through the same pack's each-table unit.

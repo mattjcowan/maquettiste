@@ -398,10 +398,9 @@ internal sealed partial class DatabaseRun
                 return true;
             }
 
-            foreach (var relation in run._run.RelationOrder)
+            foreach (var (relation, end) in run._run.RelationsWithEnd(reference))
             {
-                var end = relation.Ends.FirstOrDefault(e => e.Id == reference);
-                if (end is null || relation.Ends.Count != 2 || end.IsMany || end.Opposite is not { } from || !IsSelfOrBase(from.Entity))
+                if (relation.Ends.Count != 2 || end.IsMany || end.Opposite is not { } from || !IsSelfOrBase(from.Entity))
                     continue;
                 _deps.Element(relation.Id);
                 field.End = end;

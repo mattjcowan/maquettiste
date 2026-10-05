@@ -431,6 +431,9 @@ public sealed class ModelStoreTests
 
         Assert.Equal(["MQ1001", "MQ3001"], report.Diagnostics.Select(d => d.Rule).Order(StringComparer.Ordinal));
         s.Harness.Validator.Rule = (_, _) => [];
+        // The whole model's report is kept with its snapshot (ModelStore.ResolvedAsync): a new snapshot validates again.
+        s.Harness.Write("model/entities/broken.json", "{ ");
+        await s.Store.RescanAsync(false, Ct);
         var withoutLoad = await s.Store.ValidateAsync(ValidationScope.All, Ct);
         Assert.Equal("MQ1001", Assert.Single(withoutLoad.Diagnostics).Rule);
         Assert.Equal(1, withoutLoad.Errors);

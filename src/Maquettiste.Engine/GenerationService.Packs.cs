@@ -11,6 +11,7 @@ using Maquettiste.Engine.Planning;
 using Maquettiste.Engine.Rendering;
 using Maquettiste.Engine.Scripting;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.SchemaDiff;
 
 namespace Maquettiste.Engine;
 
@@ -50,9 +51,11 @@ public sealed record ReadKeyGroup(string Kind, IReadOnlyList<string> Keys);
 public sealed partial class GenerationService
 {
     /// <summary>
-    /// Renders one unit with no writes (host-contracts requirement 35), optionally with unsaved text: a unit override, an overlay of pack
-    /// files and parameter values (generation-ui.md section 5.2). A disabled pack previews as an enabled one. The render runs under the
-    /// sandbox limits and a deadline of <c>limits.scriptTimeoutMs</c> x 4; a render that does not finish fails with MQ6007.
+    /// Renders one unit for one element with no writes (host-contracts requirement 35), optionally with unsaved text: a unit override, an
+    /// overlay of pack files and parameter values (generation-ui.md section 5.2). Only that unit is rendered and no unit is planned: the
+    /// preview session (<see cref="PrepareSessionAsync"/>) holds the resolved model and the pack, and nothing of the model is read beyond
+    /// what the template reads. A disabled pack previews as an enabled one. The render runs under the sandbox limits and a deadline of
+    /// <c>limits.scriptTimeoutMs</c> x 4; a render that does not finish fails with MQ6007.
     /// </summary>
     /// <param name="pack">The pack name.</param>
     /// <param name="unitId">The unit id.</param>
@@ -88,11 +91,10 @@ public sealed partial class GenerationService
         using var held = slot;
         if (session is null)
             return new PreviewResult([], failure) { ElapsedMs = clock.ElapsedMilliseconds };
-        var (prepared, loaded, unit, element, overlay, changed, packs, renderer, context) = session;
+        var (prepared, loaded, unit, element, _, _, _, renderer, context) = session;
+        // One unit for one element: nothing else of the pack is planned or rendered.
         var key = UnitPlanner.KeyOf(loaded.Name, unit.Id, element?.Id);
-        var planned = !changed && prepared.Plan.Units.FirstOrDefault(u => string.Equals(u.Key, key, StringComparison.Ordinal)) is { } saved
-            ? saved
-            : new PlannedUnit(key, loaded, unit, element, UnitPlanner.StaticHash(loaded, unit, prepared.Snapshot.Settings.Formatters, key));
+        var planned = new PlannedUnit(key, loaded, unit, element, UnitPlanner.StaticHash(loaded, unit, prepared.Snapshot.Settings.Formatters, key));
         try
         {
             var rendered = await renderer.RenderOneAsync(planned, context, timeout.Token).ConfigureAwait(false);
@@ -183,14 +185,18 @@ public sealed partial class GenerationService
     }
 
     /// <summary>
-    /// The preview session (generation-ui.md section 5.2): the prepared snapshot, resolved model, pack and schema diffs of a pack, reused
-    /// while the model version, the settings hash, the pack folder (paths, sizes and write times) and the service's write epoch are the
-    /// same and for at most <see cref="SessionTtl"/>, so a burst of previews while typing prepares once. The time bound covers writes
-    /// this service does not see (the command line generating into the same repository).
+    /// The preview sessions (generation-ui.md section 5.2, "Bounds"), one per pack: what a preview or a path listing of the pack renders
+    /// with. A session holds the snapshot's resolved model (the store's shared one: validated and resolved once per snapshot, whoever
+    /// asks first), the pack loaded by name (enabled or not), its schema diffs computed per database on first read (only when the pack
+    /// uses them), the output path policy and the scope listings of its units. It plans no unit and renders nothing: a preview renders
+    /// one unit for one element on top of it. A session is reused while its key holds (the model version, the settings hash, the pack
+    /// folder's paths, sizes and write times, the committed schema snapshots' sizes and write times, and the service's write epoch),
+    /// with no time limit: the stamps see what a command-line run in the same repository writes that a preview reads. Concurrent
+    /// requests with the same key wait for one preparation (single flight), which runs without any caller's token.
     /// </summary>
-    private readonly ConcurrentDictionary<string, (string Key, PreparedRun Prepared, long At)> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (string Key, Task<PreviewSession> Session)> _sessions = new(StringComparer.Ordinal);
 
-    private static readonly long SessionTtl = Stopwatch.Frequency * 2;
+    private readonly Lock _sessionGate = new();
     private const int MaxSessions = 8;
 
     /// <summary>Bumped when a run takes the run lock: outputs, manifests, unit states and schema snapshots may change under it.</summary>
@@ -216,7 +222,7 @@ public sealed partial class GenerationService
 
     private string SessionKey(ModelSnapshot snapshot, string packStamp) =>
         string.Join('|', snapshot.Version.ToString(System.Globalization.CultureInfo.InvariantCulture), snapshot.SettingsHash,
-            Interlocked.Read(ref _writeEpoch).ToString(System.Globalization.CultureInfo.InvariantCulture), packStamp);
+            Interlocked.Read(ref _writeEpoch).ToString(System.Globalization.CultureInfo.InvariantCulture), packStamp, SnapshotsStamp());
 
     /// <summary>The key a preview session of <paramref name="pack"/> would be stored under now (tests: what invalidates the session).</summary>
     internal async Task<string> PreviewSessionKeyAsync(string pack, CancellationToken ct) =>
@@ -236,34 +242,109 @@ public sealed partial class GenerationService
         return hash.Finish();
     }
 
-    /// <summary>The pack's prepared run from the session, or a fresh one; the diagnostics say why it cannot be prepared.</summary>
-    private async Task<(PreparedRun? Prepared, IReadOnlyList<Diagnostic> Failure)> PrepareSessionAsync(string pack, CancellationToken ct)
+    /// <summary>The committed schema snapshots' names, sizes and write times: a run (here or on the command line) that saves one changes a preview's diffs.</summary>
+    private string SnapshotsStamp()
     {
-        var stamp = PackStamp(pack);
-        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        if (_sessions.TryGetValue(pack, out var cached) && string.Equals(cached.Key, SessionKey(snapshot, stamp), StringComparison.Ordinal)
-            && Stopwatch.GetTimestamp() - cached.At < SessionTtl)
-            return (cached.Prepared, []);
-
-        var key = SessionKey(snapshot, stamp);
-        var run = new GenerationRun(_services, _store, null);
-        var prepared = await run.PrepareAsync([pack], GenerationMode.DryRun, ct, locked: false).ConfigureAwait(false);
-        if (prepared is null)
-            return (null, [.. run.Diagnostics.Where(Outcomes.IsInvalid)]);
-        // Keyed by what was read before preparing: a change during it makes the next key differ, never the reverse.
-        if (prepared.Snapshot.Version == snapshot.Version && string.Equals(key, SessionKey(snapshot, stamp), StringComparison.Ordinal))
+        var folder = Path.Combine(_options.EffectiveModelRoot, SchemaDiff.SnapshotStore.Folder);
+        if (!Directory.Exists(folder))
+            return "none";
+        using var hash = new HashBuilder();
+        hash.Add("mq-preview-snapshots-1");
+        foreach (var file in Directory.EnumerateFiles(folder, "*.json", SearchOption.TopDirectoryOnly).Order(StringComparer.Ordinal))
         {
-            if (_sessions.Count >= MaxSessions)
-                _sessions.Clear();
-            _sessions[pack] = (key, prepared, Stopwatch.GetTimestamp());
+            var info = new FileInfo(file);
+            hash.Add(info.Name).Add(info.Length).Add(info.LastWriteTimeUtc.Ticks);
         }
 
-        return (prepared, []);
+        return hash.Finish();
+    }
+
+    /// <summary>What a preview or a path listing of one pack renders with (<see cref="_sessions"/>).</summary>
+    /// <param name="Snapshot">The snapshot.</param>
+    /// <param name="Resolved">The resolved model, or <see langword="null"/> with <paramref name="Failure"/>.</param>
+    /// <param name="Pack">The pack, or <see langword="null"/> with <paramref name="Failure"/>.</param>
+    /// <param name="Failure">Why nothing can be previewed: the model's or the pack's errors.</param>
+    /// <param name="SchemaDiffs">The schema diffs, computed per database on first read; empty when the pack does not use them.</param>
+    /// <param name="Paths">The output path policy.</param>
+    private sealed record PreviewSession(ModelSnapshot Snapshot, ResolvedModel? Resolved, LoadedPack? Pack, IReadOnlyList<Diagnostic> Failure,
+        IReadOnlyDictionary<string, SchemaDiffResult> SchemaDiffs, IOutputPathPolicy? Paths)
+    {
+        /// <summary>The saved units' scope listings, by unit id (a listing of an unsaved unit is not kept).</summary>
+        public ConcurrentDictionary<string, Task<UnitPlan>> Scopes { get; } = new(StringComparer.Ordinal);
+    }
+
+    /// <summary>The pack's preview session from the cache, or a new one (single flight).</summary>
+    private async Task<PreviewSession> PrepareSessionAsync(string pack, CancellationToken ct)
+    {
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var key = SessionKey(snapshot, PackStamp(pack));
+        Task<PreviewSession> task;
+        lock (_sessionGate)
+        {
+            if (_sessions.TryGetValue(pack, out var cached) && string.Equals(cached.Key, key, StringComparison.Ordinal)
+                && !cached.Session.IsFaulted && !cached.Session.IsCanceled)
+            {
+                task = cached.Session;
+            }
+            else
+            {
+                if (_sessions.Count >= MaxSessions && !_sessions.ContainsKey(pack))
+                    _sessions.Clear();
+                task = Task.Run(() => BuildSessionAsync(pack, snapshot), CancellationToken.None);
+                _sessions[pack] = (key, task);
+            }
+        }
+
+        return await task.WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>How many sessions have been prepared (tests: concurrent requests share one).</summary>
+    internal int SessionsPrepared => Volatile.Read(ref _sessionsPrepared);
+
+    /// <summary>How many databases the pack's current session has diffed, or <see langword="null"/> without a lazily diffing session (tests).</summary>
+    internal int? SchemaDiffsComputed(string pack) =>
+        _sessions.TryGetValue(pack, out var cached) && cached.Session.IsCompletedSuccessfully && cached.Session.Result.SchemaDiffs is LazySchemaDiffs lazy
+            ? lazy.Computed : null;
+
+    private int _sessionsPrepared;
+
+    /// <summary>
+    /// Prepares a session: the store's shared validation and resolution of the snapshot, then the pack by name. The failures are the
+    /// ones a dry run's preparation reports, in its order: the model's validation errors, the pack's load errors (MQ6003 is left to the
+    /// render, which fails only the units that reach the file; a disabled pack's other errors do not stop its preview), then the
+    /// resolver's errors. Nothing is planned and no schema is diffed here.
+    /// </summary>
+    private async Task<PreviewSession> BuildSessionAsync(string pack, ModelSnapshot snapshot)
+    {
+        Interlocked.Increment(ref _sessionsPrepared);
+        PreviewSession Failed(IEnumerable<Diagnostic> diagnostics) => new(snapshot, null, null, Outcomes.Sort(diagnostics.Where(Outcomes.IsInvalid)),
+            new Dictionary<string, SchemaDiffResult>(StringComparer.Ordinal), null);
+
+        var shared = await _store.ResolvedAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
+        if (shared.Report.HasErrors)
+            return Failed(shared.Report.Diagnostics);
+        var (loaded, packDiagnostics) = await new PackLoader(_options, _services.Schemas).LoadNamedAsync(snapshot, pack, CancellationToken.None).ConfigureAwait(false);
+        if (loaded is null)
+            return Failed(packDiagnostics);
+        var settings = snapshot.Settings.Packs.TryGetValue(pack, out var s) ? s : new PackSettings();
+        var packErrors = packDiagnostics.Where(d => d.Rule != "MQ6003" && Outcomes.IsInvalid(d)).ToList();
+        if (settings.Enabled && packErrors.Count > 0)
+            return Failed(packErrors);
+        var resolved = shared.Model!;
+        if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
+            return Failed(resolved.Diagnostics);
+        IReadOnlyDictionary<string, SchemaDiffResult> diffs = loaded.Manifest.UsesSchemaDiff
+            ? new LazySchemaDiffs(resolved, _services)
+            : new Dictionary<string, SchemaDiffResult>(StringComparer.Ordinal);
+        return new PreviewSession(snapshot, resolved, loaded, [], diffs, _services.CreatePathPolicy(snapshot.Settings));
     }
 
     /// <summary>The prepared state a preview or a path listing renders one unit with.</summary>
-    private sealed record UnitSession(PreparedRun Prepared, LoadedPack Loaded, PackUnit Unit, IResolvedObject? Element,
-        IReadOnlyDictionary<string, string> Overlay, bool Changed, PackSet Packs, IRenderer Renderer, RenderContext Context);
+    private sealed record UnitSession(PreviewSession Session, LoadedPack Loaded, PackUnit Unit, IResolvedObject? Element,
+        IReadOnlyDictionary<string, string> Overlay, bool Changed, PackSet Packs, IRenderer Renderer, RenderContext Context)
+    {
+        public ResolvedModel Resolved => Session.Resolved!;
+    }
 
     /// <summary>Prepares a unit for rendering with any unsaved text; the diagnostics say why it cannot be.</summary>
     private async Task<(UnitSession? Session, IReadOnlyList<Diagnostic> Failure)> OpenUnitAsync(string pack, string unitId, string? elementId,
@@ -271,17 +352,9 @@ public sealed partial class GenerationService
     {
         if (options?.UnitOverride is { } overridden && !string.Equals(overridden.Id, unitId, StringComparison.Ordinal))
             throw new ArgumentException($"unitOverride.id '{overridden.Id}' must equal the unit '{unitId}'.", nameof(options));
-        var (prepared, failure) = await PrepareSessionAsync(pack, ct).ConfigureAwait(false);
-        if (prepared is null)
-            return (null, failure);
-        var loaded = prepared.Packs.Packs.FirstOrDefault(p => string.Equals(p.Name, pack, StringComparison.Ordinal));
-        if (loaded is null)
-        {
-            var (named, errors) = await new PackLoader(_options, _services.Schemas).LoadNamedAsync(prepared.Snapshot, pack, ct).ConfigureAwait(false);
-            if (named is null)
-                return (null, errors);
-            loaded = named;
-        }
+        var session = await PrepareSessionAsync(pack, ct).ConfigureAwait(false);
+        if (session.Pack is not { } loaded || session.Resolved is not { } resolved)
+            return (null, session.Failure);
 
         var unit = options?.UnitOverride ?? loaded.Manifest.Units.FirstOrDefault(u => string.Equals(u.Id, unitId, StringComparison.Ordinal));
         if (unit is null)
@@ -289,11 +362,11 @@ public sealed partial class GenerationService
             return (null, [RuleCatalog.Create("MQ6001", $"Pack '{pack}' has no unit '{unitId}'.", filePath: loaded.RelativePath + "/pack.json")]);
         }
 
-        var element = elementId is null ? null : prepared.Resolved.Find(elementId);
+        var element = elementId is null ? null : resolved.Find(elementId);
         if (elementId is not null && element is null)
             return (null, [RuleCatalog.Create("MQ6017", $"Element '{elementId}' is not in the resolved model.", elementId)]);
 
-        if (checkScope && UnitPlanner.OutOfScope(prepared.Resolved, loaded, unit, element, _services.Scripts, ct) is { } outOfScope)
+        if (checkScope && UnitPlanner.OutOfScope(resolved, loaded, unit, element, _services.Scripts, ct) is { } outOfScope)
         {
             var index = loaded.Manifest.Units.ToList().FindIndex(u => string.Equals(u.Id, unit.Id, StringComparison.Ordinal));
             return (null, [RuleCatalog.Create("MQ6026", outOfScope, elementId, loaded.RelativePath + "/pack.json", index < 0 ? null : $"/units/{index}/for")]);
@@ -327,11 +400,12 @@ public sealed partial class GenerationService
             };
         }
 
-        var packs = new PackSet([.. prepared.Packs.Packs.Where(p => !string.Equals(p.Name, pack, StringComparison.Ordinal)).Append(loaded)], prepared.Packs.Diagnostics);
+        // The pack alone: a preview renders one unit of it, and nothing in a render reads another pack.
+        var packs = new PackSet([loaded], []);
         var renderer = overlay.Count == 0 ? _services.CreateRenderer()
             : new Renderer(_options, new TemplateCache(overlay.ToDictionary(p => (loaded.Name, p.Key), p => p.Value)));
-        var context = new RenderContext(prepared.Resolved, packs, prepared.SchemaDiffs, _services.Scripts, prepared.Hasher, 1);
-        return (new UnitSession(prepared, loaded, unit, element, overlay, changed, packs, renderer, context), []);
+        var context = new RenderContext(resolved, packs, session.SchemaDiffs, _services.Scripts, PreviewHasher.Instance, 1);
+        return (new UnitSession(session, loaded, unit, element, overlay, changed, packs, renderer, context), []);
     }
 
     /// <summary>Every pack folder with its units and load diagnostics, enabled or not (<c>GET /api/packs</c>).</summary>

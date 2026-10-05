@@ -34,6 +34,7 @@ import {
   filterExamples,
   filterWords,
   insertUnit,
+  listedElements,
   moveUnit,
   removeUnit,
   sameDocument,
@@ -43,7 +44,6 @@ import {
   unitIdError,
   unitsOf,
   type ExampleOption,
-  type NamedUnitPath,
   type PackJson,
   type RawUnit,
   type UnitField,
@@ -65,17 +65,32 @@ function useDebounced<T>(value: T, ms: number): T {
 const PATHS_LIMIT = 200;
 const PATHS_MAX = 2000;
 
-/** The unit's planned paths, against the unsaved row when it differs from the saved one. The default limit shares its
- * cache entry with the Templates tab's preview; the Example element picker asks for up to the server's 2000. */
+/** The unit's scope (counted and listed by the server, nothing rendered), against the unsaved row when it differs from
+ * the saved one. The Example element picker lists up to the server's 2000. */
 function useUnitPaths(pack: string, raw: RawUnit, saved: RawUnit | undefined, limit = PATHS_LIMIT) {
   const text = useDebounced(JSON.stringify(raw), 250);
   const changed = !saved || JSON.stringify(saved) !== text;
   const unit = JSON.parse(text) as RawUnit;
   const id = str(unit.id);
   return useQuery({
-    queryKey: [...keys.pack(pack), "paths", id, changed ? text : "saved", ...(limit === PATHS_LIMIT ? [] : [limit])],
+    queryKey: [...keys.pack(pack), "paths", id, changed ? text : "saved", limit],
     queryFn: ({ signal }) => endpoints.unitPaths({ pack, unit: id, limit, unitOverride: changed ? toPackUnit(unit) : null }, signal),
     enabled: /^[a-z][a-z0-9-]*$/.test(id) && !!str(unit.for),
+    retry: false,
+  });
+}
+
+/** The example element's rendered path: one element, for the selected row only (generation-ui.md 5.2, "Bounds"). */
+function useExamplePath(pack: string, raw: RawUnit, saved: RawUnit | undefined, elementId: string | null, enabled: boolean) {
+  const text = useDebounced(JSON.stringify(raw), 250);
+  const changed = !saved || JSON.stringify(saved) !== text;
+  const unit = JSON.parse(text) as RawUnit;
+  const id = str(unit.id);
+  return useQuery({
+    queryKey: [...keys.pack(pack), "paths", id, changed ? text : "saved", "example", elementId],
+    queryFn: ({ signal }) =>
+      endpoints.unitPaths({ pack, unit: id, elementIds: [elementId!], limit: 1, unitOverride: changed ? toPackUnit(unit) : null }, signal),
+    enabled: enabled && !!elementId && /^[a-z][a-z0-9-]*$/.test(id) && !!str(unit.for),
     retry: false,
   });
 }
@@ -427,7 +442,7 @@ function ExamplePicker({ pack, unit, saved, value, onChange }: { pack: string; u
   const known = useMemo(() => new Map((index.data ?? []).map((e) => [e.id, { name: e.displayName ?? e.name, kind: e.kind as string }])), [index.data]);
   // The unit's own planned elements: always of its scope; the first until one is picked (kept per unit). Each is named
   // by the server, else the index, else "entity @ database" for a synthesized table, else its id (the option's title).
-  const options = useMemo(() => exampleOptions((paths.data?.paths ?? []) as NamedUnitPath[], (id) => known.get(id), kindWord), [paths.data, known]);
+  const options = useMemo(() => exampleOptions(listedElements(paths.data), (id) => known.get(id), kindWord), [paths.data, known]);
   const chosen = options.find((o) => o.id === value) ?? options[0] ?? null;
   if (options.length > EXAMPLE_SELECT_MAX) return <ExampleSearch options={options} chosen={chosen} onChange={onChange} />;
   return (
@@ -559,10 +574,16 @@ function UnitRow(props: {
   onWhere(where: Record<string, unknown> | null): void;
 }) {
   const { unit, index } = props;
-  // The selected row (and a row whose example was picked) reads as many paths as the picker, so its example is listed.
+  // The selected row (and a row whose example was picked) lists as many elements as the picker, so its example is listed.
+  // Listing renders nothing; the example path is rendered for the selected row's example element only, and a unit whose
+  // one render covers the whole model, a database or a locale is not rendered here at all.
   const paths = useUnitPaths(props.pack, unit, props.saved, props.selected || props.example ? PATHS_MAX : PATHS_LIMIT);
   const summary = pathSummary(typeof unit.output === "string" ? unit.output : null, unit.delimiters as { open: string; close: string } | null);
-  const ex = examplePath(paths.data, props.example);
+  const wide = str(unit.for).trim() === "model" || !!paths.data?.wide;
+  const elements = paths.data?.elements ?? [];
+  const exampleId = (props.example && elements.some((e) => e.id === props.example) ? props.example : elements[0]?.id) ?? null;
+  const rendered = useExamplePath(props.pack, unit, props.saved, exampleId, props.selected && !wide);
+  const ex = props.selected && !wide ? examplePath(rendered.data, exampleId, paths.data) : null;
   const templateOptions = [...new Set([...props.files, str(unit.template)].filter(Boolean))].sort();
   const id = str(unit.id);
   const label = (name: string) => `${name} of unit ${id || index + 1}`;
@@ -639,8 +660,18 @@ function UnitRow(props: {
         {summary.text}
       </td>
       <td role="gridcell" className={cn(cell, "max-w-80 truncate font-mono text-11")} data-testid="unit-example" title={ex?.path ?? undefined}>
-        {paths.isError ? (
-          <span className="text-danger">{(paths.error as Error).message}</span>
+        {paths.isError || rendered.isError ? (
+          <span className="text-danger">{((paths.error ?? rendered.error) as Error).message}</span>
+        ) : wide ? (
+          <span className="text-secondary" title="One render covers the whole model, a database or a locale: preview it on the Templates tab when you want it.">
+            renders whole; preview on Templates
+          </span>
+        ) : !props.selected ? (
+          <span className="text-secondary" title="The example path is rendered for the selected row only.">
+            —
+          </span>
+        ) : paths.data && !elements.length ? (
+          <span className="text-secondary">nothing planned</span>
         ) : !ex ? (
           <span className="text-secondary">…</span>
         ) : ex.path === null ? (

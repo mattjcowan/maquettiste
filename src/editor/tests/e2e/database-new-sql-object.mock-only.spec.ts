@@ -69,6 +69,8 @@ test("New SQL object… creates a trigger, Definition sets its phase and depende
   await expect(page.getByTestId("database-objects-count")).toHaveText("2 SQL objects");
   await page.getByTestId("database-sql-object-invoices_touch").click();
   await expect(page.getByTestId("ddl-preview-unit")).toHaveText("sql-ddl/sql-object · invoices_touch");
+  // The whole database renders every table, so it renders only when asked (generation-ui.md 5.2, "Bounds").
+  await page.getByTestId("ddl-preview-whole").click();
   await expect(page.getByTestId("ddl-preview")).toContainText("create trigger invoices_touch before update on billing.invoices");
   const inspector = page.getByTestId("inspector");
   await expect(inspector.getByTestId("sql-object-fields")).toContainText("Statements for postgresql; depends on 1 object.");

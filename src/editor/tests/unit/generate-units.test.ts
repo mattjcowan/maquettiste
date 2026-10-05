@@ -185,6 +185,8 @@ describe("example path", () => {
     })),
     diagnostics: [],
     elapsedMs: 1,
+    elements: paths.flatMap(([elementId]) => (elementId ? [{ id: elementId, name: null, kind: "table" }] : [])),
+    wide: false,
   });
 
   it("shows the chosen element's path, else the first in scope order", () => {
@@ -207,6 +209,17 @@ describe("example path", () => {
     expect(examplePath(same, "b")).toMatchObject({ rule: "MQ6020", collisions: ["a", "c"] });
     expect(examplePath(result([["a", "../x.sql"]], { allowed: false, rule: "MQ6019" }), null)).toMatchObject({ rule: "MQ6019", allowed: false });
     expect(examplePath(result([]), null)).toMatchObject({ path: null, count: 0 });
+  });
+
+  it("takes the count and a constant pattern's MQ6020 from the scope listing when one element was rendered", () => {
+    const listing = {
+      ...result([]),
+      count: 40,
+      elements: [],
+      diagnostics: [{ rule: "MQ6020", severity: "error", message: "constant", elementId: null, filePath: null, jsonPointer: null, line: null, column: null }],
+    } satisfies S["UnitPathsResult"];
+    expect(examplePath(result([["a", "db/all.sql"]]), "a", listing)).toMatchObject({ path: "db/all.sql", count: 40, rule: "MQ6020", collisions: [] });
+    expect(examplePath(result([["a", "db/a.sql"]]), "a", { ...listing, diagnostics: [] })).toMatchObject({ count: 40, rule: null });
   });
 });
 

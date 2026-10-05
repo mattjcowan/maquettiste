@@ -1,7 +1,9 @@
 // The pack editor's Templates tab (generation-ui.md 3.3): the pack folder's files on the left, the file in Monaco in the
 // middle (Scriban coloured; partials, helpers.js and other text files editable too), and the live preview on the right:
-// the chosen unit rendered for the chosen element with the unsaved text of every open file (debounced 300 ms), its
-// diagnostics listed and marked in the editor, the output path above the rendered text. Save writes the file on disk
+// the chosen unit rendered for ONE chosen element with the unsaved text of every open file (debounced 300 ms), its
+// diagnostics listed and marked in the editor, the output path above the rendered text. A unit whose one render covers
+// the whole model, a database or a locale renders only when asked (Preview), and so does a list of a few elements
+// (Preview a list…): nothing renders more than what is on screen (generation-ui.md 5.2, "Bounds"). Save writes the file on disk
 // under .maquettiste/templates/<pack>/ with its hash (If-Match); a 409 shows a bar to keep mine or take theirs.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,7 +34,7 @@ import {
   type Diagnostic,
 } from "./templatesModel";
 import { matchLines, type LineMap } from "./lineMap";
-import type { NamedUnitPath } from "./unitsModel";
+import { useAskedPreview, type AskedPreview } from "./widePreview";
 import { useServices } from "@/app/context";
 import { EdgeToggle, PanelToggle } from "@/app/panels";
 import { Splitter } from "@/components/ui/splitter";
@@ -537,6 +539,7 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
         scope={scope}
         onElement={(id) => setElementChoice((prev) => ({ ...prev, [unit]: id }))}
         preview={preview}
+        buffers={buffers}
         highlight={outputHighlight}
         onPickLine={scriban ? (file, line) => setOutputPick(outputPick?.file === file && outputPick.line === line ? null : { file, line }) : undefined}
       />
@@ -551,6 +554,11 @@ function feedsLine(files: endpoints.PackDocument["files"], path: string, feeding
   return `${role === "partial" ? "included by" : "used by"} ${feeding.join(", ")}`;
 }
 
+/** How many of the unit's elements the scope listing names (the server lists without rendering; at most 2000). */
+const LIST_LIMIT = 2000;
+/** How many elements "Preview a list…" renders at most (the server's path listing bound too). */
+export const LIST_MAX = 20;
+
 interface PreviewState {
   result: PreviewResult | null;
   error: string | null;
@@ -560,41 +568,64 @@ interface PreviewState {
   elementId: string | null;
   /** The friendly text when the render ran outside the unit's scope, or the scope has no element. */
   scopeMessage: string | null;
+  /**
+   * What one render covers when it is more than one element ("the whole model", "a whole database"), else null: such a
+   * unit renders only when the user asks (`asked`), never as the template is typed.
+   */
+  wide: string | null;
+  asked: AskedPreview<PreviewResult>;
+}
+
+/** Each element of a list preview with what it rendered. */
+interface ListedRender {
+  id: string;
+  label: string;
+  result: PreviewResult | null;
+  error: string | null;
+}
+
+/** What one render of a wide unit covers, in words, from its scope and its elements' kind. */
+function wideWords(scope: UnitScope, kind: string | null): string {
+  if (scope.once) return "the whole model";
+  if (kind === "database" || scope.label === "database") return "a whole database";
+  if (kind === "locale" || scope.label === "locale") return "every string of a locale";
+  return `a whole ${scope.label}`;
 }
 
 /**
- * Renders the unit with the unsaved text, `PREVIEW_DELAY` ms after the last change, for an element of the unit's
- * scope only: an `each` kind's elements come from the index, a table, locale or selector scope's from the unit's
- * planned paths. A mismatch that still slips through shows as a message, not the raw render error.
+ * The preview of the unit with the unsaved text (generation-ui.md 3.3 and 5.2, "Bounds"). An element unit renders ONE
+ * element, `PREVIEW_DELAY` ms after the last change; a unit whose one render covers the whole model, a database or a
+ * locale renders only when the user asks (`asked.run`), and while the template is typed it renders again by itself
+ * only when that render was fast. The picker's elements: an `each` kind's come from the index, narrowed to what the
+ * unit renders when the server's scope listing is complete; a table, locale or selector scope's from that listing.
+ * The listing renders nothing.
  */
 function usePreview(pack: string, unit: string, scope: UnitScope, remembered: string | undefined, buffers: Record<string, Buffer>): PreviewState {
   const index = useIndex();
-  const fromPaths = !!unit && !scope.once && !scope.indexKind;
-  // Every element scope reads the unit's plan: an `each` kind is narrowed to what the unit renders (its `where` filter and
-  // skip hints), when the plan is complete; a failed or truncated plan leaves the index list as it is.
-  const paths = useQuery({
-    queryKey: [...keys.pack(pack), "paths", unit, "saved"],
-    queryFn: ({ signal }) => endpoints.unitPaths({ pack, unit, limit: 200, unitOverride: null }, signal, endpoints.LIVE_CLIENT),
+  const fromListing = !!unit && !scope.once && !scope.indexKind;
+  const listing = useQuery({
+    queryKey: [...keys.pack(pack), "paths", unit, "saved", LIST_LIMIT],
+    queryFn: ({ signal }) => endpoints.unitPaths({ pack, unit, limit: LIST_LIMIT, unitOverride: null }, signal, endpoints.LIVE_CLIENT),
     enabled: !!unit && !scope.once,
     retry: false,
   });
-  const planned = useMemo(() => (paths.data?.paths ?? []).map((p) => p.elementId).filter((x): x is string => !!x), [paths.data]);
-  const inScope = useMemo(() => (paths.data && paths.data.count <= paths.data.paths.length ? new Set(planned) : null), [paths.data, planned]);
-  // The server names each planned element (`elementName`, read through NamedUnitPath until the schema carries it).
-  const plannedNames = useMemo(
-    () => new Map(((paths.data?.paths ?? []) as NamedUnitPath[]).flatMap((p) => (p.elementId && p.elementName ? [[p.elementId, p.elementName] as const] : []))),
-    [paths.data],
-  );
+  const elements = useMemo(() => listing.data?.elements ?? [], [listing.data]);
+  const planned = useMemo(() => elements.map((e) => e.id), [elements]);
+  const inScope = useMemo(() => (listing.data && listing.data.count <= listing.data.elements.length ? new Set(planned) : null), [listing.data, planned]);
+  const plannedNames = useMemo(() => new Map(elements.flatMap((e) => (e.name ? [[e.id, e.name] as const] : []))), [elements]);
   const candidates = useMemo(
-    () => scopeCandidates(scope, index.data ?? [], fromPaths ? planned : [], inScope, plannedNames),
-    [scope, index.data, fromPaths, planned, inScope, plannedNames],
+    () => scopeCandidates(scope, index.data ?? [], fromListing ? planned : [], inScope, plannedNames),
+    [scope, index.data, fromListing, planned, inScope, plannedNames],
   );
   const elementId = pickElement(candidates, remembered);
   const overlay = useMemo(() => overlayOf(buffers), [buffers]);
+  const wide = scope.once || listing.data?.wide ? wideWords(scope, elements[0]?.kind ?? null) : null;
   const requestKey = JSON.stringify({ pack, unit, elementId, overlay });
-  const listed = scope.once || ((!scope.indexKind || !!index.data) && paths.isFetched);
+  const listed = scope.once || ((!scope.indexKind || !!index.data) && listing.isFetched);
   const empty = listed && !scope.once && !elementId;
   const ready = !!unit && listed && !empty;
+
+  // An element unit: one element, rendered as the template is typed.
   const [answer, setAnswer] = useState<{ key: string; result: PreviewResult | null; error: string | null } | null>(null);
   const scheduler = useRef<PreviewScheduler<string, PreviewResult> | null>(null);
   useEffect(() => {
@@ -607,22 +638,61 @@ function usePreview(pack: string, unit: string, scope: UnitScope, remembered: st
     return () => s.dispose();
   }, []);
   useEffect(() => {
-    if (ready) scheduler.current?.schedule(requestKey);
-  }, [ready, requestKey]);
+    if (ready && !wide) scheduler.current?.schedule(requestKey);
+  }, [ready, wide, requestKey]);
+
+  // A wide unit: rendered when asked.
+  const asked = useAskedPreview<PreviewResult>(ready && wide ? JSON.stringify({ pack, unit, elementId }) : null, JSON.stringify(overlay), async (signal) => {
+    const value = await endpoints.previewTemplate({ pack, unit, elementId, overlay }, signal);
+    return { value, elapsedMs: value.elapsedMs };
+  });
+
+  const shown = wide
+    ? { result: asked.result, error: asked.error, current: asked.result !== null || asked.error !== null }
+    : { result: answer?.result ?? null, error: answer?.error ?? null, current: answer?.key === requestKey };
   // The last answer stays up while the next one renders (no spinner on every keystroke).
-  const mismatch = answer
-    ? scopeMismatch(scope, [...(answer.result?.diagnostics ?? []), ...(answer.error ? [{ rule: "MQ6006", message: answer.error }] : [])])
-    : null;
+  const mismatch =
+    shown.result || shown.error
+      ? scopeMismatch(scope, [...(shown.result?.diagnostics ?? []), ...(shown.error ? [{ rule: "MQ6006", message: shown.error }] : [])])
+      : null;
   return {
-    result: empty ? null : (answer?.result ?? null),
-    error: empty ? null : (answer?.error ?? null),
-    pending: !empty && (!ready || answer?.key !== requestKey),
+    result: empty ? null : shown.result,
+    error: empty ? null : shown.error,
+    pending: !empty && (wide ? asked.pending : !ready || answer?.key !== requestKey),
     candidates,
     elementId,
     scopeMessage: empty
       ? `The model has no ${scope.label} to preview this template with.`
-      : (mismatch ?? (answer?.key === requestKey ? noFilesText(scope, unit, answer.result) : null)),
+      : (mismatch ?? (shown.current ? noFilesText(scope, unit, shown.result) : null)),
+    wide,
+    asked,
   };
+}
+
+/**
+ * "Preview a list…": the elements the user ticked (at most `LIST_MAX`), each rendered once when asked, one request after
+ * another; the unsaved text changing afterwards re-renders the list by itself only when it rendered fast.
+ */
+const listTarget = (pack: string, unit: string, ids: string[]) => (ids.length ? JSON.stringify({ pack, unit, ids }) : null);
+
+function useListPreview(pack: string, unit: string, ids: string[], candidates: Candidate[], buffers: Record<string, Buffer>) {
+  const overlay = useMemo(() => overlayOf(buffers), [buffers]);
+  const labels = useMemo(() => new Map(candidates.map((c) => [c.id, c.label])), [candidates]);
+  return useAskedPreview<ListedRender[]>(listTarget(pack, unit, ids), JSON.stringify(overlay), async (signal) => {
+    const started = performance.now();
+    const out: ListedRender[] = [];
+    for (const id of ids) {
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      try {
+        const result = await endpoints.previewTemplate({ pack, unit, elementId: id, overlay }, signal);
+        out.push({ id, label: labels.get(id) ?? id, result, error: null });
+      } catch (e) {
+        if (signal.aborted) throw e;
+        out.push({ id, label: labels.get(id) ?? id, result: null, error: (e as Error).message ?? String(e) });
+      }
+    }
+    return { value: out, elapsedMs: performance.now() - started };
+  });
 }
 
 function PreviewPane(props: {
@@ -637,6 +707,7 @@ function PreviewPane(props: {
   scope: UnitScope;
   onElement(id: string): void;
   preview: PreviewState;
+  buffers: Record<string, Buffer>;
   /** Output lines matched to the template's cursor line (or the picked line), by file path. */
   highlight: Map<string, Set<number>>;
   onPickLine?: (file: string, line: number) => void;
@@ -644,7 +715,16 @@ function PreviewPane(props: {
   const { units, feeding, unit, preview, scope, highlight } = props;
   const matched = [...highlight.values()].some((s) => s.size > 0);
   const others = units.filter((u) => !feeding.includes(u));
+  // "Preview a list…": the picker's open state, the ticked elements, and the list asked for (kept per unit).
+  const [picking, setPicking] = useState(false);
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [listFor, setListFor] = useState<{ unit: string; ids: string[] } | null>(null);
+  const listIds = listFor && listFor.unit === unit ? listFor.ids : [];
+  const list = useListPreview(props.pack, unit, listIds, preview.candidates, props.buffers);
+  const showingList = listIds.length > 0;
+  const asked = preview.wide ? preview.asked : null;
   const result = preview.result;
+  const canList = !preview.wide && !scope.once && preview.candidates.length > 1;
   return (
     <section
       id="mq-template-preview"
@@ -679,7 +759,7 @@ function PreviewPane(props: {
             className="h-6 min-w-0 flex-1 text-12"
             value={preview.elementId ?? ""}
             onChange={(e) => props.onElement(e.target.value)}
-            disabled={!preview.candidates.length}
+            disabled={!preview.candidates.length || showingList}
             data-testid="preview-element"
           >
             {preview.candidates.length ? null : <option value="">{scope.once ? "None (runs once)" : `No ${scope.label}`}</option>}
@@ -690,8 +770,25 @@ function PreviewPane(props: {
             ))}
           </Select>
         </label>
-        {preview.pending ? (
+        {canList ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-expanded={picking}
+            title={`Render several ${scope.label} elements at once (at most ${LIST_MAX}), when you ask`}
+            onClick={() => {
+              setPicking(!picking);
+              if (!picking) setTicked(listIds.length ? listIds : preview.elementId ? [preview.elementId] : []);
+            }}
+            data-testid="preview-list-open"
+          >
+            Preview a list…
+          </Button>
+        ) : null}
+        {(showingList ? list.pending : preview.pending) ? (
           <span className="text-11 text-secondary">rendering…</span>
+        ) : showingList && list.elapsedMs !== null ? (
+          <span className="text-11 text-secondary">{Math.round(list.elapsedMs)} ms</span>
         ) : result ? (
           <span className="text-11 text-secondary">{result.elapsedMs} ms</span>
         ) : null}
@@ -706,17 +803,54 @@ function PreviewPane(props: {
         ) : null}
         {props.hidden ? null : <PanelToggle panel="templatePreview" className="ml-auto" />}
       </Toolbar>
+      {picking && canList ? (
+        <ListPicker
+          candidates={preview.candidates}
+          label={scope.label}
+          ticked={ticked}
+          onTicked={setTicked}
+          onCancel={() => setPicking(false)}
+          onRun={() => {
+            setPicking(false);
+            const ids = ticked.slice(0, LIST_MAX);
+            setListFor({ unit, ids });
+            // Rendered once the list is the hook's target (the next render), and again when the same list is asked again.
+            list.runWhenReady(listTarget(props.pack, unit, ids)!);
+          }}
+        />
+      ) : null}
       {props.note ? (
         <p className="border-b border-default px-2 py-0.5 text-11 text-secondary" data-testid="preview-note">
           {props.note}
         </p>
       ) : null}
-      {preview.scopeMessage ? (
+      {preview.scopeMessage && !showingList ? (
         <p role="status" className="border-b border-default px-2 py-0.5 text-12 text-warning" data-testid="preview-scope">
           {preview.scopeMessage}
         </p>
       ) : null}
-      {result?.diagnostics.length && !preview.scopeMessage ? (
+      {asked?.stale || (showingList && list.stale) ? (
+        <p role="status" className="flex items-center gap-2 border-b border-default px-2 py-0.5 text-12 text-warning" data-testid="preview-stale">
+          <span className="min-w-0 flex-1">
+            Out of date: the text changed after this render, which took {Math.round((showingList ? list.elapsedMs : asked?.elapsedMs) ?? 0)} ms, so it does not
+            render again as you type.
+          </span>
+          <Button size="sm" onClick={() => (showingList ? list.run() : asked?.run())} data-testid="preview-again">
+            Preview again
+          </Button>
+        </p>
+      ) : null}
+      {showingList ? (
+        <div className="flex h-6 shrink-0 items-center gap-2 border-b border-default px-2 text-11 text-secondary" data-testid="preview-list-header">
+          <span className="min-w-0 flex-1 truncate">
+            {listIds.length} {scope.label} elements, rendered when you asked
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setListFor(null)} data-testid="preview-list-close">
+            Back to one {scope.label}
+          </Button>
+        </div>
+      ) : null}
+      {result?.diagnostics.length && !preview.scopeMessage && !showingList ? (
         <ul className="max-h-24 shrink-0 overflow-auto border-b border-default text-11" aria-label="Preview diagnostics" data-testid="preview-diagnostics">
           {result.diagnostics.map((d, i) => (
             <li key={i} className={cn("px-2 py-px", d.severity === "error" ? "text-danger" : "text-warning")}>
@@ -736,6 +870,45 @@ function PreviewPane(props: {
       <div className="min-h-0 flex-1 overflow-auto" role="region" aria-label="Rendered output" tabIndex={0}>
         {!unit ? (
           <EmptyState title="No unit to preview">Add a unit on the Units tab; it names the template it runs.</EmptyState>
+        ) : showingList ? (
+          !list.result ? (
+            <Spinner label="Rendering the list" />
+          ) : (
+            list.result.map((item) => (
+              <div key={item.id} data-testid="preview-list-item">
+                <div className="sticky top-0 flex h-6 items-center gap-1 border-b border-default bg-accent-subtle px-2 text-11 font-medium" title={item.id}>
+                  {item.label}
+                </div>
+                {item.error ? (
+                  <p role="alert" className="px-2 py-1 text-12 text-danger">
+                    {item.error}
+                  </p>
+                ) : item.result?.diagnostics.some((d) => d.severity === "error") ? (
+                  <ul className="px-2 py-1 text-11 text-danger">
+                    {item.result.diagnostics
+                      .filter((d) => d.severity === "error")
+                      .map((d, i) => (
+                        <li key={i}>
+                          {d.rule} {d.message}
+                        </li>
+                      ))}
+                  </ul>
+                ) : null}
+                {(item.result?.files ?? []).map((f) => (
+                  <RenderedFile key={f.path} file={f} />
+                ))}
+              </div>
+            ))
+          )
+        ) : preview.wide && !preview.asked.asked && !preview.scopeMessage ? (
+          <div className="flex flex-col items-start gap-2 px-2 py-2 text-12" data-testid="preview-wide-note">
+            <p className="text-secondary">
+              Unit {unit} renders {preview.wide} in one go, so it is not rendered as you type. Preview it when you want to see it.
+            </p>
+            <Button size="sm" variant="primary" onClick={() => preview.asked.run()} data-testid="preview-wide">
+              Preview (renders {preview.wide})
+            </Button>
+          </div>
         ) : preview.scopeMessage ? null : preview.error ? (
           <p role="alert" className="px-2 py-1 text-12 text-danger">
             {preview.error}
@@ -745,34 +918,98 @@ function PreviewPane(props: {
         ) : !result.files.length ? (
           <p className="px-2 py-1 text-12 text-secondary">The render wrote no file.</p>
         ) : (
-          result.files.map((f) => (
-            <div key={f.path}>
-              <div className="sticky top-0 flex h-6 items-center gap-1 border-b border-default bg-surface px-2 text-11">
-                <span className="min-w-0 truncate font-mono" data-testid="preview-path" title={f.path}>
-                  {f.path}
-                </span>
-                {f.role !== "main" ? <span className="text-secondary">{f.role}</span> : null}
-              </div>
-              <pre className="py-1 font-mono text-11 leading-[16px] whitespace-pre" data-testid="preview-text">
-                {f.text.split("\n").map((line, i) => {
-                  const on = highlight.get(f.path)?.has(i + 1) ?? false;
-                  return (
-                    <div
-                      key={i}
-                      className={cn("px-2", on && "bg-accent-subtle", props.onPickLine && "cursor-pointer hover:bg-accent-subtle")}
-                      data-line={i + 1}
-                      data-match={on ? "true" : undefined}
-                      onClick={props.onPickLine ? () => props.onPickLine!(f.path, i + 1) : undefined}
-                    >
-                      {line || "\u200b"}
-                    </div>
-                  );
-                })}
-              </pre>
-            </div>
-          ))
+          result.files.map((f) => <RenderedFile key={f.path} file={f} highlight={highlight.get(f.path)} onPickLine={props.onPickLine} />)
         )}
       </div>
     </section>
+  );
+}
+
+function RenderedFile({
+  file,
+  highlight,
+  onPickLine,
+}: {
+  file: PreviewResult["files"][number];
+  highlight?: Set<number>;
+  onPickLine?: (file: string, line: number) => void;
+}) {
+  return (
+    <div>
+      <div className="sticky top-0 flex h-6 items-center gap-1 border-b border-default bg-surface px-2 text-11">
+        <span className="min-w-0 truncate font-mono" data-testid="preview-path" title={file.path}>
+          {file.path}
+        </span>
+        {file.role !== "main" ? <span className="text-secondary">{file.role}</span> : null}
+      </div>
+      <pre className="py-1 font-mono text-11 leading-[16px] whitespace-pre" data-testid="preview-text">
+        {file.text.split("\n").map((line, i) => {
+          const on = highlight?.has(i + 1) ?? false;
+          return (
+            <div
+              key={i}
+              className={cn("px-2", on && "bg-accent-subtle", onPickLine && "cursor-pointer hover:bg-accent-subtle")}
+              data-line={i + 1}
+              data-match={on ? "true" : undefined}
+              onClick={onPickLine ? () => onPickLine(file.path, i + 1) : undefined}
+            >
+              {line || "​"}
+            </div>
+          );
+        })}
+      </pre>
+    </div>
+  );
+}
+
+/** The "Preview a list…" picker: a filter box over the unit's elements, at most `LIST_MAX` ticked, and Preview. */
+function ListPicker(props: { candidates: Candidate[]; label: string; ticked: string[]; onTicked(ids: string[]): void; onRun(): void; onCancel(): void }) {
+  const [text, setText] = useState("");
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = props.candidates.filter((c) => words.every((w) => `${c.label} ${c.id}`.toLowerCase().includes(w)));
+  const shown = matches.slice(0, 200);
+  const full = props.ticked.length >= LIST_MAX;
+  const toggle = (id: string, on: boolean) => props.onTicked(on ? [...props.ticked, id].slice(0, LIST_MAX) : props.ticked.filter((x) => x !== id));
+  return (
+    <div className="flex max-h-64 shrink-0 flex-col gap-1 border-b border-default p-1 text-12" data-testid="preview-list-picker">
+      <div className="flex items-center gap-1">
+        <Input
+          autoFocus
+          className="h-6 flex-1 text-12"
+          aria-label={`Filter the ${props.label} elements`}
+          placeholder={`Filter ${props.candidates.length} elements`}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") props.onCancel();
+          }}
+        />
+        <span className="text-11 text-secondary" data-testid="preview-list-count">
+          {props.ticked.length} of at most {LIST_MAX}
+        </span>
+      </div>
+      <ul className="min-h-0 flex-1 overflow-auto" aria-label={`${props.label} elements to preview`}>
+        {shown.map((c) => {
+          const on = props.ticked.includes(c.id);
+          return (
+            <li key={c.id}>
+              <label className="flex h-6 items-center gap-1 px-1 hover:bg-accent-subtle" title={c.id}>
+                <input type="checkbox" checked={on} disabled={!on && full} onChange={(e) => toggle(c.id, e.target.checked)} data-testid="preview-list-option" />
+                <span className="min-w-0 truncate">{c.label}</span>
+              </label>
+            </li>
+          );
+        })}
+        {matches.length > shown.length ? <li className="px-1 text-11 text-secondary">{matches.length - shown.length} more: type to narrow</li> : null}
+      </ul>
+      <div className="flex gap-1">
+        <Button size="sm" variant="primary" disabled={!props.ticked.length} onClick={props.onRun} data-testid="preview-list-run">
+          Preview {props.ticked.length} {props.ticked.length === 1 ? "element" : "elements"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={props.onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }

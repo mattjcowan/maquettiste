@@ -34,13 +34,24 @@ describe("mock pack authoring", () => {
     expect((await call("POST", "/api/templates/paths", undefined, { pack: "sql-ddl" })).status).toBe(400);
   });
 
-  it("names each path's element: a table with its database, an entity by name", async () => {
+  it("lists a unit's scope with names and kinds and renders only the elements asked for (at most 20)", async () => {
     const tables = await call("POST", "/api/templates/paths", "/api/templates/paths", { pack: "sql-ddl", unit: "table" });
-    const table = (tables.json.paths as Json[]).find((p) => String(p.elementId).includes("@"))!;
-    expect(table.elementKind).toBe("table");
-    expect(table.elementName as string).toMatch(/^[^@]+ \(main\)$/);
+    expect(tables.json.rendered).toBe(0);
+    expect(tables.json.paths).toEqual([]);
+    expect(tables.json.wide).toBe(false);
+    const listed = (tables.json.elements as Json[]).find((e) => String(e.id).includes("@"))!;
+    expect(listed.kind).toBe("table");
+    expect(listed.name as string).toMatch(/^[^@]+ \(main\)$/);
+    const one = await call("POST", "/api/templates/paths", "/api/templates/paths", { pack: "sql-ddl", unit: "table", elementIds: [listed.id] });
+    expect([one.json.count, one.json.rendered]).toEqual([1, 1]);
+    const table = (one.json.paths as Json[])[0];
+    expect([table.elementName, table.elementKind]).toEqual([listed.name, "table"]);
     const entities = await call("POST", "/api/templates/paths", "/api/templates/paths", { pack: "csharp-dapper", unit: "entity" });
-    expect((entities.json.paths as Json[]).map((p) => [p.elementName, p.elementKind])).toContainEqual(["Customer", "entity"]);
+    expect((entities.json.elements as Json[]).map((e) => [e.name, e.kind])).toContainEqual(["Customer", "entity"]);
+    const tooMany = Array.from({ length: 21 }, (_, i) => `e${i}`);
+    expect((await call("POST", "/api/templates/paths", undefined, { pack: "sql-ddl", unit: "table", elementIds: tooMany })).status).toBe(400);
+    const schema = await call("POST", "/api/templates/paths", "/api/templates/paths", { pack: "sql-ddl", unit: "schema" });
+    expect([schema.json.wide, schema.json.rendered]).toEqual([true, 0]);
   });
 
   it("removes a pack with the pack.json hash and leaves its generated files untracked", async () => {

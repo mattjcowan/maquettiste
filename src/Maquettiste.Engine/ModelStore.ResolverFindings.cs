@@ -7,19 +7,58 @@ public sealed partial class ModelStore
 {
     private readonly Lock _findingsGate = new();
     private (ModelSnapshot Snapshot, Task<IReadOnlyList<Diagnostic>> Task)? _findings;
+    private readonly Lock _resolvedGate = new();
+    private (ModelSnapshot Snapshot, Task<ResolvedSnapshot> Task)? _resolved;
+
+    /// <summary>
+    /// A snapshot's whole-model validation report and, when it has no error, its resolved model: computed once per snapshot and shared
+    /// by everything that needs them (validate's resolver findings, the resolved model's paged reader, template previews and path
+    /// listings), so an edit costs one validation and one resolution however many of them ask. Concurrent callers wait for the same
+    /// work (single flight), which runs without any caller's token; the last snapshot's result is kept.
+    /// </summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <param name="ct">Cancellation of the wait only.</param>
+    /// <returns>The report and the resolved model (<see langword="null"/> when validation has errors).</returns>
+    internal Task<ResolvedSnapshot> ResolvedAsync(ModelSnapshot snapshot, CancellationToken ct)
+    {
+        Task<ResolvedSnapshot> task;
+        lock (_resolvedGate)
+        {
+            if (_resolved is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled)
+            {
+                task = cached.Task;
+            }
+            else
+            {
+                task = Task.Run(() => ResolveSnapshotAsync(snapshot), CancellationToken.None);
+                _resolved = (snapshot, task);
+            }
+        }
+
+        return task.WaitAsync(ct);
+    }
+
+    private async Task<ResolvedSnapshot> ResolveSnapshotAsync(ModelSnapshot snapshot)
+    {
+        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.All, null, CancellationToken.None).ConfigureAwait(false);
+        if (report.HasErrors)
+            return new ResolvedSnapshot(snapshot, report, null);
+        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, CancellationToken.None).ConfigureAwait(false);
+        return new ResolvedSnapshot(snapshot, report, resolved);
+    }
 
     /// <summary>
     /// What the resolver finds in a snapshot that validation cannot see (MQ4005 over the resolved columns, MQ4001 on conventional names,
     /// MQ4008, MQ4009 and MQ4011 on what resolution leaves out), so every validate path (the editor's loop and <c>POST /api/validate</c>,
     /// <c>maquettiste validate</c> and its SARIF, the MCP <c>validate</c> tool) reports what generation would. The resolver runs only on
-    /// a snapshot whose whole-model validation (load diagnostics included) has no error, as a generation run does, and once per snapshot:
-    /// the findings are kept with the snapshot they belong to, and the shared work runs without the caller's token.
+    /// a snapshot whose whole-model validation (load diagnostics included) has no error, as a generation run does, and once per snapshot
+    /// (<see cref="ResolvedAsync"/>): the findings are kept with the snapshot they belong to, and the shared work runs without the
+    /// caller's token.
     /// </summary>
     /// <param name="snapshot">The snapshot.</param>
-    /// <param name="full">The snapshot's whole-model report when the caller has it, else it is computed.</param>
     /// <param name="ct">Cancellation of the wait only.</param>
     /// <returns>The resolver's diagnostics, or none when the model has validation errors.</returns>
-    private Task<IReadOnlyList<Diagnostic>> ResolverFindingsAsync(ModelSnapshot snapshot, ValidationReport? full, CancellationToken ct)
+    private Task<IReadOnlyList<Diagnostic>> ResolverFindingsAsync(ModelSnapshot snapshot, CancellationToken ct)
     {
         Task<IReadOnlyList<Diagnostic>> task;
         lock (_findingsGate)
@@ -30,7 +69,7 @@ public sealed partial class ModelStore
             }
             else
             {
-                task = Task.Run(() => FindAsync(snapshot, full), CancellationToken.None);
+                task = Task.Run(() => FindAsync(snapshot), CancellationToken.None);
                 _findings = (snapshot, task);
             }
         }
@@ -38,12 +77,13 @@ public sealed partial class ModelStore
         return task.WaitAsync(ct);
     }
 
-    private async Task<IReadOnlyList<Diagnostic>> FindAsync(ModelSnapshot snapshot, ValidationReport? full)
+    private async Task<IReadOnlyList<Diagnostic>> FindAsync(ModelSnapshot snapshot)
     {
-        var report = full ?? await _services.Validator.ValidateAsync(snapshot, ValidationScope.All, null, CancellationToken.None).ConfigureAwait(false);
-        if (report.HasErrors || snapshot.LoadDiagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
+        if (snapshot.LoadDiagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
             return [];
-        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, CancellationToken.None).ConfigureAwait(false);
+        var shared = await ResolvedAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
+        if (shared.Model is not { } resolved)
+            return [];
         // Positioned like validation's findings, so a text line, SARIF and the Problems panel point into the file.
         var positions = new Validation.Positions(_options, snapshot);
         var found = new List<Diagnostic>(resolved.Diagnostics.Count);
@@ -74,3 +114,9 @@ public sealed partial class ModelStore
         return findings.Where(d => !exact.Contains(LoadKey(d)) && (d.JsonPointer is not null || !onElement.Contains(d.Rule + "\u0000" + d.ElementId)));
     }
 }
+
+/// <summary>A snapshot's whole-model validation report and resolved model (<see cref="ModelStore.ResolvedAsync"/>).</summary>
+/// <param name="Snapshot">The snapshot.</param>
+/// <param name="Report">The whole-model validation report.</param>
+/// <param name="Model">The resolved model, or <see langword="null"/> when the report has errors.</param>
+internal sealed record ResolvedSnapshot(ModelSnapshot Snapshot, ValidationReport Report, Resolution.ResolvedModel? Model);

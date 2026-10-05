@@ -319,9 +319,11 @@ public sealed partial class ModelStore : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(scope);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, scope, null, ct).ConfigureAwait(false);
+        // The whole model's report is the one the snapshot's shared resolution validated with (once per snapshot).
         var whole = scope.ElementIds is null && scope.IncludeReferrers && scope.IncludeScriptRules;
-        var found = await ResolverFindingsAsync(snapshot, whole ? report : null, ct).ConfigureAwait(false);
+        var report = whole ? (await ResolvedAsync(snapshot, ct).ConfigureAwait(false)).Report
+            : await _services.Validator.ValidateAsync(snapshot, scope, null, ct).ConfigureAwait(false);
+        var found = await ResolverFindingsAsync(snapshot, ct).ConfigureAwait(false);
         var seen = report.Diagnostics.Select(LoadKey).ToHashSet(StringComparer.Ordinal);
         IEnumerable<Diagnostic> load = snapshot.LoadDiagnostics;
         IEnumerable<Diagnostic> resolved = found;

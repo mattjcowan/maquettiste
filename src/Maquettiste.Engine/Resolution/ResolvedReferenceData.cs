@@ -144,8 +144,26 @@ public sealed class RSeed : RElement
     /// <summary>The rows, in file order.</summary>
     public RList<RSeedRow> Rows { get; internal set; } = RList<RSeedRow>.Empty;
 
-    /// <summary>The rows in insert-dependency order: a row that another row of this seed names comes first (Kahn, ties by file order).</summary>
-    public RList<RSeedRow> OrderedRows { get; internal set; } = RList<RSeedRow>.Empty;
+    private RList<RSeedRow>? _orderedRows;
+    private Func<RList<RSeedRow>>? _orderedRowsFactory;
+
+    /// <summary>
+    /// The rows in insert-dependency order: a row that another row of this seed names comes first (Kahn, ties by file order). Ordered on
+    /// first read, so a large seed that nothing renders is never ordered (and its cells never converted).
+    /// </summary>
+    public RList<RSeedRow> OrderedRows
+    {
+        get
+        {
+            if (Volatile.Read(ref _orderedRows) is { } rows)
+                return rows;
+            var built = _orderedRowsFactory?.Invoke() ?? RList<RSeedRow>.Empty;
+            return Interlocked.CompareExchange(ref _orderedRows, built, null) ?? built;
+        }
+        internal set => _orderedRows = value;
+    }
+
+    internal void SetOrderedRows(Func<RList<RSeedRow>> factory) => _orderedRowsFactory = factory;
 }
 
 /// <summary>A column of a seed.</summary>
@@ -179,11 +197,30 @@ public sealed class RSeedRow : RObject
     /// <summary>The row's position in the file (0-based).</summary>
     public int Order { get; internal set; }
 
+    private IReadOnlyDictionary<string, object?>? _values;
+    private Func<IReadOnlyDictionary<string, object?>>? _valuesFactory;
+
     /// <summary>
     /// The cells by column name, as plain values: enum cells as <see cref="REnumMember"/>, reference cells as codes (or lists of
-    /// codes), end cells as row ids; a missing or null cell is null.
+    /// codes), end cells as row ids; a missing or null cell is null. A row of an entity's or a relation's seed converts its cells on
+    /// first read, so the rows of a large seed cost nothing until a template (or the resolved model's reader) reads them.
     /// </summary>
-    public IReadOnlyDictionary<string, object?> Values { get; internal set; } = FrozenDictionary<string, object?>.Empty;
+    public IReadOnlyDictionary<string, object?> Values
+    {
+        get
+        {
+            if (Volatile.Read(ref _values) is { } values)
+                return values;
+            var built = _valuesFactory?.Invoke() ?? FrozenDictionary<string, object?>.Empty;
+            return Interlocked.CompareExchange(ref _values, built, null) ?? built;
+        }
+        internal set => _values = value;
+    }
+
+    /// <summary>Whether <see cref="Values"/> has been converted (tests: a preview that does not read a seed leaves its rows alone).</summary>
+    internal bool ValuesBuilt => Volatile.Read(ref _values) is not null;
+
+    internal void SetValues(Func<IReadOnlyDictionary<string, object?>> factory) => _valuesFactory = factory;
 
     /// <summary>
     /// Reference and end cells by column name, resolved lazily to an <see cref="RRow"/> or an <see cref="RSeedRow"/> (a list for a

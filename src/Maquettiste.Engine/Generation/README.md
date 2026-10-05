@@ -279,3 +279,13 @@ and before the path reaches the store, so a manifest write under the real prefix
   removed or renamed database's snapshot.
 - The diff also runs its capture and unchanged-table check on `EngineOptions.EffectiveParallelism` threads (`SchemaDiff/README.md`).
 
+## Previews (2026-10-05, generation-ui.md section 5.2 "Bounds")
+
+- A template preview or path listing no longer prepares a dry run (`PrepareAsync` plans every unit of the pack and diffs every
+  schema). `GenerationService` keeps a session per pack over the store's shared resolution (`ModelStore.ResolvedAsync`: one
+  whole-model validation and one resolution per snapshot, shared with validate's resolver findings and the paged resolved
+  model), with the pack loaded by name, the path policy, schema diffs computed per database on first read (`LazySchemaDiffs`,
+  `PreviewInputs.cs`; `RenderRun` gives the template a `schema_diff` map whose values are computed when read) and a hasher that
+  hashes nothing (`PreviewHasher`). The session is single-flight and lives until its key changes (model version, settings hash,
+  write epoch, the pack folder's stamps and the committed schema snapshots' stamps); the former 2 s limit is gone.
+- `PathsAsync` plans the one unit (kept with the session for a saved unit) and renders only `elementIds` (at most 20).
