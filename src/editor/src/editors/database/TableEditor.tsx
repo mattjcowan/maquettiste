@@ -7,8 +7,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Database, Plus, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useDatabaseView, usePacks, usePreview, useProject } from "@/api/queries";
-import type { ColumnView, ModelJson, StereotypeDoc } from "@/api/types";
+import { usePacks, usePreview, useProject } from "@/api/queries";
+import type { ModelJson, StereotypeDoc } from "@/api/types";
 import { useServices } from "@/app/context";
 import { Button } from "@/components/ui/button";
 import { EmptyState, SectionTitle, Spinner } from "@/components/ui/misc";
@@ -20,10 +20,6 @@ import { applicableExtensions, SchemaForm } from "@/inspector/SchemaForm";
 import { ElementPropertyBag } from "@/inspector/PropertyBag";
 import { declaredKeys } from "@/inspector/propertyBag";
 import { ColumnGrid } from "@/workspaces/database/ColumnGrid";
-import { columnEntryOf, setColumnField } from "@/workspaces/database/columnEdits";
-import { useProblems } from "@/editors/process/shared";
-import { newId } from "@/lib/ids";
-import { ColumnFacets, columnProblems } from "./ColumnFacets";
 import { ddlPreviewTarget } from "@/workspaces/database/ddlPreview";
 import { openTableEditor } from "@/workspaces/database/openTableEditor";
 import { storeTables } from "@/workspaces/database/storeTables";
@@ -272,10 +268,7 @@ function ColumnsTab({ td }: { td: TableDoc }) {
         <Spinner label="Resolving the table" />
       ) : td.table ? (
         td.table.columns.length ? (
-          <>
-            <ColumnGrid key={td.table.key} table={td.table} databaseId={td.database} />
-            {pickedColumn ? <PickedColumnFacets td={td} column={pickedColumn} /> : null}
-          </>
+          <ColumnGrid key={td.table.key} table={td.table} databaseId={td.database} />
         ) : (
           <EmptyState title="No columns yet">Add column adds one; its name, type and the rest are edited in the grid.</EmptyState>
         )
@@ -283,36 +276,6 @@ function ColumnsTab({ td }: { td: TableDoc }) {
         <EmptyState title="This table is not resolved yet">It shows once its database has resolved it.</EmptyState>
       )}
     </div>
-  );
-}
-
-/** The picked column's DDL facets and how it gets its values, under the grid (the grid holds the rest of its fields): each change
- * one save of the table, queued behind the table's other writes. */
-function PickedColumnFacets({ td, column }: { td: TableDoc; column: ColumnView }) {
-  const problems = useProblems(td.fileId ?? "", td.diagnostics);
-  const dbView = useDatabaseView(td.database || null);
-  const entry = td.doc ? columnEntryOf(td.doc, column) : undefined;
-  const id = `table-col-${column.key}`.replace(/[^A-Za-z0-9_-]/g, "_");
-  return (
-    <section
-      className="max-h-[40%] shrink-0 overflow-auto border-t border-default p-2"
-      aria-label={`DDL facets of ${column.name}`}
-      data-testid="table-editor-column-facets"
-    >
-      <SectionTitle>{`Column ${column.name}: DDL`}</SectionTitle>
-      <ColumnFacets
-        id={id}
-        column={column}
-        entry={entry}
-        problems={columnProblems(problems, td.doc, column)}
-        disabled={td.mode === "fixed"}
-        dialect={dbView.data?.view?.dialect}
-        sequences={dbView.data?.view?.sequences ?? []}
-        onSet={(field, value) =>
-          void td.update(`Edit column ${column.name} of ${td.table?.name ?? "the table"}`, (doc) => void setColumnField(doc, column, field, value, newId))
-        }
-      />
-    </section>
   );
 }
 
