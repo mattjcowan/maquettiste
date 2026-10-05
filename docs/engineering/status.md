@@ -12,7 +12,8 @@ dotnet test maquettiste.slnx
 ```
 
 `SPEC.md` is the specification; `docs/engineering/engine-design.md` is the phase 1 engine contract and
-`docs/engineering/host-contracts.md` what the editor host requires of the engine.
+`docs/engineering/host-contracts.md` what the editor host requires of the engine. `docs/engineering/next.md` lists the
+work queued next, with the decisions each item waits on.
 
 ## What is built
 
