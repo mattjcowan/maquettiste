@@ -17,7 +17,7 @@ work queued next, with the decisions each item waits on.
 
 ## What is built
 
-Phases 1, 2 and 3 of `SPEC.md` Section 21 are complete (product version 0.7.1). Phase 3 answers
+Phases 1, 2 and 3 of `SPEC.md` Section 21 are complete (product version 0.7.2). Phase 3 answers
 `docs/engineering/phase-3-brief.md` with `docs/engineering/phase-3-design.md`, whose section 9 records every round.
 
 **Phase 1: engine and CLI.** The model as one JSON file per element under `.maquettiste/` (entities, relations, enums,
