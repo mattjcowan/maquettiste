@@ -69,6 +69,7 @@ public sealed partial class AgentTools
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _handlers = new(StringComparer.Ordinal)
         {
+            ["compare_snapshots"] = CompareSnapshotsAsync,
             ["get_database_view"] = GetDatabaseViewAsync,
             ["get_element"] = GetElementAsync,
             ["get_elements"] = GetElementsAsync,
@@ -83,6 +84,7 @@ public sealed partial class AgentTools
             ["get_schema"] = GetSchemaAsync,
             ["get_settings"] = GetSettingsAsync,
             ["list_packs"] = ListPacksAsync,
+            ["list_snapshots"] = ListSnapshotsAsync,
             ["list_validation_rules"] = ListValidationRulesAsync,
             ["localization_status"] = LocalizationStatusAsync,
             ["preview_binding_sql"] = PreviewBindingSqlAsync,

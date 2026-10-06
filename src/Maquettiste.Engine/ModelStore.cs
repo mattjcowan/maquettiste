@@ -59,6 +59,18 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// <summary>The current snapshot, or <see langword="null"/> before the first load.</summary>
     public ModelSnapshot? Current => _current;
 
+    /// <summary>Whether the store serves a snapshot opened read-only (every write is refused with MQ6029).</summary>
+    public bool IsReadOnly => _services.Documents.IsReadOnly;
+
+    /// <summary>Where the documents come from and go to (docs/engineering/snapshots.md section 2).</summary>
+    internal IModelDocumentStore Documents => _services.Documents;
+
+    /// <summary>The engine options the store was created with.</summary>
+    internal EngineOptions Options => _options;
+
+    /// <summary>The services the store was created with.</summary>
+    internal EngineServices Services => _services;
+
     /// <summary>
     /// The files of the store's last load with the stat each was read at (the generation run's last-run record), or
     /// <see langword="null"/> before the first load or with a substitute loader.
@@ -98,6 +110,8 @@ public sealed partial class ModelStore : IAsyncDisposable
             return _current!;
         }
 
+        if (IsReadOnly)
+            return _current; // a snapshot never changes: nothing to rescan
         await RescanAsync(false, ct).ConfigureAwait(false);
         return _current!;
     }
@@ -287,6 +301,8 @@ public sealed partial class ModelStore : IAsyncDisposable
     public async Task<ChangeSet> RescanAsync(bool verify, CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (IsReadOnly && _current is not null)
+            return ChangeSet.Empty(ChangeSource.Disk); // a snapshot never changes
         ChangeSet changes;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -374,6 +390,8 @@ public sealed partial class ModelStore : IAsyncDisposable
     public async Task<SettingsSaveResult> SaveSettingsAsync(ReadOnlyMemory<byte> json, string expectedHash, ChangeSource source, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(expectedHash);
+        if (IsReadOnly)
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null, [ReadOnlyRefusal()]);
         await LoadedAsync(ct).ConfigureAwait(false);
         var paths = _paths.Value;
         var repoPath = paths.ToRepoPath(ModelPaths.SettingsFile);
@@ -458,8 +476,7 @@ public sealed partial class ModelStore : IAsyncDisposable
             return new SettingsSaveResult(SaveOutcome.Invalid, null, null, Sorted(introduced));
 
         var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
-        var failure = await new AtomicFileSet(_services.EnginePaths, paths.ModelRoot)
-            .ApplyAsync([(paths.FullPath(ModelPaths.SettingsFile), bytes)], [], batchId, ct).ConfigureAwait(false);
+        var failure = await Documents.ApplyAsync([(ModelPaths.SettingsFile, bytes)], [], batchId, ct).ConfigureAwait(false);
         if (failure is { Refused: true })
         {
             return new SettingsSaveResult(SaveOutcome.Invalid, null, null,
@@ -481,22 +498,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     private static string SettingsKey(Diagnostic d) =>
         d.Rule + "\u0000" + d.Severity.ToString() + "\u0000" + d.ElementId + "\u0000" + d.FilePath + "\u0000" + d.JsonPointer + "\u0000" + d.Message;
 
-    private async Task<byte[]?> ReadSettingsFileAsync(CancellationToken ct)
-    {
-        var full = _paths.Value.FullPath(ModelPaths.SettingsFile);
-        try
-        {
-            return File.Exists(full) ? await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false) : null;
-        }
-        catch (FileNotFoundException)
-        {
-            return null;
-        }
-        catch (DirectoryNotFoundException)
-        {
-            return null;
-        }
-    }
+    private Task<byte[]?> ReadSettingsFileAsync(CancellationToken ct) => Documents.ReadAsync(ModelPaths.SettingsFile, ct);
 
     private SettingsDocument SettingsDocumentOf(ProjectSettings settings, string repoPath, string hash, byte[]? bytes)
     {
@@ -597,6 +599,12 @@ public sealed partial class ModelStore : IAsyncDisposable
     private async Task<BatchResult> ExecuteCoreAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, List<ChangeSet> notifications,
         List<BatchPreviewFile>? preview, CancellationToken ct)
     {
+        if (IsReadOnly && preview is null)
+        {
+            return new BatchResult(SaveOutcome.Invalid,
+                [.. changes.Select(c => new SaveResult(SaveOutcome.Invalid, c.Id, null, null, [ReadOnlyRefusal()], [], null))], null);
+        }
+
         var paths = _paths.Value;
         var snapshot = _current!;
         var plan = Plan(snapshot, changes, ct);
@@ -638,10 +646,10 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
         else
         {
-            var writes = plan.Writes.Select(kv => (paths.FullPath(kv.Key), kv.Value)).ToList();
-            var deletes = plan.Deletes.Select(paths.FullPath).ToList();
+            var writes = plan.Writes.Select(kv => (kv.Key, kv.Value)).ToList();
+            var deletes = plan.Deletes.ToList();
             var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
-            var failure = await new AtomicFileSet(_services.EnginePaths, paths.ModelRoot).ApplyAsync(writes, deletes, batchId, ct).ConfigureAwait(false);
+            var failure = await Documents.ApplyAsync(writes, deletes, batchId, ct).ConfigureAwait(false);
             if (failure is { Refused: true })
             {
                 var refused = RuleCatalog.Create("MQ6004", $"The model write to {failure.Path} was refused: {failure.Reason}", null, null, null);
@@ -676,12 +684,10 @@ public sealed partial class ModelStore : IAsyncDisposable
         var files = new List<BatchPreviewFile>();
         foreach (var modelPath in plan.Writes.Keys.Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
-            var full = paths.FullPath(modelPath);
             byte[]? before = null;
             try
             {
-                if (File.Exists(full))
-                    before = await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
+                before = await Documents.ReadAsync(modelPath, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -728,15 +734,11 @@ public sealed partial class ModelStore : IAsyncDisposable
         var stale = new List<string>();
         foreach (var (modelPath, indexHash) in plan.Touched.OrderBy(kv => kv.Key, StringComparer.Ordinal))
         {
-            var full = _paths.Value.FullPath(modelPath);
             string? diskHash = null;
             try
             {
-                if (File.Exists(full))
-                {
-                    await using var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
-                    diskHash = await ContentHash.OfAsync(stream, ct).ConfigureAwait(false);
-                }
+                if (await Documents.ReadAsync(modelPath, ct).ConfigureAwait(false) is { } bytes)
+                    diskHash = ContentHash.Of(bytes);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

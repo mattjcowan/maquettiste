@@ -151,5 +151,14 @@ export type RealtimeJobCompleted = S["RealtimeJobCompleted"];
 export type RealtimePresenceChanged = S["RealtimePresenceChanged"];
 export type RealtimeSiteDeployed = S["RealtimeSiteDeployed"];
 
+export type SnapshotInfo = S["SnapshotInfo"];
+export type SnapshotComparison = S["SnapshotComparison"];
+export type SnapshotElementDiff = S["SnapshotElementDiff"];
+export type SnapshotRestoreResult = S["SnapshotRestoreResult"];
+export type SnapshotImportResult = S["SnapshotImportResult"];
+export type SnapshotCreateBody = S["SnapshotCreateBody"];
+export type SnapshotPatchBody = S["SnapshotPatchBody"];
+export type Role = S["Role"];
+
 /** A model document as the editor edits it: canonical JSON of any kind. */
 export type ModelJson = ModelDocument & Record<string, unknown>;

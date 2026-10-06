@@ -21,6 +21,7 @@ import { parseDialect } from "./model/querySql";
 import { isUlid, readTag } from "./wire";
 import { processHandlers } from "./processHandlers";
 import { assistHandlers } from "./assist";
+import { snapshotHandlers } from "./snapshots";
 // Recorded by the functions test of GET /api/validation/rules, which fails when the catalog changes without a new recording.
 import validationRules from "./recorded/validation-rules.json";
 
@@ -89,7 +90,8 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       return problem(401, "unauthenticated", "Sign in to use the editor.");
     if ((request.method === "POST" || request.method === "PUT") && !(url.pathname === "/api/session" && request.method === "POST")) {
       const type = request.headers.get("Content-Type") ?? "";
-      if (!/^application\/json\b/i.test(type)) return problem(415, "unsupported-media-type", "Send the body as application/json.");
+      const zipImport = url.pathname === "/api/snapshots/import" && /^application\/zip\b/i.test(type);
+      if (!/^application\/json\b/i.test(type) && !zipImport) return problem(415, "unsupported-media-type", "Send the body as application/json.");
     }
     return undefined; // fall through to the operation's handler
   });
@@ -129,6 +131,8 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
 
   return [
     gate,
+    // First after the gate: a request with ?snapshot= is answered (or refused) before any other handler sees it.
+    ...snapshotHandlers(backend, baseUrl, problem, (view) => mockHandlers(view, baseUrl)),
     ...processHandlers(backend, { baseUrl, recorded, pristine, answer, problem: problem as never }),
     ...assistHandlers(backend.assist, baseUrl),
     http.get("/api/health", ({ response }) =>
@@ -145,7 +149,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       }),
     ),
     http.get("/api/session", ({ response }) =>
-      response(200).json({ user: { name: "local", displayName: "Local developer", role: "admin" }, via: "local", mode: "local" }),
+      response(200).json({ user: { name: "local", displayName: "Local developer", role: backend.role }, via: "local", mode: "local" }),
     ),
     http.post("/api/session", async ({ request, response }) => {
       const text = await request.text();

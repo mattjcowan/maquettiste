@@ -16,6 +16,7 @@ The model loader (stage 1), the index cache, the file-name policy, the change pl
 | `IndexCache.cs` | `CacheDirectory/index.v1.bin`: `MQIX`, format 1, engine version, schema-set hash, then per file: path, length, mtime ticks, SHA-256, flags (validated, canonical), bytes. |
 | `ModelPaths.cs` | Model-relative, repo-relative and absolute paths; kebab-case file names with `-<id6>` only on a collision; conventional folders (tables, views and sequences in their database's actual folder). |
 | `ChangePlanner.cs` | Plans creates, updates and deletes against a snapshot without writing: schema, ids, canonical bytes, paths, expected hashes, reference removal, candidate snapshot, delete reference checks. |
+| `ModelDocumentStore.cs` | `IModelDocumentStore`, the seam under the loader and the store (docs/engineering/snapshots.md section 2), and `FileDocumentStore`, the model folder as its provider: stat, list and read for the loader; `ApplyAsync` (an `AtomicFileSet`) for every write the store makes. A snapshot archive is the other provider (`Snapshots/ZipDocumentStore.cs`). |
 | `AtomicFileSet.cs` | Stages `.<name>.mq-<batchId>.tmp` files and `.bak` copies beside their targets, then renames; rolls back from the copies on a rename failure. A staged name that already exists (a leftover of a process that died midway; batch ids restart with the process) is overwritten. |
 | `BatchParser.cs` | `batch.json` validation of untrusted batches, positioned diagnostics, no disk access. |
 

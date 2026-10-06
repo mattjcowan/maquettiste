@@ -10,6 +10,7 @@ import { isBatchResult } from "@/api/endpoints";
 import { clone } from "@/lib/json";
 import type { EditorStore, UndoEntry } from "./store";
 import type { DraftManager } from "./drafts";
+import { snapshotScope } from "@/api/snapshotScope";
 
 export interface UndoDeps {
   store: EditorStore;
@@ -53,6 +54,8 @@ export class UndoManager {
   }
 
   private async step(direction: "undo" | "redo"): Promise<UndoOutcome> {
+    // The stacks hold the working model's edits; a snapshot shown read-only has none of its own.
+    if (snapshotScope()) return { ok: false, reason: `Cannot ${direction} while a snapshot is shown: it is read-only.` };
     await this.deps.drafts.flushAll();
     const state = this.deps.store.getState();
     const from = direction === "undo" ? state.undo : state.redo;

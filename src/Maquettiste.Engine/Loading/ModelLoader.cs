@@ -49,18 +49,21 @@ internal sealed record LoadedFileStamps(ModelSnapshot Snapshot, IReadOnlyList<Fi
 /// <param name="schemas">The schema registry.</param>
 /// <param name="json">The canonical writer (MQ1003 checks).</param>
 /// <param name="paths">The engine-write guard; the index cache is written as a <see cref="WriteTarget.Cache"/> target.</param>
-internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas, ICanonicalJson json, IOutputPathPolicy paths) : IModelLoader
+/// <param name="documents">Where the documents come from; <see langword="null"/> means the model folder (<see cref="FileDocumentStore"/>).
+/// A store that does not use the index cache (a snapshot) neither reads nor writes it.</param>
+internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas, ICanonicalJson json, IOutputPathPolicy paths, IModelDocumentStore? documents = null) : IModelLoader
 {
-    private static readonly EnumerationOptions Recursive = new() { RecurseSubdirectories = true, IgnoreInaccessible = true, MatchType = MatchType.Simple };
-    private static readonly EnumerationOptions TopOnly = new() { RecurseSubdirectories = false, IgnoreInaccessible = true, MatchType = MatchType.Simple };
-
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ModelPaths _paths = new(options);
     private readonly DocumentReader _reader = new(schemas, json);
     private readonly Lazy<string> _schemaSetHash = new(() => IndexCache.SchemaSetHash(schemas));
     private LoaderState _state = LoaderState.Empty;
     private IReadOnlyDictionary<string, CacheRecord>? _diskCache;
+    private IModelDocumentStore? _documents = documents;
     private int _tempCounter;
+
+    /// <summary>The store the documents come from.</summary>
+    internal IModelDocumentStore Documents => _documents ??= new FileDocumentStore(_paths, paths);
 
     /// <summary>The statistics of the last completed load.</summary>
     internal LoadStatistics LastStatistics { get; private set; } = new(0, 0, 0, 0, 0, 0, false);
@@ -91,7 +94,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         ct.ThrowIfCancellationRequested();
         var previous = _state;
         var full = request.ChangedPaths is null || previous.Snapshot is null;
-        _diskCache ??= await IndexCache.ReadAsync(CachePath, _schemaSetHash.Value, ct, options.EffectiveParallelism).ConfigureAwait(false);
+        _diskCache ??= Documents.UsesIndexCache
+            ? await IndexCache.ReadAsync(CachePath, _schemaSetHash.Value, ct, options.EffectiveParallelism).ConfigureAwait(false)
+            : FrozenDictionary<string, CacheRecord>.Empty;
         var counters = new Counters();
 
         // 1. Which files to look at: every file on a full scan; the reported paths (folders expanded) otherwise.
@@ -112,7 +117,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                 if (_paths.ToModelPath(raw) is not { } path)
                     continue;
                 hints.Add(path);
-                if (path.Length == 0 || Directory.Exists(_paths.FullPath(path)))
+                if (path.Length == 0 || Documents.FolderExists(path))
                     toCheck.UnionWith(EnumerateUnder(path));
                 else if (ModelPaths.Classify(path) is not null)
                     toCheck.Add(path);
@@ -198,7 +203,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         // The index cache needs only the files: a full load writes it (when anything changed) beside the snapshot assembly and
         // awaits it before returning, so the load still ends with the cache on disk.
-        var cacheTask = full ? WriteCacheIfChangedAsync(entries, ct) : Task.FromResult(false);
+        var cacheTask = full && Documents.UsesIndexCache ? WriteCacheIfChangedAsync(entries, ct) : Task.FromResult(false);
         ModelSnapshot snapshot;
         IReadOnlyDictionary<string, ElementDocument> documents;
         ChangeSet changes;
@@ -282,12 +287,10 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     private async Task<FileEntry?> CheckAsync(string modelPath, ModelFileKind kind, FileEntry? old, bool verify, Counters counters, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var fullPath = _paths.FullPath(modelPath);
-        var info = new FileInfo(fullPath);
-        if (!info.Exists)
+        if (Documents.Stat(modelPath) is not { } stat)
             return null;
-        var length = info.Length;
-        var ticks = info.LastWriteTimeUtc.Ticks;
+        var length = stat.Length;
+        var ticks = stat.LastWriteTicks;
         if (old is not null && old.Kind == kind && !verify && old.Length == length && old.LastWriteTicks == ticks)
         {
             Interlocked.Increment(ref counters.Reused);
@@ -309,11 +312,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         {
             try
             {
-                bytes = await File.ReadAllBytesAsync(fullPath, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
-            {
-                return null;
+                if (await Documents.ReadAsync(modelPath, ct).ConfigureAwait(false) is not { } read)
+                    return null;
+                bytes = read;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -614,11 +615,11 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     private HashSet<string> Enumerate()
     {
         var result = new HashSet<string>(StringComparer.Ordinal);
-        if (File.Exists(_paths.FullPath(ModelPaths.SettingsFile)))
+        if (Documents.Stat(ModelPaths.SettingsFile) is not null)
             result.Add(ModelPaths.SettingsFile);
         result.UnionWith(EnumerateUnder("model"));
-        result.UnionWith(EnumerateFiles("extensions", "*.json", TopOnly));
-        result.UnionWith(EnumerateFiles("extensions/rules", "*.js", TopOnly));
+        result.UnionWith(EnumerateFiles("extensions", ".json", recursive: false));
+        result.UnionWith(EnumerateFiles("extensions/rules", ".js", recursive: false));
         return result;
     }
 
@@ -626,27 +627,13 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     {
         if (modelPath.Length == 0)
             return Enumerate();
-        return EnumerateFiles(modelPath, "*", Recursive).Where(p => ModelPaths.Classify(p) is not null);
+        return EnumerateFiles(modelPath, null, recursive: true);
     }
 
-    private IEnumerable<string> EnumerateFiles(string modelFolder, string pattern, EnumerationOptions enumeration)
-    {
-        var folder = _paths.FullPath(modelFolder);
-        if (!Directory.Exists(folder))
-            return [];
-        try
-        {
-            return Directory.EnumerateFiles(folder, pattern, enumeration)
-                .Select(p => _paths.ToModelPath(p))
-                .Where(p => p is not null && ModelPaths.Classify(p) is not null)
-                .Select(p => p!)
-                .ToList();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return []; // a folder that vanished mid-scan
-        }
-    }
+    /// <summary>The loadable files under a folder: <see cref="ModelPaths.Classify"/> decides, after the optional extension filter.</summary>
+    private List<string> EnumerateFiles(string modelFolder, string? extension, bool recursive) =>
+        [.. Documents.List(modelFolder, recursive)
+            .Where(p => (extension is null || p.EndsWith(extension, StringComparison.Ordinal)) && ModelPaths.Classify(p) is not null)];
 
     /// <summary>One file of the last load.</summary>
     private sealed record FileEntry(string ModelPath, ModelFileKind Kind, long Length, long LastWriteTicks, string Hash, byte[] Bytes, ParsedFile Parsed)

@@ -354,6 +354,42 @@ export class MockModel {
   }
 
   /**
+   * A snapshot restore (POST /api/snapshots/{id}/restore in the snapshots mock): the model's elements and settings become the
+   * snapshot's, with one change set for every element that differs or went.
+   */
+  replaceAll(next: readonly Entry[], settings: Json): ChangeSet {
+    const changed: ChangeSet["changed"] = [];
+    const deleted: string[] = [];
+    const incoming = new Map(next.map((e) => [e.id, e]));
+    for (const [id, entry] of incoming) {
+      const old = this.entries.get(id);
+      if (old && old.hash === entry.hash && old.path === entry.path) continue;
+      changed.push({ id, kind: entry.json.kind as ElementKind, path: entry.path, hash: entry.hash });
+      this.changedPaths.add(entry.path);
+    }
+    for (const [id, entry] of this.entries)
+      if (!incoming.has(id)) {
+        deleted.push(id);
+        this.changedPaths.add(entry.path);
+      }
+    this.entries.clear();
+    for (const entry of next) this.entries.set(entry.id, { ...entry, json: clone(entry.json) });
+    if (!jsonEqual(settings, this.settingsJson)) {
+      this.settingsJson = clone(settings);
+      this.settingsHash = sha256Hex(serialize(this.settingsJson));
+      this.changedPaths.add(`${PREFIX}maquettiste.json`);
+      this.version++;
+      this.options.onSettingsChanged?.(this.settingsHash);
+    }
+    const set: ChangeSet = { changed, deleted, source: "editor", truncated: false, isEmpty: changed.length === 0 && deleted.length === 0 };
+    if (!set.isEmpty) {
+      this.version++;
+      this.options.onChanged?.(set);
+    }
+    return set;
+  }
+
+  /**
    * POST /api/model/format: rewrites model files in canonical form (ModelStore.FormatAsync). The mock writes its JSON as it always
    * does; what changes is that the file leaves `nonCanonical`, and maquettiste.json loses the retired `commit` flags. `paths`
    * absent means every model file; a path that is not maquettiste.json or an element file refuses the whole call.

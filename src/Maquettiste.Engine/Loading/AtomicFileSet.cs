@@ -32,8 +32,8 @@ internal sealed class AtomicFileSet(IOutputPathPolicy paths, string modelRoot, A
     public async Task<FileSetFailure?> ApplyAsync(IReadOnlyList<(string Path, byte[] Bytes)> writes, IReadOnlyList<string> deletes, string batchId, CancellationToken ct)
     {
         var ordered = writes.OrderBy(w => w.Path, StringComparer.Ordinal).ToList();
-        var toDelete = deletes.Where(d => !ordered.Any(w => string.Equals(w.Path, d, StringComparison.Ordinal))).Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal).ToList();
+        var written = ordered.Select(w => w.Path).ToHashSet(StringComparer.Ordinal);
+        var toDelete = deletes.Where(d => !written.Contains(d)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
 
         var staged = new List<Staged>();
         foreach (var (path, bytes) in ordered)

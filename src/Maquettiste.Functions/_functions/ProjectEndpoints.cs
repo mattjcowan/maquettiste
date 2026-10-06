@@ -84,9 +84,14 @@ public static class ProjectEndpoints
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the settings document.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/project/settings")]
-    public static Task<IResult> GetSettings(HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> GetSettings(HttpContext context, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
         var document = await store.GetSettingsAsync(ct).ConfigureAwait(false);

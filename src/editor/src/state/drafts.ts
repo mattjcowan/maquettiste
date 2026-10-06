@@ -9,6 +9,7 @@ import { applySaveResult, keys } from "@/api/queries";
 import { ApiProblem } from "@/api/client";
 import { clone, jsonEqual } from "@/lib/json";
 import type { Draft, EditorStore } from "./store";
+import { SNAPSHOT_READ_ONLY, snapshotScope } from "@/api/snapshotScope";
 
 export interface DraftDeps {
   store: EditorStore;
@@ -54,6 +55,11 @@ export class DraftManager {
     update: (json: ModelJson) => ModelJson | void,
     options: { channel?: Draft["channel"]; base?: ElementDocument; followUp?: boolean; label?: string } = {},
   ): void {
+    // As of a snapshot nothing is edited (and nothing could be saved): the view keeps the snapshot's document.
+    if (snapshotScope()) {
+      this.state.notify(SNAPSHOT_READ_ONLY, "error");
+      return;
+    }
     let draft = this.state.drafts[id];
     const followUp = !!options.followUp && (draft ? draft.followUp === true : true);
     const label = options.label ?? draft?.label;

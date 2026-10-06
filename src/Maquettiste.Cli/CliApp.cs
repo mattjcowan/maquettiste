@@ -201,6 +201,21 @@ public sealed class CliApp(CliEnvironment environment)
           model materialize entities --database <id|name> --package <id|name> <table...>
                                 Write an entity per table or view, bound to it, and a relation per foreign key between them:
                                   --dry-run, --format text|json
+          snapshot create <name>
+                                Take a snapshot of the model (a zip under .maquettiste/model-snapshots/): --description,
+                                  --packs (hold the template packs too), --format text|json
+          snapshot list         The snapshots, newest first (--format text|json)
+          snapshot show <id>    One snapshot's metadata (--format text|json)
+          snapshot delete <id>  Delete a snapshot (--format text|json)
+          snapshot compare <from> [<to>]
+                                What differs: snapshot ids or working (default to: working); --element <id> for one
+                                  element's fields, --format text|json
+          snapshot restore <id> Preview making the working model the snapshot's; --apply restores it after a safety
+                                  snapshot (before-restore-<time>; restore that one to undo), --packs, --format text|json
+          snapshot export <id> --out <file>
+                                Copy a snapshot's archive out of the model folder
+          snapshot import <file>
+                                Check an exported archive and store it as a new snapshot (--format text|json)
           mcp                   Serve the model to agents over the Model Context Protocol (stdio; see docs/mcp.md)
 
         Global options:
@@ -255,6 +270,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "seed" => await SeedCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "process" => await ProcessCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "model" => await ModelCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "snapshot" => await SnapshotCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "mcp" => await McpCommand.RunAsync(context, ct).ConfigureAwait(false),
                 _ => throw new UsageException($"Unknown command '{command}'. Run 'maquettiste --help'."),
             };

@@ -102,6 +102,10 @@
       "description": "The assistant panel (SPEC Section 14 \"Assist\", erratum E44) over the host's AI; proposals are applied through the model batch."
     },
     {
+      "name": "snapshots",
+      "description": "Named, immutable copies of the whole model (zip archives under `.maquettiste/model-snapshots/`); list, take, open read-only with `?snapshot=`, compare, restore, export and import (docs/engineering/snapshots.md)."
+    },
+    {
       "name": "realtime",
       "description": "Events pushed over the host's SignalR hub (`webhooks`); the browser listens with `site.realtime.on`."
     }
@@ -516,6 +520,11 @@
         "summary": "The canonical maquettiste.json with its hash",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E3 ModelStore.GetSettingsAsync",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          }
+        ],
         "responses": {
           "200": {
             "description": "The settings document.",
@@ -534,6 +543,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       },
@@ -797,6 +809,9 @@
         "x-engine-addition": "E5e ModelReads.IndexTag(summaries)",
         "parameters": [
           {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          },
+          {
             "$ref": "#/components/parameters/IfNoneMatch"
           },
           {
@@ -961,6 +976,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "503": {
             "$ref": "#/components/responses/ModelUnavailable"
           }
@@ -977,6 +995,11 @@
         "description": "E5b: the documents of up to 200 element or sub-element ids, read from one model snapshot, for diagram and inspector\nloads (one request per chunk of ids instead of one per element). Each document comes back once, in the order its first\nid was asked for; ids that match nothing are listed in `missing`. More than 200 ids is `bad-request`.\n",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E5b ModelStore.ReadElementsAsync(ids)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1010,6 +1033,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "503": {
             "$ref": "#/components/responses/ModelUnavailable"
           }
@@ -1027,6 +1053,9 @@
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelPages.Kinds(summaries, byPackage)",
         "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          },
           {
             "name": "by",
             "in": "query",
@@ -1175,6 +1204,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
           },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "503": {
             "$ref": "#/components/responses/ModelUnavailable"
           }
@@ -1192,6 +1224,9 @@
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
         "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          },
           {
             "name": "scope",
             "in": "query",
@@ -1497,6 +1532,9 @@
         "x-maquettiste-engine": "ModelPages.ReadElements(snapshot, ids, filter, fields, cursor, limit)",
         "parameters": [
           {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          },
+          {
             "name": "ids",
             "in": "query",
             "description": "Comma-separated element or sub-element ids.",
@@ -1588,6 +1626,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "503": {
             "$ref": "#/components/responses/ModelUnavailable"
@@ -1871,6 +1912,9 @@
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelStore.GetElementAsync",
         "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          },
           {
             "$ref": "#/components/parameters/IfNoneMatch"
           }
@@ -3371,6 +3415,11 @@
         "description": "Every reference to the element or one of its sub-elements from another element.",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelStore.GetReferencesAsync (404 when ModelStore.GetElementAsync finds nothing)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          }
+        ],
         "responses": {
           "200": {
             "description": "The references.",
@@ -3453,6 +3502,11 @@
         "description": "An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a validation reports what generation would.",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelStore.ValidateAsync(scope)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          }
+        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -3521,6 +3575,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -3587,6 +3644,11 @@
         "summary": "Diagram membership, positions and viewport",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelStore.GetElementAsync (404 not-a-diagram unless kind is diagram)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          }
+        ],
         "responses": {
           "200": {
             "description": "The diagram document.",
@@ -4124,6 +4186,11 @@
         "description": "The physical model after conventions, mappings and table overlays are applied: every table (synthesized,\ndesigned or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and\nevery view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,\nview, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,\nproperties, generation hints); a synthesized table without an overlay, or a synthesized column without an\noverlay entry, has none. The Database workspace draws table diagrams from it and an entity's Storage tab\nreads its binding sources' columns from it. A model with errors returns `view: null` and the diagnostics.\n",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E1 GenerationService.GetDatabaseViewAsync(databaseId)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          }
+        ],
         "responses": {
           "200": {
             "description": "The view, or the diagnostics that prevented resolution.",
@@ -4159,6 +4226,11 @@
         "description": "E5c: a projection of the resolved database for the explorer's Databases and Mappings sections, table-name search and\nthe coverage line: every table's key, name, schema, origin, entity or relation and column count, without the columns.\nUnlike `/view` it answers on a model with errors: the tables whose owning elements are valid come back, the rest are\nleft out, `partial` is true and the diagnostics say why. The editor keeps the last complete list per database and\nshows it with a stale badge while a response is partial. Per model version the server validates the model once and\nresolves each database asked for on its own (the conceptual layer and that database), so a change costs one database's\nresolve; `diagnostics` then holds the validation diagnostics and that database's resolution diagnostics.\n",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E5c DatabaseTables.GetAsync(databaseId)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          }
+        ],
         "responses": {
           "200": {
             "description": "The tables that resolve, the diagnostics, and whether the list is partial.",
@@ -4203,6 +4275,11 @@
         "description": "E5f: one `TableView` (columns with `attributeId`, primary key, foreign keys, unique constraints, indexes) for a table's\nchildren in the explorer and column-level \"mapped by\", without `/view`'s every table. A projection of the same\nper-version resolve as `/tables`: after the first call for a database and model version, a lookup. Like `/tables` it\nanswers on a model with errors; `table` is null when no table of the database has the key or when the table is left\nout because an owning element has errors (`partial` then says so).\n",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E5f DatabaseTables.GetTableAsync(databaseId, key)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          }
+        ],
         "responses": {
           "200": {
             "description": "The table (or null), the diagnostics, and whether the model has errors.",
@@ -6180,6 +6257,9 @@
         "x-maquettiste-engine": "GenerationService.PreviewAsync(pack, unit, elementId, options)",
         "parameters": [
           {
+            "$ref": "#/components/parameters/SnapshotQuery"
+          },
+          {
             "name": "X-Maquettiste-Client",
             "in": "header",
             "required": false,
@@ -6283,6 +6363,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "409": {
             "description": "`superseded`: a newer request of this kind with the same `X-Maquettiste-Client` cancelled this one on the server\n(one request of each kind is in flight per client key, generation-ui.md section 5.2).\n",
@@ -7863,6 +7946,476 @@
           }
         }
       }
+    },
+    "/api/snapshots": {
+      "get": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "listSnapshots",
+        "summary": "Every snapshot of the model, newest first",
+        "description": "The archives under `.maquettiste/model-snapshots/`, newest first (then by id). Each row comes from the archive's\n`snapshot.json` (cached by file stamp), never from loading the model it holds.\n",
+        "x-maquettiste-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "The snapshots.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SnapshotInfo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "createSnapshot",
+        "summary": "Take a snapshot of the working model",
+        "description": "Writes a deterministic zip of `maquettiste.json`, `model/`, `extensions/` and `branding/` (and `templates/` when\n`includePacks` is true) under `.maquettiste/model-snapshots/<id>.zip`. The id is the kebab-case name and the UTC time\n(`<slug>-<yyyymmdd-hhmmss>`, `-2` on a collision) and never changes. An explicit action: it reads the whole model folder,\nin parallel chunks streamed into the archive.\n",
+        "x-maquettiste-role": "editor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotCreateBody"
+              },
+              "example": {
+                "name": "Release 1 model",
+                "description": "What went to review on Monday.",
+                "includePacks": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The snapshot. `Location` names it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/api/snapshots/compare": {
+      "get": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "compareSnapshots",
+        "summary": "What differs between two snapshots, or a snapshot and the working model",
+        "description": "`from` and `to` are snapshot ids or `working` (`to` defaults to `working`). Documents are compared by hash first, so only\nthe indexes are read: elements are matched by id (added, removed, or changed; a rename or a move says so with\n`previousName` and `previousPath`), the other documents (settings, locale shards, extensions, sidecars, branding, and the\npacks when both sides hold them) by path. The element list is ordered by kind, name and id and paged by `offset` and\n`limit`; `next` is the offset of the next page. The fields of one element come from `/api/snapshots/compare/element`.\n",
+        "x-maquettiste-role": "viewer",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "working"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 500
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The differences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotComparison"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/snapshots/compare/element": {
+      "get": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "compareSnapshotElement",
+        "summary": "One element on both sides of a comparison",
+        "description": "The element's two documents (`before` on the `from` side, `after` on the `to` side), in the form the conflict view renders\nthem, and the fields that differ as JSON pointers (objects by key, arrays of objects with ids matched by id, other arrays\nby position when their lengths match, else whole), at most 500 (`fieldsTruncated`).\n",
+        "x-maquettiste-role": "viewer",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "working"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The element on both sides.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotElementDiff"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/snapshots/import": {
+      "post": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "importSnapshot",
+        "summary": "Import an exported snapshot",
+        "description": "The body is the archive, `Content-Type: application/zip` (the one body the sign-in gate takes that is not JSON). It is copied\nto the cache folder (512 MB at most), checked (a zip; every entry a safe path of the snapshot layout, no duplicate even\nignoring case, at most 64 MB each, 4 GB together, 500,000 entries, no entry over 1 MB that expands more than 200 times; a\n`snapshot.json` of format 1 and a model format this release reads), rewritten the way the engine writes archives, and loaded\nonce: a document that does not parse (MQ1001), is not canonical (MQ1003) or names an unsupported format (MQ1007) refuses it.\nIt is stored under a new id; the working model is never touched. The host bounds a request body too (536,870,912\nbytes in static-site-hosting 0.4.0, the same 512 MiB): a body over it is the same 413 with `tooLarge` and MQ1011, and\nthe command line (`maquettiste snapshot import`) has no such bound.\n",
+        "x-maquettiste-role": "maintainer",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotImportResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "description": "The archive is over a size or count limit (MQ1011).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotImportResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The archive is refused; `diagnostics` says why (MQ1011, MQ1001, MQ1003, MQ1007).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotImportResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/snapshots/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SnapshotId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "getSnapshot",
+        "summary": "One snapshot",
+        "x-maquettiste-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "The snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "updateSnapshot",
+        "summary": "Rename, describe or publish a snapshot",
+        "description": "Rewrites only the archive's last entry, `snapshot.json`; the id and the documents stay as they are.",
+        "x-maquettiste-role": "editor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotPatchBody"
+              },
+              "example": {
+                "published": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "deleteSnapshot",
+        "summary": "Delete a snapshot",
+        "x-maquettiste-role": "maintainer",
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/snapshots/{id}/restore": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SnapshotId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "restoreSnapshot",
+        "summary": "Replace the working model with a snapshot's content",
+        "description": "One operation: refused with 409 `run-locked` while a generation run holds the run lock (the restore then holds it); first a\nsafety snapshot of the working model (`before-restore-<yyyymmdd-hhmmss>`, holding the packs when they are restored); then\nevery document that differs is written and every document the snapshot does not have is deleted, all or nothing, and the\nmodel reloads and publishes one `model.changed`. The packs are restored only when the snapshot holds them and `includePacks`\nis true. Restoring the safety snapshot undoes it (`undo` says so); the editor's undo stack is not involved. The body is\noptional.\n",
+        "x-maquettiste-role": "maintainer",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotRestoreBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotRestoreResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "A generation run holds the run lock (`run-locked`); nothing changed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The write was refused by the path policy (MQ6004); nothing changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotRestoreResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/snapshots/{id}/export": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SnapshotId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "snapshots"
+        ],
+        "operationId": "exportSnapshot",
+        "summary": "Download a snapshot's archive",
+        "description": "The archive as stored, which is the deterministic zip (`Content-Disposition` names it `<id>.zip`); `POST /api/snapshots/import` takes it back.",
+        "x-maquettiste-role": "editor",
+        "responses": {
+          "200": {
+            "description": "The archive.",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "webhooks": {
@@ -8152,6 +8705,27 @@
       }
     },
     "parameters": {
+      "SnapshotId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).",
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "example": "release-1-model-20261005-120000"
+      },
+      "SnapshotQuery": {
+        "name": "snapshot",
+        "in": "query",
+        "required": false,
+        "description": "Read the model \"as of\" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is\nopened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.\nOnly the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400\n`snapshot-unsupported`, and any write with 409 `snapshot-read-only`.\n",
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        }
+      },
       "PackName": {
         "name": "pack",
         "in": "path",
@@ -8345,6 +8919,22 @@
       }
     },
     "responses": {
+      "Forbidden": {
+        "description": "The caller's role is below the one the operation needs (`forbidden`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "This needs the maintainer role.",
+              "status": 403,
+              "code": "forbidden"
+            }
+          }
+        }
+      },
       "BadRequest": {
         "description": "The body is not JSON or not the expected shape (`bad-request`), or is larger than 4 MB (`too-large`). The sign-in gate refuses a `POST` or `PUT` that is not `application/json` with 415 `unsupported-media-type`, and a foreign `Origin` with 403 `forbidden-origin`, before any handler runs.",
         "content": {
@@ -8529,7 +9119,10 @@
               "internal",
               "assist-not-configured",
               "assist-budget-exhausted",
-              "assist-busy"
+              "assist-busy",
+              "run-locked",
+              "snapshot-read-only",
+              "snapshot-unsupported"
             ]
           },
           "traceId": {
@@ -22415,6 +23008,530 @@
           "truncated": {
             "type": "boolean",
             "description": "Whether older exchanges were dropped to keep the conversation under its size cap."
+          }
+        }
+      },
+      "SnapshotInfo": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotInfo",
+        "description": "A model snapshot as `snapshot.json` describes it, with the archive's size.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "author",
+          "createdUtc",
+          "origin",
+          "published",
+          "includesPacks",
+          "modelHash",
+          "modelFormat",
+          "engine",
+          "files",
+          "elements",
+          "kinds",
+          "size"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "description": "The archive's file name without `.zip` (`<slug>-<yyyymmdd-hhmmss>`); never changes.",
+            "example": "release-1-model-20261005-120000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string",
+            "description": "Who took it; empty when unknown."
+          },
+          "createdUtc": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+            "example": "2026-10-05T12:00:00Z"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "user",
+              "before-restore"
+            ],
+            "description": "`before-restore` for the safety snapshot a restore takes first."
+          },
+          "published": {
+            "type": "boolean",
+            "description": "Marked as ready for review."
+          },
+          "includesPacks": {
+            "type": "boolean"
+          },
+          "modelHash": {
+            "type": "string",
+            "description": "The hash over every document's path and hash, the packs aside (the model it was taken from)."
+          },
+          "modelFormat": {
+            "type": "integer"
+          },
+          "engine": {
+            "type": "string",
+            "description": "The release that took it."
+          },
+          "files": {
+            "type": "integer"
+          },
+          "elements": {
+            "type": "integer"
+          },
+          "kinds": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "size": {
+            "type": "integer",
+            "description": "The archive's size in bytes."
+          }
+        }
+      },
+      "SnapshotCreateBody": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "includePacks": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": false,
+            "description": "Hold the template packs too, so generating from the snapshot reproduces exactly."
+          }
+        }
+      },
+      "SnapshotPatchBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "published": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "SnapshotRestoreBody": {
+        "type": "object",
+        "properties": {
+          "includePacks": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": false
+          }
+        }
+      },
+      "SnapshotKindChanges": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotKindChanges",
+        "type": "object",
+        "required": [
+          "kind",
+          "added",
+          "removed",
+          "changed"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "added": {
+            "type": "integer"
+          },
+          "removed": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "integer"
+          }
+        }
+      },
+      "SnapshotElementChange": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotElementChange",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "change",
+          "path"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "The model-relative path on the `to` side (`from` for a removed element)."
+          },
+          "previousName": {
+            "type": "string",
+            "description": "The name on the `from` side, when it was renamed."
+          },
+          "previousPath": {
+            "type": "string",
+            "description": "The path on the `from` side, when the file moved."
+          }
+        }
+      },
+      "SnapshotFileChange": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotFileChange",
+        "type": "object",
+        "required": [
+          "path",
+          "change"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed"
+            ]
+          }
+        }
+      },
+      "SnapshotComparison": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotComparison",
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "added",
+          "removed",
+          "changed",
+          "kinds",
+          "elements",
+          "next",
+          "files",
+          "filesTruncated",
+          "packsCompared"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "added": {
+            "type": "integer"
+          },
+          "removed": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "integer"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotKindChanges"
+            }
+          },
+          "elements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotElementChange"
+            }
+          },
+          "next": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The offset of the next page, or null after the last."
+          },
+          "files": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/components/schemas/SnapshotFileChange"
+            }
+          },
+          "filesTruncated": {
+            "type": "boolean"
+          },
+          "packsCompared": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SnapshotFieldChange": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotFieldChange",
+        "type": "object",
+        "required": [
+          "pointer",
+          "change",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "pointer": {
+            "type": "string",
+            "description": "A JSON pointer in the document (`\"\"` for the whole document)."
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed"
+            ]
+          },
+          "before": {},
+          "after": {}
+        }
+      },
+      "SnapshotElementDiff": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotElementDiff",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "change",
+          "fromPath",
+          "toPath",
+          "fromHash",
+          "toHash",
+          "before",
+          "after",
+          "fields",
+          "fieldsTruncated"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed",
+              "unchanged"
+            ]
+          },
+          "fromPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "toPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fromHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "toHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "before": {
+            "description": "The document on the `from` side, or null.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "after": {
+            "description": "The document on the `to` side, or null.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "fields": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "$ref": "#/components/schemas/SnapshotFieldChange"
+            }
+          },
+          "fieldsTruncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SnapshotRestoreResult": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotRestoreResult",
+        "type": "object",
+        "required": [
+          "outcome",
+          "snapshot",
+          "safety",
+          "written",
+          "deleted",
+          "packsRestored",
+          "undo",
+          "elementsChanged",
+          "elementsDeleted",
+          "diagnostics"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "restored",
+              "not-found",
+              "locked",
+              "refused"
+            ]
+          },
+          "snapshot": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "safety": {
+            "description": "The snapshot of the working model taken just before; restoring it undoes the restore.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "written": {
+            "type": "integer"
+          },
+          "deleted": {
+            "type": "integer"
+          },
+          "packsRestored": {
+            "type": "boolean"
+          },
+          "undo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "elementsChanged": {
+            "type": "integer"
+          },
+          "elementsDeleted": {
+            "type": "integer"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "SnapshotImportResult": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotImportResult",
+        "type": "object",
+        "required": [
+          "snapshot",
+          "diagnostics",
+          "tooLarge"
+        ],
+        "properties": {
+          "snapshot": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          },
+          "tooLarge": {
+            "type": "boolean"
           }
         }
       },

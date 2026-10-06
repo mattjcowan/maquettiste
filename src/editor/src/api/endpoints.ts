@@ -49,6 +49,14 @@ import type {
   MaterializeBody,
   MaterializePlan,
   MaterializeStatus,
+  Problem,
+  SnapshotComparison,
+  SnapshotCreateBody,
+  SnapshotElementDiff,
+  SnapshotImportResult,
+  SnapshotInfo,
+  SnapshotPatchBody,
+  SnapshotRestoreResult,
 } from "./types";
 
 function must<T>(data: T | undefined, response: Response): T {
@@ -577,4 +585,84 @@ export async function getTranslations(
 export async function saveTranslations(locale: string, body: TranslationWrite): Promise<TranslationWriteResult & { status: number }> {
   const { data, error, response } = await api().PUT("/api/localization/{locale}/entries", { params: { path: { locale } }, body });
   return { ...record<TranslationWriteResult>(data, error, response), status: response.status };
+}
+
+// ---------------------------------------------------------------- model snapshots (docs/engineering/snapshots.md)
+
+/** Every snapshot, newest first (each row from the archive's metadata; nothing is loaded). */
+export async function listSnapshots(): Promise<SnapshotInfo[]> {
+  const { data, response } = await api().GET("/api/snapshots");
+  return must(data, response);
+}
+
+/** Takes a snapshot of the working model; the packs only when `includePacks` (editor). */
+export async function createSnapshot(body: SnapshotCreateBody): Promise<SnapshotInfo> {
+  const { data, response } = await api().POST("/api/snapshots", { body });
+  return must(data, response);
+}
+
+/** Renames, describes or publishes a snapshot; the id and the documents stay (editor). */
+export async function updateSnapshot(id: string, body: SnapshotPatchBody): Promise<SnapshotInfo> {
+  const { data, response } = await api().PATCH("/api/snapshots/{id}", { params: { path: { id } }, body });
+  return must(data, response);
+}
+
+/** Deletes a snapshot (maintainer). */
+export async function deleteSnapshot(id: string): Promise<void> {
+  await api().DELETE("/api/snapshots/{id}", { params: { path: { id } } });
+}
+
+/** One page of what differs between `from` and `to` (snapshot ids or `working`), elements by kind, name and id. */
+export async function compareSnapshots(from: string, to: string, offset = 0, limit = 500): Promise<SnapshotComparison> {
+  const { data, response } = await api().GET("/api/snapshots/compare", { params: { query: { from, to, offset, limit } } });
+  return must(data, response);
+}
+
+/** One element on both sides of a comparison: both documents whole and the fields that differ. */
+export async function compareSnapshotElement(from: string, to: string, id: string): Promise<SnapshotElementDiff> {
+  const { data, response } = await api().GET("/api/snapshots/compare/element", { params: { query: { from, to, id } } });
+  return must(data, response);
+}
+
+/** Replaces the working model with the snapshot after a safety snapshot; 409 `run-locked` while generation runs (maintainer). */
+export async function restoreSnapshot(id: string, includePacks: boolean): Promise<SnapshotRestoreResult> {
+  const { data, error, response } = await api().POST("/api/snapshots/{id}/restore", { params: { path: { id } }, body: { includePacks } });
+  return record<SnapshotRestoreResult>(data, error, response);
+}
+
+/** Where a snapshot's archive downloads from (a zip, not JSON, so it is not read through the client). */
+export const snapshotExportUrl = (id: string): string => `/api/snapshots/${encodeURIComponent(id)}/export`;
+
+/** The archive's bytes (the mock's service worker answers fetches, not downloads). */
+export async function exportSnapshot(id: string): Promise<Blob> {
+  const response = await fetch(snapshotExportUrl(id), { headers: { Accept: "application/zip, application/problem+json" } });
+  if (!response.ok) throw await problemOf(response);
+  return response.blob();
+}
+
+/**
+ * Imports an exported archive, sent as the `application/zip` body (the one body the sign-in gate takes that is not JSON):
+ * the stored snapshot, or the refusal with its diagnostics (413 over a limit, 422 refused). A body the host refuses before
+ * the engine reads it (a request size limit) is a thrown ApiProblem.
+ */
+export async function importSnapshot(file: Blob): Promise<SnapshotImportResult & { status: number }> {
+  const response = await fetch("/api/snapshots/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/zip", Accept: "application/json, application/problem+json" },
+    body: file,
+  });
+  const type = response.headers.get("Content-Type") ?? "";
+  if (/problem\+json/i.test(type) || !/json/i.test(type)) throw await problemOf(response);
+  return { ...((await response.json()) as SnapshotImportResult), status: response.status };
+}
+
+async function problemOf(response: Response): Promise<ApiProblem> {
+  let body: Problem | null = null;
+  try {
+    if (/json/i.test(response.headers.get("Content-Type") ?? "")) body = (await response.json()) as Problem;
+  } catch {
+    body = null;
+  }
+  const fallback = response.status === 413 ? "The archive is larger than the server accepts." : `HTTP ${response.status}`;
+  return new ApiProblem(response.status, body, fallback);
 }

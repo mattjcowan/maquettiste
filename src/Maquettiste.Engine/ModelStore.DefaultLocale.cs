@@ -195,19 +195,19 @@ public sealed partial class ModelStore
         foreach (var (repoPath, (json, document)) in elements)
         {
             if (KindInfo.TryGet(document.Element.KindName, out var info))
-                writes.Add((paths.FullPath(paths.FromRepoPath(repoPath)), _services.Json.Write(json, info.SchemaFile, repoPath)));
+                writes.Add((paths.FromRepoPath(repoPath), _services.Json.Write(json, info.SchemaFile, repoPath)));
         }
 
         foreach (var (modelPath, json) in shards)
         {
             if (json["entries"] is JsonObject { Count: > 0 })
-                writes.Add((paths.FullPath(modelPath), _services.Json.Write(json, "locale.json", paths.ToRepoPath(modelPath))));
+                writes.Add((modelPath, _services.Json.Write(json, "locale.json", paths.ToRepoPath(modelPath))));
             else if (expected[modelPath].Length > 0)
-                deletes.Add(paths.FullPath(modelPath));
+                deletes.Add(modelPath);
         }
 
         var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
-        var failure = await new AtomicFileSet(_services.EnginePaths, paths.ModelRoot).ApplyAsync(writes, deletes, batchId, ct).ConfigureAwait(false);
+        var failure = await Documents.ApplyAsync(writes, deletes, batchId, ct).ConfigureAwait(false);
         if (failure is { Refused: true })
             return new DefaultLocaleResult(SaveOutcome.Invalid, old, locale, moves, skipped, false,
                 [RuleCatalog.Create("MQ6004", $"The model write to {failure.Path} was refused: {failure.Reason}", null, null, null)]);

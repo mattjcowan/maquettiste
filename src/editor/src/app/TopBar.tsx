@@ -15,6 +15,10 @@ import { LocaleSwitcher } from "@/l10n/LocaleSwitcher";
 import { LocalizationSync } from "@/l10n/queries";
 import { useBrandingView } from "./branding";
 import { PanelToggle } from "./panels";
+import { SnapshotPicker } from "@/snapshots/SnapshotPicker";
+import { AsOfBanner } from "@/snapshots/AsOfBanner";
+import { useSnapshotScope } from "@/snapshots/state";
+import { withSnapshotParam } from "@/api/snapshotScope";
 
 const THEME_ICON = { system: Monitor, light: Sun, dark: Moon } as const;
 
@@ -34,13 +38,19 @@ export function TopBar() {
   const assistantOpen = useEditor(store, (s) => s.assistantOpen);
   const branding = useBrandingView();
   const ThemeIcon = THEME_ICON[theme];
+  const asOf = useSnapshotScope();
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
   return (
     <header className="flex h-[var(--mq-topbar-h)] shrink-0 items-center gap-2 border-b border-default bg-surface px-2" data-region="topbar">
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-28 items-center gap-2">
         <Tooltip content={LOGO_TOOLTIP}>
-          <Link to="/" aria-label={LOGO_TOOLTIP} className="shrink-0 rounded-control" data-testid="home-link">
+          <Link
+            to={{ pathname: "/", search: withSnapshotParam("", asOf) }}
+            aria-label={LOGO_TOOLTIP}
+            className="shrink-0 rounded-control"
+            data-testid="home-link"
+          >
             {branding.iconUrl ? (
               <img src={branding.iconUrl} alt="" aria-hidden className="size-6 rounded-control object-contain" data-testid="logo" />
             ) : (
@@ -55,11 +65,12 @@ export function TopBar() {
           </Link>
         </Tooltip>
         <div className="flex min-w-0 flex-col">
-          <Tooltip content={PROJECT_TOOLTIP}>
+          {/* The project name opens the snapshot picker: the working model and its snapshots. */}
+          <SnapshotPicker tooltip={PROJECT_TOOLTIP}>
             <h1 className={cn("truncate text-14 font-semibold", line && "leading-4")} data-testid="project-name">
               {branding.name}
             </h1>
-          </Tooltip>
+          </SnapshotPicker>
           {line ? (
             <Tooltip content={productTooltip(project.data)}>
               <span className="truncate text-11 leading-3 text-secondary" data-testid="product-line">
@@ -68,7 +79,7 @@ export function TopBar() {
             </Tooltip>
           ) : null}
         </div>
-        {git && !line && !hidden ? (
+        {git && !line && !hidden && !asOf ? (
           <span className="flex items-center gap-1 text-12 text-secondary" data-testid="git-status">
             <GitBranch className="size-3.5" aria-hidden />
             <span>{git.branch ?? "detached"}</span>
@@ -77,28 +88,35 @@ export function TopBar() {
         ) : null}
       </div>
 
+      <AsOfBanner />
+
       <button
         type="button"
         onClick={() => store.getState().setPaletteOpen(true)}
-        className="mx-auto flex h-6 w-full max-w-md items-center gap-2 rounded-control border border-input bg-app px-2 text-13 text-secondary hover:border-accent"
+        className="mx-auto flex h-6 w-full min-w-0 max-w-md items-center gap-2 rounded-control border border-input bg-app px-2 text-13 text-secondary hover:border-accent"
         aria-label="Open the command palette"
       >
         <Search className="size-4" aria-hidden />
-        <span className="flex-1 text-left">Go to element or run a command</span>
+        <span className="min-w-0 flex-1 truncate text-left">Go to element or run a command</span>
         <Kbd>{isMac ? "⌘K" : "Ctrl K"}</Kbd>
       </button>
 
-      <div className="flex items-center gap-1" data-testid="topbar-controls">
+      <div className="flex shrink-0 items-center gap-1" data-testid="topbar-controls">
         <LocalizationSync />
         {hidden ? null : (
           <>
             <LocaleSwitcher />
-            <Button variant="ghost" size="icon" label="Undo" shortcut="Ctrl+Z" disabled={!canUndo} onClick={() => void undo()}>
-              <Undo2 />
-            </Button>
-            <Button variant="ghost" size="icon" label="Redo" shortcut="Ctrl+Shift+Z" disabled={!canRedo} onClick={() => void redo()}>
-              <Redo2 />
-            </Button>
+            {/* A snapshot shown as of is read-only: nothing to undo there (the working model's steps wait for the way back). */}
+            <span className="inline-flex" title={asOf ? "Undo is off while a snapshot is shown (read-only)" : undefined}>
+              <Button variant="ghost" size="icon" label="Undo" shortcut="Ctrl+Z" disabled={!canUndo || !!asOf} onClick={() => void undo()}>
+                <Undo2 />
+              </Button>
+            </span>
+            <span className="inline-flex" title={asOf ? "Redo is off while a snapshot is shown (read-only)" : undefined}>
+              <Button variant="ghost" size="icon" label="Redo" shortcut="Ctrl+Shift+Z" disabled={!canRedo || !!asOf} onClick={() => void redo()}>
+                <Redo2 />
+              </Button>
+            </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" label={`Theme: ${theme}`} data-testid="theme-menu">
@@ -130,8 +148,9 @@ export function TopBar() {
         <Button
           variant="ghost"
           size="icon"
-          label="Assistant"
+          label={asOf ? "Assistant (not available for a snapshot)" : "Assistant"}
           shortcut="Ctrl+I"
+          disabled={!!asOf}
           aria-pressed={assistantOpen}
           aria-controls={assistantOpen ? "mq-assistant" : undefined}
           className={cn(assistantOpen && "bg-accent-subtle")}

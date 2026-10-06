@@ -1,6 +1,59 @@
 {
   "tools": [
     {
+      "name": "compare_snapshots",
+      "title": "Compare snapshots",
+      "description": "What differs between two models, each a snapshot id (list_snapshots) or working (the working model): {from, to, added, removed, changed, kinds: [{kind, added, removed, changed}], elements: [{id, kind, name, change, path, previousName, previousPath}], next, files: [{path, change}], filesTruncated, packsCompared}. Elements are matched by id and compared by hash (a rename or a moved file says so); the other documents (settings, locale shards, extensions, sidecars) by path. Pages by offset and limit (next is the next offset). With id, one element instead: its two documents (before, after) and the fields that differ as JSON pointers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "description": "A snapshot id or working; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "to": {
+            "description": "A snapshot id or working (default working).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "id": {
+            "description": "An element id: answer with that element's two documents and changed fields instead of the list.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "offset": {
+            "description": "The first element of the page (default 0).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 5000 (default 500).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "from"
+        ]
+      }
+    },
+    {
       "name": "get_database_view",
       "title": "Database view",
       "description": "The resolved physical view of one database: tables (from the entities mapped to it, by its byConvention setting or by mapping elements, their relations and overlays) with columns (dbTypeId when a column uses a database type), keys, indexes and foreign keys, views, sequences, routines (parameters and result with native types), database types (nativeName, isCreated), SQL objects (phase, dependsOn) and queries (parameters, sources, the select list with types, the trees as written, collections with their keys, and the SQL for the database's dialect), as generation sees them. Each table, view, sequence, routine, database type, SQL object and query carries its own file's annotations (displayName, pluralName, description, stereotypes, tags, category, properties, generation); a synthesized table without an overlay has none.",
@@ -419,6 +472,15 @@
       "name": "list_packs",
       "title": "Template packs",
       "description": "The template packs under .maquettiste/templates/ with their manifests (units, output roots, options) and the diagnostics of loading them.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list_snapshots",
+      "title": "Snapshots",
+      "description": "The model's snapshots (named copies of the whole model under .maquettiste/model-snapshots/), newest first: id, name, description, author, createdUtc, origin (user, or before-restore for the safety snapshot a restore takes), published, includesPacks, modelHash, files, elements and the count per kind. Compare one with the working model with compare_snapshots.",
       "inputSchema": {
         "type": "object",
         "properties": {}

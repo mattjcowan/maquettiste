@@ -23,9 +23,14 @@ public static class ValidationEndpoints
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the report, or 400.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpPost("/api/validate")]
-    public static Task<IResult> Validate(HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Validate(HttpContext context, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
         var (scope, error) = await Api.ReadJsonAsync(context.Request, ValidationScope.All, ct).ConfigureAwait(false);

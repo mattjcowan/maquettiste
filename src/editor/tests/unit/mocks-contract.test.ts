@@ -484,6 +484,39 @@ describe("mock contract", () => {
     expect((await call("get", `/api/model/resolved?database=${IDS.invoice}`, "/api/model/resolved")).status).toBe(404);
   });
 
+  it("answers the snapshot operations in contract shape, and a restore brings the model back", async () => {
+    const { status, payload: created } = await call("post", "/api/snapshots", "/api/snapshots", { name: "Before" });
+    expect(status).toBe(201);
+    const id = (created as { id: string }).id;
+    await call("get", "/api/snapshots", "/api/snapshots");
+    await call("get", `/api/snapshots/${id}`, "/api/snapshots/{id}");
+    const { payload: patched } = await call("patch", `/api/snapshots/${id}`, "/api/snapshots/{id}", { published: true });
+    expect((patched as { published: boolean }).published).toBe(true);
+
+    const { payload: element } = await call("get", `/api/model/elements/${IDS.payment}`, "/api/model/elements/{id}");
+    const document = element as { hash: string; json: Record<string, unknown> };
+    await call(
+      "put",
+      `/api/model/elements/${IDS.payment}`,
+      "/api/model/elements/{id}",
+      { ...document.json, name: "Settlement" },
+      { "If-Match": `"${document.hash}"` },
+    );
+
+    const { payload: compared } = await call("get", `/api/snapshots/compare?from=${id}`, "/api/snapshots/compare");
+    expect((compared as { elements: { id: string; previousName?: string }[] }).elements).toEqual([
+      expect.objectContaining({ id: IDS.payment, previousName: "Payment" }),
+    ]);
+    const { payload: detail } = await call("get", `/api/snapshots/compare/element?from=${id}&id=${IDS.payment}`, "/api/snapshots/compare/element");
+    expect((detail as { fields: { pointer: string }[] }).fields.map((f) => f.pointer)).toContain("/name");
+
+    const { payload: restored } = await call("post", `/api/snapshots/${id}/restore`, "/api/snapshots/{id}/restore", {});
+    expect((restored as { safety: { origin: string } }).safety.origin).toBe("before-restore");
+    expect(mock.backend.model.get(IDS.payment)!.json.name).toBe("Payment");
+    expect((await call("get", "/api/snapshots/missing-20260101-000000", "/api/snapshots/{id}")).status).toBe(404);
+    expect((await call("delete", `/api/snapshots/${id}`, "/api/snapshots/{id}")).status).toBe(204);
+  });
+
   it("answers every contract operation from the baseline (first example), in contract shape", () => {
     const operations = baselineOperations();
     const declared = Object.entries(openapi.paths).flatMap(([, ops]) => Object.keys(ops).filter((m) => ["get", "put", "post", "delete", "patch"].includes(m)));

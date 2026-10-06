@@ -9,6 +9,7 @@
 // - Engine outcome records (SaveResult, BatchResult, SettingsSaveResult) are data at any status.
 import createClient, { type Client, type Middleware } from "openapi-fetch";
 import type { paths, Problem, ProblemCode } from "./types";
+import { scopedUrl, snapshotScope } from "./snapshotScope";
 
 export class ApiProblem extends Error {
   readonly status: number;
@@ -49,13 +50,34 @@ export function onApiProblem(listener: ProblemListener): () => void {
   return () => problemListeners.delete(listener);
 }
 
+/** The refusal the sign-in gate would answer for a request that a snapshot cannot serve, raised before it leaves the page. */
+export function snapshotRefusal(kind: "unsupported" | "read-only" | string, id: string): ApiProblem {
+  const readOnly = kind === "read-only";
+  const problem: Problem = {
+    type: "about:blank",
+    status: readOnly ? 409 : 400,
+    code: readOnly ? "snapshot-read-only" : "snapshot-unsupported",
+    title: readOnly
+      ? `Snapshot ${id} is read-only; go back to the working model to edit, or restore the snapshot.`
+      : `This view is not available for a snapshot; it answers for the working model only.`,
+  };
+  return new ApiProblem(problem.status, problem);
+}
+
 const contract: Middleware = {
-  onRequest({ request }) {
+  async onRequest({ request }) {
     if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
       request.headers.set("Content-Type", "application/json");
     }
     request.headers.set("Accept", "application/json, application/problem+json, text/x-diff, text/csv");
-    return request;
+    // As of a snapshot: its reads carry ?snapshot=, the rest is refused here (snapshotScope.ts).
+    const id = snapshotScope();
+    if (!id) return request;
+    const scoped = scopedUrl(request.method, request.url, id);
+    if (scoped.refused) throw snapshotRefusal(scoped.refused, id);
+    if (scoped.url === request.url) return request;
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.text();
+    return new Request(scoped.url, { method: request.method, headers: request.headers, body, signal: request.signal });
   },
   async onResponse({ request, response }) {
     const contentType = response.headers.get("Content-Type") ?? "";

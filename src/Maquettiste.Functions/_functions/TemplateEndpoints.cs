@@ -45,9 +45,14 @@ public static class TemplateEndpoints
     /// <param name="generation">The generation service.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the rendered files and diagnostics, or 400.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpPost("/api/templates/preview")]
-    public static Task<IResult> Preview(HttpContext context, GenerationService generation, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Preview(HttpContext context, GenerationService generation, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        generation = asOf.Generation ?? generation;
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(generation);
         var (request, error) = await Api.ReadJsonAsync<PreviewRequest>(context.Request, null, ct).ConfigureAwait(false);

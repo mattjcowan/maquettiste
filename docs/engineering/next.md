@@ -48,30 +48,43 @@ Open questions:
    require explicit closing.
 3. Do data-only migrations (backfills, no schema change) get revisions of their own? Proposed: yes, same kind.
 
-## 4. Model service: persistence providers, snapshots, a model library (proposal; needs answers)
+## 4. Model service: persistence providers, snapshots, a model library (phase A engine and server built; editor next)
 
 The model stops being only "the JSON files in this checkout" and becomes something an instance serves; generation stays
 something a checkout does. One central instance can hold many models (title, entity and table counts, last updated),
 each with snapshots (name, date) that can be opened read-only, restored, compared, exported and imported.
 
-Phases: A (a document store interface with the file provider as a pure refactor; instance capabilities, such as
-generation off; snapshots as bundles; a picker for this model's snapshots); B (an http provider, multi-model service
-mode, the library picker, `generate --model <url>`); C (a database provider with versions as history, accounts and
-single sign-on, per-model permissions, cross-model imports).
+**Built (2026-10-05, phase A, engine and server; docs/engineering/snapshots.md, erratum E45).** The document store
+interface under `ModelStore` with the model folder as its provider (a pure refactor) and a read-only snapshot archive as the
+second; snapshots as deterministic zip archives under `.maquettiste/model-snapshots/` (packs off by default, held on
+request): take, list, rename and publish, delete, open read-only ("as of", through `?snapshot=<id>` on the editor's model
+reads), compare (with each other or the working model; per-element fields on demand), restore (after a `before-restore-`
+safety snapshot; refused while generation runs), export and import; over the API (`/api/snapshots`, with the mock serving
+them), the CLI (`maquettiste snapshot …`) and the MCP tools (`list_snapshots`, `create_snapshot`, `compare_snapshots`,
+`restore_snapshot`).
 
-Decided: one central service, many models, one URL; working models are visible, and a snapshot can be marked published.
+**Editor built (2026-10-05; snapshots.md section 10).** The snapshot picker on the project name (search, take with packs off
+by default, import, and per snapshot open, compare, restore, export, rename, publish and delete, by role), the as-of mode
+(`?snapshot=<id>` in the URL, every read scoped and every write off, a one-line banner in the top bar), the compare view
+(changes by kind in pages, the conflict view's diff per element) and restore with "Undo: restore before-restore-…"; the mock
+serves as-of reads, export and import. An import over the host's 512 MiB request bound is now a 413 with MQ1011, not a 503.
+
+Left in phase A: instance capabilities (`model: read`, `generation: off`, `packs: read|off`); generating from a snapshot with its packs.
+
+Phases B (an http provider, multi-model service mode, the library picker, `generate --model <url>`) and C (a database
+provider with versions as history, accounts and single sign-on, per-model permissions, cross-model imports) are unchanged.
+
+Decided: one central service, many models, one URL; working models are visible, and a snapshot can be marked published;
+packs travel with a snapshot only when asked; compare is in phase A; snapshots are zip files on the file provider.
 
 Open questions:
 
-1. Who owns the packs: do templates travel with the model (served and snapshotted with it) or live in the developers'
-   repository?
-2. Do developers need a local copy of the model, or is `generate --model <url>` enough (and what about offline work)?
-3. Auth for the first cut: is one shared token per instance enough until accounts arrive?
-4. Is snapshot compare required in phase A, or can it follow once the bundle format exists?
-5. Should cross-model imports (shared vocabularies) be designed now, since they shape the bundle format?
-6. Should anything in a working model be hidden from a reviewer?
-7. Is the provider chosen by a config file in the instance (for example `maquettiste.config.json`) or by an environment
-   variable?
+1. Do developers need a local copy of the model, or is `generate --model <url>` enough (and what about offline work)?
+2. Auth for the first cut: is one shared token per instance enough until accounts arrive?
+3. Should cross-model imports (shared vocabularies) be designed now, since they shape the archive format (it can carry an
+   `imports` list later)?
+4. Should anything in a working model be hidden from a reviewer?
+5. Should a project keep its snapshots out of git (the product writes no ignore file), or are they model history to commit?
 
 ## 5. The assistant, next steps
 

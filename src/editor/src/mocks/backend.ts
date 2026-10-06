@@ -44,7 +44,10 @@ export type Scenario =
   | "lifecycle"
   | "chart400"
   | "legacy"
-  | "noai";
+  | "noai"
+  | "role-viewer"
+  | "role-editor"
+  | "role-maintainer";
 
 export interface MockBackendOptions {
   scenarios?: Scenario[];
@@ -86,6 +89,16 @@ export class MockBackend {
    * template is typed; `window.__mqMock.previewElapsedMs = 5000`).
    */
   previewElapsedMs: number | null = null;
+  /** A generation run holds the run lock: a restore answers 409 run-locked (`window.__mqMock.runLocked = true`). */
+  runLocked = false;
+
+  /** The signed-in role: `?mock=role-viewer`, `role-editor` or `role-maintainer`, else admin (the one role local mode has). */
+  get role(): "viewer" | "editor" | "maintainer" | "admin" {
+    if (this.scenarios.has("role-viewer")) return "viewer";
+    if (this.scenarios.has("role-editor")) return "editor";
+    if (this.scenarios.has("role-maintainer")) return "maintainer";
+    return "admin";
+  }
 
   constructor(options: MockBackendOptions = {}) {
     this.scenarios = new Set(options.scenarios ?? []);
@@ -322,6 +335,9 @@ export function scenariosFrom(search: string): Scenario[] {
     "chart400",
     "legacy",
     "noai",
+    "role-viewer",
+    "role-editor",
+    "role-maintainer",
   ];
   return all.filter((v): v is Scenario => (known as string[]).includes(v));
 }

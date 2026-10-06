@@ -36,6 +36,11 @@ import { useGlobalShortcuts } from "./shortcuts";
 import { BrandingSync } from "./branding";
 import { TopBar } from "./TopBar";
 import { SCREEN_LABELS } from "@/model/labels";
+import { ReadOnlyProvider } from "@/components/ui/readOnly";
+import { useSnapshotScope, useSnapshotUrlSync } from "@/snapshots/state";
+import { SnapshotDialogs } from "@/snapshots/SnapshotDialogs";
+import { CompareView } from "@/snapshots/CompareView";
+import { NotForSnapshot } from "@/snapshots/NotForSnapshot";
 
 function named<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
   return lazy(() => load().then((m) => ({ default: m[name] })));
@@ -51,6 +56,9 @@ const WORKSPACE_VIEWS: Record<Workspace, ComponentType> = {
 
 export { LIMITS };
 
+/** The screens whose reads the API does not serve for a snapshot (generation, and settings with packs and extensions). */
+const SNAPSHOT_UNAVAILABLE: ReadonlySet<Workspace> = new Set<Workspace>(["generate", "settings"]);
+
 export function App({ services, basename }: { services: AppServices; basename?: string }) {
   return (
     <QueryClientProvider client={services.queryClient}>
@@ -58,7 +66,7 @@ export function App({ services, basename }: { services: AppServices; basename?: 
         <TooltipProvider delayDuration={400}>
           <BrowserRouter basename={basename}>
             <PageStateGate>
-              <Shell />
+              <ScopedShell />
             </PageStateGate>
           </BrowserRouter>
         </TooltipProvider>
@@ -155,7 +163,26 @@ function PageStateGate({ children }: { children: ReactNode }) {
   return children;
 }
 
-function Shell() {
+/**
+ * The shell for the scope shown (the working model, or a snapshot as of; snapshots/state.ts): switching remounts it, so no
+ * view keeps state from the other model. The snapshot dialogs and the compare view stay across a switch.
+ */
+function ScopedShell() {
+  useSnapshotUrlSync();
+  const scope = useSnapshotScope();
+  return (
+    <>
+      {/* As of a snapshot the shell's fields are read-only (components/ui/readOnly.tsx; search fields stay usable). */}
+      <ReadOnlyProvider value={!!scope}>
+        <Shell key={scope ?? "working"} asOf={scope} />
+      </ReadOnlyProvider>
+      <SnapshotDialogs />
+      <CompareView />
+    </>
+  );
+}
+
+function Shell({ asOf }: { asOf: string | null }) {
   const { store } = useServices();
   useLocationSync();
   useThemeSync();
@@ -196,7 +223,9 @@ function Shell() {
               className="flex min-h-0 shrink-0 flex-col border-r border-default bg-surface"
               style={{ width: second ? explorerSize * 2 : explorerSize }}
             >
-              {sidebar === "generate" ? (
+              {sidebar === "generate" && asOf ? (
+                <NotForSnapshot what="Generate" compact />
+              ) : sidebar === "generate" ? (
                 <GenerateExplorer />
               ) : (
                 <div className="flex h-full min-h-0">
@@ -238,7 +267,7 @@ function Shell() {
               }
             >
               <RegionBoundary name={workspace}>
-                <View />
+                {asOf && SNAPSHOT_UNAVAILABLE.has(workspace) ? <NotForSnapshot what={SCREEN_LABELS[workspace]} /> : <View />}
               </RegionBoundary>
               <RegionBoundary name="editor">
                 <EditorArea />
@@ -286,9 +315,11 @@ function Shell() {
           </>
         )}
         {inspectorHidden && inspectorContext.mode !== "none" ? <EdgeToggle panel="inspector" side="right" /> : null}
-        <RegionBoundary name="assistant">
-          <AssistantDrawer />
-        </RegionBoundary>
+        {asOf ? null : (
+          <RegionBoundary name="assistant">
+            <AssistantDrawer />
+          </RegionBoundary>
+        )}
       </div>
       <Notices />
       <CommandPalette />

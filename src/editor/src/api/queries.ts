@@ -20,6 +20,7 @@ import { browserIndexStore, createIndexLoader, type IndexLoader } from "./indexL
 import { perfStart } from "@/lib/perf";
 import { indexChangesOf } from "@/realtime/events";
 import { applyIndexPatch } from "./indexPatch";
+import { scopedKeyHash, snapshotScope } from "./snapshotScope";
 
 export { applyIndexPatch, indexPatchOf, patchesBetween, type IndexPatch } from "./indexPatch";
 
@@ -48,6 +49,10 @@ export const keys = {
   packOutputs: (name: string) => ["packs", name, "outputs"] as const,
   extensions: ["extensions"] as const,
   extensionFile: (path: string) => ["extensions", "file", path] as const,
+  /** Scope-neutral (snapshotScope.ts): the same list whichever model is shown. */
+  snapshots: ["snapshots"] as const,
+  snapshotCompare: (from: string, to: string, offset: number, limit: number) => ["snapshots", "compare", from, to, offset, limit] as const,
+  snapshotElement: (from: string, to: string, id: string) => ["snapshots", "compare", from, to, "element", id] as const,
 };
 
 export function createQueryClient(): QueryClient {
@@ -60,6 +65,8 @@ export function createQueryClient(): QueryClient {
         refetchOnWindowFocus: false,
         refetchOnReconnect: false,
         retry: (count, error) => count < 2 && !(error instanceof Error && "status" in error && (error as { status: number }).status < 500),
+        // A snapshot's queries never share an entry with the working model's: the key is hashed with the scope shown.
+        queryKeyHashFn: (key) => scopedKeyHash(key),
       },
     },
   });
@@ -85,18 +92,33 @@ let elementLoader: ElementLoader = createElementLoader({ read: endpoints.readEle
 // displayName from that locale's fallback chain; its ETag covers the locale, so switching never answers 304.
 const fetchIndex = (etag: string | null) => endpoints.getModelIndexText(etag, currentContentLocale());
 let indexLoader: IndexLoader = createIndexLoader({ fetch: fetchIndex, store: browserIndexStore() });
+// A snapshot's index has its own loader (its own ETag) and is never written to the browser's index store.
+const snapshotIndexLoaders = new Map<string, IndexLoader>();
 
 /** Replaces the element and index loaders (tests; a new API client). */
 export function resetLoaders(options: { indexStore?: boolean } = {}): void {
   elementLoader = createElementLoader({ read: endpoints.readElements, get: endpoints.getElement });
   indexLoader = createIndexLoader({ fetch: fetchIndex, store: options.indexStore === false ? null : browserIndexStore() });
+  snapshotIndexLoaders.clear();
+}
+
+/** Forgets the index loaders of the snapshots other than `keep` (leaving a snapshot). */
+export function dropSnapshotLoaders(keep: string | null = null): void {
+  for (const id of [...snapshotIndexLoaders.keys()]) if (id !== keep) snapshotIndexLoaders.delete(id);
+}
+
+function indexLoaderFor(scope: string | null): IndexLoader {
+  if (!scope) return indexLoader;
+  let loader = snapshotIndexLoaders.get(scope);
+  if (!loader) snapshotIndexLoaders.set(scope, (loader = createIndexLoader({ fetch: fetchIndex, store: null })));
+  return loader;
 }
 
 /** One element document, read in a batch with every other element asked for in the same task. */
 export const loadElement = (id: string): Promise<ElementDocument> => elementLoader.load(id);
 
 /** The index, conditional on the last ETag (E5e). */
-export const loadIndex = (): Promise<ElementSummary[]> => indexLoader.load();
+export const loadIndex = (): Promise<ElementSummary[]> => indexLoaderFor(snapshotScope()).load();
 
 /**
  * ["index"]: sent with If-None-Match, and without structural sharing, which would walk every row

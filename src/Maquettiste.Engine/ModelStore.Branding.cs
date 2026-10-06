@@ -50,8 +50,7 @@ public sealed partial class ModelStore
         try
         {
             var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
-            var failure = await new AtomicFileSet(_services.EnginePaths, paths.ModelRoot)
-                .ApplyAsync([(paths.FullPath(icon), safe)], [], batchId, ct).ConfigureAwait(false);
+            var failure = await Documents.ApplyAsync([(icon, safe)], [], batchId, ct).ConfigureAwait(false);
             if (failure is { Refused: true })
                 return new BrandingIconWrite(false, null, null, [], $"The write to {failure.Path} was refused: {failure.Reason}", false);
             if (failure is not null)

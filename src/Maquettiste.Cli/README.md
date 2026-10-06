@@ -127,6 +127,11 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   by id or name), and writes one JSON array (`--format json`) or one value per line (`ndjson`) to stdout or `--out` (as the
   exchange verbs, never inside `.maquettiste/`); an id that names nothing, or a model with errors under `--resolved`, exits 1.
   `stats` prints `ModelPages.Kinds` (`--by package`, `--format text|json`).
+- **snapshot** (`Commands/SnapshotCommand.cs`; docs/engineering/snapshots.md): `create <name> [--description] [--packs]`, `list`,
+  `show <id>`, `delete <id>`, `compare <from> [<to>] [--element <id>]` (every page fetched), `restore <id> [--packs]` (a preview,
+  the comparison of the working model with the snapshot; `--apply` restores; the run lock held by a generation run exits 4),
+  `export <id> --out <file>` (never inside `.maquettiste/`) and `import <file>`, each over `SnapshotLibrary`; `--format text|json`.
+  A snapshot or element that is not found, or a refused import, exits 1.
 - **Preview verbs** (`l10n import|prune|set-default`, `seed import`): `--check` exits 2 when the preview would change something;
   `--apply` with `--dry-run` or `--check` is a usage error (4); an unknown locale, a missing or unreadable file, a conflict or an
   invalid change exit 1. Results go to stdout, the summary line to stderr.

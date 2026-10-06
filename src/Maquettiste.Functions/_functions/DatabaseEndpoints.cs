@@ -16,9 +16,15 @@ public static class DatabaseEndpoints
     /// <param name="generation">The generation service.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200, or 404 (<c>not-found</c>, <c>not-a-database</c>).</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/databases/{id}/view")]
-    public static Task<IResult> View(HttpContext context, string id, ModelStore store, GenerationService generation, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> View(HttpContext context, string id, ModelStore store, GenerationService generation, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
+        generation = asOf.Generation ?? generation;
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(generation);
         var document = await store.GetElementAsync(id, ct).ConfigureAwait(false);
@@ -36,9 +42,16 @@ public static class DatabaseEndpoints
     /// <param name="tables">The table reader.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200, or 404 (<c>not-found</c>, <c>not-a-database</c>).</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/databases/{id}/tables")]
-    public static Task<IResult> Tables(HttpContext context, string id, ModelStore store, DatabaseTables tables, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Tables(HttpContext context, string id, ModelStore store, DatabaseTables tables, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
+        if (asOf.Generation is { } version)
+            tables = new DatabaseTables(version);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(tables);
         var document = await store.GetElementAsync(id, ct).ConfigureAwait(false);
@@ -57,9 +70,16 @@ public static class DatabaseEndpoints
     /// <param name="tables">The table reader.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200, or 404 (<c>not-found</c>, <c>not-a-database</c>).</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/databases/{id}/tables/{key}")]
-    public static Task<IResult> Table(HttpContext context, string id, string key, ModelStore store, DatabaseTables tables, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Table(HttpContext context, string id, string key, ModelStore store, DatabaseTables tables, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
+        if (asOf.Generation is { } version)
+            tables = new DatabaseTables(version);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(tables);
         var document = await store.GetElementAsync(id, ct).ConfigureAwait(false);

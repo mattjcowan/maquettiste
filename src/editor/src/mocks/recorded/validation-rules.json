@@ -80,6 +80,14 @@
     "canBeOff": false
   },
   {
+    "id": "MQ1011",
+    "defaultSeverity": "error",
+    "description": "A snapshot archive cannot be imported: not a zip, a path outside the snapshot layout, a size limit, or a missing or unreadable snapshot.json.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
     "id": "MQ2001",
     "defaultSeverity": "error",
     "description": "Dangling reference.",
@@ -1027,6 +1035,14 @@
     "id": "MQ6028",
     "defaultSeverity": "info",
     "description": "A block unit's target file does not exist and createFile is false; nothing is written (target-missing).",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6029",
+    "defaultSeverity": "error",
+    "description": "A write against a model snapshot opened read-only; nothing is written (restore the snapshot to change it).",
     "family": "MQ60xx",
     "familyLabel": "Packs and generation",
     "canBeOff": true

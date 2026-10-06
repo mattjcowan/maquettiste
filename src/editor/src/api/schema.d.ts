@@ -1790,6 +1790,192 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every snapshot of the model, newest first
+         * @description The archives under `.maquettiste/model-snapshots/`, newest first (then by id). Each row comes from the archive's
+         *     `snapshot.json` (cached by file stamp), never from loading the model it holds.
+         */
+        get: operations["listSnapshots"];
+        put?: never;
+        /**
+         * Take a snapshot of the working model
+         * @description Writes a deterministic zip of `maquettiste.json`, `model/`, `extensions/` and `branding/` (and `templates/` when
+         *     `includePacks` is true) under `.maquettiste/model-snapshots/<id>.zip`. The id is the kebab-case name and the UTC time
+         *     (`<slug>-<yyyymmdd-hhmmss>`, `-2` on a collision) and never changes. An explicit action: it reads the whole model folder,
+         *     in parallel chunks streamed into the archive.
+         */
+        post: operations["createSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What differs between two snapshots, or a snapshot and the working model
+         * @description `from` and `to` are snapshot ids or `working` (`to` defaults to `working`). Documents are compared by hash first, so only
+         *     the indexes are read: elements are matched by id (added, removed, or changed; a rename or a move says so with
+         *     `previousName` and `previousPath`), the other documents (settings, locale shards, extensions, sidecars, branding, and the
+         *     packs when both sides hold them) by path. The element list is ordered by kind, name and id and paged by `offset` and
+         *     `limit`; `next` is the offset of the next page. The fields of one element come from `/api/snapshots/compare/element`.
+         */
+        get: operations["compareSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/compare/element": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One element on both sides of a comparison
+         * @description The element's two documents (`before` on the `from` side, `after` on the `to` side), in the form the conflict view renders
+         *     them, and the fields that differ as JSON pointers (objects by key, arrays of objects with ids matched by id, other arrays
+         *     by position when their lengths match, else whole), at most 500 (`fieldsTruncated`).
+         */
+        get: operations["compareSnapshotElement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import an exported snapshot
+         * @description The body is the archive, `Content-Type: application/zip` (the one body the sign-in gate takes that is not JSON). It is copied
+         *     to the cache folder (512 MB at most), checked (a zip; every entry a safe path of the snapshot layout, no duplicate even
+         *     ignoring case, at most 64 MB each, 4 GB together, 500,000 entries, no entry over 1 MB that expands more than 200 times; a
+         *     `snapshot.json` of format 1 and a model format this release reads), rewritten the way the engine writes archives, and loaded
+         *     once: a document that does not parse (MQ1001), is not canonical (MQ1003) or names an unsupported format (MQ1007) refuses it.
+         *     It is stored under a new id; the working model is never touched. The host bounds a request body too (536,870,912
+         *     bytes in static-site-hosting 0.4.0, the same 512 MiB): a body over it is the same 413 with `tooLarge` and MQ1011, and
+         *     the command line (`maquettiste snapshot import`) has no such bound.
+         */
+        post: operations["importSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+                 * @example release-1-model-20261005-120000
+                 */
+                id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        /** One snapshot */
+        get: operations["getSnapshot"];
+        put?: never;
+        post?: never;
+        /** Delete a snapshot */
+        delete: operations["deleteSnapshot"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename, describe or publish a snapshot
+         * @description Rewrites only the archive's last entry, `snapshot.json`; the id and the documents stay as they are.
+         */
+        patch: operations["updateSnapshot"];
+        trace?: never;
+    };
+    "/api/snapshots/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+                 * @example release-1-model-20261005-120000
+                 */
+                id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace the working model with a snapshot's content
+         * @description One operation: refused with 409 `run-locked` while a generation run holds the run lock (the restore then holds it); first a
+         *     safety snapshot of the working model (`before-restore-<yyyymmdd-hhmmss>`, holding the packs when they are restored); then
+         *     every document that differs is written and every document the snapshot does not have is deleted, all or nothing, and the
+         *     model reloads and publishes one `model.changed`. The packs are restored only when the snapshot holds them and `includePacks`
+         *     is true. Restoring the safety snapshot undoes it (`undo` says so); the editor's undo stack is not involved. The body is
+         *     optional.
+         */
+        post: operations["restoreSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+                 * @example release-1-model-20261005-120000
+                 */
+                id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Download a snapshot's archive
+         * @description The archive as stored, which is the deterministic zip (`Content-Disposition` names it `<id>.zip`); `POST /api/snapshots/import` takes it back.
+         */
+        get: operations["exportSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export interface webhooks {
     "model.changed": {
@@ -2010,7 +2196,7 @@ export interface components {
             detail?: string;
             instance?: string;
             /** @enum {string} */
-            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "not-a-query" | "invalid-icon" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "superseded" | "conflict" | "internal" | "assist-not-configured" | "assist-budget-exhausted" | "assist-busy";
+            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "not-a-query" | "invalid-icon" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "superseded" | "conflict" | "internal" | "assist-not-configured" | "assist-budget-exhausted" | "assist-busy" | "run-locked" | "snapshot-read-only" | "snapshot-unsupported";
             traceId?: string;
         };
         SignInRequest: {
@@ -5519,6 +5705,144 @@ export interface components {
             /** @description Whether older exchanges were dropped to keep the conversation under its size cap. */
             truncated: boolean;
         };
+        /** @description A model snapshot as `snapshot.json` describes it, with the archive's size. */
+        SnapshotInfo: {
+            /**
+             * @description The archive's file name without `.zip` (`<slug>-<yyyymmdd-hhmmss>`); never changes.
+             * @example release-1-model-20261005-120000
+             */
+            id: string;
+            name: string;
+            description: string;
+            /** @description Who took it; empty when unknown. */
+            author: string;
+            /** @example 2026-10-05T12:00:00Z */
+            createdUtc: string;
+            /**
+             * @description `before-restore` for the safety snapshot a restore takes first.
+             * @enum {string}
+             */
+            origin: "user" | "before-restore";
+            /** @description Marked as ready for review. */
+            published: boolean;
+            includesPacks: boolean;
+            /** @description The hash over every document's path and hash, the packs aside (the model it was taken from). */
+            modelHash: string;
+            modelFormat: number;
+            /** @description The release that took it. */
+            engine: string;
+            files: number;
+            elements: number;
+            kinds: {
+                [key: string]: number;
+            };
+            /** @description The archive's size in bytes. */
+            size: number;
+        };
+        SnapshotCreateBody: {
+            name: string;
+            description?: string | null;
+            /**
+             * @description Hold the template packs too, so generating from the snapshot reproduces exactly.
+             * @default false
+             */
+            includePacks?: boolean | null;
+        };
+        SnapshotPatchBody: {
+            name?: string | null;
+            description?: string | null;
+            published?: boolean | null;
+        };
+        SnapshotRestoreBody: {
+            /** @default false */
+            includePacks?: boolean | null;
+        };
+        SnapshotKindChanges: {
+            kind: string;
+            added: number;
+            removed: number;
+            changed: number;
+        };
+        SnapshotElementChange: {
+            id: string;
+            kind: string;
+            name: string;
+            /** @enum {string} */
+            change: "added" | "removed" | "changed";
+            /** @description The model-relative path on the `to` side (`from` for a removed element). */
+            path: string;
+            /** @description The name on the `from` side, when it was renamed. */
+            previousName?: string;
+            /** @description The path on the `from` side, when the file moved. */
+            previousPath?: string;
+        };
+        SnapshotFileChange: {
+            path: string;
+            /** @enum {string} */
+            change: "added" | "removed" | "changed";
+        };
+        SnapshotComparison: {
+            from: string;
+            to: string;
+            added: number;
+            removed: number;
+            changed: number;
+            kinds: components["schemas"]["SnapshotKindChanges"][];
+            elements: components["schemas"]["SnapshotElementChange"][];
+            /** @description The offset of the next page, or null after the last. */
+            next: number | null;
+            files: components["schemas"]["SnapshotFileChange"][];
+            filesTruncated: boolean;
+            packsCompared: boolean;
+        };
+        SnapshotFieldChange: {
+            /** @description A JSON pointer in the document (`""` for the whole document). */
+            pointer: string;
+            /** @enum {string} */
+            change: "added" | "removed" | "changed";
+            before: unknown;
+            after: unknown;
+        };
+        SnapshotElementDiff: {
+            id: string;
+            kind: string;
+            name: string;
+            /** @enum {string} */
+            change: "added" | "removed" | "changed" | "unchanged";
+            fromPath: string | null;
+            toPath: string | null;
+            fromHash: string | null;
+            toHash: string | null;
+            /** @description The document on the `from` side, or null. */
+            before: {
+                [key: string]: unknown;
+            } | null;
+            /** @description The document on the `to` side, or null. */
+            after: {
+                [key: string]: unknown;
+            } | null;
+            fields: components["schemas"]["SnapshotFieldChange"][];
+            fieldsTruncated: boolean;
+        };
+        SnapshotRestoreResult: {
+            /** @enum {string} */
+            outcome: "restored" | "not-found" | "locked" | "refused";
+            snapshot: components["schemas"]["SnapshotInfo"] | null;
+            /** @description The snapshot of the working model taken just before; restoring it undoes the restore. */
+            safety: components["schemas"]["SnapshotInfo"] | null;
+            written: number;
+            deleted: number;
+            packsRestored: boolean;
+            undo: string | null;
+            elementsChanged: number;
+            elementsDeleted: number;
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        SnapshotImportResult: {
+            snapshot: components["schemas"]["SnapshotInfo"] | null;
+            diagnostics: components["schemas"]["Diagnostic"][];
+            tooLarge: boolean;
+        };
         /** @description A storage choice for reference data: a strategy key the project declares in referenceData.strategies (absent means template-defined) and its options. */
         storageChoice: {
             strategy?: string;
@@ -8305,6 +8629,23 @@ export interface components {
         };
     };
     responses: {
+        /** @description The caller's role is below the one the operation needs (`forbidden`). */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "type": "about:blank",
+                 *       "title": "This needs the maintainer role.",
+                 *       "status": 403,
+                 *       "code": "forbidden"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description The body is not JSON or not the expected shape (`bad-request`), or is larger than 4 MB (`too-large`). The sign-in gate refuses a `POST` or `PUT` that is not `application/json` with 415 `unsupported-media-type`, and a foreign `Origin` with 403 `forbidden-origin`, before any handler runs. */
         BadRequest: {
             headers: {
@@ -8421,6 +8762,18 @@ export interface components {
         };
     };
     parameters: {
+        /**
+         * @description A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+         * @example release-1-model-20261005-120000
+         */
+        SnapshotId: string;
+        /**
+         * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+         *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+         *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+         *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+         */
+        SnapshotQuery: string;
         PackName: string;
         /** @description A path under the model's `extensions/` folder, `<name>.json` or `rules/<name>.js`. */
         ExtensionFilePath: string;
@@ -8658,7 +9011,15 @@ export interface operations {
     };
     getSettings: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8676,6 +9037,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
         };
     };
     saveSettings: {
@@ -8862,6 +9224,13 @@ export interface operations {
     getModelIndex: {
         parameters: {
             query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
                 /** @description A declared locale whose display names fill `displayName`. */
                 locale?: string;
                 /** @description Only this kind. */
@@ -8913,12 +9282,21 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
             503: components["responses"]["ModelUnavailable"];
         };
     };
     readElements: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8948,12 +9326,20 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
             503: components["responses"]["ModelUnavailable"];
         };
     };
     getModelKinds: {
         parameters: {
             query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
                 /** @description `kind` (the default) or `package`. */
                 by?: "kind" | "package";
             };
@@ -8974,12 +9360,20 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
             503: components["responses"]["ModelUnavailable"];
         };
     };
     getResolvedModel: {
         parameters: {
             query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
                 /** @description What to read. */
                 scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries";
                 /** @description A database id; only what is mapped to it. */
@@ -9013,6 +9407,13 @@ export interface operations {
     getElements: {
         parameters: {
             query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
                 /**
                  * @description Comma-separated element or sub-element ids.
                  * @example 01J92P0V0FJ23CGSNKM7P1W5V7,01J92P0V0ETQKXXP951CMMNHH3
@@ -9057,6 +9458,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
             503: components["responses"]["ModelUnavailable"];
         };
     };
@@ -9100,7 +9502,15 @@ export interface operations {
     };
     getElement: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: {
                 "If-None-Match"?: components["parameters"]["IfNoneMatch"];
             };
@@ -9440,7 +9850,15 @@ export interface operations {
     };
     getReferences: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: never;
             path: {
                 /**
@@ -9468,7 +9886,15 @@ export interface operations {
     };
     validate: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9499,6 +9925,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
         };
     };
     listValidationRules: {
@@ -9544,7 +9971,15 @@ export interface operations {
     };
     getDiagram: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: never;
             path: {
                 /**
@@ -9764,7 +10199,15 @@ export interface operations {
     };
     getDatabaseView: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: never;
             path: {
                 /**
@@ -9792,7 +10235,15 @@ export interface operations {
     };
     getDatabaseTables: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: never;
             path: {
                 /**
@@ -9820,7 +10271,15 @@ export interface operations {
     };
     getDatabaseTable: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: never;
             path: {
                 /**
@@ -11026,7 +11485,15 @@ export interface operations {
     };
     previewTemplate: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+                 *     opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+                 *     Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+                 *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+                 */
+                snapshot?: components["parameters"]["SnapshotQuery"];
+            };
             header?: {
                 /**
                  * @description The caller's live-preview key (any opaque string, e.g. per editor tab). A newer request of this kind with the same
@@ -11061,6 +11528,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
             /**
              * @description `superseded`: a newer request of this kind with the same `X-Maquettiste-Client` cancelled this one on the server
              *     (one request of each kind is in flight per client key, generation-ui.md section 5.2).
@@ -12237,6 +12705,335 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    listSnapshots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The snapshots. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotInfo"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    createSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Release 1 model",
+                 *       "description": "What went to review on Monday.",
+                 *       "includePacks": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["SnapshotCreateBody"];
+            };
+        };
+        responses: {
+            /** @description The snapshot. `Location` names it. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotInfo"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    compareSnapshots: {
+        parameters: {
+            query: {
+                from: string;
+                to?: string;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The differences. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotComparison"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    compareSnapshotElement: {
+        parameters: {
+            query: {
+                from: string;
+                to?: string;
+                id: components["schemas"]["Ulid"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The element on both sides. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotElementDiff"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    importSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/zip": string;
+            };
+        };
+        responses: {
+            /** @description The stored snapshot. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotImportResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description The archive is over a size or count limit (MQ1011). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotImportResult"];
+                };
+            };
+            /** @description The archive is refused; `diagnostics` says why (MQ1011, MQ1001, MQ1003, MQ1007). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotImportResult"];
+                };
+            };
+        };
+    };
+    getSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+                 * @example release-1-model-20261005-120000
+                 */
+                id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotInfo"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+                 * @example release-1-model-20261005-120000
+                 */
+                id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+                 * @example release-1-model-20261005-120000
+                 */
+                id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "published": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["SnapshotPatchBody"];
+            };
+        };
+        responses: {
+            /** @description The snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotInfo"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    restoreSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+                 * @example release-1-model-20261005-120000
+                 */
+                id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SnapshotRestoreBody"];
+            };
+        };
+        responses: {
+            /** @description Restored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotRestoreResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description A generation run holds the run lock (`run-locked`); nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The write was refused by the path policy (MQ6004); nothing changed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotRestoreResult"];
+                };
+            };
+        };
+    };
+    exportSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+                 * @example release-1-model-20261005-120000
+                 */
+                id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The archive. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     realtimeModelChanged: {

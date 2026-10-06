@@ -23,5 +23,12 @@ Conventions every handler follows:
   written by an `IResult`, and conversations and per-day token usage live under the cache folder (`<cache>/assist/<user hash>/`),
   never in the model. The loop follows the host's tool rules (host-contracts.md §1.3); the tools come from the engine's `AgentTools`.
 
+- Snapshots (`SnapshotEndpoints.cs`; docs/engineering/snapshots.md): `/api/snapshots` over the engine's `SnapshotLibrary`. The model
+  reads the editor needs take `?snapshot=<id>` (`SnapshotEndpoints.AsOfAsync` swaps in the snapshot's read-only store and generation
+  service); `SignInGate` refuses `?snapshot=` on anything else (409 `snapshot-read-only` for a write, 400 `snapshot-unsupported`
+  for another read), and lets `POST /api/snapshots/import` through with an `application/zip` body. An import body over the host's
+  request bound (536,870,912 bytes in static-site-hosting 0.4.0) answers 413 with `tooLarge` and MQ1011, from `Content-Length` or
+  from the reader's 413, instead of the 503 `model-unavailable` the reader's `IOException` would map to.
+
 Test with `dotnet test tests/Maquettiste.Functions.Tests`; `EditorHost` runs requests through the gate and a reflection router
 the way the host does, including its `500 text/plain` for an escaped exception (`EditorHost.HostFailures`).

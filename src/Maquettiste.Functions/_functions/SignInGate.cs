@@ -55,7 +55,7 @@ public static class SignInGate
             }
 
             var signInForm = HttpMethods.IsPost(method) && path.Equals("/api/session", StringComparison.OrdinalIgnoreCase) && IsForm(request.ContentType);
-            if (api && (HttpMethods.IsPost(method) || HttpMethods.IsPut(method)) && !IsJson(request.ContentType) && !signInForm)
+            if (api && (HttpMethods.IsPost(method) || HttpMethods.IsPut(method)) && !IsJson(request.ContentType) && !signInForm && !SnapshotEndpoints.IsZipImport(request))
             {
                 await Write(context, Api.Problem("unsupported-media-type", "Send the body as application/json.", StatusCodes.Status415UnsupportedMediaType))
                     .ConfigureAwait(false);
@@ -93,6 +93,13 @@ public static class SignInGate
         {
             await Write(context, Api.Problem("model-unavailable", "Hosted mode arrives in phase 4; this editor serves local mode only.",
                 StatusCodes.Status503ServiceUnavailable)).ConfigureAwait(false);
+            return;
+        }
+
+        // A model read "as of" a snapshot (?snapshot=<id>) is answered by the reads that take it only; a write is refused.
+        if (api && SnapshotEndpoints.Refusal(request) is { } asOf)
+        {
+            await Write(context, asOf).ConfigureAwait(false);
             return;
         }
 

@@ -18,7 +18,7 @@ repository.
   why each file renders before you apply it, and `generate --check` fails a CI job when the committed output no longer
   matches the model ([generation](docs/user-guide.md#generation-how-the-model-becomes-files)).
 - **An agent server.** `maquettiste mcp` serves the model to coding agents over the Model Context Protocol, through the
-  same write path as the editor. Its tools read, change, validate and generate the model, 61 today
+  same write path as the editor. Its tools read, change, validate and generate the model, 65 today
   ([docs/mcp.md](docs/mcp.md)).
 - **A command line.** The same engine without the editor, for terminals and CI
   ([the command line](docs/user-guide.md#the-command-line)).

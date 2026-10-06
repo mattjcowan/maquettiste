@@ -13,9 +13,14 @@ public static class DiagramEndpoints
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200, or 404 (<c>not-found</c>, <c>not-a-diagram</c>).</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/diagrams/{id}")]
-    public static Task<IResult> Get(string id, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Get(string id, HttpContext context, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
         var document = await store.GetElementAsync(id, ct).ConfigureAwait(false);

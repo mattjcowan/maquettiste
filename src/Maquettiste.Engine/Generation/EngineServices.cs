@@ -33,6 +33,18 @@ internal sealed record EngineServices
     /// <summary>The canonical JSON writer.</summary>
     public required ICanonicalJson Json { get; init; }
 
+    /// <summary>
+    /// Where the model's documents come from and go to: a snapshot archive when set (read-only), else the model folder written through
+    /// <see cref="EnginePaths"/> (built on each access, so a copy made with <c>with</c> and another guard writes through that guard).
+    /// </summary>
+    public IModelDocumentStore Documents
+    {
+        get => _documents ?? new FileDocumentStore(new ModelPaths(Options), EnginePaths);
+        init => _documents = value;
+    }
+
+    private readonly IModelDocumentStore? _documents;
+
     /// <summary>Stage 1: the model loader.</summary>
     public required IModelLoader Loader { get; init; }
 
@@ -99,18 +111,38 @@ internal sealed record EngineServices
     public static EngineServices Create(EngineOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        var enginePaths = new OutputPathPolicy(options, null); // engine-write checks only; no I/O
+        return Build(options, enginePaths, null);
+    }
+
+    /// <summary>
+    /// Builds the components of a snapshot opened read-only (docs/engineering/snapshots.md section 4): the documents come from
+    /// <paramref name="documents"/>, and every component that writes gets <see cref="Maquettiste.Engine.Snapshots.ReadOnlyPathPolicy"/>, which refuses every
+    /// write (MQ6029). Performs no I/O.
+    /// </summary>
+    /// <param name="options">The engine options of the live model (the same model root, so paths read the same).</param>
+    /// <param name="documents">The snapshot's documents.</param>
+    /// <returns>The services.</returns>
+    internal static EngineServices CreateReadOnly(EngineOptions options, IModelDocumentStore documents)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(documents);
+        return Build(options, Maquettiste.Engine.Snapshots.ReadOnlyPathPolicy.Instance, documents);
+    }
+
+    private static EngineServices Build(EngineOptions options, IOutputPathPolicy enginePaths, IModelDocumentStore? documents)
+    {
         var schemas = new SchemaRegistry();
         var json = new CanonicalJson(schemas);
         var scripts = new ScriptSandboxFactory();
         var formatters = new FormatterRunner(options);
-        var enginePaths = new OutputPathPolicy(options, null); // engine-write checks only; no I/O
-        return new EngineServices
+        var services = new EngineServices
         {
             Options = options,
             EnginePaths = enginePaths,
             Schemas = schemas,
             Json = json,
-            Loader = new ModelLoader(options, schemas, json, enginePaths),
+            Loader = new ModelLoader(options, schemas, json, enginePaths, documents),
             Validator = new ModelValidator(options, schemas, scripts),
             Resolver = new ModelResolver(options),
             Scripts = scripts,
@@ -129,6 +161,7 @@ internal sealed record EngineServices
             Plans = new PlanStore(options, enginePaths),
             Jobs = new JobStore(options, enginePaths),
         };
+        return documents is null ? services : services with { Documents = documents };
     }
 
     /// <summary>

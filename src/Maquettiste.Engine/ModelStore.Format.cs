@@ -90,7 +90,7 @@ public sealed partial class ModelStore
                     skipped.Add(repoPath);
                 else if (!canonical.AsSpan().SequenceEqual(bytes))
                 {
-                    writes.Add((full, canonical));
+                    writes.Add((modelPath, canonical));
                     formatted.Add(repoPath);
                 }
             }
@@ -98,7 +98,7 @@ public sealed partial class ModelStore
             if (writes.Count > 0)
             {
                 var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
-                var failure = await new AtomicFileSet(_services.EnginePaths, model.ModelRoot).ApplyAsync(writes, [], batchId, ct).ConfigureAwait(false);
+                var failure = await Documents.ApplyAsync(writes, [], batchId, ct).ConfigureAwait(false);
                 if (failure is not null)
                     throw new IOException($"The model files could not be rewritten ({failure.Path}); nothing was changed. {failure.Reason}");
 

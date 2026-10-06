@@ -2382,6 +2382,11 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
+| `maquettiste snapshot create <name>` | Takes a snapshot of the whole model: a zip under `.maquettiste/model-snapshots/` named `<name in kebab case>-<yyyymmdd-hhmmss>.zip` (the snapshot's id) holding `maquettiste.json`, `model/`, `extensions/` and `branding/`; `--packs` holds the template packs too, `--description <text>`, `--format json`. |
+| `maquettiste snapshot list` | The snapshots, newest first, with their elements and flags (`[published]`, `[packs]`, `[before-restore]`); `snapshot show <id>` prints one snapshot's metadata, `snapshot delete <id>` deletes it. |
+| `maquettiste snapshot compare <from> [<to>]` | What differs between two snapshots, or a snapshot and the working model (`working`, the default `to`): counts per kind, then `+` added, `-` removed and `~` changed elements (a rename and a moved file say so) and the other documents; `--element <id>` prints that element's changed fields; `--format json`. |
+| `maquettiste snapshot restore <id>` | Previews what restoring the snapshot changes; `--apply` takes a safety snapshot of the working model (`before-restore-<time>`, restore it to undo) and then makes the working model the snapshot's; `--packs` restores its packs too. Refused (exit 4) while a generation run holds the run lock. |
+| `maquettiste snapshot export <id> --out <file>` | Copies a snapshot's archive out of the model folder, to mail or share; `snapshot import <file>` checks an archive (paths, sizes, metadata, every document parses and is canonical) and stores it as a new snapshot without touching the working model (exit 1 and the reasons when refused). |
 | `maquettiste pack new <name>` | Scaffolds a pack under `.maquettiste/templates/<name>/` (`--from empty`, `sql-ddl` or `csharp-dapper`). Give it an `output` under an allowed root in `maquettiste.json` before the next `generate` (packs/README.md). |
 
 Progress (`--progress plain`, the default when stderr is not a terminal) prints each stage once, in order, with a start
@@ -2408,6 +2413,63 @@ maquettiste model export --resolved --scope tables --database main --format ndjs
 # one line per table, each with the table's columns, keys, foreign keys and indexes:
 # {"id":"01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4","kind":"table","name":"customers","database":"01J92P0V1QRN2181XM2ZWE02W4","table":{...}}
 ```
+
+### Snapshots
+
+A snapshot is a named copy of the whole model at one moment, kept as one zip file under `.maquettiste/model-snapshots/`:
+the model documents, `maquettiste.json`, the extensions and the project icon, and the template packs only when you ask
+(`--packs`), so a snapshot taken with them generates exactly what it generated then. The same model always gives the same
+bytes. Take one before a large change, compare it with the working model as you go, and restore it if the change goes
+wrong:
+
+```sh
+maquettiste snapshot create "Before the billing split"
+# Took snapshot before-the-billing-split-20261005-120000 (36 documents).
+maquettiste snapshot compare before-the-billing-split-20261005-120000
+# before-the-billing-split-20261005-120000 -> working: 1 added, 0 removed, 2 changed, 0 other documents
+#   entity           +1 -0 ~2
+# ~ entity Client (01J92P0V0ETQKXXP951CMMNHH3) (was Customer) (moved from model/entities/customer.json)
+maquettiste snapshot restore before-the-billing-split-20261005-120000 --apply
+# Restored before-the-billing-split-20261005-120000: 3 documents written, 1 deleted.
+# Restore snapshot before-restore-20261005-121500 to undo this restore.
+```
+
+A restore never asks the editor's undo: it first takes a snapshot of the working model as it was, and restoring that one
+puts everything back. Editor windows that are open see the restored model at once. Snapshots are files in the model folder,
+so they travel with the repository unless the project ignores `.maquettiste/model-snapshots/`; to send one to someone
+without the repository, `snapshot export` it and have them `snapshot import` the file. Agents have the same operations as
+MCP tools (`list_snapshots`, `create_snapshot`, `compare_snapshots`, `restore_snapshot`; docs/mcp.md), and the editor's API
+serves them under `/api/snapshots`.
+
+**In the editor.** Click the project name in the top bar. The picker lists the working model and its snapshots, newest
+first, with their date and time, who took them, their description and a **Published** badge (a safety snapshot says
+**Safety**, one that holds the packs says **Packs**); the search box finds one by name, description or author.
+
+- **Take snapshot…** asks for a name and a description. **Include the template packs** is off: tick it only when generating
+  from the snapshot later must reproduce exactly.
+- Click a snapshot to **open it as of**: the whole editor shows the model as it was, read-only. The top bar says *Viewing
+  snapshot <name> (<date>) — read-only* with **Compare with working**, **Restore…** and **Back to working**; the address
+  carries `?snapshot=<id>`, so a reload or a link someone else opens shows the same snapshot. The domain model, the
+  diagrams, the databases, reference data, the inspector and the problems all read the snapshot; fields are read-only,
+  undo is off, and nothing can be created or deleted. Generate and Settings work on the working model only and say so.
+- The **…** menu of a snapshot has **Compare with working**, **Compare with…** (another snapshot), **Restore…**, **Export
+  (.zip)**, **Rename or describe…**, **Publish** (or **Unpublish**) and **Delete…**. **Import snapshot…** (the arrow
+  beside Take snapshot) adds an exported `.zip` as a new snapshot without touching the working model; through the editor an
+  archive can be up to 512 MiB (the host's request limit, the same as the engine's), and `maquettiste snapshot import`
+  has no such limit.
+- **Compare** opens over the screen: the changed elements by kind with their counts (`+` added, `−` removed, `~` changed;
+  a renamed element says *renamed from …*), a filter by change and a search by name, and the other changed documents
+  (settings, translations, extensions, branding) on their own tab. Pick an element to see the fields that differ and both
+  documents side by side. The list comes in pages of 500 (**Load more**); the filters and the search apply to what is
+  loaded. Nothing is compared until you ask.
+- **Restore…** says what happens first: a safety snapshot of the working model (`before-restore-<time>`), then the working
+  model replaced by the snapshot, the packs only when the snapshot holds them and you tick the box, and every open window
+  seeing the change. After it, **Undo: restore before-restore-<time>** puts the model back. While a generation run is
+  writing, a restore is refused and nothing changes.
+
+Who may do what follows the editor's roles: a viewer opens and compares; an editor also takes, renames, publishes and
+exports; a maintainer also restores, deletes and imports. An action your role does not allow is greyed out and its tooltip
+says which role it needs.
 
 ### From the Docker image
 

@@ -265,18 +265,18 @@ public sealed partial class ModelStore
             {
                 var bytes = _services.Json.Write(node, "locale.json", paths.ToRepoPath(modelPath));
                 if (diskHashes[modelPath] != ContentHash.Of(bytes))
-                    writes.Add((paths.FullPath(modelPath), bytes));
+                    writes.Add((modelPath, bytes));
             }
             else if (diskHashes[modelPath].Length > 0)
             {
-                deletes.Add(paths.FullPath(modelPath));
+                deletes.Add(modelPath);
             }
         }
 
         if (writes.Count == 0 && deletes.Count == 0)
             return new TranslationSaveResult(SaveOutcome.Saved, Hashes(_current!, shards.Keys), [], ChangeSet.Empty(source));
         var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
-        var failure = await new AtomicFileSet(_services.EnginePaths, paths.ModelRoot).ApplyAsync(writes, deletes, batchId, ct).ConfigureAwait(false);
+        var failure = await Documents.ApplyAsync(writes, deletes, batchId, ct).ConfigureAwait(false);
         if (failure is { Refused: true })
             return new TranslationSaveResult(SaveOutcome.Invalid, new Dictionary<string, string>(),
                 [RuleCatalog.Create("MQ6004", $"The model write to {failure.Path} was refused: {failure.Reason}", null, null, null)], null);

@@ -43,7 +43,7 @@ public sealed class CatalogTests
         Assert.All(RuleCatalog.All.Where(r => r.Id.StartsWith("MQ1", StringComparison.Ordinal)), r => Assert.False(r.CanBeDisabled));
         Assert.Equal(DiagnosticSeverity.Warning, RuleCatalog.Get("MQ1003").DefaultSeverity);
         Assert.Equal(DiagnosticSeverity.Info, RuleCatalog.Get("MQ2006").DefaultSeverity);
-        Assert.Equal(211, RuleCatalog.All.Count);
+        Assert.Equal(213, RuleCatalog.All.Count);
     }
 
     [Fact]

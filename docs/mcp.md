@@ -195,7 +195,7 @@ claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 61), `validate` in 55 ms,
+in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 65), `validate` in 55 ms,
 the container removed on exit. The registration (the arguments exactly, both forms and both runtimes, the merge, the replacement and the
 removal of an earlier `mcp.sh`) is covered by the CLI tests; the `/bin/sh` line was run with a stand-in `docker` reachable only
 through `$HOME/.docker/bin` from a folder behind a symbolic link (the real path mounted, stderr in the log). A Mac client started
@@ -217,7 +217,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 61 tools
+claude                               # then /mcp shows maquettiste connected with 65 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):
@@ -248,7 +248,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 The read tools (`get_project`, `get_model_index`, `get_model_kinds`, `get_elements`, `get_element`, `get_references`,
 `get_resolved_model`, `get_schema`, `get_settings`, `get_database_view`, `validate`, `list_validation_rules`, `preview_query_sql`,
 `preview_binding_sql`, `get_materialize_status`, `preview_materialize`, `list_packs`, `get_plan`, `get_plan_diff`, `preview_unit`,
-`reference_type_usage`, `localization_status`) are one catalog in the engine (`AgentTools`), shared with the editor's assistant
+`reference_type_usage`, `localization_status`, `list_snapshots`, `compare_snapshots`) are one catalog in the engine (`AgentTools`), shared with the editor's assistant
 (docs/user-guide.md, "The assistant"): their names, descriptions, input schemas and answers are the same in both, and a change to
 one is a change to the other. The assistant has none of the write tools; it proposes model changes for the user to review
 (`propose_changes`) instead.
@@ -315,6 +315,10 @@ one is a change to the other. The assistant has none of the write tools; it prop
 | `unit_paths` | unitPaths | `pack`, `unit`, `elementIds` (at most 20), `limit` | without `elementIds`: how many elements the unit plans (`count`) and the elements themselves (`elements`: id, name, kind, up to `limit`, default 200), rendering nothing; with `elementIds`: those elements rendered for their output paths, with their root and whether the writer allows them, each path naming its element (`elementName`: an element's name, a table as `customers (billing)`, a locale's tag) and `elementKind`; more than 20 is `bad-request`. `wide` is true for a unit whose one render covers the whole model, a database or a locale: its paths come with `preview_unit`. MQ6020 also flags an output pattern with no code span over several elements |
 | `get_pack_outputs` | getPackOutputs | `pack` | the files the pack's manifest records: path, unit, element, root, mode (`overwrite`, `regions`, `once`, `block`) and state on disk (intact, edited, missing; a block by its lines) |
 | `explain_unit` | getPlanUnit, explainUnit | `planId` and `key` (a unit of a stored plan), or `pack`, `unit`, `elementId` (any unit and element) | the reason (`new`, `forced`, `inputs`, `outputs`, `unchanged`, or why it does not run: `pack-disabled`, `not-selected`, `scope`, `filter`, `skip-hint`, `selector`, ...; a rendered block unit whose target file is missing without `createFile` answers `target-missing`), the causes and a one-sentence summary |
+| `list_snapshots` | listSnapshots | | the model's snapshots (zip archives under `.maquettiste/model-snapshots/`), newest first: `id`, `name`, `description`, `author`, `createdUtc`, `origin` (`user`, or `before-restore` for a restore's safety snapshot), `published`, `includesPacks`, `modelHash`, `files`, `elements`, `kinds`, `size` |
+| `compare_snapshots` | compareSnapshots, compareSnapshotElement | `from` (a snapshot id or `working`), `to` (default `working`), `offset`, `limit` (1 to 5000, default 500); or `id` (an element id) | `{ from, to, added, removed, changed, kinds, elements: [{ id, kind, name, change, path, previousName, previousPath }], next, files: [{ path, change }], filesTruncated, packsCompared }`; with `id`, that element's two documents (`before`, `after`) and the fields that differ as JSON pointers (`fields`, at most 500) |
+| `create_snapshot` | createSnapshot | `name`, `description`, `includePacks` (default `false`) | the snapshot (`id` is the kebab-case name and the UTC time, `<slug>-<yyyymmdd-hhmmss>`) |
+| `restore_snapshot` | restoreSnapshot | `id`, `includePacks` (default `false`; only when the snapshot holds them) | `{ outcome, snapshot, safety, written, deleted, packsRestored, undo, elementsChanged, elementsDeleted, diagnostics }`: the working model becomes the snapshot's after a safety snapshot of it (`safety`; restore that one to undo); `run-locked` while a generation run holds the run lock. Destructive: read `compare_snapshots` with `from` `working` and `to` the id first |
 | `get_schema` | (none) | `kind`: an element kind (`entity`, `value-object`, ...) or a document (`maquettiste`, `batch`, `pack`, `extension`) | `{ name, file, schema, references, extensions? }`: the JSON schema, the schema files it references (`common.json`) and, for an element kind, the project's extension schemas that apply to it (`name`, `description`, `appliesTo`, `properties`, `required`, `schemaPath`; they constrain the element's `properties`) |
 
 Documents may be passed as JSON objects or as strings holding one. Writes are recorded as `ChangeSource.Cli`.

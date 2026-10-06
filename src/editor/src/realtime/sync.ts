@@ -11,6 +11,7 @@ import { currentContentLocale } from "@/l10n/contentLocale";
 import { applyTranslations, localizationEnabled } from "@/l10n/model";
 import { l10nKeys } from "@/l10n/queries";
 import type { LocalizationStatus } from "@/api/types";
+import { snapshotScope } from "@/api/snapshotScope";
 
 export interface SyncDeps {
   realtime: RealtimeClient;
@@ -84,6 +85,8 @@ export function connectRealtime(deps: SyncDeps): () => void {
 
   offs.push(
     realtime.on("model.changed", async (event) => {
+      // As of a snapshot the cache shows the snapshot: the working model's changes are read again on the way back.
+      if (snapshotScope()) return;
       const locale = currentContentLocale();
       const set = locale ? keepLocalizedNames(event, qc.getQueryData<ElementSummary[]>(keys.index)) : event;
       if (shapesTables(set, qc.getQueryData<ElementSummary[]>(keys.index))) refetchTablesSoon();
@@ -118,6 +121,7 @@ export function connectRealtime(deps: SyncDeps): () => void {
 
   offs.push(
     realtime.on("validation.completed", (report) => {
+      if (snapshotScope()) return;
       if (report.truncated) void qc.fetchQuery({ queryKey: keys.validation, queryFn: () => endpoints.validate({}), staleTime: 0 });
       else qc.setQueryData(keys.validation, report);
     }),
@@ -125,6 +129,10 @@ export function connectRealtime(deps: SyncDeps): () => void {
 
   offs.push(
     realtime.on("project.changed", () => {
+      if (snapshotScope()) {
+        void qc.invalidateQueries({ queryKey: keys.project });
+        return;
+      }
       // The localization block may have changed: locales, fallbacks and completeness kinds.
       void qc.invalidateQueries({ queryKey: l10nKeys.status });
       void qc.invalidateQueries({ queryKey: l10nKeys.all });

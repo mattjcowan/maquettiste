@@ -27,10 +27,15 @@ public static class ModelEndpoints
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the summaries, 304, or 400 for an undeclared locale, a bad cursor or limit.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/model/index")]
     public static Task<IResult> Index(string? locale, string? kind, string? package, string? tag, string? category, string? stereotype, string? query,
-        string? cursor, string? limit, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+        string? cursor, string? limit, HttpContext context, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
         if (!ModelPages.TryParseLimit(limit, out var size, out var limitError))
@@ -98,10 +103,15 @@ public static class ModelEndpoints
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the page, or 400.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/model/elements")]
     public static Task<IResult> List(string? ids, string? kind, string? package, string? tag, string? category, string? stereotype, string? query,
-        string? fields, string? cursor, string? limit, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+        string? fields, string? cursor, string? limit, HttpContext context, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
         ArgumentNullException.ThrowIfNull(store);
         if (!ModelPages.TryParseLimit(limit, out var size, out var limitError))
             return Api.BadRequest(limitError!);
@@ -127,9 +137,14 @@ public static class ModelEndpoints
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the counts, or 400.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/model/kinds")]
-    public static Task<IResult> Kinds(string? by, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Kinds(string? by, HttpContext context, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
         ArgumentNullException.ThrowIfNull(store);
         if (by is not (null or "" or "kind" or "package"))
             return Api.BadRequest($"by must be kind or package, not '{by}'.");
@@ -150,10 +165,16 @@ public static class ModelEndpoints
     /// <param name="generation">The generation service.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the page, 400, or 404 for a database id that names no database.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/model/resolved")]
     public static Task<IResult> Resolved(string? scope, string? database, string? cursor, string? limit, HttpContext context, ModelStore store,
-        GenerationService generation, CancellationToken ct) => Api.GuardAsync(context, async () =>
+        GenerationService generation, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
+        generation = asOf.Generation ?? generation;
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(generation);
         if (!ModelPages.TryParseLimit(limit, out var size, out var limitError))
@@ -193,9 +214,14 @@ public static class ModelEndpoints
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the documents and the ids that matched nothing, or 400.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpPost("/api/model/elements/read")]
-    public static Task<IResult> Read(HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Read(HttpContext context, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
         var (request, error) = await Api.ReadJsonAsync<ElementReadRequest>(context.Request, null, ct).ConfigureAwait(false);
@@ -241,9 +267,14 @@ public static class ModelEndpoints
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200, 304 (the hash in <c>If-None-Match</c>) or 404.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/model/elements/{id}")]
-    public static Task<IResult> Get(string id, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Get(string id, HttpContext context, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
         var document = await store.GetElementAsync(id, ct).ConfigureAwait(false);
@@ -407,9 +438,14 @@ public static class ModelEndpoints
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 or 404.</returns>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
     [HttpGet("/api/model/references/{id}")]
-    public static Task<IResult> References(HttpContext context, string id, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> References(HttpContext context, string id, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
+        var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
+        if (asOf.Problem is { } missing)
+            return missing;
+        store = asOf.Store ?? store;
         ArgumentNullException.ThrowIfNull(store);
         if (await store.GetElementAsync(id, ct).ConfigureAwait(false) is null)
             return Api.NotFound("element", id);

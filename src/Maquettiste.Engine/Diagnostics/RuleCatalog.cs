@@ -47,6 +47,7 @@ public static class RuleCatalog
         new("MQ1008", W, "The .schema folder is out of date."),
         new("MQ1009", E, "A second tag vocabulary or category tree in the same scope (global or one domain); the ordinally first file is used."),
         new("MQ1010", I, "An outputs.allow entry sets commit, which is ignored since 0.5.5; remove it (maquettiste format drops it)."),
+        new("MQ1011", E, "A snapshot archive cannot be imported: not a zip, a path outside the snapshot layout, a size limit, or a missing or unreadable snapshot.json."),
 
         new("MQ2001", E, "Dangling reference."),
         new("MQ2002", E, "Reference to an element of the wrong kind."),
@@ -171,6 +172,7 @@ public static class RuleCatalog
         new("MQ6026", E, "A preview names an element outside its unit's scope."),
         new("MQ6027", E, "A block unit's target file holds its block twice, or a block that is not closed; the file is left alone."),
         new("MQ6028", I, "A block unit's target file does not exist and createFile is false; nothing is written (target-missing)."),
+        new("MQ6029", E, "A write against a model snapshot opened read-only; nothing is written (restore the snapshot to change it)."),
 
         new("MQ7001", E, "Duplicate code in a reference type, across all its seeds."),
         new("MQ7002", W, "Two codes of one reference type differ only by case."),

@@ -219,11 +219,14 @@ export function CodeDiffEditor({
   onMount,
   label,
   inline = false,
+  readOnly = false,
 }: {
   original: string;
   modified: string;
   onMount?: (getModified: () => string) => void;
   label: string;
+  /** Neither side takes edits (the compare view's before and after). */
+  readOnly?: boolean;
   /** One column with the removed lines above the added ones, for narrow places (the assistant's proposal cards). */
   inline?: boolean;
 }) {
@@ -257,7 +260,7 @@ export function CodeDiffEditor({
         modified={modified}
         theme={theme}
         onMount={handleMount}
-        options={{ ...options, renderSideBySide: !inline, originalEditable: false, readOnly: inline || options.readOnly, ariaLabel: label }}
+        options={{ ...options, renderSideBySide: !inline, originalEditable: false, readOnly: inline || readOnly || options.readOnly, ariaLabel: label }}
       />
     </div>
   );

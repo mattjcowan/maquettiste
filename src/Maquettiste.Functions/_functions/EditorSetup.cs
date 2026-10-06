@@ -12,7 +12,7 @@ public static class EditorSetup
 {
     /// <summary>
     /// Registers singletons only: <see cref="EditorSettings"/>, its <see cref="EngineOptions"/>, the <see cref="ModelStore"/> (no I/O,
-    /// never throws for model content), the <see cref="GenerationService"/>, the <see cref="JobQueue"/> (16 queued jobs), the sign-in
+    /// never throws for model content), the <see cref="GenerationService"/>, the <see cref="SnapshotLibrary"/>, the <see cref="JobQueue"/> (16 queued jobs), the sign-in
     /// state, the realtime publisher, the presence registry, the git reader and the assistant service. The container disposes the store and the queue.
     /// </summary>
     /// <param name="services">The functions' services.</param>
@@ -35,6 +35,7 @@ public static class EditorSetup
         services.AddSingleton(sp => new ModelStore(sp.GetRequiredService<EngineOptions>()));
         services.AddSingleton(sp => new GenerationService(sp.GetRequiredService<ModelStore>(), sp.GetRequiredService<EngineOptions>()));
         services.AddSingleton(sp => new DatabaseTables(sp.GetRequiredService<GenerationService>()));
+        services.AddSingleton(sp => new SnapshotLibrary(sp.GetRequiredService<ModelStore>()));
         services.AddSingleton(sp => new JobQueue(sp.GetRequiredService<GenerationService>(), sp.GetRequiredService<EngineOptions>(), capacity: 16));
         services.AddSingleton<EditorAuth>();
         services.AddSingleton<EditorEvents>();

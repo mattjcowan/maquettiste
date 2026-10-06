@@ -99,6 +99,8 @@ tags:
     description: Simulation, scenario recording and verification, XState import and export, and enum sync for processes (phase-3-design.md section 4.4).
   - name: assist
     description: The assistant panel (SPEC Section 14 "Assist", erratum E44) over the host's AI; proposals are applied through the model batch.
+  - name: snapshots
+    description: Named, immutable copies of the whole model (zip archives under `.maquettiste/model-snapshots/`); list, take, open read-only with `?snapshot=`, compare, restore, export and import (docs/engineering/snapshots.md).
   - name: realtime
     description: Events pushed over the host's SignalR hub (`webhooks`); the browser listens with `site.realtime.on`.
 x-maquettiste-realtime:
@@ -410,7 +412,11 @@ paths:
       summary: The canonical maquettiste.json with its hash
       x-maquettiste-role: viewer
       x-engine-addition: E3 ModelStore.GetSettingsAsync
+      parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
       responses:
+        '404':
+          $ref: '#/components/responses/NotFound'
         '200':
           description: The settings document.
           headers:
@@ -611,6 +617,7 @@ paths:
       x-maquettiste-engine: ModelStore.GetIndexAsync, ModelPages.Filter, ModelPages.PageIndex
       x-engine-addition: E5e ModelReads.IndexTag(summaries)
       parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
         - $ref: '#/components/parameters/IfNoneMatch'
         - name: locale
           in: query
@@ -627,6 +634,8 @@ paths:
         - $ref: '#/components/parameters/PageCursor'
         - $ref: '#/components/parameters/PageLimit'
       responses:
+        '404':
+          $ref: '#/components/responses/NotFound'
         '200':
           description: The index, or one page of it.
           headers:
@@ -729,6 +738,8 @@ paths:
         id was asked for; ids that match nothing are listed in `missing`. More than 200 ids is `bad-request`.
       x-maquettiste-role: viewer
       x-engine-addition: E5b ModelStore.ReadElementsAsync(ids)
+      parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
       requestBody:
         required: true
         content:
@@ -738,6 +749,8 @@ paths:
             example:
               ids: [01J92P0V0FJ23CGSNKM7P1W5V7, 01J92P0V1BWHG0REWKSTR292RS]
       responses:
+        '404':
+          $ref: '#/components/responses/NotFound'
         '200':
           description: The documents and the ids that matched nothing.
           content:
@@ -763,6 +776,7 @@ paths:
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelPages.Kinds(summaries, byPackage)
       parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
         - name: by
           in: query
           description: '`kind` (the default) or `package`.'
@@ -770,6 +784,8 @@ paths:
             type: string
             enum: [kind, package]
       responses:
+        '404':
+          $ref: '#/components/responses/NotFound'
         '200':
           description: The counts.
           content:
@@ -861,6 +877,7 @@ paths:
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetResolvedAsync(query)
       parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
         - name: scope
           in: query
           description: What to read.
@@ -1044,6 +1061,7 @@ paths:
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelPages.ReadElements(snapshot, ids, filter, fields, cursor, limit)
       parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
         - name: ids
           in: query
           description: Comma-separated element or sub-element ids.
@@ -1065,6 +1083,8 @@ paths:
         - $ref: '#/components/parameters/PageCursor'
         - $ref: '#/components/parameters/PageLimit'
       responses:
+        '404':
+          $ref: '#/components/responses/NotFound'
         '200':
           description: One page of documents.
           content:
@@ -1307,6 +1327,7 @@ paths:
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.GetElementAsync
       parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
         - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
@@ -2441,6 +2462,8 @@ paths:
       description: Every reference to the element or one of its sub-elements from another element.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.GetReferencesAsync (404 when ModelStore.GetElementAsync finds nothing)
+      parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
       responses:
         '200':
           description: The references.
@@ -2501,6 +2524,8 @@ paths:
         validation reports what generation would.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.ValidateAsync(scope)
+      parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
       requestBody:
         required: false
         content:
@@ -2512,6 +2537,8 @@ paths:
               includeReferrers: true
               includeScriptRules: true
       responses:
+        '404':
+          $ref: '#/components/responses/NotFound'
         '200':
           description: The report (never truncated over HTTP).
           content:
@@ -2595,6 +2622,8 @@ paths:
       summary: Diagram membership, positions and viewport
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.GetElementAsync (404 not-a-diagram unless kind is diagram)
+      parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
       responses:
         '200':
           description: The diagram document.
@@ -2969,6 +2998,8 @@ paths:
         reads its binding sources' columns from it. A model with errors returns `view: null` and the diagnostics.
       x-maquettiste-role: viewer
       x-engine-addition: E1 GenerationService.GetDatabaseViewAsync(databaseId)
+      parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
       responses:
         '200':
           description: The view, or the diagnostics that prevented resolution.
@@ -2998,6 +3029,8 @@ paths:
         resolve; `diagnostics` then holds the validation diagnostics and that database's resolution diagnostics.
       x-maquettiste-role: viewer
       x-engine-addition: E5c DatabaseTables.GetAsync(databaseId)
+      parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
       responses:
         '200':
           description: The tables that resolve, the diagnostics, and whether the list is partial.
@@ -3031,6 +3064,8 @@ paths:
         out because an owning element has errors (`partial` then says so).
       x-maquettiste-role: viewer
       x-engine-addition: E5f DatabaseTables.GetTableAsync(databaseId, key)
+      parameters:
+        - $ref: '#/components/parameters/SnapshotQuery'
       responses:
         '200':
           description: The table (or null), the diagnostics, and whether the model has errors.
@@ -4401,6 +4436,7 @@ paths:
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.PreviewAsync(pack, unit, elementId, options)
       parameters:
+      - $ref: '#/components/parameters/SnapshotQuery'
       - name: X-Maquettiste-Client
         in: header
         required: false
@@ -4421,6 +4457,8 @@ paths:
               unit: table
               elementId: 01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4
       responses:
+        '404':
+          $ref: '#/components/responses/NotFound'
         '200':
           description: The rendered files and diagnostics.
           content:
@@ -5553,6 +5591,333 @@ paths:
                 $ref: '#/components/schemas/Problem'
 
 
+  # ------------------------------------------------ model snapshots (docs/engineering/snapshots.md)
+  /api/snapshots:
+    get:
+      tags: [snapshots]
+      operationId: listSnapshots
+      summary: Every snapshot of the model, newest first
+      description: |
+        The archives under `.maquettiste/model-snapshots/`, newest first (then by id). Each row comes from the archive's
+        `snapshot.json` (cached by file stamp), never from loading the model it holds.
+      x-maquettiste-role: viewer
+      responses:
+        '200':
+          description: The snapshots.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SnapshotInfo'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [snapshots]
+      operationId: createSnapshot
+      summary: Take a snapshot of the working model
+      description: |
+        Writes a deterministic zip of `maquettiste.json`, `model/`, `extensions/` and `branding/` (and `templates/` when
+        `includePacks` is true) under `.maquettiste/model-snapshots/<id>.zip`. The id is the kebab-case name and the UTC time
+        (`<slug>-<yyyymmdd-hhmmss>`, `-2` on a collision) and never changes. An explicit action: it reads the whole model folder,
+        in parallel chunks streamed into the archive.
+      x-maquettiste-role: editor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotCreateBody'
+            example:
+              name: Release 1 model
+              description: What went to review on Monday.
+              includePacks: false
+      responses:
+        '201':
+          description: The snapshot. `Location` names it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotInfo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/snapshots/compare:
+    get:
+      tags: [snapshots]
+      operationId: compareSnapshots
+      summary: What differs between two snapshots, or a snapshot and the working model
+      description: |
+        `from` and `to` are snapshot ids or `working` (`to` defaults to `working`). Documents are compared by hash first, so only
+        the indexes are read: elements are matched by id (added, removed, or changed; a rename or a move says so with
+        `previousName` and `previousPath`), the other documents (settings, locale shards, extensions, sidecars, branding, and the
+        packs when both sides hold them) by path. The element list is ordered by kind, name and id and paged by `offset` and
+        `limit`; `next` is the offset of the next page. The fields of one element come from `/api/snapshots/compare/element`.
+      x-maquettiste-role: viewer
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: to
+          in: query
+          schema:
+            type: string
+            default: working
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5000
+            default: 500
+      responses:
+        '200':
+          description: The differences.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotComparison'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/snapshots/compare/element:
+    get:
+      tags: [snapshots]
+      operationId: compareSnapshotElement
+      summary: One element on both sides of a comparison
+      description: |
+        The element's two documents (`before` on the `from` side, `after` on the `to` side), in the form the conflict view renders
+        them, and the fields that differ as JSON pointers (objects by key, arrays of objects with ids matched by id, other arrays
+        by position when their lengths match, else whole), at most 500 (`fieldsTruncated`).
+      x-maquettiste-role: viewer
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: to
+          in: query
+          schema:
+            type: string
+            default: working
+        - name: id
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Ulid'
+      responses:
+        '200':
+          description: The element on both sides.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotElementDiff'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/snapshots/import:
+    post:
+      tags: [snapshots]
+      operationId: importSnapshot
+      summary: Import an exported snapshot
+      description: |
+        The body is the archive, `Content-Type: application/zip` (the one body the sign-in gate takes that is not JSON). It is copied
+        to the cache folder (512 MB at most), checked (a zip; every entry a safe path of the snapshot layout, no duplicate even
+        ignoring case, at most 64 MB each, 4 GB together, 500,000 entries, no entry over 1 MB that expands more than 200 times; a
+        `snapshot.json` of format 1 and a model format this release reads), rewritten the way the engine writes archives, and loaded
+        once: a document that does not parse (MQ1001), is not canonical (MQ1003) or names an unsupported format (MQ1007) refuses it.
+        It is stored under a new id; the working model is never touched. The host bounds a request body too (536,870,912
+        bytes in static-site-hosting 0.4.0, the same 512 MiB): a body over it is the same 413 with `tooLarge` and MQ1011, and
+        the command line (`maquettiste snapshot import`) has no such bound.
+      x-maquettiste-role: maintainer
+      requestBody:
+        required: true
+        content:
+          application/zip:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: The stored snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotImportResult'
+        '413':
+          description: The archive is over a size or count limit (MQ1011).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotImportResult'
+        '422':
+          description: The archive is refused; `diagnostics` says why (MQ1011, MQ1001, MQ1003, MQ1007).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotImportResult'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/snapshots/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SnapshotId'
+    get:
+      tags: [snapshots]
+      operationId: getSnapshot
+      summary: One snapshot
+      x-maquettiste-role: viewer
+      responses:
+        '200':
+          description: The snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotInfo'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [snapshots]
+      operationId: updateSnapshot
+      summary: Rename, describe or publish a snapshot
+      description: Rewrites only the archive's last entry, `snapshot.json`; the id and the documents stay as they are.
+      x-maquettiste-role: editor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotPatchBody'
+            example:
+              published: true
+      responses:
+        '200':
+          description: The snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotInfo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [snapshots]
+      operationId: deleteSnapshot
+      summary: Delete a snapshot
+      x-maquettiste-role: maintainer
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/snapshots/{id}/restore:
+    parameters:
+      - $ref: '#/components/parameters/SnapshotId'
+    post:
+      tags: [snapshots]
+      operationId: restoreSnapshot
+      summary: Replace the working model with a snapshot's content
+      description: |
+        One operation: refused with 409 `run-locked` while a generation run holds the run lock (the restore then holds it); first a
+        safety snapshot of the working model (`before-restore-<yyyymmdd-hhmmss>`, holding the packs when they are restored); then
+        every document that differs is written and every document the snapshot does not have is deleted, all or nothing, and the
+        model reloads and publishes one `model.changed`. The packs are restored only when the snapshot holds them and `includePacks`
+        is true. Restoring the safety snapshot undoes it (`undo` says so); the editor's undo stack is not involved. The body is
+        optional.
+      x-maquettiste-role: maintainer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotRestoreBody'
+      responses:
+        '200':
+          description: Restored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotRestoreResult'
+        '409':
+          description: A generation run holds the run lock (`run-locked`); nothing changed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: The write was refused by the path policy (MQ6004); nothing changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotRestoreResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/snapshots/{id}/export:
+    parameters:
+      - $ref: '#/components/parameters/SnapshotId'
+    get:
+      tags: [snapshots]
+      operationId: exportSnapshot
+      summary: Download a snapshot's archive
+      description: The archive as stored, which is the deterministic zip (`Content-Disposition` names it `<id>.zip`); `POST /api/snapshots/import` takes it back.
+      x-maquettiste-role: editor
+      responses:
+        '200':
+          description: The archive.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 webhooks:
   model.changed:
     post:
@@ -5738,6 +6103,27 @@ components:
       description: '`Authorization: Bearer <MAQUETTISTE_EDITOR_TOKEN>`, the secret site variable. For the CLI, scripts and tests. Compared in fixed time. In local mode a loopback or `MAQUETTISTE_LOCAL_PEERS` caller with a local `Host` and no forwarding header needs neither scheme and is the local admin (see the authentication notes in `info`).'
 
   parameters:
+    SnapshotId:
+      name: id
+      in: path
+      required: true
+      description: A snapshot id (`<slug>-<yyyymmdd-hhmmss>`).
+      schema:
+        type: string
+        pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+      example: release-1-model-20261005-120000
+    SnapshotQuery:
+      name: snapshot
+      in: query
+      required: false
+      description: |
+        Read the model "as of" this snapshot instead of the working model (docs/engineering/snapshots.md section 4): the snapshot is
+        opened read-only from its archive and the answer carries `X-Maquettiste-Snapshot: <id>`; 404 when no snapshot has the id.
+        Only the reads that list this parameter take it: the sign-in gate answers any other read that carries it with 400
+        `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
+      schema:
+        type: string
+        pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
     PackName:
       name: pack
       in: path
@@ -5888,6 +6274,17 @@ components:
       example: '</api/model/index?kind=entity&limit=100&cursor=cDEAZW50aXR5AEludm9pY2UAMDFKOTJQMFYwRkoyM0NHU05LTTdQMVc1Vjc>; rel="next"'
 
   responses:
+    Forbidden:
+      description: The caller's role is below the one the operation needs (`forbidden`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: This needs the maintainer role.
+            status: 403
+            code: forbidden
     BadRequest:
       description: The body is not JSON or not the expected shape (`bad-request`), or is larger than 4 MB (`too-large`). The sign-in gate refuses a `POST` or `PUT` that is not `application/json` with 415 `unsupported-media-type`, and a foreign `Origin` with 403 `forbidden-origin`, before any handler runs.
       content:
@@ -6024,6 +6421,9 @@ components:
             - assist-not-configured
             - assist-budget-exhausted
             - assist-busy
+            - run-locked
+            - snapshot-read-only
+            - snapshot-unsupported
         traceId:
           type: string
     SignInRequest:
@@ -12976,3 +13376,266 @@ components:
         truncated:
           type: boolean
           description: Whether older exchanges were dropped to keep the conversation under its size cap.
+
+    # ---------------------------------------------------------------- model snapshots (docs/engineering/snapshots.md)
+    SnapshotInfo:
+      x-engine-record: Maquettiste.Engine.SnapshotInfo
+      description: A model snapshot as `snapshot.json` describes it, with the archive's size.
+      type: object
+      required: [id, name, description, author, createdUtc, origin, published, includesPacks, modelHash, modelFormat, engine, files, elements, kinds, size]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          description: The archive's file name without `.zip` (`<slug>-<yyyymmdd-hhmmss>`); never changes.
+          example: release-1-model-20261005-120000
+        name:
+          type: string
+        description:
+          type: string
+        author:
+          type: string
+          description: Who took it; empty when unknown.
+        createdUtc:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+          example: '2026-10-05T12:00:00Z'
+        origin:
+          type: string
+          enum: [user, before-restore]
+          description: '`before-restore` for the safety snapshot a restore takes first.'
+        published:
+          type: boolean
+          description: Marked as ready for review.
+        includesPacks:
+          type: boolean
+        modelHash:
+          type: string
+          description: The hash over every document's path and hash, the packs aside (the model it was taken from).
+        modelFormat:
+          type: integer
+        engine:
+          type: string
+          description: The release that took it.
+        files:
+          type: integer
+        elements:
+          type: integer
+        kinds:
+          type: object
+          additionalProperties:
+            type: integer
+        size:
+          type: integer
+          description: The archive's size in bytes.
+    SnapshotCreateBody:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: [string, 'null']
+          maxLength: 4000
+        includePacks:
+          type: [boolean, 'null']
+          default: false
+          description: Hold the template packs too, so generating from the snapshot reproduces exactly.
+    SnapshotPatchBody:
+      type: object
+      properties:
+        name:
+          type: [string, 'null']
+          maxLength: 200
+        description:
+          type: [string, 'null']
+          maxLength: 4000
+        published:
+          type: [boolean, 'null']
+    SnapshotRestoreBody:
+      type: object
+      properties:
+        includePacks:
+          type: [boolean, 'null']
+          default: false
+    SnapshotKindChanges:
+      x-engine-record: Maquettiste.Engine.SnapshotKindChanges
+      type: object
+      required: [kind, added, removed, changed]
+      properties:
+        kind:
+          type: string
+        added:
+          type: integer
+        removed:
+          type: integer
+        changed:
+          type: integer
+    SnapshotElementChange:
+      x-engine-record: Maquettiste.Engine.SnapshotElementChange
+      type: object
+      required: [id, kind, name, change, path]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        change:
+          type: string
+          enum: [added, removed, changed]
+        path:
+          type: string
+          description: The model-relative path on the `to` side (`from` for a removed element).
+        previousName:
+          type: string
+          description: The name on the `from` side, when it was renamed.
+        previousPath:
+          type: string
+          description: The path on the `from` side, when the file moved.
+    SnapshotFileChange:
+      x-engine-record: Maquettiste.Engine.SnapshotFileChange
+      type: object
+      required: [path, change]
+      properties:
+        path:
+          type: string
+        change:
+          type: string
+          enum: [added, removed, changed]
+    SnapshotComparison:
+      x-engine-record: Maquettiste.Engine.SnapshotComparison
+      type: object
+      required: [from, to, added, removed, changed, kinds, elements, next, files, filesTruncated, packsCompared]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        added:
+          type: integer
+        removed:
+          type: integer
+        changed:
+          type: integer
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/SnapshotKindChanges'
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/SnapshotElementChange'
+        next:
+          type: [integer, 'null']
+          description: The offset of the next page, or null after the last.
+        files:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/SnapshotFileChange'
+        filesTruncated:
+          type: boolean
+        packsCompared:
+          type: boolean
+    SnapshotFieldChange:
+      x-engine-record: Maquettiste.Engine.SnapshotFieldChange
+      type: object
+      required: [pointer, change, before, after]
+      properties:
+        pointer:
+          type: string
+          description: A JSON pointer in the document (`""` for the whole document).
+        change:
+          type: string
+          enum: [added, removed, changed]
+        before: {}
+        after: {}
+    SnapshotElementDiff:
+      x-engine-record: Maquettiste.Engine.SnapshotElementDiff
+      type: object
+      required: [id, kind, name, change, fromPath, toPath, fromHash, toHash, before, after, fields, fieldsTruncated]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        change:
+          type: string
+          enum: [added, removed, changed, unchanged]
+        fromPath:
+          type: [string, 'null']
+        toPath:
+          type: [string, 'null']
+        fromHash:
+          type: [string, 'null']
+        toHash:
+          type: [string, 'null']
+        before:
+          description: The document on the `from` side, or null.
+          type: [object, 'null']
+          additionalProperties: true
+        after:
+          description: The document on the `to` side, or null.
+          type: [object, 'null']
+          additionalProperties: true
+        fields:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/SnapshotFieldChange'
+        fieldsTruncated:
+          type: boolean
+    SnapshotRestoreResult:
+      x-engine-record: Maquettiste.Engine.SnapshotRestoreResult
+      type: object
+      required: [outcome, snapshot, safety, written, deleted, packsRestored, undo, elementsChanged, elementsDeleted, diagnostics]
+      properties:
+        outcome:
+          type: string
+          enum: [restored, not-found, locked, refused]
+        snapshot:
+          oneOf:
+            - $ref: '#/components/schemas/SnapshotInfo'
+            - type: 'null'
+        safety:
+          description: The snapshot of the working model taken just before; restoring it undoes the restore.
+          oneOf:
+            - $ref: '#/components/schemas/SnapshotInfo'
+            - type: 'null'
+        written:
+          type: integer
+        deleted:
+          type: integer
+        packsRestored:
+          type: boolean
+        undo:
+          type: [string, 'null']
+        elementsChanged:
+          type: integer
+        elementsDeleted:
+          type: integer
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    SnapshotImportResult:
+      x-engine-record: Maquettiste.Engine.SnapshotImportResult
+      type: object
+      required: [snapshot, diagnostics, tooLarge]
+      properties:
+        snapshot:
+          oneOf:
+            - $ref: '#/components/schemas/SnapshotInfo'
+            - type: 'null'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+        tooLarge:
+          type: boolean

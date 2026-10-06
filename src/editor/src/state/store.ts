@@ -13,6 +13,7 @@ import type { DatabaseObjectKind } from "@/explorer/databaseCreate";
 import { DEFAULT_LAYOUT, clearLayout, readLayout, writeLayout, type Layout, type Panel } from "./layout";
 import type { TablePart } from "@/workspaces/database/tableParts";
 import type { FkDraft } from "@/workspaces/database/fkEdits";
+import { SNAPSHOT_READ_ONLY, snapshotScope } from "@/api/snapshotScope";
 
 export type PaletteCommand = "plan" | "apply" | "new-entity";
 
@@ -405,6 +406,13 @@ function initialRecent(): string[] {
   return Array.isArray(saved) ? saved.filter((x): x is string => typeof x === "string").slice(0, 20) : [];
 }
 
+/** True (and says so) while a snapshot is shown read-only: a dialog that writes does not open (snapshotScope.ts). */
+function refusedAsOf(set: (patch: Partial<EditorState>) => void): boolean {
+  if (!snapshotScope()) return false;
+  set({ notice: { id: ++noticeId, text: SNAPSHOT_READ_ONLY, level: "error" } });
+  return true;
+}
+
 export function createEditorStore(): EditorStore {
   const layout = readLayout();
   return createStore<EditorState & EditorActions>()((set, get) => ({
@@ -654,12 +662,16 @@ export function createEditorStore(): EditorStore {
     showReferences: (id) => set({ references: id, ...(id ? { bottomTab: "references" as const, bottomCollapsed: false } : {}) }),
     // A go-to (a definition, a where-used row, a breadcrumb, back and forward) opens the element: it is a recent one.
     requestCenter: (id) => set({ centerRequest: { id, nonce: (get().centerRequest?.nonce ?? 0) + 1 }, recent: withRecent(get().recent, id) }),
-    requestNew: (request) => set({ newElement: request }),
-    requestNewDatabaseObject: (request) => set({ newDatabaseObject: request }),
-    requestForeignKeyDialog: (request) => set({ foreignKeyDialog: request }),
-    requestPartDelete: (request) => set({ partDelete: request ? { ...request, nonce: (get().partDelete?.nonce ?? 0) + 1 } : null }),
-    requestStorage: (request) => set({ storageRequest: request ? { ...request, nonce: (get().storageRequest?.nonce ?? 0) + 1 } : null }),
-    requestTypeAction: (request) => set({ typeAction: request ? { ...request, nonce: (get().typeAction?.nonce ?? 0) + 1 } : null }),
+    // The dialogs that write: none opens while a snapshot is shown read-only.
+    requestNew: (request) => (request && refusedAsOf(set) ? undefined : set({ newElement: request })),
+    requestNewDatabaseObject: (request) => (request && refusedAsOf(set) ? undefined : set({ newDatabaseObject: request })),
+    requestForeignKeyDialog: (request) => (request && refusedAsOf(set) ? undefined : set({ foreignKeyDialog: request })),
+    requestPartDelete: (request) =>
+      request && refusedAsOf(set) ? undefined : set({ partDelete: request ? { ...request, nonce: (get().partDelete?.nonce ?? 0) + 1 } : null }),
+    requestStorage: (request) =>
+      request && refusedAsOf(set) ? undefined : set({ storageRequest: request ? { ...request, nonce: (get().storageRequest?.nonce ?? 0) + 1 } : null }),
+    requestTypeAction: (request) =>
+      request && refusedAsOf(set) ? undefined : set({ typeAction: request ? { ...request, nonce: (get().typeAction?.nonce ?? 0) + 1 } : null }),
     requestCommand: (name) => set({ command: name ? { name, nonce: (get().command?.nonce ?? 0) + 1 } : null }),
     updateEditors: (update) => {
       const before = get().editors;

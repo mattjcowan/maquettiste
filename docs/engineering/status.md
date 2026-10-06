@@ -70,6 +70,13 @@ p95 0.006 ms (0.2 ms), guard p95 0.003 ms (0.05 ms), simulate of 200 inputs 12.7
 2.9 ms (10 ms), whole-model rules 359 ms added (400 ms), replay of every scenario 2.74 s (3 s), export 5.8 ms and import
 8.3 ms (50 ms).
 
+**Model snapshots (2026-10-05; phase A of `next.md` item 4, engine and server).** Named, immutable copies of the whole model
+as deterministic zip archives under `.maquettiste/model-snapshots/`, behind a document store interface under the model store
+(the model folder and a read-only archive as its providers): take, list, rename and publish, delete, open read-only, compare,
+restore after a safety snapshot, export and import, over the API, the CLI and the MCP tools. The design and its timings:
+`docs/engineering/snapshots.md`; erratum E45. The editor side (the picker on the project name, read-only "as of" mode
+with `?snapshot=` in the URL, the compare view, restore with its undo) is in that document's section 10.
+
 Known misses carried forward, none a gate item: a few editor timings on the 5,000-entity scale dataset
 (`docs/engineering/explorer-redesign.md` §4.5) and the listed "Left" items of the design documents, the phase 3 ones
 gathered in `docs/engineering/phase-3-design.md`'s close-out paragraph.
