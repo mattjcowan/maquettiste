@@ -103,6 +103,9 @@ internal sealed class ForeignKeySpec(TableBuild host, IReadOnlyList<string> colu
     public string? Name { get; } = name;
     public RForeignKey Result { get; } = new() { OnDelete = onDelete, OnUpdate = onUpdate };
 
+    /// <summary>The columns (of <see cref="Columns"/>) the on-delete action sets; empty sets them all.</summary>
+    public IReadOnlyList<string> OnDeleteColumns { get; init; } = [];
+
     /// <summary>Whether the key resolved to real columns and a real target.</summary>
     public bool Resolved { get; set; }
 

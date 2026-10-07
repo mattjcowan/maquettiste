@@ -616,7 +616,9 @@ database shows on the Database screen at once. The explorers remember which rows
     database's tables, the referenced columns, which are that table's primary key when none is picked, and **On delete**
     and **On update**, no action by default, and **Deferrable**: not deferrable by default, or checked per statement or
     at commit; on SQL Server and MySQL, which check every key on each statement, it says so and the DDL leaves it out,
-    MQ4056); **Checks** (name, the **Column** it constrains, or the table, and the expression for the database's dialect
+    MQ4056; a picked key whose on delete is Set null or Set default, on two columns or more, shows **Columns set on delete** in
+    the inspector: none picked sets every column of the key, pick some to keep the others, such as a tenant column; outside
+    PostgreSQL a note says the DDL leaves the list out and sets them all, MQ4056); **Checks** (name, the **Column** it constrains, or the table, and the expression for the database's dialect
     and for any dialect); **DDL** (the table's create script, from the DDL preview's unit for one table); **References** (the foreign
     keys of other tables that point at it, each opening that table on its foreign key, and what else of the database uses the
     table's file);
@@ -720,7 +722,12 @@ database shows on the Database screen at once. The explorers remember which rows
   - **Keys and constraints.** A primary key has a name and, on SQL Server, `clustered`; unique constraints, checks and
     foreign keys have names; a foreign key has `onDelete` and `onUpdate` (`no-action`, `restrict`, `cascade`, `set-null`,
     `set-default`) and `deferrable` (`not-deferrable`, `initially-immediate`, `initially-deferred`: checked at the end of
-    each statement, or at commit). A check's `column` makes it a column check: the column it constrains. A unique
+    each statement, or at commit). With `set-null` or `set-default` on delete, `onDeleteColumns` names the columns of the
+    key the action sets, and the others keep their values (PostgreSQL 15 and later: `ON DELETE SET NULL (folder_id)` on a
+    key `(tenant_id, folder_id)` clears the folder and keeps the tenant); empty sets every column. A column that is not
+    the key's, or the list on another action, is MQ4060 (error). A set-null that would null a column that is not nullable
+    (or a set-default on one that is not nullable and has no default) is MQ4061 (warning): the DDL is accepted, but deleting a
+    referenced row fails; list only the nullable columns, make the column nullable, or pick another action. A check's `column` makes it a column check: the column it constrains. A unique
     constraint's `nullsNotDistinct` makes two rows with nulls in its columns conflict (PostgreSQL 15 and later).
   - **Indexes** list their columns with a sort order, and may be `unique`, have `include` columns, a partial `where`
     predicate and a `method` (`btree`, `hash`, `gin`, `gist`, `clustered`). An index column may be an `expression` instead
@@ -740,7 +747,8 @@ database shows on the Database screen at once. The explorers remember which rows
     columns outside PostgreSQL and SQL Server, a partial index on MySQL or Oracle, an index method the dialect lacks, an
     index expression on SQL Server (the index is left out), a key prefix length outside MySQL, a MySQL index on a text column
     without one (the index is left out), `nullsNotDistinct` outside PostgreSQL, a stored computed column on Oracle, identity
-    options (any on SQLite, the increment or `always` on MySQL), a clustered primary key outside SQL Server, a materialized view outside PostgreSQL and Oracle,
+    options (any on SQLite, the increment or `always` on MySQL), a clustered primary key outside SQL Server, a foreign key's
+    `onDeleteColumns` outside PostgreSQL (the action then sets every column of the key), a materialized view outside PostgreSQL and Oracle,
     `withCheckOption` on SQLite or a materialized view, a sequence on SQLite or MySQL.
 
   The sql-ddl pack writes all of it for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle, and migrates every

@@ -24,6 +24,7 @@ import {
   indexColumnNote,
   indexColumnText,
   indexLengthProblem,
+  keepOnDeleteColumns,
   moveIndexColumn,
   nullsNotDistinctNote,
   PART_LABELS,
@@ -35,8 +36,10 @@ import {
   renamePart,
   setIndexColumnLength,
   setIndexColumnOrder,
+  setForeignKeyAction,
   setIndexExpression,
   toggleIndexColumn,
+  toggleOnDeleteColumn,
   type ListPartKind,
   type TablePart,
   type TablePartKind,
@@ -134,10 +137,16 @@ export function usePartEdits(td: TableDoc) {
         else {
           const next = toggleColumn((entry.columns as string[]) ?? [], column);
           if (next) entry.columns = next;
+          if (part.kind === "foreign-key") keepOnDeleteColumns(entry);
         }
       }),
     set: (part: TablePart, member: string, value: unknown) =>
       edit(`Edit ${PART_LABELS[part.kind]} on ${name}`, part, (entry) => setEntryMember(entry, member, value)),
+    /** A foreign key's on-delete or on-update action (an on-delete that sets no columns drops the columns it set). */
+    setAction: (part: TablePart, member: "onDelete" | "onUpdate", action: string) =>
+      edit(`Edit foreign key on ${name}`, part, (entry) => setForeignKeyAction(entry, member, action)),
+    /** Ticks or unticks a column of a foreign key among those its on-delete sets. */
+    toggleOnDeleteColumn: (part: TablePart, column: string) => edit(`Edit foreign key on ${name}`, part, (entry) => toggleOnDeleteColumn(entry, column)),
     /** A foreign key's referenced table: its referenced columns go back to the table's primary key. */
     setReferences: (part: TablePart, table: string) =>
       edit(`Edit foreign key on ${name}`, part, (entry) => {
@@ -846,7 +855,7 @@ export function ActionSelect({
       className={selectClass}
       disabled={fixed}
       value={value}
-      onChange={(e) => void edits.set(part, member, e.target.value === "no-action" ? undefined : e.target.value)}
+      onChange={(e) => void edits.setAction(part, member, e.target.value)}
     >
       {FK_ACTIONS.map((a) => (
         <option key={a} value={a}>

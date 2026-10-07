@@ -219,6 +219,12 @@ public sealed class RForeignKey
     /// <summary><c>no-action</c>, <c>restrict</c>, <c>cascade</c>, <c>set-null</c> or <c>set-default</c>.</summary>
     public string OnDelete { get; internal set; } = "no-action";
 
+    /// <summary>
+    /// With <see cref="OnDelete"/> <c>set-null</c> or <c>set-default</c>, the columns of <see cref="Columns"/> the action sets
+    /// (PostgreSQL's <c>ON DELETE SET NULL (column, ...)</c>); empty sets every column of the key.
+    /// </summary>
+    public IReadOnlyList<RColumn> OnDeleteColumns { get; internal set; } = [];
+
     /// <summary>The on-update action, as <see cref="OnDelete"/>.</summary>
     public string OnUpdate { get; internal set; } = "no-action";
 

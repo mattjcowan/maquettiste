@@ -770,7 +770,7 @@
   {
     "id": "MQ4056",
     "defaultSeverity": "warning",
-    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL.",
+    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -787,6 +787,22 @@
     "id": "MQ4059",
     "defaultSeverity": "error",
     "description": "A foreign key references columns of a table that are neither its primary key nor one of its unique keys (a unique constraint, or a unique index without a filter except on Oracle): a database accepts a foreign key only to a key.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4060",
+    "defaultSeverity": "error",
+    "description": "A foreign key's onDeleteColumns does not fit: its onDelete is not set-null or set-default, or it names a column that is not one of the key's columns, or one twice.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4061",
+    "defaultSeverity": "warning",
+    "description": "A foreign key's on-delete sets a column that cannot take the value: set-null on a column that is not nullable, or set-default on one that is not nullable and has no default; deleting a referenced row then fails.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true

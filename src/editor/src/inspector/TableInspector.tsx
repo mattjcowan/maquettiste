@@ -48,7 +48,9 @@ import {
   partName,
   qualifiedTable,
   nullsNotDistinctNote,
+  onDeleteColumnsNote,
   resolvedTableDoc,
+  setsColumns,
   type TablePart,
 } from "@/workspaces/database/tableParts";
 import { tableColumns } from "@/editors/database/databaseDocs";
@@ -740,6 +742,23 @@ function PartSection({ td, part }: { td: TableDoc; part: TablePart }) {
               <ActionSelect id={`${id}-on-update`} part={part} member="onUpdate" value={String(entry.onUpdate ?? "no-action")} edits={edits} fixed={fixed} />
             </Field>
           </div>
+          {setsColumns(entry.onDelete) && ((entry.columns as string[] | undefined) ?? []).length > 1 ? (
+            <Field label="Columns set on delete" hint="None picked: every column of the key. Pick some to keep the others, such as a tenant column.">
+              <ColumnsPicker
+                label={`Columns ${part.id} sets on delete`}
+                options={columns.filter((c) => ((entry.columns as string[] | undefined) ?? []).includes(c.id))}
+                chosen={(entry.onDeleteColumns as string[] | undefined) ?? []}
+                empty="every column of the key"
+                disabled={fixed}
+                onToggle={(c) => void edits.toggleOnDeleteColumn(part, c)}
+              />
+            </Field>
+          ) : null}
+          {setsColumns(entry.onDelete) && ((entry.onDeleteColumns as string[] | undefined) ?? []).length && onDeleteColumnsNote(dialect) ? (
+            <p className="text-11 text-secondary" data-testid="fk-on-delete-columns-note">
+              {onDeleteColumnsNote(dialect)}
+            </p>
+          ) : null}
           <Field label="Deferrable" htmlFor={`${id}-deferrable`} hint="When the key is checked: on each statement, or at commit.">
             <DeferrableSelect
               id={`${id}-deferrable`}

@@ -264,11 +264,15 @@ func identity_clause(c)
 end
 
 # FOREIGN KEY ... REFERENCES ... with its actions and deferral, without the CONSTRAINT name. SQL Server and MySQL have no deferrable
-# keys (MQ4056); Oracle has no ON UPDATE.
+# keys (MQ4056); Oracle has no ON UPDATE. Only PostgreSQL has ON DELETE SET NULL / SET DEFAULT of some of the key's columns
+# (on_delete_columns, MQ4056); the others set every column.
 func foreign_key_body(f, db)
   $s = "FOREIGN KEY (" + cols(f.columns, db) + ") REFERENCES " + qt(f.referenced_table) + " (" + cols(f.referenced_columns, db) + ")"
   if fk_action(f.on_delete, db) != ""
     $s = $s + " ON DELETE " + fk_action(f.on_delete, db)
+    if f.on_delete_columns.size > 0 && db.dialect == "postgresql"
+      $s = $s + " (" + cols(f.on_delete_columns, db) + ")"
+    end
   end
   if fk_action(f.on_update, db) != "" && db.dialect != "oracle"
     $s = $s + " ON UPDATE " + fk_action(f.on_update, db)

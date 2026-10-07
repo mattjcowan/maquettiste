@@ -228,6 +228,9 @@ public sealed record SnapshotForeignKey
     /// <summary>The on-delete action.</summary>
     public ReferentialAction OnDelete { get; init; } = ReferentialAction.NoAction;
 
+    /// <summary>The column keys the on-delete action sets; empty sets every column of the key.</summary>
+    public IReadOnlyList<string> OnDeleteColumns { get; init; } = [];
+
     /// <summary>The on-update action.</summary>
     public ReferentialAction OnUpdate { get; init; } = ReferentialAction.NoAction;
 

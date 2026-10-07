@@ -286,6 +286,8 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                 ["onDelete"] = fk.OnDelete,
                 ["onUpdate"] = fk.OnUpdate,
             };
+            if (fk.OnDeleteColumns.Count > 0)
+                fkNode["onDeleteColumns"] = new JsonArray([.. fk.OnDeleteColumns.Select(c => (JsonNode)Col(c))]);
             if (fk.Deferrable != "not-deferrable")
                 fkNode["deferrable"] = fk.Deferrable;
             foreignKeys.Add(fkNode);

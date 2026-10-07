@@ -7,7 +7,7 @@
 import type { ElementSummary, ModelJson, SaveResult, TableView } from "@/api/types";
 import type { UndoEntry } from "@/state/store";
 import { clone } from "@/lib/json";
-import { addTableColumn, deleteTableColumn, tableColumns } from "@/editors/database/databaseDocs";
+import { addTableColumn, deleteTableColumn, setEntryMember, tableColumns } from "@/editors/database/databaseDocs";
 
 type Json = Record<string, unknown>;
 
@@ -475,6 +475,45 @@ export function indexColumnNote(dialect: string, has: { expression: boolean; len
 /** What a unique constraint's nulls-not-distinct does on a dialect, or null where it is written (PostgreSQL). */
 export function nullsNotDistinctNote(dialect: string): string | null {
   return dialect === "postgresql" ? null : "Only PostgreSQL (15 and later) has NULLS NOT DISTINCT; this dialect leaves it out (MQ4056).";
+}
+
+/** The on-delete actions that set columns, and so may name some of the key's columns (`onDeleteColumns`). */
+export const SETS_COLUMNS = ["set-null", "set-default"] as const;
+
+/** Whether an on-delete action sets columns (set null, set default). */
+export function setsColumns(action: unknown): boolean {
+  return (SETS_COLUMNS as readonly unknown[]).includes(action);
+}
+
+/** A foreign key's on-delete or on-update action; an on-delete that sets no columns drops the columns it set (MQ4060). */
+export function setForeignKeyAction(entry: Json, member: "onDelete" | "onUpdate", action: string): void {
+  setEntryMember(entry, member, action === "no-action" ? undefined : action);
+  if (member === "onDelete" && !setsColumns(action)) delete entry.onDeleteColumns;
+}
+
+/** Ticks or unticks one of a foreign key's columns in the columns its on-delete sets; none left sets them all. */
+export function toggleOnDeleteColumn(entry: Json, column: string): void {
+  const current = (entry.onDeleteColumns as string[] | undefined) ?? [];
+  const next = current.includes(column) ? current.filter((c) => c !== column) : [...current, column];
+  // In the key's column order, as the DDL lists them.
+  const order = (entry.columns as string[] | undefined) ?? [];
+  setEntryMember(entry, "onDeleteColumns", next.length ? order.filter((c) => next.includes(c)) : undefined);
+}
+
+/** A foreign key's columns changed: the columns its on-delete sets keep only those still in the key (MQ4060). */
+export function keepOnDeleteColumns(entry: Json): void {
+  const current = entry.onDeleteColumns as string[] | undefined;
+  if (!current) return;
+  const columns = (entry.columns as string[] | undefined) ?? [];
+  const next = current.filter((c) => columns.includes(c));
+  setEntryMember(entry, "onDeleteColumns", next.length ? next : undefined);
+}
+
+/** What setting only some of a key's columns on delete does on a dialect, or null where it is written (PostgreSQL). */
+export function onDeleteColumnsNote(dialect: string): string | null {
+  return dialect === "postgresql"
+    ? null
+    : "Only PostgreSQL (15 and later) sets some of the key's columns; this dialect leaves the list out and sets them all (MQ4056).";
 }
 
 /** The foreign keys of the database's other tables that reference a table ("Referenced by"). */

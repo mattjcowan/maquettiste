@@ -184,4 +184,63 @@ public sealed class DdlModelAdditionsTests
         Assert.Contains(findings, d => d.Message.Contains("leaves the index out", StringComparison.Ordinal));
 
     }
+
+    /// <summary>Folders keyed by (tenant_id, id) and documents whose key (tenant_id, folder_id) to them sets only folder_id on delete.</summary>
+    private static ModelBuilder TenantFolders(Dialect dialect, ReferentialAction onDelete, params string[] onDeleteColumns)
+    {
+        var b = new ModelBuilder(seed: 94);
+        var db = b.Database("db", dialect);
+        var folders = b.Table("folders", db).Column("tenant_id", "int64", nullable: false).Column("id", "int64", nullable: false).PrimaryKey("tenant_id", "id");
+        var documents = b.Table("documents", db).Column("tenant_id", "int64", nullable: false).Column("id", "int64", nullable: false).Column("folder_id", "int64")
+            .PrimaryKey("tenant_id", "id").ForeignKey(folders, "tenant_id", "folder_id");
+        var ids = onDeleteColumns.Select(n => n == "missing" ? "missing" : documents.ColumnId(n)).ToList();
+        documents.Edit(t => t with { ForeignKeys = [t.ForeignKeys[0] with { OnDelete = onDelete, OnDeleteColumns = ids }] });
+        return b;
+    }
+
+    [Fact]
+    public async Task A_foreign_key_resolves_the_columns_it_sets_on_delete_and_the_snapshot_diff_records_a_change()
+    {
+        var b = TenantFolders(Dialect.PostgreSql, ReferentialAction.SetNull, "folder_id");
+        Assert.Empty(await Findings(b.Build(), "MQ4060", "MQ4056"));
+        var key = Assert.Single(ResolutionKit.Resolve(b).Db("db").Table("documents").ForeignKeys);
+        Assert.Equal(["folder_id"], key.OnDeleteColumns.Select(c => c.Name));
+
+        var differ = new SchemaDiffer();
+        var before = differ.Capture(ResolutionKit.Resolve(TenantFolders(Dialect.PostgreSql, ReferentialAction.SetNull)).Db("db"), 1);
+        var diff = differ.Diff(before, ResolutionKit.Resolve(b).Db("db"));
+        var change = Assert.Single(Assert.Single(diff.Tables).ForeignKeys);
+        Assert.Equal("onDeleteColumns", Assert.Single(change.Changes).Property);
+    }
+
+    [Fact]
+    public async Task A_column_list_on_delete_is_refused_off_set_null_or_off_the_key_and_warned_outside_PostgreSQL()
+    {
+        Assert.Equal(["/foreignKeys/0/onDeleteColumns"],
+            (await Findings(TenantFolders(Dialect.PostgreSql, ReferentialAction.Cascade, "folder_id").Build(), "MQ4060")).Select(d => d.JsonPointer));
+        Assert.Equal(["/foreignKeys/0/onDeleteColumns/1", "/foreignKeys/0/onDeleteColumns/2"],
+            (await Findings(TenantFolders(Dialect.PostgreSql, ReferentialAction.SetDefault, "folder_id", "id", "folder_id").Build(), "MQ4060")).Select(d => d.JsonPointer));
+
+        var sqlServer = Assert.Single(await Findings(TenantFolders(Dialect.SqlServer, ReferentialAction.SetNull, "folder_id").Build(), "MQ4056", "MQ4060"));
+        Assert.Equal(("MQ4056", "/foreignKeys/0/onDeleteColumns", DiagnosticSeverity.Warning), (sqlServer.Rule, sqlServer.JsonPointer, sqlServer.Severity));
+    }
+
+    [Fact]
+    public void Setting_a_not_null_column_on_delete_is_a_warning_that_names_the_column()
+    {
+        // The resolver reports it (ModelStore adds the resolver's findings to every validate path): nullability is the resolved one.
+        static List<Diagnostic> Sets(ModelBuilder b) => [.. ResolutionKit.Resolve(b).Diagnostics.Where(d => d.Rule == "MQ4061")];
+
+        var finding = Assert.Single(Sets(TenantFolders(Dialect.PostgreSql, ReferentialAction.SetNull)));
+        Assert.Equal(("/foreignKeys/0/onDelete", DiagnosticSeverity.Warning), (finding.JsonPointer, finding.Severity));
+        Assert.Contains("tenant_id is not nullable", finding.Message, StringComparison.Ordinal);
+        Assert.Contains("onDeleteColumns", finding.Message, StringComparison.Ordinal);
+
+        // Only the columns the action sets count: folder_id is nullable.
+        Assert.Empty(Sets(TenantFolders(Dialect.PostgreSql, ReferentialAction.SetNull, "folder_id")));
+        Assert.Empty(Sets(TenantFolders(Dialect.PostgreSql, ReferentialAction.SetDefault, "folder_id")));
+        Assert.Empty(Sets(TenantFolders(Dialect.PostgreSql, ReferentialAction.Cascade)));
+        Assert.Contains("without a default",
+            Assert.Single(Sets(TenantFolders(Dialect.PostgreSql, ReferentialAction.SetDefault))).Message, StringComparison.Ordinal);
+    }
 }

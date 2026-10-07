@@ -131,7 +131,7 @@ internal static class SnapshotCapture
             : null;
         var uniques = AssignKeys(table.Uniques, u => "uq:" + JoinKeys(u.Columns), _ => "", u => u.Name,
             (u, key) => new SnapshotConstraint { Key = key, Name = u.Name, Columns = Keys(u.Columns), NullsNotDistinct = u.NullsNotDistinct });
-        var foreignKeys = AssignKeys(table.ForeignKeys, ForeignKeyKey, f => (f.OnDelete ?? "") + "|" + (f.OnUpdate ?? ""), f => f.Name,
+        var foreignKeys = AssignKeys(table.ForeignKeys, ForeignKeyKey, f => (f.OnDelete ?? "") + "|" + JoinKeys(f.OnDeleteColumns) + "|" + (f.OnUpdate ?? ""), f => f.Name,
             (f, key) => new SnapshotForeignKey
             {
                 Key = key,
@@ -140,6 +140,7 @@ internal static class SnapshotCapture
                 ReferencedTable = f.ReferencedTable?.Key ?? "",
                 ReferencedColumns = Keys(f.ReferencedColumns),
                 OnDelete = PlainValues.Parse(f.OnDelete, ReferentialAction.NoAction),
+                OnDeleteColumns = Keys(f.OnDeleteColumns),
                 OnUpdate = PlainValues.Parse(f.OnUpdate, ReferentialAction.NoAction),
                 Deferrable = PlainValues.Parse(f.Deferrable, Deferrability.NotDeferrable),
             });

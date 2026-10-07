@@ -11,6 +11,7 @@
 import type { ColumnView, ForeignKeyView, TableView } from "@/api/types";
 import { keyHolding, keysOfView, referencedKeyProblem } from "@/model/foreignKeyTarget";
 import { tableFileTarget } from "./columnEdits";
+import { keepOnDeleteColumns, setsColumns } from "./tableParts";
 
 type Json = Record<string, unknown>;
 
@@ -300,6 +301,9 @@ export function applyDraft(doc: Json, draft: FkDraft, ctx: { tables: readonly Ta
     if (value === none) delete entry[member];
     else entry[member] = value;
   }
+  // The columns the on-delete sets (picked in the inspector) stay while it still sets columns and they are still in the key.
+  if (setsColumns(entry.onDelete)) keepOnDeleteColumns(entry);
+  else delete entry.onDeleteColumns;
   if (old) list[list.indexOf(old)] = entry;
   else list.push(entry);
   doc.foreignKeys = list;

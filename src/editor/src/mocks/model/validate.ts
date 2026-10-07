@@ -488,7 +488,7 @@ function viewDialectDiagnostics(json: Json, entry: ModelEntry, lookup: Validatio
   return out;
 }
 
-/** MQ4057, MQ4059 and MQ4056 on a table file, as PhysicalRules.CheckColumnValues, CheckReferencedKey and CheckDialectFeatures report them. */
+/** MQ4057, MQ4059, MQ4060, MQ4061 and MQ4056 on a table file, as PhysicalRules.CheckColumnValues, CheckReferencedKey and CheckDialectFeatures report them. */
 function tableFacetDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationContext["lookup"]): Diagnostic[] {
   const out: Diagnostic[] = [];
   arr(json.columns).forEach((c, i) => {
@@ -501,6 +501,62 @@ function tableFacetDiagnostics(json: Json, entry: ModelEntry, lookup: Validation
         diag("MQ4057", "error", `Column '${String(c.name)}' sets fixedLength, which only string and binary columns have.`, entry, `/columns/${i}/fixedLength`),
       );
   });
+  // MQ4060: onDeleteColumns is for set-null and set-default, and names the key's own columns, each once (PhysicalRules.CheckOnDeleteColumns).
+  arr(json.foreignKeys).forEach((fk, i) => {
+    const listed = Array.isArray(fk.onDeleteColumns) ? (fk.onDeleteColumns as unknown[]).map(String) : [];
+    if (!listed.length) return;
+    const name = String(fk.name ?? fk.id);
+    const pointer = `/foreignKeys/${i}/onDeleteColumns`;
+    const action = typeof fk.onDelete === "string" ? fk.onDelete : "no-action";
+    if (action !== "set-null" && action !== "set-default") {
+      out.push(
+        diag(
+          "MQ4060",
+          "error",
+          `Foreign key '${name}' lists onDeleteColumns, but its onDelete is ${action}: only set-null and set-default set columns.`,
+          entry,
+          pointer,
+        ),
+      );
+      return;
+    }
+    const columns = Array.isArray(fk.columns) ? (fk.columns as unknown[]).map(String) : [];
+    listed.forEach((c, j) => {
+      if (!columns.includes(c))
+        out.push(
+          diag("MQ4060", "error", `Foreign key '${name}' lists '${c}' in onDeleteColumns, which is not one of the key's columns.`, entry, `${pointer}/${j}`),
+        );
+      else if (listed.indexOf(c) < j)
+        out.push(diag("MQ4060", "error", `Foreign key '${name}' lists '${c}' twice in onDeleteColumns.`, entry, `${pointer}/${j}`));
+    });
+  });
+  // MQ4061: what a key's set-null or set-default sets can take the value (the engine's resolver, DatabaseRun.CheckOnDeleteSets; here
+  // a designed table's own columns, nullable unless they say otherwise).
+  if (json.origin !== "synthesized")
+    arr(json.foreignKeys).forEach((fk, i) => {
+      const action = fk.onDelete;
+      if (action !== "set-null" && action !== "set-default") return;
+      const keyColumns = Array.isArray(fk.columns) ? (fk.columns as unknown[]).map(String) : [];
+      const listed = Array.isArray(fk.onDeleteColumns) && fk.onDeleteColumns.length ? (fk.onDeleteColumns as unknown[]).map(String) : keyColumns;
+      const refused = listed
+        .map((id) => arr(json.columns).find((c) => c.id === id))
+        .filter((c): c is Json => !!c && c.nullable === false && (action === "set-null" || (c.default === undefined && c.defaultSql === undefined)));
+      if (!refused.length) return;
+      const target = typeof fk.referencesTable === "string" ? lookup?.(fk.referencesTable)?.json : undefined;
+      const fix =
+        listed !== keyColumns || keyColumns.length < 2
+          ? "make the column nullable or pick another action"
+          : "list the columns to set in onDeleteColumns (PostgreSQL), make the column nullable, or pick another action";
+      out.push(
+        diag(
+          "MQ4061",
+          "warning",
+          `Foreign key '${String(fk.name ?? fk.id)}' of table '${String(json.name)}' ${action === "set-default" ? "sets its columns to their defaults" : "sets its columns to NULL"} on delete, but ${refused.map((c) => String(c.name)).join(", ")} ${refused.length === 1 ? "is" : "are"} ${action === "set-default" ? "not nullable and without a default" : "not nullable"}: deleting a referenced row in '${String(target?.name ?? fk.referencesTable)}' fails; ${fix}.`,
+          entry,
+          `/foreignKeys/${i}/onDelete`,
+        ),
+      );
+    });
   const database = typeof json.database === "string" ? lookup?.(json.database)?.json : undefined;
   if (!database) return out;
   const d = typeof database.dialect === "string" ? database.dialect : "postgresql";
@@ -546,6 +602,16 @@ function tableFacetDiagnostics(json: Json, entry: ModelEntry, lookup: Validation
     if (d === "oracle" && onUpdate !== "no-action") lacks(`Foreign key '${fkName}' has ON UPDATE ${onUpdate}`, `/foreignKeys/${i}/onUpdate`);
     if (d === "oracle" && (onDelete === "restrict" || onDelete === "set-default"))
       lacks(`Foreign key '${fkName}' has ON DELETE ${onDelete}`, `/foreignKeys/${i}/onDelete`);
+    if (Array.isArray(fk.onDeleteColumns) && fk.onDeleteColumns.length && (onDelete === "set-null" || onDelete === "set-default") && d !== "postgresql")
+      out.push(
+        diag(
+          "MQ4056",
+          "warning",
+          `Foreign key '${fkName}' sets only some of its columns on delete (onDeleteColumns), which ${DIALECT_NAMES[d] ?? d} (database '${String(database.name)}') does not have; the DDL leaves the column list out, so the action sets every column of the key.`,
+          entry,
+          `/foreignKeys/${i}/onDeleteColumns`,
+        ),
+      );
     if (d === "mysql" && onDelete === "set-default") lacks(`Foreign key '${fkName}' has ON DELETE set-default`, `/foreignKeys/${i}/onDelete`);
     if (d === "mysql" && onUpdate === "set-default") lacks(`Foreign key '${fkName}' has ON UPDATE set-default`, `/foreignKeys/${i}/onUpdate`);
   });

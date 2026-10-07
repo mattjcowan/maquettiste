@@ -47,7 +47,8 @@ Database folders are the kebab-case database name; the schema folder is left out
   `UNIQUE` (`UNIQUE NULLS NOT DISTINCT` on PostgreSQL 15 and later for a constraint with `nullsNotDistinct`; MQ4056 elsewhere),
   `FOREIGN KEY … REFERENCES … ON DELETE/ON UPDATE` (SQL Server has no `RESTRICT`, `NO ACTION` behaves the same there; Oracle has
   only `ON DELETE CASCADE` and `ON DELETE SET NULL`, and MySQL's InnoDB refuses `SET DEFAULT`: what they lack is left out with
-  MQ4056) with `DEFERRABLE INITIALLY DEFERRED|IMMEDIATE` on PostgreSQL,
+  MQ4056; `ON DELETE SET NULL (…)` or `SET DEFAULT (…)` with the key's `onDeleteColumns` on PostgreSQL 15 and later, the list
+  left out elsewhere, MQ4056) with `DEFERRABLE INITIALLY DEFERRED|IMMEDIATE` on PostgreSQL,
   SQLite and Oracle, and `CHECK` with the dialect's expression (a check's `column` marks it as a column check; it is written in
   the table like any other).
 - **Indexes**: unique, descending columns, expressions (an index column's `expression`, per dialect, written in parentheses:
@@ -130,6 +131,7 @@ later migrations). "note" means the script says what to do by hand.
 | Check (table, column): create, drop, rename | yes | yes | yes (rename: drop and add) | rebuild | yes |
 | Foreign key: actions, create, drop, rename | yes | yes (no `RESTRICT`) | yes (rename: drop and add; no `SET DEFAULT`, MQ4056) | rebuild | `ON DELETE CASCADE`, `SET NULL` (others MQ4056) |
 | Foreign key: deferrable | yes | none (MQ4056) | none (MQ4056) | yes | yes |
+| Foreign key: columns set on delete (`onDeleteColumns`) | yes (15+; a change drops and adds the key) | none (MQ4056) | none (MQ4056) | none (MQ4056) | none (MQ4056) |
 | Index: unique, descending, create, drop, rename | yes | yes | yes | drop and create | yes |
 | Index: include, partial, method, clustered | all | include, partial, clustered | method | partial | none |
 | Index: expression, key prefix length | expression | none (MQ4056; the index is left out) | both (expression: MySQL 8.0.13+, not MariaDB; text needs a length) | expression | expression |

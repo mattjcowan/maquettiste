@@ -99,6 +99,7 @@ internal sealed partial class DatabaseRun
 
         FinishTables();
         CheckForeignKeyColumns();
+        CheckOnDeleteSets();
         FinishRelationMappings();
         ReportUnusedOverlays();
         BuildEntityMappings();
@@ -245,7 +246,7 @@ internal sealed partial class DatabaseRun
         foreach (var fk in table.ForeignKeys)
         {
             var spec = new ForeignKeySpec(t, fk.Columns, null, fk.ReferencesTable, fk.ReferencesColumns, ResolutionValues.Kebab(fk.OnDelete),
-                ResolutionValues.Kebab(fk.OnUpdate), fk.Name) { FileId = table.Id, Id = fk.Id };
+                ResolutionValues.Kebab(fk.OnUpdate), fk.Name) { FileId = table.Id, Id = fk.Id, OnDeleteColumns = fk.OnDeleteColumns };
             spec.Result.Deferrable = ResolutionValues.Kebab(fk.Deferrable);
             t.ForeignKeys.Add(spec);
             _foreignKeysById.TryAdd(fk.Id, spec);

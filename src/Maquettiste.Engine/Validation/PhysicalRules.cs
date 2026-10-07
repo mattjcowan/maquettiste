@@ -4,7 +4,7 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// Physical rules on table, view and sequence files (MQ4001 to MQ4008, MQ4010, MQ4016, MQ4056, MQ4057, MQ4059, and MQ3013, MQ3017, MQ3019 on
+/// Physical rules on table, view and sequence files (MQ4001 to MQ4008, MQ4010, MQ4016, MQ4056, MQ4057, MQ4059, MQ4060, and MQ3013, MQ3017, MQ3019 on
 /// designed columns).
 /// These rules see only what files state: names produced by conventions for synthesized tables, columns and constraints are not
 /// checked against the identifier limit here (they need the resolver's casing and inflection; see README, open contract gap).
@@ -160,6 +160,9 @@ internal static class PhysicalRules
                 Add($"Foreign key '{name}' has ON UPDATE {ResolutionActionName(fk.OnUpdate)}", pointer + "/onUpdate", fk.Id);
             if (d == Dialect.Oracle && fk.OnDelete is ReferentialAction.Restrict or ReferentialAction.SetDefault)
                 Add($"Foreign key '{name}' has ON DELETE {ResolutionActionName(fk.OnDelete)}", pointer + "/onDelete", fk.Id);
+            if (fk.OnDeleteColumns.Count > 0 && fk.OnDelete is ReferentialAction.SetNull or ReferentialAction.SetDefault && d != Dialect.PostgreSql)
+                report.Add("MQ4056", $"Foreign key '{name}' sets only some of its columns on delete (onDeleteColumns), which {dialect} (database '{database.Name}') does not have; the DDL leaves the column list out, so the action sets every column of the key.",
+                    pointer + "/onDeleteColumns", fk.Id);
             if (d == Dialect.MySql && fk.OnDelete == ReferentialAction.SetDefault)
                 Add($"Foreign key '{name}' has ON DELETE set-default", pointer + "/onDelete", fk.Id);
             if (d == Dialect.MySql && fk.OnUpdate == ReferentialAction.SetDefault)
@@ -309,6 +312,7 @@ internal static class PhysicalRules
         var fk = table.ForeignKeys[index];
         var pointer = Ptr.At("/foreignKeys", index);
         CheckColumnList(fk.Columns, pointer + "/columns", "Foreign key", fk.Id, resolves, report);
+        CheckOnDeleteColumns(fk, pointer, report);
 
         // The referenced table: a table file id, or a synthesized table key.
         var referenced = model.Get<Table>(fk.ReferencesTable);
@@ -345,6 +349,33 @@ internal static class PhysicalRules
                 if (!ok)
                     report.Add("MQ4008", $"Foreign key references column key '{key}', which does not name a column of the referenced table.", Ptr.At(pointer + "/referencesColumns", i), fk.Id);
             }
+        }
+    }
+
+    /// <summary>
+    /// MQ4060: onDeleteColumns is for set-null and set-default, and names columns of the key itself, each once (a database refuses
+    /// any other column list).
+    /// </summary>
+    private static void CheckOnDeleteColumns(ForeignKey fk, string pointer, Report report)
+    {
+        if (fk.OnDeleteColumns.Count == 0)
+            return;
+        var name = fk.Name ?? fk.Id;
+        if (fk.OnDelete is not (ReferentialAction.SetNull or ReferentialAction.SetDefault))
+        {
+            report.Add("MQ4060", $"Foreign key '{name}' lists onDeleteColumns, but its onDelete is {ResolutionActionName(fk.OnDelete)}: only set-null and set-default set columns.",
+                pointer + "/onDeleteColumns", fk.Id);
+            return;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < fk.OnDeleteColumns.Count; i++)
+        {
+            var column = fk.OnDeleteColumns[i];
+            if (!fk.Columns.Contains(column, StringComparer.Ordinal))
+                report.Add("MQ4060", $"Foreign key '{name}' lists '{column}' in onDeleteColumns, which is not one of the key's columns.", Ptr.At(pointer + "/onDeleteColumns", i), fk.Id);
+            else if (!seen.Add(column))
+                report.Add("MQ4060", $"Foreign key '{name}' lists '{column}' twice in onDeleteColumns.", Ptr.At(pointer + "/onDeleteColumns", i), fk.Id);
         }
     }
 

@@ -323,7 +323,7 @@
       "items": {
         "title": "Foreign key",
         "type": "object",
-        "x-order": ["id", "name", "columns", "referencesTable", "referencesColumns", "onDelete", "onUpdate", "deferrable"],
+        "x-order": ["id", "name", "columns", "referencesTable", "referencesColumns", "onDelete", "onDeleteColumns", "onUpdate", "deferrable"],
         "properties": {
           "id": {
             "$ref": "common.json#/$defs/id"
@@ -354,6 +354,15 @@
           "onDelete": {
             "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
             "default": "no-action"
+          },
+          "onDeleteColumns": {
+            "description": "With onDelete set-null or set-default: the key's columns the action sets, a subset of columns (ON DELETE SET NULL (column, ...)). Empty sets every column of the key. Only PostgreSQL has a column list (MQ4056); on the other dialects the action sets every column.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
           },
           "onUpdate": {
             "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],

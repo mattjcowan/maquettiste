@@ -6817,6 +6817,11 @@ export interface components {
                  */
                 onDelete?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
                 /**
+                 * @description With onDelete set-null or set-default: the key's columns the action sets, a subset of columns (ON DELETE SET NULL (column, ...)). Empty sets every column of the key. Only PostgreSQL has a column list (MQ4056); on the other dialects the action sets every column.
+                 * @default []
+                 */
+                onDeleteColumns?: string[];
+                /**
                  * @default no-action
                  * @enum {unknown}
                  */

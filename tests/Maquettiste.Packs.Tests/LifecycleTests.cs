@@ -298,6 +298,65 @@ public sealed class LifecycleTests
 
     private static void EditJson(PackRepo repo, string path, Action<JsonNode> edit) => repo.EditJson(path, edit);
 
+    [Fact]
+    public async Task A_foreign_key_sets_only_the_columns_it_lists_on_delete_and_a_changed_list_replaces_the_key()
+    {
+        using var repo = PackRepo.Billing();
+        const string tables = ".maquettiste/model/databases/main/tables/";
+        repo.Write(tables + "tenant-folders.json", """
+            {
+              "$schema": "../../../../.schema/v1/table.json",
+              "kind": "table",
+              "id": "01K6FKS0000000000000000001",
+              "name": "tenant_folders",
+              "database": "01J92P0V1QRN2181XM2ZWE02W4",
+              "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+              "columns": [
+                { "id": "01K6FKS0000000000000000002", "name": "tenant_id", "type": "uuid", "nullable": false },
+                { "id": "01K6FKS0000000000000000003", "name": "id", "type": "uuid", "nullable": false }
+              ],
+              "primaryKey": { "columns": ["01K6FKS0000000000000000002", "01K6FKS0000000000000000003"] }
+            }
+            """);
+        string Documents(string onDeleteColumns) => $$"""
+            {
+              "$schema": "../../../../.schema/v1/table.json",
+              "kind": "table",
+              "id": "01K6FKS0000000000000000011",
+              "name": "tenant_documents",
+              "database": "01J92P0V1QRN2181XM2ZWE02W4",
+              "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+              "columns": [
+                { "id": "01K6FKS0000000000000000012", "name": "tenant_id", "type": "uuid", "nullable": false },
+                { "id": "01K6FKS0000000000000000013", "name": "id", "type": "uuid", "nullable": false },
+                { "id": "01K6FKS0000000000000000014", "name": "folder_id", "type": "uuid" }
+              ],
+              "primaryKey": { "columns": ["01K6FKS0000000000000000012", "01K6FKS0000000000000000013"] },
+              "foreignKeys": [
+                {
+                  "id": "01K6FKS0000000000000000015",
+                  "name": "fk_tenant_documents_folder",
+                  "columns": ["01K6FKS0000000000000000012", "01K6FKS0000000000000000014"],
+                  "referencesTable": "01K6FKS0000000000000000001",
+                  "onDelete": "set-null"{{onDeleteColumns}}
+                }
+              ]
+            }
+            """;
+        repo.Write(tables + "tenant-documents.json", Documents(", \"onDeleteColumns\": [\"01K6FKS0000000000000000014\"]"));
+        await repo.GenerateCleanlyAsync();
+
+        // Deleting a folder clears folder_id and keeps tenant_id, which is not nullable.
+        Assert.Contains("FOREIGN KEY (tenant_id, folder_id) REFERENCES billing.tenant_folders (tenant_id, id) ON DELETE SET NULL (folder_id)",
+            repo.Read("db/main/schema.sql"), StringComparison.Ordinal);
+
+        repo.Write(tables + "tenant-documents.json", Documents(""));
+        await repo.GenerateCleanlyAsync();
+        var pg = repo.Read("db/main/migrations/0002.sql");
+        AssertBefore(pg, "ALTER TABLE billing.tenant_documents DROP CONSTRAINT fk_tenant_documents_folder;",
+            "ALTER TABLE billing.tenant_documents ADD CONSTRAINT fk_tenant_documents_folder FOREIGN KEY (tenant_id, folder_id) REFERENCES billing.tenant_folders (tenant_id, id) ON DELETE SET NULL;");
+    }
+
     private static void AssertBefore(string text, string first, string second)
     {
         var a = text.IndexOf(first, StringComparison.Ordinal);

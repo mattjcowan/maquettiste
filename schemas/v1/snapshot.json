@@ -244,7 +244,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "x-order": ["key", "name", "columns", "referencedTable", "referencedColumns", "onDelete", "onUpdate", "deferrable"],
+              "x-order": ["key", "name", "columns", "referencedTable", "referencedColumns", "onDelete", "onDeleteColumns", "onUpdate", "deferrable"],
               "properties": {
                 "key": {
                   "type": "string",
@@ -275,6 +275,14 @@
                 "onDelete": {
                   "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
                   "default": "no-action"
+                },
+                "onDeleteColumns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "default": []
                 },
                 "onUpdate": {
                   "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],

@@ -402,6 +402,13 @@ public sealed record ForeignKey
     /// <summary>The on-delete action.</summary>
     public ReferentialAction OnDelete { get; init; } = ReferentialAction.NoAction;
 
+    /// <summary>
+    /// With <see cref="OnDelete"/> set-null or set-default, the columns of <see cref="Columns"/> the action sets (PostgreSQL's
+    /// <c>ON DELETE SET NULL (column, ...)</c>); empty sets every column of the key.
+    /// </summary>
+    [ElementRef(Keyed = true)]
+    public IReadOnlyList<string> OnDeleteColumns { get; init; } = [];
+
     /// <summary>The on-update action.</summary>
     public ReferentialAction OnUpdate { get; init; } = ReferentialAction.NoAction;
 

@@ -48,8 +48,8 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
-    /// What the resolver finds in a snapshot that validation cannot see (MQ4005 over the resolved columns, MQ4001 on conventional names,
-    /// MQ4008, MQ4009 and MQ4011 on what resolution leaves out), so every validate path (the editor's loop and <c>POST /api/validate</c>,
+    /// What the resolver finds in a snapshot that validation cannot see (MQ4005 over the resolved columns, MQ4061 on what a foreign key's
+    /// on-delete sets, MQ4001 on conventional names, MQ4008, MQ4009 and MQ4011 on what resolution leaves out), so every validate path (the editor's loop and <c>POST /api/validate</c>,
     /// <c>maquettiste validate</c> and its SARIF, the MCP <c>validate</c> tool) reports what generation would. The resolver runs only on
     /// a snapshot whose whole-model validation (load diagnostics included) has no error, as a generation run does, and once per snapshot
     /// (<see cref="ResolvedAsync"/>): the findings are kept with the snapshot they belong to, and the shared work runs without the

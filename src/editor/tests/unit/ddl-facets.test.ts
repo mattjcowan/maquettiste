@@ -1,5 +1,6 @@
 // The DDL facets the table editor and the column inspector edit (unicode, fixedLength, defaultName on a column; deferrable on a
-// foreign key; a check's column), and the mock's MQ4057 and MQ4056 that show inline beside them.
+// foreign key and the columns its on-delete sets; a check's column), and the mock's MQ4057, MQ4060 and MQ4056 that show inline
+// beside them.
 import { describe, expect, it } from "vitest";
 import type { ColumnView } from "@/api/types";
 import { setColumnField, unicodeChoice } from "@/workspaces/database/columnEdits";
@@ -7,6 +8,7 @@ import { deleteTableColumn } from "@/editors/database/databaseDocs";
 import { columnProblems } from "@/editors/database/ColumnFacets";
 import { deferrableNote } from "@/editors/database/TablePartsTabs";
 import { MockBackend } from "@/mocks/backend";
+import { keepOnDeleteColumns, onDeleteColumnsNote, setForeignKeyAction, setsColumns, toggleOnDeleteColumn } from "@/workspaces/database/tableParts";
 
 type Json = Record<string, unknown>;
 const NOTES = "01K6BND0000000000000000001";
@@ -104,5 +106,72 @@ describe("the mock's MQ4057 and MQ4056", () => {
       .map((d) => d.jsonPointer)
       .sort();
     expect(warnings).toEqual(["/foreignKeys/0/deferrable", "/indexes/0/method"]);
+  });
+});
+
+describe("a foreign key's columns set on delete", () => {
+  it("ticks columns in key order, drops them off set null or set default, and keeps only those still in the key", () => {
+    const fk: Json = { id: "f1", columns: ["tenant", "folder"], referencesTable: "t", onDelete: "set-null" };
+    toggleOnDeleteColumn(fk, "folder");
+    toggleOnDeleteColumn(fk, "tenant");
+    expect(fk.onDeleteColumns).toEqual(["tenant", "folder"]);
+    toggleOnDeleteColumn(fk, "tenant");
+    expect(fk.onDeleteColumns).toEqual(["folder"]);
+    setForeignKeyAction(fk, "onDelete", "set-default");
+    expect(fk.onDeleteColumns).toEqual(["folder"]);
+    fk.columns = ["tenant"];
+    keepOnDeleteColumns(fk);
+    expect("onDeleteColumns" in fk).toBe(false);
+    fk.onDeleteColumns = ["tenant"];
+    setForeignKeyAction(fk, "onDelete", "cascade");
+    expect(fk).toMatchObject({ onDelete: "cascade" });
+    expect("onDeleteColumns" in fk).toBe(false);
+    setForeignKeyAction(fk, "onDelete", "no-action");
+    expect("onDelete" in fk).toBe(false);
+    expect(setsColumns("set-null") && !setsColumns("restrict")).toBe(true);
+    expect(onDeleteColumnsNote("postgresql")).toBeNull();
+    expect(onDeleteColumnsNote("mysql")).toContain("MQ4056");
+  });
+
+  it("is MQ4060 off set null or off the key in the mock, and MQ4056 outside PostgreSQL", () => {
+    const model = new MockBackend().model;
+    const notes = model.get(NOTES)!;
+    const json = structuredClone(notes.json) as unknown as Json;
+    const fk: Json = {
+      id: "01K6BND00000000000000000F1",
+      name: "fk_notes_self",
+      columns: [ID],
+      referencesTable: NOTES,
+      onDelete: "cascade",
+      onDeleteColumns: [ID],
+    };
+    json.foreignKeys = [fk];
+    const pointers = () => (model.save(NOTES, json, model.get(NOTES)!.hash).diagnostics ?? []).filter((d) => d.rule === "MQ4060").map((d) => d.jsonPointer);
+    expect(pointers()).toEqual(["/foreignKeys/0/onDeleteColumns"]);
+    fk.onDelete = "set-null";
+    fk.onDeleteColumns = [ID, BODY, ID];
+    expect(pointers()).toEqual(["/foreignKeys/0/onDeleteColumns/1", "/foreignKeys/0/onDeleteColumns/2"]);
+    fk.onDeleteColumns = [ID];
+    expect(pointers()).toEqual([]);
+    expect(model.validate().diagnostics.filter((d) => d.rule === "MQ4056" && d.elementId === NOTES)).toEqual([]);
+    const db = model.get(MAIN)!;
+    model.save(MAIN, { ...(db.json as unknown as Json), dialect: "sqlserver" }, db.hash);
+    model.save(NOTES, json, model.get(NOTES)!.hash);
+    const warnings = model.validate().diagnostics.filter((d) => d.rule === "MQ4056" && d.elementId === NOTES);
+    expect(warnings.map((d) => d.jsonPointer)).toContain("/foreignKeys/0/onDeleteColumns");
+  });
+
+  it("warns (MQ4061) when set null would null a column that is not nullable, unless the key lists only nullable ones", () => {
+    const model = new MockBackend().model;
+    const json = structuredClone(model.get(NOTES)!.json) as unknown as Json;
+    const fk: Json = { id: "01K6BND00000000000000000F1", name: "fk_notes_self", columns: [ID, BODY], referencesTable: NOTES, onDelete: "set-null" };
+    json.foreignKeys = [fk];
+    const found = () => (model.save(NOTES, json, model.get(NOTES)!.hash).diagnostics ?? []).filter((d) => d.rule === "MQ4061");
+    const [warning] = found();
+    expect(warning).toMatchObject({ severity: "warning", jsonPointer: "/foreignKeys/0/onDelete" });
+    expect(warning.message).toContain("onDeleteColumns");
+    (json.columns as Json[]).find((c) => c.id === BODY)!.nullable = true;
+    fk.onDeleteColumns = [BODY];
+    expect(found()).toEqual([]);
   });
 });

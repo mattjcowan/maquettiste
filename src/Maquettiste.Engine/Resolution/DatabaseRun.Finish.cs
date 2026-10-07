@@ -73,6 +73,9 @@ internal sealed partial class DatabaseRun
                 fk.Columns = [.. columns!];
                 fk.ReferencedTable = target.Table;
                 fk.ReferencedColumns = [.. referenced!];
+                // Only the key's own columns; MQ4060 reports the others.
+                if (fk.OnDelete is "set-null" or "set-default")
+                    fk.OnDeleteColumns = [.. spec.OnDeleteColumns.Select(t.Resolve).Where(c => c is not null && fk.Columns.Contains(c)).Distinct().Select(c => c!)];
                 fk.Name = spec.Name ?? Render(_conv.ForeignKeyName, ("table", t.Table.Name), ("columns", Joined(fk.Columns)));
                 foreach (var column in fk.Columns)
                     column.IsForeignKey = true;
@@ -181,6 +184,41 @@ internal sealed partial class DatabaseRun
                         $"Foreign key column '{t.Table.Name}.{column.Name}' is {Describe(column)} but references '{target.Table.Name}.{referenced.Name}', which is {Describe(referenced)} (database '{_db.Name}').",
                         elementId, pointer);
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// MQ4061 over the resolved columns: a foreign key a table file declares with on-delete set-null, or set-default, sets columns that
+    /// can take NULL (set-default: or have a default), so deleting a referenced row does not fail on a not-null column. Nullability
+    /// is the resolved one (an overlay column, or the attribute behind it). A relation's set-null on a required end is MQ3011.
+    /// </summary>
+    private void CheckOnDeleteSets()
+    {
+        foreach (var t in _tableOrder)
+        {
+            var file = t.Source ?? t.Overlay;
+            foreach (var spec in t.ForeignKeys)
+            {
+                var fk = spec.Result;
+                if (!spec.Resolved || file is null || spec.FileId != file.Id || fk.OnDelete is not ("set-null" or "set-default"))
+                    continue;
+                var setDefault = fk.OnDelete == "set-default";
+                var refused = (fk.OnDeleteColumns.Count > 0 ? fk.OnDeleteColumns : fk.Columns)
+                    .Where(c => !c.Nullable && (!setDefault || (c.Default is null && c.DefaultSql is null)))
+                    .ToList();
+                if (refused.Count == 0)
+                    continue;
+                var at = IndexOf(file.ForeignKeys, f => f.Id == spec.Id);
+                var names = string.Join(", ", refused.Select(c => c.Name));
+                var action = setDefault ? "sets its columns to their defaults" : "sets its columns to NULL";
+                var but = setDefault ? "not nullable and without a default" : "not nullable";
+                var fix = fk.OnDeleteColumns.Count > 0 || fk.Columns.Count < 2
+                    ? "make the column nullable or pick another action"
+                    : "list the columns to set in onDeleteColumns (PostgreSQL), make the column nullable, or pick another action";
+                _run.AddDiagnostic("MQ4061",
+                    $"Foreign key '{fk.Name}' of table '{t.Table.Name}' {action} on delete, but {names} {(refused.Count == 1 ? "is" : "are")} {but}: deleting a referenced row in '{fk.ReferencedTable.Name}' fails; {fix}.",
+                    file.Id, at < 0 ? "/foreignKeys" : "/foreignKeys/" + at.ToString(CultureInfo.InvariantCulture) + "/onDelete");
             }
         }
     }

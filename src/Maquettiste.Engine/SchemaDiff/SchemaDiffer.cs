@@ -459,6 +459,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         Property(list, "referencedTable", a.ReferencedTable, b.ReferencedTable);
         Property(list, "referencedColumns", a.ReferencedColumns, b.ReferencedColumns);
         Property(list, "onDelete", PlainValues.Kebab(a.OnDelete), PlainValues.Kebab(b.OnDelete));
+        Property(list, "onDeleteColumns", a.OnDeleteColumns, b.OnDeleteColumns);
         Property(list, "onUpdate", PlainValues.Kebab(a.OnUpdate), PlainValues.Kebab(b.OnUpdate));
         if (a.Deferrable != b.Deferrable)
             list.Add(new PropertyChange("deferrable", PlainValues.Kebab(a.Deferrable), PlainValues.Kebab(b.Deferrable)));

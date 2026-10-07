@@ -1326,6 +1326,18 @@ snapshots and diff hashes):
   a key prefix length outside MySQL and a MySQL index on a text or blob column without one, a materialized view outside
   PostgreSQL and Oracle, and `withCheckOption` on SQLite or a materialized view.
 
+**Foreign key columns set on delete (2026-10-06).** Additive, with the same guarantees: a table file's foreign key has
+`onDeleteColumns` (`ForeignKey.OnDeleteColumns`, column ids or keys, default empty), the columns of the key a `set-null` or
+`set-default` on-delete sets, PostgreSQL 15's `ON DELETE SET NULL (column, ...)`; empty sets every column, as before. It keeps
+a tenant column of a composite key while clearing the reference. The resolved model gains `RForeignKey.OnDeleteColumns` (the
+key's own columns, empty unless the action sets columns), the snapshot `SnapshotForeignKey.OnDeleteColumns` (column keys), and
+the diff an `onDeleteColumns` property change, so a migration drops and adds the key again. Validation adds MQ4060 (error: the
+list on an action other than set-null or set-default, or naming a column that is not the key's, or one twice) and MQ4056 for the
+list outside PostgreSQL, where the DDL leaves it out and the action sets every column of the key. The resolver adds MQ4061
+(warning) on a key a table file declares: set-null on a column that is not nullable, or set-default on one that is not nullable
+and has no default, by the resolved nullability (an overlay's column included), at the key's `onDelete`; the database accepts
+the key and refuses the delete. A relation's set-null on a required end stays MQ3011.
+
 What each dialect's DDL does with them (SQLite table rebuilds, SQL Server dependents dropped and added back around `ALTER
 COLUMN`, PostgreSQL views recreated around a retyped column, MySQL `MODIFY COLUMN`, the `idempotent` parameter) is the sql-ddl
 pack's business: `packs/sql-ddl/README.md` has the coverage table per dialect.
