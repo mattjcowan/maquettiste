@@ -132,10 +132,17 @@ later migrations). "note" means the script says what to do by hand.
 | Foreign key: actions, create, drop, rename | yes | yes (no `RESTRICT`) | yes (rename: drop and add; no `SET DEFAULT`, MQ4056) | rebuild | `ON DELETE CASCADE`, `SET NULL` (others MQ4056) |
 | Foreign key: deferrable | yes | none (MQ4056) | none (MQ4056) | yes | yes |
 | Foreign key: columns set on delete (`onDeleteColumns`) | yes (15+; a change drops and adds the key) | none (MQ4056) | none (MQ4056) | none (MQ4056) | none (MQ4056) |
+| Temporal keys (`withoutOverlaps`, a foreign key's `period`) | yes (18+) | none (MQ4056) | none (MQ4056) | none (MQ4056) | none (MQ4056) |
+| Exclusion constraints: create, drop, rename, deferrable | yes | none (MQ4056) | none (MQ4056) | none (MQ4056) | none (MQ4056) |
+| Table storage parameters (`storage`, a stereotype's profile) | `WITH (...)`; `SET`/`RESET` | `WITH (...)`; change: TODO | table options; `ALTER TABLE` | none | physical attributes; change: TODO |
+| Index storage, operator class | `WITH (...)` (`ALTER INDEX SET`/`RESET`), operator class | `WITH (...)` | none (MQ4056) | none (MQ4056) | none (MQ4056) |
+| Partitioning: partition by, partitions, bounds | yes (storage on each partition; repartitioning: TODO) | none (MQ4056) | none (MQ4056) | none (MQ4056) | none (MQ4056) |
+| View security options | `security_invoker` (15+), `security_barrier` | none (MQ4056) | none (MQ4056) | none (MQ4056) | none (MQ4056) |
+| Routine volatility, settings | `STABLE`/`IMMUTABLE`, `SET name = value` | none (MQ4056) | n/a | n/a | n/a |
 | Index: unique, descending, create, drop, rename | yes | yes | yes | drop and create | yes |
-| Index: include, partial, method, clustered | all | include, partial, clustered | method | partial | none |
+| Index: include, partial, method, clustered | all (methods: btree, hash, gin, gist, spgist, brin, hnsw, ivfflat) | include, partial, clustered | method | partial | none |
 | Index: expression, key prefix length | expression | none (MQ4056; the index is left out) | both (expression: MySQL 8.0.13+, not MariaDB; text needs a length) | expression | expression |
-| View: create, drop, rename, new body | yes (all views recreated when a column they may read is retyped or dropped, and the views that read a recreated or dropped view with it, in dependency order; grants: note) | yes | yes | rename: drop and create | yes |
+| View: create, drop, rename, new body | yes (all views recreated when a column they may read is retyped or dropped, and the views that read a recreated or dropped view with it, in dependency order; the SQL objects that depend on them run again) | yes | yes | rename: drop and create | yes |
 | View: column list, check option | yes | yes | yes | column list | yes |
 | View: materialized | yes | none (MQ4056) | none (MQ4056) | none (MQ4056) | yes (rename: drop and create) |
 | View comment | yes | yes | none | none | yes |
@@ -190,7 +197,9 @@ Each dialect's limits are handled where it has them:
   did, the model's dependencies) and created after them. It also refuses to drop a view another view reads: when a view is
   dropped or created again (a new body, schema, column list, check option or materialization), every view that reads it,
   directly or through other views, is dropped before it and created again after it, unchanged. Privileges
-  granted on a view are lost with it: re-granting is out of scope, and the migration says so. A column that becomes an identity
+  granted on a view are lost with it: the SQL objects with phase `after` that depend on a view or routine the migration
+  creates again (a grant, an INSTEAD OF trigger) run again after it, and the migration says so; a grant kept elsewhere is
+  lost, and the migration says that instead. A column that becomes an identity
   is restarted after the largest value it holds (`setval` over `MAX`). A retyped column's stored generated columns are dropped
   and added back.
 - **MySQL** redefines a changed column whole (`MODIFY COLUMN`, comment included), drops the foreign keys on and to a retyped

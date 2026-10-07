@@ -146,6 +146,8 @@ public sealed class ResolvedCoverageTests
         ("stereotype", "kind"), ("stereotype", "id"), ("stereotype", "displayName"), ("stereotype", "pluralName"), ("stereotype", "description"),
         ("stereotype", "stereotypes"), ("stereotype", "tags"), ("stereotype", "category"), ("stereotype", "appliesTo"), ("stereotype", "attributes"),
         ("stereotype", "defaultProperties"), ("stereotype", "properties"), ("stereotype", "generation"),
+        // A stereotype's storage reaches templates merged under a table's own (table.storage), as its defaultProperties do.
+        ("stereotype", "storage"),
 
         // A category reaches templates only as the summary an annotated object carries (id, name, path).
         ("category", "displayName"), ("category", "pluralName"), ("category", "parent"), ("category", "order"), ("category", "description"),

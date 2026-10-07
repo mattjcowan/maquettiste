@@ -155,6 +155,14 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   starting rows are a seed of that entity. Deleting an element deletes its seeds and translations in the same save.
 - The engine creates no table or column for reference data on its own: the packs decide the physical form, from the
   storage strategy the project declares. Stereotypes and their meaning are the project's own, not built in.
+- Tag, stereotype or typed field: a tag is a label for grouping and search that no generation depends on (`domain:billing`);
+  a stereotype is a named, reusable meaning that changes what is generated or validated (`audited`, `tenant-scoped`, a
+  `high-churn` table storage profile); the values a feature needs are typed fields (a table's or index's `storage`, a
+  foreign key's `onDeleteColumns`), never strings packed into a tag (`storage:fillfactor=90` would be parsed and never
+  validated). A database feature the model has a field for (temporal keys, exclusion constraints, partitioning, storage
+  parameters, view security options, routine volatility and settings) goes in that field; what it has none for (grants,
+  extensions, policies, triggers) goes in a SQL object with `dependsOn`, which a migration runs again when it creates what
+  it depends on again.
 - Localization settings are `localization` in `maquettiste.json` (`defaultLocale`, `locales`, `fallbacks`, `require`);
   default texts stay in the element files. Locale tags are BCP 47 with a hyphen and canonical case (`zh-CN`,
   `zh-Hant-TW`, `fr`), never `zh_CN` (MQ7201).

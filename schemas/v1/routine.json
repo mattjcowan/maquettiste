@@ -22,7 +22,9 @@
     "language",
     "body",
     "deterministic",
+    "volatility",
     "security",
+    "settings",
     "dependsOn",
     "comment",
     "properties",
@@ -217,10 +219,26 @@
       "type": "boolean",
       "default": false
     },
+    "volatility": {
+      "description": "What the function may do and read (PostgreSQL): volatile (anything; the default), stable (no writes, the same result within a statement) or immutable (the same result for the same arguments forever). Absent: immutable when deterministic, else volatile. A procedure has none.",
+      "enum": ["volatile", "stable", "immutable"]
+    },
     "security": {
       "description": "Whose rights the routine runs with: the caller's (invoker) or its owner's (definer).",
       "enum": ["invoker", "definer"],
       "default": "invoker"
+    },
+    "settings": {
+      "description": "Configuration parameters set while the routine runs (PostgreSQL SET name = value), such as search_path, which a security-definer function should pin (\"search_path\": \"app, pg_temp\"). The value is written as SQL as it is.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": {}
     },
     "dependsOn": {
       "description": "Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.",

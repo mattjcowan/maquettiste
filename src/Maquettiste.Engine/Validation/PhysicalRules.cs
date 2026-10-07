@@ -116,6 +116,10 @@ internal static class PhysicalRules
 
         if (table.PrimaryKey is { } primaryKey)
             CheckColumnList(primaryKey.Columns, "/primaryKey/columns", "Primary key", table.Id, Resolves, report);
+        CheckTemporalKeys(table, report);
+        if (table.PartitionBy is { } partitionBy)
+            CheckColumnList(partitionBy.Columns, "/partitionBy/columns", "Partitioning", table.Id, Resolves, report);
+        CheckPartitions(table, report);
         for (var i = 0; i < table.Uniques.Count; i++)
             CheckColumnList(table.Uniques[i].Columns, Ptr.At("/uniques", i) + "/columns", "Unique constraint", table.Uniques[i].Id, Resolves, report);
         for (var i = 0; i < table.Indexes.Count; i++)
@@ -126,6 +130,8 @@ internal static class PhysicalRules
             CheckColumnList(index.Include, pointer + "/include", "Index", index.Id, Resolves, report);
         }
 
+        for (var i = 0; i < table.Exclusions.Count; i++)
+            CheckColumnList(table.Exclusions[i].Elements.Select(e => e.Column).ToList(), Ptr.At("/exclusions", i) + "/elements", "Exclusion constraint", table.Exclusions[i].Id, Resolves, report, "/column");
         for (var i = 0; i < table.ForeignKeys.Count; i++)
             CheckForeignKey(context, table, i, Resolves, report);
         for (var i = 0; i < table.Checks.Count; i++)
@@ -148,6 +154,28 @@ internal static class PhysicalRules
 
         if (table.PrimaryKey is { Clustered: not null } && d != Dialect.SqlServer)
             Add("The primary key sets clustered", "/primaryKey/clustered", table.Id);
+        if (d != Dialect.PostgreSql)
+        {
+            if (table.PartitionBy is not null)
+                Add($"Table '{table.Name}' is partitioned (partitionBy)", "/partitionBy", table.Id, "the partitioning and the partitions");
+            for (var i = 0; i < table.Exclusions.Count; i++)
+                Add($"Exclusion constraint '{table.Exclusions[i].Name ?? table.Exclusions[i].Id}' (EXCLUDE)", Ptr.At("/exclusions", i), table.Exclusions[i].Id);
+            if (table.PrimaryKey is { WithoutOverlaps: true })
+                Add("The primary key is temporal (WITHOUT OVERLAPS)", "/primaryKey/withoutOverlaps", table.Id);
+            for (var i = 0; i < table.Uniques.Count; i++)
+            {
+                if (table.Uniques[i].WithoutOverlaps)
+                    Add($"Unique constraint '{table.Uniques[i].Name ?? table.Uniques[i].Id}' is temporal (WITHOUT OVERLAPS)", Ptr.At("/uniques", i) + "/withoutOverlaps", table.Uniques[i].Id);
+            }
+
+            for (var i = 0; i < table.ForeignKeys.Count; i++)
+            {
+                if (table.ForeignKeys[i].Period)
+                    Add($"Foreign key '{table.ForeignKeys[i].Name ?? table.ForeignKeys[i].Id}' has a period (PERIOD)", Ptr.At("/foreignKeys", i) + "/period", table.ForeignKeys[i].Id);
+            }
+        }
+        if (d == Dialect.PostgreSql && table.Storage.TryGetValue("postgresql", out var tableStorage))
+            CheckPostgresStorage(tableStorage, null, $"Table '{table.Name}'", "/storage/postgresql", table.Id, report);
         for (var i = 0; i < table.ForeignKeys.Count; i++)
         {
             var fk = table.ForeignKeys[i];
@@ -209,6 +237,16 @@ internal static class PhysicalRules
                     report.Add("MQ4056", $"Index '{name}' indexes the {indexed.Type ?? indexed.NativeType} column '{indexed.Name}' without a key prefix length, which {dialect} (database '{database.Name}') requires; set the index column's length, or the DDL leaves the index out.", columnPointer + "/length", index.Id);
             }
 
+            for (var j = 0; j < index.Columns.Count; j++)
+            {
+                if (index.Columns[j].OperatorClass is not null && d != Dialect.PostgreSql)
+                    Add($"Index '{name}' sets an operator class", Ptr.At(pointer + "/columns", j) + "/operatorClass", index.Id);
+            }
+
+            if (index.Storage.ContainsKey(DialectInfo.Name(d)) && d is not (Dialect.PostgreSql or Dialect.SqlServer))
+                Add($"Index '{name}' sets storage parameters", pointer + "/storage/" + DialectInfo.Name(d), index.Id, "them");
+            if (d == Dialect.PostgreSql && index.Storage.TryGetValue("postgresql", out var indexStorage))
+                CheckPostgresStorage(indexStorage, PostgresIndexParameters(index.Method), $"Index '{name}' ({IndexMethodText(index.Method)})", pointer + "/storage/postgresql", index.Id, report);
             if (index.Include.Count > 0 && d is not (Dialect.PostgreSql or Dialect.SqlServer))
                 Add($"Index '{name}' has include columns", pointer + "/include", index.Id);
             if (index.Where is not null && d is Dialect.MySql or Dialect.Oracle)
@@ -227,6 +265,71 @@ internal static class PhysicalRules
     }
 
     private static string ResolutionMethodName(IndexMethod method) => Resolution.ResolutionValues.Kebab(method);
+
+    private static string IndexMethodText(IndexMethod method) => method is IndexMethod.Default or IndexMethod.Clustered ? "btree" : ResolutionMethodName(method);
+
+    /// <summary>The PostgreSQL table storage parameters (CREATE TABLE ... WITH), without the <c>toast.</c> forms.</summary>
+    private static readonly HashSet<string> PostgresTableParameters = new(StringComparer.Ordinal)
+    {
+        "fillfactor", "toast_tuple_target", "parallel_workers", "autovacuum_enabled", "vacuum_index_cleanup", "vacuum_truncate",
+        "autovacuum_vacuum_threshold", "autovacuum_vacuum_max_threshold", "autovacuum_vacuum_scale_factor", "autovacuum_vacuum_insert_threshold",
+        "autovacuum_vacuum_insert_scale_factor", "autovacuum_analyze_threshold", "autovacuum_analyze_scale_factor", "autovacuum_vacuum_cost_delay",
+        "autovacuum_vacuum_cost_limit", "autovacuum_freeze_min_age", "autovacuum_freeze_max_age", "autovacuum_freeze_table_age",
+        "autovacuum_multixact_freeze_min_age", "autovacuum_multixact_freeze_max_age", "autovacuum_multixact_freeze_table_age",
+        "log_autovacuum_min_duration", "user_catalog_table",
+    };
+
+    /// <summary>The parameters a PostgreSQL table takes in its <c>toast.</c> form (the vacuum ones).</summary>
+    private static bool ToastParameter(string name) =>
+        name.StartsWith("toast.", StringComparison.Ordinal) && name[6..] is var rest && PostgresTableParameters.Contains(rest)
+        && (rest.StartsWith("autovacuum_", StringComparison.Ordinal) || rest.StartsWith("vacuum_", StringComparison.Ordinal) || rest == "log_autovacuum_min_duration")
+        && !rest.StartsWith("autovacuum_analyze_", StringComparison.Ordinal);
+
+    /// <summary>The storage parameters a PostgreSQL index method takes (hnsw and ivfflat: the vector extension's).</summary>
+    private static string[] PostgresIndexParameters(IndexMethod method) => method switch
+    {
+        IndexMethod.Hash or IndexMethod.Spgist => ["fillfactor"],
+        IndexMethod.Gist => ["fillfactor", "buffering"],
+        IndexMethod.Gin => ["fastupdate", "gin_pending_list_limit"],
+        IndexMethod.Brin => ["pages_per_range", "autosummarize"],
+        IndexMethod.Hnsw => ["m", "ef_construction"],
+        IndexMethod.Ivfflat => ["lists"],
+        _ => ["fillfactor", "deduplicate_items"],
+    };
+
+    /// <summary>
+    /// A stereotype's storage: MQ4064 on a PostgreSQL parameter tables do not take, and MQ4064 too when it does not apply to tables, so its
+    /// storage reaches nothing.
+    /// </summary>
+    internal static void CheckStereotypeStorage(Stereotype stereotype, Report report)
+    {
+        if (stereotype.Storage.Count == 0)
+            return;
+        if (stereotype.AppliesTo.Count > 0 && !stereotype.AppliesTo.Contains("table", StringComparer.Ordinal))
+            report.Add("MQ4064", $"Stereotype '{stereotype.Key}' sets storage parameters but does not apply to tables, so they reach no table: add table to appliesTo.", "/storage", stereotype.Id);
+        if (stereotype.Storage.TryGetValue("postgresql", out var parameters))
+            CheckPostgresStorage(parameters, null, $"Stereotype '{stereotype.Key}'", "/storage/postgresql", stereotype.Id, report);
+    }
+
+    /// <summary>
+    /// MQ4064: a PostgreSQL storage parameter the table or index method does not take, most likely a typo; the database would refuse
+    /// the DDL. known is null for a table (its list and the toast. forms).
+    /// </summary>
+    private static void CheckPostgresStorage(IReadOnlyDictionary<string, System.Text.Json.JsonElement> parameters, string[]? known, string what, string pointer,
+        string? id, Report report)
+    {
+        foreach (var name in parameters.Keys)
+        {
+            var ok = known is null ? PostgresTableParameters.Contains(name) || ToastParameter(name) : known.Contains(name, StringComparer.Ordinal);
+            if (!ok)
+            {
+                report.Add("MQ4064", known is null
+                        ? $"{what} sets the storage parameter '{name}', which PostgreSQL tables do not take; PostgreSQL would refuse the table."
+                        : $"{what} sets the storage parameter '{name}', which this index method does not take (it takes {string.Join(", ", known)}); PostgreSQL would refuse the index.",
+                    pointer + "/" + name.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal), id);
+            }
+        }
+    }
 
     private static string ResolutionActionName(ReferentialAction action) => Resolution.ResolutionValues.Kebab(action);
 
@@ -306,6 +409,98 @@ internal static class PhysicalRules
         }
     }
 
+    /// <summary>
+    /// MQ4066: partitioning that PostgreSQL refuses: partitions without partitioning, a primary or unique key without every partition
+    /// column, more than one default partition, a default partition of a hash-partitioned table, two partitions of one name.
+    /// </summary>
+    private static void CheckPartitions(Table table, Report report)
+    {
+        if (table.PartitionBy is not { } by)
+        {
+            if (table.Partitions.Count > 0)
+                report.Add("MQ4066", $"Table '{table.Name}' has partitions but no partitionBy: only a partitioned table has partitions.", "/partitions", table.Id);
+            return;
+        }
+
+        if (table.PrimaryKey is { } pk && by.Columns.FirstOrDefault(c => !pk.Columns.Contains(c, StringComparer.Ordinal)) is { } missing)
+            report.Add("MQ4066", $"The primary key of partitioned table '{table.Name}' lacks the partition column '{ColumnName(table, missing)}': a key of a partitioned table includes every partition column.", "/primaryKey/columns", table.Id);
+        for (var i = 0; i < table.Uniques.Count; i++)
+        {
+            var unique = table.Uniques[i];
+            if (by.Columns.FirstOrDefault(c => !unique.Columns.Contains(c, StringComparer.Ordinal)) is { } lacks)
+                report.Add("MQ4066", $"Unique constraint '{unique.Name ?? unique.Id}' of partitioned table '{table.Name}' lacks the partition column '{ColumnName(table, lacks)}': a key of a partitioned table includes every partition column.",
+                    Ptr.At("/uniques", i) + "/columns", unique.Id);
+        }
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var defaults = 0;
+        for (var i = 0; i < table.Partitions.Count; i++)
+        {
+            var partition = table.Partitions[i];
+            var pointer = Ptr.At("/partitions", i);
+            if (!names.Add(partition.Name))
+                report.Add("MQ4066", $"Partition name '{partition.Name}' is used twice.", pointer + "/name", table.Id);
+            if (partition.Default == partition.Bounds is not null)
+                report.Add("MQ4066", partition.Default
+                    ? $"Partition '{partition.Name}' is the default partition and has bounds: a default partition has none."
+                    : $"Partition '{partition.Name}' has no bounds: give its bounds, or make it the default partition.", pointer + (partition.Default ? "/bounds" : ""), table.Id);
+            if (!partition.Default)
+                continue;
+            if (by.Strategy == PartitionStrategy.Hash)
+                report.Add("MQ4066", $"Partition '{partition.Name}' is a default partition of a hash-partitioned table, which takes none.", pointer + "/default", table.Id);
+            else if (++defaults > 1)
+                report.Add("MQ4066", $"Partition '{partition.Name}' is a second default partition: a table has one at most.", pointer + "/default", table.Id);
+        }
+
+        static string ColumnName(Table table, string id) => table.Columns.FirstOrDefault(c => c.Id == id)?.Name ?? id;
+    }
+
+    /// <summary>MQ4065: a temporal key (WITHOUT OVERLAPS) needs a column before its period, as PostgreSQL requires.</summary>
+    private static void CheckTemporalKeys(Table table, Report report)
+    {
+        if (table.PrimaryKey is { WithoutOverlaps: true } pk && pk.Columns.Count < 2)
+            report.Add("MQ4065", "The primary key is temporal (withoutOverlaps) with one column: a temporal key needs a column before its period.", "/primaryKey/withoutOverlaps", table.Id);
+        for (var i = 0; i < table.Uniques.Count; i++)
+        {
+            if (table.Uniques[i] is { WithoutOverlaps: true } unique && unique.Columns.Count < 2)
+                report.Add("MQ4065", $"Unique constraint '{unique.Name ?? unique.Id}' is temporal (withoutOverlaps) with one column: a temporal key needs a column before its period.",
+                    Ptr.At("/uniques", i) + "/withoutOverlaps", unique.Id);
+        }
+    }
+
+    /// <summary>
+    /// MQ4065 on a foreign key: a period key has a column pair before its period and no action other than no-action; it references a
+    /// temporal key, and a key without a period references none (PostgreSQL refuses both). The referenced key is known for a table file.
+    /// </summary>
+    private static void CheckPeriod(ForeignKey fk, string pointer, Table? referenced, Report report)
+    {
+        var name = fk.Name ?? fk.Id;
+        if (fk.Period)
+        {
+            if (fk.Columns.Count < 2)
+                report.Add("MQ4065", $"Foreign key '{name}' has a period with one column: a period key needs a column before its period.", pointer + "/period", fk.Id);
+            if (fk.OnDelete != ReferentialAction.NoAction)
+                report.Add("MQ4065", $"Foreign key '{name}' has a period and ON DELETE {ResolutionActionName(fk.OnDelete)}: a period key takes no action but no-action.", pointer + "/onDelete", fk.Id);
+            if (fk.OnUpdate != ReferentialAction.NoAction)
+                report.Add("MQ4065", $"Foreign key '{name}' has a period and ON UPDATE {ResolutionActionName(fk.OnUpdate)}: a period key takes no action but no-action.", pointer + "/onUpdate", fk.Id);
+        }
+
+        if (referenced is null || referenced.Origin == TableOrigin.Synthesized)
+            return;
+        bool? temporal = fk.ReferencesColumns.Count == 0
+            ? referenced.PrimaryKey?.WithoutOverlaps
+            : referenced.PrimaryKey is { } pk && SameSet(pk.Columns, fk.ReferencesColumns) ? pk.WithoutOverlaps
+            : referenced.Uniques.FirstOrDefault(u => SameSet(u.Columns, fk.ReferencesColumns))?.WithoutOverlaps;
+        if (temporal is null)
+            return;
+        if (fk.Period && temporal == false)
+            report.Add("MQ4065", $"Foreign key '{name}' has a period but references a key of table '{referenced.Name}' that is not temporal (withoutOverlaps).", pointer + "/period", fk.Id);
+        else if (!fk.Period && temporal == true)
+            report.Add("MQ4065", $"Foreign key '{name}' references the temporal key of table '{referenced.Name}' without a period: set period, so each row's period is covered.", pointer + "/period", fk.Id);
+
+        static bool SameSet(IReadOnlyList<string> a, IReadOnlyList<string> b) => a.Count == b.Count && a.All(b.Contains);
+    }
+
     private static void CheckForeignKey(ValidationContext context, Table table, int index, Func<string, bool> resolves, Report report)
     {
         var model = context.Model;
@@ -313,6 +508,7 @@ internal static class PhysicalRules
         var pointer = Ptr.At("/foreignKeys", index);
         CheckColumnList(fk.Columns, pointer + "/columns", "Foreign key", fk.Id, resolves, report);
         CheckOnDeleteColumns(fk, pointer, report);
+        CheckPeriod(fk, pointer, model.Get<Table>(fk.ReferencesTable), report);
 
         // The referenced table: a table file id, or a synthesized table key.
         var referenced = model.Get<Table>(fk.ReferencesTable);
@@ -639,6 +835,15 @@ internal static class PhysicalRules
             Add("has WITH CHECK OPTION", "/withCheckOption");
         else if (view.WithCheckOption && view.Materialized && database.Dialect is Dialect.PostgreSql or Dialect.Oracle)
             Add("is materialized with WITH CHECK OPTION (a materialized view is not written through)", "/withCheckOption");
+        foreach (var (set, option, pointer) in new[] { (view.SecurityInvoker, "security_invoker", "/securityInvoker"), (view.SecurityBarrier, "security_barrier", "/securityBarrier") })
+        {
+            if (!set)
+                continue;
+            if (database.Dialect != Dialect.PostgreSql)
+                Add($"sets {option}", pointer);
+            else if (view.Materialized)
+                Add($"is materialized with {option} (a materialized view stores its rows; whoever refreshes it reads the tables)", pointer);
+        }
     }
 
     /// <summary>Checks a sequence file.</summary>

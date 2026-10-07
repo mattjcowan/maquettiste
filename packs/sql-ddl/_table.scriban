@@ -28,7 +28,7 @@ for c in $t.columns
   $body = $body + "    " + column_def(c)
 end
 if $t.primary_key && !$rowid
-  $body = $body + ",\n    CONSTRAINT " + q($t.primary_key.name, $db) + " PRIMARY KEY" + pk_clustering($t) + " (" + cols($t.primary_key.columns, $db) + ")"
+  $body = $body + ",\n    CONSTRAINT " + q($t.primary_key.name, $db) + " PRIMARY KEY" + pk_clustering($t) + " (" + key_cols($t.primary_key, $db) + ")"
 end
 for u in $t.uniques
   $body = $body + ",\n    CONSTRAINT " + q(u.name, $db) + " " + unique_body(u, $db)
@@ -41,6 +41,11 @@ for f in $t.foreign_keys
 end
 for k in $t.checks
   $body = $body + ",\n    CONSTRAINT " + q(k.name, $db) + " CHECK (" + k.expression + ")"
+end
+if $d == "postgresql"
+  for x in $t.exclusions
+    $body = $body + ",\n    CONSTRAINT " + q(x.name, $db) + " " + exclusion_body(x, $db)
+  end
 end
 $indexes = ""
 if $d == "mysql"
@@ -75,5 +80,5 @@ end
 -}}
 {{ $create }}{{ $name }} (
 {{ $body }}
-){{ table_options($t) }};{{ $indexes }}{{ $after }}
+){{ table_options($t) }};{{ $as ? "" : partitions_sql($t) }}{{ $indexes }}{{ $after }}
 {{- -}}

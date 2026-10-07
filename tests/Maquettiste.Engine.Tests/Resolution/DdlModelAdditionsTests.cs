@@ -243,4 +243,171 @@ public sealed class DdlModelAdditionsTests
         Assert.Contains("without a default",
             Assert.Single(Sets(TenantFolders(Dialect.PostgreSql, ReferentialAction.SetDefault))).Message, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task View_security_options_resolve_and_are_warned_outside_PostgreSQL_or_on_a_materialized_view()
+    {
+        var b = new ModelBuilder(seed: 95);
+        var pg = b.Database("pg", Dialect.PostgreSql);
+        View(b, pg, "mine", "SELECT 1 AS one", v => v with { SecurityInvoker = true, SecurityBarrier = true });
+        View(b, pg, "stored", "SELECT 1 AS one", v => v with { Materialized = true, SecurityInvoker = true });
+        var ms = b.Database("ms", Dialect.SqlServer);
+        View(b, ms, "theirs", "SELECT 1 AS one", v => v with { SecurityBarrier = true });
+
+        var mine = ResolutionKit.Resolve(b).Db("pg").Views.Single(v => v.Name == "mine");
+        Assert.True(mine.SecurityInvoker && mine.SecurityBarrier);
+        var findings = await Findings(b.Build(), "MQ4056");
+        Assert.Equal(["/securityBarrier", "/securityInvoker"], findings.Select(d => d.JsonPointer).Order(StringComparer.Ordinal));
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, System.Text.Json.JsonElement>> StorageOf(string dialect, string json) =>
+        new Dictionary<string, IReadOnlyDictionary<string, System.Text.Json.JsonElement>>
+        {
+            [dialect] = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(json)!,
+        };
+
+    [Fact]
+    public async Task Table_storage_takes_the_stereotypes_profile_under_its_own_and_writes_values_as_the_dialect_does()
+    {
+        var b = new ModelBuilder(seed: 96);
+        b.Add(new Stereotype
+        {
+            Id = b.NewId(), Key = "high-churn", Name = "High churn", AppliesTo = ["table"],
+            Storage = StorageOf("postgresql", """{ "fillfactor": 70, "autovacuum_enabled": true, "autovacuum_vacuum_scale_factor": 0.03 }"""),
+        });
+        var pg = b.Database("pg", Dialect.PostgreSql);
+        b.Table("readings", pg).Column("id", "int64", nullable: false).PrimaryKey("id").Stereotype("high-churn")
+            .Edit(t => t with { Storage = StorageOf("postgresql", """{ "fillfactor": 90 }""") });
+        var ms = b.Database("ms", Dialect.SqlServer);
+        b.Table("readings", ms).Column("id", "int64", nullable: false).PrimaryKey("id").Stereotype("high-churn")
+            .Edit(t => t with { Storage = StorageOf("sqlserver", """{ "data_compression": "PAGE", "ignore_dup_key": false }""") });
+
+        var model = ResolutionKit.Resolve(b);
+        Assert.Equal(["autovacuum_enabled = true", "autovacuum_vacuum_scale_factor = 0.03", "fillfactor = 90"],
+            model.Db("pg").Table("readings").Storage.Select(p => p.Name + " = " + p.Value));
+        // Only the entries of the database's dialect: the stereotype's PostgreSQL profile reaches no SQL Server table.
+        Assert.Equal(["data_compression = PAGE", "ignore_dup_key = OFF"], model.Db("ms").Table("readings").Storage.Select(p => p.Name + " = " + p.Value));
+        Assert.Empty(await Findings(b.Build(), "MQ4064", "MQ4056"));
+    }
+
+    [Fact]
+    public async Task A_storage_parameter_PostgreSQL_does_not_take_and_what_a_dialect_lacks_are_warned()
+    {
+        var b = new ModelBuilder(seed: 97);
+        b.Add(new Stereotype { Id = b.NewId(), Key = "tuned", Name = "Tuned", AppliesTo = ["entity"], Storage = StorageOf("postgresql", """{ "fillfactr": 80 }""") });
+        var pg = b.Database("pg", Dialect.PostgreSql);
+        b.Table("docs", pg).Column("id", "int64", nullable: false).Column("body", "text").PrimaryKey("id").Index(false, "body")
+            .Edit(t => t with
+            {
+                Storage = StorageOf("postgresql", """{ "toast.autovacuum_enabled": false, "toast.autovacuum_analyze_threshold": 5, "autovacuum_enabled": false }"""),
+                Indexes = [t.Indexes[0] with { Method = IndexMethod.Brin, Storage = StorageOf("postgresql", """{ "pages_per_range": 16, "m": 4 }""") }],
+            });
+        var my = b.Database("my", Dialect.MySql);
+        b.Table("docs", my).Column("id", "int64", nullable: false).Column("code", "string", length: 10).PrimaryKey("id").Index(false, "code")
+            .Edit(t => t with
+            {
+                Indexes = [t.Indexes[0] with { Columns = [t.Indexes[0].Columns[0] with { OperatorClass = "text_pattern_ops" }], Storage = StorageOf("mysql", """{ "key_block_size": 8 }""") }],
+            });
+
+        var findings = await Findings(b.Build(), "MQ4064", "MQ4056");
+        Assert.Equal(
+            [
+                "MQ4056 /indexes/0/columns/0/operatorClass", "MQ4056 /indexes/0/storage/mysql", "MQ4064 /indexes/0/storage/postgresql/m",
+                "MQ4064 /storage", "MQ4064 /storage/postgresql/fillfactr", "MQ4064 /storage/postgresql/toast.autovacuum_analyze_threshold",
+            ],
+            findings.Select(d => d.Rule + " " + d.JsonPointer).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>rates (room_id, valid) with a temporal key when asked, and bookings referencing it by (room_id, stay).</summary>
+    private static ModelBuilder Temporal(Dialect dialect, bool temporalKey, Func<ForeignKey, ForeignKey> fk, int keyColumns = 2)
+    {
+        var b = new ModelBuilder(seed: 98);
+        var db = b.Database("db", dialect);
+        var rates = b.Table("rates", db).Column("room_id", "int64", nullable: false).Column("valid", "string", nullable: false)
+            .PrimaryKey([.. new[] { "room_id", "valid" }.TakeLast(keyColumns)]).Edit(t => t with { PrimaryKey = t.PrimaryKey! with { WithoutOverlaps = temporalKey } });
+        b.Table("bookings", db).Column("id", "int64", nullable: false).Column("room_id", "int64", nullable: false).Column("stay", "string", nullable: false)
+            .PrimaryKey("id").ForeignKey(rates, "room_id", "stay").Edit(t => t with { ForeignKeys = [fk(t.ForeignKeys[0])] });
+        return b;
+    }
+
+    [Fact]
+    public async Task Temporal_keys_resolve_and_MQ4065_refuses_what_PostgreSQL_refuses()
+    {
+        var ok = Temporal(Dialect.PostgreSql, true, f => f with { Period = true });
+        Assert.Empty(await Findings(ok.Build(), "MQ4065", "MQ4056"));
+        var db = ResolutionKit.Resolve(ok).Db("db");
+        Assert.True(db.Table("rates").PrimaryKey!.WithoutOverlaps);
+        Assert.True(Assert.Single(db.Table("bookings").ForeignKeys).Period);
+
+        async Task<string[]> Pointers(ModelBuilder b) => [.. (await Findings(b.Build(), "MQ4065")).Select(d => d.JsonPointer!).Order(StringComparer.Ordinal)];
+        Assert.Equal(["/foreignKeys/0/period"], await Pointers(Temporal(Dialect.PostgreSql, true, f => f)));
+        Assert.Equal(["/foreignKeys/0/period"], await Pointers(Temporal(Dialect.PostgreSql, false, f => f with { Period = true })));
+        Assert.Equal(["/foreignKeys/0/onDelete", "/foreignKeys/0/onUpdate"],
+            await Pointers(Temporal(Dialect.PostgreSql, true, f => f with { Period = true, OnDelete = ReferentialAction.Cascade, OnUpdate = ReferentialAction.Restrict })));
+        Assert.Contains("/primaryKey/withoutOverlaps", await Pointers(Temporal(Dialect.PostgreSql, true, f => f, keyColumns: 1)));
+
+        var elsewhere = await Findings(Temporal(Dialect.SqlServer, true, f => f with { Period = true }).Build(), "MQ4056");
+        Assert.Equal(["/foreignKeys/0/period", "/primaryKey/withoutOverlaps"], elsewhere.Select(d => d.JsonPointer).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Exclusion_constraints_resolve_with_a_conventional_name_and_are_warned_outside_PostgreSQL()
+    {
+        ModelBuilder Build(Dialect dialect, string column)
+        {
+            var b = new ModelBuilder(seed: 99);
+            var db = b.Database("db", dialect);
+            var table = b.Table("reservations", db).Column("id", "int64", nullable: false).Column("room_id", "int64", nullable: false).Column("during", "string").PrimaryKey("id");
+            table.Edit(t => t with
+            {
+                Exclusions =
+                [
+                    new ExclusionConstraint
+                    {
+                        Id = "01JB2Q0M8X4T5V6W7Y8Z9A0C40",
+                        Elements = [new ExclusionElement { Column = column == "room_id" ? t.Columns[1].Id : column, Operator = "=" }, new ExclusionElement { Column = t.Columns[2].Id, Operator = "&&" }],
+                    },
+                ],
+            });
+            return b;
+        }
+
+        var resolved = Assert.Single(ResolutionKit.Resolve(Build(Dialect.PostgreSql, "room_id")).Db("db").Table("reservations").Exclusions);
+        Assert.Equal(("ex_reservations_room_id_during", "gist", "room_id = during &&"),
+            (resolved.Name, resolved.Method, string.Join(" ", resolved.Elements.Select(e => e.Column!.Name + " " + e.Operator))));
+        var snapshot = new SchemaDiffer().Capture(ResolutionKit.Resolve(Build(Dialect.PostgreSql, "room_id")).Db("db"), 1);
+        Assert.Matches("^ex:[0-9a-f]{16}$", Assert.Single(snapshot.Tables[0].Exclusions).Key);
+
+        Assert.Equal("/exclusions/0", Assert.Single(await Findings(Build(Dialect.MySql, "room_id").Build(), "MQ4056")).JsonPointer);
+        Assert.Equal("/exclusions/0/elements/0/column", Assert.Single(await Findings(Build(Dialect.PostgreSql, "nope").Build(), "MQ4008")).JsonPointer);
+    }
+
+    [Fact]
+    public async Task Partitioning_resolves_and_MQ4066_refuses_what_PostgreSQL_refuses()
+    {
+        ModelBuilder Build(Dialect dialect, PartitionStrategy strategy, bool keyHasColumn, params TablePartition[] partitions)
+        {
+            var b = new ModelBuilder(seed: 100);
+            var db = b.Database("db", dialect);
+            b.Table("events", db).Column("id", "int64", nullable: false).Column("at", "date", nullable: false)
+                .PrimaryKey(keyHasColumn ? ["id", "at"] : ["id"])
+                .Edit(t => t with { PartitionBy = new PartitionBy { Strategy = strategy, Columns = [t.Columns[1].Id] }, Partitions = partitions });
+            return b;
+        }
+
+        TablePartition Part(string name, bool isDefault = false) =>
+            new() { Id = "01JB2Q0M8X4T5V6W7Y8Z9A0C" + (50 + name.Length).ToString(System.Globalization.CultureInfo.InvariantCulture), Name = name, Bounds = isDefault ? null : "FROM (MINVALUE) TO (MAXVALUE)", Default = isDefault };
+
+        var ok = Build(Dialect.PostgreSql, PartitionStrategy.Range, true, Part("events_all"), Part("events_rest", isDefault: true));
+        Assert.Empty(await Findings(ok.Build(), "MQ4066", "MQ4056"));
+        var table = ResolutionKit.Resolve(ok).Db("db").Table("events");
+        Assert.Equal(("range", "at"), (table.PartitionBy!.Strategy, table.PartitionBy.Columns[0].Name));
+        Assert.Equal([(false, "events_all"), (true, "events_rest")], table.Partitions.Select(p => (p.IsDefault, p.Name)));
+
+        async Task<string[]> Pointers(ModelBuilder b) => [.. (await Findings(b.Build(), "MQ4066")).Select(d => d.JsonPointer!).Order(StringComparer.Ordinal)];
+        Assert.Equal(["/primaryKey/columns"], await Pointers(Build(Dialect.PostgreSql, PartitionStrategy.Range, false)));
+        Assert.Equal(["/partitions/0/default"], await Pointers(Build(Dialect.PostgreSql, PartitionStrategy.Hash, true, Part("events_d", isDefault: true))));
+        Assert.Equal(["/partitionBy"], (await Findings(ok.Build(), "MQ4056")).Select(d => d.JsonPointer).Concat((await Findings(
+            Build(Dialect.MySql, PartitionStrategy.Range, true).Build(), "MQ4056")).Select(d => d.JsonPointer)));
+    }
 }

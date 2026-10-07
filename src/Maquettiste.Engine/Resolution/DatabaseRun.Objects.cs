@@ -104,7 +104,9 @@ internal sealed partial class DatabaseRun
                 Body = body ?? "",
                 HasBody = body is not null,
                 Deterministic = file.Deterministic,
+                Volatility = file.Volatility is { } volatility ? ResolutionValues.Kebab(volatility) : file.Deterministic ? "immutable" : "volatile",
                 Security = ResolutionValues.Kebab(file.Security),
+                Settings = [.. file.Settings.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => new RRoutineSetting { Name = s.Key, Value = s.Value })],
                 Comment = file.Comment,
             };
             r.Parameters = [.. file.Parameters.Select(p =>

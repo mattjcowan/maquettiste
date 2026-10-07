@@ -228,11 +228,65 @@ public sealed record Table : Element
     /// <summary>Check constraints.</summary>
     public IReadOnlyList<CheckConstraint> Checks { get; init; } = [];
 
+    /// <summary>Exclusion constraints (PostgreSQL <c>EXCLUDE</c>).</summary>
+    public IReadOnlyList<ExclusionConstraint> Exclusions { get; init; } = [];
+
     /// <summary>Indexes.</summary>
     public IReadOnlyList<TableIndex> Indexes { get; init; } = [];
 
+    /// <summary>Declarative partitioning (PostgreSQL <c>PARTITION BY</c>), or <see langword="null"/>.</summary>
+    public PartitionBy? PartitionBy { get; init; }
+
+    /// <summary>The partitions created with the table.</summary>
+    public IReadOnlyList<TablePartition> Partitions { get; init; } = [];
+
+    /// <summary>Storage parameters per dialect name, each parameter name to its value (a string is SQL as written).</summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, JsonElement>> Storage { get; init; } =
+        ImmutableDictionary<string, IReadOnlyDictionary<string, JsonElement>>.Empty;
+
     /// <summary>A database comment.</summary>
     public string? Comment { get; init; }
+}
+
+/// <summary>How a table is partitioned.</summary>
+public sealed record PartitionBy
+{
+    /// <summary>The partitioning strategy.</summary>
+    public required PartitionStrategy Strategy { get; init; }
+
+    /// <summary>The partition columns (ids or keys).</summary>
+    [ElementRef(Keyed = true)]
+    public required IReadOnlyList<string> Columns { get; init; }
+}
+
+/// <summary>A partitioning strategy.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<PartitionStrategy>))]
+public enum PartitionStrategy
+{
+    /// <summary>By intervals: <c>range</c>.</summary>
+    [JsonStringEnumMemberName("range")] Range,
+
+    /// <summary>By values: <c>list</c>.</summary>
+    [JsonStringEnumMemberName("list")] List,
+
+    /// <summary>By a modulus: <c>hash</c>.</summary>
+    [JsonStringEnumMemberName("hash")] Hash,
+}
+
+/// <summary>A partition of a partitioned table.</summary>
+public sealed record TablePartition
+{
+    /// <summary>The partition's id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The partition's table name.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>What follows <c>FOR VALUES</c>, as SQL; <see langword="null"/> for the default partition.</summary>
+    public string? Bounds { get; init; }
+
+    /// <summary>Whether this is the default partition.</summary>
+    public bool Default { get; init; }
 }
 
 /// <summary>How a table came to exist.</summary>
@@ -359,6 +413,9 @@ public sealed record PrimaryKey
 
     /// <summary>Whether the key is clustered (SQL Server).</summary>
     public bool? Clustered { get; init; }
+
+    /// <summary>Whether the last column is a period that may repeat the other columns' values without overlapping (PostgreSQL 18 <c>WITHOUT OVERLAPS</c>).</summary>
+    public bool WithoutOverlaps { get; init; }
 }
 
 /// <summary>A unique constraint.</summary>
@@ -376,6 +433,9 @@ public sealed record UniqueConstraint
 
     /// <summary>Whether two rows with nulls in the columns conflict (PostgreSQL 15 <c>NULLS NOT DISTINCT</c>).</summary>
     public bool NullsNotDistinct { get; init; }
+
+    /// <summary>Whether the last column is a period that may repeat the other columns' values without overlapping (PostgreSQL 18 <c>WITHOUT OVERLAPS</c>).</summary>
+    public bool WithoutOverlaps { get; init; }
 }
 
 /// <summary>A foreign key.</summary>
@@ -398,6 +458,9 @@ public sealed record ForeignKey
     /// <summary>Referenced column ids or keys; empty means the referenced primary key.</summary>
     [ElementRef(Keyed = true)]
     public IReadOnlyList<string> ReferencesColumns { get; init; } = [];
+
+    /// <summary>Whether the last column pair is a period the referenced rows' periods must cover (PostgreSQL 18 <c>PERIOD</c>).</summary>
+    public bool Period { get; init; }
 
     /// <summary>The on-delete action.</summary>
     public ReferentialAction OnDelete { get; init; } = ReferentialAction.NoAction;
@@ -467,6 +530,62 @@ public sealed record CheckConstraint
     public required IReadOnlyDictionary<string, string> Expression { get; init; }
 }
 
+/// <summary>An exclusion constraint (PostgreSQL <c>EXCLUDE</c>): no two rows may match on every element.</summary>
+public sealed record ExclusionConstraint
+{
+    /// <summary>The constraint's id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The constraint name; <see langword="null"/>: <c>ex_&lt;table&gt;_&lt;columns&gt;</c>.</summary>
+    public string? Name { get; init; }
+
+    /// <summary>The index method that enforces it.</summary>
+    public ExclusionMethod Method { get; init; } = ExclusionMethod.Gist;
+
+    /// <summary>The compared columns or expressions, each with its operator.</summary>
+    public required IReadOnlyList<ExclusionElement> Elements { get; init; }
+
+    /// <summary>A predicate limiting the rows compared.</summary>
+    public string? Where { get; init; }
+
+    /// <summary>When the constraint is checked.</summary>
+    public Deferrability Deferrable { get; init; } = Deferrability.NotDeferrable;
+}
+
+/// <summary>A compared column or expression of an exclusion constraint.</summary>
+public sealed record ExclusionElement
+{
+    /// <summary>A column id or synthesized column key; <see langword="null"/> for an expression.</summary>
+    [ElementRef(Keyed = true)]
+    public string? Column { get; init; }
+
+    /// <summary>An expression compared instead of a column, as SQL.</summary>
+    public string? Expression { get; init; }
+
+    /// <summary>The operator class, or <see langword="null"/> for the type's default.</summary>
+    public string? OperatorClass { get; init; }
+
+    /// <summary>The operator two rows must not both satisfy (<c>=</c>, <c>&amp;&amp;</c>).</summary>
+    public required string Operator { get; init; }
+}
+
+/// <summary>The index method of an exclusion constraint.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ExclusionMethod>))]
+public enum ExclusionMethod
+{
+    /// <summary><c>gist</c>.</summary>
+    [JsonStringEnumMemberName("gist")] Gist,
+
+    /// <summary><c>spgist</c>.</summary>
+    [JsonStringEnumMemberName("spgist")] Spgist,
+
+    /// <summary><c>btree</c>.</summary>
+    [JsonStringEnumMemberName("btree")] Btree,
+
+    /// <summary><c>hash</c>.</summary>
+    [JsonStringEnumMemberName("hash")] Hash,
+}
+
 /// <summary>An index.</summary>
 public sealed record TableIndex
 {
@@ -491,6 +610,10 @@ public sealed record TableIndex
 
     /// <summary>The index method.</summary>
     public IndexMethod Method { get; init; } = IndexMethod.Default;
+
+    /// <summary>Storage parameters per dialect name (PostgreSQL and SQL Server <c>WITH (...)</c>).</summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, JsonElement>> Storage { get; init; } =
+        ImmutableDictionary<string, IReadOnlyDictionary<string, JsonElement>>.Empty;
 }
 
 /// <summary>A column of an index, or an expression (a functional index).</summary>
@@ -502,6 +625,9 @@ public sealed record IndexColumn
 
     /// <summary>An expression per dialect name, or <c>"*"</c> for every dialect, indexed instead of a column.</summary>
     public IReadOnlyDictionary<string, string>? Expression { get; init; }
+
+    /// <summary>The operator class (PostgreSQL), written as it is: <c>gin_trgm_ops</c>, <c>vector_cosine_ops</c>.</summary>
+    public string? OperatorClass { get; init; }
 
     /// <summary>Whether the column sorts descending.</summary>
     public bool Descending { get; init; }
@@ -528,6 +654,18 @@ public enum IndexMethod
 
     /// <summary><c>gist</c>.</summary>
     [JsonStringEnumMemberName("gist")] Gist,
+
+    /// <summary><c>spgist</c>.</summary>
+    [JsonStringEnumMemberName("spgist")] Spgist,
+
+    /// <summary><c>brin</c>.</summary>
+    [JsonStringEnumMemberName("brin")] Brin,
+
+    /// <summary><c>hnsw</c> (the vector extension).</summary>
+    [JsonStringEnumMemberName("hnsw")] Hnsw,
+
+    /// <summary><c>ivfflat</c> (the vector extension).</summary>
+    [JsonStringEnumMemberName("ivfflat")] Ivfflat,
 
     /// <summary><c>clustered</c>.</summary>
     [JsonStringEnumMemberName("clustered")] Clustered,
@@ -562,6 +700,12 @@ public sealed record View : Element
 
     /// <summary>Whether the view stores its rows (a materialized view: PostgreSQL and Oracle).</summary>
     public bool Materialized { get; init; }
+
+    /// <summary>Whether the view reads its tables with the caller's rights (PostgreSQL 15 <c>security_invoker</c>).</summary>
+    public bool SecurityInvoker { get; init; }
+
+    /// <summary>Whether the view's filter runs before the query's functions that are not leakproof (PostgreSQL <c>security_barrier</c>).</summary>
+    public bool SecurityBarrier { get; init; }
 
     /// <summary>Ids of the tables, views, sequences, routines, database types and SQL objects that must exist first.</summary>
     [ElementRef(ElementKind.Table, ElementKind.View, ElementKind.Sequence, ElementKind.Routine, ElementKind.DatabaseType, ElementKind.SqlObject)]
@@ -654,8 +798,14 @@ public sealed record Routine : Element
     /// <summary>Whether the routine returns the same result for the same arguments.</summary>
     public bool Deterministic { get; init; }
 
+    /// <summary>What the function may do and read (PostgreSQL); <see langword="null"/>: immutable when <see cref="Deterministic"/>, else volatile.</summary>
+    public RoutineVolatility? Volatility { get; init; }
+
     /// <summary>Whose rights the routine runs with.</summary>
     public RoutineSecurity Security { get; init; } = RoutineSecurity.Invoker;
+
+    /// <summary>Configuration parameters set while the routine runs (PostgreSQL <c>SET name = value</c>), the value as SQL.</summary>
+    public IReadOnlyDictionary<string, string> Settings { get; init; } = new Dictionary<string, string>();
 
     /// <summary>Ids of the tables, views, sequences, routines, database types and SQL objects that must exist first.</summary>
     [ElementRef(ElementKind.Table, ElementKind.View, ElementKind.Sequence, ElementKind.Routine, ElementKind.DatabaseType, ElementKind.SqlObject)]
@@ -674,6 +824,20 @@ public enum RoutineKind
 
     /// <summary>Called for its effects: <c>procedure</c>.</summary>
     [JsonStringEnumMemberName("procedure")] Procedure,
+}
+
+/// <summary>What a function may do and read (PostgreSQL's volatility).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<RoutineVolatility>))]
+public enum RoutineVolatility
+{
+    /// <summary>Anything, a new result on every call: <c>volatile</c>.</summary>
+    [JsonStringEnumMemberName("volatile")] Volatile,
+
+    /// <summary>No writes, the same result within a statement: <c>stable</c>.</summary>
+    [JsonStringEnumMemberName("stable")] Stable,
+
+    /// <summary>The same result for the same arguments forever: <c>immutable</c>.</summary>
+    [JsonStringEnumMemberName("immutable")] Immutable,
 }
 
 /// <summary>Whose rights a routine runs with.</summary>

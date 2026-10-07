@@ -133,6 +133,17 @@ if diff && diff.to_revision >= 1
     # too (before the old name) when the view is created again; the view then goes before what it reads now and what it read before.
     view_drops = []
     recreated_views = unchanged_views.size
+    # The views and routines this migration drops and creates again (by id): the SQL objects that depend on them (a grant, an INSTEAD
+    # OF trigger) went with them and run again after them (reapplied_objects).
+    mq_recreated = {}
+    for v in unchanged_views
+      mq_recreated[v.id] = true
+    end
+    for rc in diff.routines
+      if rc.kind == "altered" || rc.kind == "renamed"
+        mq_recreated[rc.key] = true
+      end
+    end
     for oc in diff.views
       again = idem() && ((oc.kind == "renamed" && view_recreates(oc)) || (oc.kind == "added" && mq_all_views))
       if oc.kind == "dropped" || view_recreates(oc) || again
@@ -149,6 +160,7 @@ if diff && diff.to_revision >= 1
         view_drops[view_drops.size] = { key: oc.key, deps: deps, sql: sql }
         if oc.kind != "dropped" && oc.kind != "added"
           recreated_views = recreated_views + 1
+          mq_recreated[oc.key] = true
         end
       end
     end
@@ -158,8 +170,13 @@ if diff && diff.to_revision >= 1
     for x in views_in_drop_order(view_drops)
       emit(statements, x.sql)
     end
+    reapplied = reapplied_objects(db, diff, mq_recreated)
     if d == "postgresql" && recreated_views > 0
-      emit(statements, "-- Views dropped and created again lose the privileges granted on them: grant them again (this migration does not).")
+      if reapplied.size > 0
+        emit(statements, "-- Views dropped and created again lose the privileges granted on them: the SQL objects that depend on them run again below; a grant that is not one of them is lost.")
+      else
+        emit(statements, "-- Views dropped and created again lose the privileges granted on them: grant them again (this migration does not), or keep the grants in SQL objects that depend on the views, which a migration runs again.")
+      end
     end
     # Routines that changed or left the model go too (one may read a column that changes); changed SQL objects are flagged.
     for rc in diff.routines
@@ -245,6 +262,9 @@ if diff && diff.to_revision >= 1
         table_rename_statements(tc, db, statements)
         table_move_statements(tc, db, statements)
         table_comment_statements(tc, db, statements)
+        # Partitions first, so the storage parameters reach new and renamed partitions by their names.
+        table_partition_statements(tc, db, statements)
+        table_storage_statements(tc, db, statements)
         if sqlite_rebuild_reason(tc) != ""
           rebuilds = rebuilds + 1
         end
@@ -255,7 +275,7 @@ if diff && diff.to_revision >= 1
     for tc in diff.tables
       if tc.kind == "renamed" || tc.kind == "altered"
         n = statements.size
-        table_phase_statements(tc, "before", ["check", "unique", "index", "primary key"], statements)
+        table_phase_statements(tc, "before", ["check", "exclusion", "unique", "index", "primary key"], statements)
         produced[tc.key] = produced[tc.key] + statements.size - n
       end
     end
@@ -292,7 +312,7 @@ if diff && diff.to_revision >= 1
     for tc in diff.tables
       if tc.kind == "renamed" || tc.kind == "altered"
         n = statements.size
-        table_phase_statements(tc, "after", ["primary key", "unique", "check", "index"], statements)
+        table_phase_statements(tc, "after", ["primary key", "unique", "check", "exclusion", "index"], statements)
         produced[tc.key] = produced[tc.key] + statements.size - n
       end
     end
@@ -350,6 +370,9 @@ if diff && diff.to_revision >= 1
     end
     if diff.objects.size > 0
       object_change_statements(db, diff, "after", statements)
+    end
+    for o in reapplied
+      emit(statements, own_batch(object_sql(o, db), db))
     end
     for oc in diff.sequences
       if oc.kind != "added"

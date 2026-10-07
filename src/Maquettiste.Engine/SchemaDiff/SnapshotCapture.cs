@@ -17,8 +17,8 @@ namespace Maquettiste.Engine.SchemaDiff;
 /// <item><description>a unique constraint is <c>uq:</c> + its column keys;</description></item>
 /// <item><description>a foreign key is <c>fk:</c> + its column keys + <c>-&gt;</c> + the referenced table key + the referenced
 /// column keys in parentheses;</description></item>
-/// <item><description>an index is <c>ix:</c> + its column keys (an expression: <c>expr:</c> + 16 hex of its SHA-256; <c> desc</c> for
-/// descending), followed only when they differ from
+/// <item><description>an index is <c>ix:</c> + its column keys (an expression: <c>expr:</c> + 16 hex of its SHA-256; a space and the
+/// operator class when it has one; <c> desc</c> for descending), followed only when they differ from
 /// the default by <c>;unique</c>, <c>;using=&lt;method&gt;</c>, <c>;include=&lt;column keys&gt;</c> and
 /// <c>;where=&lt;16 hex of the SHA-256 of the predicate&gt;</c>;</description></item>
 /// <item><description>a check is <c>ck:</c> + the first 16 hex characters of the SHA-256 of its expression.</description></item>
@@ -74,6 +74,8 @@ internal static class SnapshotCapture
                     Columns = v.ColumnList ? [.. v.Columns.Select(c => c.Name)] : [],
                     WithCheckOption = v.WithCheckOption,
                     Materialized = v.Materialized,
+                    SecurityInvoker = v.SecurityInvoker,
+                    SecurityBarrier = v.SecurityBarrier,
                     DependsOn = [.. v.DependsOn.OfType<RView>().Select(d => d.Id)],
                     Comment = v.Comment,
                 })
@@ -99,6 +101,8 @@ internal static class SnapshotCapture
                 Uniques = [.. t.Uniques.OrderBy(c => c.Key, StringComparer.Ordinal)],
                 ForeignKeys = [.. t.ForeignKeys.OrderBy(c => c.Key, StringComparer.Ordinal)],
                 Checks = [.. t.Checks.OrderBy(c => c.Key, StringComparer.Ordinal)],
+                Exclusions = [.. t.Exclusions.OrderBy(c => c.Key, StringComparer.Ordinal)],
+                Partitions = [.. t.Partitions.OrderBy(c => c.Key, StringComparer.Ordinal)],
                 Indexes = [.. t.Indexes.OrderBy(c => c.Key, StringComparer.Ordinal)],
             }).OrderBy(t => t.Key, StringComparer.Ordinal)],
             Views = [.. snapshot.Views.OrderBy(v => v.Key, StringComparer.Ordinal)],
@@ -127,10 +131,10 @@ internal static class SnapshotCapture
     {
         var columns = table.Columns.OrderBy(c => c.Position).ThenBy(c => c.Key, StringComparer.Ordinal).Select(CaptureColumn).ToList();
         SnapshotConstraint? primaryKey = table.PrimaryKey is { } pk
-            ? new SnapshotConstraint { Key = "pk", Name = pk.Name, Columns = Keys(pk.Columns), Clustered = pk.Clustered }
+            ? new SnapshotConstraint { Key = "pk", Name = pk.Name, Columns = Keys(pk.Columns), Clustered = pk.Clustered, WithoutOverlaps = pk.WithoutOverlaps }
             : null;
         var uniques = AssignKeys(table.Uniques, u => "uq:" + JoinKeys(u.Columns), _ => "", u => u.Name,
-            (u, key) => new SnapshotConstraint { Key = key, Name = u.Name, Columns = Keys(u.Columns), NullsNotDistinct = u.NullsNotDistinct });
+            (u, key) => new SnapshotConstraint { Key = key, Name = u.Name, Columns = Keys(u.Columns), NullsNotDistinct = u.NullsNotDistinct, WithoutOverlaps = u.WithoutOverlaps });
         var foreignKeys = AssignKeys(table.ForeignKeys, ForeignKeyKey, f => (f.OnDelete ?? "") + "|" + JoinKeys(f.OnDeleteColumns) + "|" + (f.OnUpdate ?? ""), f => f.Name,
             (f, key) => new SnapshotForeignKey
             {
@@ -139,10 +143,21 @@ internal static class SnapshotCapture
                 Columns = Keys(f.Columns),
                 ReferencedTable = f.ReferencedTable?.Key ?? "",
                 ReferencedColumns = Keys(f.ReferencedColumns),
+                Period = f.Period,
                 OnDelete = PlainValues.Parse(f.OnDelete, ReferentialAction.NoAction),
                 OnDeleteColumns = Keys(f.OnDeleteColumns),
                 OnUpdate = PlainValues.Parse(f.OnUpdate, ReferentialAction.NoAction),
                 Deferrable = PlainValues.Parse(f.Deferrable, Deferrability.NotDeferrable),
+            });
+        var exclusions = AssignKeys(table.Exclusions, x => "ex:" + ContentHash.Of(ExclusionDefinition(x))[..16], _ => "", x => x.Name,
+            (x, key) => new SnapshotExclusion
+            {
+                Key = key,
+                Name = x.Name,
+                Method = x.Method,
+                Elements = [.. x.Elements.Select(e => new SnapshotExclusionElement { Column = e.Column?.Key, Expression = e.Expression, OperatorClass = e.OperatorClass, Operator = e.Operator })],
+                Where = x.Where,
+                Deferrable = PlainValues.Parse(x.Deferrable, Deferrability.NotDeferrable),
             });
         var checks = AssignKeys(table.Checks, c => "ck:" + ContentHash.Of(c.Expression)[..16], _ => "", c => c.Name,
             (c, key) => new SnapshotCheck { Key = key, Name = c.Name, Expression = c.Expression });
@@ -151,11 +166,15 @@ internal static class SnapshotCapture
             {
                 Key = key,
                 Name = i.Name,
-                Columns = [.. i.Columns.Select(c => new SnapshotIndexColumn { Column = c.Column?.Key, Expression = c.Column is null ? c.Expression : null, Descending = c.Descending, Length = c.Length })],
+                Columns = [.. i.Columns.Select(c => new SnapshotIndexColumn
+                {
+                    Column = c.Column?.Key, Expression = c.Column is null ? c.Expression : null, OperatorClass = c.OperatorClass, Descending = c.Descending, Length = c.Length,
+                })],
                 Include = Keys(i.Include),
                 Where = i.Where,
                 Unique = i.Unique,
                 Method = PlainValues.Parse(i.Method, IndexMethod.Default),
+                Storage = CaptureStorage(i.Storage),
             });
         return new SnapshotTable
         {
@@ -168,6 +187,10 @@ internal static class SnapshotCapture
             ForeignKeys = foreignKeys,
             Checks = checks,
             Indexes = indexes,
+            Exclusions = exclusions,
+            PartitionBy = table.PartitionBy is { } by ? new SnapshotPartitionBy { Strategy = PlainValues.Parse(by.Strategy, PartitionStrategy.Range), Columns = Keys(by.Columns) } : null,
+            Partitions = [.. table.Partitions.Select(p => new SnapshotPartition { Key = p.Id, Name = p.Name, Bounds = p.Bounds, Default = p.IsDefault }).OrderBy(p => p.Key, StringComparer.Ordinal)],
+            Storage = CaptureStorage(table.Storage),
             Comment = table.Comment,
         };
     }
@@ -260,7 +283,13 @@ internal static class SnapshotCapture
 
         text.Append("language: ").Append(routine.Language).Append('\n');
         text.Append("deterministic: ").Append(routine.Deterministic ? "true" : "false").Append('\n');
+        // Only a volatility other than the one deterministic implies, and settings when there are some: a routine without them keeps
+        // the definition text (and the snapshot) it had before they existed.
+        if (routine.Volatility != (routine.Deterministic ? "immutable" : "volatile"))
+            text.Append("volatility: ").Append(routine.Volatility).Append('\n');
         text.Append("security: ").Append(routine.Security).Append('\n');
+        foreach (var setting in routine.Settings)
+            text.Append("set: ").Append(setting.Name).Append(" = ").Append(setting.Value).Append('\n');
         text.Append("body: ").Append(routine.Body);
         return new SnapshotDefinition { Key = routine.Id, Name = routine.Name, Schema = routine.Schema, Kind = routine.RoutineKind, Definition = text.ToString() };
     }
@@ -275,6 +304,14 @@ internal static class SnapshotCapture
         Definition = "phase: " + obj.Phase + "\nbody: " + obj.Body,
     };
 
+    /// <summary>What sets an exclusion constraint apart (its key's source): method, each element and operator, predicate.</summary>
+    private static string ExclusionDefinition(RExclusion x) =>
+        x.Method + "(" + string.Join(", ", x.Elements.Select(e => (e.Column?.Key ?? "(" + e.Expression + ")") + (e.OperatorClass is { } oc ? " " + oc : "") + " WITH " + e.Operator)) + ")"
+        + (x.Where is { } where ? " WHERE " + where : "");
+
+    private static IReadOnlyList<SnapshotStorageParameter> CaptureStorage(IReadOnlyList<RStorageParameter> storage) =>
+        storage.Count == 0 ? [] : [.. storage.Select(p => new SnapshotStorageParameter { Name = p.Name, Value = p.Value })];
+
     private static IReadOnlyList<string> Keys(IEnumerable<RColumn> columns) => [.. columns.Select(c => c.Key)];
 
     private static string JoinKeys(IEnumerable<RColumn> columns) => string.Join(',', columns.Select(c => c.Key));
@@ -287,7 +324,8 @@ internal static class SnapshotCapture
     private static string IndexKey(RIndex index)
     {
         var key = new System.Text.StringBuilder("ix:");
-        key.Append(string.Join(',', index.Columns.Select(c => IndexColumnKey(c.Column?.Key, c.Expression) + (c.Descending ? " desc" : ""))));
+        key.Append(string.Join(',', index.Columns.Select(c => IndexColumnKey(c.Column?.Key, c.Expression)
+            + (c.OperatorClass is { } opclass ? " " + opclass : "") + (c.Descending ? " desc" : ""))));
         if (index.Unique)
             key.Append(";unique");
         var method = PlainValues.Parse(index.Method, IndexMethod.Default);

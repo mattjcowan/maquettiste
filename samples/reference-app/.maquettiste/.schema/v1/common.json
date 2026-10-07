@@ -216,6 +216,24 @@
       },
       "additionalProperties": false
     },
+    "storage": {
+      "description": "Storage parameters per dialect name (postgresql, sqlserver, mysql, oracle): each a map of parameter name to value, written in the DDL of a database of that dialect only (PostgreSQL and SQL Server WITH (name = value), MySQL table options, Oracle physical attributes). A number or boolean is written as the dialect writes it; a string is written as SQL as it is.",
+      "type": "object",
+      "propertyNames": {
+        "enum": ["postgresql", "sqlserver", "mysql", "oracle"]
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "additionalProperties": {
+          "type": ["string", "number", "boolean"]
+        },
+        "minProperties": 1
+      },
+      "default": {}
+    },
     "dialectMap": {
       "description": "Dialect name (postgresql, sqlserver, mysql, sqlite, oracle) or \"*\" to SQL text.",
       "type": "object",

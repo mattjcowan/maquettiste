@@ -28,7 +28,7 @@ internal sealed partial class DatabaseRun
             }
 
             t.Table.PrimaryKey = new RPrimaryKey { Name = t.PrimaryKeyName ?? Render(_conv.PrimaryKeyName, ("table", t.Table.Name)), Columns = pk,
-                Clustered = t.PrimaryKeyClustered };
+                Clustered = t.PrimaryKeyClustered, WithoutOverlaps = t.PrimaryKeyWithoutOverlaps };
         }
 
         foreach (var t in _tableOrder)
@@ -92,15 +92,16 @@ internal sealed partial class DatabaseRun
                     Name = x.Spec.Name ?? RenderWithName(_conv.UniqueName, t, x.Columns!, x.Spec.NameToken),
                     Columns = [.. x.Columns!],
                     NullsNotDistinct = x.Spec.NullsNotDistinct,
+                    WithoutOverlaps = x.Spec.WithoutOverlaps,
                 })];
-            var indexes = t.Indexes.Select(i => (Spec: i, Columns: i.Columns.Select(c => (Column: c.Column is null ? null : t.Resolve(c.Column), c.Descending, c.Expression, c.Length)).ToList(),
+            var indexes = t.Indexes.Select(i => (Spec: i, Columns: i.Columns.Select(c => (Column: c.Column is null ? null : t.Resolve(c.Column), c.Descending, c.Expression, c.Length, c.OperatorClass)).ToList(),
                     Include: i.Include.Select(t.Resolve).ToList()))
                 .Where(x => x.Columns.Count > 0 && x.Columns.All(c => c.Column is not null || c.Expression is not null) && x.Include.All(c => c is not null))
                 .ToList();
             // An index a table file declares (overlay or designed table) overrides the index an attribute's `indexed` flag synthesizes on the
             // same columns, so a file can change its sort order, method or name without producing a second index of the same name. An
             // expression is named "expr" in a conventional index name.
-            static string IndexColumnNames(IEnumerable<(RColumn? Column, bool Descending, string? Expression, int? Length)> columns) =>
+            static string IndexColumnNames(IEnumerable<(RColumn? Column, bool Descending, string? Expression, int? Length, string? OperatorClass)> columns) =>
                 string.Join('_', columns.Select(c => c.Column?.Name ?? "expr"));
             var fileColumnSets = indexes.Where(x => x.Spec.FromFile && x.Columns.All(c => c.Column is not null)).Select(x => Joined(x.Columns.Select(c => c.Column!))).ToHashSet(StringComparer.Ordinal);
             indexes.RemoveAll(x => !x.Spec.FromFile && fileColumnSets.Contains(Joined(x.Columns.Select(c => c.Column!))));
@@ -109,11 +110,34 @@ internal sealed partial class DatabaseRun
                 {
                     Id = x.Spec.Id,
                     Name = x.Spec.Name ?? Render(_conv.IndexName, ("table", t.Table.Name), ("columns", IndexColumnNames(x.Columns))),
-                    Columns = [.. x.Columns.Select(c => new RIndexColumn { Column = c.Column, Expression = c.Column is null ? c.Expression : null, Descending = c.Descending, Length = c.Length })],
+                    Columns = [.. x.Columns.Select(c => new RIndexColumn
+                    {
+                        Column = c.Column, Expression = c.Column is null ? c.Expression : null, Descending = c.Descending, Length = c.Length, OperatorClass = c.OperatorClass,
+                    })],
                     Include = [.. x.Include!],
                     Where = x.Spec.Where,
                     Unique = x.Spec.Unique,
                     Method = x.Spec.Method,
+                    Storage = x.Spec.Storage ?? [],
+                })];
+            // Partition columns the table does not have leave the partitioning out (validation's MQ4008 says so).
+            if (t.PartitionBy is { } partitionBy && partitionBy.Columns.Select(t.Resolve).ToList() is var partitionColumns && partitionColumns.All(c => c is not null))
+                t.Table.PartitionBy = new RPartitionBy { Strategy = ResolutionValues.Kebab(partitionBy.Strategy), Columns = [.. partitionColumns!] };
+            // An exclusion constraint naming a column the table does not have is left out (validation's MQ4008 says so).
+            t.Table.Exclusions = [.. t.Exclusions
+                .Select(x => (Spec: x, Columns: x.Elements.Select(e => e.Column is null ? null : t.Resolve(e.Column)).ToList()))
+                .Where(x => x.Spec.Elements.Select((e, i) => e.Column is null || x.Columns[i] is not null).All(ok => ok))
+                .Select(x => new RExclusion
+                {
+                    Id = x.Spec.Id,
+                    Name = x.Spec.Name ?? "ex_" + t.Table.Name + "_" + string.Join('_', x.Columns.Select(c => c?.Name ?? "expr")),
+                    Method = ResolutionValues.Kebab(x.Spec.Method),
+                    Elements = [.. x.Spec.Elements.Select((e, i) => new RExclusionElement
+                    {
+                        Column = x.Columns[i], Expression = e.Column is null ? e.Expression : null, OperatorClass = e.OperatorClass, Operator = e.Operator,
+                    })],
+                    Where = x.Spec.Where,
+                    Deferrable = ResolutionValues.Kebab(x.Spec.Deferrable),
                 })];
             t.Table.Checks = [.. t.Checks.Select(c => new RCheck
             {

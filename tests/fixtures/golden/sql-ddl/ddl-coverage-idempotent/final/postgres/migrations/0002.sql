@@ -14,7 +14,7 @@ DROP VIEW IF EXISTS sales.customer_order_list;
 
 DROP VIEW IF EXISTS sales.customer_orders;
 
--- Views dropped and created again lose the privileges granted on them: grant them again (this migration does not).
+-- Views dropped and created again lose the privileges granted on them: grant them again (this migration does not), or keep the grants in SQL objects that depend on the views, which a migration runs again.
 
 CREATE SCHEMA IF NOT EXISTS sales;
 

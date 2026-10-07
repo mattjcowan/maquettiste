@@ -152,8 +152,23 @@ public sealed class RTable : RAnnotated
     /// <summary>Check constraints.</summary>
     public IReadOnlyList<RCheck> Checks { get; internal set; } = [];
 
+    /// <summary>Exclusion constraints (PostgreSQL <c>EXCLUDE</c>).</summary>
+    public IReadOnlyList<RExclusion> Exclusions { get; internal set; } = [];
+
     /// <summary>Indexes.</summary>
     public IReadOnlyList<RIndex> Indexes { get; internal set; } = [];
+
+    /// <summary>How the table is partitioned, or <see langword="null"/>.</summary>
+    public RPartitionBy? PartitionBy { get; internal set; }
+
+    /// <summary>The partitions created with the table, in file order.</summary>
+    public IReadOnlyList<RPartition> Partitions { get; internal set; } = [];
+
+    /// <summary>
+    /// The storage parameters for the database's dialect, by name in ordinal order: the table file's over its stereotypes' (in
+    /// stereotype order, later wins). A partitioned table's are its partitions' (it takes none itself).
+    /// </summary>
+    public IReadOnlyList<RStorageParameter> Storage { get; internal set; } = [];
 
     /// <summary>The comment.</summary>
     public string? Comment { get; internal set; }
@@ -180,6 +195,9 @@ public sealed class RPrimaryKey
     /// <summary>Whether the table file asks for a clustered (<see langword="true"/>) or nonclustered (<see langword="false"/>) key, or
     /// <see langword="null"/> when it says nothing.</summary>
     public bool? Clustered { get; internal set; }
+
+    /// <summary>Whether the last column is a period (PostgreSQL 18 <c>WITHOUT OVERLAPS</c>).</summary>
+    public bool WithoutOverlaps { get; internal set; }
 }
 
 /// <summary>A resolved unique constraint.</summary>
@@ -196,6 +214,9 @@ public sealed class RUnique
 
     /// <summary>Whether rows with nulls in the columns conflict (PostgreSQL 15 <c>NULLS NOT DISTINCT</c>).</summary>
     public bool NullsNotDistinct { get; internal set; }
+
+    /// <summary>Whether the last column is a period (PostgreSQL 18 <c>WITHOUT OVERLAPS</c>).</summary>
+    public bool WithoutOverlaps { get; internal set; }
 }
 
 /// <summary>A resolved foreign key.</summary>
@@ -215,6 +236,9 @@ public sealed class RForeignKey
 
     /// <summary>The referenced columns.</summary>
     public IReadOnlyList<RColumn> ReferencedColumns { get; internal set; } = [];
+
+    /// <summary>Whether the last column pair is a period (PostgreSQL 18 <c>PERIOD</c>).</summary>
+    public bool Period { get; internal set; }
 
     /// <summary><c>no-action</c>, <c>restrict</c>, <c>cascade</c>, <c>set-null</c> or <c>set-default</c>.</summary>
     public string OnDelete { get; internal set; } = "no-action";
@@ -275,8 +299,88 @@ public sealed class RIndex
     /// <summary>Whether the index is unique.</summary>
     public bool Unique { get; internal set; }
 
-    /// <summary><c>default</c>, <c>btree</c>, <c>hash</c>, <c>gin</c>, <c>gist</c> or <c>clustered</c>.</summary>
+    /// <summary><c>default</c>, <c>btree</c>, <c>hash</c>, <c>gin</c>, <c>gist</c>, <c>spgist</c>, <c>brin</c>, <c>hnsw</c>, <c>ivfflat</c> or <c>clustered</c>.</summary>
     public string Method { get; internal set; } = "default";
+
+    /// <summary>The storage parameters for the database's dialect, by name in ordinal order.</summary>
+    public IReadOnlyList<RStorageParameter> Storage { get; internal set; } = [];
+}
+
+/// <summary>How a resolved table is partitioned.</summary>
+public sealed class RPartitionBy
+{
+    /// <summary><c>range</c>, <c>list</c> or <c>hash</c>.</summary>
+    public string Strategy { get; internal set; } = "range";
+
+    /// <summary>The partition columns.</summary>
+    public IReadOnlyList<RColumn> Columns { get; internal set; } = [];
+}
+
+/// <summary>A partition of a resolved table.</summary>
+public sealed class RPartition
+{
+    /// <summary>The partition's id.</summary>
+    public string Id { get; internal set; } = "";
+
+    /// <summary>The partition's table name.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>What follows <c>FOR VALUES</c>; <see langword="null"/> for the default partition.</summary>
+    public string? Bounds { get; internal set; }
+
+    /// <summary>Whether this is the default partition.</summary>
+    public bool IsDefault { get; internal set; }
+}
+
+/// <summary>A resolved exclusion constraint.</summary>
+public sealed class RExclusion
+{
+    /// <summary>The id the table file gives the constraint.</summary>
+    public string? Id { get; internal set; }
+
+    /// <summary>The constraint name.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary><c>gist</c>, <c>spgist</c>, <c>btree</c> or <c>hash</c>.</summary>
+    public string Method { get; internal set; } = "gist";
+
+    /// <summary>The compared columns or expressions.</summary>
+    public IReadOnlyList<RExclusionElement> Elements { get; internal set; } = [];
+
+    /// <summary>The predicate limiting the rows compared, or <see langword="null"/>.</summary>
+    public string? Where { get; internal set; }
+
+    /// <summary><c>not-deferrable</c>, <c>initially-immediate</c> or <c>initially-deferred</c>.</summary>
+    public string Deferrable { get; internal set; } = "not-deferrable";
+}
+
+/// <summary>A compared column or expression of a resolved exclusion constraint.</summary>
+public sealed class RExclusionElement
+{
+    /// <summary>The column; <see langword="null"/> for an expression.</summary>
+    public RColumn? Column { get; internal set; }
+
+    /// <summary>The expression; <see langword="null"/> for a column.</summary>
+    public string? Expression { get; internal set; }
+
+    /// <summary>The operator class, or <see langword="null"/>.</summary>
+    public string? OperatorClass { get; internal set; }
+
+    /// <summary>The operator.</summary>
+    public string Operator { get; internal set; } = "";
+}
+
+/// <summary>A storage parameter of a table or an index, for the database's dialect.</summary>
+public sealed class RStorageParameter
+{
+    /// <summary>The parameter name as the file writes it (<c>fillfactor</c>, <c>autovacuum_vacuum_scale_factor</c>).</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>
+    /// The value as the dialect writes it: a number as written, a boolean as <c>true</c>/<c>false</c> (PostgreSQL, Oracle),
+    /// <c>ON</c>/<c>OFF</c> (SQL Server) or <c>1</c>/<c>0</c> (MySQL), a string as it is.
+    /// </summary>
+    public string Value { get; internal set; } = "";
 }
 
 /// <summary>A column in a resolved index, or an expression (a functional index).</summary>
@@ -287,6 +391,9 @@ public sealed class RIndexColumn
 
     /// <summary>The indexed expression for the database's dialect; <see langword="null"/> for a column.</summary>
     public string? Expression { get; internal set; }
+
+    /// <summary>The operator class (PostgreSQL), or <see langword="null"/> for the type's default.</summary>
+    public string? OperatorClass { get; internal set; }
 
     /// <summary>Whether the column sorts descending.</summary>
     public bool Descending { get; internal set; }
@@ -444,6 +551,12 @@ public sealed class RView : RAnnotated
     /// <summary>Whether the view is materialized (it stores its rows).</summary>
     public bool Materialized { get; internal set; }
 
+    /// <summary>Whether the view reads its tables with the caller's rights (PostgreSQL <c>security_invoker</c>).</summary>
+    public bool SecurityInvoker { get; internal set; }
+
+    /// <summary>Whether the view's filter runs before the query's functions that are not leakproof (PostgreSQL <c>security_barrier</c>).</summary>
+    public bool SecurityBarrier { get; internal set; }
+
     /// <summary>
     /// What must exist before the view: the objects its file's <c>dependsOn</c> names, then the other views of the database its body
     /// names (a best-effort reading of the body text), each once.
@@ -553,14 +666,30 @@ public sealed class RRoutine : RAnnotated
     /// <summary>Whether the routine returns the same result for the same arguments.</summary>
     public bool Deterministic { get; internal set; }
 
+    /// <summary><c>volatile</c>, <c>stable</c> or <c>immutable</c>: the file's, else <c>immutable</c> when deterministic, else <c>volatile</c>.</summary>
+    public string Volatility { get; internal set; } = "volatile";
+
     /// <summary><c>invoker</c> or <c>definer</c>.</summary>
     public string Security { get; internal set; } = "invoker";
+
+    /// <summary>Configuration parameters set while the routine runs (PostgreSQL <c>SET name = value</c>), by name in ordinal order.</summary>
+    public IReadOnlyList<RRoutineSetting> Settings { get; internal set; } = [];
 
     /// <summary>The tables, views, sequences, routines, database types and SQL objects of the database it names in <c>dependsOn</c>, in file order.</summary>
     public IReadOnlyList<IResolvedObject> DependsOn { get; internal set; } = [];
 
     /// <summary>The comment.</summary>
     public string? Comment { get; internal set; }
+}
+
+/// <summary>A configuration parameter a resolved routine sets while it runs.</summary>
+public sealed class RRoutineSetting
+{
+    /// <summary>The parameter's name, such as <c>search_path</c>.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The value, as SQL.</summary>
+    public string Value { get; internal set; } = "";
 }
 
 /// <summary>A parameter of a resolved routine.</summary>

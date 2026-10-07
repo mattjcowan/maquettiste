@@ -133,7 +133,18 @@ func view_sql(v, db)
     $names = " (" + cols(v.columns, db) + ")"
   end
   $check = v.with_check_option && !$mat && $d != "sqlite" ? "\nWITH CHECK OPTION" : ""
-  $s = $create + qn(v.schema, v.name, db) + $names + " AS\n" + $body + $check + ";"
+  # PostgreSQL view options (MQ4056 elsewhere and on a materialized view): security_barrier, security_invoker (15 and later).
+  $options = ""
+  if $d == "postgresql" && !$mat
+    if v.security_barrier
+      $options = "security_barrier = true"
+    end
+    if v.security_invoker
+      $options = $options + ($options == "" ? "" : ", ") + "security_invoker = true"
+    end
+  end
+  $with = $options == "" ? "" : " WITH (" + $options + ")"
+  $s = $create + qn(v.schema, v.name, db) + $names + $with + " AS\n" + $body + $check + ";"
   if pack.params.comments && v.comment && view_comment_sql(v, db, v.comment) != ""
     $comment = ($d == "sqlserver" && !idem()) ? ms_add_description(db, "VIEW", v.schema, v.name, null, v.comment) : view_comment_sql(v, db, v.comment)
     $s = $s + ($d == "sqlserver" ? "\nGO\n" : "\n") + $comment
@@ -253,8 +264,8 @@ func routine_parameter_sql(p, db)
 end
 
 # The CREATE FUNCTION or CREATE PROCEDURE of a routine, or a comment where the dialect has none (SQLite) or the routine has no
-# body for the dialect. PostgreSQL: the body between dollar quotes, with LANGUAGE, IMMUTABLE for a deterministic function and
-# SECURITY DEFINER. SQL Server: the body after AS as written; a table result is an inline table-valued function (RETURNS TABLE,
+# body for the dialect. PostgreSQL: the body between dollar quotes, with LANGUAGE, the function's volatility (STABLE or IMMUTABLE;
+# VOLATILE is the default), SECURITY DEFINER and a SET per setting (search_path). SQL Server: the body after AS as written; a table result is an inline table-valued function (RETURNS TABLE,
 # the body is its RETURN), and definer rights are WITH EXECUTE AS OWNER.
 func routine_sql(r, db)
   $d = db.dialect
@@ -273,8 +284,10 @@ func routine_sql(r, db)
     $params = $params + (for.first ? "" : ", ") + routine_parameter_sql(p, db)
   end
   $body = r.body | string.rstrip
+  # Idempotent: a second run replaces the routine with itself (CREATE OR ALTER, SQL Server 2016 SP1 and later).
+  $create = idem() ? ($d == "sqlserver" ? "CREATE OR ALTER " : "CREATE OR REPLACE ") : "CREATE "
   if $d == "sqlserver"
-    $s = "CREATE " + ($what == "procedure" ? "PROCEDURE " : "FUNCTION ") + qn(r.schema, r.name, db)
+    $s = $create + ($what == "procedure" ? "PROCEDURE " : "FUNCTION ") + qn(r.schema, r.name, db)
     if $what == "procedure"
       $s = $s + ($params == "" ? "" : " " + $params)
     else
@@ -290,7 +303,7 @@ func routine_sql(r, db)
     end
     ret $s + "\nAS\n" + $body
   end
-  $s = "CREATE " + ($what == "procedure" ? "PROCEDURE " : "FUNCTION ") + qn(r.schema, r.name, db) + "(" + $params + ")"
+  $s = $create + ($what == "procedure" ? "PROCEDURE " : "FUNCTION ") + qn(r.schema, r.name, db) + "(" + $params + ")"
   if $what != "procedure"
     if r.returns && r.returns.table
       $cols = ""
@@ -305,11 +318,14 @@ func routine_sql(r, db)
     end
   end
   $s = $s + "\nLANGUAGE " + r.language
-  if r.deterministic && $what != "procedure"
-    $s = $s + "\nIMMUTABLE"
+  if r.volatility != "volatile" && $what != "procedure"
+    $s = $s + "\n" + (r.volatility | string.upcase)
   end
   if r.security == "definer"
     $s = $s + "\nSECURITY DEFINER"
+  end
+  for setting in r.settings
+    $s = $s + "\nSET " + setting.name + " = " + setting.value
   end
   $tag = ($body | string.contains "$$") ? "$body$" : "$$"
   $s = $s + "\nAS " + $tag + "\n" + $body + "\n" + $tag + ";"

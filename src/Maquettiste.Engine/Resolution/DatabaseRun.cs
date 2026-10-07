@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Text;
 
@@ -154,6 +155,8 @@ internal sealed partial class DatabaseRun
                 ColumnList = view.ColumnList,
                 WithCheckOption = view.WithCheckOption,
                 Materialized = view.Materialized,
+                SecurityInvoker = view.SecurityInvoker,
+                SecurityBarrier = view.SecurityBarrier,
                 Comment = view.Comment,
             };
             var deps = new DependencySet(_run.Keys).Element(view.Id).Element(_db.Id).Referrers(view.Id).Add(TypeMaps);
@@ -239,15 +242,17 @@ internal sealed partial class DatabaseRun
                 t.PrimaryKeyName = pk.Name;
             if (pk.Clustered is not null)
                 t.PrimaryKeyClustered = pk.Clustered;
+            t.PrimaryKeyWithoutOverlaps = pk.WithoutOverlaps;
         }
 
         foreach (var unique in table.Uniques)
-            t.Uniques.Add(new UniqueSpec(unique.Columns, unique.Name, null, unique.Id, unique.NullsNotDistinct));
+            t.Uniques.Add(new UniqueSpec(unique.Columns, unique.Name, null, unique.Id, unique.NullsNotDistinct, unique.WithoutOverlaps));
         foreach (var fk in table.ForeignKeys)
         {
             var spec = new ForeignKeySpec(t, fk.Columns, null, fk.ReferencesTable, fk.ReferencesColumns, ResolutionValues.Kebab(fk.OnDelete),
                 ResolutionValues.Kebab(fk.OnUpdate), fk.Name) { FileId = table.Id, Id = fk.Id, OnDeleteColumns = fk.OnDeleteColumns };
             spec.Result.Deferrable = ResolutionValues.Kebab(fk.Deferrable);
+            spec.Result.Period = fk.Period;
             t.ForeignKeys.Add(spec);
             _foreignKeysById.TryAdd(fk.Id, spec);
         }
@@ -260,16 +265,21 @@ internal sealed partial class DatabaseRun
                 t.Checks.Add(new CheckSpec(expression, check.Name, ++ordinal, check.Id, check.Column));
         }
 
+        t.Exclusions.AddRange(table.Exclusions);
+        if (table.PartitionBy is not null)
+            t.PartitionBy = table.PartitionBy;
+        if (table.Partitions.Count > 0)
+            t.Table.Partitions = [.. table.Partitions.Select(p => new RPartition { Id = p.Id, Name = p.Name, Bounds = p.Default ? null : p.Bounds, IsDefault = p.Default })];
         foreach (var index in table.Indexes)
         {
             // An expression without a text for the dialect leaves the index out, as a check without one is left out.
             var columns = index.Columns.Select(c => c.Column is null
-                ? new IndexColumnSpec(null, c.Descending, c.Expression is null ? null : ForDialect(c.Expression), c.Length)
-                : new IndexColumnSpec(c.Column, c.Descending, null, c.Length)).ToList();
+                ? new IndexColumnSpec(null, c.Descending, c.Expression is null ? null : ForDialect(c.Expression), c.Length, c.OperatorClass)
+                : new IndexColumnSpec(c.Column, c.Descending, null, c.Length, c.OperatorClass)).ToList();
             if (columns.Any(c => c.Column is null && c.Expression is null))
                 continue;
             t.Indexes.Add(new IndexSpec(columns, index.Include, index.Where, index.Unique,
-                ResolutionValues.Kebab(index.Method), index.Name, FromFile: true, Id: index.Id));
+                ResolutionValues.Kebab(index.Method), index.Name, FromFile: true, Id: index.Id, Storage: Storage([index.Storage])));
         }
     }
 
@@ -339,6 +349,25 @@ internal sealed partial class DatabaseRun
         }
     }
 
+    /// <summary>
+    /// The storage parameters for the database's dialect from storage maps in increasing precedence (a table's stereotypes', then its
+    /// own), by name in ordinal order, each value as the dialect writes it.
+    /// </summary>
+    private IReadOnlyList<RStorageParameter> Storage(IEnumerable<IReadOnlyDictionary<string, IReadOnlyDictionary<string, JsonElement>>> layers)
+    {
+        var merged = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var layer in layers)
+        {
+            if (layer.TryGetValue(_dialect, out var parameters))
+            {
+                foreach (var (name, value) in parameters)
+                    merged[name] = value;
+            }
+        }
+
+        return merged.Count == 0 ? [] : [.. merged.Select(p => new RStorageParameter { Name = p.Key, Value = ResolutionValues.StorageValue(p.Value, _dialect) })];
+    }
+
     private string? ForDialect(IReadOnlyDictionary<string, string> values) =>
         values.TryGetValue(_dialect, out var value) ? value : values.TryGetValue("*", out var any) ? any : null;
 
@@ -348,6 +377,8 @@ internal sealed partial class DatabaseRun
     private void AddTable(TableBuild t)
     {
         _run.FillPhysicalAnnotations(t.Table, t.Source ?? t.Overlay, t.Deps);
+        if ((t.Source ?? t.Overlay) is { } storageFile)
+            t.Table.Storage = Storage([.. _run.StereotypesOf(storageFile).Select(s => s.Storage), storageFile.Storage]);
         AddBinderKeys(t.Deps, t.Table.Key);
         if (t.Source is { } designedFile)
             AddBinderKeys(t.Deps, designedFile.Id);

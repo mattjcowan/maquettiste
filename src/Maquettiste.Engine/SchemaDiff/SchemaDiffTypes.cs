@@ -67,6 +67,9 @@ public sealed record ObjectChange(ChangeKind Kind, string Key, string? OldName, 
 
     /// <summary>For a unique constraint or an index (not added): whether it was a key a foreign key can rely on (an index: unique, without a filter).</summary>
     public bool OldUnique { get; init; }
+
+    /// <summary>For an index (not added): its storage parameters before the change, so a migration resets the ones that went.</summary>
+    public IReadOnlyList<RStorageParameter> OldStorage { get; init; } = [];
 }
 
 /// <summary>A table change.</summary>
@@ -99,6 +102,18 @@ public sealed record TableChange(
 
     /// <summary>The table's comment before the change (not for added), or <see langword="null"/> for none.</summary>
     public string? OldComment { get; init; }
+
+    /// <summary>Exclusion constraint changes.</summary>
+    public IReadOnlyList<ObjectChange> Exclusions { get; init; } = [];
+
+    /// <summary>Partition changes (key: the partition's id); a changed partition's property is <c>bounds</c>.</summary>
+    public IReadOnlyList<ObjectChange> Partitions { get; init; } = [];
+
+    /// <summary>Changes to the table's own properties that have no list of their own: <c>storage</c>, <c>partitionBy</c>.</summary>
+    public IReadOnlyList<PropertyChange> Changes { get; init; } = [];
+
+    /// <summary>The table's storage parameters before the change (not for added), so a migration resets the ones that went.</summary>
+    public IReadOnlyList<RStorageParameter> OldStorage { get; init; } = [];
 }
 
 /// <summary>

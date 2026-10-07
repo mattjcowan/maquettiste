@@ -729,14 +729,59 @@ database shows on the Database screen at once. The explorers remember which rows
     (or a set-default on one that is not nullable and has no default) is MQ4061 (warning): the DDL is accepted, but deleting a
     referenced row fails; list only the nullable columns, make the column nullable, or pick another action. A check's `column` makes it a column check: the column it constrains. A unique
     constraint's `nullsNotDistinct` makes two rows with nulls in its columns conflict (PostgreSQL 15 and later).
+  - **Temporal keys** (PostgreSQL 18 and later). A primary or unique key's `withoutOverlaps` makes its last column a period
+    (a range column, such as `tstzrange`): rows may repeat the other columns' values as long as their periods do not overlap
+    (`PRIMARY KEY (room_id, valid WITHOUT OVERLAPS)`, one rate per room at a time). A foreign key's `period` makes its last
+    column pair a period that the referenced rows' periods must cover (`FOREIGN KEY (room_id, PERIOD stay) REFERENCES
+    room_rates (room_id, PERIOD valid)`). MQ4065 (error) says what PostgreSQL refuses: a temporal key of one column, a
+    period key with an action other than no action, a period key to a key that is not temporal, and a key without a period
+    to one that is. The other columns of a temporal key need the btree_gist extension (a SQL object, below).
+  - **Exclusion constraints** (`exclusions`, PostgreSQL): no two rows may match on every element, each a column or an
+    expression with its operator (`EXCLUDE USING gist (room_id WITH =, during WITH &&)`: no overlapping reservations of a
+    room), with an optional `method` (gist, the default; spgist, btree, hash), operator class, `where` predicate and
+    `deferrable`. Use one where a temporal key cannot say the rule: a predicate (`WHERE (NOT cancelled)`), an operator other
+    than `=` and `&&`, or no key at all.
   - **Indexes** list their columns with a sort order, and may be `unique`, have `include` columns, a partial `where`
-    predicate and a `method` (`btree`, `hash`, `gin`, `gist`, `clustered`). An index column may be an `expression` instead
-    of a column, per dialect like a check (`{ "*": "lower(email)" }`: a functional index), and may index only the first
-    characters of its column (`length`, MySQL, which needs one for a text or blob column).
+    predicate and a `method` (`btree`, `hash`, `gin`, `gist`, `spgist`, `brin`, `hnsw`, `ivfflat`, `clustered`; hnsw and
+    ivfflat are the vector extension's). An index column may be an `expression` instead of a column, per dialect like a
+    check (`{ "*": "lower(email)" }`: a functional index), may name an `operatorClass` (PostgreSQL: `gin_trgm_ops` for a
+    trigram index, `vector_cosine_ops` for a vector index, written as it is, so it may carry its parameters), and may index
+    only the first characters of its column (`length`, MySQL, which needs one for a text or blob column). An index's
+    `storage` holds its parameters per dialect (PostgreSQL and SQL Server `WITH (...)`: `fillfactor`, `pages_per_range` for
+    brin, `m` and `ef_construction` for hnsw, `lists` for ivfflat).
+  - **Storage parameters.** A table's `storage` holds its parameters per dialect, written only in the DDL of a database of
+    that dialect: `{ "postgresql": { "fillfactor": 90, "autovacuum_vacuum_scale_factor": 0.03 } }` is PostgreSQL's
+    `WITH (...)`; SQL Server's `WITH (DATA_COMPRESSION = PAGE)`, MySQL's table options and Oracle's physical attributes are
+    written the same way. A number or boolean is written as the dialect writes it, a string as SQL as it is. A stereotype
+    that applies to tables can hold a `storage` profile (a high-churn stereotype with aggressive autovacuum): every table
+    that carries it takes those parameters, its own `storage` overriding one, a later stereotype an earlier one. A PostgreSQL
+    parameter the table or index method does not take is MQ4064 (warning, most likely a typo; PostgreSQL would refuse the
+    table), and so is a stereotype with storage that does not apply to tables. A migration sets and resets what changed
+    (`ALTER TABLE ... SET (...)`, `RESET (...)`, and `ALTER INDEX` without rebuilding the index).
+  - **Partitioning** (PostgreSQL). `partitionBy` (a `strategy`, range, list or hash, and its `columns`) makes the table
+    partitioned, and `partitions` lists the partitions created with it: each a `name` and the `bounds` that follow
+    `FOR VALUES` (`FROM ('2026-01-01') TO ('2026-02-01')`, `IN ('eu')`, `WITH (MODULUS 4, REMAINDER 0)`), or `default`. A
+    partitioned table takes no storage parameters, so its `storage` is written on each partition. Every primary or unique
+    key includes the partition columns (MQ4066, error, with a second default partition, a default partition of a hash
+    partitioned table and partitions without partitionBy). A migration creates, drops and renames partitions, and detaches
+    and attaches one again when its bounds change; it cannot partition an existing table, and says so in a TODO. Partitions
+    made as time goes by (a month at a time) are an operational job: set up pg_partman, or your own job, with a SQL object.
   - **Views** (their own files) have a body per dialect and their `columns`; `columnList` writes the column names in
     `CREATE VIEW`, `withCheckOption` makes writes through the view satisfy its `WHERE`, and `materialized` stores its rows
-    (PostgreSQL and Oracle; refreshing them is up to the application). `dependsOn` names what must exist before the view;
-    the views its body names are found without it, so views are created after the views they read and dropped before them.
+    (PostgreSQL and Oracle; refreshing them is up to the application). `securityInvoker` makes the view read its tables
+    with the caller's rights, so row-level security and grants apply to whoever queries it (PostgreSQL 15 and later), and
+    `securityBarrier` runs its filter before any function of the query that is not leakproof. `dependsOn` names what must
+    exist before the view; the views its body names are found without it, so views are created after the views they read
+    and dropped before them.
+  - **Routines** (their own files) have a `volatility` (PostgreSQL: `volatile`, the default; `stable`, which reads but does
+    not write; `immutable`, which `deterministic` implies) and `settings`, configuration parameters set while the routine
+    runs (`SET search_path = app, pg_temp`). A security-definer routine on PostgreSQL that does not set `search_path` is
+    MQ4063 (warning): a caller's schema could shadow what it names. A deterministic function that is not immutable, or a
+    volatility on a procedure, is MQ4062 (error).
+  - **Grants and roles** are not part of the model: roles differ from one environment to the next, and grants are written
+    as SQL objects (`objectKind` grant, `dependsOn` the objects they grant on). A migration that drops and creates a view or
+    routine again runs the SQL objects that depend on it again, so the grants come back; one statement per schema,
+    `ALTER DEFAULT PRIVILEGES`, in a SQL object, grants what is created later too.
   - **What a foreign key references** is the referenced table's primary key or one of its unique keys (a unique
     constraint, or a unique index without a `where` filter; Oracle takes a constraint only), its columns in any order, each
     named once. On MySQL (and MariaDB) the referenced table also needs a primary key, unique constraint or index whose first
@@ -748,7 +793,9 @@ database shows on the Database screen at once. The explorers remember which rows
     index expression on SQL Server (the index is left out), a key prefix length outside MySQL, a MySQL index on a text column
     without one (the index is left out), `nullsNotDistinct` outside PostgreSQL, a stored computed column on Oracle, identity
     options (any on SQLite, the increment or `always` on MySQL), a clustered primary key outside SQL Server, a foreign key's
-    `onDeleteColumns` outside PostgreSQL (the action then sets every column of the key), a materialized view outside PostgreSQL and Oracle,
+    `onDeleteColumns` outside PostgreSQL (the action then sets every column of the key), a temporal key, an exclusion
+    constraint, partitioning, an index operator class or a view's security options outside PostgreSQL, index storage on
+    MySQL, SQLite and Oracle, a routine's volatility or settings on SQL Server, a materialized view outside PostgreSQL and Oracle,
     `withCheckOption` on SQLite or a materialized view, a sequence on SQLite or MySQL.
 
   The sql-ddl pack writes all of it for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle, and migrates every

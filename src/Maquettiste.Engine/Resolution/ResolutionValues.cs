@@ -23,6 +23,22 @@ internal static class ResolutionValues
         _ => null,
     };
 
+    /// <summary>
+    /// A storage parameter's value as a dialect writes it: a number as written, a boolean as <c>ON</c>/<c>OFF</c> on SQL Server,
+    /// <c>1</c>/<c>0</c> on MySQL and <c>true</c>/<c>false</c> elsewhere, a string as it is.
+    /// </summary>
+    public static string StorageValue(JsonElement value, string dialect) => value.ValueKind switch
+    {
+        JsonValueKind.True or JsonValueKind.False => (value.ValueKind == JsonValueKind.True, dialect) switch
+        {
+            (var on, "sqlserver") => on ? "ON" : "OFF",
+            (var on, "mysql") => on ? "1" : "0",
+            (var on, _) => on ? "true" : "false",
+        },
+        JsonValueKind.String => value.GetString() ?? "",
+        _ => value.GetRawText(),
+    };
+
     /// <summary>A map of JSON values as plain values, ordinal by key.</summary>
     public static IReadOnlyDictionary<string, object?> PlainMap(IEnumerable<KeyValuePair<string, JsonElement>> values) =>
         values.ToImmutableSortedDictionary(p => p.Key, p => Plain(p.Value), StringComparer.Ordinal);

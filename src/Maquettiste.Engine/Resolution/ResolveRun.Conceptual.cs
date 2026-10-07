@@ -738,7 +738,7 @@ internal sealed partial class ResolveRun
 
     internal RPackage? PackageOf(string? id) => id is null ? null : _packages.GetValueOrDefault(id);
 
-    private IEnumerable<Stereotype> StereotypesOf(ElementBase element)
+    internal IEnumerable<Stereotype> StereotypesOf(ElementBase element)
     {
         foreach (var key in element.Stereotypes)
         {

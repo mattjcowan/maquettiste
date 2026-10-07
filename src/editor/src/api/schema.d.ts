@@ -6697,6 +6697,15 @@ export interface components {
             [key: string]: string;
         };
         /**
+         * @description Storage parameters per dialect name (postgresql, sqlserver, mysql, oracle): each a map of parameter name to value, written in the DDL of a database of that dialect only (PostgreSQL and SQL Server WITH (name = value), MySQL table options, Oracle physical attributes). A number or boolean is written as the dialect writes it; a string is written as SQL as it is.
+         * @default {}
+         */
+        storage: {
+            [key: string]: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        /**
          * Table
          * @description A physical table. A synthesized table's file holds only overrides.
          */
@@ -6791,6 +6800,11 @@ export interface components {
                 name?: components["schemas"]["label"];
                 columns: string[];
                 clustered?: boolean;
+                /**
+                 * @description Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.
+                 * @default false
+                 */
+                withoutOverlaps?: boolean;
             };
             /** @default [] */
             uniques?: {
@@ -6802,6 +6816,11 @@ export interface components {
                  * @default false
                  */
                 nullsNotDistinct?: boolean;
+                /**
+                 * @description Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.
+                 * @default false
+                 */
+                withoutOverlaps?: boolean;
             }[];
             /** @default [] */
             foreignKeys?: {
@@ -6811,6 +6830,11 @@ export interface components {
                 referencesTable: string;
                 /** @default [] */
                 referencesColumns?: string[];
+                /**
+                 * @description Whether the last column pair is a period (PERIOD): each referencing row's period must be covered by referenced rows' periods, which a temporal key (withoutOverlaps) of the referenced table holds. PostgreSQL 18 and later; MQ4056 elsewhere.
+                 * @default false
+                 */
+                period?: boolean;
                 /**
                  * @default no-action
                  * @enum {unknown}
@@ -6841,6 +6865,36 @@ export interface components {
                 column?: string;
                 expression: components["schemas"]["dialectMap"];
             }[];
+            /**
+             * @description Exclusion constraints (PostgreSQL EXCLUDE): no two rows may match on every element, each compared with its operator, such as a room (=) and a period (&&) for no overlapping bookings. The other dialects leave them out (MQ4056).
+             * @default []
+             */
+            exclusions?: {
+                id: components["schemas"]["id"];
+                /** @description The constraint name; absent: ex_<table>_<columns>. */
+                name?: components["schemas"]["label"];
+                /**
+                 * @description The index method that enforces it: gist (the usual one; the btree_gist extension compares scalar columns with =), spgist, btree or hash.
+                 * @default gist
+                 * @enum {unknown}
+                 */
+                method?: "gist" | "spgist" | "btree" | "hash";
+                elements: ({
+                    column?: string;
+                    /** @description An expression compared instead of a column, as SQL (written in parentheses). */
+                    expression?: string;
+                    operatorClass?: string;
+                    /** @description The operator two rows must not both satisfy on this element: = for equal values, && for overlapping ranges. */
+                    operator: string;
+                } & (unknown | unknown))[];
+                /** @description A predicate: only the rows that satisfy it are compared (a partial exclusion constraint). */
+                where?: string;
+                /**
+                 * @default not-deferrable
+                 * @enum {unknown}
+                 */
+                deferrable?: "not-deferrable" | "initially-immediate" | "initially-deferred";
+            }[];
             /** @default [] */
             indexes?: {
                 id: components["schemas"]["id"];
@@ -6849,6 +6903,8 @@ export interface components {
                     column?: string;
                     /** @description An expression indexed instead of a column (a functional index), per dialect name or "*": written in parentheses. A dialect without an entry leaves the index out; SQL Server indexes no expression (MQ4056: index a computed column instead), MySQL from 8.0.13 (not MariaDB). */
                     expression?: components["schemas"]["dialectMap"];
+                    /** @description The operator class the column or expression is indexed with (PostgreSQL), such as gin_trgm_ops for a trigram index or vector_cosine_ops for a vector index; written after it as it is, so it may carry parameters (gist_trgm_ops (siglen = 32)). MQ4056 elsewhere. */
+                    operatorClass?: string;
                     /** @default false */
                     descending?: boolean;
                     /** @description A key prefix length: only the first characters or bytes of the column are indexed (MySQL, which needs one for a text or blob column; the other dialects leave it out, MQ4056). */
@@ -6860,11 +6916,40 @@ export interface components {
                 /** @default false */
                 unique?: boolean;
                 /**
+                 * @description The index method: btree and hash (PostgreSQL, MySQL); gin, gist, spgist and brin (PostgreSQL); hnsw and ivfflat (PostgreSQL with the vector extension, which a SQL object with phase before creates); clustered (SQL Server, and PostgreSQL CLUSTER). MQ4056 where the dialect lacks it.
                  * @default default
                  * @enum {unknown}
                  */
-                method?: "default" | "btree" | "hash" | "gin" | "gist" | "clustered";
+                method?: "default" | "btree" | "hash" | "gin" | "gist" | "spgist" | "brin" | "hnsw" | "ivfflat" | "clustered";
+                /** @description Index storage parameters per dialect (PostgreSQL and SQL Server WITH (...), such as fillfactor, pages_per_range for brin, m and ef_construction for hnsw, lists for ivfflat). MySQL and Oracle leave them out (MQ4056). */
+                storage?: components["schemas"]["storage"];
             }[];
+            /** @description Declarative partitioning (PostgreSQL PARTITION BY): the table holds no rows itself, its partitions do. Every primary or unique key includes the partition columns. The other dialects leave it out (MQ4056). */
+            partitionBy?: {
+                /**
+                 * @description range (by intervals, such as a month of a timestamp), list (by values) or hash (by a modulus).
+                 * @enum {unknown}
+                 */
+                strategy: "range" | "list" | "hash";
+                columns: string[];
+            };
+            /**
+             * @description The partitions the DDL creates with the table (CREATE TABLE ... PARTITION OF), in the table's schema. The table's storage parameters are written on each of them (a partitioned table takes none). Partitions made over time (a month at a time) are an operational job, such as pg_partman's, set up by a SQL object.
+             * @default []
+             */
+            partitions?: {
+                id: components["schemas"]["id"];
+                name: components["schemas"]["label"];
+                /** @description What follows FOR VALUES, as SQL: FROM ('2026-01-01') TO ('2026-02-01') for range, IN ('eu', 'us') for list, WITH (MODULUS 4, REMAINDER 0) for hash. */
+                bounds?: string;
+                /**
+                 * @description Whether this is the default partition, which takes the rows no other partition's bounds cover (not with hash); it has no bounds.
+                 * @default false
+                 */
+                default?: boolean;
+            }[];
+            /** @description Table storage parameters per dialect: PostgreSQL WITH (fillfactor, autovacuum_*, toast.*, parallel_workers...), SQL Server WITH (DATA_COMPRESSION...), MySQL table options (ROW_FORMAT, KEY_BLOCK_SIZE...), Oracle physical attributes (PCTFREE...). Each parameter overrides the one the table's stereotypes give (a stereotype's storage, in stereotype order). */
+            storage?: components["schemas"]["storage"];
             comment?: string;
             /** @default {} */
             properties?: components["schemas"]["properties"];
@@ -6916,6 +7001,16 @@ export interface components {
              * @default false
              */
             materialized?: boolean;
+            /**
+             * @description Whether the view reads its tables with the caller's rights rather than its owner's, so row-level security and grants apply to whoever queries it (PostgreSQL 15 and later: WITH (security_invoker = true); MQ4056 elsewhere and on a materialized view).
+             * @default false
+             */
+            securityInvoker?: boolean;
+            /**
+             * @description Whether the view's WHERE runs before any function of the query that is not leakproof, so a caller cannot see rows the view filters out (PostgreSQL: WITH (security_barrier = true); MQ4056 elsewhere and on a materialized view).
+             * @default false
+             */
+            securityBarrier?: boolean;
             /**
              * @description Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first. Views the body names are found without it (by reading the body), so this is for what the body names in a way that reading misses.
              * @default []
@@ -7045,11 +7140,23 @@ export interface components {
              */
             deterministic?: boolean;
             /**
+             * @description What the function may do and read (PostgreSQL): volatile (anything; the default), stable (no writes, the same result within a statement) or immutable (the same result for the same arguments forever). Absent: immutable when deterministic, else volatile. A procedure has none.
+             * @enum {unknown}
+             */
+            volatility?: "volatile" | "stable" | "immutable";
+            /**
              * @description Whose rights the routine runs with: the caller's (invoker) or its owner's (definer).
              * @default invoker
              * @enum {unknown}
              */
             security?: "invoker" | "definer";
+            /**
+             * @description Configuration parameters set while the routine runs (PostgreSQL SET name = value), such as search_path, which a security-definer function should pin ("search_path": "app, pg_temp"). The value is written as SQL as it is.
+             * @default {}
+             */
+            settings?: {
+                [key: string]: string;
+            };
             /**
              * @description Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.
              * @default []
@@ -7730,6 +7837,8 @@ export interface components {
             attributes?: components["schemas"]["attribute"][];
             /** @default {} */
             defaultProperties?: Record<string, never>;
+            /** @description Table storage parameters the stereotype gives every table that carries it (a reusable tuning profile such as high-churn), per dialect; a table's own storage overrides a parameter, and a later stereotype overrides an earlier one. */
+            storage?: components["schemas"]["storage"];
             icon?: string;
             color?: string;
             /** @default {} */

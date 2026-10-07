@@ -308,6 +308,53 @@ public sealed class DatabaseObjectTests
         Assert.True(same.IsEmpty);
     }
 
+    [Fact]
+    public async Task A_routine_resolves_its_volatility_and_settings_and_the_rules_check_them()
+    {
+        var plain = ResolutionKit.Resolve(Build(out _)).Db("main");
+        Assert.Equal(("volatile", 0), (plain.Routines[0].Volatility, plain.Routines[0].Settings.Count));
+        var deterministic = ResolutionKit.Resolve(Build(out _, (r, _) => r with { Deterministic = true })).Db("main");
+        Assert.Equal("immutable", deterministic.Routines[0].Volatility);
+        // A routine without them keeps the definition text it had: deterministic implies immutable, so nothing is added.
+        var differ = new SchemaDiffer();
+        Assert.DoesNotContain("volatility", differ.Capture(deterministic, 1).Routines[0].Definition, StringComparison.Ordinal);
+
+        var pinned = ResolutionKit.Resolve(Build(out _, (r, _) => r with
+        {
+            Volatility = RoutineVolatility.Stable, Security = RoutineSecurity.Definer,
+            Settings = new Dictionary<string, string> { ["work_mem"] = "'64MB'", ["search_path"] = "crm, pg_temp" },
+        })).Db("main");
+        var routine = pinned.Routines[0];
+        Assert.Equal("stable", routine.Volatility);
+        Assert.Equal(["search_path = crm, pg_temp", "work_mem = '64MB'"], routine.Settings.Select(x => x.Name + " = " + x.Value));
+        var definition = differ.Capture(pinned, 1).Routines[0].Definition;
+        Assert.Contains("volatility: stable\n", definition, StringComparison.Ordinal);
+        Assert.Contains("set: search_path = crm, pg_temp\n", definition, StringComparison.Ordinal);
+
+        async Task<string[]> Rules(Func<Routine, Ids, Routine> change) =>
+            [.. (await Validate(Build(out _, change).Build())).Diagnostics.Where(d => d.Rule is "MQ4062" or "MQ4063").Select(d => d.Rule + " " + d.JsonPointer)];
+        Assert.Equal(["MQ4062 /volatility"], await Rules((r, _) => r with { Deterministic = true, Volatility = RoutineVolatility.Stable }));
+        Assert.Equal(["MQ4062 /volatility"], await Rules((r, _) => r with { RoutineKind = RoutineKind.Procedure, Returns = null, Volatility = RoutineVolatility.Stable }));
+        Assert.Equal(["MQ4063 /security"], await Rules((r, _) => r with { Security = RoutineSecurity.Definer }));
+        Assert.Empty(await Rules((r, _) => r with { Security = RoutineSecurity.Definer, Settings = new Dictionary<string, string> { ["search_path"] = "crm, pg_temp" } }));
+    }
+
+    [Fact]
+    public async Task A_routine_volatility_or_setting_on_SQL_Server_is_left_out_with_a_warning()
+    {
+        var b = new ModelBuilder(seed: 92);
+        var ms = b.Database("ms", Dialect.SqlServer);
+        b.Add(new Routine
+        {
+            Id = b.NewId(), Name = "f", Database = ms.Id, Returns = new RoutineReturns { Type = "int32" }, Body = Sql("*", "RETURN 1"),
+            Deterministic = true, Volatility = RoutineVolatility.Immutable, Settings = new Dictionary<string, string> { ["search_path"] = "dbo" },
+        });
+        b.Add(new Routine { Id = b.NewId(), Name = "g", Database = ms.Id, Returns = new RoutineReturns { Type = "int32" }, Body = Sql("*", "RETURN 1"), Deterministic = true });
+
+        var found = (await Validate(b.Build())).Diagnostics.Where(d => d.Rule == "MQ4056").Select(d => d.JsonPointer).Order(StringComparer.Ordinal);
+        Assert.Equal(["/settings", "/volatility"], found);
+    }
+
     private static Task<ValidationReport> Validate(ModelSnapshot model) =>
         ValidationFixture.Validator().ValidateAsync(model, ValidationScope.All, null, Ct);
 }

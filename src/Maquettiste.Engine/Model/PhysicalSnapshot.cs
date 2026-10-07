@@ -114,6 +114,18 @@ public sealed record SnapshotTable
     /// <summary>Indexes, sorted by key.</summary>
     public IReadOnlyList<SnapshotIndex> Indexes { get; init; } = [];
 
+    /// <summary>Exclusion constraints, sorted by key.</summary>
+    public IReadOnlyList<SnapshotExclusion> Exclusions { get; init; } = [];
+
+    /// <summary>How the table is partitioned, or <see langword="null"/>.</summary>
+    public SnapshotPartitionBy? PartitionBy { get; init; }
+
+    /// <summary>The partitions, sorted by key (their ids).</summary>
+    public IReadOnlyList<SnapshotPartition> Partitions { get; init; } = [];
+
+    /// <summary>Storage parameters for the database's dialect, by name.</summary>
+    public IReadOnlyList<SnapshotStorageParameter> Storage { get; init; } = [];
+
     /// <summary>The database comment.</summary>
     public string? Comment { get; init; }
 }
@@ -205,6 +217,9 @@ public sealed record SnapshotConstraint
 
     /// <summary>For a unique constraint: whether rows with nulls in its columns conflict (NULLS NOT DISTINCT).</summary>
     public bool NullsNotDistinct { get; init; }
+
+    /// <summary>Whether the last column is a period (WITHOUT OVERLAPS).</summary>
+    public bool WithoutOverlaps { get; init; }
 }
 
 /// <summary>A foreign key in a snapshot.</summary>
@@ -224,6 +239,9 @@ public sealed record SnapshotForeignKey
 
     /// <summary>Referenced column keys.</summary>
     public required IReadOnlyList<string> ReferencedColumns { get; init; }
+
+    /// <summary>Whether the last column pair is a period (PERIOD).</summary>
+    public bool Period { get; init; }
 
     /// <summary>The on-delete action.</summary>
     public ReferentialAction OnDelete { get; init; } = ReferentialAction.NoAction;
@@ -274,6 +292,83 @@ public sealed record SnapshotIndex
 
     /// <summary>The index method.</summary>
     public IndexMethod Method { get; init; } = IndexMethod.Default;
+
+    /// <summary>Storage parameters for the database's dialect, by name.</summary>
+    public IReadOnlyList<SnapshotStorageParameter> Storage { get; init; } = [];
+}
+
+/// <summary>How a table is partitioned, in a snapshot.</summary>
+public sealed record SnapshotPartitionBy
+{
+    /// <summary>The strategy.</summary>
+    public required PartitionStrategy Strategy { get; init; }
+
+    /// <summary>The partition column keys.</summary>
+    public required IReadOnlyList<string> Columns { get; init; }
+}
+
+/// <summary>A partition in a snapshot.</summary>
+public sealed record SnapshotPartition
+{
+    /// <summary>The partition's id.</summary>
+    public required string Key { get; init; }
+
+    /// <summary>The partition's table name.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>What follows FOR VALUES, or <see langword="null"/> for the default partition.</summary>
+    public string? Bounds { get; init; }
+
+    /// <summary>Whether this is the default partition.</summary>
+    public bool Default { get; init; }
+}
+
+/// <summary>An exclusion constraint in a snapshot.</summary>
+public sealed record SnapshotExclusion
+{
+    /// <summary>The constraint key: <c>ex:</c> and 16 hex of the SHA-256 of its method, elements and predicate.</summary>
+    public required string Key { get; init; }
+
+    /// <summary>The physical name.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>The index method.</summary>
+    public required string Method { get; init; }
+
+    /// <summary>The compared columns (column keys) or expressions with their operators.</summary>
+    public required IReadOnlyList<SnapshotExclusionElement> Elements { get; init; }
+
+    /// <summary>The predicate, or <see langword="null"/>.</summary>
+    public string? Where { get; init; }
+
+    /// <summary>When the constraint is checked.</summary>
+    public Deferrability Deferrable { get; init; } = Deferrability.NotDeferrable;
+}
+
+/// <summary>A compared column or expression of an exclusion constraint in a snapshot.</summary>
+public sealed record SnapshotExclusionElement
+{
+    /// <summary>The column key; <see langword="null"/> for an expression.</summary>
+    public string? Column { get; init; }
+
+    /// <summary>The expression; <see langword="null"/> for a column.</summary>
+    public string? Expression { get; init; }
+
+    /// <summary>The operator class, or <see langword="null"/>.</summary>
+    public string? OperatorClass { get; init; }
+
+    /// <summary>The operator.</summary>
+    public required string Operator { get; init; }
+}
+
+/// <summary>A storage parameter of a table or index in a snapshot, its value as the dialect writes it.</summary>
+public sealed record SnapshotStorageParameter
+{
+    /// <summary>The parameter name.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>The value.</summary>
+    public required string Value { get; init; }
 }
 
 /// <summary>A column or expression of an index in a snapshot.</summary>
@@ -284,6 +379,9 @@ public sealed record SnapshotIndexColumn
 
     /// <summary>The expression for the database's dialect; <see langword="null"/> for a column.</summary>
     public string? Expression { get; init; }
+
+    /// <summary>The operator class, or <see langword="null"/> for the type's default.</summary>
+    public string? OperatorClass { get; init; }
 
     /// <summary>Whether the column sorts descending.</summary>
     public bool Descending { get; init; }
@@ -315,6 +413,12 @@ public sealed record SnapshotView
 
     /// <summary>Whether the view is materialized.</summary>
     public bool Materialized { get; init; }
+
+    /// <summary>Whether the view reads its tables with the caller's rights.</summary>
+    public bool SecurityInvoker { get; init; }
+
+    /// <summary>Whether the view is a security barrier.</summary>
+    public bool SecurityBarrier { get; init; }
 
     /// <summary>The keys of the views of the database it reads (its resolved dependsOn), so a later migration drops it before them.</summary>
     public IReadOnlyList<string> DependsOn { get; init; } = [];

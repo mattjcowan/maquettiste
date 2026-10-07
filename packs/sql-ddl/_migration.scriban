@@ -767,7 +767,7 @@ func constraint_body(t, group, name)
   $db = t.database
   if group == "primary key"
     if t.primary_key && t.primary_key.name == name
-      ret "PRIMARY KEY" + pk_clustering(t) + " (" + cols(t.primary_key.columns, $db) + ")"
+      ret "PRIMARY KEY" + pk_clustering(t) + " (" + key_cols(t.primary_key, $db) + ")"
     end
   else if group == "unique"
     $u = find_named(t.uniques, name)
@@ -783,6 +783,11 @@ func constraint_body(t, group, name)
     $k = find_named(t.checks, name)
     if $k
       ret "CHECK (" + $k.expression + ")"
+    end
+  else if group == "exclusion"
+    $x = find_named(t.exclusions, name)
+    if $x
+      ret exclusion_body($x, $db)
     end
   end
   ret ""
@@ -864,18 +869,23 @@ func drop_index_sql(t, name)
 end
 
 # One index change, for one phase: "before" drops and renames, "after" creates (a changed index, or any non-new index on SQLite,
-# is dropped before and created after).
+# is dropped before and created after). On PostgreSQL an index whose only change is its storage parameters keeps the index: ALTER
+# INDEX SET and RESET, after any rename.
 func index_statements(t, oc, phase, out)
   $db = t.database
   $d = $db.dialect
   $old = oc.old_name ?? oc.new_name
   $name = oc.new_name ?? oc.old_name
-  $recreate = oc.kind == "added" || oc.kind == "dropped" || oc.changes.size > 0 || $d == "sqlite"
+  $storage_only = $d == "postgresql" && oc.kind != "added" && oc.kind != "dropped" && oc.changes.size == 1 && oc.changes[0].property == "storage"
+  $recreate = !$storage_only && (oc.kind == "added" || oc.kind == "dropped" || oc.changes.size > 0 || $d == "sqlite")
+  if $storage_only && phase == "after"
+    storage_alter_statements("ALTER INDEX" + alter_if_exists($db) + " " + qn(t.schema, $name, $db), find_named(t.indexes, $name).storage, oc.old_storage, $db, out)
+  end
   if phase == "before"
     if oc.kind != "added" && $recreate
       drop_fks_relying_on(t, oc, out)
       emit(out, drop_index_sql(t, $old))
-    else if !$recreate
+    else if !$recreate && $old != $name
       if $d == "postgresql" || $d == "oracle"
         emit(out, "ALTER INDEX" + alter_if_exists($db) + " " + qn(t.schema, $old, $db) + " RENAME TO " + q($name, $db) + ";")
       else if $d == "mysql"
@@ -966,8 +976,103 @@ func table_comment_statements(tc, db, out)
   end
 end
 
+# ALTER ... SET (the parameters that are new or changed) and RESET (those that went) for a PostgreSQL table or index; prefix is
+# "ALTER TABLE t" or "ALTER INDEX i".
+func storage_alter_statements(prefix, now, before, db, out)
+  $set = []
+  for p in now
+    $same = false
+    for o in before
+      if o.name == p.name && o.value == p.value
+        $same = true
+      end
+    end
+    if !$same
+      $set[$set.size] = p
+    end
+  end
+  $reset = ""
+  for o in before
+    $kept = false
+    for p in now
+      if p.name == o.name
+        $kept = true
+      end
+    end
+    if !$kept
+      $reset = $reset + ($reset == "" ? "" : ", ") + o.name
+    end
+  end
+  if $set.size > 0
+    emit(out, prefix + " SET (" + storage_list($set, db) + ");")
+  end
+  if $reset != ""
+    emit(out, prefix + " RESET (" + $reset + ");")
+  end
+end
+
+# The statements for a table whose storage parameters changed: ALTER TABLE SET and RESET on PostgreSQL, the table options on MySQL;
+# a TODO elsewhere (SQL Server rebuilds for most options, Oracle's physical attributes apply to new blocks only).
+func table_storage_statements(tc, db, out)
+  if !has_change(tc.changes, ["storage"])
+    ret
+  end
+  $t = tc.table
+  $d = db.dialect
+  if $d == "postgresql" && $t.partition_by
+    # A partitioned table's storage parameters are its partitions'.
+    for p in $t.partitions
+      storage_alter_statements("ALTER TABLE" + alter_if_exists(db) + " " + qn($t.schema, p.name, db), $t.storage, tc.old_storage, db, out)
+    end
+  else if $d == "postgresql"
+    storage_alter_statements(alter_prefix($t), $t.storage, tc.old_storage, db, out)
+  else if $d == "mysql" && $t.storage.size > 0
+    $s = alter_prefix($t)
+    for p in $t.storage
+      $s = $s + " " + (p.name | string.upcase) + " = " + p.value
+    end
+    emit(out, $s + ";")
+  else
+    $now = storage_list($t.storage, db)
+    emit(out, "-- TODO: " + $t.name + " changes its storage parameters (now: " + ($now == "" ? "none" : $now) + "); apply them by hand (SQL Server: ALTER TABLE ... REBUILD WITH (...)).")
+  end
+end
+
+# The partition statements of a renamed or altered PostgreSQL table: a new partition is created, a dropped one is dropped with its
+# rows, a renamed one renamed, and one whose bounds changed is detached and attached again with them (PostgreSQL checks its rows
+# against the new bounds). A change of the partitioning itself is a TODO: PostgreSQL cannot partition a table in place.
+func table_partition_statements(tc, db, out)
+  if db.dialect != "postgresql"
+    ret
+  end
+  $t = tc.table
+  if has_change(tc.changes, ["partitionBy"])
+    emit(out, "-- TODO: " + $t.name + " changes its partitioning (" + change_list(tc.changes) + "). PostgreSQL cannot partition a table in place: create the table anew, copy the rows, then swap the names.")
+    ret
+  end
+  for pc in tc.partitions
+    if pc.kind == "dropped"
+      emit(out, "-- Partition " + pc.old_name + " of " + $t.name + " is dropped with its rows.")
+      emit(out, "DROP TABLE" + (idem() ? " IF EXISTS" : "") + " " + qn($t.schema, pc.old_name, db) + ";")
+      continue
+    end
+    $p = find_named($t.partitions, pc.new_name)
+    if pc.kind == "added"
+      emit(out, partition_sql($t, $p))
+      continue
+    end
+    if pc.kind == "renamed"
+      emit(out, "ALTER TABLE" + alter_if_exists(db) + " " + qn($t.schema, pc.old_name, db) + " RENAME TO " + q($p.name, db) + ";")
+    end
+    if pc.changes.size > 0
+      emit(out, alter_prefix($t) + " DETACH PARTITION " + qn($t.schema, $p.name, db) + ";")
+      emit(out, alter_prefix($t) + " ATTACH PARTITION " + qn($t.schema, $p.name, db) + ($p.is_default ? " DEFAULT" : " FOR VALUES " + $p.bounds) + ";")
+    end
+  end
+end
+
 # The constraint and index statements of a renamed or altered table for one phase ("before" or "after"), limited to the groups
-# listed ("foreign key", "check", "unique", "primary key", "index"). Nothing for a SQLite table that is rebuilt.
+# listed ("foreign key", "check", "exclusion", "unique", "primary key", "index"). Nothing for a SQLite table that is rebuilt.
 func table_phase_statements(tc, phase, groups, out)
   $t = tc.table
   if $t.database.dialect == "sqlite" && sqlite_rebuild_reason(tc) != ""
@@ -982,6 +1087,13 @@ func table_phase_statements(tc, phase, groups, out)
       when "check"
         for oc in tc.checks
           constraint_statements($t, oc, g, phase, out)
+        end
+      when "exclusion"
+        # PostgreSQL only: the other dialects never had them (MQ4056).
+        if $t.database.dialect == "postgresql"
+          for oc in tc.exclusions
+            constraint_statements($t, oc, g, phase, out)
+          end
         end
       when "unique"
         for oc in tc.uniques
@@ -1027,7 +1139,7 @@ func view_recreates(oc)
   if oc.kind != "altered" && oc.kind != "renamed"
     ret false
   end
-  ret mq_all_views || (mq_view_dependents && mq_view_dependents[oc.key]) || has_change(oc.changes, ["body", "schema", "columns", "withCheckOption", "materialized"]) || (oc.kind == "renamed" && oc.old_materialized && db.dialect == "oracle")
+  ret mq_all_views || (mq_view_dependents && mq_view_dependents[oc.key]) || has_change(oc.changes, ["body", "schema", "columns", "withCheckOption", "materialized", "securityInvoker", "securityBarrier"]) || (oc.kind == "renamed" && oc.old_materialized && db.dialect == "oracle")
 end
 
 # DROP VIEW, or DROP MATERIALIZED VIEW for one that was materialized (PostgreSQL, Oracle), of a view by its schema and name.
@@ -1312,6 +1424,25 @@ end
 
 # The statements of the SQL objects of one phase that were added or changed, in dependency order (a changed one was flagged for the
 # reviewer to drop first, see object_drop_notes).
+# The unchanged SQL objects with phase "after" that depend on a view or routine the migration drops and creates again (recreated, by
+# id), in dependency order: what was granted on the view or routine, or created on it, went with it, so they run again. A changed
+# object runs anyway (object_change_statements).
+func reapplied_objects(db, diff, recreated)
+  $result = []
+  for o in objects_in_phase(db, "after")
+    if find_change(diff.objects, o.id)
+      continue
+    end
+    for dep in o.depends_on
+      if recreated[dep.id]
+        $result[$result.size] = o
+        break
+      end
+    end
+  end
+  ret $result
+end
+
 func object_change_statements(db, diff, phase, out)
   for o in objects_in_phase(db, phase)
     if find_change(diff.objects, o.id)

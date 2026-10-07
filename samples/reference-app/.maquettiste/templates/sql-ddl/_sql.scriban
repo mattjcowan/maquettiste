@@ -241,9 +241,47 @@ func default_name(c, table_name)
   ret c.default_name ?? ("df_" + table_name + "_" + c.name)
 end
 
+# The columns of a primary or unique key, the last one WITHOUT OVERLAPS for a temporal key (PostgreSQL 18; MQ4056 elsewhere).
+func key_cols(k, db)
+  ret cols(k.columns, db) + (k.without_overlaps && db.dialect == "postgresql" ? " WITHOUT OVERLAPS" : "")
+end
+
+# The columns of a foreign key side, the last one a PERIOD for a temporal key (PostgreSQL 18; MQ4056 elsewhere).
+func period_cols(columns, period, db)
+  if !period || db.dialect != "postgresql" || columns.size < 2
+    ret cols(columns, db)
+  end
+  $s = ""
+  for c in columns
+    $s = $s + (for.first ? "" : ", ") + (for.last ? "PERIOD " : "") + q(c.name, db)
+  end
+  ret $s
+end
+
+# EXCLUDE USING method (element WITH operator, ...) [WHERE (...)] [DEFERRABLE ...] of an exclusion constraint (PostgreSQL only;
+# MQ4056 elsewhere, where the DDL leaves it out).
+func exclusion_body(x, db)
+  $parts = ""
+  for e in x.elements
+    $part = e.column ? q(e.column.name, db) : "(" + e.expression + ")"
+    if e.operator_class
+      $part = $part + " " + e.operator_class
+    end
+    $parts = $parts + (for.first ? "" : ", ") + $part + " WITH " + e.operator
+  end
+  $s = "EXCLUDE USING " + x.method + " (" + $parts + ")"
+  if x.where
+    $s = $s + " WHERE (" + x.where + ")"
+  end
+  if x.deferrable != "not-deferrable"
+    $s = $s + (x.deferrable == "initially-deferred" ? " DEFERRABLE INITIALLY DEFERRED" : " DEFERRABLE INITIALLY IMMEDIATE")
+  end
+  ret $s
+end
+
 # UNIQUE (columns) of a unique constraint, with NULLS NOT DISTINCT on PostgreSQL (15 and later; MQ4056 elsewhere).
 func unique_body(u, db)
-  ret "UNIQUE" + (u.nulls_not_distinct && db.dialect == "postgresql" ? " NULLS NOT DISTINCT" : "") + " (" + cols(u.columns, db) + ")"
+  ret "UNIQUE" + (u.nulls_not_distinct && db.dialect == "postgresql" ? " NULLS NOT DISTINCT" : "") + " (" + key_cols(u, db) + ")"
 end
 
 # The options of an identity column in parentheses with a leading space (START WITH, INCREMENT BY), or "" when it sets none.
@@ -267,7 +305,7 @@ end
 # keys (MQ4056); Oracle has no ON UPDATE. Only PostgreSQL has ON DELETE SET NULL / SET DEFAULT of some of the key's columns
 # (on_delete_columns, MQ4056); the others set every column.
 func foreign_key_body(f, db)
-  $s = "FOREIGN KEY (" + cols(f.columns, db) + ") REFERENCES " + qt(f.referenced_table) + " (" + cols(f.referenced_columns, db) + ")"
+  $s = "FOREIGN KEY (" + period_cols(f.columns, f.period, db) + ") REFERENCES " + qt(f.referenced_table) + " (" + period_cols(f.referenced_columns, f.period, db) + ")"
   if fk_action(f.on_delete, db) != ""
     $s = $s + " ON DELETE " + fk_action(f.on_delete, db)
     if f.on_delete_columns.size > 0 && db.dialect == "postgresql"
@@ -387,13 +425,58 @@ func ms_needs_quoted_identifier(tables)
   ret false
 end
 
-# The table options after the closing parenthesis of CREATE TABLE: MySQL's first AUTO_INCREMENT value (an identity seed) and table
-# comment, else "".
-func table_options(t)
-  if t.database.dialect != "mysql"
+# CREATE TABLE ... PARTITION OF of a partition of a partitioned table (PostgreSQL), with the table's storage parameters.
+func partition_sql(t, p)
+  $db = t.database
+  $s = "CREATE TABLE " + (idem() ? "IF NOT EXISTS " : "") + qn(t.schema, p.name, $db) + " PARTITION OF " + qt(t) + (p.is_default ? " DEFAULT" : " FOR VALUES " + p.bounds)
+  ret $s + (t.storage.size > 0 ? " WITH (" + storage_list(t.storage, $db) + ")" : "") + ";"
+end
+
+# The partitions of a partitioned table, one CREATE TABLE ... PARTITION OF each on its own line, each line led by a newline; "" for a
+# table that is not partitioned or outside PostgreSQL (MQ4056).
+func partitions_sql(t)
+  if t.database.dialect != "postgresql" || !t.partition_by
     ret ""
   end
   $s = ""
+  for p in t.partitions
+    $s = $s + "\n" + partition_sql(t, p)
+  end
+  ret $s
+end
+
+# Storage parameters as "name = value, ..." (PostgreSQL, SQL Server and MySQL) or "name value ..." (Oracle's physical attributes).
+func storage_list(params, db)
+  $s = ""
+  for p in params
+    if db.dialect == "oracle"
+      $s = $s + (for.first ? "" : " ") + (p.name | string.upcase) + " " + p.value
+    else
+      $s = $s + (for.first ? "" : ", ") + p.name + " = " + p.value
+    end
+  end
+  ret $s
+end
+
+# The table options after the closing parenthesis of CREATE TABLE: the storage parameters (PostgreSQL and SQL Server WITH (...),
+# Oracle's physical attributes, MySQL table options) and MySQL's first AUTO_INCREMENT value (an identity seed) and table comment,
+# else "".
+func table_options(t)
+  $d = t.database.dialect
+  if $d == "postgresql" && t.partition_by
+    # A partitioned table takes no storage parameters: its partitions get them (partition_sql).
+    ret " PARTITION BY " + (t.partition_by.strategy | string.upcase) + " (" + cols(t.partition_by.columns, t.database) + ")"
+  else if $d == "postgresql" || $d == "sqlserver"
+    ret t.storage.size > 0 ? " WITH (" + storage_list(t.storage, t.database) + ")" : ""
+  else if $d == "oracle"
+    ret t.storage.size > 0 ? " " + storage_list(t.storage, t.database) : ""
+  else if $d != "mysql"
+    ret ""
+  end
+  $s = ""
+  for p in t.storage
+    $s = $s + " " + (p.name | string.upcase) + " = " + p.value
+  end
   for c in t.columns
     if c.identity && c.identity_seed != null
       $s = " AUTO_INCREMENT = " + c.identity_seed
@@ -424,7 +507,8 @@ func pk_clustering(t)
   ret ""
 end
 
-# The indexed parts of an index: each column (with its key prefix length on MySQL) or expression (in parentheses), then DESC.
+# The indexed parts of an index: each column (with its key prefix length on MySQL) or expression (in parentheses), its operator
+# class on PostgreSQL, then DESC.
 func index_parts(ix, db)
   $parts = ""
   for ic in ix.columns
@@ -432,6 +516,9 @@ func index_parts(ix, db)
       $part = q(ic.column.name, db) + (ic.length && db.dialect == "mysql" ? "(" + ic.length + ")" : "")
     else
       $part = "(" + ic.expression + ")"
+    end
+    if ic.operator_class && db.dialect == "postgresql"
+      $part = $part + " " + ic.operator_class
     end
     $parts = $parts + (for.first ? "" : ", ") + $part + (ic.descending ? " DESC" : "")
   end
@@ -457,7 +544,8 @@ func mysql_index_def(ix, db)
 end
 
 # The CREATE INDEX statement of an index (with its terminating semicolon). What the dialect lacks is left out (MQ4056): include
-# columns outside PostgreSQL and SQL Server, partial indexes on MySQL and Oracle, methods outside PostgreSQL (MySQL: btree, hash).
+# columns outside PostgreSQL and SQL Server, partial indexes on MySQL and Oracle, methods outside PostgreSQL (MySQL: btree, hash),
+# operator classes outside PostgreSQL, storage parameters outside PostgreSQL and SQL Server.
 func index_sql(ix, t)
   $db = t.database
   $d = $db.dialect
@@ -471,7 +559,7 @@ func index_sql(ix, t)
     $s = $s + "CLUSTERED "
   end
   $s = $s + "INDEX " + (idem() && ($d == "postgresql" || $d == "sqlite") ? "IF NOT EXISTS " : "") + q(ix.name, $db) + " ON " + qt(t)
-  if $d == "postgresql" && (ix.method == "btree" || ix.method == "hash" || ix.method == "gin" || ix.method == "gist")
+  if $d == "postgresql" && ix.method != "default" && ix.method != "clustered"
     $s = $s + " USING " + ix.method
   end
   $s = $s + " (" + $parts + ")"
@@ -481,8 +569,16 @@ func index_sql(ix, t)
   if ix.include.size > 0 && ($d == "postgresql" || $d == "sqlserver")
     $s = $s + " INCLUDE (" + cols(ix.include, $db) + ")"
   end
+  # Storage parameters: before WHERE on PostgreSQL, after it on SQL Server; MySQL and Oracle leave them out (MQ4056).
+  $with = ix.storage.size > 0 ? " WITH (" + storage_list(ix.storage, $db) + ")" : ""
+  if $d == "postgresql"
+    $s = $s + $with
+  end
   if ix.where && $d != "mysql" && $d != "oracle"
     $s = $s + " WHERE " + ix.where
+  end
+  if $d == "sqlserver"
+    $s = $s + $with
   end
   $s = $s + ";"
   if idem() && $d == "sqlserver"

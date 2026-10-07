@@ -770,7 +770,7 @@
   {
     "id": "MQ4056",
     "defaultSeverity": "warning",
-    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL.",
+    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a routine's volatility or settings on SQL Server, a temporal key (withoutOverlaps, a foreign key's period) an exclusion constraint or partitioning outside PostgreSQL, an index operator class outside PostgreSQL, index storage parameters on MySQL, SQLite and Oracle, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -803,6 +803,46 @@
     "id": "MQ4061",
     "defaultSeverity": "warning",
     "description": "A foreign key's on-delete sets a column that cannot take the value: set-null on a column that is not nullable, or set-default on one that is not nullable and has no default; deleting a referenced row then fails.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4062",
+    "defaultSeverity": "error",
+    "description": "A routine's volatility does not fit: a deterministic function that is not immutable, or a volatility on a procedure.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4063",
+    "defaultSeverity": "warning",
+    "description": "A PostgreSQL security-definer routine does not set search_path, so a caller's schema can shadow what it names.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4064",
+    "defaultSeverity": "warning",
+    "description": "A storage parameter that reaches nothing or that PostgreSQL would refuse: a PostgreSQL table or index parameter the table or index method does not take (a typo), or a stereotype with storage that does not apply to tables.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4065",
+    "defaultSeverity": "error",
+    "description": "A temporal key does not fit what PostgreSQL takes: a key WITHOUT OVERLAPS or a foreign key PERIOD with one column, a period key with an action other than no-action, a period key to a key that is not temporal, or a key without a period to a temporal key.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4066",
+    "defaultSeverity": "error",
+    "description": "Partitioning that PostgreSQL refuses: partitions without partitionBy, a partition with neither bounds nor default (or both), a primary or unique key without every partition column, more than one default partition, a default partition of a hash-partitioned table, or a partition name used twice.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true

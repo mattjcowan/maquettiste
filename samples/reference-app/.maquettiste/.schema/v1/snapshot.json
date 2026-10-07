@@ -47,7 +47,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "x-order": ["key", "name", "schema", "columns", "primaryKey", "uniques", "foreignKeys", "checks", "indexes", "comment"],
+        "x-order": ["key", "name", "schema", "columns", "primaryKey", "uniques", "foreignKeys", "checks", "exclusions", "indexes", "partitionBy", "partitions", "storage", "comment"],
         "properties": {
           "key": {
             "type": "string",
@@ -178,7 +178,7 @@
           },
           "primaryKey": {
             "type": "object",
-            "x-order": ["key", "name", "columns", "clustered", "nullsNotDistinct"],
+            "x-order": ["key", "name", "columns", "clustered", "nullsNotDistinct", "withoutOverlaps"],
             "properties": {
               "key": {
                 "type": "string",
@@ -201,6 +201,10 @@
               "nullsNotDistinct": {
                 "type": "boolean",
                 "default": false
+              },
+              "withoutOverlaps": {
+                "type": "boolean",
+                "default": false
               }
             },
             "required": ["key", "name", "columns"],
@@ -210,7 +214,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "x-order": ["key", "name", "columns", "clustered", "nullsNotDistinct"],
+              "x-order": ["key", "name", "columns", "clustered", "nullsNotDistinct", "withoutOverlaps"],
               "properties": {
                 "key": {
                   "type": "string",
@@ -233,6 +237,10 @@
                 "nullsNotDistinct": {
                   "type": "boolean",
                   "default": false
+                },
+                "withoutOverlaps": {
+                  "type": "boolean",
+                  "default": false
                 }
               },
               "required": ["key", "name", "columns"],
@@ -244,7 +252,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "x-order": ["key", "name", "columns", "referencedTable", "referencedColumns", "onDelete", "onDeleteColumns", "onUpdate", "deferrable"],
+              "x-order": ["key", "name", "columns", "referencedTable", "referencedColumns", "period", "onDelete", "onDeleteColumns", "onUpdate", "deferrable"],
               "properties": {
                 "key": {
                   "type": "string",
@@ -271,6 +279,10 @@
                     "type": "string",
                     "minLength": 1
                   }
+                },
+                "period": {
+                  "type": "boolean",
+                  "default": false
                 },
                 "onDelete": {
                   "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
@@ -321,11 +333,65 @@
             },
             "default": []
           },
+          "exclusions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": ["key", "name", "method", "elements", "where", "deferrable"],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "method": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "elements": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "x-order": ["column", "expression", "operatorClass", "operator"],
+                    "properties": {
+                      "column": {
+                        "type": "string"
+                      },
+                      "expression": {
+                        "type": "string"
+                      },
+                      "operatorClass": {
+                        "type": "string"
+                      },
+                      "operator": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["operator"],
+                    "additionalProperties": false
+                  }
+                },
+                "where": {
+                  "type": "string"
+                },
+                "deferrable": {
+                  "enum": ["not-deferrable", "initially-immediate", "initially-deferred"],
+                  "default": "not-deferrable"
+                }
+              },
+              "required": ["key", "name", "method", "elements"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
           "indexes": {
             "type": "array",
             "items": {
               "type": "object",
-              "x-order": ["key", "name", "columns", "include", "where", "unique", "method"],
+              "x-order": ["key", "name", "columns", "include", "where", "unique", "method", "storage"],
               "properties": {
                 "key": {
                   "type": "string",
@@ -339,13 +405,16 @@
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "x-order": ["column", "expression", "descending", "length"],
+                    "x-order": ["column", "expression", "operatorClass", "descending", "length"],
                     "properties": {
                       "column": {
                         "type": "string",
                         "minLength": 1
                       },
                       "expression": {
+                        "type": "string"
+                      },
+                      "operatorClass": {
                         "type": "string"
                       },
                       "descending": {
@@ -375,14 +444,65 @@
                   "default": false
                 },
                 "method": {
-                  "enum": ["default", "btree", "hash", "gin", "gist", "clustered"],
+                  "enum": ["default", "btree", "hash", "gin", "gist", "spgist", "brin", "hnsw", "ivfflat", "clustered"],
                   "default": "default"
+                },
+                "storage": {
+                  "$ref": "#/$defs/storage"
                 }
               },
               "required": ["key", "name", "columns"],
               "additionalProperties": false
             },
             "default": []
+          },
+          "partitionBy": {
+            "type": "object",
+            "x-order": ["strategy", "columns"],
+            "properties": {
+              "strategy": {
+                "enum": ["range", "list", "hash"]
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["strategy", "columns"],
+            "additionalProperties": false
+          },
+          "partitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": ["key", "name", "bounds", "default"],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "bounds": {
+                  "type": "string"
+                },
+                "default": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "required": ["key", "name"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "storage": {
+            "$ref": "#/$defs/storage"
           },
           "comment": {
             "type": "string"
@@ -397,7 +517,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "x-order": ["key", "name", "schema", "body", "columns", "withCheckOption", "materialized", "dependsOn", "comment"],
+        "x-order": ["key", "name", "schema", "body", "columns", "withCheckOption", "materialized", "securityInvoker", "securityBarrier", "dependsOn", "comment"],
         "properties": {
           "key": {
             "type": "string",
@@ -426,6 +546,14 @@
             "default": false
           },
           "materialized": {
+            "type": "boolean",
+            "default": false
+          },
+          "securityInvoker": {
+            "type": "boolean",
+            "default": false
+          },
+          "securityBarrier": {
             "type": "boolean",
             "default": false
           },
@@ -530,6 +658,26 @@
   "required": ["database", "name", "dialect"],
   "additionalProperties": false,
   "$defs": {
+    "storage": {
+      "description": "Storage parameters for the database's dialect, by name, each value as the dialect writes it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "x-order": ["name", "value"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": ["name", "value"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
     "alias": {
       "description": "Two keys of one table or sequence: the synthesized key a projected table (or a key sequence) had, and the id of the file materialize-tables stored it as. The schema diff reads the snapshot through them, so the table is one table whichever key the model gives it (stored, or put back by an undo).",
       "type": "object",

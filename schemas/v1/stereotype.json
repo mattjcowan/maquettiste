@@ -18,6 +18,7 @@
     "appliesTo",
     "attributes",
     "defaultProperties",
+    "storage",
     "icon",
     "color",
     "properties",
@@ -112,6 +113,10 @@
     "defaultProperties": {
       "type": "object",
       "default": {}
+    },
+    "storage": {
+      "description": "Table storage parameters the stereotype gives every table that carries it (a reusable tuning profile such as high-churn), per dialect; a table's own storage overrides a parameter, and a later stereotype overrides an earlier one.",
+      "$ref": "common.json#/$defs/storage"
     },
     "icon": {
       "type": "string"

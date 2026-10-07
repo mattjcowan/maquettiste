@@ -26,6 +26,7 @@ internal static class DatabaseObjectRules
             var dialect = DialectInfo.Name(database.Dialect);
             if (!routine.Body.ContainsKey(dialect) && !routine.Body.ContainsKey("*"))
                 report.Add("MQ4017", $"Routine '{routine.Name}' has no body for {dialect} (database '{database.Name}') and no \"*\" body, so it is not created there.", "/body");
+            CheckRoutineAttributes(routine, database, report);
         }
 
         var names = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -46,6 +47,35 @@ internal static class DatabaseObjectRules
 
         CheckDependsOn(context, routine.Database, routine.DependsOn, report);
         CheckCycle(context, routine, "Routine", report);
+    }
+
+    /// <summary>
+    /// A routine's volatility and settings: MQ4062 (deterministic but not immutable, or a volatility on a procedure), MQ4063 (a
+    /// PostgreSQL security-definer function that does not pin search_path, so a caller's schema can shadow what it calls) and MQ4056
+    /// (SQL Server, which the sql-ddl pack writes routines for, has neither).
+    /// </summary>
+    private static void CheckRoutineAttributes(Routine routine, Database database, Report report)
+    {
+        if (routine.Volatility is { } volatility)
+        {
+            if (routine.RoutineKind == RoutineKind.Procedure)
+                report.Add("MQ4062", $"Procedure '{routine.Name}' sets a volatility, which only functions have.", "/volatility", routine.Id);
+            else if (routine.Deterministic && volatility != RoutineVolatility.Immutable)
+                report.Add("MQ4062", $"Function '{routine.Name}' is deterministic but {Resolution.ResolutionValues.Kebab(volatility)}: a deterministic function is immutable; leave deterministic out or make it immutable.",
+                    "/volatility", routine.Id);
+        }
+
+        var name = DialectInfo.Name(database.Dialect);
+        if (database.Dialect == Dialect.PostgreSql && routine.Security == RoutineSecurity.Definer && !routine.Settings.ContainsKey("search_path"))
+            report.Add("MQ4063", $"Security-definer {(routine.RoutineKind == RoutineKind.Procedure ? "procedure" : "function")} '{routine.Name}' does not set search_path: a caller's schema can shadow the tables and functions it names. Set settings.search_path (\"app, pg_temp\").",
+                "/security", routine.Id);
+        if (database.Dialect != Dialect.SqlServer)
+            return;
+        // deterministic alone stays quiet, as it always has: SQL Server works out a function's determinism itself.
+        if (routine.Volatility is RoutineVolatility.Stable or RoutineVolatility.Immutable)
+            report.Add("MQ4056", $"Routine '{routine.Name}' has a volatility, which {name} (database '{database.Name}') does not have; the DDL leaves it out.", "/volatility", routine.Id);
+        if (routine.Settings.Count > 0)
+            report.Add("MQ4056", $"Routine '{routine.Name}' has settings, which {name} (database '{database.Name}') does not have; the DDL leaves them out.", "/settings", routine.Id);
     }
 
     /// <summary>Checks a database type file.</summary>

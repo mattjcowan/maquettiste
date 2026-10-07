@@ -159,18 +159,27 @@ internal sealed class SchemaDiffer : ISchemaDiffer
             c => [.. c.Columns], _ => true);
         var foreignKeys = CompareObjects(old.ForeignKeys, table.ForeignKeys, f => f.Key, f => f.Name, ForeignKeyProperties);
         var checks = CompareObjects(old.Checks, table.Checks, c => c.Key, c => c.Name, CheckProperties);
+        var exclusions = CompareObjects(old.Exclusions, table.Exclusions, x => x.Key, x => x.Name, ExclusionProperties);
+        var partitions = CompareObjects(old.Partitions, table.Partitions, p => p.Key, p => p.Name, PartitionProperties);
         var indexes = WithOldKeys(CompareObjects(old.Indexes, table.Indexes, i => i.Key, i => i.Name, IndexProperties), old.Indexes, i => i.Key,
             i => [.. i.Columns.Select(c => c.Column)], i => i.Unique && i.Where is null);
+        if (indexes.Count > 0)
+        {
+            var oldIndexes = ByKey(old.Indexes, i => i.Key);
+            indexes = [.. indexes.Select(c => c.Kind != ChangeKind.Added && oldIndexes.TryGetValue(c.Key, out var i) ? c with { OldStorage = OldStorage(i.Storage) } : c)];
+        }
 
         var isRenamed = !string.Equals(old.Name, table.Name, StringComparison.Ordinal);
+        var properties = TableProperties(old, table);
         // Schema and comment changes have no list of their own on TableChange; they still make the table Altered.
         var ownChanged = !string.Equals(old.Schema, table.Schema, StringComparison.Ordinal)
-            || !string.Equals(old.Comment, table.Comment, StringComparison.Ordinal);
-        var anyChild = columns.Count > 0 || primaryKey.Count > 0 || uniques.Count > 0 || foreignKeys.Count > 0 || checks.Count > 0 || indexes.Count > 0;
+            || !string.Equals(old.Comment, table.Comment, StringComparison.Ordinal) || properties.Count > 0;
+        var anyChild = columns.Count > 0 || primaryKey.Count > 0 || uniques.Count > 0 || foreignKeys.Count > 0 || checks.Count > 0 || indexes.Count > 0
+            || exclusions.Count > 0 || partitions.Count > 0;
         if (!isRenamed && !ownChanged && !anyChild)
             return null;
         return new TableChange(isRenamed ? ChangeKind.Renamed : ChangeKind.Altered, table.Key, old.Name, table.Name, rTable,
-            columns, primaryKey, uniques, foreignKeys, checks, indexes) { OldSchema = old.Schema, OldComment = old.Comment };
+            columns, primaryKey, uniques, foreignKeys, checks, indexes) { OldSchema = old.Schema, OldComment = old.Comment, Changes = properties, OldStorage = OldStorage(old.Storage), Exclusions = exclusions, Partitions = partitions };
     }
 
     /// <summary>
@@ -219,7 +228,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
     private static bool Unchanged(SnapshotTable a, SnapshotTable b)
     {
         if (!string.Equals(a.Name, b.Name, StringComparison.Ordinal) || !string.Equals(a.Schema, b.Schema, StringComparison.Ordinal)
-            || !string.Equals(a.Comment, b.Comment, StringComparison.Ordinal))
+            || !string.Equals(a.Comment, b.Comment, StringComparison.Ordinal) || TableProperties(a, b).Count > 0)
             return false;
         if (a.PrimaryKey is null != b.PrimaryKey is null
             || (a.PrimaryKey is not null && !SameObject(a.PrimaryKey, b.PrimaryKey!, c => c.Key, c => c.Name, ConstraintProperties)))
@@ -228,6 +237,8 @@ internal sealed class SchemaDiffer : ISchemaDiffer
             && SameList(a.Uniques, b.Uniques, c => c.Key, c => c.Name, ConstraintProperties)
             && SameList(a.ForeignKeys, b.ForeignKeys, f => f.Key, f => f.Name, ForeignKeyProperties)
             && SameList(a.Checks, b.Checks, c => c.Key, c => c.Name, CheckProperties)
+            && SameList(a.Exclusions, b.Exclusions, x => x.Key, x => x.Name, ExclusionProperties)
+            && SameList(a.Partitions, b.Partitions, p => p.Key, p => p.Name, PartitionProperties)
             && SameList(a.Indexes, b.Indexes, i => i.Key, i => i.Name, IndexProperties);
     }
 
@@ -449,6 +460,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         Property(list, "columns", a.Columns, b.Columns);
         Property(list, "clustered", a.Clustered, b.Clustered);
         Property(list, "nullsNotDistinct", a.NullsNotDistinct, b.NullsNotDistinct);
+        Property(list, "withoutOverlaps", a.WithoutOverlaps, b.WithoutOverlaps);
         return list;
     }
 
@@ -458,9 +470,19 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         Property(list, "columns", a.Columns, b.Columns);
         Property(list, "referencedTable", a.ReferencedTable, b.ReferencedTable);
         Property(list, "referencedColumns", a.ReferencedColumns, b.ReferencedColumns);
+        Property(list, "period", a.Period, b.Period);
         Property(list, "onDelete", PlainValues.Kebab(a.OnDelete), PlainValues.Kebab(b.OnDelete));
         Property(list, "onDeleteColumns", a.OnDeleteColumns, b.OnDeleteColumns);
         Property(list, "onUpdate", PlainValues.Kebab(a.OnUpdate), PlainValues.Kebab(b.OnUpdate));
+        if (a.Deferrable != b.Deferrable)
+            list.Add(new PropertyChange("deferrable", PlainValues.Kebab(a.Deferrable), PlainValues.Kebab(b.Deferrable)));
+        return list;
+    }
+
+    /// <summary>An exclusion constraint's properties outside its key (its definition forms the key): when it is checked.</summary>
+    private static List<PropertyChange> ExclusionProperties(SnapshotExclusion a, SnapshotExclusion b)
+    {
+        var list = new List<PropertyChange>();
         if (a.Deferrable != b.Deferrable)
             list.Add(new PropertyChange("deferrable", PlainValues.Kebab(a.Deferrable), PlainValues.Kebab(b.Deferrable)));
         return list;
@@ -481,6 +503,33 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         Property(list, "where", a.Where, b.Where);
         Property(list, "unique", a.Unique, b.Unique);
         Property(list, "method", PlainValues.Kebab(a.Method), PlainValues.Kebab(b.Method));
+        Property(list, "storage", StorageText(a.Storage), StorageText(b.Storage));
+        return list;
+    }
+
+    /// <summary>A snapshot's storage parameters as templates read them.</summary>
+    private static IReadOnlyList<RStorageParameter> OldStorage(IReadOnlyList<SnapshotStorageParameter> storage) =>
+        [.. storage.Select(p => new RStorageParameter { Name = p.Name, Value = p.Value })];
+
+    /// <summary>Storage parameters as <c>name = value</c> texts, for a property change.</summary>
+    internal static IReadOnlyList<string> StorageText(IReadOnlyList<SnapshotStorageParameter> storage) => [.. storage.Select(p => p.Name + " = " + p.Value)];
+
+    /// <summary>A table's own properties that have no list of their own (storage), compared as a property list.</summary>
+    private static List<PropertyChange> TableProperties(SnapshotTable a, SnapshotTable b)
+    {
+        var list = new List<PropertyChange>();
+        Property(list, "storage", StorageText(a.Storage), StorageText(b.Storage));
+        Property(list, "partitionBy", PartitionText(a.PartitionBy), PartitionText(b.PartitionBy));
+        return list;
+    }
+
+    /// <summary>A table's partitioning as text (<c>range(key, key)</c>), or <see langword="null"/>.</summary>
+    private static string? PartitionText(SnapshotPartitionBy? by) => by is null ? null : PlainValues.Kebab(by.Strategy) + "(" + string.Join(", ", by.Columns) + ")";
+
+    private static List<PropertyChange> PartitionProperties(SnapshotPartition a, SnapshotPartition b)
+    {
+        var list = new List<PropertyChange>();
+        Property(list, "bounds", a.Default ? "DEFAULT" : a.Bounds, b.Default ? "DEFAULT" : b.Bounds);
         return list;
     }
 
@@ -491,6 +540,8 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         Property(list, "body", a.Body, b.Body);
         Property(list, "columns", a.Columns, b.Columns);
         Property(list, "withCheckOption", a.WithCheckOption, b.WithCheckOption);
+        Property(list, "securityInvoker", a.SecurityInvoker, b.SecurityInvoker);
+        Property(list, "securityBarrier", a.SecurityBarrier, b.SecurityBarrier);
         Property(list, "materialized", a.Materialized, b.Materialized);
         Property(list, "comment", a.Comment, b.Comment);
         return list;
@@ -516,6 +567,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
     /// </summary>
     internal static IReadOnlyList<string> IndexColumns(IReadOnlyList<SnapshotIndexColumn> columns) =>
         [.. columns.Select(c => (c.Column ?? "(" + c.Expression + ")")
+            + (c.OperatorClass is { } opclass ? " " + opclass : "")
             + (c.Length is { } length ? "(" + length.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")" : "")
             + (c.Descending ? " desc" : ""))];
 
@@ -565,6 +617,24 @@ internal sealed class SchemaDiffer : ISchemaDiffer
             AddObjects(h, table.ForeignKeys);
             AddObjects(h, table.Checks);
             AddObjects(h, table.Indexes);
+            // The table's own property changes reach the hash only when there are some, so every diff without them keeps its hash.
+            if (table.Changes.Count > 0)
+            {
+                h.Add("table-properties");
+                AddProperties(h, table.Changes);
+            }
+
+            if (table.Exclusions.Count > 0)
+            {
+                h.Add("exclusions");
+                AddObjects(h, table.Exclusions);
+            }
+
+            if (table.Partitions.Count > 0)
+            {
+                h.Add("partitions");
+                AddObjects(h, table.Partitions);
+            }
         }
 
         AddObjects(h, views);

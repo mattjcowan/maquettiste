@@ -26312,6 +26312,33 @@
           "type": "string"
         }
       },
+      "storage": {
+        "description": "Storage parameters per dialect name (postgresql, sqlserver, mysql, oracle): each a map of parameter name to value, written in the DDL of a database of that dialect only (PostgreSQL and SQL Server WITH (name = value), MySQL table options, Oracle physical attributes). A number or boolean is written as the dialect writes it; a string is written as SQL as it is.",
+        "type": "object",
+        "propertyNames": {
+          "enum": [
+            "postgresql",
+            "sqlserver",
+            "mysql",
+            "oracle"
+          ]
+        },
+        "additionalProperties": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"
+          },
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "minProperties": 1
+        },
+        "default": {}
+      },
       "table": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Table",
@@ -26339,7 +26366,11 @@
           "uniques",
           "foreignKeys",
           "checks",
+          "exclusions",
           "indexes",
+          "partitionBy",
+          "partitions",
+          "storage",
           "comment",
           "properties",
           "generation",
@@ -26601,7 +26632,8 @@
             "x-order": [
               "name",
               "columns",
-              "clustered"
+              "clustered",
+              "withoutOverlaps"
             ],
             "properties": {
               "name": {
@@ -26617,6 +26649,11 @@
               },
               "clustered": {
                 "type": "boolean"
+              },
+              "withoutOverlaps": {
+                "description": "Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.",
+                "type": "boolean",
+                "default": false
               }
             },
             "required": [
@@ -26633,7 +26670,8 @@
                 "id",
                 "name",
                 "columns",
-                "nullsNotDistinct"
+                "nullsNotDistinct",
+                "withoutOverlaps"
               ],
               "properties": {
                 "id": {
@@ -26652,6 +26690,11 @@
                 },
                 "nullsNotDistinct": {
                   "description": "Whether two rows with nulls in the columns conflict (NULLS NOT DISTINCT, PostgreSQL 15 and later); the other dialects leave it out (MQ4056).",
+                  "type": "boolean",
+                  "default": false
+                },
+                "withoutOverlaps": {
+                  "description": "Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.",
                   "type": "boolean",
                   "default": false
                 }
@@ -26675,6 +26718,7 @@
                 "columns",
                 "referencesTable",
                 "referencesColumns",
+                "period",
                 "onDelete",
                 "onDeleteColumns",
                 "onUpdate",
@@ -26706,6 +26750,11 @@
                     "minLength": 1
                   },
                   "default": []
+                },
+                "period": {
+                  "description": "Whether the last column pair is a period (PERIOD): each referencing row's period must be covered by referenced rows' periods, which a temporal key (withoutOverlaps) of the referenced table holds. PostgreSQL 18 and later; MQ4056 elsewhere.",
+                  "type": "boolean",
+                  "default": false
                 },
                 "onDelete": {
                   "enum": [
@@ -26791,6 +26840,109 @@
             },
             "default": []
           },
+          "exclusions": {
+            "description": "Exclusion constraints (PostgreSQL EXCLUDE): no two rows may match on every element, each compared with its operator, such as a room (=) and a period (&&) for no overlapping bookings. The other dialects leave them out (MQ4056).",
+            "type": "array",
+            "items": {
+              "title": "Exclusion constraint",
+              "type": "object",
+              "x-order": [
+                "id",
+                "name",
+                "method",
+                "elements",
+                "where",
+                "deferrable"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "name": {
+                  "description": "The constraint name; absent: ex_<table>_<columns>.",
+                  "$ref": "#/components/schemas/label"
+                },
+                "method": {
+                  "description": "The index method that enforces it: gist (the usual one; the btree_gist extension compares scalar columns with =), spgist, btree or hash.",
+                  "enum": [
+                    "gist",
+                    "spgist",
+                    "btree",
+                    "hash"
+                  ],
+                  "default": "gist"
+                },
+                "elements": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "x-order": [
+                      "column",
+                      "expression",
+                      "operatorClass",
+                      "operator"
+                    ],
+                    "properties": {
+                      "column": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "expression": {
+                        "description": "An expression compared instead of a column, as SQL (written in parentheses).",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "operatorClass": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "operator": {
+                        "description": "The operator two rows must not both satisfy on this element: = for equal values, && for overlapping ranges.",
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "operator"
+                    ],
+                    "oneOf": [
+                      {
+                        "required": [
+                          "column"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "expression"
+                        ]
+                      }
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1
+                },
+                "where": {
+                  "description": "A predicate: only the rows that satisfy it are compared (a partial exclusion constraint).",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "deferrable": {
+                  "enum": [
+                    "not-deferrable",
+                    "initially-immediate",
+                    "initially-deferred"
+                  ],
+                  "default": "not-deferrable"
+                }
+              },
+              "required": [
+                "id",
+                "elements"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          },
           "indexes": {
             "type": "array",
             "items": {
@@ -26803,7 +26955,8 @@
                 "include",
                 "where",
                 "unique",
-                "method"
+                "method",
+                "storage"
               ],
               "properties": {
                 "id": {
@@ -26819,6 +26972,7 @@
                     "x-order": [
                       "column",
                       "expression",
+                      "operatorClass",
                       "descending",
                       "length"
                     ],
@@ -26831,6 +26985,11 @@
                         "description": "An expression indexed instead of a column (a functional index), per dialect name or \"*\": written in parentheses. A dialect without an entry leaves the index out; SQL Server indexes no expression (MQ4056: index a computed column instead), MySQL from 8.0.13 (not MariaDB).",
                         "$ref": "#/components/schemas/dialectMap",
                         "minProperties": 1
+                      },
+                      "operatorClass": {
+                        "description": "The operator class the column or expression is indexed with (PostgreSQL), such as gin_trgm_ops for a trigram index or vector_cosine_ops for a vector index; written after it as it is, so it may carry parameters (gist_trgm_ops (siglen = 32)). MQ4056 elsewhere.",
+                        "type": "string",
+                        "minLength": 1
                       },
                       "descending": {
                         "type": "boolean",
@@ -26875,15 +27034,24 @@
                   "default": false
                 },
                 "method": {
+                  "description": "The index method: btree and hash (PostgreSQL, MySQL); gin, gist, spgist and brin (PostgreSQL); hnsw and ivfflat (PostgreSQL with the vector extension, which a SQL object with phase before creates); clustered (SQL Server, and PostgreSQL CLUSTER). MQ4056 where the dialect lacks it.",
                   "enum": [
                     "default",
                     "btree",
                     "hash",
                     "gin",
                     "gist",
+                    "spgist",
+                    "brin",
+                    "hnsw",
+                    "ivfflat",
                     "clustered"
                   ],
                   "default": "default"
+                },
+                "storage": {
+                  "description": "Index storage parameters per dialect (PostgreSQL and SQL Server WITH (...), such as fillfactor, pages_per_range for brin, m and ef_construction for hnsw, lists for ivfflat). MySQL and Oracle leave them out (MQ4056).",
+                  "$ref": "#/components/schemas/storage"
                 }
               },
               "required": [
@@ -26893,6 +27061,79 @@
               "additionalProperties": false
             },
             "default": []
+          },
+          "partitionBy": {
+            "description": "Declarative partitioning (PostgreSQL PARTITION BY): the table holds no rows itself, its partitions do. Every primary or unique key includes the partition columns. The other dialects leave it out (MQ4056).",
+            "type": "object",
+            "x-order": [
+              "strategy",
+              "columns"
+            ],
+            "properties": {
+              "strategy": {
+                "description": "range (by intervals, such as a month of a timestamp), list (by values) or hash (by a modulus).",
+                "enum": [
+                  "range",
+                  "list",
+                  "hash"
+                ]
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "strategy",
+              "columns"
+            ],
+            "additionalProperties": false
+          },
+          "partitions": {
+            "description": "The partitions the DDL creates with the table (CREATE TABLE ... PARTITION OF), in the table's schema. The table's storage parameters are written on each of them (a partitioned table takes none). Partitions made over time (a month at a time) are an operational job, such as pg_partman's, set up by a SQL object.",
+            "type": "array",
+            "items": {
+              "title": "Partition",
+              "type": "object",
+              "x-order": [
+                "id",
+                "name",
+                "bounds",
+                "default"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "name": {
+                  "$ref": "#/components/schemas/label"
+                },
+                "bounds": {
+                  "description": "What follows FOR VALUES, as SQL: FROM ('2026-01-01') TO ('2026-02-01') for range, IN ('eu', 'us') for list, WITH (MODULUS 4, REMAINDER 0) for hash.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "default": {
+                  "description": "Whether this is the default partition, which takes the rows no other partition's bounds cover (not with hash); it has no bounds.",
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "storage": {
+            "description": "Table storage parameters per dialect: PostgreSQL WITH (fillfactor, autovacuum_*, toast.*, parallel_workers...), SQL Server WITH (DATA_COMPRESSION...), MySQL table options (ROW_FORMAT, KEY_BLOCK_SIZE...), Oracle physical attributes (PCTFREE...). Each parameter overrides the one the table's stereotypes give (a stereotype's storage, in stereotype order).",
+            "$ref": "#/components/schemas/storage"
           },
           "comment": {
             "type": "string"
@@ -26992,6 +27233,8 @@
           "columnList",
           "withCheckOption",
           "materialized",
+          "securityInvoker",
+          "securityBarrier",
           "dependsOn",
           "comment",
           "properties",
@@ -27082,6 +27325,16 @@
           },
           "materialized": {
             "description": "Whether the view stores its rows (CREATE MATERIALIZED VIEW: PostgreSQL and Oracle; the other dialects create a plain view, MQ4056). Refreshing it is up to the application.",
+            "type": "boolean",
+            "default": false
+          },
+          "securityInvoker": {
+            "description": "Whether the view reads its tables with the caller's rights rather than its owner's, so row-level security and grants apply to whoever queries it (PostgreSQL 15 and later: WITH (security_invoker = true); MQ4056 elsewhere and on a materialized view).",
+            "type": "boolean",
+            "default": false
+          },
+          "securityBarrier": {
+            "description": "Whether the view's WHERE runs before any function of the query that is not leakproof, so a caller cannot see rows the view filters out (PostgreSQL: WITH (security_barrier = true); MQ4056 elsewhere and on a materialized view).",
             "type": "boolean",
             "default": false
           },
@@ -27272,7 +27525,9 @@
           "language",
           "body",
           "deterministic",
+          "volatility",
           "security",
+          "settings",
           "dependsOn",
           "comment",
           "properties",
@@ -27516,6 +27771,14 @@
             "type": "boolean",
             "default": false
           },
+          "volatility": {
+            "description": "What the function may do and read (PostgreSQL): volatile (anything; the default), stable (no writes, the same result within a statement) or immutable (the same result for the same arguments forever). Absent: immutable when deterministic, else volatile. A procedure has none.",
+            "enum": [
+              "volatile",
+              "stable",
+              "immutable"
+            ]
+          },
           "security": {
             "description": "Whose rights the routine runs with: the caller's (invoker) or its owner's (definer).",
             "enum": [
@@ -27523,6 +27786,18 @@
               "definer"
             ],
             "default": "invoker"
+          },
+          "settings": {
+            "description": "Configuration parameters set while the routine runs (PostgreSQL SET name = value), such as search_path, which a security-definer function should pin (\"search_path\": \"app, pg_temp\"). The value is written as SQL as it is.",
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": {}
           },
           "dependsOn": {
             "description": "Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.",
@@ -29871,6 +30146,7 @@
           "appliesTo",
           "attributes",
           "defaultProperties",
+          "storage",
           "icon",
           "color",
           "properties",
@@ -29965,6 +30241,10 @@
           "defaultProperties": {
             "type": "object",
             "default": {}
+          },
+          "storage": {
+            "description": "Table storage parameters the stereotype gives every table that carries it (a reusable tuning profile such as high-churn), per dialect; a table's own storage overrides a parameter, and a later stereotype overrides an earlier one.",
+            "$ref": "#/components/schemas/storage"
           },
           "icon": {
             "type": "string"

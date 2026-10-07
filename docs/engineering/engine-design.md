@@ -1338,6 +1338,44 @@ list outside PostgreSQL, where the DDL leaves it out and the action sets every c
 and has no default, by the resolved nullability (an overlay's column included), at the key's `onDelete`; the database accepts
 the key and refuses the delete. A relation's set-null on a required end stays MQ3011.
 
+**PostgreSQL DDL features (2026-10-06).** Additive, with the same guarantees (a model without them gives the same snapshots
+and diff hashes: new snapshot members are omitted at their defaults, a routine's definition text gains a line only for a
+volatility other than the one `deterministic` implies or for settings, and the diff's new lists and table properties reach the
+hash only when they hold something):
+
+- Routines: `Routine.Volatility` (`RoutineVolatility?`; resolved `RRoutine.Volatility`, the file's or `immutable` when
+  deterministic, else `volatile`) and `Routine.Settings` (name to SQL value; resolved `RRoutine.Settings`, `RRoutineSetting`
+  by name). MQ4062 (error: deterministic but not immutable, a volatility on a procedure), MQ4063 (warning: a PostgreSQL
+  security-definer routine without `search_path`). The idempotent sql-ddl script now writes `CREATE OR REPLACE` (PostgreSQL)
+  and `CREATE OR ALTER` (SQL Server) routines, which a second run needs.
+- Views: `View.SecurityInvoker` and `SecurityBarrier` (resolved, snapshot, diff properties that recreate the view).
+- Indexes: `IndexMethod` gains `spgist`, `brin`, `hnsw`, `ivfflat`; `IndexColumn.OperatorClass` (resolved
+  `RIndexColumn.OperatorClass`; it joins the index's snapshot key only when set, so existing keys stay) and
+  `TableIndex.Storage`.
+- Storage: `Table.Storage`, `TableIndex.Storage` and `Stereotype.Storage`, each dialect name to parameter name to a JSON
+  value (`common.json#/$defs/storage`). Resolved `RTable.Storage` and `RIndex.Storage` are the database dialect's
+  parameters by name (`RStorageParameter`, the value as the dialect writes it), a table's over its stereotypes' (stereotype
+  order, later wins). The snapshot records them (`SnapshotStorageParameter`); the diff reports `storage` as a table property
+  (`TableChange.Changes`, a new list for a table's own properties) and an index property, with `TableChange.OldStorage` and
+  `ObjectChange.OldStorage` so a migration resets what went. MQ4064 (warning) names a PostgreSQL parameter the table or index
+  method does not take, and a stereotype with storage that does not apply to tables.
+- Temporal keys: `PrimaryKey.WithoutOverlaps`, `UniqueConstraint.WithoutOverlaps`, `ForeignKey.Period` (resolved, snapshot,
+  diff properties). MQ4065 (error) mirrors what PostgreSQL 18 refuses.
+- Exclusion constraints: `Table.Exclusions` (`ExclusionConstraint`: method, elements of a column or expression with an
+  operator class and operator, `where`, `deferrable`); resolved `RTable.Exclusions` (`RExclusion`, named `ex_<table>_<columns>`
+  when the file gives no name); snapshot `SnapshotTable.Exclusions`, keyed `ex:` and 16 hex of the SHA-256 of the definition,
+  so a changed definition is a drop and an add and a new name a rename; `TableChange.Exclusions`.
+- Partitioning: `Table.PartitionBy` (`PartitionStrategy`, columns) and `Table.Partitions` (`TablePartition`: name, bounds or
+  default); resolved `RTable.PartitionBy` and `RTable.Partitions`; snapshot `SnapshotTable.PartitionBy` and `Partitions`
+  (keyed by id); the diff reports `partitionBy` as a table property and `TableChange.Partitions` (a changed partition's
+  property is `bounds`). A partitioned table's storage parameters are written on its partitions, since PostgreSQL takes
+  none on the partitioned table. MQ4066 (error) mirrors what PostgreSQL refuses.
+- MQ4056 covers each of these outside PostgreSQL (and a routine's volatility or settings on SQL Server, index storage on
+  MySQL, SQLite and Oracle).
+- Migrations run the unchanged SQL objects with phase `after` that depend on a view or routine they drop and create again
+  (grants, INSTEAD OF triggers), after it. Grants and roles stay outside the model: roles differ per environment, and grants
+  are SQL objects.
+
 What each dialect's DDL does with them (SQLite table rebuilds, SQL Server dependents dropped and added back around `ALTER
 COLUMN`, PostgreSQL views recreated around a retyped column, MySQL `MODIFY COLUMN`, the `idempotent` parameter) is the sql-ddl
 pack's business: `packs/sql-ddl/README.md` has the coverage table per dialect.

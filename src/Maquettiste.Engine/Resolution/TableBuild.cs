@@ -53,6 +53,9 @@ internal sealed class TableBuild
     /// <summary>The <c>clustered</c> flag of the table file's primary key, when it sets one.</summary>
     public bool? PrimaryKeyClustered { get; set; }
 
+    /// <summary>Whether a table file makes the primary key temporal (WITHOUT OVERLAPS).</summary>
+    public bool PrimaryKeyWithoutOverlaps { get; set; }
+
     public List<UniqueSpec> Uniques { get; } = [];
 
     public List<ForeignKeySpec> ForeignKeys { get; } = [];
@@ -60,6 +63,12 @@ internal sealed class TableBuild
     public List<IndexSpec> Indexes { get; } = [];
 
     public List<CheckSpec> Checks { get; } = [];
+
+    /// <summary>The table file's partitioning, resolved once the columns are.</summary>
+    public PartitionBy? PartitionBy { get; set; }
+
+    /// <summary>The exclusion constraints the table file declares.</summary>
+    public List<ExclusionConstraint> Exclusions { get; } = [];
 
     /// <summary>Child tables of this table, in creation order.</summary>
     public List<TableBuild> Children { get; } = [];
@@ -74,17 +83,18 @@ internal sealed class TableBuild
 }
 
 /// <summary>A unique constraint to resolve.</summary>
-internal sealed record UniqueSpec(IReadOnlyList<string> Columns, string? Name, string? NameToken, string? Id = null, bool NullsNotDistinct = false);
+internal sealed record UniqueSpec(IReadOnlyList<string> Columns, string? Name, string? NameToken, string? Id = null, bool NullsNotDistinct = false,
+    bool WithoutOverlaps = false);
 
 /// <summary>An index to resolve.</summary>
 internal sealed record IndexSpec(IReadOnlyList<IndexColumnSpec> Columns, IReadOnlyList<string> Include, string? Where, bool Unique,
-    string Method, string? Name, bool FromFile = false, string? Id = null);
+    string Method, string? Name, bool FromFile = false, string? Id = null, IReadOnlyList<RStorageParameter>? Storage = null);
 
 /// <summary>
 /// A column of an index to resolve: a column key, or an expression for the dialect (<paramref name="Column"/> is then
 /// <see langword="null"/>).
 /// </summary>
-internal sealed record IndexColumnSpec(string? Column, bool Descending, string? Expression = null, int? Length = null);
+internal sealed record IndexColumnSpec(string? Column, bool Descending, string? Expression = null, int? Length = null, string? OperatorClass = null);
 
 /// <summary>A check constraint to resolve.</summary>
 internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, string? Id = null, string? Column = null);

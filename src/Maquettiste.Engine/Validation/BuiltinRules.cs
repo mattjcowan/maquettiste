@@ -758,5 +758,6 @@ internal static partial class BuiltinRules
         var flat = stereotype.Attributes.Select((a, i) => new FlatAttribute(a, AttributeSource.Own, stereotype.Id, i)).ToList();
         CheckFlatDuplicates(stereotype, flat, report);
         CheckAttributes(context, stereotype.Attributes, report);
+        PhysicalRules.CheckStereotypeStorage(stereotype, report);
     }
 }

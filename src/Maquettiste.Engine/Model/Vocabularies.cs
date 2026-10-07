@@ -94,6 +94,10 @@ public sealed record Stereotype : Element
     /// <summary>Default custom property values, merged under the element's own <c>properties</c>.</summary>
     public IReadOnlyDictionary<string, JsonElement> DefaultProperties { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 
+    /// <summary>Table storage parameters per dialect name the stereotype gives the tables that carry it, under their own.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, JsonElement>> Storage { get; init; } =
+        ImmutableDictionary<string, IReadOnlyDictionary<string, JsonElement>>.Empty;
+
     /// <summary>An icon name.</summary>
     public string? Icon { get; init; }
 
