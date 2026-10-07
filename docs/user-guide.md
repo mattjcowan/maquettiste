@@ -609,17 +609,27 @@ database shows on the Database screen at once. The explorers remember which rows
     an identity), **Sequence**, **Computed from** and **Stored**, **Default SQL** per dialect, **Default constraint
     name**); **Primary key** (its name, columns and Clustered); **Unique constraints** (name,
     columns and **Nulls not distinct**, which makes two rows with nulls in its columns conflict: PostgreSQL 15 and later,
-    the other dialects leave it out, MQ4056); **Indexes** (name; the columns in key order, each with its order, ascending
+    the other dialects leave it out, MQ4056); a picked primary or unique key has **Without overlaps** in the inspector,
+    which makes it a temporal key (PostgreSQL 18 and later); **Indexes** (name; the columns in key order, each with its order, ascending
     or descending, and a move earlier and later, any column either way; **Include** columns; **Unique**; **Method**; and
-    **Where** for a partial index; a picked index row shows its **Index columns** beneath it, described below);
+    **Where** for a partial index; a picked index row shows its **Index columns** beneath it, described below, and the
+    inspector its **Storage parameters** for the database's dialect, the method's names offered as you type);
     **Foreign keys** (name, columns, the table it references, picked from the
     database's tables, the referenced columns, which are that table's primary key when none is picked, and **On delete**
     and **On update**, no action by default, and **Deferrable**: not deferrable by default, or checked per statement or
     at commit; on SQL Server and MySQL, which check every key on each statement, it says so and the DDL leaves it out,
     MQ4056; a picked key whose on delete is Set null or Set default, on two columns or more, shows **Columns set on delete** in
     the inspector: none picked sets every column of the key, pick some to keep the others, such as a tenant column; outside
-    PostgreSQL a note says the DDL leaves the list out and sets them all, MQ4056); **Checks** (name, the **Column** it constrains, or the table, and the expression for the database's dialect
-    and for any dialect); **DDL** (the table's create script, from the DDL preview's unit for one table); **References** (the foreign
+    PostgreSQL a note says the DDL leaves the list out and sets them all, MQ4056; and **Period**, for a key to a temporal
+    key); **Checks** (name, the **Column** it constrains, or the table, and the expression for the database's dialect
+    and for any dialect); **Exclusions** (each exclusion constraint with its name, **Method**, **Checked** (when it is
+    checked), its elements, each a column or an expression with an operator class and an **Operator**, **Add column** and
+    **Add expression**, the **Where** predicate, and the constraint as the DDL writes it); **Storage** (the storage
+    parameters for the database's dialect, a value typed as a number or true/false saved as one, what the table's
+    stereotypes give it listed above with their stereotype, struck through where the table overrides one; then
+    **Partitioning**: **Partitioned by** a strategy, its **Partition columns**, and the partitions, each a name and the
+    bounds after FOR VALUES, with **Add partition** and **Add default partition**; a primary or unique key that lacks a
+    partition column is said in place, MQ4066); **DDL** (the table's create script, from the DDL preview's unit for one table); **References** (the foreign
     keys of other tables that point at it, each opening that table on its foreign key, and what else of the database uses the
     table's file);
     and **JSON** (the whole file). Each part tab has its **Add** button and a delete button per row; a key's columns are
@@ -631,13 +641,17 @@ database shows on the Database screen at once. The explorers remember which rows
     order, each a column or an expression; the ƒx button beside an index's columns adds an expression column (a functional index, such as
     `lower(email)`), written per dialect like a check: one text for the database's dialect and one for any dialect (`*`);
     a dialect with neither leaves the index out. SQL Server indexes no expression (MQ4056, the index is left out: index a
-    computed column instead); MySQL takes one from 8.0.13, MariaDB not at all. **Prefix length** indexes only the first
+    computed column instead); MySQL takes one from 8.0.13, MariaDB not at all. **Operator class** (PostgreSQL) indexes
+    a column or expression with a class of its own, such as `gin_trgm_ops` for a trigram index or `vector_cosine_ops`
+    for a vector index; the other dialects leave it out (MQ4056). **Prefix length** indexes only the first
     characters of a column; a typed value that is not a whole number from 1 is said in place and not saved (MySQL, which needs one for a text or blob column: without it the index is left out, MQ4056);
     the other dialects leave it out (MQ4056).
   - **View**: **General** (name, marks, schema and comment, then the **DDL** section: **Column list (CREATE VIEW names the
     Columns tab's columns)**; **With check option**, so an insert or update through the view must satisfy its WHERE
     (SQLite, and a materialized view, leave it out, MQ4056); **Materialized**, a view that stores its rows (PostgreSQL and
-    Oracle; the other dialects create a plain view, MQ4056; refreshing it is the application's); **Depends on** (below);
+    Oracle; the other dialects create a plain view, MQ4056; refreshing it is the application's); **Security invoker**, so
+    the view reads its tables with the caller's rights and row-level security applies to the caller, and **Security
+    barrier** (PostgreSQL; the other dialects and a materialized view leave them out, MQ4056); **Depends on** (below);
     and **Found in the body**, read-only: the other views whose names the body uses, which the scripts create first and
     drop after without your naming them), **Body** (one SQL editor per dialect the view has a body
     for; typing marks it **Unsaved**, and it is saved when you leave the editor, press Ctrl+S or click **Save**; **Add
@@ -648,7 +662,9 @@ database shows on the Database screen at once. The explorers remember which rows
     **Cycle**; each number is saved on Enter or when you leave it, and an empty one is left out: Start and Increment then
     count from 1, Minimum and Maximum are the type's, Cache is the database's), **Code generation** and **References**.
   - **Routine**: **General** (name, marks, schema and comment), **Definition** (Routine kind, **Language**, empty for the
-    dialect's own, **Security**, the caller's or its owner's rights, **Deterministic**, what it returns under **Returns**:
+    dialect's own, **Security**, the caller's or its owner's rights, **Deterministic**, **Volatility** for a function
+    (empty follows Deterministic), **Settings**, the parameters set while it runs (`search_path`, which a
+    security-definer routine should set, MQ4063), what it returns under **Returns**:
     **Nothing**, **A single value** with its type, length, precision, scale and native type, or **A table** with a grid of
     its columns, and **Depends on**), **Parameters** (a grid of name, type, length, precision, scale, native type, mode and
     default, with **Add parameter** and, per row, move up, move down and delete; the type is a built-in type or one of the
@@ -753,7 +769,8 @@ database shows on the Database screen at once. The explorers remember which rows
     that dialect: `{ "postgresql": { "fillfactor": 90, "autovacuum_vacuum_scale_factor": 0.03 } }` is PostgreSQL's
     `WITH (...)`; SQL Server's `WITH (DATA_COMPRESSION = PAGE)`, MySQL's table options and Oracle's physical attributes are
     written the same way. A number or boolean is written as the dialect writes it, a string as SQL as it is. A stereotype
-    that applies to tables can hold a `storage` profile (a high-churn stereotype with aggressive autovacuum): every table
+    that applies to tables can hold a `storage` profile (a high-churn stereotype with aggressive autovacuum; Settings ›
+    Stereotypes, **Table storage it gives**, one dialect at a time): every table
     that carries it takes those parameters, its own `storage` overriding one, a later stereotype an earlier one. A PostgreSQL
     parameter the table or index method does not take is MQ4064 (warning, most likely a typo; PostgreSQL would refuse the
     table), and so is a stereotype with storage that does not apply to tables. A migration sets and resets what changed

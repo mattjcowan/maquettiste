@@ -24,12 +24,37 @@ import {
   type PropertyType,
 } from "./propertyBag";
 
+/** What a bag holds when it is not an element's free properties (a table's storage parameters, a routine's settings). */
+export interface BagOptions {
+  /** The row's noun: "Add parameter", "Remove parameter". */
+  noun?: string;
+  /** What the bag says when it is empty. */
+  empty?: string;
+  /** The value types a row may take (all but JSON by default). */
+  types?: readonly PropertyType[];
+  /** A problem with a key beyond presence and uniqueness (its form), or null. */
+  keyProblem?: (key: string) => string | null;
+  /** Names offered as the key is typed. */
+  suggestions?: readonly string[];
+  /** A new row's type follows what its value reads as: a number, true or false, else text. */
+  infer?: boolean;
+}
+
+/** The type a value's text reads as: a number, true or false, else text. */
+export function inferredType(text: string): PropertyType {
+  const t = text.trim();
+  if (/^-?\d+(\.\d+)?$/.test(t)) return "number";
+  if (t === "true" || t === "false") return "boolean";
+  return "text";
+}
+
 export function PropertyBag({
   idPrefix,
   properties,
   declared = [],
   onEdit,
   title = "Properties",
+  options = {},
 }: {
   /** Distinguishes the bag's field ids (an element id, a column's dom id). */
   idPrefix: string;
@@ -38,6 +63,7 @@ export function PropertyBag({
   declared?: readonly string[];
   onEdit: (edit: PropertyEdit) => void;
   title?: string;
+  options?: BagOptions;
 }) {
   const rows = propertyRows(properties, declared);
   const [adding, setAdding] = useState(false);
@@ -50,10 +76,20 @@ export function PropertyBag({
   const showNew = adding && !(landing !== null && rows.some((r) => r.key === landing));
   const dom = idPrefix.replace(/[^A-Za-z0-9_-]/g, "_");
   const keys = rows.map((r) => r.key);
+  const noun = options.noun ?? "property";
   return (
     <div className="flex flex-col gap-1" data-testid="property-bag">
-      <SectionTitle>{title}</SectionTitle>
-      {!rows.length && !showNew ? <p className="text-12 text-secondary">No free properties: Add property sets a key and a text value.</p> : null}
+      {title ? <SectionTitle>{title}</SectionTitle> : null}
+      {!rows.length && !showNew ? (
+        <p className="text-12 text-secondary">{options.empty ?? "No free properties: Add property sets a key and a text value."}</p>
+      ) : null}
+      {options.suggestions?.length ? (
+        <datalist id={`${dom}-suggestions`}>
+          {options.suggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      ) : null}
       {/* One list, the new row last: once its key is saved it is the same row (and keeps its focus and its typed value). */}
       {[
         ...rows.map((row, i) => (
@@ -63,6 +99,8 @@ export function PropertyBag({
             row={row}
             others={keys.filter((k) => k !== row.key)}
             declared={declared}
+            options={options}
+            list={options.suggestions?.length ? `${dom}-suggestions` : undefined}
             onEdit={onEdit}
             onRemove={() => onEdit({ op: "remove", key: row.key })}
           />
@@ -74,6 +112,8 @@ export function PropertyBag({
             row={null}
             others={keys}
             declared={declared}
+            options={options}
+            list={options.suggestions?.length ? `${dom}-suggestions` : undefined}
             onEdit={(edit) => {
               if (edit.op === "set") setLanding(edit.key);
               onEdit(edit);
@@ -94,7 +134,7 @@ export function PropertyBag({
             else setAdding(true);
           }}
         >
-          <Plus /> Add property
+          <Plus /> Add {noun}
         </Button>
       </div>
     </div>
@@ -109,6 +149,8 @@ function BagRow({
   row,
   others,
   declared,
+  options,
+  list,
   onEdit,
   onRemove,
 }: {
@@ -117,12 +159,17 @@ function BagRow({
   row: PropertyRow | null;
   others: readonly string[];
   declared: readonly string[];
+  options: BagOptions;
+  /** The datalist of key suggestions, if any. */
+  list?: string;
   onEdit: (edit: PropertyEdit) => void;
   onRemove: () => void;
 }) {
   const [keyText, setKeyText] = useState(row?.key ?? "");
   const [valueText, setValueText] = useState(row?.text ?? "");
   const [type, setType] = useState<PropertyType>(row?.type ?? "text");
+  // Whether the type was picked by hand: until then a bag that infers reads each value as what it looks like.
+  const [typeChosen, setTypeChosen] = useState(false);
   const [error, setError] = useState<{ on: "key" | "value"; message: string } | null>(null);
   // The key and value the row shows as saved: its owner's, or the last it committed (a queued write lands later).
   const [seen, setSeen] = useState(row ? signature(row.key, row.value) : null);
@@ -161,15 +208,17 @@ function BagRow({
       if (keyText !== key) setKeyText(key);
       return;
     }
-    const problem = propertyKeyProblem(key, others, declared);
+    const problem = propertyKeyProblem(key, others, declared) ?? options.keyProblem?.(key) ?? null;
     if (problem) {
       setError({ on: "key", message: problem });
       return;
     }
-    // A rename keeps the saved value; a new row saves what its value says.
+    // A rename keeps the saved value; a new row saves what its value says (read as its inferred type when the bag infers).
     if (saved) commit(key, saved.value);
     else {
-      const value = parsedValue();
+      const as = options.infer && !typeChosen ? inferredType(valueText) : type;
+      if (as !== type) setType(as);
+      const value = parsedValue(valueText, as);
       if (value.ok) commit(key, value.value);
     }
     setKeyText(key);
@@ -178,15 +227,18 @@ function BagRow({
   const commitValue = (text = valueText, as = type) => {
     if (!saved) {
       // The new row: its value waits for a key.
-      if (keyText.trim() && !propertyKeyProblem(keyText, others, declared)) commitKey();
+      if (keyText.trim() && !propertyKeyProblem(keyText, others, declared) && !options.keyProblem?.(keyText.trim())) commitKey();
       return;
     }
-    const value = parsedValue(text, as);
+    const read = options.infer && !typeChosen && as === type ? inferredType(text) : as;
+    if (read !== type) setType(read);
+    const value = parsedValue(text, read);
     if (value.ok) commit(saved.key, value.value);
   };
 
   const changeType = (next: PropertyType) => {
     setType(next);
+    setTypeChosen(true);
     // The value's text read under the new type: a number must read as one; true/false takes "true", any other text is false.
     const converted = next === "boolean" ? convertPropertyValue(valueText, next) : parsePropertyValue(valueText, next);
     if (converted.error !== undefined) {
@@ -199,11 +251,10 @@ function BagRow({
     if (saved) commit(saved.key, converted.value);
   };
 
-  const label = row?.key || "the new property";
+  const noun = options.noun ?? "property";
+  const label = row?.key || `the new ${noun}`;
   const types: PropertyType[] = [
-    "text",
-    "number",
-    "boolean",
+    ...(options.types ?? (["text", "number", "boolean"] as const)),
     ...(type === "json" || (saved && propertyTypeOf(saved.value) === "json") ? (["json"] as const) : []),
   ];
   return (
@@ -214,6 +265,7 @@ function BagRow({
           aria-label={`Key of ${label}`}
           className="h-6 font-mono text-12"
           placeholder="key"
+          list={list}
           autoFocus={!row}
           value={keyText}
           aria-invalid={error?.on === "key" || undefined}
@@ -261,21 +313,25 @@ function BagRow({
             }}
           />
         )}
-        <Select
-          id={`${dom}-type`}
-          aria-label={`Type of ${label}`}
-          title="The value's type: text by default"
-          className="h-6 w-auto text-12"
-          value={type}
-          onChange={(e) => changeType(e.target.value as PropertyType)}
-        >
-          {types.map((t) => (
-            <option key={t} value={t}>
-              {PROPERTY_TYPE_LABELS[t]}
-            </option>
-          ))}
-        </Select>
-        <Button size="icon-row" variant="ghost" label="Remove property" onClick={onRemove}>
+        {types.length > 1 ? (
+          <Select
+            id={`${dom}-type`}
+            aria-label={`Type of ${label}`}
+            title="The value's type: text by default"
+            className="h-6 w-auto text-12"
+            value={type}
+            onChange={(e) => changeType(e.target.value as PropertyType)}
+          >
+            {types.map((t) => (
+              <option key={t} value={t}>
+                {PROPERTY_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <span />
+        )}
+        <Button size="icon-row" variant="ghost" label={`Remove ${noun}`} onClick={onRemove}>
           <X />
         </Button>
       </div>

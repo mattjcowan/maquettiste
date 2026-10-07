@@ -49,11 +49,13 @@ import {
   qualifiedTable,
   nullsNotDistinctNote,
   onDeleteColumnsNote,
+  temporalNote,
   resolvedTableDoc,
   setsColumns,
   type TablePart,
 } from "@/workspaces/database/tableParts";
 import { tableColumns } from "@/editors/database/databaseDocs";
+import { postgresIndexParameters, storageKeyProblem, storageOf } from "@/workspaces/database/tableOptions";
 import { CommitInput } from "@/editors/database/fields";
 import {
   ActionSelect,
@@ -687,6 +689,25 @@ function PartSection({ td, part }: { td: TableDoc; part: TablePart }) {
           <Field label="Method" htmlFor={`${id}-method`}>
             <MethodSelect id={`${id}-method`} part={part} value={String(entry.method ?? "default")} edits={edits} fixed={fixed} />
           </Field>
+          {dialect !== "sqlite" ? (
+            <PropertyBag
+              idPrefix={`${id}-storage`}
+              title={`Storage parameters (${dialect})`}
+              properties={storageOf(entry, dialect)}
+              options={{
+                noun: "parameter",
+                empty:
+                  dialect === "postgresql" || dialect === "sqlserver"
+                    ? "No storage parameters: the method's defaults apply."
+                    : "This dialect takes no index storage parameters; any set here are left out (MQ4056).",
+                types: ["number", "boolean", "text"],
+                infer: true,
+                keyProblem: storageKeyProblem,
+                suggestions: dialect === "postgresql" ? postgresIndexParameters(String(entry.method ?? "default")) : undefined,
+              }}
+              onEdit={(change) => void edits.editIndexStorage(part, dialect, change)}
+            />
+          ) : null}
           <Field label="Where (a partial index)" htmlFor={`${id}-where`}>
             <CommitInput
               id={`${id}-where`}
@@ -708,6 +729,21 @@ function PartSection({ td, part }: { td: TableDoc; part: TablePart }) {
           />
         </Field>
       )}
+      {part.kind === "unique" || part.kind === "primary-key" ? (
+        <>
+          <CheckboxField
+            id={`${id}-without-overlaps`}
+            label="Without overlaps (a temporal key: its last column is a period that may repeat the others while the periods do not overlap)"
+            checked={entry.withoutOverlaps === true}
+            onChange={(v) => void edits.set(part, "withoutOverlaps", v)}
+          />
+          {entry.withoutOverlaps === true ? (
+            <p className="text-11 text-secondary" data-testid="key-temporal-note">
+              {temporalNote(dialect)}
+            </p>
+          ) : null}
+        </>
+      ) : null}
       {part.kind === "unique" ? (
         <>
           <CheckboxField
@@ -757,6 +793,17 @@ function PartSection({ td, part }: { td: TableDoc; part: TablePart }) {
           {setsColumns(entry.onDelete) && ((entry.onDeleteColumns as string[] | undefined) ?? []).length && onDeleteColumnsNote(dialect) ? (
             <p className="text-11 text-secondary" data-testid="fk-on-delete-columns-note">
               {onDeleteColumnsNote(dialect)}
+            </p>
+          ) : null}
+          <CheckboxField
+            id={`${id}-period`}
+            label="Period (the last column pair is a period the referenced rows' periods must cover: references a temporal key)"
+            checked={entry.period === true}
+            onChange={(v) => void edits.set(part, "period", v)}
+          />
+          {entry.period === true ? (
+            <p className="text-11 text-secondary" data-testid="fk-period-note">
+              {temporalNote(dialect)} A period key takes no action but No action.
             </p>
           ) : null}
           <Field label="Deferrable" htmlFor={`${id}-deferrable`} hint="When the key is checked: on each statement, or at commit.">

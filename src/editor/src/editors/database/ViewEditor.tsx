@@ -97,12 +97,16 @@ function ViewDdlOptions({ ctx }: { ctx: EditorContext }) {
     ctx.edit((j) => void setViewOption(j as unknown as Rec, option, on));
     ctx.flush();
   };
-  const problems = all.filter((d) => ["/columnList", "/withCheckOption", "/materialized", "/dependsOn"].some((p) => (d.jsonPointer ?? "").startsWith(p)));
+  const problems = all.filter((d) =>
+    ["/columnList", "/withCheckOption", "/materialized", "/securityInvoker", "/securityBarrier", "/dependsOn"].some((p) => (d.jsonPointer ?? "").startsWith(p)),
+  );
   const note = viewOptionNote(dialect, doc);
   const options: [ViewOption, string][] = [
     ["columnList", "Column list (CREATE VIEW names the Columns tab's columns)"],
     ["withCheckOption", "With check option (an insert or update through the view must satisfy its WHERE)"],
     ["materialized", "Materialized (the view stores its rows: PostgreSQL and Oracle)"],
+    ["securityInvoker", "Security invoker (reads its tables with the caller's rights, so row-level security applies to the caller)"],
+    ["securityBarrier", "Security barrier (its filter runs before the query's functions that are not leakproof)"],
   ];
   return (
     <div className="flex flex-col gap-2" data-testid="view-ddl-options">

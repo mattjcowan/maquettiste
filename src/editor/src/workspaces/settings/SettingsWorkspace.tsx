@@ -24,6 +24,9 @@ import { EmptyState, SectionTitle, Spinner } from "@/components/ui/misc";
 import { useDraftDocument } from "@/inspector/useDraft";
 import { setOptional } from "@/inspector/fields";
 import { AttributeGrid } from "@/inspector/AttributeGrid";
+import { PropertyBag } from "@/inspector/PropertyBag";
+import type { PropertyEdit } from "@/inspector/propertyBag";
+import { editStorage, POSTGRES_TABLE_PARAMETERS, STORAGE_DIALECTS, storageKeyProblem, storageOf } from "@/workspaces/database/tableOptions";
 import { keptConventionsDraft, rebaseConventions, type ConventionsDraft } from "./conventions";
 import { TYPE_KINDS } from "@/model/model";
 import { LocalesSettings } from "@/l10n/LocalesSettings";
@@ -85,6 +88,46 @@ export function SettingsWorkspace() {
         </TabsContent>
       ))}
     </Tabs>
+  );
+}
+
+/**
+ * A table stereotype's storage profile: the storage parameters every table that carries it takes (its own override one), per
+ * dialect, one dialect at a time.
+ */
+function StereotypeStorage({ stereotype, onEdit }: { stereotype: Record<string, unknown>; onEdit: (dialect: string, change: PropertyEdit) => void }) {
+  const [dialect, setDialect] = useState<string>("postgresql");
+  return (
+    <div className="flex flex-col gap-1" data-testid="stereotype-storage">
+      <SectionTitle>Table storage it gives</SectionTitle>
+      <p className="text-12 text-secondary">
+        Storage parameters every table with this stereotype takes (a tuning profile such as high churn); a table&apos;s own parameters override one, a later
+        stereotype an earlier one.
+      </p>
+      <Field label="Dialect" htmlFor="st-storage-dialect">
+        <Select id="st-storage-dialect" className="max-w-xs" value={dialect} onChange={(e) => setDialect(e.target.value)}>
+          {STORAGE_DIALECTS.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <PropertyBag
+        idPrefix={`st-storage-${dialect}`}
+        title=""
+        properties={storageOf(stereotype, dialect)}
+        options={{
+          noun: "parameter",
+          empty: `No ${dialect} parameters.`,
+          types: ["number", "boolean", "text"],
+          infer: true,
+          keyProblem: storageKeyProblem,
+          suggestions: dialect === "postgresql" ? POSTGRES_TABLE_PARAMETERS : undefined,
+        }}
+        onEdit={(change) => onEdit(dialect, change)}
+      />
+    </div>
   );
 }
 
@@ -190,6 +233,15 @@ function StereotypesSettings() {
               }}
             />
           </Field>
+          {(s.appliesTo ?? []).includes("table" as never) ? (
+            <StereotypeStorage
+              stereotype={s as unknown as Record<string, unknown>}
+              onEdit={(dialect, change) => {
+                edit((j) => editStorage(j as unknown as Record<string, unknown>, dialect, change));
+                void flush();
+              }}
+            />
+          ) : null}
           <SectionTitle>Attributes it adds</SectionTitle>
           <AttributeGrid
             label={`Attributes of «${s.key}»`}

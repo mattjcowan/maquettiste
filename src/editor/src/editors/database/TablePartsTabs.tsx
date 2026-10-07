@@ -37,6 +37,7 @@ import {
   setIndexColumnLength,
   setIndexColumnOrder,
   setForeignKeyAction,
+  setIndexColumnOperatorClass,
   setIndexExpression,
   toggleIndexColumn,
   toggleOnDeleteColumn,
@@ -49,6 +50,8 @@ import { openNewForeignKey, useForeignKeyPattern } from "@/workspaces/database/f
 import { renameTableColumn } from "@/workspaces/database/columnRename";
 import { useQueryClient } from "@tanstack/react-query";
 import { CommitInput } from "./fields";
+import type { PropertyEdit } from "@/inspector/propertyBag";
+import { editStorage } from "@/workspaces/database/tableOptions";
 import { setDialectText, setEntryMember, tableColumns, toggleColumn } from "./databaseDocs";
 
 type Rec = Record<string, unknown>;
@@ -57,7 +60,7 @@ export { deferrableNote, NO_DEFERRABLE_DIALECTS } from "@/workspaces/database/fk
 export const FK_ACTIONS = ["no-action", "restrict", "cascade", "set-null", "set-default"] as const;
 /** When a foreign key is checked (`deferrable`), with its words. */
 export const FK_DEFERRABLE = FK_DEFERRABLE_LABELS;
-export const INDEX_METHODS = ["default", "btree", "hash", "gin", "gist", "clustered"] as const;
+export const INDEX_METHODS = ["default", "btree", "hash", "gin", "gist", "spgist", "brin", "hnsw", "ivfflat", "clustered"] as const;
 
 const cell = "h-[var(--mq-row-h)] px-1 align-middle";
 const head = "h-6 px-1 text-left text-11 font-semibold text-secondary";
@@ -173,6 +176,12 @@ export function usePartEdits(td: TableDoc) {
     setIndexLength: (part: TablePart, at: number, length: number | undefined) =>
       edit(`Edit index on ${name}`, part, (entry) => void setIndexColumnLength(entry, at, length)),
     removeIndexColumn: (part: TablePart, at: number) => edit(`Edit index on ${name}`, part, (entry) => void removeIndexColumnAt(entry, at)),
+    /** An index column's operator class (PostgreSQL); an empty text removes it. */
+    setOperatorClass: (part: TablePart, at: number, text: string) =>
+      edit(`Edit index on ${name}`, part, (entry) => void setIndexColumnOperatorClass(entry, at, text)),
+    /** An index's storage parameters for one dialect. */
+    editIndexStorage: (part: TablePart, dialect: string, change: PropertyEdit) =>
+      edit(`Edit index on ${name}`, part, (entry) => editStorage(entry, dialect, change)),
     toggleInclude: (part: TablePart, column: string) =>
       edit(`Edit index on ${name}`, part, (entry) => {
         const current = (entry.include as string[] | undefined) ?? [];
@@ -677,6 +686,7 @@ export function IndexColumnDetails({
   const note = indexColumnNote(dialect, {
     expression: list.some((c) => c.expression !== undefined),
     length: list.some((c) => typeof c.length === "number"),
+    operatorClass: list.some((c) => typeof c.operatorClass === "string"),
   });
   return (
     <div className="flex flex-col gap-1 rounded-control border border-default p-1" data-testid="index-column-details" onClick={(e) => e.stopPropagation()}>
@@ -687,6 +697,11 @@ export function IndexColumnDetails({
             <th scope="col" className={head}>
               Column or expression
             </th>
+            {dialect === "postgresql" || list.some((c) => typeof c.operatorClass === "string") ? (
+              <th scope="col" className={`${head} w-40`}>
+                Operator class
+              </th>
+            ) : null}
             <th scope="col" className={`${head} w-28`}>
               Prefix length
             </th>
@@ -723,6 +738,18 @@ export function IndexColumnDetails({
                     <span className="font-mono">{label}</span>
                   )}
                 </td>
+                {dialect === "postgresql" || list.some((x) => typeof x.operatorClass === "string") ? (
+                  <td className={cell}>
+                    <CommitInput
+                      label={`Operator class of ${label} in ${part.id}`}
+                      mono
+                      className="h-6 text-12"
+                      value={String(c.operatorClass ?? "")}
+                      placeholder="the type's"
+                      onCommit={(v) => void edits.setOperatorClass(part, i, v)}
+                    />
+                  </td>
+                ) : null}
                 <td className={cell}>
                   <LengthInput part={part} at={i} label={label} value={typeof c.length === "number" ? String(c.length) : ""} edits={edits} fixed={fixed} />
                 </td>

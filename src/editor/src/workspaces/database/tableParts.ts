@@ -28,6 +28,8 @@ export const TABLE_TABS = {
   indexes: "Indexes",
   "foreign-keys": "Foreign keys",
   checks: "Checks",
+  exclusions: "Exclusions",
+  storage: "Storage",
   ddl: "DDL",
   references: "References",
   json: "JSON",
@@ -463,13 +465,31 @@ export function indexColumnText(c: Json, dialect: string, nameOf: (id: string) =
 }
 
 /** What a key prefix length or an index expression does on a dialect (the sql-ddl pack's DDL and MQ4056), or null. */
-export function indexColumnNote(dialect: string, has: { expression: boolean; length: boolean }): string | null {
+export function indexColumnNote(dialect: string, has: { expression: boolean; length: boolean; operatorClass?: boolean }): string | null {
   const notes: string[] = [];
   if (has.expression && dialect === "sqlserver")
     notes.push("SQL Server indexes no expression: the index is left out (MQ4056); index a computed column instead.");
   if (has.expression && dialect === "mysql") notes.push("MySQL indexes expressions from 8.0.13 (not MariaDB).");
   if (has.length && dialect !== "mysql") notes.push("Only MySQL takes a prefix length; this dialect leaves it out (MQ4056).");
+  if (has.operatorClass && dialect !== "postgresql") notes.push("Only PostgreSQL takes an operator class; this dialect leaves it out (MQ4056).");
   return notes.length ? notes.join(" ") : null;
+}
+
+/** Sets an index column's operator class (PostgreSQL), or removes it for an empty text; false when there is no such column. */
+export function setIndexColumnOperatorClass(entry: Json, at: number, text: string): boolean {
+  const column = ((entry.columns as Json[] | undefined) ?? [])[at];
+  if (!column) return false;
+  const value = text.trim();
+  if (value) column.operatorClass = value;
+  else delete column.operatorClass;
+  return true;
+}
+
+/** What a dialect does with a temporal key (WITHOUT OVERLAPS, PERIOD): null on PostgreSQL (18 and later), else MQ4056. */
+export function temporalNote(dialect: string): string | null {
+  return dialect === "postgresql"
+    ? "PostgreSQL 18 and later; the other columns of a temporal key need the btree_gist extension."
+    : "Only PostgreSQL (18 and later) has temporal keys; this dialect leaves it out (MQ4056).";
 }
 
 /** What a unique constraint's nulls-not-distinct does on a dialect, or null where it is written (PostgreSQL). */

@@ -1,11 +1,13 @@
-// The routine editor: General (name, schema, comment and the marks), Definition (kind, language, deterministic, security, the
-// result and what the routine depends on), Parameters (a grid), Body (one SQL editor per dialect), Code generation and
+// The routine editor: General (name, schema, comment and the marks), Definition (kind, language, security, deterministic,
+// volatility, settings, the result and what the routine depends on), Parameters (a grid), Body (one SQL editor per dialect), Code generation and
 // References. Each committed field is one save, so one undo step.
 import { useState } from "react";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { Field, Select } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";
 import { CommonFields, setOptional } from "@/inspector/fields";
+import { PropertyBag } from "@/inspector/PropertyBag";
+import { editSettings, storageKeyProblem } from "@/workspaces/database/tableOptions";
 import { References } from "@/inspector/Inspector";
 import { EDITOR_TAB_LABELS } from "@/model/labels";
 import { routineBodyTemplate } from "@/explorer/databaseCreate";
@@ -94,6 +96,7 @@ function DefinitionTab({ ctx }: { ctx: EditorContext }) {
   const form = { ...ctx, id: domIdOf(ctx.id) };
   const id = form.id;
   const doc = ctx.json as unknown as Rec;
+  const routineKind = doc.routineKind === "procedure" ? "procedure" : "function";
   const update = (mutate: (doc: Rec) => void) => {
     ctx.edit((j) => void mutate(j as unknown as Rec));
     ctx.flush();
@@ -128,6 +131,39 @@ function DefinitionTab({ ctx }: { ctx: EditorContext }) {
         label="Deterministic (the same arguments always give the same result)"
         checked={doc.deterministic === true}
         onChange={(on) => update((j) => setOptional(j, "deterministic", on ? true : undefined))}
+      />
+      {routineKind === "function" ? (
+        <Field
+          label="Volatility"
+          htmlFor={`${id}-volatility`}
+          hint="What the function may do and read (PostgreSQL); empty: immutable when deterministic, else volatile."
+        >
+          <Select
+            id={`${id}-volatility`}
+            className="max-w-xs"
+            value={String(doc.volatility ?? "")}
+            onChange={(e) => update((j) => setOptional(j, "volatility", e.target.value || undefined))}
+          >
+            <option value="">From Deterministic</option>
+            <option value="volatile">Volatile (anything)</option>
+            <option value="stable">Stable (reads, never writes)</option>
+            <option value="immutable">Immutable (the same result forever)</option>
+          </Select>
+        </Field>
+      ) : null}
+      <PropertyBag
+        idPrefix={`${id}-settings`}
+        title="Settings"
+        properties={doc.settings}
+        options={{
+          noun: "setting",
+          empty:
+            "No settings. A security-definer routine pins search_path here (search_path = app, pg_temp), so a caller's schema cannot shadow what it names (MQ4063).",
+          types: ["text"],
+          keyProblem: storageKeyProblem,
+          suggestions: ["search_path", "work_mem", "statement_timeout", "lock_timeout", "role"],
+        }}
+        onEdit={(change) => update((j) => editSettings(j, change))}
       />
       <SectionTitle>Returns</SectionTitle>
       <Field label="Result" htmlFor={`${id}-returns`}>

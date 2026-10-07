@@ -615,6 +615,25 @@ function tableFacetDiagnostics(json: Json, entry: ModelEntry, lookup: Validation
     if (d === "mysql" && onDelete === "set-default") lacks(`Foreign key '${fkName}' has ON DELETE set-default`, `/foreignKeys/${i}/onDelete`);
     if (d === "mysql" && onUpdate === "set-default") lacks(`Foreign key '${fkName}' has ON UPDATE set-default`, `/foreignKeys/${i}/onUpdate`);
   });
+  // PostgreSQL alone writes temporal keys, exclusion constraints, partitioning and index operator classes (PhysicalRules).
+  if (d !== "postgresql") {
+    const pk = json.primaryKey as Json | undefined;
+    if (pk?.withoutOverlaps === true) lacks("The primary key is temporal (WITHOUT OVERLAPS)", "/primaryKey/withoutOverlaps");
+    arr(json.uniques).forEach((u, i) => {
+      if (u.withoutOverlaps === true) lacks(`Unique constraint '${String(u.name ?? u.id)}' is temporal (WITHOUT OVERLAPS)`, `/uniques/${i}/withoutOverlaps`);
+    });
+    arr(json.foreignKeys).forEach((fk, i) => {
+      if (fk.period === true) lacks(`Foreign key '${String(fk.name ?? fk.id)}' has a period (PERIOD)`, `/foreignKeys/${i}/period`);
+    });
+    arr(json.exclusions).forEach((x, i) => lacks(`Exclusion constraint '${String(x.name ?? x.id)}' (EXCLUDE)`, `/exclusions/${i}`));
+    if (json.partitionBy) lacks(`Table '${String(json.name)}' is partitioned (partitionBy)`, "/partitionBy", "the partitioning and the partitions");
+    arr(json.indexes).forEach((ix, i) =>
+      arr(ix.columns).forEach((c, j) => {
+        if (typeof c.operatorClass === "string")
+          lacks(`Index '${String(ix.name ?? ix.id)}' sets an operator class`, `/indexes/${i}/columns/${j}/operatorClass`);
+      }),
+    );
+  }
   arr(json.uniques).forEach((u, i) => {
     if (u.nullsNotDistinct === true && d !== "postgresql")
       lacks(`Unique constraint '${String(u.name ?? u.id)}' sets nullsNotDistinct`, `/uniques/${i}/nullsNotDistinct`);

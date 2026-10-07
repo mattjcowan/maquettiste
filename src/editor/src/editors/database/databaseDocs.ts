@@ -197,7 +197,7 @@ export function addViewColumn(doc: Json): void {
 }
 
 /** The DDL options of a view file (schemas/v1 view.json), each a flag left out of the file when false. */
-export type ViewOption = "columnList" | "withCheckOption" | "materialized";
+export type ViewOption = "columnList" | "withCheckOption" | "materialized" | "securityInvoker" | "securityBarrier";
 
 /** Sets or clears a view's DDL option. */
 export function setViewOption(doc: Json, option: ViewOption, on: boolean): void {
@@ -215,6 +215,10 @@ export function viewOptionNote(dialect: string, doc: Json): string | null {
   else if (doc.withCheckOption === true && doc.materialized === true && materializes)
     notes.push("A materialized view is not written through: WITH CHECK OPTION is left out (MQ4056).");
   if (doc.columnList === true && !list(doc, "columns").length) notes.push("The column list names the Columns tab's columns; declare them there.");
+  if ((doc.securityInvoker === true || doc.securityBarrier === true) && dialect !== "postgresql")
+    notes.push("Only PostgreSQL has a view's security options; this dialect leaves them out (MQ4056).");
+  else if ((doc.securityInvoker === true || doc.securityBarrier === true) && doc.materialized === true)
+    notes.push("A materialized view takes no security options: they are left out (MQ4056).");
   return notes.length ? notes.join(" ") : null;
 }
 

@@ -28,6 +28,7 @@ import { useTableDoc, type TableDoc } from "@/workspaces/database/useTableDoc";
 import { domIdOf, EditorLayout, useEditorContext, type EditorContext } from "../EditorFrame";
 import { CommentField, DatabaseLine, SchemaField } from "./fields";
 import { PartTab, useSelectedPart, usePartEdits } from "./TablePartsTabs";
+import { ExclusionsTab, StorageTab } from "./TableOptionsTabs";
 
 type Rec = Record<string, unknown>;
 
@@ -147,6 +148,8 @@ function TableBody({
     { value: "indexes", content: <PartTab td={td} kind="index" /> },
     { value: "foreign-keys", content: <PartTab td={td} kind="foreign-key" /> },
     { value: "checks", content: <PartTab td={td} kind="check" /> },
+    { value: "exclusions", content: <ExclusionsTab td={td} /> },
+    { value: "storage", content: <StorageTab td={td} /> },
     { value: "ddl", content: <DdlTab database={database} tableKey={tableKey} />, fill: true },
     { value: "references", content: <ReferencesTab td={td} /> },
     { value: "json", content: <TableJsonTab td={td} ctx={ctx} />, fill: true },
