@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01K70SPKCHH03EYJDBHY64C3FV",
+  "name": "replenishes",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "ends": [
+    {
+      "id": "01K70SPKCHY4QFRBQ8X6Q8XYQ7",
+      "entity": "01K70SPKCHBT695JVQ6ZCCERFX",
+      "role": "part",
+      "navigation": "part",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01K70SPKCHNHYQXAC0EXCNC4YB",
+      "entity": "01K70SPKCHWFDNY2MX37QPRHK1",
+      "role": "orders",
+      "navigation": "orders"
+    }
+  ]
+}

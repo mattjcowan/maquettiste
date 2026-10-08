@@ -1,0 +1,159 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHGEZQZCYXWCYQSHES",
+  "name": "Rental",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "lifecycle": "01K70SPKCJ1MQVTJ617RY2PG69",
+  "description": "One ride, from the reservation to the bike's return and the final charge.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "finance"
+  ],
+  "category": "01K70SPKCH02AHF47S9JWSBD33",
+  "key": {
+    "attributes": [
+      "01K70SPKCHVEE1XVZ4R11H0RNC"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHVEE1XVZ4R11H0RNC",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHA8TKNXE1BFA09FBK",
+      "name": "reference",
+      "type": "string",
+      "length": 16,
+      "required": true,
+      "unique": true
+    },
+    {
+      "id": "01K70SPKCHGDH2XWZT9C9T93YP",
+      "name": "status",
+      "type": {
+        "ref": "01K70SPKCHF1YVYGM3RG4SC8B6"
+      },
+      "required": true,
+      "default": "Reserved"
+    },
+    {
+      "id": "01K70SPKCHY6QK3WV64KGQRYQA",
+      "name": "reservedAt",
+      "type": "datetimeoffset",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH9WW39EG9GC42GVWR",
+      "name": "startedAt",
+      "type": "datetimeoffset"
+    },
+    {
+      "id": "01K70SPKCH4Q8QW4HZ2ZK746HP",
+      "name": "dueAt",
+      "type": "datetimeoffset",
+      "indexed": true
+    },
+    {
+      "id": "01K70SPKCHBYWBCP33BSBJFQTD",
+      "name": "returnedAt",
+      "type": "datetimeoffset"
+    },
+    {
+      "id": "01K70SPKCHSMNFME5B032X2PJE",
+      "name": "distanceKm",
+      "type": "decimal",
+      "precision": 7,
+      "scale": 2
+    },
+    {
+      "id": "01K70SPKCHJPFG01GR5FX727VV",
+      "name": "totalCharge",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 2,
+      "required": true,
+      "default": 0
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13VSPT0JR0NQDK5J1H",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP124TEYG34TK4370963",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHVEE1XVZ4R11H0RNC",
+          "column": "01M4CVYP127VP3VSJ4V00N56ZF"
+        },
+        {
+          "attribute": "01K70SPKCHA8TKNXE1BFA09FBK",
+          "column": "01M4CVYP12CGX72EW26NENZ0CS"
+        },
+        {
+          "attribute": "01K70SPKCHGDH2XWZT9C9T93YP",
+          "column": "01M4CVYP12N8HVTVYC39Q7W5R2"
+        },
+        {
+          "attribute": "01K70SPKCHY6QK3WV64KGQRYQA",
+          "column": "01M4CVYP12M947T2AA447YSMCR"
+        },
+        {
+          "attribute": "01K70SPKCH9WW39EG9GC42GVWR",
+          "column": "01M4CVYP12S3Y0VD2C3BTNBVHZ"
+        },
+        {
+          "attribute": "01K70SPKCH4Q8QW4HZ2ZK746HP",
+          "column": "01M4CVYP12CFZQ7ZTB94JXH3G1"
+        },
+        {
+          "attribute": "01K70SPKCHBYWBCP33BSBJFQTD",
+          "column": "01M4CVYP12BCTQGCNCZYRWVZXD"
+        },
+        {
+          "attribute": "01K70SPKCHSMNFME5B032X2PJE",
+          "column": "01M4CVYP12KAZW152WS2V13PR4"
+        },
+        {
+          "attribute": "01K70SPKCHJPFG01GR5FX727VV",
+          "column": "01M4CVYP12AV12B0GGV661APEB"
+        },
+        {
+          "attribute": "01K70SPKCH3FZBNEK76DKSHC1W",
+          "column": "01M4CVYP128415ZM91MWME5BP2"
+        },
+        {
+          "attribute": "01K70SPKCHTFH173XCG3GVCRZB",
+          "column": "01M4CVYP12TTXGJT76A0KH8Q7D"
+        },
+        {
+          "attribute": "01K70SPKCHECC0G5ZZK29RKRCB",
+          "column": "01M4CVYP12X3K1B3VXJTXYNKX4"
+        },
+        {
+          "attribute": "01K70SPKCHTXG0446TCM2W4VNQ",
+          "column": "01M4CVYP12YFK9YT9XBR42ZQM6"
+        },
+        {
+          "attribute": "01K70SPKCH9C27308499YR775A",
+          "column": "01M4CVYP1286FC301Q355SKAPJ"
+        },
+        {
+          "attribute": "01K70SPKCHGTQYKEYKARH3H5J4",
+          "column": "01M4CVYP12R6FGB6TCYAJ4K965"
+        },
+        {
+          "attribute": "01K70SPKCHNDP6N7DCWPRKKFB7",
+          "column": "01M4CVYP12N78TJECWV8Z605R7"
+        }
+      ]
+    }
+  ]
+}

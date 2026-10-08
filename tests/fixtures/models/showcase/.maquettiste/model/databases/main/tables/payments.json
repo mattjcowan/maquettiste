@@ -1,0 +1,116 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP12AGSKBFYZYR0G21VA",
+  "name": "payments",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHFTKCR2VV8CX9VR0Q",
+  "columns": [
+    {
+      "id": "01M4CVYP12EW2PA6GA86MHGG20",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12YSAE05EQQHJ0KZ22",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP128J74SSW1NKTK0PNA",
+      "name": "paid_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12S78FX746RCKT7QD6",
+      "name": "method",
+      "type": "string",
+      "length": 16,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12MDWFWDGYP9CD63P6",
+      "name": "external_reference",
+      "type": "string",
+      "length": 64,
+      "comment": "The payment provider's reference, when there is one."
+    },
+    {
+      "id": "01M4CVYP12DMR7H41G3A4RNA7T",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M4CVYP127D3ED4M9TKGE3G56",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row last changed."
+    },
+    {
+      "id": "01M4CVYP12SQWJR499YYM4MMWJ",
+      "name": "member_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_payments",
+    "columns": [
+      "01M4CVYP12EW2PA6GA86MHGG20"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M4CVYP13BC2DVVAVHH6BBWWN",
+      "name": "uq_payments_external_reference",
+      "columns": [
+        "01M4CVYP12MDWFWDGYP9CD63P6"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP13Q5CMFQHCGJ5AKTX8",
+      "name": "fk_payments_member_id",
+      "columns": [
+        "01M4CVYP12SQWJR499YYM4MMWJ"
+      ],
+      "referencesTable": "01M4CVYP1293TR3T6VN8PVNN2S",
+      "referencesColumns": [
+        "01M4CVYP12VMHGSFTSC5MDEC8Z"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M4CVYP1348FZ3R4R2CVV5SQX",
+      "name": "ix_payments_paid_at",
+      "columns": [
+        {
+          "column": "01M4CVYP128J74SSW1NKTK0PNA"
+        }
+      ]
+    },
+    {
+      "id": "01K70SPKCJH0XGEN7JK2J342P6",
+      "name": "ix_payments_member_id",
+      "columns": [
+        {
+          "column": "01M4CVYP12SQWJR499YYM4MMWJ"
+        }
+      ]
+    }
+  ],
+  "comment": "Money received from a member, for a membership or for rides."
+}

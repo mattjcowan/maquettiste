@@ -1,0 +1,69 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01K70SPKCJ0J5XE6C1HHNHQNC2",
+  "name": "Workshop",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "description": "Repair jobs, who does them and the parts they use.",
+  "members": [
+    {
+      "element": "01K70SPKCHYH688509K0G7QPM8",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01K70SPKCH28NBYKWV52NFZ5PN",
+      "x": 380,
+      "y": 40
+    },
+    {
+      "element": "01K70SPKCHBT695JVQ6ZCCERFX",
+      "x": 720,
+      "y": 40
+    },
+    {
+      "element": "01K70SPKCH9NH2H31PJDK4XMTT",
+      "x": 40,
+      "y": 402
+    },
+    {
+      "element": "01K70SPKCHXNQ7XPNSZP6Q6F6Z",
+      "x": 380,
+      "y": 402
+    },
+    {
+      "element": "01K70SPKCHWFDNY2MX37QPRHK1",
+      "x": 720,
+      "y": 402
+    },
+    {
+      "element": "01K70SPKCHG2XJM8GCFSD7GP71",
+      "x": 720,
+      "y": 764
+    },
+    {
+      "element": "01K70SPKCHTWFTD0AA7V0JNB9C"
+    },
+    {
+      "element": "01K70SPKCHRGC9TX91ETEFSEJA"
+    },
+    {
+      "element": "01K70SPKCHXC622STKN17PC945"
+    },
+    {
+      "element": "01K70SPKCHTM51GX3QZ4Q3VF5R"
+    },
+    {
+      "element": "01K70SPKCHH03EYJDBHY64C3FV"
+    },
+    {
+      "element": "01K70SPKCHEKHGGNA69QDZTA2C"
+    },
+    {
+      "element": "01K70SPKCHD0ZK77WGWJ9WYYJA"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.85
+  }
+}

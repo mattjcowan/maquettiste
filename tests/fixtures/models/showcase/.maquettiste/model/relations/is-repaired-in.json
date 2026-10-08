@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01K70SPKCHTM51GX3QZ4Q3VF5R",
+  "name": "is repaired in",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "ends": [
+    {
+      "id": "01K70SPKCH6PVEWY1XXYVT71F3",
+      "entity": "01K70SPKCHXNQ7XPNSZP6Q6F6Z",
+      "role": "bike",
+      "navigation": "bike",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01K70SPKCHJX74N8NWVBYC2RJA",
+      "entity": "01K70SPKCH28NBYKWV52NFZ5PN",
+      "role": "repairJobs",
+      "navigation": "repairJobs"
+    }
+  ]
+}

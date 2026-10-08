@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/actor.json",
+  "kind": "actor",
+  "id": "01K70SPKCJDF4WEW7YWHRM9TF8",
+  "name": "PaymentService",
+  "displayName": "Payment service",
+  "type": "external-system",
+  "description": "The card payment provider the cooperative uses."
+}

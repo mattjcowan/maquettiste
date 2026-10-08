@@ -1,0 +1,90 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHWFDNY2MX37QPRHK1",
+  "name": "PartOrder",
+  "displayName": "Part order",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "description": "Parts ordered from a supplier for stock or for a waiting repair.",
+  "tags": [
+    "inventory",
+    "finance"
+  ],
+  "category": "01K70SPKCHP6GSXB9JTFJ2X40D",
+  "key": {
+    "attributes": [
+      "01K70SPKCHVHDR3DETZ678YN1B"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHVHDR3DETZ678YN1B",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH6HSYK5ME2G7BY79M",
+      "name": "quantity",
+      "type": "int32",
+      "required": true,
+      "validation": {
+        "min": 1
+      }
+    },
+    {
+      "id": "01K70SPKCHFRDVBQQP7C6FW90C",
+      "name": "orderedOn",
+      "type": "date",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHARBM2BQ1J1TDKW4J",
+      "name": "expectedOn",
+      "type": "date"
+    },
+    {
+      "id": "01K70SPKCH21VBPP8051WMG1X4",
+      "name": "receivedOn",
+      "type": "date"
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP134DDTVR79VPS9BG9J",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP128VZ0PZT0FPX70DRV",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHVHDR3DETZ678YN1B",
+          "column": "01M4CVYP12T9ST1S11BQC21QB3"
+        },
+        {
+          "attribute": "01K70SPKCH6HSYK5ME2G7BY79M",
+          "column": "01M4CVYP12WRCFQGYF3TC0XZMH"
+        },
+        {
+          "attribute": "01K70SPKCHFRDVBQQP7C6FW90C",
+          "column": "01M4CVYP127WGDXYGZ7H9QXDP8"
+        },
+        {
+          "attribute": "01K70SPKCHARBM2BQ1J1TDKW4J",
+          "column": "01M4CVYP12JTGK7W385E187YJP"
+        },
+        {
+          "attribute": "01K70SPKCH21VBPP8051WMG1X4",
+          "column": "01M4CVYP12X3R9JWJMV5G2BKES"
+        },
+        {
+          "attribute": "01K70SPKCHY4QFRBQ8X6Q8XYQ7",
+          "column": "01M4CVYP129VQCSR695YH7AV8J"
+        },
+        {
+          "attribute": "01K70SPKCHD3MS9E10J10ZWRFK",
+          "column": "01M4CVYP12Y8TZWQXCCGAZAK71"
+        }
+      ]
+    }
+  ]
+}

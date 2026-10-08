@@ -1,0 +1,125 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHXNQ7XPNSZP6Q6F6Z",
+  "name": "Bike",
+  "package": "01K70SPKCHMCQYF0NG3D335212",
+  "description": "A bicycle owned by the cooperative.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "safety",
+    "inventory"
+  ],
+  "category": "01K70SPKCH02AHF47S9JWSBD33",
+  "key": {
+    "attributes": [
+      "01K70SPKCHS9C509QZKYQP7MK9"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHS9C509QZKYQP7MK9",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHHA0RG31297C9A8XV",
+      "name": "frameNumber",
+      "type": "string",
+      "length": 32,
+      "required": true,
+      "unique": true,
+      "description": "Stamped under the bottom bracket."
+    },
+    {
+      "id": "01K70SPKCH5S96WJ4BDPNFBZ7F",
+      "name": "nickname",
+      "type": "string",
+      "length": 40,
+      "description": "Members name their favourite bikes."
+    },
+    {
+      "id": "01K70SPKCH7NTGZ2SPNP57XPQT",
+      "name": "bikeType",
+      "type": {
+        "ref": "01K70SPKCHS7TTDDQ7HK7RM3T0"
+      },
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHNMXTQWACDJXG6XTY",
+      "name": "condition",
+      "type": {
+        "ref": "01K70SPKCHZJ26Z9CVP71ZG7SH"
+      },
+      "required": true,
+      "default": "Good"
+    },
+    {
+      "id": "01K70SPKCHCJ6KCBDN84RPEBK3",
+      "name": "purchasedOn",
+      "type": "date"
+    },
+    {
+      "id": "01K70SPKCHW38RHYE3FMNFY363",
+      "name": "odometerKm",
+      "type": "int32",
+      "required": true,
+      "default": 0
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13VGDB7JVFRNVNHGVS",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP12G3RZR6Z8E2FQH3RZ",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHS9C509QZKYQP7MK9",
+          "column": "01M4CVYP12WC6KXK2GX3PCWYCN"
+        },
+        {
+          "attribute": "01K70SPKCHHA0RG31297C9A8XV",
+          "column": "01M4CVYP12RP63W3N0BXR4CNHV"
+        },
+        {
+          "attribute": "01K70SPKCH5S96WJ4BDPNFBZ7F",
+          "column": "01M4CVYP12MEBT60HEG45V1Z8Y"
+        },
+        {
+          "attribute": "01K70SPKCH7NTGZ2SPNP57XPQT",
+          "column": "01M4CVYP12JPDVRCARF45NTYHV"
+        },
+        {
+          "attribute": "01K70SPKCHNMXTQWACDJXG6XTY",
+          "column": "01M4CVYP12P6A876542198EQ2J"
+        },
+        {
+          "attribute": "01K70SPKCHCJ6KCBDN84RPEBK3",
+          "column": "01M4CVYP12RQ8C5AVMKG7V796N"
+        },
+        {
+          "attribute": "01K70SPKCHW38RHYE3FMNFY363",
+          "column": "01M4CVYP12VRWH4B4Y1EFACVHH"
+        },
+        {
+          "attribute": "01K70SPKCH3FZBNEK76DKSHC1W",
+          "column": "01M4CVYP12E1924Q86502XXNZC"
+        },
+        {
+          "attribute": "01K70SPKCHTFH173XCG3GVCRZB",
+          "column": "01M4CVYP126C1HV7BX3GAAYWZ5"
+        },
+        {
+          "attribute": "01K70SPKCHBYK1XDDCEX05HTCY",
+          "column": "01M4CVYP12AP9WQY11KAC9Y5RP"
+        }
+      ]
+    }
+  ]
+}

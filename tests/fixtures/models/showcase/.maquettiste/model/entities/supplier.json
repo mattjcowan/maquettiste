@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHG2XJM8GCFSD7GP71",
+  "name": "Supplier",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "description": "A shop or wholesaler the workshop orders parts from.",
+  "category": "01K70SPKCHP6GSXB9JTFJ2X40D",
+  "key": {
+    "attributes": [
+      "01K70SPKCHP9FTQJE2S8NDKYT0"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHP9FTQJE2S8NDKYT0",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH4K193SJHPTQNF7PT",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH4SCXR3ZG4V7ZPEN3",
+      "name": "email",
+      "type": "string",
+      "length": 254
+    },
+    {
+      "id": "01K70SPKCH67HBVGGRQQ4GE6A0",
+      "name": "leadTimeDays",
+      "type": "int16",
+      "required": true,
+      "default": 5
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13Y2PDQKKYHM0BB12W",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP128KY3CR5NCGVY4V9W",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHP9FTQJE2S8NDKYT0",
+          "column": "01M4CVYP12DTH73MT5BPWDBP2Y"
+        },
+        {
+          "attribute": "01K70SPKCH4K193SJHPTQNF7PT",
+          "column": "01M4CVYP12MN97MASG1KXBQ2DF"
+        },
+        {
+          "attribute": "01K70SPKCH4SCXR3ZG4V7ZPEN3",
+          "column": "01M4CVYP12XQ7VKM5NZPV15E48"
+        },
+        {
+          "attribute": "01K70SPKCH67HBVGGRQQ4GE6A0",
+          "column": "01M4CVYP129T6MN1Y7PKGS9M92"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01K70SPKCHEP4J6H866Y0C7AB7",
+  "name": "Membership",
+  "description": "Members of the cooperative, their plans, payments and volunteer shifts."
+}

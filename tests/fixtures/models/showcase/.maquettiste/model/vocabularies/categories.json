@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/category-tree.json",
+  "kind": "category-tree",
+  "id": "01K70SPKCHGJ39738BMTSQ1JAT",
+  "name": "categories",
+  "categories": [
+    {
+      "id": "01K70SPKCH02AHF47S9JWSBD33",
+      "name": "Core records",
+      "order": 1,
+      "description": "The things the cooperative exists to manage."
+    },
+    {
+      "id": "01K70SPKCHP6GSXB9JTFJ2X40D",
+      "name": "Operations",
+      "order": 2,
+      "description": "Day-to-day work around the core records."
+    },
+    {
+      "id": "01K70SPKCHDHSVGPYRQ8GW49PD",
+      "name": "Money",
+      "order": 3,
+      "description": "Fees, charges and payments."
+    }
+  ]
+}

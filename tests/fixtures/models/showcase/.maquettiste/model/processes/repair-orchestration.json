@@ -1,0 +1,268 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01K70SPKCJRBJW4PQQNAB9281H",
+  "name": "RepairOrchestration",
+  "displayName": "Repair orchestration",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "subject": "01K70SPKCH28NBYKWV52NFZ5PN",
+  "description": "A repair job from intake to sign-off: the mechanic's assessment and the parts run in parallel.",
+  "context": [
+    {
+      "id": "01K70SPKCJGTQ60Z4Y1H5ZTJA3",
+      "name": "supplierReminders",
+      "type": "int32",
+      "default": 0
+    }
+  ],
+  "events": [
+    {
+      "id": "01K70SPKCJ3NBGA1CK7P5HX0MD",
+      "name": "startWork",
+      "displayName": "Start work",
+      "actors": [
+        "01K70SPKCJCT6X29S7QCB8EVAZ"
+      ]
+    },
+    {
+      "id": "01K70SPKCJ5FDA7H5RQ5SXKC4E",
+      "name": "finishRepair",
+      "displayName": "Finish repair",
+      "actors": [
+        "01K70SPKCJQJHA2PDN446V12A5"
+      ]
+    },
+    {
+      "id": "01K70SPKCJZQXB76Q8SKXG3MSM",
+      "name": "signOff",
+      "displayName": "Sign off",
+      "actors": [
+        "01K70SPKCJCT6X29S7QCB8EVAZ"
+      ]
+    },
+    {
+      "id": "01K70SPKCJN192JTE5MCMWVFVT",
+      "name": "sendBack",
+      "displayName": "Send back",
+      "payload": [
+        {
+          "id": "01K70SPKCJKTK7T621ZVBKKBHE",
+          "name": "reason",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "actors": [
+        "01K70SPKCJCT6X29S7QCB8EVAZ"
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "01K70SPKCJ3X074JJEJS3CMY64",
+      "name": "chaseSupplier",
+      "displayName": "Chase the supplier",
+      "expression": "({ supplierReminders: context.supplierReminders + 1 })"
+    }
+  ],
+  "states": [
+    {
+      "id": "01K70SPKCJDJN2000EYBCJ7Q9J",
+      "name": "Intake",
+      "description": "The bike is in the workshop, waiting for a bench."
+    },
+    {
+      "id": "01K70SPKCJD6SFD9BVGCGJHD43",
+      "name": "InProgress",
+      "displayName": "In progress",
+      "type": "parallel",
+      "states": [
+        {
+          "id": "01K70SPKCJT96RB4H37RYSKKRT",
+          "name": "Assessment",
+          "type": "compound",
+          "states": [
+            {
+              "id": "01K70SPKCJABJPZFBFM5ANN1P8",
+              "name": "Inspecting",
+              "invoke": [
+                {
+                  "id": "01K70SPKCJH1D1Y262RVXZ6CYS",
+                  "name": "inspectBike",
+                  "displayName": "Inspect the bike",
+                  "type": "human-task",
+                  "actors": [
+                    "01K70SPKCJQJHA2PDN446V12A5"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "01K70SPKCJ5CMDRCTZM8EQ5M51",
+              "name": "Assessed",
+              "type": "final"
+            }
+          ]
+        },
+        {
+          "id": "01K70SPKCJ08KWH5YNWGA33T5Y",
+          "name": "Parts",
+          "type": "compound",
+          "states": [
+            {
+              "id": "01K70SPKCJA363BG8VP83NPRQW",
+              "name": "CheckingStock",
+              "displayName": "Checking stock",
+              "invoke": [
+                {
+                  "id": "01K70SPKCJGDJHPEXW51CRY1NF",
+                  "name": "reserveParts",
+                  "displayName": "Reserve parts from stock",
+                  "type": "service"
+                }
+              ]
+            },
+            {
+              "id": "01K70SPKCJX32PSFS2F27XYJ0E",
+              "name": "AwaitingDelivery",
+              "displayName": "Awaiting delivery",
+              "invoke": [
+                {
+                  "id": "01K70SPKCJR72TWY3ZWKN10NQ8",
+                  "name": "orderParts",
+                  "displayName": "Order parts from a supplier",
+                  "type": "service"
+                }
+              ]
+            },
+            {
+              "id": "01K70SPKCJDKZB9KDY95B7QYRS",
+              "name": "PartsReady",
+              "displayName": "Parts ready",
+              "type": "final"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "01K70SPKCJ837QHZ61EAF0J33W",
+      "name": "Repairing"
+    },
+    {
+      "id": "01K70SPKCJCAQ1VFXVJCVJWVYX",
+      "name": "QualityCheck",
+      "displayName": "Quality check"
+    },
+    {
+      "id": "01K70SPKCJ3WS4B5CBSCAF8DSP",
+      "name": "BackInService",
+      "displayName": "Back in service",
+      "type": "final"
+    }
+  ],
+  "initial": "01K70SPKCJDJN2000EYBCJ7Q9J",
+  "transitions": [
+    {
+      "id": "01K70SPKCJ9YG3HVSX8E1FAZHC",
+      "source": "01K70SPKCJDJN2000EYBCJ7Q9J",
+      "event": "01K70SPKCJ3NBGA1CK7P5HX0MD",
+      "targets": [
+        "01K70SPKCJD6SFD9BVGCGJHD43"
+      ]
+    },
+    {
+      "id": "01K70SPKCJRE22071FAFFP26TS",
+      "source": "01K70SPKCJABJPZFBFM5ANN1P8",
+      "trigger": "invoke-done",
+      "invoke": "01K70SPKCJH1D1Y262RVXZ6CYS",
+      "targets": [
+        "01K70SPKCJ5CMDRCTZM8EQ5M51"
+      ]
+    },
+    {
+      "id": "01K70SPKCJRGKJK285JRH9KXHK",
+      "source": "01K70SPKCJA363BG8VP83NPRQW",
+      "trigger": "invoke-done",
+      "invoke": "01K70SPKCJGDJHPEXW51CRY1NF",
+      "targets": [
+        "01K70SPKCJDKZB9KDY95B7QYRS"
+      ]
+    },
+    {
+      "id": "01K70SPKCJGAW18468XDDFK194",
+      "displayName": "Out of stock",
+      "source": "01K70SPKCJA363BG8VP83NPRQW",
+      "trigger": "invoke-error",
+      "invoke": "01K70SPKCJGDJHPEXW51CRY1NF",
+      "targets": [
+        "01K70SPKCJX32PSFS2F27XYJ0E"
+      ]
+    },
+    {
+      "id": "01K70SPKCJQ86V2X7RK8K3PF7J",
+      "source": "01K70SPKCJX32PSFS2F27XYJ0E",
+      "trigger": "invoke-done",
+      "invoke": "01K70SPKCJR72TWY3ZWKN10NQ8",
+      "targets": [
+        "01K70SPKCJDKZB9KDY95B7QYRS"
+      ]
+    },
+    {
+      "id": "01K70SPKCJ4A2FT6DF2XP2Z0RY",
+      "source": "01K70SPKCJX32PSFS2F27XYJ0E",
+      "trigger": "after",
+      "after": "P7D",
+      "actions": [
+        "01K70SPKCJ3X074JJEJS3CMY64"
+      ]
+    },
+    {
+      "id": "01K70SPKCJBWQ4DM31W0HZX8HE",
+      "source": "01K70SPKCJD6SFD9BVGCGJHD43",
+      "trigger": "done",
+      "targets": [
+        "01K70SPKCJ837QHZ61EAF0J33W"
+      ]
+    },
+    {
+      "id": "01K70SPKCJ00M32N22YHNS7MFJ",
+      "source": "01K70SPKCJ837QHZ61EAF0J33W",
+      "event": "01K70SPKCJ5FDA7H5RQ5SXKC4E",
+      "targets": [
+        "01K70SPKCJCAQ1VFXVJCVJWVYX"
+      ]
+    },
+    {
+      "id": "01K70SPKCJ3TXYCZ33W2NA9R67",
+      "source": "01K70SPKCJCAQ1VFXVJCVJWVYX",
+      "event": "01K70SPKCJZQXB76Q8SKXG3MSM",
+      "targets": [
+        "01K70SPKCJ3WS4B5CBSCAF8DSP"
+      ],
+      "gate": {
+        "id": "01K70SPKCJMZ7GXN25MSM7VNVT",
+        "name": "roadworthy",
+        "displayName": "Roadworthy sign-off",
+        "signers": [
+          "01K70SPKCJCT6X29S7QCB8EVAZ"
+        ],
+        "meanings": [
+          {
+            "id": "01K70SPKCJSSEBB70728XSDDRK",
+            "name": "roadworthy",
+            "displayName": "Safe to ride"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01K70SPKCJ4VBVDY340681D3W3",
+      "source": "01K70SPKCJCAQ1VFXVJCVJWVYX",
+      "event": "01K70SPKCJN192JTE5MCMWVFVT",
+      "targets": [
+        "01K70SPKCJ837QHZ61EAF0J33W"
+      ]
+    }
+  ]
+}

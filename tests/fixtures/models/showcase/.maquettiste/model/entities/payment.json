@@ -1,0 +1,110 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCH60F877W96S1XDT1Z",
+  "name": "Payment",
+  "package": "01K70SPKCHEP4J6H866Y0C7AB7",
+  "description": "Money received from a member, for a membership or for rides.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "finance"
+  ],
+  "category": "01K70SPKCHDHSVGPYRQ8GW49PD",
+  "key": {
+    "attributes": [
+      "01K70SPKCHGBXDGFTCM3QTM78B"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHGBXDGFTCM3QTM78B",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHYBSTN4ATBA2TDEWN",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 2,
+      "required": true,
+      "validation": {
+        "min": 0
+      }
+    },
+    {
+      "id": "01K70SPKCH9RH01QC9F0P4575S",
+      "name": "paidAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "indexed": true
+    },
+    {
+      "id": "01K70SPKCHQ5P2GMVNWC9ESBG1",
+      "name": "method",
+      "type": "string",
+      "length": 16,
+      "required": true,
+      "validation": {
+        "allowedValues": [
+          "card",
+          "cash",
+          "transfer"
+        ]
+      }
+    },
+    {
+      "id": "01K70SPKCHYWG4HVYFVTFP5PYH",
+      "name": "externalReference",
+      "type": "string",
+      "length": 64,
+      "unique": true,
+      "description": "The payment provider's reference, when there is one."
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13AA5DRJXYA3RK8DD5",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP12AGSKBFYZYR0G21VA",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHGBXDGFTCM3QTM78B",
+          "column": "01M4CVYP12EW2PA6GA86MHGG20"
+        },
+        {
+          "attribute": "01K70SPKCHYBSTN4ATBA2TDEWN",
+          "column": "01M4CVYP12YSAE05EQQHJ0KZ22"
+        },
+        {
+          "attribute": "01K70SPKCH9RH01QC9F0P4575S",
+          "column": "01M4CVYP128J74SSW1NKTK0PNA"
+        },
+        {
+          "attribute": "01K70SPKCHQ5P2GMVNWC9ESBG1",
+          "column": "01M4CVYP12S78FX746RCKT7QD6"
+        },
+        {
+          "attribute": "01K70SPKCHYWG4HVYFVTFP5PYH",
+          "column": "01M4CVYP12MDWFWDGYP9CD63P6"
+        },
+        {
+          "attribute": "01K70SPKCH3FZBNEK76DKSHC1W",
+          "column": "01M4CVYP12DMR7H41G3A4RNA7T"
+        },
+        {
+          "attribute": "01K70SPKCHTFH173XCG3GVCRZB",
+          "column": "01M4CVYP127D3ED4M9TKGE3G56"
+        },
+        {
+          "attribute": "01K70SPKCH07ATPPTS2QFHWV9Y",
+          "column": "01M4CVYP12SQWJR499YYM4MMWJ"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHBT695JVQ6ZCCERFX",
+  "name": "Part",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "description": "A spare part kept in the workshop's stock.",
+  "tags": [
+    "inventory"
+  ],
+  "category": "01K70SPKCHP6GSXB9JTFJ2X40D",
+  "key": {
+    "attributes": [
+      "01K70SPKCH489XCP8Z8D1VBZH0"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCH489XCP8Z8D1VBZH0",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH2GM110NM07X4HWME",
+      "name": "partNumber",
+      "type": "string",
+      "length": 24,
+      "required": true,
+      "unique": true
+    },
+    {
+      "id": "01K70SPKCHPE0W2JYJ52C9S5E6",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHV6FMFKDGX4R3Z5JH",
+      "name": "unitCost",
+      "type": "decimal",
+      "precision": 8,
+      "scale": 2,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHCW3STQ8XZQ71KKJ0",
+      "name": "stockOnHand",
+      "type": "int32",
+      "required": true,
+      "default": 0
+    },
+    {
+      "id": "01K70SPKCHZ4YAZH8G8B42Z95Z",
+      "name": "reorderLevel",
+      "type": "int32",
+      "required": true,
+      "default": 2
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13MBQCD00VFCKVGYN8",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP125DWA1EPJRV0JVT88",
+      "fields": [
+        {
+          "attribute": "01K70SPKCH489XCP8Z8D1VBZH0",
+          "column": "01M4CVYP12B8Z91NA0W1F95FWC"
+        },
+        {
+          "attribute": "01K70SPKCH2GM110NM07X4HWME",
+          "column": "01M4CVYP12CC355E9SV5J5E3P9"
+        },
+        {
+          "attribute": "01K70SPKCHPE0W2JYJ52C9S5E6",
+          "column": "01M4CVYP12WXY2EGCZ6WTNR30V"
+        },
+        {
+          "attribute": "01K70SPKCHV6FMFKDGX4R3Z5JH",
+          "column": "01M4CVYP1223Q6F9GJXF5EQ46B"
+        },
+        {
+          "attribute": "01K70SPKCHCW3STQ8XZQ71KKJ0",
+          "column": "01M4CVYP12JJC9VKV2XQ48XTGB"
+        },
+        {
+          "attribute": "01K70SPKCHZ4YAZH8G8B42Z95Z",
+          "column": "01M4CVYP12A6A5WZ9YJ6XJQ9ZY"
+        }
+      ]
+    }
+  ]
+}

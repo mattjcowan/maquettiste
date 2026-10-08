@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/actor.json",
+  "kind": "actor",
+  "id": "01K70SPKCJQJHA2PDN446V12A5",
+  "name": "Mechanic",
+  "displayName": "Mechanic",
+  "type": "role",
+  "description": "Repairs bikes in the workshop."
+}

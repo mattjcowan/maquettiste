@@ -1,0 +1,125 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCH28NBYKWV52NFZ5PN",
+  "name": "RepairJob",
+  "displayName": "Repair job",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "description": "Work on one bike, from intake to the bike's return to the fleet.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "safety"
+  ],
+  "category": "01K70SPKCHP6GSXB9JTFJ2X40D",
+  "key": {
+    "attributes": [
+      "01K70SPKCHSHTEZ05KR40P6WQM"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHSHTEZ05KR40P6WQM",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHQ4HQAA0KB6DSF9KC",
+      "name": "jobNumber",
+      "type": "string",
+      "length": 12,
+      "required": true,
+      "unique": true
+    },
+    {
+      "id": "01K70SPKCHT702BP4KRB083B7G",
+      "name": "category",
+      "type": {
+        "ref": "01K70SPKCH2QND2MWE4JXS9QQR"
+      },
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHWMQ6KHYNJF0NCK6V",
+      "name": "openedAt",
+      "type": "datetimeoffset",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHQ11Z2J53T8JN2PY0",
+      "name": "closedAt",
+      "type": "datetimeoffset"
+    },
+    {
+      "id": "01K70SPKCHHK5SJEJXN53G7MM6",
+      "name": "estimatedMinutes",
+      "type": "int32"
+    },
+    {
+      "id": "01K70SPKCHNDZ48A2NQ3JTMR7G",
+      "name": "notes",
+      "type": "text"
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13VDEQW8T4P03XM8PG",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP12FYYME7SZ311YKKH8",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHSHTEZ05KR40P6WQM",
+          "column": "01M4CVYP12KCMGKFPB4Q4KJGEZ"
+        },
+        {
+          "attribute": "01K70SPKCHQ4HQAA0KB6DSF9KC",
+          "column": "01M4CVYP12XJ50QPSKVGBV6F2A"
+        },
+        {
+          "attribute": "01K70SPKCHT702BP4KRB083B7G",
+          "column": "01M4CVYP122MGWY86FR25PA6ZH"
+        },
+        {
+          "attribute": "01K70SPKCHWMQ6KHYNJF0NCK6V",
+          "column": "01M4CVYP12NB9ENCGVXN30ZYY1"
+        },
+        {
+          "attribute": "01K70SPKCHQ11Z2J53T8JN2PY0",
+          "column": "01M4CVYP12VAF3VP4AKXJB0KQK"
+        },
+        {
+          "attribute": "01K70SPKCHHK5SJEJXN53G7MM6",
+          "column": "01M4CVYP128KB4KMMX0PZ7H892"
+        },
+        {
+          "attribute": "01K70SPKCHNDZ48A2NQ3JTMR7G",
+          "column": "01M4CVYP121S34JJMFHH555SDQ"
+        },
+        {
+          "attribute": "01K70SPKCH3FZBNEK76DKSHC1W",
+          "column": "01M4CVYP12R1JAR25JRGN68AY5"
+        },
+        {
+          "attribute": "01K70SPKCHTFH173XCG3GVCRZB",
+          "column": "01M4CVYP12PNS3NC19QJJDHJG8"
+        },
+        {
+          "attribute": "01K70SPKCHPRHYWVN4Q2M6FR02",
+          "column": "01M4CVYP128Y4W6N8G42KD84M5"
+        },
+        {
+          "attribute": "01K70SPKCHNQ0VYYW1WFCB0A8B",
+          "column": "01M4CVYP12MX1A9XYHQZFJS3D6"
+        },
+        {
+          "attribute": "01K70SPKCH6PVEWY1XXYVT71F3",
+          "column": "01M4CVYP12YGX6W0T5Q6BB1TSR"
+        }
+      ]
+    }
+  ]
+}

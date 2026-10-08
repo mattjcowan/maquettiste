@@ -1,0 +1,7 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01K70SPKCHMCQYF0NG3D335212",
+  "name": "Fleet",
+  "description": "Stations, docks, bikes and the accessories fitted to them."
+}

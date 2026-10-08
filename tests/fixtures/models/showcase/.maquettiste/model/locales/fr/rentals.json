@@ -1,0 +1,50 @@
+{
+  "$schema": "../../../.schema/v1/locale.json",
+  "kind": "locale-shard",
+  "locale": "fr",
+  "scope": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "entries": {
+    "01K70SPKCH1X7J3M33XCRS8ER8": {
+      "displayName": "Locations",
+      "pluralName": "Locations",
+      "description": "Les trajets, de la réservation au retour, leurs frais, leurs tarifs et les signalements de dégâts.",
+      "src": {
+        "displayName": "a324453f",
+        "pluralName": "a324453f",
+        "description": "130c5041"
+      }
+    },
+    "01K70SPKCH7C3S84873FK3CFT9": {
+      "displayName": "Frais de location",
+      "pluralName": "Frais de location",
+      "src": {
+        "displayName": "c3b2d338",
+        "pluralName": "c3b2d338"
+      }
+    },
+    "01K70SPKCH9NH2H31PJDK4XMTT": {
+      "displayName": "Signalement de dégât",
+      "pluralName": "Signalements de dégâts",
+      "src": {
+        "displayName": "f11aba10",
+        "pluralName": "f11aba10"
+      }
+    },
+    "01K70SPKCHGEZQZCYXWCYQSHES": {
+      "displayName": "Location",
+      "pluralName": "Locations",
+      "src": {
+        "displayName": "dbd6652e",
+        "pluralName": "dbd6652e"
+      }
+    },
+    "01K70SPKCHQMZKG99E2WS0Z9N4": {
+      "displayName": "Tarif",
+      "pluralName": "Tarifs",
+      "src": {
+        "displayName": "cbaa1d8c",
+        "pluralName": "cbaa1d8c"
+      }
+    }
+  }
+}

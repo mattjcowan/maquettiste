@@ -36,6 +36,7 @@
     "e2e:live": "playwright test --project=live",
     "gen:scale": "node scripts/gen-scale-model.mjs",
     "e2e:scale": "playwright test --project=scale",
+    "docs:screenshots": "sh tests/docs/take.sh",
     "pack-site": "node scripts/pack-site.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:watch": "node scripts/deploy-watch.mjs"

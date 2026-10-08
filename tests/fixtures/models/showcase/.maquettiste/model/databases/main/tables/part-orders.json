@@ -1,0 +1,83 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP128VZ0PZT0FPX70DRV",
+  "name": "part_orders",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHC2047367W044ZTDJ",
+  "columns": [
+    {
+      "id": "01M4CVYP12T9ST1S11BQC21QB3",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12WRCFQGYF3TC0XZMH",
+      "name": "quantity",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP127WGDXYGZ7H9QXDP8",
+      "name": "ordered_on",
+      "type": "date",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12JTGK7W385E187YJP",
+      "name": "expected_on",
+      "type": "date"
+    },
+    {
+      "id": "01M4CVYP12X3R9JWJMV5G2BKES",
+      "name": "received_on",
+      "type": "date"
+    },
+    {
+      "id": "01M4CVYP129VQCSR695YH7AV8J",
+      "name": "part_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12Y8TZWQXCCGAZAK71",
+      "name": "supplier_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_part_orders",
+    "columns": [
+      "01M4CVYP12T9ST1S11BQC21QB3"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP13RZA25X65K39300GN",
+      "name": "fk_part_orders_part_id",
+      "columns": [
+        "01M4CVYP129VQCSR695YH7AV8J"
+      ],
+      "referencesTable": "01M4CVYP125DWA1EPJRV0JVT88",
+      "referencesColumns": [
+        "01M4CVYP12B8Z91NA0W1F95FWC"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M4CVYP13THXPJZPWZRE64PSF",
+      "name": "fk_part_orders_supplier_id",
+      "columns": [
+        "01M4CVYP12Y8TZWQXCCGAZAK71"
+      ],
+      "referencesTable": "01M4CVYP128KY3CR5NCGVY4V9W",
+      "referencesColumns": [
+        "01M4CVYP12DTH73MT5BPWDBP2Y"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "Parts ordered from a supplier for stock or for a waiting repair."
+}

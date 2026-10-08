@@ -1,0 +1,74 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP1265ATWR3M5WN80CVC",
+  "name": "stations",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCH3JZ7T3CD4N2QF59W",
+  "columns": [
+    {
+      "id": "01M4CVYP126Y2PH6FBFYB5PMGQ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP124R70FQCEXY1AWR47",
+      "name": "code",
+      "type": "string",
+      "length": 8,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12GRSVRTW72GSAR63D",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12Y6RVHV8AV7PP3EDZ",
+      "name": "address",
+      "type": "string",
+      "length": 200,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12CQ79D6HGCXQKPAE2",
+      "name": "latitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12WAPTHQAY6APVYNG8",
+      "name": "longitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP125MYDBCZVENK67EW2",
+      "name": "opened_on",
+      "type": "date"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_stations",
+    "columns": [
+      "01M4CVYP126Y2PH6FBFYB5PMGQ"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M4CVYP13DT10GAQ504FXWE1S",
+      "name": "uq_stations_code",
+      "columns": [
+        "01M4CVYP124R70FQCEXY1AWR47"
+      ]
+    }
+  ],
+  "comment": "A place where bikes are picked up and returned."
+}

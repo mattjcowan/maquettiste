@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01K70SPKCHR4TYVDGYXBYWZYJX",
+  "key": "lookup",
+  "name": "Lookup",
+  "description": "A small list maintained by staff and seeded at install time.",
+  "appliesTo": [
+    "entity",
+    "table"
+  ]
+}

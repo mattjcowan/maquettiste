@@ -1,0 +1,50 @@
+{
+  "$schema": "../../../.schema/v1/locale.json",
+  "kind": "locale-shard",
+  "locale": "fr",
+  "scope": "01K70SPKCHEP4J6H866Y0C7AB7",
+  "entries": {
+    "01K70SPKCH60F877W96S1XDT1Z": {
+      "displayName": "Paiement",
+      "pluralName": "Paiements",
+      "src": {
+        "displayName": "7048f38b",
+        "pluralName": "7048f38b"
+      }
+    },
+    "01K70SPKCHDXRVYGNMNDE5FCAV": {
+      "displayName": "Permanence bénévole",
+      "pluralName": "Permanences bénévoles",
+      "src": {
+        "displayName": "e99187e2",
+        "pluralName": "e99187e2"
+      }
+    },
+    "01K70SPKCHEP4J6H866Y0C7AB7": {
+      "displayName": "Adhésion",
+      "description": "Les membres de la coopérative, leurs formules, leurs paiements et leurs permanences bénévoles.",
+      "src": {
+        "displayName": "9feceb93",
+        "description": "cc3c27b1"
+      }
+    },
+    "01K70SPKCHHAYTBVH5K7WATEEH": {
+      "displayName": "Membre",
+      "pluralName": "Membres",
+      "description": "Une personne membre de la coopérative, qui peut rouler, donner de son temps, ou les deux.",
+      "src": {
+        "displayName": "7c968fb7",
+        "pluralName": "7c968fb7",
+        "description": "348b88a5"
+      }
+    },
+    "01K70SPKCHSEMT3Z8KWAX5HE1S": {
+      "displayName": "Adhésion",
+      "pluralName": "Adhésions",
+      "src": {
+        "displayName": "9feceb93",
+        "pluralName": "9feceb93"
+      }
+    }
+  }
+}

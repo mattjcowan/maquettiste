@@ -1,0 +1,64 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP124E077AC2HVSW29KV",
+  "name": "volunteer_shifts",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHFTKCR2VV8CX9VR0Q",
+  "columns": [
+    {
+      "id": "01M4CVYP12YTWGP0X9K0VS4JAW",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12VFZYEHXY4CS2C6HC",
+      "name": "starts_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP125KTG7JB2HV6SNMHJ",
+      "name": "ends_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP129HJ75J01P3THDES2",
+      "name": "task",
+      "type": "string",
+      "length": 80,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP128ANF4YJ2G1VR24S4",
+      "name": "member_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_volunteer_shifts",
+    "columns": [
+      "01M4CVYP12YTWGP0X9K0VS4JAW"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP13ZK0S6WAYCCPK2NHZ",
+      "name": "fk_volunteer_shifts_member_id",
+      "columns": [
+        "01M4CVYP128ANF4YJ2G1VR24S4"
+      ],
+      "referencesTable": "01M4CVYP1293TR3T6VN8PVNN2S",
+      "referencesColumns": [
+        "01M4CVYP12VMHGSFTSC5MDEC8Z"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A few hours a member gives to the workshop or a station."
+}

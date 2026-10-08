@@ -1,0 +1,110 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP1293TR3T6VN8PVNN2S",
+  "name": "members",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHFTKCR2VV8CX9VR0Q",
+  "columns": [
+    {
+      "id": "01M4CVYP12VMHGSFTSC5MDEC8Z",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP123MSZSYQC8BFTMKMV",
+      "name": "member_number",
+      "type": "string",
+      "length": 12,
+      "nullable": false,
+      "comment": "Printed on the member's card."
+    },
+    {
+      "id": "01M4CVYP12P30HRM2BYHQS6Z2X",
+      "name": "first_name",
+      "type": "string",
+      "length": 60,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12B8PQH7AZMCFAWCFC",
+      "name": "last_name",
+      "type": "string",
+      "length": 60,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12Q2DC1QNF20724CAV",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12Z4YQEP34M9KTH3Y9",
+      "name": "phone",
+      "type": "string",
+      "length": 24
+    },
+    {
+      "id": "01M4CVYP12ZDSX57D47XZERC9B",
+      "name": "joined_on",
+      "type": "date",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP1253Z4XY4PF7V58FKP",
+      "name": "plan",
+      "type": "string",
+      "length": 12,
+      "nullable": false,
+      "default": "monthly"
+    },
+    {
+      "id": "01M4CVYP12B7HQ1YJHDAV5R2AW",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true
+    },
+    {
+      "id": "01M4CVYP12Y4SVK0T5SS6VN71M",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M4CVYP124ENEN924Z2C6GM1K",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row last changed."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_members",
+    "columns": [
+      "01M4CVYP12VMHGSFTSC5MDEC8Z"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M4CVYP132N893RWWF04RZT4Z",
+      "name": "uq_members_member_number",
+      "columns": [
+        "01M4CVYP123MSZSYQC8BFTMKMV"
+      ]
+    },
+    {
+      "id": "01M4CVYP13Q8X1Z8CNSXYA5DB7",
+      "name": "uq_members_email",
+      "columns": [
+        "01M4CVYP12Q2DC1QNF20724CAV"
+      ]
+    }
+  ],
+  "comment": "A person who belongs to the cooperative and may ride, volunteer or both."
+}

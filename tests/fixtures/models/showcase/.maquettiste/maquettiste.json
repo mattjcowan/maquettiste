@@ -1,0 +1,61 @@
+{
+  "$schema": ".schema/v1/maquettiste.json",
+  "formatVersion": 1,
+  "name": "Spoke & Chain",
+  "properties": {
+    "baseNamespace": "SpokeAndChain"
+  },
+  "outputs": {
+    "allow": [
+      {
+        "path": "db"
+      },
+      {
+        "path": "src/Generated"
+      }
+    ]
+  },
+  "conventions": {
+    "enumStorage": "string",
+    "referenceStorage": {
+      "strategy": "lookup-table",
+      "options": {
+        "schema": "reference"
+      }
+    }
+  },
+  "localization": {
+    "defaultLocale": "en",
+    "locales": [
+      "en",
+      "fr"
+    ]
+  },
+  "referenceData": {
+    "strategies": {
+      "check": {
+        "description": "CHECK (column IN (codes))"
+      },
+      "lookup-table": {
+        "description": "Table keyed by code, a foreign key from each column",
+        "collections": true,
+        "options": {
+          "schema": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "packs": {
+    "csharp-dapper": {
+      "output": "src/Generated",
+      "parameters": {
+        "namespace": "SpokeAndChain.Data"
+      }
+    },
+    "sql-ddl": {
+      "output": "db"
+    }
+  }
+}

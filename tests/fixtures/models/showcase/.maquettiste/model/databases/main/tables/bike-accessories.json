@@ -1,0 +1,72 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K70SPKCJ7RXM626RTY04M0B9",
+  "name": "bike_accessories",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCH3JZ7T3CD4N2QF59W",
+  "columns": [
+    {
+      "id": "01K70SPKCJYX2TYCZXDNG9F8AS",
+      "name": "bike_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01K70SPKCJNK85JX5DGC7BWWHH",
+      "name": "accessory_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01K70SPKCJDTBGR07ASTWXP4GK",
+      "name": "fitted_on",
+      "type": "date",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_bike_accessories",
+    "columns": [
+      "01K70SPKCJYX2TYCZXDNG9F8AS",
+      "01K70SPKCJNK85JX5DGC7BWWHH"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01K70SPKCJSMHNMZTS7MVVMV22",
+      "name": "fk_bike_accessories_bike_id",
+      "columns": [
+        "01K70SPKCJYX2TYCZXDNG9F8AS"
+      ],
+      "referencesTable": "01M4CVYP12G3RZR6Z8E2FQH3RZ",
+      "referencesColumns": [
+        "01M4CVYP12WC6KXK2GX3PCWYCN"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01K70SPKCJDHPKHD0CASA1Z9DB",
+      "name": "fk_bike_accessories_accessory_id",
+      "columns": [
+        "01K70SPKCJNK85JX5DGC7BWWHH"
+      ],
+      "referencesTable": "01M4CVYP12AXCGEDGGV2JZYCJG",
+      "referencesColumns": [
+        "01M4CVYP12JGATQWY60R7X8J6F"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01K70SPKCJ4GVW2S93RWBJP4J3",
+      "name": "ix_bike_accessories_accessory_id",
+      "columns": [
+        {
+          "column": "01K70SPKCJNK85JX5DGC7BWWHH"
+        }
+      ]
+    }
+  ]
+}

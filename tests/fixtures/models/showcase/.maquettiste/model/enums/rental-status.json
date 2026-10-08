@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01K70SPKCHF1YVYGM3RG4SC8B6",
+  "name": "RentalStatus",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "description": "Where a rental is in its lifecycle.",
+  "members": [
+    {
+      "id": "01K70SPKCHJCV6APNZBGF3H40M",
+      "name": "Reserved",
+      "value": 0
+    },
+    {
+      "id": "01K70SPKCHB9XWMJAJED0FJTQ3",
+      "name": "Active",
+      "value": 1
+    },
+    {
+      "id": "01K70SPKCHX47CB58AGV10875K",
+      "name": "Overdue",
+      "value": 2
+    },
+    {
+      "id": "01K70SPKCH9TX0RVM647EMKSZF",
+      "name": "Returned",
+      "value": 3
+    },
+    {
+      "id": "01K70SPKCH90AGW7F4DY5PWV54",
+      "name": "Closed",
+      "value": 4
+    },
+    {
+      "id": "01K70SPKCHECFQVHVSZV2F2SVD",
+      "name": "Cancelled",
+      "value": 5
+    }
+  ]
+}

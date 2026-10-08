@@ -1,0 +1,54 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP12M7RATPMMWN2JBZ1A",
+  "name": "tariffs",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHE564R3A6M9TVDBPV",
+  "columns": [
+    {
+      "id": "01M4CVYP12JKF49GTV2X216QXQ",
+      "name": "code",
+      "type": "string",
+      "length": 16,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12716NHPCD3M5NHYJK",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12ZZQ2GYASEQA0R4PE",
+      "name": "bike_type",
+      "type": "string",
+      "length": 12,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12F1B817HPTC6MZYJH",
+      "name": "hourly_rate",
+      "type": "decimal",
+      "precision": 6,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12KSZBRBZN0DJ6TCWF",
+      "name": "daily_cap",
+      "type": "decimal",
+      "precision": 6,
+      "scale": 2,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_tariffs",
+    "columns": [
+      "01M4CVYP12JKF49GTV2X216QXQ"
+    ]
+  },
+  "comment": "The price of riding one type of bike."
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01K70SPKCHZJ26Z9CVP71ZG7SH",
+  "name": "BikeCondition",
+  "package": "01K70SPKCHMCQYF0NG3D335212",
+  "description": "How fit a bike is to ride.",
+  "members": [
+    {
+      "id": "01K70SPKCHD51N4J3W4ZDMJV0F",
+      "name": "Excellent",
+      "value": 0
+    },
+    {
+      "id": "01K70SPKCHTF565J6ZYQER4HPN",
+      "name": "Good",
+      "value": 1
+    },
+    {
+      "id": "01K70SPKCH584TZQDT63CHGG5Y",
+      "name": "NeedsService",
+      "value": 2
+    },
+    {
+      "id": "01K70SPKCHA4P2JPSMC7QT4H9V",
+      "name": "OutOfService",
+      "value": 3
+    }
+  ]
+}

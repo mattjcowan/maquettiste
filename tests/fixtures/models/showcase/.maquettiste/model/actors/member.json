@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/actor.json",
+  "kind": "actor",
+  "id": "01K70SPKCJ6N2GAFKYDDWSTPAM",
+  "name": "Member",
+  "displayName": "Member",
+  "type": "role",
+  "description": "A member of the cooperative who rides."
+}

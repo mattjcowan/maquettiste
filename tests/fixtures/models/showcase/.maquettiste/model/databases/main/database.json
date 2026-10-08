@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../.schema/v1/database.json",
+  "kind": "database",
+  "id": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "name": "main",
+  "displayName": "Spoke & Chain operations",
+  "dialect": "postgresql",
+  "version": "16",
+  "defaultSchema": "fleet",
+  "description": "The cooperative's PostgreSQL database: one schema per domain.",
+  "schemas": [
+    {
+      "id": "01K70SPKCHFTKCR2VV8CX9VR0Q",
+      "name": "membership",
+      "description": "The Membership domain's tables."
+    },
+    {
+      "id": "01K70SPKCH3JZ7T3CD4N2QF59W",
+      "name": "fleet",
+      "description": "The Fleet domain's tables."
+    },
+    {
+      "id": "01K70SPKCHE564R3A6M9TVDBPV",
+      "name": "rentals",
+      "description": "The Rentals domain's tables."
+    },
+    {
+      "id": "01K70SPKCHC2047367W044ZTDJ",
+      "name": "workshop",
+      "description": "The Workshop domain's tables."
+    },
+    {
+      "id": "01K70SPKCH9FEXXEZ18WBFJFDW",
+      "name": "reference",
+      "description": "Lookup tables for the reference types."
+    }
+  ],
+  "byConvention": "none"
+}

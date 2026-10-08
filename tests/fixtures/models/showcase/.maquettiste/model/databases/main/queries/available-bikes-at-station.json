@@ -1,0 +1,108 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01K70SPKCJ58QE3GX180H5EZG3",
+  "name": "AvailableBikesAtStation",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "description": "The bikes based at a station that are fit to ride, those with the fewest kilometres first.",
+  "parameters": [
+    {
+      "name": "stationCode",
+      "type": "string",
+      "length": 8
+    },
+    {
+      "name": "limit",
+      "type": "int32",
+      "default": 20
+    }
+  ],
+  "from": {
+    "source": "01M4CVYP12G3RZR6Z8E2FQH3RZ",
+    "alias": "b"
+  },
+  "joins": [
+    {
+      "source": "01M4CVYP1265ATWR3M5WN80CVC",
+      "alias": "s",
+      "on": {
+        "op": "eq",
+        "left": {
+          "column": "b.home_station_id"
+        },
+        "right": {
+          "column": "s.id"
+        }
+      }
+    }
+  ],
+  "select": [
+    {
+      "name": "bikeId",
+      "expression": {
+        "column": "b.id"
+      }
+    },
+    {
+      "name": "frameNumber",
+      "expression": {
+        "column": "b.frame_number"
+      }
+    },
+    {
+      "name": "nickname",
+      "expression": {
+        "column": "b.nickname"
+      }
+    },
+    {
+      "name": "bikeType",
+      "expression": {
+        "column": "b.bike_type"
+      }
+    },
+    {
+      "name": "stationName",
+      "expression": {
+        "column": "s.name"
+      }
+    }
+  ],
+  "where": {
+    "and": [
+      {
+        "op": "eq",
+        "left": {
+          "column": "s.code"
+        },
+        "right": {
+          "param": "stationCode"
+        }
+      },
+      {
+        "op": "in",
+        "left": {
+          "column": "b.condition"
+        },
+        "right": [
+          {
+            "value": "Excellent"
+          },
+          {
+            "value": "Good"
+          }
+        ]
+      }
+    ]
+  },
+  "orderBy": [
+    {
+      "expression": {
+        "column": "b.odometer_km"
+      }
+    }
+  ],
+  "paging": {
+    "limit": "limit"
+  }
+}

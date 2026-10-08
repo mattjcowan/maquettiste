@@ -1,0 +1,63 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCH1GR7W8E57MFVJFMJ",
+  "name": "Accessory",
+  "pluralName": "Accessories",
+  "package": "01K70SPKCHMCQYF0NG3D335212",
+  "description": "Something fitted to a bike: a basket, a child seat, a lock.",
+  "tags": [
+    "inventory"
+  ],
+  "category": "01K70SPKCHP6GSXB9JTFJ2X40D",
+  "key": {
+    "attributes": [
+      "01K70SPKCHBTAQSRPXGWVE3715"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHBTAQSRPXGWVE3715",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHM9T9K3BT97FA1ZWX",
+      "name": "sku",
+      "type": "string",
+      "length": 24,
+      "required": true,
+      "unique": true
+    },
+    {
+      "id": "01K70SPKCHWKEP4345PPAZ62VQ",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP12SWARAFEJMD979VS0",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP12AXCGEDGGV2JZYCJG",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHBTAQSRPXGWVE3715",
+          "column": "01M4CVYP12JGATQWY60R7X8J6F"
+        },
+        {
+          "attribute": "01K70SPKCHM9T9K3BT97FA1ZWX",
+          "column": "01M4CVYP124MAH7Z8RE46RX07D"
+        },
+        {
+          "attribute": "01K70SPKCHWKEP4345PPAZ62VQ",
+          "column": "01M4CVYP12G34Y7KNG89231RXC"
+        }
+      ]
+    }
+  ]
+}

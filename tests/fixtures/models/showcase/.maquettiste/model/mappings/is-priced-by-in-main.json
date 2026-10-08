@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M4CVYP131J1H5AJERNBY99VA",
+  "name": "is priced by in main",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "relation": "01K70SPKCH67JD5X3ZCQXZNFXA",
+  "foreignKey": "01M4CVYP13C3MR3YHK8HZ952E6"
+}

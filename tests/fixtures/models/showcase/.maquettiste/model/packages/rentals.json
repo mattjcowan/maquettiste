@@ -1,0 +1,7 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "name": "Rentals",
+  "description": "Rides from reservation to return, their charges, tariffs and damage reports."
+}

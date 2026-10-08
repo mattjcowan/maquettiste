@@ -1,0 +1,20 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01K70SPKCJ3CSV3XG6ES5Z3GED",
+  "name": "is fitted with in main",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "relation": "01K70SPKCHN5ZZB8TZFW6D9Q8A",
+  "shape": "junction",
+  "junctionTable": "01K70SPKCJ7RXM626RTY04M0B9",
+  "ends": [
+    {
+      "end": "01K70SPKCHKTS8FWN9Q4XRPKV3",
+      "foreignKey": "01K70SPKCJSMHNMZTS7MVVMV22"
+    },
+    {
+      "end": "01K70SPKCH3YPWYGC76TCXBSF8",
+      "foreignKey": "01K70SPKCJDHPKHD0CASA1Z9DB"
+    }
+  ]
+}

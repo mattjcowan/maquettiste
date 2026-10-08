@@ -1,0 +1,64 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHEW4XHTZEVPY45WGH",
+  "name": "Dock",
+  "package": "01K70SPKCHMCQYF0NG3D335212",
+  "description": "One locking point at a station.",
+  "tags": [
+    "inventory"
+  ],
+  "category": "01K70SPKCH02AHF47S9JWSBD33",
+  "key": {
+    "attributes": [
+      "01K70SPKCHXDBNH9N3P3T7QC49"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHXDBNH9N3P3T7QC49",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHMFG3DVQY76AY2V19",
+      "name": "number",
+      "type": "int16",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHM7GNMB4ZXBHQYPPS",
+      "name": "isOperational",
+      "type": "bool",
+      "required": true,
+      "default": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13BRD77H1X2GZ1K2Z2",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP12MTPD6RXW4Q08B3Z2",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHXDBNH9N3P3T7QC49",
+          "column": "01M4CVYP12QMS26J7QGGG68WAP"
+        },
+        {
+          "attribute": "01K70SPKCHMFG3DVQY76AY2V19",
+          "column": "01M4CVYP12M3TR4KASWE1EN46C"
+        },
+        {
+          "attribute": "01K70SPKCHM7GNMB4ZXBHQYPPS",
+          "column": "01M4CVYP12PV7DAJVMD9E01V69"
+        },
+        {
+          "attribute": "01K70SPKCH6Q5ZXN8SPDPWAEZ1",
+          "column": "01M4CVYP12M6E55SYTAYSH3ZYW"
+        }
+      ]
+    }
+  ]
+}

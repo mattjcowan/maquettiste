@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01K70SPKCHRAK41XPR20E1STWQ",
+  "name": "BikeType",
+  "target": "01K70SPKCHS7TTDDQ7HK7RM3T0",
+  "columns": [
+    "code",
+    "label",
+    "01K70SPKCHF39SVT92YTJS47RB",
+    "01K70SPKCHGE6H47NSJ1YAASS0"
+  ],
+  "rows": [
+    { "id": "01K70SPKCH5SBBS3EH94FM5PZF", "values": ["city", "City bike", 28, false] },
+    { "id": "01K70SPKCHD50VWP86CG04VGHP", "values": ["cargo", "Cargo bike", 24, false] },
+    { "id": "01K70SPKCHG20XZEE12NDBT4V7", "values": ["e_city", "Electric city bike", 28, true] },
+    { "id": "01K70SPKCHSPV58D5M3SRS3J5J", "values": ["e_cargo", "Electric cargo bike", 24, true] },
+    { "id": "01K70SPKCHFE3DJP271020DHCD", "values": ["kids", "Kids' bike", 20, false] }
+  ]
+}

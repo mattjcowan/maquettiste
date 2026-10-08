@@ -1,0 +1,70 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHYH688509K0G7QPM8",
+  "name": "Mechanic",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "description": "Someone qualified to repair bikes in the workshop.",
+  "tags": [
+    "pii"
+  ],
+  "category": "01K70SPKCHP6GSXB9JTFJ2X40D",
+  "key": {
+    "attributes": [
+      "01K70SPKCHVWDZQM7FXN7DA4SQ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHVWDZQM7FXN7DA4SQ",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHXBZ9S9G4CYSJAC69",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHV9DFRW2K4NKXPGSP",
+      "name": "certifiedOn",
+      "type": "date"
+    },
+    {
+      "id": "01K70SPKCHPCPREH65H6KKYGFA",
+      "name": "canServiceElectric",
+      "type": "bool",
+      "required": true,
+      "default": false
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP130QK7N2RAPVDRJMVM",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP12RMXA119N5KAZEPJG",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHVWDZQM7FXN7DA4SQ",
+          "column": "01M4CVYP12GM10WAQXZ0E99EV1"
+        },
+        {
+          "attribute": "01K70SPKCHXBZ9S9G4CYSJAC69",
+          "column": "01M4CVYP1205Q7TFQJH9JPQKF5"
+        },
+        {
+          "attribute": "01K70SPKCHV9DFRW2K4NKXPGSP",
+          "column": "01M4CVYP12X2YY2N5EBZBDA7QW"
+        },
+        {
+          "attribute": "01K70SPKCHPCPREH65H6KKYGFA",
+          "column": "01M4CVYP126M23DGEJR84YVZDX"
+        }
+      ]
+    }
+  ]
+}

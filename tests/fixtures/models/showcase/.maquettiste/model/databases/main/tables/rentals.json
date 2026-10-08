@@ -1,0 +1,246 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP124TEYG34TK4370963",
+  "name": "rentals",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHE564R3A6M9TVDBPV",
+  "columns": [
+    {
+      "id": "01M4CVYP127VP3VSJ4V00N56ZF",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12CGX72EW26NENZ0CS",
+      "name": "reference",
+      "type": "string",
+      "length": 16,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12N8HVTVYC39Q7W5R2",
+      "name": "status",
+      "type": "string",
+      "length": 9,
+      "nullable": false,
+      "default": "Reserved"
+    },
+    {
+      "id": "01M4CVYP12M947T2AA447YSMCR",
+      "name": "reserved_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12S3Y0VD2C3BTNBVHZ",
+      "name": "started_at",
+      "type": "datetimeoffset",
+      "precision": 6
+    },
+    {
+      "id": "01M4CVYP12CFZQ7ZTB94JXH3G1",
+      "name": "due_at",
+      "type": "datetimeoffset",
+      "precision": 6
+    },
+    {
+      "id": "01M4CVYP12BCTQGCNCZYRWVZXD",
+      "name": "returned_at",
+      "type": "datetimeoffset",
+      "precision": 6
+    },
+    {
+      "id": "01M4CVYP12KAZW152WS2V13PR4",
+      "name": "distance_km",
+      "type": "decimal",
+      "precision": 7,
+      "scale": 2
+    },
+    {
+      "id": "01M4CVYP12AV12B0GGV661APEB",
+      "name": "total_charge",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 2,
+      "nullable": false,
+      "default": 0
+    },
+    {
+      "id": "01M4CVYP128415ZM91MWME5BP2",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M4CVYP12TTXGJT76A0KH8Q7D",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row last changed."
+    },
+    {
+      "id": "01M4CVYP12X3K1B3VXJTXYNKX4",
+      "name": "return_station_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M4CVYP12YFK9YT9XBR42ZQM6",
+      "name": "tariff_code",
+      "type": "string",
+      "length": 16,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP1286FC301Q355SKAPJ",
+      "name": "bike_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12R6FGB6TCYAJ4K965",
+      "name": "member_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12N78TJECWV8Z605R7",
+      "name": "pickup_station_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_rentals",
+    "columns": [
+      "01M4CVYP127VP3VSJ4V00N56ZF"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M4CVYP13A4MX95V32711FJ3X",
+      "name": "uq_rentals_reference",
+      "columns": [
+        "01M4CVYP12CGX72EW26NENZ0CS"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP135FWF8K71690WP2MR",
+      "name": "fk_rentals_return_station_id",
+      "columns": [
+        "01M4CVYP12X3K1B3VXJTXYNKX4"
+      ],
+      "referencesTable": "01M4CVYP1265ATWR3M5WN80CVC",
+      "referencesColumns": [
+        "01M4CVYP126Y2PH6FBFYB5PMGQ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M4CVYP13C3MR3YHK8HZ952E6",
+      "name": "fk_rentals_tariff_code",
+      "columns": [
+        "01M4CVYP12YFK9YT9XBR42ZQM6"
+      ],
+      "referencesTable": "01M4CVYP12M7RATPMMWN2JBZ1A",
+      "referencesColumns": [
+        "01M4CVYP12JKF49GTV2X216QXQ"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M4CVYP134YDA2ZVFJW3GYAXW",
+      "name": "fk_rentals_bike_id",
+      "columns": [
+        "01M4CVYP1286FC301Q355SKAPJ"
+      ],
+      "referencesTable": "01M4CVYP12G3RZR6Z8E2FQH3RZ",
+      "referencesColumns": [
+        "01M4CVYP12WC6KXK2GX3PCWYCN"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M4CVYP13T5PVB5XTKJRXEK6W",
+      "name": "fk_rentals_member_id",
+      "columns": [
+        "01M4CVYP12R6FGB6TCYAJ4K965"
+      ],
+      "referencesTable": "01M4CVYP1293TR3T6VN8PVNN2S",
+      "referencesColumns": [
+        "01M4CVYP12VMHGSFTSC5MDEC8Z"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M4CVYP134DPATJEBXYYTJJ91",
+      "name": "fk_rentals_pickup_station_id",
+      "columns": [
+        "01M4CVYP12N78TJECWV8Z605R7"
+      ],
+      "referencesTable": "01M4CVYP1265ATWR3M5WN80CVC",
+      "referencesColumns": [
+        "01M4CVYP126Y2PH6FBFYB5PMGQ"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "checks": [
+    {
+      "id": "01K70SPKCJ0FBHXX4CFAFXMRH1",
+      "name": "ck_rentals_returned_after_start",
+      "expression": {
+        "*": "returned_at IS NULL OR returned_at >= started_at"
+      }
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M4CVYP139KV0GNK47HSEY21Y",
+      "name": "ix_rentals_due_at",
+      "columns": [
+        {
+          "column": "01M4CVYP12CFZQ7ZTB94JXH3G1"
+        }
+      ]
+    },
+    {
+      "id": "01K70SPKCJJ2WF9H5DKDT7X1SQ",
+      "name": "ix_rentals_member_id",
+      "columns": [
+        {
+          "column": "01M4CVYP12R6FGB6TCYAJ4K965"
+        }
+      ]
+    },
+    {
+      "id": "01K70SPKCJEFJW3C5JSZXX30P4",
+      "name": "ix_rentals_bike_id",
+      "columns": [
+        {
+          "column": "01M4CVYP1286FC301Q355SKAPJ"
+        }
+      ]
+    },
+    {
+      "id": "01K70SPKCJZ4N4M8P357JCGA5H",
+      "name": "ix_rentals_open",
+      "columns": [
+        {
+          "column": "01M4CVYP12N8HVTVYC39Q7W5R2"
+        },
+        {
+          "column": "01M4CVYP12CFZQ7ZTB94JXH3G1"
+        }
+      ],
+      "where": "status IN ('Active', 'Overdue')"
+    }
+  ],
+  "comment": "One ride, from the reservation to the bike's return and the final charge."
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01K70SPKCJ603RA5GT68T6VNXK",
+  "name": "tariffs",
+  "description": "The prices in force at opening; staff change them in the database afterwards.",
+  "target": "01M4CVYP12M7RATPMMWN2JBZ1A",
+  "columns": [
+    "01M4CVYP12JKF49GTV2X216QXQ",
+    "01M4CVYP12716NHPCD3M5NHYJK",
+    "01M4CVYP12ZZQ2GYASEQA0R4PE",
+    "01M4CVYP12F1B817HPTC6MZYJH",
+    "01M4CVYP12KSZBRBZN0DJ6TCWF"
+  ],
+  "rows": [
+    { "id": "01K70SPKCJ5J2WJG5FA56W5YYK", "values": ["city", "City bike", "city", 2, 12] },
+    { "id": "01K70SPKCJT5CZNK84YXP4CPDQ", "values": ["cargo", "Cargo bike", "cargo", 3.5, 20] },
+    { "id": "01K70SPKCJKRZ3A3S5MF50G374", "values": ["e_city", "Electric city bike", "e_city", 4, 24] },
+    { "id": "01K70SPKCJZYT2V6Q2E9P9N5EW", "values": ["e_cargo", "Electric cargo bike", "e_cargo", 5.5, 32] },
+    { "id": "01K70SPKCJ8X8J6GYNDEXNHEP4", "values": ["kids", "Kids' bike", "kids", 1, 6] }
+  ]
+}

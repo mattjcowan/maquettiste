@@ -1,0 +1,89 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHQMZKG99E2WS0Z9N4",
+  "name": "Tariff",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "description": "The price of riding one type of bike.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "finance"
+  ],
+  "category": "01K70SPKCHDHSVGPYRQ8GW49PD",
+  "key": {
+    "attributes": [
+      "01K70SPKCHFY0RJ1GPMWWV6BWZ"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHFY0RJ1GPMWWV6BWZ",
+      "name": "code",
+      "type": "string",
+      "length": 16,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH2YRRZYGVZBHQ7X2Q",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH8V8YNEBPMQKAV4T5",
+      "name": "bikeType",
+      "type": {
+        "ref": "01K70SPKCHS7TTDDQ7HK7RM3T0"
+      },
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH0TQGTJW1FAQ7MYNQ",
+      "name": "hourlyRate",
+      "type": "decimal",
+      "precision": 6,
+      "scale": 2,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHMENN7K3Z05SR6JB8",
+      "name": "dailyCap",
+      "type": "decimal",
+      "precision": 6,
+      "scale": 2,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13S41M5AW680ET59N3",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP12M7RATPMMWN2JBZ1A",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHFY0RJ1GPMWWV6BWZ",
+          "column": "01M4CVYP12JKF49GTV2X216QXQ"
+        },
+        {
+          "attribute": "01K70SPKCH2YRRZYGVZBHQ7X2Q",
+          "column": "01M4CVYP12716NHPCD3M5NHYJK"
+        },
+        {
+          "attribute": "01K70SPKCH8V8YNEBPMQKAV4T5",
+          "column": "01M4CVYP12ZZQ2GYASEQA0R4PE"
+        },
+        {
+          "attribute": "01K70SPKCH0TQGTJW1FAQ7MYNQ",
+          "column": "01M4CVYP12F1B817HPTC6MZYJH"
+        },
+        {
+          "attribute": "01K70SPKCHMENN7K3Z05SR6JB8",
+          "column": "01M4CVYP12KSZBRBZN0DJ6TCWF"
+        }
+      ]
+    }
+  ]
+}

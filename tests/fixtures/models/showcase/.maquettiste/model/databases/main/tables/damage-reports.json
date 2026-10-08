@@ -1,0 +1,96 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP12YXQNNXASD3K6ZY19",
+  "name": "damage_reports",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHE564R3A6M9TVDBPV",
+  "columns": [
+    {
+      "id": "01M4CVYP12Y7C688FS4314ZG1B",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12BZ76MG3BE3J30SPG",
+      "name": "reported_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12JAGA790S3A3TA9SJ",
+      "name": "description",
+      "type": "text",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12FNE1D6TVWA0WDGFF",
+      "name": "severity",
+      "type": "int16",
+      "nullable": false,
+      "default": 1,
+      "comment": "1 cosmetic, 2 needs a look, 3 unsafe to ride."
+    },
+    {
+      "id": "01M4CVYP123C3ZH39ACQPYW9VE",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M4CVYP12APQY2C97R6AM5FDF",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row last changed."
+    },
+    {
+      "id": "01M4CVYP12K61EDXWS4PCR4NAA",
+      "name": "bike_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12N7Q1EWPE477P48EB",
+      "name": "rental_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_damage_reports",
+    "columns": [
+      "01M4CVYP12Y7C688FS4314ZG1B"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP138NKC2M73R0HJ6B5B",
+      "name": "fk_damage_reports_bike_id",
+      "columns": [
+        "01M4CVYP12K61EDXWS4PCR4NAA"
+      ],
+      "referencesTable": "01M4CVYP12G3RZR6Z8E2FQH3RZ",
+      "referencesColumns": [
+        "01M4CVYP12WC6KXK2GX3PCWYCN"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M4CVYP1353BHKBCPSYTM4D60",
+      "name": "fk_damage_reports_rental_id",
+      "columns": [
+        "01M4CVYP12N7Q1EWPE477P48EB"
+      ],
+      "referencesTable": "01M4CVYP124TEYG34TK4370963",
+      "referencesColumns": [
+        "01M4CVYP127VP3VSJ4V00N56ZF"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A problem a rider or a mechanic noticed on a bike."
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01K70SPKCHWMWF4HDG0G3AQFE7",
+  "name": "volunteers for",
+  "package": "01K70SPKCHEP4J6H866Y0C7AB7",
+  "ends": [
+    {
+      "id": "01K70SPKCH1F4SK6R3QW85FRJ1",
+      "entity": "01K70SPKCHHAYTBVH5K7WATEEH",
+      "role": "member",
+      "navigation": "member",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01K70SPKCH5ATJD522H0AH70WW",
+      "entity": "01K70SPKCHDXRVYGNMNDE5FCAV",
+      "role": "shifts",
+      "navigation": "shifts"
+    }
+  ]
+}

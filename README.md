@@ -4,7 +4,12 @@ Maquettiste is a visual designer for entities, relations, processes and database
 packs your team owns. An editor, a command line and an agent server all work over one model, kept as JSON files in your
 repository.
 
-![The editor in dark mode: the domain model explorer listing twelve domains, and the Returns and service diagram on the canvas, ten entity cards with their attributes and types joined by named relations](docs/images/editor-dark.png)
+**Documentation: [mattjcowan.github.io/maquettiste](https://mattjcowan.github.io/maquettiste/)**, for the latest release.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/editor-light.png">
+  <img src="docs/images/editor-dark.png" alt="The editor: the Spoke &amp; Chain model, its Rentals diagram with Member, Rental, Bike, Tariff, RentalCharge, Station and DamageReport cards joined by named relations, and Rental open in the inspector">
+</picture>
 
 ## What you get
 
@@ -30,7 +35,10 @@ other processes. The simulation panel runs a process step by step and records a 
 every scenario as a test, and the example packs generate code and documentation from processes
 ([processes, actors and scenarios](docs/user-guide.md#processes-actors-and-scenarios)).
 
-![The process editor in dark mode: the purchase approval orchestration as a statechart, with a review state whose budget and compliance regions run in parallel, an approval state with a gate of signers, and the ordering states after it](docs/images/process-chart-dark.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/process-chart-light.png">
+  <img src="docs/images/process-chart-dark.png" alt="The process editor: the repair orchestration one step into a simulation, its In progress state running the Assessment and Parts regions in parallel, and the simulation panel with the enabled events, the configuration and the trace">
+</picture>
 
 ## Getting started
 
@@ -143,6 +151,9 @@ The user guide has a variant that reads the tag from the compose file, so the ed
 `dotnet tool install -g Maquettiste.Cli --prerelease`.
 
 ## Documentation
+
+The site at [mattjcowan.github.io/maquettiste](https://mattjcowan.github.io/maquettiste/) has the guides and the reference
+for the latest release, built from these files:
 
 - [docs/user-guide.md](docs/user-guide.md): the editor, generation, processes and the command line.
 - [docs/mcp.md](docs/mcp.md): the agent server and its tools.

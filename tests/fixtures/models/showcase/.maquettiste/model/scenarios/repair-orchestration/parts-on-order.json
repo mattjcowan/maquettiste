@@ -1,0 +1,115 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01M4CW4RS9C8405PZ4SCTYMSQ8",
+  "name": "PartsOnOrder",
+  "displayName": "Parts on order",
+  "process": "01K70SPKCJRBJW4PQQNAB9281H",
+  "description": "A part is out of stock: it is ordered, the supplier is chased after a week, and the first repair is sent back.",
+  "steps": [
+    {
+      "id": "01M4CW4RS6NJDY5K1NF6QQQTV7",
+      "event": "01K70SPKCJ3NBGA1CK7P5HX0MD",
+      "actor": "01K70SPKCJCT6X29S7QCB8EVAZ",
+      "expect": {
+        "states": [
+          "01K70SPKCJABJPZFBFM5ANN1P8",
+          "01K70SPKCJA363BG8VP83NPRQW"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4RS8XSW2RQBV6R6XPD4R",
+      "input": "invoke-error",
+      "invoke": "01K70SPKCJGDJHPEXW51CRY1NF",
+      "expect": {
+        "states": [
+          "01K70SPKCJABJPZFBFM5ANN1P8",
+          "01K70SPKCJX32PSFS2F27XYJ0E"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4RS8QNFK5XNKDN3C2B9S",
+      "input": "invoke-done",
+      "invoke": "01K70SPKCJH1D1Y262RVXZ6CYS",
+      "actor": "01K70SPKCJQJHA2PDN446V12A5",
+      "expect": {
+        "states": [
+          "01K70SPKCJ5CMDRCTZM8EQ5M51",
+          "01K70SPKCJX32PSFS2F27XYJ0E"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4RS8XX5E250C192FCC8A",
+      "input": "time",
+      "after": "P7D",
+      "expect": {
+        "states": [
+          "01K70SPKCJ5CMDRCTZM8EQ5M51",
+          "01K70SPKCJX32PSFS2F27XYJ0E"
+        ],
+        "context": {
+          "01K70SPKCJGTQ60Z4Y1H5ZTJA3": 1
+        }
+      }
+    },
+    {
+      "id": "01M4CW4RS9MHCK6447MX1G9HAD",
+      "input": "invoke-done",
+      "invoke": "01K70SPKCJR72TWY3ZWKN10NQ8",
+      "expect": {
+        "states": [
+          "01K70SPKCJ837QHZ61EAF0J33W"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4RS919Y3G925EWQCZPZ5",
+      "event": "01K70SPKCJ5FDA7H5RQ5SXKC4E",
+      "actor": "01K70SPKCJQJHA2PDN446V12A5",
+      "expect": {
+        "states": [
+          "01K70SPKCJCAQ1VFXVJCVJWVYX"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4RS99FXHAN0Q8F9N91A3",
+      "event": "01K70SPKCJN192JTE5MCMWVFVT",
+      "actor": "01K70SPKCJCT6X29S7QCB8EVAZ",
+      "payload": {
+        "01K70SPKCJKTK7T621ZVBKKBHE": "The rear brake still rubs."
+      },
+      "expect": {
+        "states": [
+          "01K70SPKCJ837QHZ61EAF0J33W"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4RS9JGQ75C94ZPXG2JV2",
+      "event": "01K70SPKCJ5FDA7H5RQ5SXKC4E",
+      "actor": "01K70SPKCJQJHA2PDN446V12A5",
+      "expect": {
+        "states": [
+          "01K70SPKCJCAQ1VFXVJCVJWVYX"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4RS99F4K8E2EYKHV94J6",
+      "event": "01K70SPKCJZQXB76Q8SKXG3MSM",
+      "actor": "01K70SPKCJCT6X29S7QCB8EVAZ",
+      "signer": "noor",
+      "meaning": "01K70SPKCJSSEBB70728XSDDRK",
+      "expect": {
+        "states": [
+          "01K70SPKCJ3WS4B5CBSCAF8DSP"
+        ]
+      }
+    }
+  ],
+  "outcome": "final"
+}

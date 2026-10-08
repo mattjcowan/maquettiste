@@ -1,0 +1,20 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01K70SPKCJVGR468TPX8FE1QBQ",
+  "name": "uses in main",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "relation": "01K70SPKCHD0ZK77WGWJ9WYYJA",
+  "shape": "junction",
+  "junctionTable": "01K70SPKCJQ89DBZ9DCDV48FDY",
+  "ends": [
+    {
+      "end": "01K70SPKCHSEVMEAGBWTH2243Q",
+      "foreignKey": "01K70SPKCJ6E1E6R9R00DNX8G5"
+    },
+    {
+      "end": "01K70SPKCH2QTS9K3MT4R8ZY9N",
+      "foreignKey": "01K70SPKCJVN650YPMXRGG409D"
+    }
+  ]
+}

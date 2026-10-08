@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01K70SPKCHE1GQQNVX17KM5ZMN",
+  "name": "MembershipPlan",
+  "target": "01K70SPKCH46M4TVABZX7XCFY3",
+  "columns": [
+    "code",
+    "label",
+    "01K70SPKCH656TWN1FXA3DTTVR",
+    "01K70SPKCH0SCPZ0F2A6RBGCH8"
+  ],
+  "rows": [
+    { "id": "01K70SPKCH4ZJ7SSYBFGG7QVMJ", "values": ["day", "Day pass", 0, 0] },
+    { "id": "01K70SPKCHQ5EBCS4G1XP66XZY", "values": ["monthly", "Monthly rider", 12.5, 600] },
+    { "id": "01K70SPKCH2DTY2XX9QXCCNKMD", "values": ["annual", "Annual rider", 9, 900] },
+    { "id": "01K70SPKCHD31DRC70K7ESPTKR", "values": ["student", "Student", 6, 600] },
+    { "id": "01K70SPKCH64N9P32SB29KZNC7", "values": ["volunteer", "Volunteer", 0, 1200] }
+  ]
+}

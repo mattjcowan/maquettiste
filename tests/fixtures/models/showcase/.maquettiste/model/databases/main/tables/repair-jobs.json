@@ -1,0 +1,149 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP12FYYME7SZ311YKKH8",
+  "name": "repair_jobs",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHC2047367W044ZTDJ",
+  "columns": [
+    {
+      "id": "01M4CVYP12KCMGKFPB4Q4KJGEZ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12XJ50QPSKVGBV6F2A",
+      "name": "job_number",
+      "type": "string",
+      "length": 12,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP122MGWY86FR25PA6ZH",
+      "name": "category",
+      "type": "string",
+      "length": 16,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12NB9ENCGVXN30ZYY1",
+      "name": "opened_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12VAF3VP4AKXJB0KQK",
+      "name": "closed_at",
+      "type": "datetimeoffset",
+      "precision": 6
+    },
+    {
+      "id": "01M4CVYP128KB4KMMX0PZ7H892",
+      "name": "estimated_minutes",
+      "type": "int32"
+    },
+    {
+      "id": "01M4CVYP121S34JJMFHH555SDQ",
+      "name": "notes",
+      "type": "text"
+    },
+    {
+      "id": "01M4CVYP12R1JAR25JRGN68AY5",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M4CVYP12PNS3NC19QJJDHJG8",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row last changed."
+    },
+    {
+      "id": "01M4CVYP128Y4W6N8G42KD84M5",
+      "name": "damage_report_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M4CVYP12MX1A9XYHQZFJS3D6",
+      "name": "mechanic_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M4CVYP12YGX6W0T5Q6BB1TSR",
+      "name": "bike_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_repair_jobs",
+    "columns": [
+      "01M4CVYP12KCMGKFPB4Q4KJGEZ"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M4CVYP13J5A8NAPG8W1T65SY",
+      "name": "uq_repair_jobs_job_number",
+      "columns": [
+        "01M4CVYP12XJ50QPSKVGBV6F2A"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP13XM24XAD0DF6P0GRT",
+      "name": "fk_repair_jobs_damage_report_id",
+      "columns": [
+        "01M4CVYP128Y4W6N8G42KD84M5"
+      ],
+      "referencesTable": "01M4CVYP12YXQNNXASD3K6ZY19",
+      "referencesColumns": [
+        "01M4CVYP12Y7C688FS4314ZG1B"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M4CVYP130PF7M7T2083DP111",
+      "name": "fk_repair_jobs_mechanic_id",
+      "columns": [
+        "01M4CVYP12MX1A9XYHQZFJS3D6"
+      ],
+      "referencesTable": "01M4CVYP12RMXA119N5KAZEPJG",
+      "referencesColumns": [
+        "01M4CVYP12GM10WAQXZ0E99EV1"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M4CVYP13TPQY7WBVP7TP1Y3X",
+      "name": "fk_repair_jobs_bike_id",
+      "columns": [
+        "01M4CVYP12YGX6W0T5Q6BB1TSR"
+      ],
+      "referencesTable": "01M4CVYP12G3RZR6Z8E2FQH3RZ",
+      "referencesColumns": [
+        "01M4CVYP12WC6KXK2GX3PCWYCN"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01K70SPKCJ4KJP7Q2FCXKH81F6",
+      "name": "ix_repair_jobs_bike_id",
+      "columns": [
+        {
+          "column": "01M4CVYP12YGX6W0T5Q6BB1TSR"
+        }
+      ]
+    }
+  ],
+  "comment": "Work on one bike, from intake to the bike's return to the fleet."
+}

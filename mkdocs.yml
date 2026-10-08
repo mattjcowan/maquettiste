@@ -1,0 +1,76 @@
+# The documentation site (tmp/scope-docs-site.md): built from docs/ and published to GitHub Pages on each release tag
+# (.github/workflows/docs.yml). docs/.hooks/site.py adds the pages kept elsewhere in the repository (the README's sections, the
+# pack READMEs) and points links to repository files at GitHub. Locally: pip install -r docs/requirements.txt, then mkdocs serve.
+site_name: Maquettiste
+site_description: A visual designer for entities, relations, processes and databases that generates code through template packs your team owns.
+site_url: https://mattjcowan.github.io/maquettiste/
+repo_url: https://github.com/mattjcowan/maquettiste
+repo_name: mattjcowan/maquettiste
+edit_uri: edit/main/docs/
+docs_dir: docs
+exclude_docs: |
+  engineering/
+  .hooks/
+  requirements.txt
+hooks:
+  - docs/.hooks/site.py
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Dark theme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Light theme
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Guides:
+      - A first model in ten minutes: guides/first-model.md
+      - Start from a database: guides/start-from-a-database.md
+      - Bind entities to tables: guides/bind-entities.md
+      - Reference data and seeds: guides/reference-data-and-seeds.md
+      - Processes: guides/processes.md
+      - Generate code: guides/generate-code.md
+      - Work with an agent: guides/work-with-an-agent.md
+      - A demo in an existing repository: demo.md
+  - Reference:
+      - The user guide: user-guide.md
+      - Agents and MCP: mcp.md
+      - HTTP API: api.md
+  - Packs:
+      - Writing a pack: packs/index.md
+      - sql-ddl: packs/sql-ddl.md
+      - csharp-dapper: packs/csharp-dapper.md
+      - seed-data: packs/seed-data.md
+      - process-docs: packs/process-docs.md
+  - Releases: releases.md

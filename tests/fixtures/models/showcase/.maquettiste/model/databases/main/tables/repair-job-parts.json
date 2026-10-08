@@ -1,0 +1,73 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K70SPKCJQ89DBZ9DCDV48FDY",
+  "name": "repair_job_parts",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHC2047367W044ZTDJ",
+  "columns": [
+    {
+      "id": "01K70SPKCJ21BNX5AMPPYE7A9Y",
+      "name": "repair_job_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01K70SPKCJCA69QHK6K0XRT7W6",
+      "name": "part_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01K70SPKCJ8CNYM265MND8T3JQ",
+      "name": "quantity",
+      "type": "int16",
+      "nullable": false,
+      "default": 1
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_repair_job_parts",
+    "columns": [
+      "01K70SPKCJ21BNX5AMPPYE7A9Y",
+      "01K70SPKCJCA69QHK6K0XRT7W6"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01K70SPKCJ6E1E6R9R00DNX8G5",
+      "name": "fk_repair_job_parts_repair_job_id",
+      "columns": [
+        "01K70SPKCJ21BNX5AMPPYE7A9Y"
+      ],
+      "referencesTable": "01M4CVYP12FYYME7SZ311YKKH8",
+      "referencesColumns": [
+        "01M4CVYP12KCMGKFPB4Q4KJGEZ"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01K70SPKCJVN650YPMXRGG409D",
+      "name": "fk_repair_job_parts_part_id",
+      "columns": [
+        "01K70SPKCJCA69QHK6K0XRT7W6"
+      ],
+      "referencesTable": "01M4CVYP125DWA1EPJRV0JVT88",
+      "referencesColumns": [
+        "01M4CVYP12B8Z91NA0W1F95FWC"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01K70SPKCJ3FFXGW98RYFY94QH",
+      "name": "ix_repair_job_parts_part_id",
+      "columns": [
+        {
+          "column": "01K70SPKCJCA69QHK6K0XRT7W6"
+        }
+      ]
+    }
+  ]
+}

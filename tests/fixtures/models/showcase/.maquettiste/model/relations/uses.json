@@ -1,0 +1,31 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01K70SPKCHD0ZK77WGWJ9WYYJA",
+  "name": "uses",
+  "package": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "inverseName": "is used in",
+  "ends": [
+    {
+      "id": "01K70SPKCHSEVMEAGBWTH2243Q",
+      "entity": "01K70SPKCH28NBYKWV52NFZ5PN",
+      "role": "repairJobs",
+      "navigation": "repairJobs"
+    },
+    {
+      "id": "01K70SPKCH2QTS9K3MT4R8ZY9N",
+      "entity": "01K70SPKCHBT695JVQ6ZCCERFX",
+      "role": "parts",
+      "navigation": "parts"
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01K70SPKCHTDD4E7YJHCWRT1JR",
+      "name": "quantity",
+      "type": "int16",
+      "required": true,
+      "default": 1
+    }
+  ]
+}

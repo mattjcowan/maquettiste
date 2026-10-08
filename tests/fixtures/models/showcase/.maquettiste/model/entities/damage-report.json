@@ -1,0 +1,95 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCH9NH2H31PJDK4XMTT",
+  "name": "DamageReport",
+  "displayName": "Damage report",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "description": "A problem a rider or a mechanic noticed on a bike.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "safety"
+  ],
+  "category": "01K70SPKCHP6GSXB9JTFJ2X40D",
+  "key": {
+    "attributes": [
+      "01K70SPKCHA38G89EPDC6FSN6X"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHA38G89EPDC6FSN6X",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHMGEFX655KJHX60WK",
+      "name": "reportedAt",
+      "type": "datetimeoffset",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHVNZV29T369MMHRN5",
+      "name": "description",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHK31FF9F64ND4B140",
+      "name": "severity",
+      "type": "int16",
+      "required": true,
+      "default": 1,
+      "validation": {
+        "min": 1,
+        "max": 3
+      },
+      "description": "1 cosmetic, 2 needs a look, 3 unsafe to ride."
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13H43C4A0B4WY0M85W",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP12YXQNNXASD3K6ZY19",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHA38G89EPDC6FSN6X",
+          "column": "01M4CVYP12Y7C688FS4314ZG1B"
+        },
+        {
+          "attribute": "01K70SPKCHMGEFX655KJHX60WK",
+          "column": "01M4CVYP12BZ76MG3BE3J30SPG"
+        },
+        {
+          "attribute": "01K70SPKCHVNZV29T369MMHRN5",
+          "column": "01M4CVYP12JAGA790S3A3TA9SJ"
+        },
+        {
+          "attribute": "01K70SPKCHK31FF9F64ND4B140",
+          "column": "01M4CVYP12FNE1D6TVWA0WDGFF"
+        },
+        {
+          "attribute": "01K70SPKCH3FZBNEK76DKSHC1W",
+          "column": "01M4CVYP123C3ZH39ACQPYW9VE"
+        },
+        {
+          "attribute": "01K70SPKCHTFH173XCG3GVCRZB",
+          "column": "01M4CVYP12APQY2C97R6AM5FDF"
+        },
+        {
+          "attribute": "01K70SPKCHHE7KHV6C33D36S9N",
+          "column": "01M4CVYP12K61EDXWS4PCR4NAA"
+        },
+        {
+          "attribute": "01K70SPKCHFKYWAS1HB2HW7KVE",
+          "column": "01M4CVYP12N7Q1EWPE477P48EB"
+        }
+      ]
+    }
+  ]
+}

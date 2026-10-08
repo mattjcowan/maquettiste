@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP12RMXA119N5KAZEPJG",
+  "name": "mechanics",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHC2047367W044ZTDJ",
+  "columns": [
+    {
+      "id": "01M4CVYP12GM10WAQXZ0E99EV1",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP1205Q7TFQJH9JPQKF5",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12X2YY2N5EBZBDA7QW",
+      "name": "certified_on",
+      "type": "date"
+    },
+    {
+      "id": "01M4CVYP126M23DGEJR84YVZDX",
+      "name": "can_service_electric",
+      "type": "bool",
+      "nullable": false,
+      "default": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_mechanics",
+    "columns": [
+      "01M4CVYP12GM10WAQXZ0E99EV1"
+    ]
+  },
+  "comment": "Someone qualified to repair bikes in the workshop."
+}

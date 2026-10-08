@@ -1,0 +1,52 @@
+{
+  "$schema": "../../../.schema/v1/locale.json",
+  "kind": "locale-shard",
+  "locale": "fr",
+  "scope": "01K70SPKCHMCQYF0NG3D335212",
+  "entries": {
+    "01K70SPKCH1GR7W8E57MFVJFMJ": {
+      "displayName": "Accessoire",
+      "pluralName": "Accessoires",
+      "src": {
+        "displayName": "adf76518",
+        "pluralName": "b08648db"
+      }
+    },
+    "01K70SPKCH4FKYH8XX48KKW5NJ": {
+      "displayName": "Station",
+      "pluralName": "Stations",
+      "description": "Un lieu où l'on prend et rend les vélos.",
+      "src": {
+        "displayName": "115ccf96",
+        "pluralName": "115ccf96",
+        "description": "7014f96b"
+      }
+    },
+    "01K70SPKCHEW4XHTZEVPY45WGH": {
+      "displayName": "Borne",
+      "pluralName": "Bornes",
+      "src": {
+        "displayName": "49c1e208",
+        "pluralName": "49c1e208"
+      }
+    },
+    "01K70SPKCHMCQYF0NG3D335212": {
+      "displayName": "Flotte",
+      "description": "Les stations, les bornes, les vélos et les accessoires qui les équipent.",
+      "src": {
+        "displayName": "2bb4f92c",
+        "description": "4fa9b718"
+      }
+    },
+    "01K70SPKCHXNQ7XPNSZP6Q6F6Z": {
+      "displayName": "Vélo",
+      "pluralName": "Vélos",
+      "description": "Un vélo appartenant à la coopérative.",
+      "src": {
+        "displayName": "1fefaaac",
+        "pluralName": "1fefaaac",
+        "description": "13afb0b7"
+      }
+    }
+  }
+}

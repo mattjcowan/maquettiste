@@ -1,0 +1,46 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP12AXCGEDGGV2JZYCJG",
+  "name": "accessories",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCH3JZ7T3CD4N2QF59W",
+  "columns": [
+    {
+      "id": "01M4CVYP12JGATQWY60R7X8J6F",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP124MAH7Z8RE46RX07D",
+      "name": "sku",
+      "type": "string",
+      "length": 24,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12G34Y7KNG89231RXC",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_accessories",
+    "columns": [
+      "01M4CVYP12JGATQWY60R7X8J6F"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M4CVYP12ZM1THNRQ0MJ485FH",
+      "name": "uq_accessories_sku",
+      "columns": [
+        "01M4CVYP124MAH7Z8RE46RX07D"
+      ]
+    }
+  ],
+  "comment": "Something fitted to a bike: a basket, a child seat, a lock."
+}

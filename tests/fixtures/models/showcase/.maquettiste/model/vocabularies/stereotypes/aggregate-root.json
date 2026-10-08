@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01K70SPKCHAX3Y581ZKJBFYA1J",
+  "key": "aggregate-root",
+  "name": "Aggregate root",
+  "description": "The entry point of a cluster of entities that change together.",
+  "appliesTo": [
+    "entity"
+  ]
+}

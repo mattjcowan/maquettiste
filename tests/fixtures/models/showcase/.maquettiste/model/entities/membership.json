@@ -1,0 +1,98 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHSEMT3Z8KWAX5HE1S",
+  "name": "Membership",
+  "package": "01K70SPKCHEP4J6H866Y0C7AB7",
+  "description": "One period of a member's plan; a member renews by starting a new one.",
+  "tags": [
+    "finance"
+  ],
+  "category": "01K70SPKCHDHSVGPYRQ8GW49PD",
+  "key": {
+    "attributes": [
+      "01K70SPKCHVNV5A18NZ7N18RDN"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHVNV5A18NZ7N18RDN",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHA2TSNBHNPJZR8G43",
+      "name": "plan",
+      "type": {
+        "ref": "01K70SPKCH46M4TVABZX7XCFY3"
+      },
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH3TKRXCH007EWYJY4",
+      "name": "startsOn",
+      "type": "date",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHHWBV3X6F3HKRFYYQ",
+      "name": "endsOn",
+      "type": "date",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHJNZ4T36KH9ZJ7VD7",
+      "name": "autoRenew",
+      "type": "bool",
+      "required": true,
+      "default": true
+    },
+    {
+      "id": "01K70SPKCH9RJYW9EE8Z0G8MRP",
+      "name": "fee",
+      "type": "decimal",
+      "precision": 8,
+      "scale": 2,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13190DQGQ5P1N8P0TP",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP121PPJSNE1MTF5QET4",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHVNV5A18NZ7N18RDN",
+          "column": "01M4CVYP12G48D8TKDG17T415N"
+        },
+        {
+          "attribute": "01K70SPKCHA2TSNBHNPJZR8G43",
+          "column": "01M4CVYP12BYY489MB9EVZQ6AB"
+        },
+        {
+          "attribute": "01K70SPKCH3TKRXCH007EWYJY4",
+          "column": "01M4CVYP125Z5VYM6VWV8F7QG3"
+        },
+        {
+          "attribute": "01K70SPKCHHWBV3X6F3HKRFYYQ",
+          "column": "01M4CVYP12NJ4XFE9XP8AB68PE"
+        },
+        {
+          "attribute": "01K70SPKCHJNZ4T36KH9ZJ7VD7",
+          "column": "01M4CVYP12M788MR5G1FSSZZYP"
+        },
+        {
+          "attribute": "01K70SPKCH9RJYW9EE8Z0G8MRP",
+          "column": "01M4CVYP12PQ8CSCDR2V7MRWQR"
+        },
+        {
+          "attribute": "01K70SPKCHAWS0YE3KCSWJSTXW",
+          "column": "01M4CVYP121HHD0QZQKA2E26B3"
+        }
+      ]
+    }
+  ]
+}

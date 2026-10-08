@@ -1,0 +1,29 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01K70SPKCH0KC1RHDMAXVKZD6B",
+  "key": "audited",
+  "name": "Audited",
+  "description": "Records when a row was created and last changed.",
+  "appliesTo": [
+    "entity",
+    "table"
+  ],
+  "attributes": [
+    {
+      "id": "01K70SPKCH3FZBNEK76DKSHC1W",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "readOnly": true,
+      "description": "When the row was created."
+    },
+    {
+      "id": "01K70SPKCHTFH173XCG3GVCRZB",
+      "name": "updatedAt",
+      "type": "datetimeoffset",
+      "readOnly": true,
+      "description": "When the row last changed."
+    }
+  ]
+}

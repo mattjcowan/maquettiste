@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01K70SPKCHDSYTMAA2NMSVAZH3",
+  "name": "starts at",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "ends": [
+    {
+      "id": "01K70SPKCHNDP6N7DCWPRKKFB7",
+      "entity": "01K70SPKCH4FKYH8XX48KKW5NJ",
+      "role": "pickupStation",
+      "navigation": "pickupStation",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01K70SPKCHZ10YDREV2GFFVBPG",
+      "entity": "01K70SPKCHGEZQZCYXWCYQSHES",
+      "role": "departures"
+    }
+  ]
+}

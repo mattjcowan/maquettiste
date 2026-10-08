@@ -1,0 +1,80 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP125DWA1EPJRV0JVT88",
+  "name": "parts",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHC2047367W044ZTDJ",
+  "columns": [
+    {
+      "id": "01M4CVYP12B8Z91NA0W1F95FWC",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12CC355E9SV5J5E3P9",
+      "name": "part_number",
+      "type": "string",
+      "length": 24,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12WXY2EGCZ6WTNR30V",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP1223Q6F9GJXF5EQ46B",
+      "name": "unit_cost",
+      "type": "decimal",
+      "precision": 8,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12JJC9VKV2XQ48XTGB",
+      "name": "stock_on_hand",
+      "type": "int32",
+      "nullable": false,
+      "default": 0
+    },
+    {
+      "id": "01M4CVYP12A6A5WZ9YJ6XJQ9ZY",
+      "name": "reorder_level",
+      "type": "int32",
+      "nullable": false,
+      "default": 2
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_parts",
+    "columns": [
+      "01M4CVYP12B8Z91NA0W1F95FWC"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M4CVYP13WWSH77XBRYJ51NZ1",
+      "name": "uq_parts_part_number",
+      "columns": [
+        "01M4CVYP12CC355E9SV5J5E3P9"
+      ]
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01K70SPKCJ0W4TYDQ9GD9TT9DK",
+      "name": "ix_parts_low_stock",
+      "columns": [
+        {
+          "column": "01M4CVYP12CC355E9SV5J5E3P9"
+        }
+      ],
+      "where": "stock_on_hand <= reorder_level"
+    }
+  ],
+  "comment": "A spare part kept in the workshop's stock."
+}

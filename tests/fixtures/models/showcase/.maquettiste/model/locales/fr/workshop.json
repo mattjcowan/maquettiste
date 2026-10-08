@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../.schema/v1/locale.json",
+  "kind": "locale-shard",
+  "locale": "fr",
+  "scope": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "entries": {
+    "01K70SPKCH28NBYKWV52NFZ5PN": {
+      "displayName": "Réparation",
+      "pluralName": "Réparations",
+      "src": {
+        "displayName": "1bde4c0c",
+        "pluralName": "1bde4c0c"
+      }
+    },
+    "01K70SPKCH5Q2XHPW3TPPEXYCJ": {
+      "displayName": "Atelier",
+      "description": "Les réparations, les mécaniciens, les pièces détachées et leurs fournisseurs.",
+      "src": {
+        "displayName": "c0086f23",
+        "description": "0fe5e28d"
+      }
+    },
+    "01K70SPKCHBT695JVQ6ZCCERFX": {
+      "displayName": "Pièce",
+      "pluralName": "Pièces",
+      "src": {
+        "displayName": "8570a2e1",
+        "pluralName": "8570a2e1"
+      }
+    },
+    "01K70SPKCHG2XJM8GCFSD7GP71": {
+      "displayName": "Fournisseur",
+      "pluralName": "Fournisseurs",
+      "src": {
+        "displayName": "72e2f033",
+        "pluralName": "72e2f033"
+      }
+    },
+    "01K70SPKCHWFDNY2MX37QPRHK1": {
+      "displayName": "Commande de pièces",
+      "pluralName": "Commandes de pièces",
+      "src": {
+        "displayName": "61efe950",
+        "pluralName": "61efe950"
+      }
+    },
+    "01K70SPKCHYH688509K0G7QPM8": {
+      "displayName": "Mécanicien",
+      "pluralName": "Mécaniciens",
+      "src": {
+        "displayName": "57d04c69",
+        "pluralName": "57d04c69"
+      }
+    }
+  }
+}

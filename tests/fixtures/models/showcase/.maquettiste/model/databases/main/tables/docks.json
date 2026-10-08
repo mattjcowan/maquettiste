@@ -1,0 +1,66 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP12MTPD6RXW4Q08B3Z2",
+  "name": "docks",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCH3JZ7T3CD4N2QF59W",
+  "columns": [
+    {
+      "id": "01M4CVYP12QMS26J7QGGG68WAP",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12M3TR4KASWE1EN46C",
+      "name": "number",
+      "type": "int16",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12PV7DAJVMD9E01V69",
+      "name": "is_operational",
+      "type": "bool",
+      "nullable": false,
+      "default": true
+    },
+    {
+      "id": "01M4CVYP12M6E55SYTAYSH3ZYW",
+      "name": "station_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_docks",
+    "columns": [
+      "01M4CVYP12QMS26J7QGGG68WAP"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01K70SPKCJ38C8XQFK82HJB34W",
+      "name": "uq_docks_station_number",
+      "columns": [
+        "01M4CVYP12M6E55SYTAYSH3ZYW",
+        "01M4CVYP12M3TR4KASWE1EN46C"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP133WH9V37H7QHQDWAV",
+      "name": "fk_docks_station_id",
+      "columns": [
+        "01M4CVYP12M6E55SYTAYSH3ZYW"
+      ],
+      "referencesTable": "01M4CVYP1265ATWR3M5WN80CVC",
+      "referencesColumns": [
+        "01M4CVYP126Y2PH6FBFYB5PMGQ"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "One locking point at a station."
+}

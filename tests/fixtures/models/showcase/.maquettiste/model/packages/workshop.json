@@ -1,0 +1,7 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01K70SPKCH5Q2XHPW3TPPEXYCJ",
+  "name": "Workshop",
+  "description": "Repair jobs, mechanics, spare parts and the suppliers who send them."
+}

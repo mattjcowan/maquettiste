@@ -1,0 +1,174 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01K70SPKCJHEB2DP30P0P0V2HW",
+  "name": "Spoke & Chain overview",
+  "description": "Every entity, one column per domain: Membership, Fleet, Rentals, Workshop.",
+  "members": [
+    {
+      "element": "01K70SPKCHHAYTBVH5K7WATEEH",
+      "x": 40,
+      "y": 40,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCH4FKYH8XX48KKW5NJ",
+      "x": 340,
+      "y": 40,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHGEZQZCYXWCYQSHES",
+      "x": 640,
+      "y": 40,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCH28NBYKWV52NFZ5PN",
+      "x": 940,
+      "y": 40,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHSEMT3Z8KWAX5HE1S",
+      "x": 40,
+      "y": 178,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHEW4XHTZEVPY45WGH",
+      "x": 340,
+      "y": 178,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCH7C3S84873FK3CFT9",
+      "x": 640,
+      "y": 178,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHYH688509K0G7QPM8",
+      "x": 940,
+      "y": 178,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCH60F877W96S1XDT1Z",
+      "x": 40,
+      "y": 316,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHXNQ7XPNSZP6Q6F6Z",
+      "x": 340,
+      "y": 316,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHQMZKG99E2WS0Z9N4",
+      "x": 640,
+      "y": 316,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHBT695JVQ6ZCCERFX",
+      "x": 940,
+      "y": 316,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHDXRVYGNMNDE5FCAV",
+      "x": 40,
+      "y": 454,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCH1GR7W8E57MFVJFMJ",
+      "x": 340,
+      "y": 454,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCH9NH2H31PJDK4XMTT",
+      "x": 640,
+      "y": 454,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHWFDNY2MX37QPRHK1",
+      "x": 940,
+      "y": 454,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHG2XJM8GCFSD7GP71",
+      "x": 940,
+      "y": 592,
+      "collapsed": true
+    },
+    {
+      "element": "01K70SPKCHTWFTD0AA7V0JNB9C"
+    },
+    {
+      "element": "01K70SPKCHS413A17ZZZG35SGX"
+    },
+    {
+      "element": "01K70SPKCHRGC9TX91ETEFSEJA"
+    },
+    {
+      "element": "01K70SPKCHJ0A633CXK34QZGQ8"
+    },
+    {
+      "element": "01K70SPKCHJ8FCEYNQX6VSB0T9"
+    },
+    {
+      "element": "01K70SPKCHXC622STKN17PC945"
+    },
+    {
+      "element": "01K70SPKCHSVQFGAEDKT71VJB0"
+    },
+    {
+      "element": "01K70SPKCH34PEG9QYV2HWH3Y2"
+    },
+    {
+      "element": "01K70SPKCHN5ZZB8TZFW6D9Q8A"
+    },
+    {
+      "element": "01K70SPKCH67JD5X3ZCQXZNFXA"
+    },
+    {
+      "element": "01K70SPKCHTM51GX3QZ4Q3VF5R"
+    },
+    {
+      "element": "01K70SPKCHQ3WC8RQP0NYHHW7E"
+    },
+    {
+      "element": "01K70SPKCHYP5HMZZSRH970B72"
+    },
+    {
+      "element": "01K70SPKCHT1BQCC9Y44N72RAE"
+    },
+    {
+      "element": "01K70SPKCH93PBP6RE8WY362EE"
+    },
+    {
+      "element": "01K70SPKCHH03EYJDBHY64C3FV"
+    },
+    {
+      "element": "01K70SPKCHDSYTMAA2NMSVAZH3"
+    },
+    {
+      "element": "01K70SPKCHEKHGGNA69QDZTA2C"
+    },
+    {
+      "element": "01K70SPKCHD0ZK77WGWJ9WYYJA"
+    },
+    {
+      "element": "01K70SPKCHWMWF4HDG0G3AQFE7"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

@@ -1,0 +1,198 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01K70SPKCJ1MQVTJ617RY2PG69",
+  "name": "RentalLifecycle",
+  "displayName": "Rental lifecycle",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "use": "lifecycle",
+  "subject": "01K70SPKCHGEZQZCYXWCYQSHES",
+  "boundAttribute": "01K70SPKCHGDH2XWZT9C9T93YP",
+  "description": "A rental from the reservation to the last payment: a reservation lapses after 30 minutes, a ride becomes overdue after a day.",
+  "context": [
+    {
+      "id": "01K70SPKCJBAQGQS9T0YTWHAY9",
+      "name": "totalCharge",
+      "type": "decimal",
+      "default": 0
+    },
+    {
+      "id": "01K70SPKCJAMBG6R3XXWRPW4XE",
+      "name": "amountPaid",
+      "type": "decimal",
+      "default": 0
+    }
+  ],
+  "events": [
+    {
+      "id": "01K70SPKCJYN6069SJFTRRZ7DH",
+      "name": "pickUp",
+      "displayName": "Pick up",
+      "actors": [
+        "01K70SPKCJ6N2GAFKYDDWSTPAM"
+      ]
+    },
+    {
+      "id": "01K70SPKCJCXDSQQHF9ATHEYGT",
+      "name": "cancel",
+      "actors": [
+        "01K70SPKCJ6N2GAFKYDDWSTPAM"
+      ]
+    },
+    {
+      "id": "01K70SPKCJY67J34W1RXTRJD1E",
+      "name": "dropOff",
+      "displayName": "Drop off",
+      "actors": [
+        "01K70SPKCJ6N2GAFKYDDWSTPAM"
+      ]
+    },
+    {
+      "id": "01K70SPKCJBTWDJ9GMTQ9VTM1R",
+      "name": "pay",
+      "payload": [
+        {
+          "id": "01K70SPKCJ5THMTZ35RTYMT8DS",
+          "name": "amount",
+          "type": "decimal",
+          "required": true
+        }
+      ],
+      "actors": [
+        "01K70SPKCJDF4WEW7YWHRM9TF8"
+      ]
+    }
+  ],
+  "guards": [
+    {
+      "id": "01K70SPKCJP7FYFNBYN8HD3MKQ",
+      "name": "settlesTheBalance",
+      "displayName": "Settles the balance",
+      "expression": "context.amountPaid + event.payload.amount >= context.totalCharge"
+    }
+  ],
+  "actions": [
+    {
+      "id": "01K70SPKCJDKZ04BRJP8BRMVCR",
+      "name": "addLateFee",
+      "displayName": "Add the late fee",
+      "expression": "({ totalCharge: context.totalCharge + 5 })"
+    },
+    {
+      "id": "01K70SPKCJJG9KRQV52DD3Z73T",
+      "name": "recordPayment",
+      "displayName": "Record the payment",
+      "expression": "({ amountPaid: context.amountPaid + event.payload.amount })"
+    }
+  ],
+  "states": [
+    {
+      "id": "01K70SPKCJX37HM14WC77C1WW4",
+      "name": "Reserved",
+      "description": "A bike is held at the station for the member."
+    },
+    {
+      "id": "01K70SPKCJWBXANEXRRV5FFZ9H",
+      "name": "Active",
+      "description": "The member is riding."
+    },
+    {
+      "id": "01K70SPKCJ2Q2AB1G5YAADDQ44",
+      "name": "Overdue",
+      "description": "The ride has lasted more than a day."
+    },
+    {
+      "id": "01K70SPKCJS6HFBN2CQRCW2M3A",
+      "name": "Returned",
+      "description": "The bike is back in a dock; the bill is open."
+    },
+    {
+      "id": "01K70SPKCJTB00V1JCKZNE6M1S",
+      "name": "Closed",
+      "type": "final"
+    },
+    {
+      "id": "01K70SPKCJ1CA71SZ6B455VRAC",
+      "name": "Cancelled",
+      "type": "final"
+    }
+  ],
+  "initial": "01K70SPKCJX37HM14WC77C1WW4",
+  "transitions": [
+    {
+      "id": "01K70SPKCJSKTG03E6CG7DFXYS",
+      "source": "01K70SPKCJX37HM14WC77C1WW4",
+      "event": "01K70SPKCJYN6069SJFTRRZ7DH",
+      "targets": [
+        "01K70SPKCJWBXANEXRRV5FFZ9H"
+      ]
+    },
+    {
+      "id": "01K70SPKCJC7ZTFX83WJ1R7V3Z",
+      "source": "01K70SPKCJX37HM14WC77C1WW4",
+      "event": "01K70SPKCJCXDSQQHF9ATHEYGT",
+      "targets": [
+        "01K70SPKCJ1CA71SZ6B455VRAC"
+      ]
+    },
+    {
+      "id": "01K70SPKCJHMJ6XQN24KDDNY86",
+      "displayName": "Reservation lapses",
+      "source": "01K70SPKCJX37HM14WC77C1WW4",
+      "trigger": "after",
+      "after": "PT30M",
+      "targets": [
+        "01K70SPKCJ1CA71SZ6B455VRAC"
+      ]
+    },
+    {
+      "id": "01K70SPKCJ4NBXG1Q9D8YN1R4H",
+      "source": "01K70SPKCJWBXANEXRRV5FFZ9H",
+      "event": "01K70SPKCJY67J34W1RXTRJD1E",
+      "targets": [
+        "01K70SPKCJS6HFBN2CQRCW2M3A"
+      ]
+    },
+    {
+      "id": "01K70SPKCJMKSDTN5YD953VK3Q",
+      "source": "01K70SPKCJWBXANEXRRV5FFZ9H",
+      "trigger": "after",
+      "after": "P1D",
+      "targets": [
+        "01K70SPKCJ2Q2AB1G5YAADDQ44"
+      ],
+      "actions": [
+        "01K70SPKCJDKZ04BRJP8BRMVCR"
+      ]
+    },
+    {
+      "id": "01K70SPKCJPKMV1B73BA7PD5KP",
+      "source": "01K70SPKCJ2Q2AB1G5YAADDQ44",
+      "event": "01K70SPKCJY67J34W1RXTRJD1E",
+      "targets": [
+        "01K70SPKCJS6HFBN2CQRCW2M3A"
+      ]
+    },
+    {
+      "id": "01K70SPKCJDT2G5QR4WTZJADEN",
+      "source": "01K70SPKCJS6HFBN2CQRCW2M3A",
+      "event": "01K70SPKCJBTWDJ9GMTQ9VTM1R",
+      "guard": "01K70SPKCJP7FYFNBYN8HD3MKQ",
+      "targets": [
+        "01K70SPKCJTB00V1JCKZNE6M1S"
+      ],
+      "actions": [
+        "01K70SPKCJJG9KRQV52DD3Z73T"
+      ]
+    },
+    {
+      "id": "01K70SPKCJ5Y3AM1E4XYRD6RAN",
+      "displayName": "Part payment",
+      "source": "01K70SPKCJS6HFBN2CQRCW2M3A",
+      "event": "01K70SPKCJBTWDJ9GMTQ9VTM1R",
+      "actions": [
+        "01K70SPKCJJG9KRQV52DD3Z73T"
+      ]
+    }
+  ]
+}

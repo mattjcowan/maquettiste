@@ -1,0 +1,149 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHHAYTBVH5K7WATEEH",
+  "name": "Member",
+  "package": "01K70SPKCHEP4J6H866Y0C7AB7",
+  "description": "A person who belongs to the cooperative and may ride, volunteer or both.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "pii"
+  ],
+  "category": "01K70SPKCH02AHF47S9JWSBD33",
+  "key": {
+    "attributes": [
+      "01K70SPKCHY33PCXKW27GPNEVH"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHY33PCXKW27GPNEVH",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHFHFZAFJKGN4P83CM",
+      "name": "memberNumber",
+      "type": "string",
+      "length": 12,
+      "required": true,
+      "unique": true,
+      "description": "Printed on the member's card."
+    },
+    {
+      "id": "01K70SPKCHVQY1MG1EQZC5TB33",
+      "name": "firstName",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "sensitive": "pii"
+    },
+    {
+      "id": "01K70SPKCHXB7H04X733K5XZ3V",
+      "name": "lastName",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "sensitive": "pii"
+    },
+    {
+      "id": "01K70SPKCHVYPYW2HPPK0E3YDH",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "required": true,
+      "unique": true,
+      "sensitive": "pii",
+      "validation": {
+        "pattern": "^[^@\\s]+@[^@\\s]+$"
+      }
+    },
+    {
+      "id": "01K70SPKCHQMTH7EW57S4C0Q4S",
+      "name": "phone",
+      "type": "string",
+      "length": 24,
+      "sensitive": "pii"
+    },
+    {
+      "id": "01K70SPKCH15FFY5QWVNTZ0C05",
+      "name": "joinedOn",
+      "type": "date",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHR2KZDEJCTDYJA3A3",
+      "name": "plan",
+      "type": {
+        "ref": "01K70SPKCH46M4TVABZX7XCFY3"
+      },
+      "required": true,
+      "default": "monthly"
+    },
+    {
+      "id": "01K70SPKCH8SFWCERQ2J4EX2TW",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13D2G85MN80TP9Q3AM",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP1293TR3T6VN8PVNN2S",
+      "fields": [
+        {
+          "attribute": "01K70SPKCHY33PCXKW27GPNEVH",
+          "column": "01M4CVYP12VMHGSFTSC5MDEC8Z"
+        },
+        {
+          "attribute": "01K70SPKCHFHFZAFJKGN4P83CM",
+          "column": "01M4CVYP123MSZSYQC8BFTMKMV"
+        },
+        {
+          "attribute": "01K70SPKCHVQY1MG1EQZC5TB33",
+          "column": "01M4CVYP12P30HRM2BYHQS6Z2X"
+        },
+        {
+          "attribute": "01K70SPKCHXB7H04X733K5XZ3V",
+          "column": "01M4CVYP12B8PQH7AZMCFAWCFC"
+        },
+        {
+          "attribute": "01K70SPKCHVYPYW2HPPK0E3YDH",
+          "column": "01M4CVYP12Q2DC1QNF20724CAV"
+        },
+        {
+          "attribute": "01K70SPKCHQMTH7EW57S4C0Q4S",
+          "column": "01M4CVYP12Z4YQEP34M9KTH3Y9"
+        },
+        {
+          "attribute": "01K70SPKCH15FFY5QWVNTZ0C05",
+          "column": "01M4CVYP12ZDSX57D47XZERC9B"
+        },
+        {
+          "attribute": "01K70SPKCHR2KZDEJCTDYJA3A3",
+          "column": "01M4CVYP1253Z4XY4PF7V58FKP"
+        },
+        {
+          "attribute": "01K70SPKCH8SFWCERQ2J4EX2TW",
+          "column": "01M4CVYP12B7HQ1YJHDAV5R2AW"
+        },
+        {
+          "attribute": "01K70SPKCH3FZBNEK76DKSHC1W",
+          "column": "01M4CVYP12Y4SVK0T5SS6VN71M"
+        },
+        {
+          "attribute": "01K70SPKCHTFH173XCG3GVCRZB",
+          "column": "01M4CVYP124ENEN924Z2C6GM1K"
+        }
+      ]
+    }
+  ]
+}

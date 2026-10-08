@@ -1,0 +1,29 @@
+{
+  "$schema": "../../.schema/v1/tag-vocabulary.json",
+  "kind": "tag-vocabulary",
+  "id": "01K70SPKCHST4V308N5Z36CHQ0",
+  "name": "tags",
+  "strict": true,
+  "definitions": [
+    {
+      "key": "finance",
+      "description": "Money moves through it: fees, charges, payments.",
+      "color": "#2e9e5b"
+    },
+    {
+      "key": "inventory",
+      "description": "Counts of things on shelves or in docks.",
+      "color": "#d98a1c"
+    },
+    {
+      "key": "pii",
+      "description": "Holds personal data about a member.",
+      "color": "#d23f3f"
+    },
+    {
+      "key": "safety",
+      "description": "Affects whether a bike is safe to ride.",
+      "color": "#7a4fd6"
+    }
+  ]
+}

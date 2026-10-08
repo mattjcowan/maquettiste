@@ -1,0 +1,130 @@
+{
+  "$schema": "../../../.schema/v1/locale.json",
+  "kind": "locale-shard",
+  "locale": "fr",
+  "scope": "reference-data",
+  "entries": {
+    "01K70SPKCH2DTY2XX9QXCCNKMD": {
+      "label": "Abonnement annuel",
+      "src": {
+        "label": "303d918d"
+      }
+    },
+    "01K70SPKCH2QND2MWE4JXS9QQR": {
+      "displayName": "Catégorie de réparation",
+      "pluralName": "Catégories de réparation",
+      "src": {
+        "displayName": "37556afc",
+        "pluralName": "a1035fa9"
+      }
+    },
+    "01K70SPKCH3B2X5S54GEC6PDXC": {
+      "label": "Chaîne et dérailleur",
+      "src": {
+        "label": "a685fa63"
+      }
+    },
+    "01K70SPKCH46M4TVABZX7XCFY3": {
+      "displayName": "Formule d'adhésion",
+      "pluralName": "Formules d'adhésion",
+      "src": {
+        "displayName": "9709f414",
+        "pluralName": "4aec62fc"
+      }
+    },
+    "01K70SPKCH4ZJ7SSYBFGG7QVMJ": {
+      "label": "Pass journée",
+      "src": {
+        "label": "cbe35db3"
+      }
+    },
+    "01K70SPKCH5SBBS3EH94FM5PZF": {
+      "label": "Vélo de ville",
+      "src": {
+        "label": "a8d9cb91"
+      }
+    },
+    "01K70SPKCH64N9P32SB29KZNC7": {
+      "label": "Bénévole",
+      "src": {
+        "label": "ef4683c3"
+      }
+    },
+    "01K70SPKCHBAXCXYQDFB2AB3PM": {
+      "label": "Entretien de la batterie",
+      "src": {
+        "label": "3c081d2a"
+      }
+    },
+    "01K70SPKCHD31DRC70K7ESPTKR": {
+      "label": "Étudiant",
+      "src": {
+        "label": "2a164d54"
+      }
+    },
+    "01K70SPKCHD50VWP86CG04VGHP": {
+      "label": "Vélo cargo",
+      "src": {
+        "label": "3a3f1c3b"
+      }
+    },
+    "01K70SPKCHFE3DJP271020DHCD": {
+      "label": "Vélo enfant",
+      "src": {
+        "label": "b4560c94"
+      }
+    },
+    "01K70SPKCHG20XZEE12NDBT4V7": {
+      "label": "Vélo de ville électrique",
+      "src": {
+        "label": "5c0bed61"
+      }
+    },
+    "01K70SPKCHGTB4TRZ7VC8J7SMB": {
+      "label": "Freins",
+      "src": {
+        "label": "1e4fa9d8"
+      }
+    },
+    "01K70SPKCHPYV3T3QPW49WF2VW": {
+      "label": "Éclairage et électricité",
+      "src": {
+        "label": "8b0bb900"
+      }
+    },
+    "01K70SPKCHQ5EBCS4G1XP66XZY": {
+      "label": "Abonnement mensuel",
+      "src": {
+        "label": "d09a6f93"
+      }
+    },
+    "01K70SPKCHS7TTDDQ7HK7RM3T0": {
+      "displayName": "Type de vélo",
+      "pluralName": "Types de vélo",
+      "description": "Les types de vélo de la flotte.",
+      "src": {
+        "displayName": "f76b2b39",
+        "pluralName": "28be8481",
+        "description": "85a38131"
+      }
+    },
+    "01K70SPKCHSPV58D5M3SRS3J5J": {
+      "label": "Vélo cargo électrique",
+      "src": {
+        "label": "15422fd1"
+      }
+    },
+    "01K70SPKCHXM6THWD5ESJX4BVQ": {
+      "label": "Contrôle du cadre",
+      "src": {
+        "label": "115b38dc"
+      }
+    },
+    "01K70SPKCHZT6TVPNK9VVX797W": {
+      "label": "Roues et pneus",
+      "src": {
+        "label": "43c581e4"
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/actor.json",
+  "kind": "actor",
+  "id": "01K70SPKCJCT6X29S7QCB8EVAZ",
+  "name": "WorkshopLead",
+  "displayName": "Workshop lead",
+  "type": "role",
+  "description": "Runs the workshop and signs off finished repairs."
+}

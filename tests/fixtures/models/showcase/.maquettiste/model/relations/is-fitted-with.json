@@ -1,0 +1,30 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01K70SPKCHN5ZZB8TZFW6D9Q8A",
+  "name": "is fitted with",
+  "package": "01K70SPKCHMCQYF0NG3D335212",
+  "inverseName": "is fitted to",
+  "ends": [
+    {
+      "id": "01K70SPKCHKTS8FWN9Q4XRPKV3",
+      "entity": "01K70SPKCHXNQ7XPNSZP6Q6F6Z",
+      "role": "bikes",
+      "navigation": "bikes"
+    },
+    {
+      "id": "01K70SPKCH3YPWYGC76TCXBSF8",
+      "entity": "01K70SPKCH1GR7W8E57MFVJFMJ",
+      "role": "accessories",
+      "navigation": "accessories"
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01K70SPKCHTRW0TD78DSG12HRC",
+      "name": "fittedOn",
+      "type": "date",
+      "required": true
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "../../../../.schema/v1/view.json",
+  "kind": "view",
+  "id": "01K70SPKCJDN4N809FQB47N8EE",
+  "name": "overdue_rentals",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHE564R3A6M9TVDBPV",
+  "description": "Rentals past their due time, with the member to call and the bike to find.",
+  "body": {
+    "*": "SELECT r.id, r.reference, r.due_at, m.member_number, m.phone, b.frame_number\nFROM rentals.rentals r\nJOIN membership.members m ON m.id = r.member_id\nJOIN fleet.bikes b ON b.id = r.bike_id\nWHERE r.status = 'Overdue'"
+  },
+  "columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "name": "reference",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "name": "due_at",
+      "type": "datetimeoffset"
+    },
+    {
+      "name": "member_number",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "name": "phone",
+      "type": "string"
+    },
+    {
+      "name": "frame_number",
+      "type": "string",
+      "nullable": false
+    }
+  ],
+  "dependsOn": [
+    "01M4CVYP124TEYG34TK4370963",
+    "01M4CVYP1293TR3T6VN8PVNN2S",
+    "01M4CVYP12G3RZR6Z8E2FQH3RZ"
+  ]
+}

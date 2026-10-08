@@ -1,0 +1,75 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01K70SPKCJR6F6K3Z6TZ8RCDN2",
+  "name": "Rentals",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "description": "A rental between the member, the bike and the stations it leaves from and returns to.",
+  "members": [
+    {
+      "element": "01K70SPKCHHAYTBVH5K7WATEEH",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01K70SPKCHGEZQZCYXWCYQSHES",
+      "x": 380,
+      "y": 40
+    },
+    {
+      "element": "01K70SPKCHXNQ7XPNSZP6Q6F6Z",
+      "x": 720,
+      "y": 40
+    },
+    {
+      "element": "01K70SPKCHQMZKG99E2WS0Z9N4",
+      "x": 40,
+      "y": 450
+    },
+    {
+      "element": "01K70SPKCH7C3S84873FK3CFT9",
+      "x": 380,
+      "y": 450
+    },
+    {
+      "element": "01K70SPKCH4FKYH8XX48KKW5NJ",
+      "x": 720,
+      "y": 450
+    },
+    {
+      "element": "01K70SPKCH9NH2H31PJDK4XMTT",
+      "x": 380,
+      "y": 764
+    },
+    {
+      "element": "01K70SPKCHTWFTD0AA7V0JNB9C"
+    },
+    {
+      "element": "01K70SPKCHS413A17ZZZG35SGX"
+    },
+    {
+      "element": "01K70SPKCHSVQFGAEDKT71VJB0"
+    },
+    {
+      "element": "01K70SPKCH34PEG9QYV2HWH3Y2"
+    },
+    {
+      "element": "01K70SPKCH67JD5X3ZCQXZNFXA"
+    },
+    {
+      "element": "01K70SPKCHQ3WC8RQP0NYHHW7E"
+    },
+    {
+      "element": "01K70SPKCHYP5HMZZSRH970B72"
+    },
+    {
+      "element": "01K70SPKCH93PBP6RE8WY362EE"
+    },
+    {
+      "element": "01K70SPKCHDSYTMAA2NMSVAZH3"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.85
+  }
+}

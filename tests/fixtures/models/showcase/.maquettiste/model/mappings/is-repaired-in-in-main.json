@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M4CVYP13NYCD0BT3YJKT0E04",
+  "name": "is repaired in in main",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "relation": "01K70SPKCHTM51GX3QZ4Q3VF5R",
+  "foreignKey": "01M4CVYP13TPQY7WBVP7TP1Y3X"
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01M4CW4R5HT2DCACSBP6B5Q0NM",
+  "name": "PartsInStock",
+  "displayName": "Parts in stock",
+  "process": "01K70SPKCJRBJW4PQQNAB9281H",
+  "description": "The parts are on the shelf; inspection and stock check finish and the lead signs the bike off.",
+  "steps": [
+    {
+      "id": "01M4CW4R5FKAEDB27EG19T8VC3",
+      "event": "01K70SPKCJ3NBGA1CK7P5HX0MD",
+      "actor": "01K70SPKCJCT6X29S7QCB8EVAZ",
+      "expect": {
+        "states": [
+          "01K70SPKCJABJPZFBFM5ANN1P8",
+          "01K70SPKCJA363BG8VP83NPRQW"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4R5HA9VA2C25JR9W5EAB",
+      "input": "invoke-done",
+      "invoke": "01K70SPKCJGDJHPEXW51CRY1NF",
+      "expect": {
+        "states": [
+          "01K70SPKCJABJPZFBFM5ANN1P8",
+          "01K70SPKCJDKZB9KDY95B7QYRS"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4R5HNPGEXVD46FHE1D56",
+      "input": "invoke-done",
+      "invoke": "01K70SPKCJH1D1Y262RVXZ6CYS",
+      "actor": "01K70SPKCJQJHA2PDN446V12A5",
+      "expect": {
+        "states": [
+          "01K70SPKCJ837QHZ61EAF0J33W"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4R5HCMFS3WHQZTRX1PR4",
+      "event": "01K70SPKCJ5FDA7H5RQ5SXKC4E",
+      "actor": "01K70SPKCJQJHA2PDN446V12A5",
+      "expect": {
+        "states": [
+          "01K70SPKCJCAQ1VFXVJCVJWVYX"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4R5H58P245X1XDRHYH3N",
+      "event": "01K70SPKCJZQXB76Q8SKXG3MSM",
+      "actor": "01K70SPKCJCT6X29S7QCB8EVAZ",
+      "signer": "noor",
+      "meaning": "01K70SPKCJSSEBB70728XSDDRK",
+      "expect": {
+        "states": [
+          "01K70SPKCJ3WS4B5CBSCAF8DSP"
+        ]
+      }
+    }
+  ],
+  "outcome": "final"
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01M4CW4NRWABWES0Q8FT2NGWQ4",
+  "name": "RideAndPay",
+  "displayName": "Ride and pay",
+  "process": "01K70SPKCJ1MQVTJ617RY2PG69",
+  "description": "A member picks up a bike, rides, drops it off and pays the bill in one go.",
+  "start": {
+    "context": {
+      "01K70SPKCJBAQGQS9T0YTWHAY9": 6
+    }
+  },
+  "steps": [
+    {
+      "id": "01M4CW4NRVXFS5NPKK6R20M9HF",
+      "event": "01K70SPKCJYN6069SJFTRRZ7DH",
+      "actor": "01K70SPKCJ6N2GAFKYDDWSTPAM",
+      "expect": {
+        "states": [
+          "01K70SPKCJWBXANEXRRV5FFZ9H"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4NRWT6TJ5TNMXX7BGDH7",
+      "event": "01K70SPKCJY67J34W1RXTRJD1E",
+      "actor": "01K70SPKCJ6N2GAFKYDDWSTPAM",
+      "expect": {
+        "states": [
+          "01K70SPKCJS6HFBN2CQRCW2M3A"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4NRWJF1VJSAZD2B32JAD",
+      "event": "01K70SPKCJBTWDJ9GMTQ9VTM1R",
+      "actor": "01K70SPKCJDF4WEW7YWHRM9TF8",
+      "payload": {
+        "01K70SPKCJ5THMTZ35RTYMT8DS": 6
+      },
+      "expect": {
+        "states": [
+          "01K70SPKCJTB00V1JCKZNE6M1S"
+        ],
+        "context": {
+          "01K70SPKCJAMBG6R3XXWRPW4XE": 6
+        }
+      }
+    }
+  ],
+  "outcome": "final"
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCH7C3S84873FK3CFT9",
+  "name": "RentalCharge",
+  "displayName": "Rental charge",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "description": "One line of a rental's bill: riding time, a late fee, a damage fee.",
+  "tags": [
+    "finance"
+  ],
+  "category": "01K70SPKCHDHSVGPYRQ8GW49PD",
+  "key": {
+    "attributes": [
+      "01K70SPKCH2VGVPYNFHQB51T24"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCH2VGVPYNFHQB51T24",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHD4PEX67MNK7Y0TY6",
+      "name": "kind",
+      "type": "string",
+      "length": 16,
+      "required": true,
+      "validation": {
+        "allowedValues": [
+          "time",
+          "late",
+          "damage",
+          "discount"
+        ]
+      }
+    },
+    {
+      "id": "01K70SPKCH1XDEBX6Y4AVSD4M6",
+      "name": "description",
+      "type": "string",
+      "length": 120,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHT3X75TH6SX9C6WF2",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 2,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13FGW0VJ20BXH7JJ4X",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP12KR9FK0MG1JEKNT2M",
+      "fields": [
+        {
+          "attribute": "01K70SPKCH2VGVPYNFHQB51T24",
+          "column": "01M4CVYP12S5MCZEYFXKBYQXER"
+        },
+        {
+          "attribute": "01K70SPKCHD4PEX67MNK7Y0TY6",
+          "column": "01M4CVYP12SX8YWQQF7TJRKH13"
+        },
+        {
+          "attribute": "01K70SPKCH1XDEBX6Y4AVSD4M6",
+          "column": "01M4CVYP12FECZ8K5Y7KK67CZ1"
+        },
+        {
+          "attribute": "01K70SPKCHT3X75TH6SX9C6WF2",
+          "column": "01M4CVYP12X7A4CPQ34ARTWJCT"
+        },
+        {
+          "attribute": "01K70SPKCH40M30CHVGYC6674D",
+          "column": "01M4CVYP12QJTEJMWRMD7MSFEF"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01K70SPKCHS7TTDDQ7HK7RM3T0",
+  "name": "BikeType",
+  "displayName": "Bike type",
+  "pluralName": "Bike types",
+  "description": "The kinds of bike in the fleet.",
+  "code": {
+    "id": "01K70SPKCHJHQ74FMRDMB11W0Q",
+    "length": 12,
+    "pattern": "^[a-z_]+$"
+  },
+  "label": {
+    "id": "01K70SPKCHZHBR1S20S38VSB6P",
+    "length": 48
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCHF39SVT92YTJS47RB",
+      "name": "wheelSizeInches",
+      "type": "int16",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHGE6H47NSJ1YAASS0",
+      "name": "electric",
+      "type": "bool",
+      "required": true,
+      "default": false
+    }
+  ]
+}

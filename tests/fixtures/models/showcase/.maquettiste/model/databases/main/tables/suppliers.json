@@ -1,0 +1,43 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP128KY3CR5NCGVY4V9W",
+  "name": "suppliers",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHC2047367W044ZTDJ",
+  "columns": [
+    {
+      "id": "01M4CVYP12DTH73MT5BPWDBP2Y",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12MN97MASG1KXBQ2DF",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12XQ7VKM5NZPV15E48",
+      "name": "email",
+      "type": "string",
+      "length": 254
+    },
+    {
+      "id": "01M4CVYP129T6MN1Y7PKGS9M92",
+      "name": "lead_time_days",
+      "type": "int16",
+      "nullable": false,
+      "default": 5
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_suppliers",
+    "columns": [
+      "01M4CVYP12DTH73MT5BPWDBP2Y"
+    ]
+  },
+  "comment": "A shop or wholesaler the workshop orders parts from."
+}

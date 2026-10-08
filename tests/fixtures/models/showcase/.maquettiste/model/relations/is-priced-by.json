@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01K70SPKCH67JD5X3ZCQXZNFXA",
+  "name": "is priced by",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "ends": [
+    {
+      "id": "01K70SPKCHTXG0446TCM2W4VNQ",
+      "entity": "01K70SPKCHQMZKG99E2WS0Z9N4",
+      "role": "tariff",
+      "navigation": "tariff",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01K70SPKCHA77ZQ91JQEYRVE9K",
+      "entity": "01K70SPKCHGEZQZCYXWCYQSHES",
+      "role": "rentals"
+    }
+  ]
+}

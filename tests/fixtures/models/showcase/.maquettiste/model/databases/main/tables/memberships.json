@@ -1,0 +1,77 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP121PPJSNE1MTF5QET4",
+  "name": "memberships",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHFTKCR2VV8CX9VR0Q",
+  "columns": [
+    {
+      "id": "01M4CVYP12G48D8TKDG17T415N",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12BYY489MB9EVZQ6AB",
+      "name": "plan",
+      "type": "string",
+      "length": 12,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP125Z5VYM6VWV8F7QG3",
+      "name": "starts_on",
+      "type": "date",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12NJ4XFE9XP8AB68PE",
+      "name": "ends_on",
+      "type": "date",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12M788MR5G1FSSZZYP",
+      "name": "auto_renew",
+      "type": "bool",
+      "nullable": false,
+      "default": true
+    },
+    {
+      "id": "01M4CVYP12PQ8CSCDR2V7MRWQR",
+      "name": "fee",
+      "type": "decimal",
+      "precision": 8,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP121HHD0QZQKA2E26B3",
+      "name": "member_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_memberships",
+    "columns": [
+      "01M4CVYP12G48D8TKDG17T415N"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP13S431G2R0GEM4MZNE",
+      "name": "fk_memberships_member_id",
+      "columns": [
+        "01M4CVYP121HHD0QZQKA2E26B3"
+      ],
+      "referencesTable": "01M4CVYP1293TR3T6VN8PVNN2S",
+      "referencesColumns": [
+        "01M4CVYP12VMHGSFTSC5MDEC8Z"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "One period of a member's plan; a member renews by starting a new one."
+}

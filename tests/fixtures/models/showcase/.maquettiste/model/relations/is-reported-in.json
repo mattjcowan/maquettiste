@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01K70SPKCHQ3WC8RQP0NYHHW7E",
+  "name": "is reported in",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "ends": [
+    {
+      "id": "01K70SPKCHFKYWAS1HB2HW7KVE",
+      "entity": "01K70SPKCHGEZQZCYXWCYQSHES",
+      "role": "rental",
+      "navigation": "rental",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01K70SPKCHJN9KV1EV7VY5GZGE",
+      "entity": "01K70SPKCH9NH2H31PJDK4XMTT",
+      "role": "damageReports",
+      "navigation": "damageReports"
+    }
+  ]
+}

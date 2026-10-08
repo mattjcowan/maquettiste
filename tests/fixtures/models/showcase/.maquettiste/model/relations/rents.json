@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01K70SPKCH93PBP6RE8WY362EE",
+  "name": "rents",
+  "package": "01K70SPKCH1X7J3M33XCRS8ER8",
+  "inverseName": "is rented by",
+  "ends": [
+    {
+      "id": "01K70SPKCHGTQYKEYKARH3H5J4",
+      "entity": "01K70SPKCHHAYTBVH5K7WATEEH",
+      "role": "member",
+      "navigation": "member",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01K70SPKCHZ02RSY06E2A2H5AZ",
+      "entity": "01K70SPKCHGEZQZCYXWCYQSHES",
+      "role": "rentals",
+      "navigation": "rentals"
+    }
+  ]
+}

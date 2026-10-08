@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01K70SPKCH2QND2MWE4JXS9QQR",
+  "name": "RepairCategory",
+  "displayName": "Repair category",
+  "pluralName": "Repair categories",
+  "description": "What kind of work a repair job is.",
+  "code": {
+    "id": "01K70SPKCHXJDPGQDJDM5Y7R4Q",
+    "length": 16,
+    "pattern": "^[a-z_]+$"
+  },
+  "label": {
+    "id": "01K70SPKCH37VFB7CZXD2E1TXM",
+    "length": 64
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCH1BFK7FZR71TSFE8Z",
+      "name": "standardMinutes",
+      "type": "int32",
+      "required": true,
+      "description": "How long the job usually takes."
+    }
+  ]
+}

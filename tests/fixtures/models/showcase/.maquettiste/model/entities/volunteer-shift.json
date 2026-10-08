@@ -1,0 +1,72 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCHDXRVYGNMNDE5FCAV",
+  "name": "VolunteerShift",
+  "displayName": "Volunteer shift",
+  "package": "01K70SPKCHEP4J6H866Y0C7AB7",
+  "description": "A few hours a member gives to the workshop or a station.",
+  "category": "01K70SPKCHP6GSXB9JTFJ2X40D",
+  "key": {
+    "attributes": [
+      "01K70SPKCH3SM68B8E30HGDSA0"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCH3SM68B8E30HGDSA0",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHW5C31AAN3SEQ4AJJ",
+      "name": "startsAt",
+      "type": "datetimeoffset",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHJ7VPJVSH7ZRZ13KF",
+      "name": "endsAt",
+      "type": "datetimeoffset",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHD60PF37Q8SJMZ0CC",
+      "name": "task",
+      "type": "string",
+      "length": 80,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP1378ARQB7X8B0SE0NZ",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP124E077AC2HVSW29KV",
+      "fields": [
+        {
+          "attribute": "01K70SPKCH3SM68B8E30HGDSA0",
+          "column": "01M4CVYP12YTWGP0X9K0VS4JAW"
+        },
+        {
+          "attribute": "01K70SPKCHW5C31AAN3SEQ4AJJ",
+          "column": "01M4CVYP12VFZYEHXY4CS2C6HC"
+        },
+        {
+          "attribute": "01K70SPKCHJ7VPJVSH7ZRZ13KF",
+          "column": "01M4CVYP125KTG7JB2HV6SNMHJ"
+        },
+        {
+          "attribute": "01K70SPKCHD60PF37Q8SJMZ0CC",
+          "column": "01M4CVYP129HJ75J01P3THDES2"
+        },
+        {
+          "attribute": "01K70SPKCH1F4SK6R3QW85FRJ1",
+          "column": "01M4CVYP128ANF4YJ2G1VR24S4"
+        }
+      ]
+    }
+  ]
+}

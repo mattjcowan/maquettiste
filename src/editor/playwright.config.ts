@@ -7,6 +7,8 @@
 //   preview, measuring the explorer-redesign.md 4.5 targets (`npm run e2e:scale`).
 // - live: the same mock-free specs against a running image (MAQUETTISTE_URL, default
 //   http://maquettiste.localhost:8080); no web server is started.
+// - docs: the documentation's screenshots (tests/docs, `npm run docs:screenshots`) against the image over the showcase model;
+//   never part of a test run.
 import { defineConfig, devices } from "@playwright/test";
 
 const ci = !!process.env.CI;
@@ -35,6 +37,13 @@ export default defineConfig({
     { name: "scale", testMatch: /scale\.spec\.ts/, retries: 0, use: { baseURL: mockUrl } },
     { name: "dev", testMatch: /dev-smoke\.spec\.ts/, use: { baseURL: "http://localhost:5173" } },
     { name: "live", testIgnore: /dev-smoke|mock-only|scale/, use: { baseURL: live } },
+    {
+      name: "docs",
+      testDir: "tests/docs",
+      retries: 0,
+      fullyParallel: false,
+      use: { baseURL: live, viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+    },
   ],
   webServer: [
     ...(wants("mock") || wants("mock-budgets") || wants("scale")

@@ -1,0 +1,65 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP12KR9FK0MG1JEKNT2M",
+  "name": "rental_charges",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCHE564R3A6M9TVDBPV",
+  "columns": [
+    {
+      "id": "01M4CVYP12S5MCZEYFXKBYQXER",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12SX8YWQQF7TJRKH13",
+      "name": "kind",
+      "type": "string",
+      "length": 16,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12FECZ8K5Y7KK67CZ1",
+      "name": "description",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12X7A4CPQ34ARTWJCT",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12QJTEJMWRMD7MSFEF",
+      "name": "rental_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_rental_charges",
+    "columns": [
+      "01M4CVYP12S5MCZEYFXKBYQXER"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP13XSZ7ZKMYTZE243GA",
+      "name": "fk_rental_charges_rental_id",
+      "columns": [
+        "01M4CVYP12QJTEJMWRMD7MSFEF"
+      ],
+      "referencesTable": "01M4CVYP124TEYG34TK4370963",
+      "referencesColumns": [
+        "01M4CVYP127VP3VSJ4V00N56ZF"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "One line of a rental's bill: riding time, a late fee, a damage fee."
+}

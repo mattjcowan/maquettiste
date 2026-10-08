@@ -1,0 +1,35 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01K70SPKCH46M4TVABZX7XCFY3",
+  "name": "MembershipPlan",
+  "displayName": "Membership plan",
+  "pluralName": "Membership plans",
+  "description": "The plans a member can join on.",
+  "code": {
+    "id": "01K70SPKCH6WEM8B6VPKSBB6YK",
+    "length": 12,
+    "pattern": "^[a-z_]+$"
+  },
+  "label": {
+    "id": "01K70SPKCHVGACFM1A88YR20DR",
+    "length": 48
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCH656TWN1FXA3DTTVR",
+      "name": "monthlyFee",
+      "type": "decimal",
+      "precision": 8,
+      "scale": 2,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH0SCPZ0F2A6RBGCH8",
+      "name": "includedMinutes",
+      "type": "int32",
+      "required": true,
+      "description": "Riding minutes included each month."
+    }
+  ]
+}

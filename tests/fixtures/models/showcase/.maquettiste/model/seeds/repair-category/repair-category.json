@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01K70SPKCHXQD9NNDGMQKZ1VB2",
+  "name": "RepairCategory",
+  "target": "01K70SPKCH2QND2MWE4JXS9QQR",
+  "columns": [
+    "code",
+    "label",
+    "01K70SPKCH1BFK7FZR71TSFE8Z"
+  ],
+  "rows": [
+    { "id": "01K70SPKCHGTB4TRZ7VC8J7SMB", "values": ["brakes", "Brakes", 30] },
+    { "id": "01K70SPKCH3B2X5S54GEC6PDXC", "values": ["drivetrain", "Chain and gears", 45] },
+    { "id": "01K70SPKCHZT6TVPNK9VVX797W", "values": ["wheels", "Wheels and tyres", 25] },
+    { "id": "01K70SPKCHPYV3T3QPW49WF2VW", "values": ["electrics", "Lights and electrics", 40] },
+    { "id": "01K70SPKCHBAXCXYQDFB2AB3PM", "values": ["battery", "Battery service", 60] },
+    { "id": "01K70SPKCHXM6THWD5ESJX4BVQ", "values": ["frame", "Frame inspection", 20] }
+  ]
+}

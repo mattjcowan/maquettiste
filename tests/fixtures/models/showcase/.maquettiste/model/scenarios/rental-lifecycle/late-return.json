@@ -1,0 +1,82 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01M4CW4PQ33VZXJPHH8Q79K8FX",
+  "name": "LateReturn",
+  "displayName": "Late return",
+  "process": "01K70SPKCJ1MQVTJ617RY2PG69",
+  "description": "The ride passes a day, so a late fee is added; the member pays in two parts.",
+  "start": {
+    "context": {
+      "01K70SPKCJBAQGQS9T0YTWHAY9": 12
+    }
+  },
+  "steps": [
+    {
+      "id": "01M4CW4PQ23RXQW0FWKK3QNJFF",
+      "event": "01K70SPKCJYN6069SJFTRRZ7DH",
+      "actor": "01K70SPKCJ6N2GAFKYDDWSTPAM",
+      "expect": {
+        "states": [
+          "01K70SPKCJWBXANEXRRV5FFZ9H"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4PQ3FWNJ5RB1H8NSA65R",
+      "input": "time",
+      "after": "P1D",
+      "expect": {
+        "states": [
+          "01K70SPKCJ2Q2AB1G5YAADDQ44"
+        ],
+        "context": {
+          "01K70SPKCJBAQGQS9T0YTWHAY9": 17
+        }
+      }
+    },
+    {
+      "id": "01M4CW4PQ3RDHNV60DMW67C848",
+      "event": "01K70SPKCJY67J34W1RXTRJD1E",
+      "actor": "01K70SPKCJ6N2GAFKYDDWSTPAM",
+      "expect": {
+        "states": [
+          "01K70SPKCJS6HFBN2CQRCW2M3A"
+        ]
+      }
+    },
+    {
+      "id": "01M4CW4PQ30VF9CGWGNJ52DXA9",
+      "event": "01K70SPKCJBTWDJ9GMTQ9VTM1R",
+      "actor": "01K70SPKCJDF4WEW7YWHRM9TF8",
+      "payload": {
+        "01K70SPKCJ5THMTZ35RTYMT8DS": 10
+      },
+      "expect": {
+        "states": [
+          "01K70SPKCJS6HFBN2CQRCW2M3A"
+        ],
+        "context": {
+          "01K70SPKCJAMBG6R3XXWRPW4XE": 10
+        }
+      }
+    },
+    {
+      "id": "01M4CW4PQ3KMYF44YPR5ATC0YX",
+      "event": "01K70SPKCJBTWDJ9GMTQ9VTM1R",
+      "actor": "01K70SPKCJDF4WEW7YWHRM9TF8",
+      "payload": {
+        "01K70SPKCJ5THMTZ35RTYMT8DS": 7
+      },
+      "expect": {
+        "states": [
+          "01K70SPKCJTB00V1JCKZNE6M1S"
+        ],
+        "context": {
+          "01K70SPKCJAMBG6R3XXWRPW4XE": 17
+        }
+      }
+    }
+  ],
+  "outcome": "final"
+}

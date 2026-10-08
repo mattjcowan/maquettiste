@@ -1,0 +1,119 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M4CVYP12G3RZR6Z8E2FQH3RZ",
+  "name": "bikes",
+  "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+  "schema": "01K70SPKCH3JZ7T3CD4N2QF59W",
+  "columns": [
+    {
+      "id": "01M4CVYP12WC6KXK2GX3PCWYCN",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12RP63W3N0BXR4CNHV",
+      "name": "frame_number",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Stamped under the bottom bracket."
+    },
+    {
+      "id": "01M4CVYP12MEBT60HEG45V1Z8Y",
+      "name": "nickname",
+      "type": "string",
+      "length": 40,
+      "comment": "Members name their favourite bikes."
+    },
+    {
+      "id": "01M4CVYP12JPDVRCARF45NTYHV",
+      "name": "bike_type",
+      "type": "string",
+      "length": 12,
+      "nullable": false
+    },
+    {
+      "id": "01M4CVYP12P6A876542198EQ2J",
+      "name": "condition",
+      "type": "string",
+      "length": 12,
+      "nullable": false,
+      "default": "Good"
+    },
+    {
+      "id": "01M4CVYP12RQ8C5AVMKG7V796N",
+      "name": "purchased_on",
+      "type": "date"
+    },
+    {
+      "id": "01M4CVYP12VRWH4B4Y1EFACVHH",
+      "name": "odometer_km",
+      "type": "int32",
+      "nullable": false,
+      "default": 0
+    },
+    {
+      "id": "01M4CVYP12E1924Q86502XXNZC",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M4CVYP126C1HV7BX3GAAYWZ5",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row last changed."
+    },
+    {
+      "id": "01M4CVYP12AP9WQY11KAC9Y5RP",
+      "name": "home_station_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_bikes",
+    "columns": [
+      "01M4CVYP12WC6KXK2GX3PCWYCN"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M4CVYP12ADV97TX69AB8V8BT",
+      "name": "uq_bikes_frame_number",
+      "columns": [
+        "01M4CVYP12RP63W3N0BXR4CNHV"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M4CVYP12RYBQ29F4QARKYWA3",
+      "name": "fk_bikes_home_station_id",
+      "columns": [
+        "01M4CVYP12AP9WQY11KAC9Y5RP"
+      ],
+      "referencesTable": "01M4CVYP1265ATWR3M5WN80CVC",
+      "referencesColumns": [
+        "01M4CVYP126Y2PH6FBFYB5PMGQ"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01K70SPKCJ0C61V145V62V9BMV",
+      "name": "ix_bikes_home_station_id",
+      "columns": [
+        {
+          "column": "01M4CVYP12AP9WQY11KAC9Y5RP"
+        }
+      ]
+    }
+  ],
+  "comment": "A bicycle owned by the cooperative."
+}

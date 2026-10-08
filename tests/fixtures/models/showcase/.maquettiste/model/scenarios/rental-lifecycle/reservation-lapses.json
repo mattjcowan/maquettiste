@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01M4CW4QHTCV0B3C0K4TQKYGRE",
+  "name": "ReservationLapses",
+  "displayName": "Reservation lapses",
+  "process": "01K70SPKCJ1MQVTJ617RY2PG69",
+  "description": "Nobody picks the bike up within 30 minutes, so the reservation is cancelled.",
+  "steps": [
+    {
+      "id": "01M4CW4QHSSSJQEQ4VW0VPJZ91",
+      "input": "time",
+      "after": "PT30M",
+      "expect": {
+        "states": [
+          "01K70SPKCJ1CA71SZ6B455VRAC"
+        ]
+      }
+    }
+  ],
+  "outcome": "final"
+}

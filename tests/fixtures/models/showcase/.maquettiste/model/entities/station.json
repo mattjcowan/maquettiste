@@ -1,0 +1,109 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K70SPKCH4FKYH8XX48KKW5NJ",
+  "name": "Station",
+  "package": "01K70SPKCHMCQYF0NG3D335212",
+  "description": "A place where bikes are picked up and returned.",
+  "stereotypes": [
+    "aggregate-root"
+  ],
+  "tags": [
+    "inventory"
+  ],
+  "category": "01K70SPKCH02AHF47S9JWSBD33",
+  "key": {
+    "attributes": [
+      "01K70SPKCH9EKGR2E3GYRFXMK7"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K70SPKCH9EKGR2E3GYRFXMK7",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH123GK52S1DXBKGG3",
+      "name": "code",
+      "type": "string",
+      "length": 8,
+      "required": true,
+      "unique": true
+    },
+    {
+      "id": "01K70SPKCHDWZV6C5K7P91HP0C",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHQCGQQD6JVPCE2055",
+      "name": "address",
+      "type": "string",
+      "length": 200,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCH00KP52131CDJ53HZ",
+      "name": "latitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHQYQWMK95K3HXXHPS",
+      "name": "longitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "required": true
+    },
+    {
+      "id": "01K70SPKCHBCJF3FFST7R35Y3G",
+      "name": "openedOn",
+      "type": "date"
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M4CVYP13CDNQPJVWTMXQMW32",
+      "database": "01K70SPKCH3XJRR0BM82TM9GT4",
+      "source": "01M4CVYP1265ATWR3M5WN80CVC",
+      "fields": [
+        {
+          "attribute": "01K70SPKCH9EKGR2E3GYRFXMK7",
+          "column": "01M4CVYP126Y2PH6FBFYB5PMGQ"
+        },
+        {
+          "attribute": "01K70SPKCH123GK52S1DXBKGG3",
+          "column": "01M4CVYP124R70FQCEXY1AWR47"
+        },
+        {
+          "attribute": "01K70SPKCHDWZV6C5K7P91HP0C",
+          "column": "01M4CVYP12GRSVRTW72GSAR63D"
+        },
+        {
+          "attribute": "01K70SPKCHQCGQQD6JVPCE2055",
+          "column": "01M4CVYP12Y6RVHV8AV7PP3EDZ"
+        },
+        {
+          "attribute": "01K70SPKCH00KP52131CDJ53HZ",
+          "column": "01M4CVYP12CQ79D6HGCXQKPAE2"
+        },
+        {
+          "attribute": "01K70SPKCHQYQWMK95K3HXXHPS",
+          "column": "01M4CVYP12WAPTHQAY6APVYNG8"
+        },
+        {
+          "attribute": "01K70SPKCHBCJF3FFST7R35Y3G",
+          "column": "01M4CVYP125MYDBCZVENK67EW2"
+        }
+      ]
+    }
+  ]
+}
