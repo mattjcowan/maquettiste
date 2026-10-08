@@ -48,7 +48,7 @@ Open questions:
    require explicit closing.
 3. Do data-only migrations (backfills, no schema change) get revisions of their own? Proposed: yes, same kind.
 
-## 4. Model service: persistence providers, snapshots, a model library (phase A engine and server built; editor next)
+## 4. Model service: persistence providers, snapshots, a model library (snapshots built in 0.8.0)
 
 The model stops being only "the JSON files in this checkout" and becomes something an instance serves; generation stays
 something a checkout does. One central instance can hold many models (title, entity and table counts, last updated),
@@ -70,6 +70,14 @@ by default, import, and per snapshot open, compare, restore, export, rename, pub
 serves as-of reads, export and import. An import over the host's 512 MiB request bound is now a 413 with MQ1011, not a 503.
 
 Left in phase A: instance capabilities (`model: read`, `generation: off`, `packs: read|off`); generating from a snapshot with its packs.
+
+**Snapshots in object storage (asked 2026-10-05, on hold).** Keep snapshot archives in an S3-compatible bucket instead of
+the model folder. The credentials never go in `maquettiste.json` (it is in the repository): they are host site variables,
+the secret key marked secret (encrypted by the host, never sent back), and environment variables for the CLI. Settings ›
+Snapshots shows where snapshots go and a connection test, never the key. Every snapshot operation works the same; opening
+one downloads its archive once into the cache; compare reads the two small index entries first. Proposed, to confirm when
+it is picked up: the bucket is the only store when configured, with a one-time "Upload local snapshots"; configured per
+instance (fits the central service), not per project.
 
 Phases B (an http provider, multi-model service mode, the library picker, `generate --model <url>`) and C (a database
 provider with versions as history, accounts and single sign-on, per-model permissions, cross-model imports) are unchanged.
