@@ -13,7 +13,9 @@ namespace Maquettiste.Engine.Tests.Store;
 /// Materialize, both directions (erratum E43), over the billing fixture: <c>materialize-tables</c> turns a projected table into a
 /// designed table with the same shape and binds the entity to it (the overlay folds in and keeps its id, the mapping element goes,
 /// the relations keep their foreign keys, queries and other tables follow, the committed snapshot is rekeyed so no migration
-/// appears); <c>materialize-entities</c> makes an entity per table with relations for the foreign keys; both preview without
+/// appears); <c>materialize-entities</c> makes an entity per table with relations for the foreign keys; <c>materialize-attributes</c>
+/// adds to a bound entity an attribute per column its binding leaves without one, <c>materialize-columns</c> a column of its table per
+/// attribute its binding leaves unmapped; each previews without
 /// writing and refuse what is already bound; deletes drop bindings and keep the entities.
 /// </summary>
 public sealed class MaterializeTests
@@ -397,6 +399,146 @@ public sealed class MaterializeTests
         Assert.Equal("MQ4055", again.Items.SelectMany(i => i.Diagnostics).Single().Rule);
         var notes = await ApplyAsync(r, $$"""{"op":"materialize-entities","database":"{{EditorRepo.MainDatabaseId}}","tables":["{{NotesTableId}}"],"package":"{{EditorRepo.BillingPackageId}}"}""");
         Assert.Contains("already bound by entity", notes.Items.SelectMany(i => i.Diagnostics).Single().Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Materializing_attributes_adds_one_per_column_nothing_names_mapped_in_the_binding()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        const string Suppliers = "01K6MAA0000000000000000001", SupplierId = "01K6MAA0000000000000000002", SupplierName = "01K6MAA0000000000000000003";
+        const string SupplierNote = "01K6MAA0000000000000000004", SupplierCreated = "01K6MAA0000000000000000005", SupplierRating = "01K6MAA0000000000000000006";
+        const string Supplier = "01K6MAA0000000000000000010", IdAttribute = "01K6MAA0000000000000000011", Binding = "01K6MAA0000000000000000012";
+        await CreateAsync(r, $$"""
+            {"kind":"table","id":"{{Suppliers}}","name":"suppliers","database":"{{EditorRepo.MainDatabaseId}}","columns":[
+              {"id":"{{SupplierId}}","name":"id","type":"int64","nullable":false,"generated":"identity"},
+              {"id":"{{SupplierName}}","name":"name","type":"string","length":120,"nullable":false},
+              {"id":"{{SupplierNote}}","name":"note","type":"string","length":400},
+              {"id":"{{SupplierCreated}}","name":"created_at","type":"datetimeoffset","nullable":false,"defaultSql":{"*":"CURRENT_TIMESTAMP"} },
+              {"id":"{{SupplierRating}}","name":"rating","type":"decimal","precision":3,"scale":1}],
+             "primaryKey":{"columns":["{{SupplierId}}"]} }
+            """);
+        // An entity with its key only, bound to the table: id is mapped, note is ignored, the rest nothing names.
+        await CreateAsync(r, $$"""
+            {"kind":"entity","id":"{{Supplier}}","name":"Supplier","package":"{{EditorRepo.BillingPackageId}}",
+             "key":{"attributes":["{{IdAttribute}}"],"strategy":"database-identity"},
+             "attributes":[{"id":"{{IdAttribute}}","name":"id","type":"int64","required":true}],
+             "bindings":[{"id":"{{Binding}}","database":"{{EditorRepo.MainDatabaseId}}","source":"{{Suppliers}}",
+               "fields":[{"attribute":"{{IdAttribute}}","column":"{{SupplierId}}"}],
+               "columns":[{"column":"{{SupplierNote}}","status":"ignored"}]}]}
+            """);
+        string Attributes(string? columns = null) =>
+            "{\"op\":\"materialize-attributes\",\"database\":\"" + EditorRepo.MainDatabaseId + "\",\"entities\":[\"" + Supplier + "\"]"
+            + (columns is null ? "" : ",\"columns\":[" + columns + "]") + "}";
+
+        var preview = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-attributes", EditorRepo.MainDatabaseId, [Supplier]), Ct);
+        var result = await ApplyAsync(r, Attributes());
+
+        Assert.True(preview.Valid, string.Join("; ", preview.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.Equal([Supplier], preview.Updates.Select(u => u.Id));
+        Assert.Empty(preview.Creates);
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        var supplier = r.Store.Current!.Get<Entity>(Supplier)!;
+        Assert.Equal(["id", "name", "createdAt", "rating"], supplier.Attributes.Select(a => a.Name));
+        Assert.Equal(["int64", "string", "datetimeoffset", "decimal"], supplier.Attributes.Select(a => a.Type.Builtin));
+        Assert.Equal([true, true, true, false], supplier.Attributes.Select(a => a.Required));
+        Assert.Equal(120, supplier.Attributes[1].Length);
+        Assert.Equal((3, 1), (supplier.Attributes[3].Precision, supplier.Attributes[3].Scale));
+        Assert.Equal([IdAttribute], supplier.Key!.Attributes);
+        var binding = supplier.Bindings.Single();
+        Assert.Equal([SupplierId, SupplierName, SupplierCreated, SupplierRating], binding.Fields.Select(f => f.Column));
+        Assert.Equal([SupplierNote], binding.Columns.Select(c => c.Column));
+
+        // A column named by its physical name, ignored before: its listing goes with it.
+        var note = await ApplyAsync(r, Attributes("\"note\""));
+        Assert.Equal(SaveOutcome.Saved, note.Outcome);
+        supplier = r.Store.Current!.Get<Entity>(Supplier)!;
+        Assert.Equal("note", supplier.Attributes[^1].Name);
+        Assert.Empty(supplier.Bindings.Single().Columns);
+        var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.DoesNotContain(validation.Diagnostics, d => d.ElementId == Supplier && (d.Severity == DiagnosticSeverity.Error || d.Rule == "MQ4047"));
+
+        // Refusals: nothing left, a column already mapped, a constant, an entity with no binding, columns for several entities.
+        async Task<string> RefusedAsync(string operation)
+        {
+            var refused = await ApplyAsync(r, operation);
+            Assert.NotEqual(SaveOutcome.Saved, refused.Outcome);
+            var diagnostic = refused.Items.SelectMany(i => i.Diagnostics).Single();
+            Assert.Equal("MQ4055", diagnostic.Rule);
+            return diagnostic.Message;
+        }
+
+        Assert.Contains("nothing to add", await RefusedAsync(Attributes()), StringComparison.Ordinal);
+        Assert.Contains("already mapped", await RefusedAsync(Attributes($"\"{SupplierId}\"")), StringComparison.Ordinal);
+        Assert.Contains("a constant", await RefusedAsync(
+            $$"""{"op":"materialize-attributes","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{InvoiceNoteId}}"],"columns":["entity_type"]}"""), StringComparison.Ordinal);
+        Assert.Contains("has no binding", await RefusedAsync(
+            $$"""{"op":"materialize-attributes","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{EditorRepo.InvoiceId}}"]}"""), StringComparison.Ordinal);
+        Assert.Contains("one entity at a time", await RefusedAsync(
+            $$"""{"op":"materialize-attributes","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{Supplier}}","{{InvoiceNoteId}}"],"columns":["note"]}"""), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Materializing_columns_adds_one_per_unmapped_attribute_shaped_as_the_projection_and_mapped()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        const string Vendors = "01K6MAC0000000000000000001", VendorId = "01K6MAC0000000000000000002", VendorName = "01K6MAC0000000000000000003";
+        const string Vendor = "01K6MAC0000000000000000010", IdAttribute = "01K6MAC0000000000000000011", NameAttribute = "01K6MAC0000000000000000012";
+        const string CreatedAttribute = "01K6MAC0000000000000000013", StatusAttribute = "01K6MAC0000000000000000014", InvoiceStatus = "01J92P0V05WQDH2GZG539D9VG1";
+        await CreateAsync(r, $$"""
+            {"kind":"table","id":"{{Vendors}}","name":"vendors","database":"{{EditorRepo.MainDatabaseId}}","columns":[
+              {"id":"{{VendorId}}","name":"id","type":"uuid","nullable":false},
+              {"id":"{{VendorName}}","name":"name","type":"string","length":80,"nullable":false}],
+             "primaryKey":{"columns":["{{VendorId}}"]} }
+            """);
+        // Bound with its key mapped; name has a column of that name already, createdAt and status have none.
+        await CreateAsync(r, $$"""
+            {"kind":"entity","id":"{{Vendor}}","name":"Vendor","package":"{{EditorRepo.BillingPackageId}}",
+             "key":{"attributes":["{{IdAttribute}}"],"strategy":"uuid-v7"},
+             "attributes":[{"id":"{{IdAttribute}}","name":"id","type":"uuid","required":true},
+               {"id":"{{NameAttribute}}","name":"name","type":"string","length":80,"required":true},
+               {"id":"{{CreatedAttribute}}","name":"createdAt","type":"datetimeoffset","required":true},
+               {"id":"{{StatusAttribute}}","name":"status","type":{"ref":"{{InvoiceStatus}}"} }],
+             "bindings":[{"id":"01K6MAC0000000000000000015","database":"{{EditorRepo.MainDatabaseId}}","source":"{{Vendors}}",
+               "fields":[{"attribute":"{{IdAttribute}}","column":"{{VendorId}}"}]}]}
+            """);
+        var operation = $$"""{"op":"materialize-columns","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{Vendor}}"]}""";
+
+        var preview = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-columns", EditorRepo.MainDatabaseId, [Vendor]), Ct);
+        var result = await ApplyAsync(r, operation);
+
+        Assert.True(preview.Valid, string.Join("; ", preview.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.Equal([Vendors, Vendor], preview.Updates.Select(u => u.Id));
+        Assert.Contains(preview.Notes, n => n.Contains("already has a column named 'name'", StringComparison.Ordinal));
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        var snapshot = r.Store.Current!;
+        var table = snapshot.Get<Table>(Vendors)!;
+        Assert.Equal(["id", "name", "created_at", "status"], table.Columns.Select(c => c.Name));
+        Assert.False(table.Columns[2].Nullable);
+        // The shape is the projection's: the names follow the conventions (snake case), and the enum is stored as the project
+        // stores enums by default (its member values).
+        Assert.Equal("datetimeoffset", table.Columns[2].Type);
+        Assert.Equal("int32", table.Columns[3].Type);
+        var binding = snapshot.Get<Entity>(Vendor)!.Bindings.Single();
+        Assert.Equal([IdAttribute, CreatedAttribute, StatusAttribute], binding.Fields.Select(f => f.Attribute));
+        Assert.Equal([VendorId, table.Columns[2].Id, table.Columns[3].Id], binding.Fields.Select(f => f.Column));
+        var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.DoesNotContain(validation.Diagnostics, d => (d.ElementId == Vendor || d.ElementId == Vendors) && d.Severity == DiagnosticSeverity.Error);
+
+        // Refusals: nothing left (name is left to map by hand), an attribute already mapped, a table the column name has, no binding.
+        async Task<string> RefusedAsync(string json)
+        {
+            var refused = await ApplyAsync(r, json);
+            Assert.NotEqual(SaveOutcome.Saved, refused.Outcome);
+            return refused.Items.SelectMany(i => i.Diagnostics).Single(d => d.Rule == "MQ4055").Message;
+        }
+
+        Assert.Contains("nothing to add", await RefusedAsync(operation), StringComparison.Ordinal);
+        Assert.Contains("already mapped", await RefusedAsync(
+            $$"""{"op":"materialize-columns","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{Vendor}}"],"attributes":["{{CreatedAttribute}}"]}"""), StringComparison.Ordinal);
+        Assert.Contains("map the attribute to it instead", await RefusedAsync(
+            $$"""{"op":"materialize-columns","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{Vendor}}"],"attributes":["{{NameAttribute}}"]}"""), StringComparison.Ordinal);
+        Assert.Contains("has no binding", await RefusedAsync(
+            $$"""{"op":"materialize-columns","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{EditorRepo.InvoiceId}}"]}"""), StringComparison.Ordinal);
     }
 
     [Fact]

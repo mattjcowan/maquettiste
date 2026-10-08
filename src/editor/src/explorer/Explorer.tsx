@@ -1482,7 +1482,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         }}
       />
       <FilterBar id={id} filter={filter} rows={indexRows} setFilter={setFilter} inputRef={searchRef} onKeyDown={onSearchKey} />
-      {forest && !cache.current.filtering ? <FavoritesStrip forest={forest} id={id} /> : null}
+      {forest && !cache.current.filtering ? <FavoritesStrip forest={forest} id={id} onOpen={(key) => openRow(key, "open")} /> : null}
       {pending ? (
         <div className="p-2">
           <Spinner label="Loading the model" />

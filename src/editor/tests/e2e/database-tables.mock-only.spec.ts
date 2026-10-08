@@ -281,6 +281,23 @@ test("favorites and recents clear from their headers, and each row removes itsel
   await expect(side.getByTestId("explorer-strip")).toHaveCount(0);
 });
 
+test("a recent row opens its element, in another domain too, as a double click on its tree row does", async ({ page }) => {
+  await openEditor(page);
+  const side = page.getByRole("complementary", { name: "Explorer" });
+  for (const domain of ["Billing", "Catalog"]) await chevron(side.getByTestId(`explorer-domain-${domain}`)).click();
+  for (const folder of await tree(page).getByTestId("explorer-folder-Entities").all()) await chevron(folder).click();
+  for (const name of ["Product", "Customer"]) {
+    await tree(page).getByTestId(`explorer-row-${name}`).dblclick();
+    await expect(editor(page).getByTestId("editor-title")).toHaveText(name);
+  }
+  // Customer's editor is pinned in front: a click on Product in the strip shows Product's editor, not only selects it.
+  const strip = side.getByTestId("explorer-strip");
+  await strip.getByTestId("explorer-recent-Product").click();
+  await expect(editor(page).getByTestId("editor-title")).toHaveText("Product");
+  await strip.getByTestId("explorer-recent-Customer").click();
+  await expect(editor(page).getByTestId("editor-title")).toHaveText("Customer");
+});
+
 test("nothing on the database side names an entity, a projection or an overlay", async ({ page }) => {
   await page.goto("/database");
   await page.getByTestId("database-table-invoices").click();

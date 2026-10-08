@@ -5,6 +5,7 @@ import { api, ApiProblem, etagHash } from "./client";
 import type {
   BatchParseResult,
   BatchRequest,
+  TagUsage,
   BatchResult,
   DatabaseTablesResult,
   DatabaseTableResult,
@@ -561,6 +562,12 @@ export async function importSeedsCsv(
 /** Every attribute typed by a reference type, with its owner and the effective storage per database. */
 export async function getReferenceTypeUsage(id: string): Promise<ReferenceTypeUsage> {
   const { data, response } = await api().GET("/api/reference-types/{id}/usage", { params: { path: { id } } });
+  return must(data, response);
+}
+
+/** The tags one tag vocabulary governs, with their uses: a domain's (`packageId`), or the global one (null). */
+export async function getTagUsage(packageId: string | null): Promise<TagUsage> {
+  const { data, response } = await api().GET("/api/model/tags/usage", { params: { query: packageId ? { package: packageId } : {} } });
   return must(data, response);
 }
 

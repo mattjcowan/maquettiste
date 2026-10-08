@@ -197,6 +197,30 @@ public sealed class GateTests
     }
 
     [Fact]
+    public async Task Editors_on_two_ports_of_one_host_keep_their_own_session_cookies()
+    {
+        await using var host = EditorHost.Create();
+        TestRequest On(string port, string method, string path) => TestRequest.FromElsewhere(method, path).With(r => r.Host = "editor.example.com:" + port);
+
+        // Browsers send every cookie of a host to each of its ports: a session on 8081 must not take the place of the one on 8080.
+        var signIn = await host.SendAsync(On("8080", "POST", "/api/session").WithJson(new { token = EditorHost.Token }));
+        var setCookie = signIn.Headers.SetCookie.ToString();
+        var start = setCookie.IndexOf("mq_session_8080=", StringComparison.Ordinal) + "mq_session_8080=".Length;
+        var end = setCookie.IndexOf(';', start);
+        var cookie = setCookie[start..(end < 0 ? setCookie.Length : end)];
+        var same = await host.SendAsync(On("8080", "GET", "/api/session").Header("Cookie", "mq_session_8080=" + cookie + "; mq_session_8081=other"));
+        var other = await host.SendAsync(On("8081", "GET", "/api/session").Header("Cookie", "mq_session_8080=" + cookie));
+        var signOut = await host.SendAsync(On("8080", "DELETE", "/api/session").Header("Cookie", "mq_session_8080=" + cookie));
+
+        Assert.Equal(200, signIn.Status);
+        Assert.StartsWith("mq_session_8080=", setCookie, StringComparison.Ordinal);
+        Assert.Equal(200, same.Status);
+        Assert.Equal("cookie", same.Json["via"]!.GetValue<string>());
+        Assert.Equal(401, other.Status);
+        Assert.Contains("mq_session_8080=;", signOut.Headers.SetCookie.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_cookie_older_than_seven_days_is_refused()
     {
         await using var host = EditorHost.Create();

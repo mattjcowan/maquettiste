@@ -9,7 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace {{ pack.params.namespace }}.Runtime;
+namespace {{ base_ns }}.Runtime;
 
 // The hand-written half of the process runtime. Maquettiste wrote this file once and never touches it again. ProcessHost
 // implements the interpreter's extension points with in-memory defaults: the system clock (or any other), a list of scheduled

@@ -16,7 +16,7 @@ public sealed class McpSurfaceTests
         "get_translations", "import_process", "import_seed_csv", "list_extension_files", "list_pack_files", "list_packs", "list_snapshots", "list_validation_rules",
         "localization_status", "move_extension_file", "move_pack_file", "new_pack", "plan", "preview_binding_sql", "preview_materialize", "preview_query_sql", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
         "reference_type_usage", "rename_pack", "restore_snapshot", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
-        "sync_enum_from_process", "unit_paths", "validate", "verify_scenarios", "write_extension_file", "write_pack_file",
+        "sync_enum_from_process", "tag_usage", "unit_paths", "validate", "verify_scenarios", "write_extension_file", "write_pack_file",
     ];
 
     [Fact]
@@ -55,7 +55,7 @@ public sealed class McpSurfaceTests
         var ct = TestContext.Current.CancellationToken;
         await using var session = await McpSession.StartAsync(ct: ct);
         var tools = await session.Client.ListToolsAsync(cancellationToken: ct);
-        Assert.Equal(24, Engine.AgentTools.All.Count);
+        Assert.Equal(25, Engine.AgentTools.All.Count);
         foreach (var tool in Engine.AgentTools.All)
         {
             var listed = tools.Single(t => t.Name == tool.Name).ProtocolTool;

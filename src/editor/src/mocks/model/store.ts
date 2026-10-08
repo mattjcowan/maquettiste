@@ -39,6 +39,7 @@ import { ModelIndex } from "./modelIndex";
 import { applyCase, foreignKeyMismatches, resolveDatabase } from "./physical";
 import { resolveQueries } from "./queries";
 import { bindingFindings, materializeStatus, planMaterialize, type MaterializeRequest } from "./bindings";
+import { retag, tagUsage, type RetagOp } from "./tags";
 
 type Json = Record<string, unknown>;
 
@@ -851,7 +852,7 @@ export class MockModel {
         }
         continue;
       }
-      if (op.op === "materialize-tables" || op.op === "materialize-entities") {
+      if (op.op === "materialize-tables" || op.op === "materialize-entities" || op.op === "materialize-attributes" || op.op === "materialize-columns") {
         // A materialize operation (erratum E43): expands into the creates, updates and deletes its plan lists, all or nothing.
         const docs = new Map([...candidate].map(([k, e]) => [k, e.json as Json]));
         const settings = this.projectSettings();
@@ -893,6 +894,40 @@ export class MockModel {
         for (const id of writes.deletes) {
           candidate.delete(id);
           items.push({ outcome: "saved", id, hash: null, current: null, diagnostics: [], referrers: [], changes: null });
+        }
+        continue;
+      }
+      if (op.op === "retag") {
+        // Tags across the model (ModelStore.Tags.cs): rewrites the vocabulary and every use it governs, all or nothing.
+        const outcome = retag([...candidate.values()], op as unknown as RetagOp);
+        if ("error" in outcome) {
+          fail(
+            this.invalid(null, [
+              {
+                rule: "MQ1002",
+                severity: "error",
+                message: outcome.error,
+                elementId: null,
+                filePath: null,
+                jsonPointer: `/operations/${operations.indexOf(op)}`,
+                line: null,
+                column: null,
+              },
+            ]),
+          );
+          continue;
+        }
+        const expected = (op as { expectedHashes?: Record<string, string> }).expectedHashes;
+        const stale = expected ? [...outcome.changed.keys()].find((id) => !expected[id] || normalizeHash(expected[id]) !== candidate.get(id)?.hash) : undefined;
+        if (stale !== undefined) {
+          const existing = candidate.get(stale)!;
+          fail({ outcome: "conflict", id: stale, hash: existing.hash, current: this.document(existing), diagnostics: [], referrers: [], changes: null });
+          continue;
+        }
+        for (const [id, json] of outcome.changed) {
+          const entry = this.entryFor(json, candidate.get(id));
+          candidate.set(id, entry);
+          items.push({ outcome: "saved", id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
         }
         continue;
       }
@@ -1053,6 +1088,11 @@ export class MockModel {
     return { status: 200, body: { outcome: "saved", items: results, changes } };
   }
 
+  /** GET /api/model/tags/usage (ModelStore.GetTagUsageAsync). */
+  tagUsage(packageId: string | null) {
+    return tagUsage([...this.entries.values()], packageId);
+  }
+
   /** GET /api/model/databases/{id}/materialize (erratum E43). */
   materializeStatus(databaseId: string) {
     const settings = this.projectSettings();
@@ -1063,8 +1103,8 @@ export class MockModel {
   }
 
   /**
-   * POST /api/model/databases/{id}/materialize/preview (ModelStore.PlanMaterializeAsync): the plan of materialize-tables or
-   * materialize-entities, the result validated, nothing written (new ids are drawn for the preview only). The entity side's
+   * POST /api/model/databases/{id}/materialize/preview (ModelStore.PlanMaterializeAsync): the plan of materialize-tables,
+   * materialize-entities or materialize-attributes, the result validated, nothing written (new ids are drawn for the preview only). The entity side's
    * Create tables and New entities from tables and the database side's Store as table files all read it.
    */
   previewMaterialize(databaseId: string, request: MaterializeRequest) {
@@ -1334,6 +1374,7 @@ export function projectSettings(json: Json): ProjectSettings {
     $schema: (json.$schema as string | undefined) ?? null,
     formatVersion: (json.formatVersion as number | undefined) ?? 1,
     name: (json.name as string | undefined) ?? null,
+    properties: { ...((json.properties as Record<string, string> | undefined) ?? {}) },
     outputs: {
       allow: ((outputs.allow as Json[] | undefined) ?? []).map((a) => ({ path: String(a.path), commit: a.commit === true })),
       deny: (outputs.deny as string[] | undefined) ?? [],

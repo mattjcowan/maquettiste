@@ -59,6 +59,9 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "refresh-scenario" => BatchOp.RefreshScenario,
                     "materialize-tables" => BatchOp.MaterializeTables,
                     "materialize-entities" => BatchOp.MaterializeEntities,
+                    "materialize-attributes" => BatchOp.MaterializeAttributes,
+                    "materialize-columns" => BatchOp.MaterializeColumns,
+                    "retag" => BatchOp.Retag,
                     _ => BatchOp.Delete,
                 };
                 operations.Add(new BatchOperation(
@@ -81,7 +84,10 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     Entities: Texts(item, "entities"),
                     Tables: Texts(item, "tables"),
                     Package: Text(item, "package"),
-                    ExpectedHashes: Map(item, "expectedHashes")));
+                    ExpectedHashes: Map(item, "expectedHashes"),
+                    Columns: Texts(item, "columns"),
+                    Attributes: Texts(item, "attributes"),
+                    Tags: Texts(item, "tags")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);

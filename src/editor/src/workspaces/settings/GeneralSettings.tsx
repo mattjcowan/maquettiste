@@ -1,4 +1,5 @@
-// Settings › General: the project name and branding (icon, primary color per theme), saved through
+// Settings › General: the project name, the project's own properties (key to text, read by every pack's templates as
+// project.properties) and branding (icon, primary color per theme), saved through
 // PUT /api/project/settings; the icon is stored first through POST /api/project/branding/icon. The top bar,
 // the tab icon and the accent tokens preview the draft live (src/design/branding.ts).
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import * as endpoints from "@/api/endpoints";
 import type { SettingsJson } from "@/api/types";
 import { useServices } from "@/app/context";
 import { projectIconUrl } from "@/app/branding";
+import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { SectionTitle, Spinner } from "@/components/ui/misc";
@@ -21,7 +23,7 @@ import {
   themeSurfaces,
   type ThemeName,
 } from "@/design/branding";
-import { colorProblem, fileToBase64, generalOf, iconContentType, sameGeneral, withGeneral, type GeneralDraft } from "./general";
+import { colorProblem, fileToBase64, generalOf, iconContentType, propertyProblems, sameGeneral, withGeneral, type GeneralDraft } from "./general";
 
 const THEMES: { theme: ThemeName; label: string }[] = [
   { theme: "light", label: "Light theme" },
@@ -64,6 +66,9 @@ export function GeneralSettings() {
   if (settings.isPending || !value || !base) return <Spinner label="Loading settings" />;
 
   const edit = (patch: Partial<GeneralDraft>) => setDraft({ ...value, ...patch });
+  const problems = propertyProblems(value.properties);
+  const editProperty = (i: number, patch: Partial<GeneralDraft["properties"][number]>) =>
+    edit({ properties: value.properties.map((p, k) => (k === i ? { ...p, ...patch } : p)) });
 
   const upload = async (file: File) => {
     setNotes([]);
@@ -113,7 +118,9 @@ export function GeneralSettings() {
   return (
     <section className="flex max-w-3xl flex-col gap-2" aria-label="General">
       <div className="flex items-center gap-2">
-        <p className="text-12 text-secondary">The project name, icon and primary colors, saved in maquettiste.json. They change no generated output.</p>
+        <p className="text-12 text-secondary">
+          The project name, its properties, icon and primary colors, saved in maquettiste.json. The icon and colors change no generated output.
+        </p>
         <span className="ml-auto flex items-center gap-2">
           {dirty ? <span className="text-12 text-secondary">Unsaved changes</span> : null}
           <Button
@@ -130,7 +137,7 @@ export function GeneralSettings() {
           <Button
             variant="primary"
             onClick={() => void save()}
-            disabled={!dirty || busy || !!colorProblem(value.light) || !!colorProblem(value.dark)}
+            disabled={!dirty || busy || !!colorProblem(value.light) || !!colorProblem(value.dark) || problems.size > 0}
             data-testid="save-general"
           >
             Save
@@ -148,6 +155,78 @@ export function GeneralSettings() {
       <Field label="Project name" htmlFor="general-name" hint="Shown in the top bar; maquettiste init --name writes the same field.">
         <Input id="general-name" className="w-80" value={value.name} placeholder={project.data?.name} onChange={(e) => edit({ name: e.target.value })} />
       </Field>
+
+      <div>
+        <SectionTitle
+          actions={
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => edit({ properties: [...value.properties, { key: "", value: "" }] })}
+              data-testid="general-add-property"
+            >
+              <Plus /> Add property
+            </Button>
+          }
+        >
+          Properties
+        </SectionTitle>
+        <p className="text-12 text-secondary">
+          Values every pack&apos;s templates read as <code className="font-mono">project.properties.&lt;key&gt;</code>, such as a base namespace. A pack&apos;s
+          own parameters stay separate (<code className="font-mono">pack.params</code>).
+        </p>
+        {value.properties.length ? (
+          <table className="mt-1 w-full max-w-2xl text-13" aria-label="Project properties" data-testid="general-properties">
+            <thead className="text-left text-11 text-secondary">
+              <tr>
+                <th className="w-56 font-medium">Key</th>
+                <th className="font-medium">Value</th>
+                <th className="w-7" />
+              </tr>
+            </thead>
+            <tbody>
+              {value.properties.map((p, i) => (
+                <tr key={i} className="align-top">
+                  <td className="py-0.5 pr-1">
+                    <Input
+                      aria-label={`Key of property ${i + 1}`}
+                      className="h-7 font-mono"
+                      value={p.key}
+                      placeholder="baseNamespace"
+                      aria-invalid={problems.has(i)}
+                      onChange={(e) => editProperty(i, { key: e.target.value })}
+                    />
+                    {problems.has(i) ? <p className="text-11 text-danger">{problems.get(i)}</p> : null}
+                  </td>
+                  <td className="py-0.5 pr-1">
+                    <Input
+                      aria-label={`Value of property ${p.key || i + 1}`}
+                      className="h-7"
+                      value={p.value}
+                      placeholder="Acme.Billing"
+                      onChange={(e) => editProperty(i, { value: e.target.value })}
+                    />
+                  </td>
+                  <td className="py-0.5">
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      label={`Remove the property ${p.key || i + 1}`}
+                      onClick={() => edit({ properties: value.properties.filter((_, k) => k !== i) })}
+                    >
+                      <X />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="mt-1 text-12 text-secondary" data-testid="general-no-properties">
+            None yet.
+          </p>
+        )}
+      </div>
 
       <div>
         <SectionTitle>Icon</SectionTitle>

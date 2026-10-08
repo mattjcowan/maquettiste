@@ -374,7 +374,31 @@ export function validateModel(input: ValidationInput): Diagnostic[] {
   const out: Diagnostic[] = [];
   const sorted = [...entries].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   for (const entry of sorted) for (const d of entryDiagnostics(entry, ctx)) out.push(d);
-  return applyRules(out, input.rules);
+  return collapseUndeclaredTags(applyRules(out, input.rules), byId);
+}
+
+/**
+ * The model's MQ2006 findings one per tag and severity (ModelValidator.CollapseUndeclaredTags): the first use carries the count of
+ * uses and elements; errors (a strict vocabulary) stay one per use.
+ */
+function collapseUndeclaredTags(diagnostics: Diagnostic[], byId: ReadonlyMap<string, ModelEntry>): Diagnostic[] {
+  const groups = new Map<string, Diagnostic[]>();
+  for (const d of diagnostics)
+    if (d.rule === "MQ2006" && d.severity !== "error")
+      groups.set(`${d.severity}\u0000${d.message}`, [...(groups.get(`${d.severity}\u0000${d.message}`) ?? []), d]);
+  const many = [...groups.values()].filter((g) => g.length > 1);
+  if (!many.length) return diagnostics;
+  const dropped = new Set(many.flat());
+  const out = diagnostics.filter((d) => !dropped.has(d));
+  for (const group of many) {
+    const uses = [...group].sort((a, b) => String(a.filePath).localeCompare(String(b.filePath)) || String(a.jsonPointer).localeCompare(String(b.jsonPointer)));
+    const elements = [...new Set(uses.map((d) => d.elementId ?? d.filePath ?? ""))];
+    const names = elements.map((id) => String(byId.get(id)?.json.name ?? id)).sort();
+    const shown = names.slice(0, 3).join(", ") + (names.length > 3 ? ` and ${names.length - 3} more` : "");
+    const message = `${uses[0].message.replace(/\.$/, "")}: ${uses.length} uses in ${elements.length} ${elements.length === 1 ? "element" : "elements"} (${shown}). Declare it in the tag vocabulary, or remove it everywhere.`;
+    out.push({ ...uses[0], message });
+  }
+  return out;
 }
 
 /** validation.rules: a rule set to error, warning or info changes its severity; off drops it (MQ1 rules always stay). */

@@ -13,15 +13,15 @@ end
 
 # The namespaces of the runtime, the dispatcher and the actors.
 func runtime_ns()
-  ret pack.params.namespace + ".Runtime"
+  ret base_ns + ".Runtime"
 end
 
 func dispatch_ns()
-  ret pack.params.namespace + ".Dispatch"
+  ret base_ns + ".Dispatch"
 end
 
 func actors_ns()
-  ret pack.params.namespace + ".Processes"
+  ret base_ns + ".Processes"
 end
 
 # The C# constant name of a state: its path parts in PascalCase, joined ("Fulfilment.Processing" -> FulfilmentProcessing).

@@ -8,7 +8,7 @@ namespace Maquettiste.Engine;
 
 /// <summary>
 /// Materialize, both directions (erratum E43; engine-design.md section 7, "Bindings and materialize"): the batch operations
-/// <c>materialize-tables</c> and <c>materialize-entities</c>, which expand into creates, updates and deletes applied with the batch's
+/// <c>materialize-tables</c>, <c>materialize-entities</c>, <c>materialize-attributes</c> and <c>materialize-columns</c>, which expand into creates, updates and deletes applied with the batch's
 /// other operations, all or nothing; the preview of either (<see cref="PlanMaterializeAsync"/>, nothing written); and the status of a
 /// database (<see cref="GetMaterializeStatusAsync"/>): which entities have no binding to it, and which of its tables and views the
 /// entities bind.
@@ -17,7 +17,7 @@ public sealed partial class ModelStore
 {
     /// <summary>Whether an operation is a materialize operation.</summary>
     /// <param name="op">The operation kind.</param>
-    public static bool IsMaterializeOperation(BatchOp op) => op is BatchOp.MaterializeTables or BatchOp.MaterializeEntities;
+    public static bool IsMaterializeOperation(BatchOp op) => op is BatchOp.MaterializeTables or BatchOp.MaterializeEntities or BatchOp.MaterializeAttributes or BatchOp.MaterializeColumns;
 
     private async Task<string?> MaterializeAsync(ModelSnapshot snapshot, BatchOperation o, List<PlannedChange> changes, List<MaterializeResult> results, CancellationToken ct)
     {
@@ -50,9 +50,13 @@ public sealed partial class ModelStore
         }
     }
 
-    private static MaterializeRequest ToRequest(BatchOperation o) => o.Op == BatchOp.MaterializeTables
-        ? new MaterializeRequest("materialize-tables", o.Database ?? o.Id ?? "", o.Entities ?? [], o.Schema)
-        : new MaterializeRequest("materialize-entities", o.Database ?? o.Id ?? "", o.Tables ?? [], null, o.Package);
+    private static MaterializeRequest ToRequest(BatchOperation o) => o.Op switch
+    {
+        BatchOp.MaterializeTables => new MaterializeRequest("materialize-tables", o.Database ?? o.Id ?? "", o.Entities ?? [], o.Schema),
+        BatchOp.MaterializeAttributes => new MaterializeRequest("materialize-attributes", o.Database ?? o.Id ?? "", o.Entities ?? [], Columns: o.Columns),
+        BatchOp.MaterializeColumns => new MaterializeRequest("materialize-columns", o.Database ?? o.Id ?? "", o.Entities ?? [], Attributes: o.Attributes),
+        _ => new MaterializeRequest("materialize-entities", o.Database ?? o.Id ?? "", o.Tables ?? [], null, o.Package),
+    };
 
     /// <summary>
     /// Runs the materializer. Storing tables reads the database's committed snapshot first: its aliases give back the ids a table, its
@@ -68,7 +72,9 @@ public sealed partial class ModelStore
         {
             "materialize-tables" => await materializer.TablesAsync(request.Database, request.Ids, request.Schema, ct).ConfigureAwait(false),
             "materialize-entities" => await materializer.EntitiesAsync(request.Database, request.Ids, request.Package, ct).ConfigureAwait(false),
-            _ => new MaterializeResult($"'{request.Operation}' is not materialize-tables or materialize-entities.", [], []),
+            "materialize-attributes" => await materializer.AttributesAsync(request.Database, request.Ids, request.Columns, ct).ConfigureAwait(false),
+            "materialize-columns" => await materializer.ColumnsAsync(request.Database, request.Ids, request.Attributes, ct).ConfigureAwait(false),
+            _ => new MaterializeResult($"'{request.Operation}' is not materialize-tables, materialize-entities, materialize-attributes or materialize-columns.", [], []),
         };
     }
 
@@ -162,12 +168,15 @@ public sealed partial class ModelStore
 }
 
 /// <summary>A materialize operation to plan (<see cref="ModelStore.PlanMaterializeAsync"/>).</summary>
-/// <param name="Operation"><c>materialize-tables</c> or <c>materialize-entities</c>.</param>
+/// <param name="Operation"><c>materialize-tables</c>, <c>materialize-entities</c>, <c>materialize-attributes</c> or <c>materialize-columns</c>.</param>
 /// <param name="Database">The database id.</param>
-/// <param name="Ids">The entities (tables) or the tables and views (entities).</param>
+/// <param name="Ids">The entities (tables, attributes, columns) or the tables and views (entities).</param>
 /// <param name="Schema">For tables: the schema id of the database the tables go to; absent keeps the projected tables' schema.</param>
 /// <param name="Package">For entities: the package id the entities go to.</param>
-public sealed record MaterializeRequest(string Operation, string Database, IReadOnlyList<string> Ids, string? Schema = null, string? Package = null);
+/// <param name="Columns">For attributes: the source columns (one entity), or <see langword="null"/> for every column nothing in the binding names.</param>
+/// <param name="Attributes">For columns: the binding field references (one entity), or <see langword="null"/> for every unmapped attribute.</param>
+public sealed record MaterializeRequest(string Operation, string Database, IReadOnlyList<string> Ids, string? Schema = null, string? Package = null,
+    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null);
 
 /// <summary>What a materialize operation would do.</summary>
 /// <param name="Operation">The operation.</param>

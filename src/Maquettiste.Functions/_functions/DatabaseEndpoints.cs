@@ -188,8 +188,9 @@ public static class DatabaseEndpoints
 
     /// <summary>
     /// What a materialize operation would do, without writing: the body is the batch operation (<c>{ "op": "materialize-tables",
-    /// "entities": [...], "schema"? }</c> or <c>{ "op": "materialize-entities", "tables": [...], "package": ... }</c>); the database is
-    /// the route's.
+    /// "entities": [...], "schema"? }</c>, <c>{ "op": "materialize-entities", "tables": [...], "package": ... }</c> or <c>{ "op":
+    /// "materialize-attributes", "entities": [...], "columns"?: [...] }</c> or <c>{ "op": "materialize-columns", "entities": [...],
+    /// "attributes"?: [...] }</c>); the database is the route's.
     /// </summary>
     /// <param name="context">The request.</param>
     /// <param name="id">The database element's id.</param>
@@ -212,18 +213,25 @@ public static class DatabaseEndpoints
                 new MaterializeRequest("materialize-tables", id, entities, request.Schema),
             "materialize-entities" when request.Tables is { Count: > 0 } tables && !string.IsNullOrEmpty(request.Package) =>
                 new MaterializeRequest("materialize-entities", id, tables, null, request.Package),
+            "materialize-attributes" when request.Entities is { Count: > 0 } entities =>
+                new MaterializeRequest("materialize-attributes", id, entities, Columns: request.Columns is { Count: > 0 } columns ? columns : null),
+            "materialize-columns" when request.Entities is { Count: > 0 } entities =>
+                new MaterializeRequest("materialize-columns", id, entities, Attributes: request.Attributes is { Count: > 0 } refs ? refs : null),
             _ => null,
         };
         if (plan is null)
-            return Api.BadRequest("The body is { \"op\": \"materialize-tables\", \"entities\": [ids], \"schema\"?: id } or { \"op\": \"materialize-entities\", \"tables\": [ids], \"package\": id }.");
+            return Api.BadRequest("The body is { \"op\": \"materialize-tables\", \"entities\": [ids], \"schema\"?: id } { \"op\": \"materialize-entities\", \"tables\": [ids], \"package\": id } { \"op\": \"materialize-attributes\", \"entities\": [ids], \"columns\"?: [keys or names] } or { \"op\": \"materialize-columns\", \"entities\": [ids], \"attributes\"?: [field references] }.");
         return Api.Json(await store.PlanMaterializeAsync(plan, ct).ConfigureAwait(false));
     });
 }
 
 /// <summary>The body of <c>POST /api/model/databases/{id}/materialize/preview</c>: a materialize batch operation without its database.</summary>
-/// <param name="Op"><c>materialize-tables</c> or <c>materialize-entities</c>.</param>
-/// <param name="Entities">The entities (materialize-tables).</param>
+/// <param name="Op"><c>materialize-tables</c>, <c>materialize-entities</c>, <c>materialize-attributes</c> or <c>materialize-columns</c>.</param>
+/// <param name="Entities">The entities (materialize-tables, materialize-attributes, materialize-columns).</param>
 /// <param name="Tables">The tables and views (materialize-entities).</param>
 /// <param name="Schema">The schema the tables go to (materialize-tables).</param>
 /// <param name="Package">The package the entities go to (materialize-entities).</param>
-public sealed record MaterializeBody(string? Op, IReadOnlyList<string>? Entities, IReadOnlyList<string>? Tables, string? Schema, string? Package);
+/// <param name="Columns">The source columns (materialize-attributes, one entity); absent means every column nothing in the binding names.</param>
+/// <param name="Attributes">The binding field references (materialize-columns, one entity); absent means every unmapped attribute.</param>
+public sealed record MaterializeBody(string? Op, IReadOnlyList<string>? Entities, IReadOnlyList<string>? Tables, string? Schema, string? Package,
+    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null);

@@ -17,6 +17,12 @@ public sealed record ProjectSettings
     /// <summary>The project name.</summary>
     public string? Name { get; init; }
 
+    /// <summary>
+    /// The project's own properties, free key to text value (a base namespace, a company name), which every pack's templates read as
+    /// <c>project.properties</c>; a pack's own parameters are separate (<c>pack.params</c>).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Properties { get; init; } = ImmutableDictionary<string, string>.Empty;
+
     /// <summary>The project's branding in the editor (icon and primary colors); it changes no generated output.</summary>
     public BrandingSettings Branding { get; init; } = new();
 

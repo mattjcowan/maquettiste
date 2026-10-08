@@ -247,6 +247,24 @@ public static class LocalizationEndpoints
         return usage is null ? Api.NotFound("reference type", id) : Api.Json(usage);
     });
 
+    /// <summary>
+    /// The tags one tag vocabulary governs (<see cref="ModelStore.GetTagUsageAsync"/>): <c>?package=&lt;domain id&gt;</c> for a domain's,
+    /// none for the global one.
+    /// </summary>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 or 404 (not a domain).</returns>
+    [HttpGet("/api/model/tags/usage")]
+    public static Task<IResult> TagUsage(HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(store);
+        var package = NullIfEmpty(context.Request.Query["package"].ToString());
+        var usage = await store.GetTagUsageAsync(package, ct).ConfigureAwait(false);
+        return usage is null ? Api.NotFound("package", package!) : Api.Json(usage);
+    });
+
     private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     private static string OutcomeName(SaveOutcome outcome) => outcome switch

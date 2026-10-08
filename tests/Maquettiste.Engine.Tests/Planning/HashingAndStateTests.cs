@@ -36,6 +36,7 @@ public sealed class HashingAndStateTests
         Assert.Matches("^[0-9a-f]{64}$", hasher.CurrentHash("s:conventions"));
         Assert.Matches("^[0-9a-f]{64}$", hasher.CurrentHash("s:typeMaps"));
         Assert.Matches("^[0-9a-f]{64}$", hasher.CurrentHash("s:inflection"));
+        Assert.Matches("^[0-9a-f]{64}$", hasher.CurrentHash("s:project"));
         foreach (var gone in new[] { "e:01ARZ3NDEKTSV4RRFFQ69G5FAV", "k:nothing", "t:p/missing.tpl", "t:p/../escape", "t:q/t.tpl", "d:nope", "s:other", "x:y", "plain" })
             Assert.Equal(DependencyHasher.Absent, hasher.CurrentHash(gone));
     }
@@ -50,6 +51,11 @@ public sealed class HashingAndStateTests
         DependencyHasher Hasher(ModelSnapshot m) => new(m, Resolve(m), new PackSet([], []), new Dictionary<string, SchemaDiffResult>());
         Assert.NotEqual(Hasher(before).CurrentHash("s:conventions"), Hasher(after).CurrentHash("s:conventions"));
         Assert.Equal(Hasher(before).CurrentHash("s:inflection"), Hasher(after).CurrentHash("s:inflection"));
+        Assert.Equal(Hasher(before).CurrentHash("s:project"), Hasher(after).CurrentHash("s:project"));
+        b.Settings(s => s with { Properties = new Dictionary<string, string> { ["baseNamespace"] = "Acme" } });
+        var named = b.Build();
+        Assert.NotEqual(Hasher(after).CurrentHash("s:project"), Hasher(named).CurrentHash("s:project"));
+        Assert.Equal(Hasher(after).CurrentHash("s:conventions"), Hasher(named).CurrentHash("s:conventions"));
     }
 
     [Fact]

@@ -59,7 +59,7 @@ if queries.size > 0
 using System;
 using System.Collections.Generic;
 
-namespace {{ pack.params.namespace }}.Queries;
+namespace {{ base_ns }}.Queries;
 
 /// <summary>The Dapper query classes of the model.</summary>
 /// <example><code>QueryRegistrations.Register((service, implementation) => services.AddScoped(service, implementation));</code></example>

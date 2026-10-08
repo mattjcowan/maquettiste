@@ -306,11 +306,16 @@ export class MockPackAuthoring {
       { name: "mappings", detail: "Every mapping of the element." },
       { name: "model", detail: "The resolved model." },
       { name: "pack", detail: "The pack: name, version and params." },
+      { name: "project", detail: "The project: name and properties (the project's own, shared by every pack)." },
       { name: "schema_diff", detail: "The schema diffs by database name." },
       { name: "unit", detail: "The unit: id and key." },
       ...Object.keys((manifest.parameters as Record<string, unknown> | undefined) ?? {}).map((name) => ({
         name: `pack.params.${name}`,
         detail: `Parameter ${name}.`,
+      })),
+      ...Object.keys((this.model.projectSettings().properties as Record<string, unknown> | undefined) ?? {}).map((name) => ({
+        name: `project.properties.${name}`,
+        detail: `Project property ${name}.`,
       })),
     ];
     if (unit.for !== "model") {

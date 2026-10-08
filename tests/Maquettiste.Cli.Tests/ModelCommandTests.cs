@@ -104,6 +104,15 @@ public sealed class ModelCommandTests
         Assert.Equal(4, (await repo.RunAsync("model", "materialize", "tables", "--database", "main")).ExitCode);
         Assert.Equal(4, (await repo.RunAsync("model", "materialize", "views", "--database", "main", "x")).ExitCode);
         Assert.Equal(4, (await repo.RunAsync("model", "materialize", "entities", "--database", "main", "--schema", "x", "notes")).ExitCode);
+
+        // Attributes for a bound entity's columns: the materialized Invoice maps every column, and a constant is not a field.
+        var nothing = await repo.RunAsync("model", "materialize", "attributes", "--database", "main", "Invoice", "--dry-run");
+        Assert.Equal(1, nothing.ExitCode);
+        Assert.Contains("nothing to add", nothing.Error, StringComparison.Ordinal);
+        var constant = await repo.RunAsync("model", "materialize", "attributes", "--database", "main", "--column", "entity_type", "InvoiceNote", "--dry-run");
+        Assert.Equal(1, constant.ExitCode);
+        Assert.Contains("is already a constant", constant.Error, StringComparison.Ordinal);
+        Assert.Equal(4, (await repo.RunAsync("model", "materialize", "attributes", "--database", "main", "--package", "Billing", "Invoice")).ExitCode);
     }
 
     [Fact]

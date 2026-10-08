@@ -1,17 +1,28 @@
 // Settings › General as data: the project name (maquettiste.json `name`, the field `maquettiste init --name`
-// writes) and `branding` (icon, primary color per theme). Pure, so the form and the tests share it.
+// writes), the project's own `properties` (key to text, which every pack's templates read as project.properties) and
+// `branding` (icon, primary color per theme). Pure, so the form and the tests share it.
 import type { SettingsJson } from "@/api/types";
 import { isHexColor, normalizeHexColor } from "@/design/branding";
 import { clone } from "@/lib/json";
 
-export type GeneralDraft = { name: string; icon: string | null; light: string | null; dark: string | null };
+/** One project property as the form edits it: rows keep their order while a key is typed. */
+export type PropertyRow = { key: string; value: string };
+
+export type GeneralDraft = { name: string; properties: PropertyRow[]; icon: string | null; light: string | null; dark: string | null };
+
+/** A key templates can read as project.properties.<key> (maquettiste.json's propertyNames pattern). */
+export const PROPERTY_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 type BrandingJson = { icon?: string | null; colors?: { light?: string | null; dark?: string | null } };
 
 export function generalOf(json: SettingsJson): GeneralDraft {
   const branding = (json as { branding?: BrandingJson }).branding;
+  const properties = (json as { properties?: Record<string, string> }).properties ?? {};
   return {
     name: json.name ?? "",
+    properties: Object.keys(properties)
+      .sort()
+      .map((key) => ({ key, value: properties[key] })),
     icon: branding?.icon ?? null,
     light: branding?.colors?.light ?? null,
     dark: branding?.colors?.dark ?? null,
@@ -19,7 +30,28 @@ export function generalOf(json: SettingsJson): GeneralDraft {
 }
 
 export function sameGeneral(a: GeneralDraft, b: GeneralDraft): boolean {
-  return a.name === b.name && a.icon === b.icon && a.light === b.light && a.dark === b.dark;
+  return (
+    a.name === b.name &&
+    a.icon === b.icon &&
+    a.light === b.light &&
+    a.dark === b.dark &&
+    a.properties.length === b.properties.length &&
+    a.properties.every((p, i) => p.key === b.properties[i].key && p.value === b.properties[i].value)
+  );
+}
+
+/** Why each property row cannot be saved (by row index): a key that is empty, not a template name, or taken twice. */
+export function propertyProblems(rows: readonly PropertyRow[]): Map<number, string> {
+  const out = new Map<number, string>();
+  const seen = new Set<string>();
+  rows.forEach((row, i) => {
+    const key = row.key.trim();
+    if (!key) out.set(i, "Give the property a key.");
+    else if (!PROPERTY_KEY.test(key)) out.set(i, "A key is letters, digits and _, not starting with a digit (templates read project.properties.<key>).");
+    else if (seen.has(key)) out.set(i, `The key ${key} is used twice.`);
+    seen.add(key);
+  });
+  return out;
 }
 
 /** The settings with the draft applied: empty members are left out, as the canonical writer would. */
@@ -28,6 +60,9 @@ export function withGeneral(json: SettingsJson, draft: GeneralDraft): SettingsJs
   const name = draft.name.trim();
   if (name) next.name = name;
   else delete next.name;
+  const properties = Object.fromEntries(draft.properties.map((p) => [p.key.trim(), p.value]));
+  if (Object.keys(properties).length) (next as { properties?: Record<string, string> }).properties = properties;
+  else delete (next as { properties?: Record<string, string> }).properties;
   const colors: NonNullable<BrandingJson["colors"]> = {};
   if (draft.light) colors.light = normalizeHexColor(draft.light) ?? draft.light;
   if (draft.dark) colors.dark = normalizeHexColor(draft.dark) ?? draft.dark;

@@ -273,10 +273,12 @@ public sealed partial class AgentTools
         {
             "materialize-tables" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, args.String("schema")),
             "materialize-entities" when tables is { Length: > 0 } && !string.IsNullOrEmpty(package) => new MaterializeRequest(op, database, tables, null, package),
+            "materialize-attributes" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, Columns: args.Strings("columns") is { Length: > 0 } columns ? columns : null),
+            "materialize-columns" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, Attributes: args.Strings("attributes") is { Length: > 0 } refs ? refs : null),
             _ => null,
         };
         if (request is null)
-            return BadRequest("op is materialize-tables (with entities) or materialize-entities (with tables and package).");
+            return BadRequest("op is materialize-tables (with entities), materialize-entities (with tables and package), materialize-attributes (with entities, and columns for one) or materialize-columns (with entities, and attributes for one).");
         await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         if (await _store.GetElementAsync(database, ct).ConfigureAwait(false) is not { } document || document.Element is not Database)
             return NotFound("database", database, "not-a-database");
@@ -345,6 +347,13 @@ public sealed partial class AgentTools
             return BadRequest("id is required.");
         var usage = await _store.GetReferenceTypeUsageAsync(id, ct).ConfigureAwait(false);
         return usage is null ? NotFound("reference type", id) : Ok(usage);
+    }
+
+    private async Task<AgentToolResult> TagUsageAsync(ToolArguments args, CancellationToken ct)
+    {
+        var package = args.String("package") is { Length: > 0 } p ? p : null;
+        var usage = await _store.GetTagUsageAsync(package, ct).ConfigureAwait(false);
+        return usage is null ? NotFound("package", package!) : Ok(usage);
     }
 
     private async Task<AgentToolResult> ValidateAsync(ToolArguments args, CancellationToken ct)

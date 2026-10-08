@@ -45,8 +45,21 @@ public sealed record EditorUser(string Name, string DisplayName, string Role, st
 /// </summary>
 public sealed class EditorAuth
 {
-    /// <summary>The session cookie's name.</summary>
+    /// <summary>The session cookie's name on a host without an explicit port (<see cref="CookieNameFor"/>).</summary>
     public const string CookieName = "mq_session";
+
+    /// <summary>
+    /// The session cookie's name for a request: <c>mq_session</c>, or <c>mq_session_&lt;port&gt;</c> when the <c>Host</c> header names a
+    /// port. Browsers keep one cookie jar per host whatever the port, so two editors on <c>localhost:8080</c> and <c>localhost:8081</c>
+    /// would otherwise overwrite each other's session (and each, unable to read the other's, would sign the user out).
+    /// </summary>
+    /// <param name="context">The request.</param>
+    /// <returns>The cookie name.</returns>
+    public static string CookieNameFor(HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return context.Request.Host.Port is { } port ? CookieName + "_" + port.ToString(System.Globalization.CultureInfo.InvariantCulture) : CookieName;
+    }
 
     /// <summary>How long a session cookie is honoured.</summary>
     public static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(7);
@@ -123,12 +136,12 @@ public sealed class EditorAuth
         var payload = new CookiePayload(user.Name, user.DisplayName, user.Role, _time.GetUtcNow().ToUnixTimeSeconds(),
             Fingerprint(VariablesFor(context).Get(EditorSettings.TokenVariable)));
         var value = _protector.Protect(JsonSerializer.Serialize(payload, Api.JsonOptions));
-        context.Response.Cookies.Append(CookieName, value, CookieOptions(context));
+        context.Response.Cookies.Append(CookieNameFor(context), value, CookieOptions(context));
     }
 
     /// <summary>Clears the session cookie.</summary>
     /// <param name="context">The request.</param>
-    public static void ClearCookie(HttpContext context) => context.Response.Cookies.Delete(CookieName, CookieOptions(context));
+    public static void ClearCookie(HttpContext context) => context.Response.Cookies.Delete(CookieNameFor(context), CookieOptions(context));
 
     /// <summary>Whether an address has used up its failed sign-ins for the minute (429).</summary>
     /// <param name="address">The caller's address.</param>
@@ -269,7 +282,7 @@ public sealed class EditorAuth
     private EditorUser? FromCookie(HttpContext context, ISiteVariables variables)
     {
         var token = variables.Get(EditorSettings.TokenVariable);
-        if (token.Length == 0 || !context.Request.Cookies.TryGetValue(CookieName, out var value) || string.IsNullOrEmpty(value))
+        if (token.Length == 0 || !context.Request.Cookies.TryGetValue(CookieNameFor(context), out var value) || string.IsNullOrEmpty(value))
             return null;
         CookiePayload? payload;
         try

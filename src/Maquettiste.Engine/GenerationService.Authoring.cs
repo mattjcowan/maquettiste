@@ -400,6 +400,7 @@ public sealed partial class GenerationService
         {
             new("model", "The resolved model."),
             new("pack", "The pack: name, version and params."),
+            new("project", "The project: name and properties (the project's own, shared by every pack)."),
             new("unit", "The unit: id and key."),
             new("mapping", "The element's mapping to a database, when it has one."),
             new("mappings", "Every mapping of the element."),
@@ -416,6 +417,8 @@ public sealed partial class GenerationService
         }
 
         variables.AddRange(document.Parameters.Select(p => new TemplateVariable("pack.params." + p.Name, "Parameter " + p.Name + ".")));
+        var settings = (await _store.GetSnapshotAsync(ct).ConfigureAwait(false)).Settings;
+        variables.AddRange(settings.Properties.Keys.Select(k => new TemplateVariable("project.properties." + k, "Project property " + k + ".")));
         variables.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
         var members = new SortedDictionary<string, IReadOnlyList<TemplateMember>>(StringComparer.Ordinal) { ["model"] = MembersOf(typeof(ResolvedModel)) };
         if (elementType is not null)

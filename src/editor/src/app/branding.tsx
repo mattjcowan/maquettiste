@@ -7,6 +7,8 @@ import { applyBranding, useBrandingPreview, type BrandColors } from "@/design/br
 import { useEditor } from "@/state/store";
 import { useServices } from "./context";
 
+const PRODUCT_NAME = "Maquettiste";
+
 export type BrandingView = { name: string; iconUrl: string | null; colors: BrandColors | null };
 
 /** The project icon's URL, refreshed by its hash; null without a usable icon. */
@@ -18,7 +20,7 @@ export function useBrandingView(): BrandingView {
   const project = useProject();
   const preview = useBrandingPreview();
   const branding = project.data?.settings.branding;
-  const name = project.data?.name ?? "Maquettiste";
+  const name = project.data?.name ?? PRODUCT_NAME;
   return {
     name: preview?.name ? preview.name : name,
     iconUrl: preview && preview.iconUrl !== undefined ? preview.iconUrl : projectIconUrl(branding?.icon, project.data?.iconHash),
@@ -26,11 +28,15 @@ export function useBrandingView(): BrandingView {
   };
 }
 
-/** Keeps the token style sheet and the tab icon in step with the branding and the theme. */
+/** Keeps the token style sheet, the tab icon and the tab title in step with the branding and the theme. */
 export function BrandingSync() {
   const { store } = useServices();
   const theme = useEditor(store, (s) => s.theme);
-  const { colors, iconUrl } = useBrandingView();
+  const { colors, iconUrl, name } = useBrandingView();
+  // The browser tab names the project first, so editors of several projects (or one on several ports) tell apart.
+  useEffect(() => {
+    document.title = name === PRODUCT_NAME ? PRODUCT_NAME : `${name} — ${PRODUCT_NAME}`;
+  }, [name]);
   const light = colors?.light ?? null;
   const dark = colors?.dark ?? null;
   useEffect(() => {

@@ -23,7 +23,7 @@ public sealed partial class AgentToolsTests
     {
         await using var r = EditorRepo.Create(packs: false);
         var catalog = Catalog(r);
-        Assert.Equal(24, AgentTools.All.Count);
+        Assert.Equal(25, AgentTools.All.Count);
         Assert.Equal(AgentTools.All.Select(t => t.Name).Order(StringComparer.Ordinal), AgentTools.All.Select(t => t.Name));
         foreach (var tool in AgentTools.All.Append(AssistantProposals.Tool))
         {

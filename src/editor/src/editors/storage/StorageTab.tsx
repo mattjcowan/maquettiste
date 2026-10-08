@@ -46,10 +46,13 @@ import {
   type MapProblem,
   type StorageAttribute,
 } from "./fieldMap";
-import { databasesOf, useBindingSources, useMaterializeStatuses, useStorageAttributes } from "./useStorage";
+import { commitMaterialize, databasesOf, useBindingSources, useMaterializeStatuses, useStorageAttributes } from "./useStorage";
 import { STORAGE_LABELS } from "./labels";
 
 type Rec = Record<string, unknown>;
+
+/** The Column choice that adds a column for the attribute to the table (materialize-columns). */
+const NEW_COLUMN = "\u0000new-column";
 
 const DIALECTS = ["postgresql", "sqlserver", "mysql", "sqlite", "oracle"] as const;
 const STATEMENTS = [
@@ -357,6 +360,47 @@ function BindingCard({
     .map((d) => ({ rule: d.rule, severity: d.severity === "error" ? "error" : "warning", message: d.message, pointer: d.jsonPointer ?? "" }));
   const problems = [...local, ...server];
   const [mapping, setMapping] = useState(false);
+  // Attributes from the source's columns (materialize-attributes): every column nothing in the binding names, or one column.
+  const services = useServices();
+  const [adding, setAdding] = useState(false);
+  const unnamed = colRows.filter((r) => r.status === "unaccounted" || r.status === "identity" || r.status === "default");
+  const canAdd = !!source && source.kind !== "query" && !adding;
+  const addAttributes = async (columnKeys: string[] | null) => {
+    setAdding(true);
+    const n = columnKeys?.length ?? unnamed.length;
+    const label =
+      columnKeys?.length === 1 ? `New attribute for column ${findColumn(columns, columnKeys[0])?.name ?? columnKeys[0]}` : `New attributes for ${n} columns`;
+    const failed = await commitMaterialize(
+      services,
+      label,
+      { op: "materialize-attributes", database: binding.database, entities: [entityId], ...(columnKeys ? { columns: columnKeys } : {}) },
+      { updates: [entityId], deletes: [] },
+    );
+    setAdding(false);
+    if (failed) services.store.getState().notify(failed, "error");
+  };
+  // Columns for the attributes the binding leaves unmapped (materialize-columns): only a table file the binding reads and writes.
+  const unmappedAttrs = fieldRows.filter((r) => r.status === "unmapped" || r.status === "optional");
+  const canAddColumns =
+    !!source &&
+    source.kind === "table" &&
+    !source.projected &&
+    (typeof binding.write !== "object" || binding.write.table === binding.source) &&
+    binding.write !== "none" &&
+    !adding;
+  const addColumns = async (refs: string[] | null) => {
+    setAdding(true);
+    const label =
+      refs?.length === 1 ? `New column for ${attributes.find((a) => a.ref === refs[0])?.name ?? refs[0]}` : `New columns in ${source?.name ?? "the table"}`;
+    const failed = await commitMaterialize(
+      services,
+      label,
+      { op: "materialize-columns", database: binding.database, entities: [entityId], ...(refs ? { attributes: refs } : {}) },
+      { updates: [binding.source, entityId], deletes: [] },
+    );
+    setAdding(false);
+    if (failed) services.store.getState().notify(failed, "error");
+  };
   const write = writeChoiceOf(binding);
   const writing = writes(binding, source);
   const tables = sources.filter((s) => s.kind === "table");
@@ -427,9 +471,27 @@ function BindingCard({
       <section className="flex flex-col gap-1">
         <SectionTitle
           actions={
-            <Button size="sm" variant="ghost" onClick={() => setMapping(true)} disabled={!source} data-testid="binding-map-by-name">
-              Map by name…
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" onClick={() => setMapping(true)} disabled={!source} data-testid="binding-map-by-name">
+                Map by name…
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void addColumns(null)}
+                disabled={!canAddColumns || !unmappedAttrs.length}
+                title={
+                  !source || source.kind !== "table" || source.projected
+                    ? "Columns are added to a table file: the source is not one."
+                    : unmappedAttrs.length
+                      ? `A column of ${source.name} per unmapped attribute (${unmappedAttrs.map((r) => r.attribute.name).join(", ")}), named and typed by the conventions, mapped to it.`
+                      : "Every attribute is mapped."
+                }
+                data-testid="binding-add-columns"
+              >
+                <Plus /> Add columns for the unmapped attributes
+              </Button>
+            </div>
           }
         >
           Field map
@@ -457,11 +519,16 @@ function BindingCard({
                     className="h-6"
                     value={r.column?.key ?? (r.field ? r.field.column : "")}
                     onChange={(e) => {
+                      if (e.target.value === NEW_COLUMN) {
+                        void addColumns([r.attribute.ref]);
+                        return;
+                      }
                       const column = columns.find((c) => c.key === e.target.value) ?? null;
                       onEdit((b) => setField(b, r.attribute.ref, column, columns));
                     }}
                   >
-                    <option value="">(not mapped)</option>
+                    <option value="">—</option>
+                    {canAddColumns && !r.field ? <option value={NEW_COLUMN}>{`New column in ${source!.name}`}</option> : null}
                     {r.field && !r.column ? <option value={r.field.column}>{`${r.field.column} (not found)`}</option> : null}
                     {columns.map((c) => (
                       <option key={c.key} value={c.key}>
@@ -480,7 +547,31 @@ function BindingCard({
       </section>
 
       <section className="flex flex-col gap-1">
-        <SectionTitle>Columns of {source?.name ?? "the source"}</SectionTitle>
+        <SectionTitle
+          actions={
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void addAttributes(null)}
+              disabled={!canAdd || !unnamed.length}
+              title={
+                source?.kind === "query"
+                  ? "A query's fields become attributes by hand."
+                  : unnamed.length
+                    ? `An attribute per column nothing maps (${unnamed.map((r) => r.column.name).join(", ")}), named and typed from the column and mapped to it.`
+                    : "Every column is accounted for."
+              }
+              data-testid="binding-add-attributes"
+            >
+              <Plus />{" "}
+              {unnamed.length
+                ? `Add attributes for the ${unnamed.length} unmapped ${unnamed.length === 1 ? "column" : "columns"}`
+                : "Add attributes for the unmapped columns"}
+            </Button>
+          }
+        >
+          Columns of {source?.name ?? "the source"}
+        </SectionTitle>
         <table className="w-full text-13" aria-label={`Columns of ${source?.name ?? "the source"}`} data-testid="binding-columns">
           <thead className="text-left text-11 text-secondary">
             <tr>
@@ -521,12 +612,16 @@ function BindingCard({
                           aria-label={`What accounts for ${r.column.name}`}
                           className="h-6 w-44"
                           value={listed?.status ?? ""}
-                          onChange={(e) => onEdit((b) => setColumnStatus(b, r.column, (e.target.value || null) as ListedStatus | null, columns))}
+                          onChange={(e) => {
+                            if (e.target.value === "attribute") void addAttributes([r.column.key]);
+                            else onEdit((b) => setColumnStatus(b, r.column, (e.target.value || null) as ListedStatus | null, columns));
+                          }}
                         >
                           <option value="">(its own: {r.status === "unaccounted" ? "nothing" : COLUMN_STATUS_LABELS[r.status]})</option>
                           <option value="ignored">Ignored</option>
                           <option value="database">Filled by the database</option>
                           <option value="computed">Computed</option>
+                          {canAdd ? <option value="attribute">New attribute, mapped to it</option> : null}
                         </Select>
                       </div>
                     ) : null}

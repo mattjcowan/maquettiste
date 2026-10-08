@@ -43,7 +43,8 @@ A pack is a folder `.maquettiste/templates/<name>/` whose `pack.json` has the sa
 ```
 
 - **Parameters** are defaults; a project overrides them in `maquettiste.json` under `packs.<name>.parameters`, and templates read
-  them as `pack.params.<name>` (keys keep their spelling).
+  them as `pack.params.<name>` (keys keep their spelling). Values the whole project shares (a base namespace, a company name) are
+  the project's `properties` (Settings › General), which every pack's templates read as `project.properties.<key>`.
 - **`for`** is `model` (one unit), `each package|entity|relation|enum|value object|table|reference type|seed|locale|process|actor|scenario`
   (one unit per element; `table` covers every database), or `select <name>` with a JavaScript selector. There is no `each database`: register a selector that returns
   `model.databases`, as `sql-ddl` does, and the unit's element is then `database`.

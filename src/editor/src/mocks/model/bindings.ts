@@ -1,10 +1,10 @@
 // The mock's entity bindings and materialize (erratum E43, engine-design.md 7 "Bindings and materialize"), enough for the
 // editor's Storage tab and its bulk actions and the Database screen's Store as table files: the materialize status of a
-// database, the plans of materialize-tables and materialize-entities (the preview, and the batch operations that write them),
+// database, the plans of materialize-tables, materialize-entities, materialize-attributes and materialize-columns (the preview, and the batch operations that write them),
 // the five statements of a binding for a dialect (simple SQL, not the engine's renderer), and the binding rules the editor
 // shows inline (MQ4044 to MQ4048, MQ4050, and the proposed MQ4058). It shares the field map model with the editor (editors/storage/fieldMap.ts).
 import type { DatabaseView, Diagnostic, MaterializeChange, MaterializePlan, MaterializeStatus, BindingSqlResult, TableView } from "@/api/types";
-import { bindingProblems, findColumn, sourceOf, storageAttributes, writes, type Binding } from "@/editors/storage/fieldMap";
+import { bindingProblems, columnRows, findColumn, sourceOf, storageAttributes, writes, type Binding } from "@/editors/storage/fieldMap";
 import { applyCase, resolveDatabase, type PhysicalInput } from "./physical";
 
 type Json = Record<string, unknown>;
@@ -83,6 +83,8 @@ export interface MaterializeRequest {
   tables?: string[] | null;
   schema?: string | null;
   package?: string | null;
+  columns?: string[] | null;
+  attributes?: string[] | null;
 }
 
 export interface MaterializeWrites {
@@ -104,7 +106,14 @@ const refusal = (message: string, elementId: string | null): Diagnostic => ({
 
 /** The plan of a materialize operation over a database, and the documents it writes (the batch applies the same). */
 export function planMaterialize(input: BindingInput, databaseId: string, request: MaterializeRequest): { plan: MaterializePlan; writes: MaterializeWrites } {
-  const out = request.op === "materialize-entities" ? materializeEntities(input, databaseId, request) : materializeTables(input, databaseId, request);
+  const out =
+    request.op === "materialize-entities"
+      ? materializeEntities(input, databaseId, request)
+      : request.op === "materialize-attributes"
+        ? materializeAttributes(input, databaseId, request)
+        : request.op === "materialize-columns"
+          ? materializeColumns(input, databaseId, request)
+          : materializeTables(input, databaseId, request);
   const pathOf = (id: string) => {
     const path = input.docs.has(id) ? input.pathOf?.(id) : null;
     return path ? { path } : {};
@@ -552,6 +561,241 @@ function materializeEntities(input: BindingInput, databaseId: string, request: M
       out.writes.creates.push(mapping);
       out.because.set(String(mapping.id), `names ${String(fk.name ?? fk.id)}`);
     }
+  }
+  return out;
+}
+
+/** The attribute a source column becomes (materialize-entities, materialize-attributes): Materializer.AttributeFor. */
+function attributeFor(
+  input: BindingInput,
+  c: { name: string; type: string | null; length?: number | null; precision?: number | null; scale?: number | null; nullable: boolean },
+  taken: Set<string>,
+): Json {
+  let name = applyCase(c.name, "camel");
+  if (!/^[A-Za-z_]/.test(name)) name = `c${applyCase(c.name, "pascal")}`;
+  let unique = name;
+  for (let n = 2; taken.has(unique); n++) unique = `${name}${n}`;
+  taken.add(unique);
+  const a: Json = { id: input.newId(), name: unique, type: c.type ?? "string" };
+  if (c.length) a.length = c.length;
+  if (c.precision) a.precision = c.precision;
+  if (c.scale !== null && c.scale !== undefined && c.precision) a.scale = c.scale;
+  if (!c.nullable) a.required = true;
+  return a;
+}
+
+/**
+ * materialize-attributes (Materializer.AttributesAsync): per entity bound to the database, an attribute per column of its source
+ * that nothing in the binding names (or per column named, one entity only), mapped to it; an ignored listing of the column goes.
+ */
+function materializeAttributes(input: BindingInput, databaseId: string, request: MaterializeRequest): Outcome {
+  const { docs } = input;
+  const db = docs.get(databaseId);
+  const out: Outcome = { writes: { creates: [], updates: [], deletes: [] }, because: new Map(), notes: [], diagnostics: [] };
+  if (!db || db.kind !== "database") {
+    out.diagnostics.push(refusal(`'${databaseId}' is not a database.`, databaseId));
+    return out;
+  }
+  const picked = [...new Set(request.entities ?? [])];
+  const named = request.columns?.length ? [...new Set(request.columns)] : null;
+  if (!picked.length) out.diagnostics.push(refusal("Name at least one entity to add attributes to.", databaseId));
+  if (named && picked.length > 1) out.diagnostics.push(refusal("Name the columns for one entity at a time.", databaseId));
+  if (out.diagnostics.length) return out;
+  const view = resolveDatabase(input, databaseId);
+  for (const id of picked) {
+    const doc = docs.get(id);
+    if (doc?.kind !== "entity") {
+      out.diagnostics.push(refusal(`'${id}' is not an entity.`, id));
+      continue;
+    }
+    const index = bindingsOf(doc).findIndex((b) => b.database === databaseId);
+    if (index < 0) {
+      out.diagnostics.push(refusal(`Entity '${String(doc.name)}' has no binding to database '${String(db.name)}': add one first, or create its table.`, id));
+      continue;
+    }
+    const binding = bindingsOf(doc)[index];
+    const source = sourceOf(view, binding.source);
+    if (!source) {
+      out.diagnostics.push(
+        refusal(`The source of entity '${String(doc.name)}' in database '${String(db.name)}' does not resolve: pick a table or a view first.`, id),
+      );
+      continue;
+    }
+    if (source.kind === "query") {
+      out.diagnostics.push(
+        refusal(`Entity '${String(doc.name)}' reads query '${source.name}' in database '${String(db.name)}': add attributes for a query's fields by hand.`, id),
+      );
+      continue;
+    }
+    const attributes = storageAttributes(id, docs);
+    const rows = columnRows(binding, attributes, source.columns);
+    let chosen = rows.filter((r) => r.status === "unaccounted" || r.status === "identity" || r.status === "default").map((r) => r.column);
+    if (named) {
+      chosen = [];
+      for (const ref of named) {
+        const row = rows.find((r) => r.column.key === ref) ?? rows.find((r) => r.column.name === ref);
+        if (!row) {
+          out.diagnostics.push(refusal(`'${ref}' is not a column of ${source.kind} '${source.name}'.`, id));
+          break;
+        }
+        if (row.status === "field" || row.status === "constant" || row.status === "soft-delete") {
+          const what = row.status === "field" ? "mapped" : row.status === "constant" ? "a constant" : "the soft delete column";
+          out.diagnostics.push(
+            refusal(`Column '${row.column.name}' of ${source.kind} '${source.name}' is already ${what} in the binding of entity '${String(doc.name)}'.`, id),
+          );
+          break;
+        }
+        chosen.push(row.column);
+      }
+      if (out.diagnostics.length) continue;
+    } else if (!chosen.length) {
+      out.diagnostics.push(
+        refusal(`Every column of ${source.kind} '${source.name}' is accounted for in the binding of entity '${String(doc.name)}': nothing to add.`, id),
+      );
+      continue;
+    }
+    const json = clone(doc);
+    const own = arr(json.attributes);
+    json.attributes = own;
+    const taken = new Set(attributes.filter((a) => a.origin !== "member" && a.origin !== "relation").map((a) => a.name));
+    const next = (json.bindings as Binding[])[index];
+    next.fields = [...(next.fields ?? [])];
+    const facets = new Map((source.kind === "table" ? (view?.tables.find((t) => t.key === source.id)?.columns ?? []) : []).map((c) => [c.key, c] as const));
+    for (const column of chosen) {
+      const facet = facets.get(column.key);
+      const attribute = attributeFor(input, { ...column, length: facet?.length, precision: facet?.precision, scale: facet?.scale }, taken);
+      own.push(attribute);
+      next.fields.push({ attribute: String(attribute.id), column: column.key });
+      if (next.columns) {
+        next.columns = next.columns.filter((c) => !(c.status === "ignored" && (c.column === column.key || c.column === column.name)));
+        if (!next.columns.length) delete next.columns;
+      }
+    }
+    out.writes.updates.push(json);
+    out.because.set(
+      id,
+      `attributes for ${chosen.length} ${chosen.length === 1 ? "column" : "columns"} of ${source.kind} ${source.name}, mapped in its binding`,
+    );
+  }
+  return out;
+}
+
+/**
+ * materialize-columns (Materializer.ColumnsAsync): per entity bound to the database and reading a table file it writes, a column of
+ * that table per attribute the binding leaves unmapped (or per one named, one entity only), shaped as the entity's projection makes
+ * it (the entity projected with its binding left out), and a field mapping it. A column name the table has is left out with a note.
+ */
+function materializeColumns(input: BindingInput, databaseId: string, request: MaterializeRequest): Outcome {
+  const { docs } = input;
+  const db = docs.get(databaseId);
+  const out: Outcome = { writes: { creates: [], updates: [], deletes: [] }, because: new Map(), notes: [], diagnostics: [] };
+  if (!db || db.kind !== "database") {
+    out.diagnostics.push(refusal(`'${databaseId}' is not a database.`, databaseId));
+    return out;
+  }
+  const picked = [...new Set(request.entities ?? [])];
+  const named = request.attributes?.length ? [...new Set(request.attributes)] : null;
+  if (!picked.length) out.diagnostics.push(refusal("Name at least one entity to add columns for.", databaseId));
+  if (named && picked.length > 1) out.diagnostics.push(refusal("Name the attributes for one entity at a time.", databaseId));
+  if (out.diagnostics.length) return out;
+  // The entities projected as if never bound to the database: their tables give the columns' shapes.
+  const unbound = new Map(docs);
+  for (const id of picked) {
+    const doc = docs.get(id);
+    if (doc?.kind === "entity") unbound.set(id, { ...doc, bindings: bindingsOf(doc).filter((b) => b.database !== databaseId) });
+  }
+  const projected = resolveDatabase({ ...input, docs: unbound }, databaseId);
+  for (const id of picked) {
+    const doc = docs.get(id);
+    if (doc?.kind !== "entity") {
+      out.diagnostics.push(refusal(`'${id}' is not an entity.`, id));
+      continue;
+    }
+    const index = bindingsOf(doc).findIndex((b) => b.database === databaseId);
+    if (index < 0) {
+      out.diagnostics.push(refusal(`Entity '${String(doc.name)}' has no binding to database '${String(db.name)}': add one first, or create its table.`, id));
+      continue;
+    }
+    const binding = bindingsOf(doc)[index];
+    const tableDoc = docs.get(binding.source);
+    if (tableDoc?.kind !== "table" || tableDoc.database !== databaseId || tableDoc.origin === "synthesized") {
+      out.diagnostics.push(
+        refusal(
+          `Entity '${String(doc.name)}' does not read a designed or imported table of database '${String(db.name)}': columns are added to a table file.`,
+          id,
+        ),
+      );
+      continue;
+    }
+    if (typeof binding.write === "object" && binding.write?.table && binding.write.table !== binding.source) {
+      out.diagnostics.push(refusal(`Entity '${String(doc.name)}' writes another table than it reads: add the columns to the tables by hand.`, id));
+      continue;
+    }
+    const shape = projected?.tables.find((t) => t.origin === "synthesized" && t.entityId === id && !t.isJunction);
+    if (!shape) {
+      out.diagnostics.push(
+        refusal(`Entity '${String(doc.name)}' has no table of its own in database '${String(db.name)}' to take the columns' shapes from.`, id),
+      );
+      continue;
+    }
+    const refs = new Set(storageAttributes(id, docs).map((a) => a.ref));
+    const targetOf = (path: string | null) => (!path ? null : refs.has(path) ? path : refs.has(path.split(".")[0]) ? path.split(".")[0] : null);
+    const candidates = shape.columns.map((c) => ({ column: c, target: targetOf(c.attributePath) })).filter((c) => c.target !== null);
+    const mapped = new Set((binding.fields ?? []).map((f) => f.attribute));
+    const names = new Set(arr(tableDoc.columns).map((c) => String(c.name).toLowerCase()));
+    const chosen: typeof candidates = [];
+    if (named) {
+      for (const ref of named) {
+        const candidate = candidates.find((c) => c.target === ref);
+        const problem = mapped.has(ref)
+          ? `'${ref}' is already mapped in the binding of entity '${String(doc.name)}'.`
+          : !candidate
+            ? `'${ref}' is not an attribute of entity '${String(doc.name)}' that a column of table '${String(tableDoc.name)}' can hold.`
+            : names.has(candidate.column.name.toLowerCase())
+              ? `Table '${String(tableDoc.name)}' already has a column named '${candidate.column.name}': map the attribute to it instead.`
+              : null;
+        if (problem) {
+          out.diagnostics.push(refusal(problem, id));
+          break;
+        }
+        chosen.push(candidate!);
+      }
+      if (out.diagnostics.length) continue;
+    } else {
+      for (const c of candidates.filter((x) => !mapped.has(x.target!))) {
+        if (names.has(c.column.name.toLowerCase()))
+          out.notes.push(
+            `Table '${String(tableDoc.name)}' already has a column named '${c.column.name}': attribute '${c.target}' is left for you to map to it.`,
+          );
+        else chosen.push(c);
+      }
+      if (!chosen.length) {
+        out.diagnostics.push(
+          refusal(
+            `Every attribute of entity '${String(doc.name)}' a column can hold is mapped, or table '${String(tableDoc.name)}' has its column already: nothing to add.`,
+            id,
+          ),
+        );
+        continue;
+      }
+    }
+    const table = clone(tableDoc);
+    table.columns = [...arr(table.columns)];
+    const entity = clone(doc);
+    const next = (entity.bindings as Binding[])[index];
+    next.fields = [...(next.fields ?? [])];
+    for (const { column, target } of chosen) {
+      const json: Json = { id: input.newId(), name: column.name, type: column.type };
+      if (column.length) json.length = column.length;
+      if (column.precision) json.precision = column.precision;
+      if (column.scale !== null && column.scale !== undefined && column.precision) json.scale = column.scale;
+      if (!column.nullable) json.nullable = false;
+      (table.columns as Json[]).push(json);
+      next.fields.push({ attribute: target!, column: String(json.id) });
+    }
+    out.writes.updates.push(table, entity);
+    out.because.set(String(table.id), `columns for ${chosen.length} ${chosen.length === 1 ? "attribute" : "attributes"} of entity ${String(doc.name)}`);
+    out.because.set(id, `maps the new ${chosen.length === 1 ? "column" : "columns"} of table ${String(tableDoc.name)}`);
   }
   return out;
 }

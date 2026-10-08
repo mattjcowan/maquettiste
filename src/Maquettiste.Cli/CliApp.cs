@@ -201,6 +201,14 @@ public sealed class CliApp(CliEnvironment environment)
           model materialize entities --database <id|name> --package <id|name> <table...>
                                 Write an entity per table or view, bound to it, and a relation per foreign key between them:
                                   --dry-run, --format text|json
+          model materialize attributes --database <id|name> <entity...>
+                                Add to each bound entity an attribute per column of its source that nothing in the binding
+                                  names, mapped to it: --column <key|name> (repeatable, one entity: those columns), --dry-run,
+                                  --format text|json
+          model materialize columns --database <id|name> <entity...>
+                                Add to each bound entity's table a column per attribute its binding leaves unmapped, shaped
+                                  as the projection would make it, mapped to it: --attribute <id|name> (repeatable, one
+                                  entity: those attributes), --dry-run, --format text|json
           snapshot create <name>
                                 Take a snapshot of the model (a zip under .maquettiste/model-snapshots/): --description,
                                   --packs (hold the template packs too), --format text|json

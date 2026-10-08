@@ -39,14 +39,18 @@ internal static class ModelCommand
                 line.Expect("model delete", 3, "--resolution", "--dry-run", "--format");
                 break;
             case "materialize":
-                var what = line.Positionals.Count > 2 ? line.Positionals[2] : throw new UsageException("'model materialize' needs tables or entities.");
-                if (what is not ("tables" or "entities"))
-                    throw new UsageException($"Unknown materialize direction '{what}': use tables or entities.");
+                var what = line.Positionals.Count > 2 ? line.Positionals[2] : throw new UsageException("'model materialize' needs tables, entities, attributes or columns.");
+                if (what is not ("tables" or "entities" or "attributes" or "columns"))
+                    throw new UsageException($"Unknown materialize direction '{what}': use tables, entities, attributes or columns.");
                 if (line.Positionals.Count < 4)
-                    throw new UsageException(what == "tables" ? "'model materialize tables' needs at least one entity." : "'model materialize entities' needs at least one table or view.");
-                line.Expect("model materialize " + what, line.Positionals.Count, what == "tables"
-                    ? ["--database", "--schema", "--dry-run", "--format"]
-                    : ["--database", "--package", "--dry-run", "--format"]);
+                    throw new UsageException(what == "entities" ? "'model materialize entities' needs at least one table or view." : $"'model materialize {what}' needs at least one entity.");
+                line.Expect("model materialize " + what, line.Positionals.Count, what switch
+                {
+                    "tables" => ["--database", "--schema", "--dry-run", "--format"],
+                    "attributes" => ["--database", "--column", "--dry-run", "--format"],
+                    "columns" => ["--database", "--attribute", "--dry-run", "--format"],
+                    _ => ["--database", "--package", "--dry-run", "--format"],
+                });
                 break;
             default:
                 throw new UsageException($"Unknown model verb '{verb}': use export, stats, delete or materialize.");
@@ -213,18 +217,20 @@ internal static class ModelCommand
     }
 
     /// <summary>
-    /// <c>model materialize tables|entities</c> (erratum E43): resolves the names given (ids or names) and plans the operation; with
+    /// <c>model materialize tables|entities|attributes|columns</c> (erratum E43): resolves the names given (ids or names) and plans the operation; with
     /// <c>--dry-run</c> prints the plan, else applies it as the batch operation, all or nothing.
     /// </summary>
     private static async Task<int> MaterializeAsync(GlobalContext context, ModelStore store, Engine.Model.ModelSnapshot snapshot, CancellationToken ct)
     {
         var line = context.Line;
         var tables = line.Positionals[2] == "tables";
+        var attributes = line.Positionals[2] == "attributes";
+        var newColumns = line.Positionals[2] == "columns";
         var json = line.Choice("--format", "text", "text", "json") == "json";
         var database = One(snapshot, "database", line.Value("--database") ?? throw new UsageException("--database is required."), null);
         var ids = new List<string>();
         foreach (var name in line.Positionals.Skip(3))
-            ids.Add(tables ? One(snapshot, "entity", name, null) : One(snapshot, "table or view", name, database));
+            ids.Add(tables || attributes || newColumns ? One(snapshot, "entity", name, null) : One(snapshot, "table or view", name, database));
         string? schema = null;
         if (tables && line.Value("--schema") is { } schemaName)
         {
@@ -234,15 +240,27 @@ internal static class ModelCommand
         }
 
         string? package = null;
-        if (!tables)
+        if (!tables && !attributes && !newColumns)
             package = One(snapshot, "package", line.Value("--package") ?? throw new UsageException("--package is required."), null);
-        var request = new MaterializeRequest(tables ? "materialize-tables" : "materialize-entities", database, ids, schema, package);
+        IReadOnlyList<string>? columns = attributes && line.Values("--column") is { Count: > 0 } named ? named : null;
+        IReadOnlyList<string>? refs = null;
+        if (newColumns && line.Values("--attribute") is { Count: > 0 } wanted)
+        {
+            if (ids.Count > 1)
+                throw new UsageException("--attribute names the attributes of one entity.");
+            refs = [.. wanted.Select(w => AttributeOf(snapshot, ids[0], w))];
+        }
+
+        var operationName = tables ? "materialize-tables" : attributes ? "materialize-attributes" : newColumns ? "materialize-columns" : "materialize-entities";
+        var request = new MaterializeRequest(operationName, database, ids, schema, package, columns, refs);
         var plan = await store.PlanMaterializeAsync(request, ct).ConfigureAwait(false);
         BatchResult? result = null;
         if (!line.Has("--dry-run") && plan.Valid)
         {
-            var operation = new BatchOperation(tables ? BatchOp.MaterializeTables : BatchOp.MaterializeEntities, null, null, null, Schema: schema,
-                Database: database, Entities: tables ? ids : null, Tables: tables ? null : ids, Package: package);
+            var op = tables ? BatchOp.MaterializeTables : attributes ? BatchOp.MaterializeAttributes : newColumns ? BatchOp.MaterializeColumns : BatchOp.MaterializeEntities;
+            var byEntity = op != BatchOp.MaterializeEntities;
+            var operation = new BatchOperation(op, null, null, null, Schema: schema, Database: database, Entities: byEntity ? ids : null, Tables: byEntity ? null : ids,
+                Package: package, Columns: columns, Attributes: refs);
             result = await store.ApplyBatchAsync(new ModelBatch([operation]), ChangeSource.Cli, ct).ConfigureAwait(false);
         }
 
@@ -270,6 +288,18 @@ internal static class ModelCommand
 
         await context.Error.WriteLineAsync("maquettiste: nothing was written.").ConfigureAwait(false);
         return result.Outcome == SaveOutcome.Conflict ? Program.ExitCodes.Conflicts : Program.ExitCodes.Invalid;
+    }
+
+    /// <summary>The id of an attribute of the entity or one of its bases that an id or name names; a usage error otherwise.</summary>
+    private static string AttributeOf(Engine.Model.ModelSnapshot snapshot, string entityId, string wanted)
+    {
+        for (var entity = snapshot.Get<Engine.Model.Entity>(entityId); entity is not null; entity = entity.Base is null ? null : snapshot.Get<Engine.Model.Entity>(entity.Base))
+        {
+            if (entity.Attributes.FirstOrDefault(a => a.Id == wanted || string.Equals(a.Name, wanted, StringComparison.Ordinal)) is { } attribute)
+                return attribute.Id;
+        }
+
+        throw new UsageException($"The entity has no attribute '{wanted}'.");
     }
 
     /// <summary>The one element of a kind an id or name names (a table or view: of the database); a usage error otherwise.</summary>

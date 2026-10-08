@@ -70,6 +70,31 @@ public sealed class GoldenTests
     }
 
     [Fact]
+    public async Task Csharp_dapper_takes_the_project_base_namespace_unless_the_pack_parameter_sets_one()
+    {
+        // Without its own namespace parameter the pack uses the project's baseNamespace property (Settings > General): the
+        // golden tree with App.Model replaced, file for file and byte for byte.
+        using var repo = PackRepo.Billing();
+        repo.EditJson(".maquettiste/maquettiste.json", settings => settings["properties"] = new JsonObject { ["baseNamespace"] = "Acme.Billing" });
+        await repo.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+        var golden = Fixtures.Path("golden", "csharp-dapper", "billing");
+        var actual = repo.PathOf("src/Generated");
+        var expected = Directory.EnumerateFiles(golden, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(golden, f).Replace('\\', '/'))
+            .Order(StringComparer.Ordinal).ToList();
+        Assert.Equal(expected, Directory.EnumerateFiles(actual, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(actual, f).Replace('\\', '/'))
+            .Order(StringComparer.Ordinal));
+        Assert.Contains(expected, f => File.ReadAllText(Path.Combine(golden, f)).Contains("namespace App.Model", StringComparison.Ordinal));
+        foreach (var file in expected)
+            Assert.True(File.ReadAllText(Path.Combine(golden, file)).Replace("App.Model", "Acme.Billing", StringComparison.Ordinal) == File.ReadAllText(Path.Combine(actual, file)), file);
+
+        // The pack's own parameter, when the project sets it, wins over the project property.
+        repo.EditJson(".maquettiste/maquettiste.json", settings => settings["packs"]!["csharp-dapper"]!["parameters"] = new JsonObject { ["namespace"] = "Acme.Explicit" });
+        await repo.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+        Assert.Contains("namespace Acme.Explicit.Billing;", repo.Read("src/Generated/Billing/Invoice.g.cs"), StringComparison.Ordinal);
+        Assert.DoesNotContain("Acme.Billing", repo.Read("src/Generated/Billing/Invoice.g.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Both_packs_over_the_bindings_fixture_match_the_golden_trees()
     {
         // Repositories from bindings (erratum E43): one to one with an identity key, a soft delete, two entities sharing a table

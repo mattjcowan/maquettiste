@@ -40,6 +40,7 @@ import { EdgeToggle, PanelToggle } from "@/app/panels";
 import { Splitter } from "@/components/ui/splitter";
 import { LIMITS } from "@/state/layout";
 import { useEditor } from "@/state/store";
+import { onListArrowKeys } from "@/lib/listKeys";
 
 interface Props {
   pack: string;
@@ -395,7 +396,7 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
             </span>
           </form>
         ) : null}
-        <ul className="py-0.5">
+        <ul className="py-0.5" onKeyDown={onListArrowKeys}>
           {tree.map((row) =>
             row.folder ? (
               <li key={row.path} className="flex h-6 items-center gap-1 text-secondary" style={{ paddingLeft: 4 + row.depth * 12 }}>

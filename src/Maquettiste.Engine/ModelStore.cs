@@ -239,7 +239,7 @@ public sealed partial class ModelStore : IAsyncDisposable
                 continue;
             }
 
-            if (IsSchemaOperation(o.Op) || IsProcessOperation(o.Op) || IsMaterializeOperation(o.Op))
+            if (IsSchemaOperation(o.Op) || IsProcessOperation(o.Op) || IsMaterializeOperation(o.Op) || IsTagOperation(o.Op))
             {
                 schemaOps = true;
                 continue;
@@ -1062,6 +1062,21 @@ public enum BatchOp
     [JsonStringEnumMemberName("materialize-entities")] MaterializeEntities,
 
     /// <summary>
+    /// <c>materialize-attributes</c>: for each of <c>entities</c>, an attribute per column of the source of its binding to
+    /// <c>database</c>, mapped to it in the binding: the <c>columns</c> named (one entity only), or every column nothing in the binding
+    /// names. Refused (MQ4055) for an entity with no binding to the database, a query source, or a column already mapped.
+    /// </summary>
+    [JsonStringEnumMemberName("materialize-attributes")] MaterializeAttributes,
+
+    /// <summary>
+    /// <c>materialize-columns</c>: for each of <c>entities</c>, bound to <c>database</c> and reading a designed or imported table it
+    /// writes, a column of that table per attribute the binding leaves unmapped (the <c>attributes</c> named, one entity only), shaped
+    /// as the entity's projection would make it, and a field mapping it. Refused (MQ4055) for an entity with no binding, a source that
+    /// is not a table file, an attribute already mapped or no column holds.
+    /// </summary>
+    [JsonStringEnumMemberName("materialize-columns")] MaterializeColumns,
+
+    /// <summary>
     /// <c>sync-enum</c>: makes the members of the enum bound by lifecycle process <c>id</c> its bound states in document order, keeping
     /// the ids, codes and descriptions of the members it keeps (phase-3-design.md section 2.3). A removal of a member a default,
     /// allowed values, a seed cell or a scenario value uses refuses the operation (MQ9019), as does another operation of the batch
@@ -1083,6 +1098,14 @@ public enum BatchOp
     /// engine interpreter (phase-3-design.md section 3); refused when the replay cannot reach the last step.
     /// </summary>
     [JsonStringEnumMemberName("refresh-scenario")] RefreshScenario,
+
+    /// <summary>
+    /// <c>retag</c>: removes <c>tags</c>, or renames the one tag to <c>name</c>, in the tag vocabulary of <c>package</c> (the global one
+    /// without it) and in every element and sub-element whose use of the tag that vocabulary governs: uses inside the scope that the
+    /// vocabulary declares, or that no vocabulary on their domain chain declares (<see cref="ModelStore.GetTagUsageAsync"/>). A
+    /// renamed tag merges with the new key where both are on one list. Refused (MQ1002) when nothing uses or declares the tags.
+    /// </summary>
+    [JsonStringEnumMemberName("retag")] Retag,
 }
 
 /// <summary>One batch operation.</summary>
@@ -1094,22 +1117,29 @@ public enum BatchOp
 /// <param name="Field">The translated field: displayName, pluralName, label or description (translate).</param>
 /// <param name="Value">The translated text, a sidecar reference, or null to remove it (translate).</param>
 /// <param name="Schema">The schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema).</param>
-/// <param name="Name">The schema name (add-schema, rename-schema).</param>
+/// <param name="Name">The schema name (add-schema, rename-schema); the new tag key (retag).</param>
 /// <param name="Target">The schema id that what lives in the removed schema moves to (remove-schema); the process (set-lifecycle); the
 /// child state (set-initial).</param>
 /// <param name="Default">The schema id that becomes the default when the removed schema is the default (remove-schema).</param>
 /// <param name="Resolution">What a delete does with references to the element (delete); absent means <see cref="DeleteResolution.Refuse"/>.</param>
-/// <param name="Database">The database id (materialize-tables, materialize-entities).</param>
-/// <param name="Entities">The entity ids (materialize-tables).</param>
+/// <param name="Database">The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns).</param>
+/// <param name="Entities">The entity ids (materialize-tables, materialize-attributes, materialize-columns).</param>
 /// <param name="Tables">The table and view ids (materialize-entities).</param>
-/// <param name="Package">The package id the entities go to (materialize-entities).</param>
-/// <param name="ExpectedHashes">Materialize: the hash the caller read of each element it expects the operation to change or delete; given,
+/// <param name="Package">The package id the entities go to (materialize-entities); the domain whose tag vocabulary it is (retag; absent for
+/// the global one).</param>
+/// <param name="Columns">The source columns, as keys or physical names (materialize-attributes, one entity); absent means every column
+/// nothing in the binding names.</param>
+/// <param name="Attributes">The binding field references, attribute ids among them (materialize-columns, one entity); absent means every
+/// attribute the binding leaves unmapped.</param>
+/// <param name="Tags">The tag keys (retag).</param>
+/// <param name="ExpectedHashes">Materialize and retag: the hash the caller read of each element it expects the operation to change or delete; given,
 /// an element that changed since, or that the operation changes but the map does not name, is a conflict.</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
     string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
     string? Database = null, IReadOnlyList<string>? Entities = null, IReadOnlyList<string>? Tables = null, string? Package = null,
-    IReadOnlyDictionary<string, string>? ExpectedHashes = null);
+    IReadOnlyDictionary<string, string>? ExpectedHashes = null, IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null,
+    IReadOnlyList<string>? Tags = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

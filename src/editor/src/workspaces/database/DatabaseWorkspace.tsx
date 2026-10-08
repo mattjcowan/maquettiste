@@ -59,6 +59,7 @@ import { countOf, KIND_LABELS } from "@/model/labels";
 import * as endpoints from "@/api/endpoints";
 import type { PreviewResult } from "@/api/types";
 import { useAskedPreview } from "@/workspaces/generate/widePreview";
+import { onListArrowKeys } from "@/lib/listKeys";
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { foreignKey: ForeignKeyEdge };
@@ -520,7 +521,7 @@ function DatabaseCanvas() {
             </div>
             {listedObjects ? (
               <>
-                <ul className="min-h-0 flex-1 overflow-auto py-1 text-12" aria-label={`${KIND_LABELS[listKind]} list`}>
+                <ul className="min-h-0 flex-1 overflow-auto py-1 text-12" aria-label={`${KIND_LABELS[listKind]} list`} onKeyDown={onListArrowKeys}>
                   {listedObjects.items.map((o) => (
                     <li key={o.id}>
                       <button
@@ -540,7 +541,7 @@ function DatabaseCanvas() {
                 </p>
               </>
             ) : null}
-            <ul className={listedObjects ? "hidden" : "min-h-0 flex-1 overflow-auto py-1 text-12"} aria-label="Table list">
+            <ul className={listedObjects ? "hidden" : "min-h-0 flex-1 overflow-auto py-1 text-12"} aria-label="Table list" onKeyDown={onListArrowKeys}>
               {listed.tables.map((t) => (
                 <li key={t.key}>
                   <button

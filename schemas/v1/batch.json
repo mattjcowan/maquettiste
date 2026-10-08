@@ -10,10 +10,10 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "expectedHashes", "schema", "name", "target", "default"],
+        "x-order": ["op", "id", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "tags", "expectedHashes", "schema", "name", "target", "default"],
         "properties": {
           "op": {
-            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario"]
+            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario", "retag"]
           },
           "id": {
             "$ref": "common.json#/$defs/id"
@@ -48,11 +48,11 @@
             ]
           },
           "database": {
-            "description": "The database id (materialize-tables, materialize-entities).",
+            "description": "The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns).",
             "$ref": "common.json#/$defs/id"
           },
           "entities": {
-            "description": "The entities that get a designed table and a binding (materialize-tables).",
+            "description": "The entities that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns).",
             "$ref": "common.json#/$defs/idList",
             "minItems": 1
           },
@@ -62,11 +62,34 @@
             "minItems": 1
           },
           "package": {
-            "description": "The package the new entities go to (materialize-entities).",
+            "description": "The package the new entities go to (materialize-entities); the domain whose tag vocabulary it is (retag; absent for the global one).",
             "$ref": "common.json#/$defs/id"
           },
+          "columns": {
+            "description": "The columns of the source, as keys or physical names, that get an attribute mapped to them (materialize-attributes, one entity only); absent means every column nothing in the binding names.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "attributes": {
+            "description": "The binding field references (attribute ids, attributeId.memberId for a value object member, to-one end ids) that get a column of the entity's table mapped to them (materialize-columns, one entity only); absent means every attribute the binding leaves unmapped.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "tags": {
+            "description": "The tag keys to remove, or the one to rename (retag).",
+            "$ref": "common.json#/$defs/tagList",
+            "minItems": 1
+          },
           "expectedHashes": {
-            "description": "Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version.",
+            "description": "Materialize and retag: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version.",
             "type": "object",
             "additionalProperties": {
               "type": "string",
@@ -78,7 +101,7 @@
             "$ref": "common.json#/$defs/id"
           },
           "name": {
-            "description": "The schema name (add-schema, rename-schema).",
+            "description": "The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags).",
             "type": "string",
             "minLength": 1
           },
@@ -164,6 +187,42 @@
             },
             "then": {
               "required": ["database", "tables", "package"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "materialize-attributes"
+                }
+              }
+            },
+            "then": {
+              "required": ["database", "entities"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "materialize-columns"
+                }
+              }
+            },
+            "then": {
+              "required": ["database", "entities"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "retag"
+                }
+              }
+            },
+            "then": {
+              "required": ["tags"]
             }
           },
           {

@@ -397,7 +397,7 @@ internal sealed class UnitRun
         {
             if (element is not null)
                 Recorder.RecordObject(element);
-        });
+        }, () => Recorder.Record("s:project"));
         globals.SetValue("model", model, true);
         globals.SetValue("element", element, true);
         if (element is not null)
@@ -412,6 +412,9 @@ internal sealed class UnitRun
         globals.SetValue("pack", new PackView(pack.Name, pack.Manifest.Version,
             new MapView(_pack.Parameters, [.. _pack.Parameters], context)), true);
         globals.SetValue("unit", new UnitView(Planned.Unit.Id, Planned.Key), true);
+        var settings = model.Settings;
+        var properties = settings.Properties.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => KeyValuePair.Create(p.Key, (object?)p.Value)).ToList();
+        globals.SetValue("project", new ProjectView(settings.Name, new MapView(settings.Properties, properties, context)), true);
 
         var (mapping, mappings) = Mappings(context, element);
         globals.SetValue("mapping", mapping, true);

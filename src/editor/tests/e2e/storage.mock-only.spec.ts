@@ -113,6 +113,127 @@ test("binds an entity to the shared notes table: constant, Map by name, Ignore, 
   await expect(tab.getByTestId("storage-domain-only")).toBeVisible();
 });
 
+test("a bound entity takes attributes for its table's unmapped columns, all at once or one by one, each one undo step", async ({ page }) => {
+  await openEditor(page);
+  // An entity with its key only, bound to the notes table, id mapped.
+  const saved = await page.evaluate(async (pkg) => {
+    const res = await fetch("/api/model/elements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "entity",
+        id: "01K7ATT0000000000000000001",
+        name: "SupplierNote",
+        package: pkg,
+        key: { attributes: ["01K7ATT0000000000000000002"], strategy: "uuid-v7" },
+        attributes: [{ id: "01K7ATT0000000000000000002", name: "id", type: "uuid", required: true }],
+        bindings: [
+          {
+            id: "01K7ATT0000000000000000003",
+            database: "01J92P0V1QRN2181XM2ZWE02W4",
+            source: "01K6BND0000000000000000001",
+            fields: [{ attribute: "01K7ATT0000000000000000002", column: "01K6BND0000000000000000002" }],
+          },
+        ],
+      }),
+    });
+    return ((await res.json()) as { outcome: string }).outcome;
+  }, BILLING);
+  expect(saved).toBe("saved");
+  const tab = await storage(page, "SupplierNote");
+  const card = tab.getByTestId("binding-card");
+  await expect(card.getByTestId("column-row-body")).toHaveAttribute("data-status", "unaccounted");
+
+  // All at once: entity_type, entity_id, body and created_at (it has a default) become attributes mapped to them.
+  const addAll = card.getByTestId("binding-add-attributes");
+  await expect(addAll).toHaveText("Add attributes for the 4 unmapped columns");
+  await addAll.click();
+  for (const name of ["entityType", "entityId", "body", "createdAt"])
+    await expect(card.getByTestId(`field-row-${name}`)).toHaveAttribute("data-status", "mapped");
+  for (const name of ["entity_type", "entity_id", "body", "created_at"])
+    await expect(card.getByTestId(`column-row-${name}`)).toHaveAttribute("data-status", "field");
+  await expect(addAll).toBeDisabled();
+  await expect(card.getByTestId("binding-problems").locator('[data-rule="MQ4047"]')).toHaveCount(0);
+
+  // One undo step takes them all back.
+  await undo(page);
+  await expect(card.getByTestId("field-row-body")).toHaveCount(0);
+  await expect(card.getByTestId("column-row-body")).toHaveAttribute("data-status", "unaccounted");
+
+  // One column, from its Account for: only that one.
+  await card.getByTestId("column-row-body").getByLabel("What accounts for body").selectOption("attribute");
+  await expect(card.getByTestId("field-row-body")).toHaveAttribute("data-status", "mapped");
+  await expect(card.getByTestId("column-row-entity_type")).toHaveAttribute("data-status", "unaccounted");
+  await expect(addAll).toHaveText("Add attributes for the 3 unmapped columns");
+  await expect(
+    tab
+      .getByRole("button", { name: "Undo" })
+      .or(page.getByRole("button", { name: "Undo" }))
+      .first(),
+  ).toBeEnabled();
+});
+
+test("the field map adds table columns for unmapped attributes, all at once or one from its Column, each one undo step", async ({ page }) => {
+  await openEditor(page);
+  // Bound to the notes table with its key mapped: entityId and body have columns of those names already, priority and summary none.
+  const saved = await page.evaluate(async (pkg) => {
+    const res = await fetch("/api/model/elements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "entity",
+        id: "01K7CNM0000000000000000001",
+        name: "TaskNote",
+        package: pkg,
+        key: { attributes: ["01K7CNM0000000000000000002"], strategy: "uuid-v7" },
+        attributes: [
+          { id: "01K7CNM0000000000000000002", name: "id", type: "uuid", required: true },
+          { id: "01K7CNM0000000000000000003", name: "entityId", type: "uuid", required: true },
+          { id: "01K7CNM0000000000000000004", name: "body", type: "text", required: true },
+          { id: "01K7CNM0000000000000000005", name: "priority", type: "int32", required: true },
+          { id: "01K7CNM0000000000000000006", name: "summary", type: "string", length: 200 },
+        ],
+        bindings: [
+          {
+            id: "01K7CNM0000000000000000007",
+            database: "01J92P0V1QRN2181XM2ZWE02W4",
+            source: "01K6BND0000000000000000001",
+            fields: [{ attribute: "01K7CNM0000000000000000002", column: "01K6BND0000000000000000002" }],
+          },
+        ],
+      }),
+    });
+    return ((await res.json()) as { outcome: string }).outcome;
+  }, BILLING);
+  expect(saved).toBe("saved");
+  const tab = await storage(page, "TaskNote");
+  const card = tab.getByTestId("binding-card");
+  // "Not mapped" is said once, in the status; the column picker offers a new column.
+  const priority = card.getByTestId("field-row-priority");
+  await expect(priority).toHaveAttribute("data-status", "unmapped");
+  await expect(priority.getByLabel("Column of priority").locator("option").first()).toHaveText("—");
+  await expect(priority.getByLabel("Column of priority").locator("option", { hasText: "New column in notes" })).toHaveCount(1);
+
+  // All at once: priority and summary get columns; entityId and body are left (notes has columns of those names).
+  await card.getByTestId("binding-add-columns").click();
+  await expect(priority).toHaveAttribute("data-status", "mapped");
+  await expect(card.getByTestId("field-row-summary")).toHaveAttribute("data-status", "mapped");
+  await expect(card.getByTestId("column-row-priority")).toHaveAttribute("data-status", "field");
+  await expect(card.getByTestId("column-row-summary")).toHaveAttribute("data-status", "field");
+  await expect(card.getByTestId("field-row-body")).not.toHaveAttribute("data-status", "mapped");
+
+  // One undo step takes both columns and both fields back.
+  await undo(page);
+  await expect(card.getByTestId("column-row-priority")).toHaveCount(0);
+  await expect(priority).toHaveAttribute("data-status", "unmapped");
+
+  // One from its Column picker.
+  await priority.getByLabel("Column of priority").selectOption({ label: "New column in notes" });
+  await expect(priority).toHaveAttribute("data-status", "mapped");
+  await expect(card.getByTestId("column-row-priority")).toHaveAttribute("data-status", "field");
+  await expect(card.getByTestId("column-row-summary")).toHaveCount(0);
+});
+
 test("Create a table for this entity binds it to a new table, and undo takes it back", async ({ page }) => {
   await openEditor(page);
   const tab = await storage(page, "Payment");

@@ -31,10 +31,11 @@ public sealed partial class ModelStore
         for (var i = 0; i < batch.Operations.Count; i++)
         {
             var o = batch.Operations[i];
-            if (!(IsSchemaOperation(o.Op) || IsProcessOperation(o.Op) || IsMaterializeOperation(o.Op)) || invalid[i] is not null)
+            if (!(IsSchemaOperation(o.Op) || IsProcessOperation(o.Op) || IsMaterializeOperation(o.Op) || IsTagOperation(o.Op)) || invalid[i] is not null)
                 continue;
             var (rule, refusal) = IsSchemaOperation(o.Op) ? ("MQ4015", work.Apply(o))
                 : IsMaterializeOperation(o.Op) ? ("MQ4055", await MaterializeAsync(snapshot, o, materialized, materializeResults, ct).ConfigureAwait(false))
+                : IsTagOperation(o.Op) ? ("MQ1002", Retag(snapshot, o, materialized))
                 : ("MQ9019", processWork.Apply(o));
             if (refusal is not null)
             {

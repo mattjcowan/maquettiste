@@ -151,8 +151,40 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         ct.ThrowIfCancellationRequested();
         var configured = ApplySettings(model.Settings, diagnostics).Distinct().ToList(); // one diagnostic per distinct finding
+        if (wholeModel)
+            configured = CollapseUndeclaredTags(model, configured);
         var positioned = await AddPositionsAsync(model, configured, ct).ConfigureAwait(false);
         return ValidationReport.From(positioned);
+    }
+
+    /// <summary>
+    /// The whole model's MQ2006 findings, one per tag and severity instead of one per use (2026-10-07: a vocabulary created on a model
+    /// that already uses tags turned thousands of uses into as many notes): the first use in path and pointer order carries the count
+    /// of uses and elements and a few element names. A validation of some elements (a save) still reports each of their uses, and so
+    /// does a strict vocabulary's error, which marks every element that has one.
+    /// </summary>
+    internal static List<Diagnostic> CollapseUndeclaredTags(ModelSnapshot model, List<Diagnostic> diagnostics)
+    {
+        // Errors (a strict vocabulary) stay one per use: the explorer marks each element that has one.
+        var groups = diagnostics.Where(d => d.Rule == "MQ2006" && d.Severity != DiagnosticSeverity.Error).GroupBy(d => (d.Severity, d.Message))
+            .Where(g => g.Count() > 1).ToList();
+        if (groups.Count == 0)
+            return diagnostics;
+        var dropped = new HashSet<Diagnostic>(groups.SelectMany(g => g));
+        var result = diagnostics.Where(d => !dropped.Contains(d)).ToList();
+        foreach (var group in groups)
+        {
+            var uses = group.OrderBy(d => d.FilePath, StringComparer.Ordinal).ThenBy(d => d.JsonPointer, StringComparer.Ordinal).ToList();
+            var elements = uses.Select(d => d.ElementId is { } id ? model.GetDocument(id)?.Element.Id ?? id : d.FilePath).OfType<string>()
+                .Distinct(StringComparer.Ordinal).ToList();
+            var names = elements.Select(id => model.GetDocument(id)?.Element.Name is { Length: > 0 } n ? n : id).Order(StringComparer.Ordinal).ToList();
+            var shown = string.Join(", ", names.Take(3)) + (names.Count > 3 ? $" and {names.Count - 3} more" : "");
+            var message = group.Key.Message.TrimEnd('.') +
+                $": {uses.Count} uses in {elements.Count} {(elements.Count == 1 ? "element" : "elements")} ({shown}). Declare it in the tag vocabulary, or remove it everywhere.";
+            result.Add(uses[0] with { Message = message });
+        }
+
+        return result;
     }
 
     private static string Bare(string ruleName) => ruleName.StartsWith("x/", StringComparison.Ordinal) ? ruleName[2..] : ruleName;

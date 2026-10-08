@@ -237,7 +237,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
 
-namespace {{ pack.params.namespace }}.Queries;
+namespace {{ base_ns }}.Queries;
 
 {{ doc(query.description, "") }}public partial interface I{{ name }}Query
 {

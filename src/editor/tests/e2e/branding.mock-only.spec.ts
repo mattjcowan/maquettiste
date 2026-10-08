@@ -94,3 +94,40 @@ test("the top bar names the release and the workspace, and the mark links home",
   await expect(page).toHaveURL(/\/(entities.*)?$/);
   await expect(page.locator("#diagram-picker")).toBeVisible();
 });
+
+test("the browser tab names the project, and General keeps the project's own properties for every pack", async ({ page }) => {
+  await openEditor(page);
+  await expect(page).toHaveTitle("billing — Maquettiste");
+  await page.getByTestId("rail-settings").click();
+  const settings = page.getByTestId("settings-workspace");
+  // The tab title follows the name as it is typed, as the top bar does.
+  await settings.getByLabel("Project name").fill("Partner app");
+  await expect(page).toHaveTitle("Partner app — Maquettiste");
+  await settings.getByLabel("Project name").fill("billing");
+
+  const save = page.getByTestId("save-general");
+  await expect(settings.getByTestId("general-no-properties")).toBeVisible();
+  await settings.getByTestId("general-add-property").click();
+  await settings.getByLabel("Key of property 1").fill("base.namespace");
+  await expect(settings.getByText("A key is letters, digits and _")).toBeVisible();
+  await expect(save).toBeDisabled();
+  await settings.getByLabel("Key of property 1").fill("baseNamespace");
+  await settings.getByLabel("Value of property baseNamespace").fill("Acme.Billing");
+  await settings.getByTestId("general-add-property").click();
+  await settings.getByLabel("Key of property 2").fill("companyName");
+  await settings.getByLabel("Value of property companyName").fill("Acme");
+  await save.click();
+  await expect(page.getByTestId("notice")).toContainText("General settings saved.");
+
+  const stored = await page.evaluate(async () => ((await (await fetch("/api/project/settings")).json()) as { json: { properties?: unknown } }).json.properties);
+  expect(stored).toEqual({ baseNamespace: "Acme.Billing", companyName: "Acme" });
+  // Shown again, in key order; removing one is a change to save.
+  // (The mock keeps its model in memory, so the form is left and opened again rather than the page reloaded.)
+  await settings.getByRole("tab", { name: "Tags" }).click();
+  await settings.getByRole("tab", { name: "General" }).click();
+  const rows = page.getByTestId("general-properties").getByRole("row");
+  await expect(rows).toHaveCount(3);
+  await expect(page.getByLabel("Key of property 1")).toHaveValue("baseNamespace");
+  await page.getByRole("button", { name: "Remove the property companyName" }).click();
+  await expect(save).toBeEnabled();
+});

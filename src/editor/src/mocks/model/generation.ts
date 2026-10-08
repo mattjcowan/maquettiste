@@ -364,7 +364,8 @@ export class MockGeneration {
     const dapper = this.packOf("csharp-dapper");
     if (dapper && packs.includes(dapper)) {
       const root = this.packOutput(dapper).path;
-      const namespace = String((this.model.packs.find((p) => p.name === dapper)?.parameters as Json | undefined)?.namespace ?? "App.Model");
+      // The pack's namespace parameter when set, else the project's baseNamespace property, else App.Model (_csharp.scriban base_ns).
+      const namespace = String(this.packParameter(dapper, "namespace") ?? "") || this.model.projectSettings().properties.baseNamespace || "App.Model";
       const sorted = [...docs.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
       for (const doc of sorted) {
         const unit = doc.kind === "entity" ? "entity" : doc.kind === "enum" ? "enum" : doc.kind === "value-object" ? "value-object" : null;

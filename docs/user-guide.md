@@ -1217,9 +1217,12 @@ database shows on the Database screen at once. The explorers remember which rows
     custom type its own native types instead, which win over the type map.
   - **Explorer**: your preferences in this browser (Highlight related elements), your saved scopes and the team scopes
     from `maquettiste.json`.
-- **Settings › General** names and brands the project; none of it changes generated output.
-  - **Project name**: the name in the top bar, `name` in `maquettiste.json` (the field `maquettiste init --name` writes).
-    The top bar follows as you type; Save writes it.
+- **Settings › General** names and brands the project and holds its own properties.
+  - **Project name**: the name in the top bar and the browser tab, `name` in `maquettiste.json` (the field
+    `maquettiste init --name` writes). The top bar and the tab follow as you type; Save writes it.
+  - **Properties**: key to text values every pack's templates read as `project.properties.<key>` (a base namespace, a
+    company name); see "Project properties" under the pack reference. Add property, then Save; a key that a template
+    could not name (a dot, a leading digit) or a key used twice is refused before the save.
   - **Icon**: an SVG or a PNG of at most 512 KB, shown in the top bar, the browser tab and the sign-in page; without one
     the M mark is used. Upload stores it under a new name, `.maquettiste/branding/icon-<hash>.svg` (or `.png`), so the
     saved icon stays until you save; Save points `branding.icon` at it and removes the uploads it no longer names, and
@@ -1360,10 +1363,25 @@ package you name: the singular of the table name in Pascal case, one attribute p
 binding to the table. Foreign keys between the picked tables, or to a table an entity is already bound to, become many-to-one
 relations naming those foreign keys. A table an entity is already bound to is refused.
 
+**Attributes from the table's columns** (`materialize-attributes`; in the editor, on the binding card of the Storage tab,
+**Add attributes for the unmapped columns**, or **New attribute** in a column's *Account for*). An entity you made yourself and
+bound to a table takes an attribute per column its binding leaves unmapped, named and typed by the same rule, each mapped to its
+column; a column you marked ignored keeps its listing until you name it. Its key, constants, write and delete stay as they are.
+An entity with no binding to the database, a query source, or a column already mapped is refused.
+
+**Columns for the entity's attributes** (`materialize-columns`; in the editor, in the field map, **Add columns for the
+unmapped attributes**, or **New column** in an attribute's *Column*). The other way round: a bound entity whose table is a table
+file gets a column per attribute its binding leaves unmapped, named and typed as your conventions would project it, each mapped to
+its attribute. A column name the table already has is left for you to map; a to-one navigation's column gets no foreign key (add
+it in the table editor).
+
 ```sh
 maquettiste model materialize tables --database main Invoice Customer --dry-run   # what it would do
 maquettiste model materialize tables --database main Invoice Customer             # do it
 maquettiste model materialize entities --database main --package Billing suppliers supplier_contacts --dry-run
+maquettiste model materialize attributes --database main Supplier                 # every unmapped column
+maquettiste model materialize attributes --database main --column note Supplier   # just that one
+maquettiste model materialize columns --database main Supplier                    # a column per unmapped attribute
 ```
 
 Over the API: `GET /api/model/databases/{id}/materialize` lists the entities with no binding to the database (and whether
@@ -1938,6 +1956,12 @@ for an example element and how many files the unit plans.
 name), templates read them as `pack.params.<name>`, and a project sets its own values under `packs.<pack>.parameters`
 in `maquettiste.json`. The pack editor's Parameters tab shows each one with the right control and a Reset to default.
 
+**Project properties** are the project's own values that every pack can read, such as a base namespace or a company
+name: Settings › General › Properties (`properties` in `maquettiste.json`, key to text; a key is letters, digits and `_`,
+not starting with a digit). Templates read them as `project.properties.<key>` (and the project's name as `project.name`),
+apart from the pack's own `pack.params`: `namespace {{ project.properties.baseNamespace }}.Model`. Changing one
+re-renders only the units whose templates read `project`.
+
 **The write mode** says what happens to a file that already exists: Overwrite (the default), Create only if missing
 (`once`), Protected regions (your code between markers survives), Pair (a generated file plus a companion file for
 hand-written code that is created once and then left alone), or Managed block (`block`: a few lines the pack keeps inside a
@@ -2164,6 +2188,7 @@ same pack. The words the screens use:
 | Output path | A pattern rendered with the template's variables; the file lands under the pack's output base, inside an allowed output root |
 | Write | Overwrite, Create only if missing, Protected regions, Pair (a generated file and a companion for hand code), or Managed block (a delimited block of lines in a file you own) |
 | Parameters | Pack settings the templates read as `pack.params`; defaults in `pack.json`, values per project in `maquettiste.json` |
+| Project properties | The project's own values every pack's templates read as `project.properties` (Settings › General) |
 
 **The Generate explorer.** Each pack is a tree node with its unit count and the number of output roots its last run
 wrote ("off" when disabled, a warning count when it has diagnostics). Expand it for:
@@ -2652,6 +2677,20 @@ or category tree with a `package` belongs to that domain and the domains nested 
 `<name>-categories.json`), at most one of each per scope (MQ1009). An element may use the tags and categories of its own domain,
 of every enclosing domain and the global ones; one declared only in another domain is error MQ2008, and a domain vocabulary may
 not redeclare a key or category name of the global vocabulary or of an enclosing domain (MQ3021).
+
+**Tags already in use.** A model can use tags before it has a vocabulary; nothing checks them then. The first tag you add on
+Settings › Tags (or on a domain's Tags tab) creates the vocabulary and declares the tags already in use with it, so none of them
+turns into a note. Later, a tag used but declared nowhere on the element's chain is listed under **Tags in use, not declared**,
+with its uses: **Add** declares it (or **Add all**). In the Problems panel each such tag is one note (MQ2006) with its count, not
+one per use.
+
+**Rename or remove a tag everywhere.** Each tag shows how many uses it has (hover for some of the elements). The pencil renames it
+in the vocabulary and in every use; renaming to a key the vocabulary has already merges the two. The bin removes a tag nothing
+uses at once, and asks first for one in use. Check several tags (declared or not) and **Remove everywhere…** removes them all from
+the vocabulary and from every element and sub-element that uses them. Each is one undo step. On a domain's Tags tab only the
+domain's own uses change: a tag the domain declares itself is kept when the global one with the same key goes. From the command
+line or an agent: `apply_batch` with `{ "op": "retag", "tags": [...], "name": "<new key>", "package": "<domain>" }`
+(`name` to rename, `package` for a domain's vocabulary), and `tag_usage` for the counts.
 
 ## Extending the model and the generation
 

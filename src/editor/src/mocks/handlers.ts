@@ -566,6 +566,11 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
         return problem(400, "bad-request", "The request is not valid.", `'${dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).`);
       return HttpResponse.json(generation.querySql(params.id, dialect, { placeholder, lists }));
     }),
+    http.get("/api/model/tags/usage", ({ request }) => {
+      const pkg = new URL(request.url).searchParams.get("package") || null;
+      const usage = model.tagUsage(pkg);
+      return usage ? HttpResponse.json(usage) : problem(404, "not-found", `No domain has the id ${pkg}.`);
+    }),
     http.get("/api/model/databases/{id}/materialize", ({ params }) => {
       const status = model.materializeStatus(params.id);
       if (!status)
@@ -578,8 +583,13 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       const body = await jsonBody(request);
       if (!body.ok) return body.response;
       const op = body.value.op;
-      if (op !== "materialize-tables" && op !== "materialize-entities")
-        return problem(400, "bad-request", "The request is not valid.", "op must be materialize-tables or materialize-entities.");
+      if (op !== "materialize-tables" && op !== "materialize-entities" && op !== "materialize-attributes" && op !== "materialize-columns")
+        return problem(
+          400,
+          "bad-request",
+          "The request is not valid.",
+          "op must be materialize-tables, materialize-entities, materialize-attributes or materialize-columns.",
+        );
       if (model.entries.get(params.id)?.json.kind !== "database")
         return model.entries.has(params.id)
           ? problem(404, "not-a-database", `${params.id} is not a database.`)

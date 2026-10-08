@@ -275,6 +275,7 @@ The S6 example's `lifecycle` field names a process: phase 1 schemas rejected it 
 ```csharp
 public sealed record ProjectSettings {
     [JsonPropertyName("$schema")] string? SchemaPath; req int FormatVersion; string? Name;   // FormatVersion: 1
+    IReadOnlyDictionary<string, string> Properties = {};   // the project's own key → text (2026-10-07), templates read project.properties
     OutputSettings Outputs = new(); HandEditPolicy HandEdits = Fail; IReadOnlyList<FormatterSettings> Formatters = [];
     Conventions Conventions = new(); IReadOnlyDictionary<string, Conventions> Databases = {};  // key: database name; sparse overrides
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> TypeMaps = {};           // dialect → keyword → native pattern
@@ -406,6 +407,18 @@ public sealed class ModelSnapshot {                        // immutable, thread-
 ```
 
 The tag vocabulary and the category tree are one per scope (explorer-redesign.md section 1.11): a vocabulary without `package` is global, one with `package` belongs to that domain and the domains nested in it. `Create` keeps the ordinally first file of each kind per scope and adds error MQ1009, naming both paths, to `LoadDiagnostics` for any other; `Tags` and `Categories` are the global ones, `TagVocabularies`, `CategoryTrees`, `TagVocabularyOf(scope)`, `CategoryTreeOf(scope)` and `VocabularyChain(package)` (the package, each enclosing package nearest first, then global) serve the domain chain. An element's tags and categories resolve along its chain: declared nowhere on it but in another domain is MQ2008, declared nowhere is MQ2006; a domain vocabulary redeclaring a key or category name of the global vocabulary or an enclosing domain's is MQ3021. A domain's files live in `model/vocabularies/` as `<name>-tags.json` and `<name>-categories.json`.
+*Tags across the model* (2026-10-07, `ModelStore.Tags.cs`; the owner: a vocabulary created on a model that already used tags turned
+every use into a note). A use of a tag belongs to the nearest vocabulary on the element's chain that declares it, or to none; a
+scope (global, or a domain) governs its own declared tags' uses inside it and the undeclared uses inside it, so a domain that
+declares a key keeps its uses when the global one goes. `GetTagUsageAsync(package)` (`GET /api/model/tags/usage`, MCP `tag_usage`)
+lists every tag the scope's vocabulary declares and every undeclared tag used inside it, with its governed uses (the element's own
+`tags` and every sub-element's, free-form maps such as `properties` not entered), the elements holding them and five of their
+names. The batch operation `retag { tags, name?, package?, expectedHashes? }` removes the tags, or renames the one to `name`
+(merging with the new key on a list that has both; a definition of the new key already there keeps its entry and the old one's
+goes), in the scope's vocabulary and every governed use, as updates of the batch; refused (MQ1002) for no tags, a rename of
+several or to a key that is not a `tagLabel`, an unknown domain, and nothing to change. Whole-model validation reports MQ2006 once
+per tag and severity, on its first use with the count of uses and elements (`ModelValidator.CollapseUndeclaredTags`); a scoped
+validation (a save) and a strict vocabulary's errors stay one per use.
 
 ## 3. Canonical JSON and schemas
 
@@ -1096,6 +1109,27 @@ column, else its first, with a note), and a binding to the table; each foreign k
 entity is already bound to, becomes a many-to-one relation (the principal end navigable from the dependent, `min` 1 when the key
 columns are not nullable, `onDelete` from the key) with a relation mapping naming the foreign key. Refused: a table an entity is
 already bound to, a synthesized table, a name the package already has. New ids come from the store's id generator.
+`materialize-attributes { database, entities, columns? }` (2026-10-07, the owner: an entity made by hand, bound to a table, takes
+the table's columns as attributes) adds, per entity bound to the database, an attribute per column of its binding's source, made
+by the rule `materialize-entities` uses (the name unique among the entity's attributes, own and inherited, with a number after it
+when taken), and a field mapping it to the column; an `ignored` listing of the column goes, `database` and `computed` stay (they
+sit beside a field). Without `columns`, the columns nothing in the binding names (status `unaccounted`, `identity` or `default`);
+with them (keys or physical names, one entity only), those columns whatever their listing. The key, the constants and the write
+and delete plans stay as they are. Refused (MQ4055): an entity with no binding to the database, a source that does not resolve or
+is a query, a column a field, a constant or the soft delete uses, a column the source does not have, `columns` with several
+entities, and nothing left to add. The entity's file is the only change (one update, one undo step).
+`materialize-columns { database, entities, attributes? }` (2026-10-07, the other direction, the owner: "create a new table column
+for that field") adds, per entity bound to the database whose source is a designed or imported table it writes, a column of that
+table per attribute the binding leaves unmapped, and a field mapping it. The column's shape is the one the entity's projection
+gives it: the materializer resolves the model with the entity unbound and projected into the database (as `materialize-tables`
+does), finds the projected column whose attribute path is the field's target (`FieldTarget`: an attribute, a value object member,
+a to-one end), and writes it with `ColumnNode`, the code `materialize-tables` writes its columns with (names and types by the
+project's conventions; an enum as the project stores enums). Without `attributes`, every target a projected column holds that no
+field maps; with them (field references, one entity only), those. A projected column whose name the table has already is left out
+with a note (the user maps it), and no foreign key is written for a to-one end's column (a note says so). Refused (MQ4055): no
+binding, a source that is not a table file of the database, a binding that writes another table, a target already mapped or no
+projected column holds, a name the table has (when named), `attributes` with several entities, nothing left to add. Two documents
+change, the table and the entity (one batch, one undo step).
 
 *Deletes.* A binding's references are ordinary references: deleting a table, view, query or database a binding names is refused
 with the entity among the referrers. `remove-references` and `delete-dependents` both drop the binding (a field, constant or
@@ -1138,7 +1172,7 @@ them at its designed table. Constants are SQL literals in the statements, not pa
 
 - **Discovery.** Every `templates/<name>/pack.json` whose `name` equals its folder is a pack; `packs.<name>.enabled: false` turns it off. Packs run in ordinal name order. `types/<target>.json` files are type maps for `type_of` (keyword → language type, plus `"nullable": "{type}?"` and `"collection": "IReadOnlyList<{type}>"` patterns). Built-in dialect targets need no file.
 - **`for`**: `model` (one unit, no element), `each package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario` (one unit per resolved element; `table`, `view`, `sequence`, `routine`, `database type`, `sql object` and `query` cover every database (§7.0a, "Routines, database types and SQL objects" and "Queries" in §7); the unit key of `each reference type`, `each seed`, `each process`, `each actor` and `each scenario` is the element id, and the scope alias is `reference_type`, `seed`, `process`, `actor` or `scenario`; `where` on the three phase 3 scopes takes tags, stereotypes, categories and packages (a scenario's package is its process's, an actor has none, so a package filter matches no actor) and refuses `database` and `abstract` at pack load (MQ6001); `each locale` plans one unit per declared locale, the default first then ordinal, with the `RLocale` as `element` and `locale`, unit key `locale:<tag>`, and rejects `where` at pack load), or `select <name>` (a JavaScript selector that returns elements or ids; unknown ids fail with MQ6017). `generation["*"|pack].skip` on an element drops its units. `where` filters as in §2.5; `where.database` also picks `mapping` for entity and relation units.
-- **Template context.** Variables: `model`, `element`, a scope alias (`package`, `entity`, `relation`, `enum`, `value_object`, `table`, `view`, `sequence`, `routine`, `database_type`, `sql_object`, `query`, `reference_type`, `seed`, `locale`, `process`, `actor`, `scenario`), `pack` (`name`, `version`, `params`), `mapping` (`REntityMapping`/`RRelationMapping` for `where.database`, else the only one, else null), `mappings` (by database name), `schema_diff` (database name → `SchemaDiffResult`), `hints` (merged `generation["*"]` and `generation[pack]`), `data` (transform results), `unit` (`id`, `key`).
+- **Template context.** Variables: `model`, `element`, a scope alias (`package`, `entity`, `relation`, `enum`, `value_object`, `table`, `view`, `sequence`, `routine`, `database_type`, `sql_object`, `query`, `reference_type`, `seed`, `locale`, `process`, `actor`, `scenario`), `pack` (`name`, `version`, `params`), `project` (`name`, `properties`: the project's own key → text values from `maquettiste.json`; reading `project` records `s:project`, the hash of the name and the properties, so editing a property re-renders only the units that read it), `mapping` (`REntityMapping`/`RRelationMapping` for `where.database`, else the only one, else null), `mappings` (by database name), `schema_diff` (database name → `SchemaDiffResult`), `hints` (merged `generation["*"]` and `generation[pack]`), `data` (transform results), `unit` (`id`, `key`).
 - **Output.** `Output` is rendered with the same context (tracked like the body) and prefixed with `PackSettings.Output`. A template emits more files with `{{ file "path" content }}`, usually after `{{ capture content }}…{{ end }}` (D10). With `Output` null, only file blocks are written. Block paths take the same prefix and the unit's mode, except `pair`, whose blocks are `overwrite`.
 - **Modes.** `overwrite`, `once` (written only when missing; recorded as owned), `regions` (committed roots only; MQ6015), `pair` (`Output` rendered every time with `Template`; `Companion.Template` rendered to `Companion.Output` only when that file is missing, as owned). As built on 2026-10-02 (spec-errata E42): `regions` works on any root (MQ6015 is retired), and `block` manages one delimited block of lines inside a file the team owns (§12.3b); a block unit's file blocks are blocks too, and formatters never run on them.
 - **Built versus committed.** A file's root is the longest `outputs.allow` path that contains it. `Commit` decides the manifest location (§12.2), `--check` coverage, the roots `init` names as built, and the `.gitignore` entries `init --gitignore` writes when asked (never by default; spec-errata E39). As built on 2026-10-02 (spec-errata E42), this distinction is gone: an allow entry is only a path, a folder generation may write under or the file of that exact name (`.gitignore`, `src/App/.gitignore`; an entry ending in `/` is a folder only), every pack has one manifest (§12.2), `--check` covers every root, and `init` has no `.gitignore` logic (`--gitignore` is refused). A `commit` member left in `maquettiste.json` is dropped before the schema check and reported once per entry (MQ1010, info); `maquettiste format` and every settings write drop it.
@@ -1190,6 +1224,7 @@ public sealed class ScriptLimitException : Exception { public Diagnostic Diagnos
 | `s:conventions`, `s:typeMaps`, `s:inflection` | hash of that settings section in canonical form (`databases` counts with `conventions`) |
 | `s:referenceData` | hash of `referenceData` (strategy declarations) with `conventions.referenceStorage` and every `databases.<name>.referenceStorage` |
 | `s:localization` | hash of the `localization` block; recorded by every localization helper call and every `each locale` unit (its `RLocale` depends on it) |
+| `s:project` | hash of the project's `name` and `properties` (keys in ordinal order); recorded when a template reads the `project` variable (2026-10-07) |
 | `l:<locale>:<ownerId>` | `LocalizationIndex.OwnerHash`: `H` over the owner's effective entries in that locale (every field of the owner and its sub-elements, ordinal by id, with their `src` fingerprints) and their description sidecars' hashes. A helper records one per consulted chain locale up to the one that answered, plus the owner's `e:` key when the default text answered (reference-types-seeds-localization.md section 3.8) |
 | `t:<pack>/<path>` | file hash of a template or partial |
 | `d:<databaseId>` | `SchemaDiffResult.Hash` |

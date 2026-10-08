@@ -54,8 +54,9 @@ export interface paths {
         /**
          * Sign in with the editor token
          * @description Phase 2 sign-in for a non-loopback browser: the caller presents `MAQUETTISTE_EDITOR_TOKEN` once and receives the
-         *     host-only, `HttpOnly`, `SameSite=Strict` cookie `mq_session`, protected with the host's data-protection keys and
-         *     bound to a fingerprint of the token, so rotating the token ends every session. The middleware's own sign-in page
+         *     host-only, `HttpOnly`, `SameSite=Strict` cookie `mq_session` (`mq_session_<port>` when the `Host` header names a
+         *     port: browsers share a host's cookies across its ports, so two editors on one host keep a session each), protected
+         *     with the host's data-protection keys and bound to a fingerprint of the token, so rotating the token ends every session. The middleware's own sign-in page
          *     posts the same field as a form. Passwords and invite links arrive with accounts (phase 4).
          */
         post: operations["signIn"];
@@ -631,8 +632,8 @@ export interface paths {
          * @description What the database's materialize screens list (erratum E43): the entities with no binding to the database, each flagged
          *     `projected` when the database still projects a table for it (by convention or a mapping element), and the database's
          *     designed and imported tables and its views with the entity bindings that read or write each (`boundBy`; several entities
-         *     on one table are told apart by their constants). Materialize with the batch operations `materialize-tables` and
-         *     `materialize-entities` (`POST /api/model/batch`), after a look at `POST .../materialize/preview`. The MCP tool
+         *     on one table are told apart by their constants). Materialize with the batch operations `materialize-tables`,
+         *     `materialize-entities` and `materialize-attributes` (`POST /api/model/batch`), after a look at `POST .../materialize/preview`. The MCP tool
          *     `get_materialize_status` answers the same.
          */
         get: operations["getMaterializeStatus"];
@@ -663,9 +664,14 @@ export interface paths {
          * What a materialize operation would do
          * @description Plans a materialize operation over the route's database and validates the result, writing nothing: the body is the batch
          *     operation without its database, `{ "op": "materialize-tables", "entities": [...], "schema"?: <schema id> }` (a designed
-         *     table per entity with the shape its projection has, and a binding) or `{ "op": "materialize-entities", "tables": [...],
-         *     "package": <package id> }` (an entity per table or view, bound to it, and a relation per foreign key between them). A
-         *     refusal (an entity or table already bound) is MQ4055 in `diagnostics`. The MCP tool `preview_materialize` answers the same.
+         *     table per entity with the shape its projection has, and a binding), `{ "op": "materialize-entities", "tables": [...],
+         *     "package": <package id> }` (an entity per table or view, bound to it, and a relation per foreign key between them) or
+         *     `{ "op": "materialize-attributes", "entities": [...], "columns"?: [...] }` (per bound entity, an attribute per column of its
+         *     binding's source that nothing in the binding names, or per column named for one entity, mapped to it) or
+         *     `{ "op": "materialize-columns", "entities": [...], "attributes"?: [...] }` (per bound entity reading a table file, a column of
+         *     that table per attribute the binding leaves unmapped, shaped as the projection would make it, mapped to it). A refusal (an
+         *     entity or table already bound; for attributes, an entity with no binding, a query source, a column already mapped; for
+         *     columns, a source that is not a table file, an attribute already mapped) is MQ4055 in `diagnostics`. The MCP tool `preview_materialize` answers the same.
          */
         post: operations["previewMaterialize"];
         delete?: never;
@@ -955,6 +961,29 @@ export interface paths {
          *     choice per database.
          */
         get: operations["getReferenceTypeUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model/tags/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tags one tag vocabulary governs, with their uses
+         * @description Every tag the tag vocabulary of `package` (the global one without it) declares, and every tag used inside that scope that no
+         *     vocabulary on the element's domain chain declares, each with its uses there (the element's own tags and its sub-elements'),
+         *     the ids of the elements holding them and up to five of their names. A domain that declares the same key keeps its own uses.
+         *     Remove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers the same.
+         */
+        get: operations["getTagUsage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2302,6 +2331,10 @@ export interface components {
             $schema: string | null;
             formatVersion: number;
             name: string | null;
+            /** @description The project's own properties, key to text (Settings › General); every pack's templates read them as `project.properties`. */
+            properties: {
+                [key: string]: string;
+            };
             outputs: {
                 /** @description Folders generation may write under; an entry also allows the file of its own path (such as `.gitignore`) unless it ends with `/`. A `commit` member of an older file is ignored (MQ1010). */
                 allow: {
@@ -2660,6 +2693,24 @@ export interface components {
             removed: number;
             diagnostics: components["schemas"]["Diagnostic"][];
         };
+        TagUsage: {
+            /** @description The domain, or null for the global vocabulary. */
+            package: string | null;
+            /** @description The scope's tag vocabulary id, or null when it has none. */
+            vocabulary: string | null;
+            strict: boolean;
+            tags: components["schemas"]["TagUse"][];
+        };
+        TagUse: {
+            tag: string;
+            /** @description Whether the scope's vocabulary declares it. */
+            declared: boolean;
+            /** @description The uses the scope governs (the element's own tags and its sub-elements'). */
+            uses: number;
+            elements: string[];
+            /** @description The readable names of up to five of those elements. */
+            examples: string[];
+        };
         ReferenceTypeUsage: {
             usages: {
                 attribute: components["schemas"]["Ulid"];
@@ -2944,10 +2995,10 @@ export interface components {
             changes: components["schemas"]["ChangeSet"] | null;
         };
         /**
-         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them); they expand the same way, and a refusal (an entity or table already bound) is MQ4055 at `/operations/<n>`.
+         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`.
          * @enum {string}
          */
-        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
+        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag";
         BatchOperation: {
             op: components["schemas"]["BatchOp"];
             id: string | null;
@@ -2963,20 +3014,26 @@ export interface components {
             value?: unknown;
             /** @description The database schema id (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`). */
             schema?: string | null;
-            /** @description The schema name (`add-schema`, `rename-schema`). */
+            /** @description The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`). */
             name?: string | null;
             /** @description The schema id that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`). */
             target?: string | null;
             /** @description The schema id that becomes the default when the removed schema is the default (`remove-schema`). */
             default?: string | null;
-            /** @description The database id (`materialize-tables`, `materialize-entities`). */
+            /** @description The database id (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`). */
             database?: string | null;
-            /** @description The entity ids (`materialize-tables`). */
+            /** @description The entity ids (`materialize-tables`, `materialize-attributes`, `materialize-columns`). */
             entities?: string[] | null;
             /** @description The table and view ids (`materialize-entities`). */
             tables?: string[] | null;
-            /** @description The package id the new entities go to (`materialize-entities`). */
+            /** @description The package id the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, absent for the global one). */
             package?: string | null;
+            /** @description The source columns, as keys or physical names (`materialize-attributes`, one entity); absent means every column nothing in the binding names. */
+            columns?: string[] | null;
+            /** @description The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped. */
+            attributes?: string[] | null;
+            /** @description The tag keys (`retag`). */
+            tags?: string[] | null;
             /**
              * @description Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's
              *     updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
@@ -4378,11 +4435,13 @@ export interface components {
         /** @description A materialize batch operation without its database. */
         MaterializeBody: {
             /** @enum {string} */
-            op: "materialize-tables" | "materialize-entities";
+            op: "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns";
             entities?: string[];
             tables?: string[];
             schema?: string | null;
             package?: string | null;
+            columns?: string[] | null;
+            attributes?: string[] | null;
         };
         MaterializePlan: {
             operation: string;
@@ -5921,6 +5980,13 @@ export interface components {
             $schema?: components["schemas"]["schemaPath"];
             formatVersion: number;
             name?: string;
+            /**
+             * @description The project's own properties, key to text value (a base namespace, a company name), which every pack's templates read as project.properties; a pack's own parameters are separate (packs.<name>.parameters, pack.params).
+             * @default {}
+             */
+            properties?: {
+                [key: string]: string;
+            };
             /**
              * @description The project's branding in the editor: an icon for the top bar, the browser tab and the sign-in page, and a primary color per theme. It changes no generated output.
              * @default {}
@@ -8628,7 +8694,7 @@ export interface components {
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
+                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag";
                 id?: components["schemas"]["id"];
                 expectedHash?: string;
                 /**
@@ -8642,27 +8708,33 @@ export interface components {
                 field?: "displayName" | "pluralName" | "label" | "description";
                 /** @description The translated text, a sidecar reference, or null to remove the translation. */
                 value?: components["schemas"]["description"] | null;
-                /** @description The database id (materialize-tables, materialize-entities). */
+                /** @description The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns). */
                 database?: components["schemas"]["id"];
-                /** @description The entities that get a designed table and a binding (materialize-tables). */
+                /** @description The entities that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns). */
                 entities?: components["schemas"]["idList"];
                 /** @description The designed or imported tables and the views that get an entity and a binding (materialize-entities). */
                 tables?: components["schemas"]["idList"];
-                /** @description The package the new entities go to (materialize-entities). */
+                /** @description The package the new entities go to (materialize-entities); the domain whose tag vocabulary it is (retag; absent for the global one). */
                 package?: components["schemas"]["id"];
-                /** @description Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. */
+                /** @description The columns of the source, as keys or physical names, that get an attribute mapped to them (materialize-attributes, one entity only); absent means every column nothing in the binding names. */
+                columns?: string[];
+                /** @description The binding field references (attribute ids, attributeId.memberId for a value object member, to-one end ids) that get a column of the entity's table mapped to them (materialize-columns, one entity only); absent means every attribute the binding leaves unmapped. */
+                attributes?: string[];
+                /** @description The tag keys to remove, or the one to rename (retag). */
+                tags?: components["schemas"]["tagList"];
+                /** @description Materialize and retag: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. */
                 expectedHashes?: {
                     [key: string]: string;
                 };
                 /** @description The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own). */
                 schema?: components["schemas"]["id"];
-                /** @description The schema name (add-schema, rename-schema). */
+                /** @description The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags). */
                 name?: string;
                 /** @description The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial). */
                 target?: components["schemas"]["id"];
                 /** @description The schema id that becomes the default when the removed schema is the default (remove-schema). */
                 default?: components["schemas"]["id"];
-            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
+            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
         };
         /**
          * Template pack
@@ -9062,7 +9134,7 @@ export interface operations {
             /** @description Signed in; the cookie is set. */
             200: {
                 headers: {
-                    /** @description `mq_session=<protected>; Path=/; HttpOnly; SameSite=Strict` (plus `Secure` behind TLS). */
+                    /** @description `mq_session=<protected>; Path=/; HttpOnly; SameSite=Strict` (plus `Secure` behind TLS); `mq_session_<port>` on a host with a port. */
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
@@ -10837,6 +10909,55 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["ReferenceTypeUsage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getTagUsage: {
+        parameters: {
+            query?: {
+                /** @description The domain whose tag vocabulary it is; absent for the global one. */
+                package?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The usage. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "package": null,
+                     *       "vocabulary": "01J92P0V22Q6775D5GE10SN3RB",
+                     *       "strict": false,
+                     *       "tags": [
+                     *         {
+                     *           "tag": "billing",
+                     *           "declared": true,
+                     *           "uses": 3,
+                     *           "elements": [
+                     *             "01J92P0V0ETQKXXP951CMMNHH3",
+                     *             "01J92P0V0FJ23CGSNKM7P1W5V7",
+                     *             "01J92P0V1T0J6RH4MY9H81NYB4"
+                     *           ],
+                     *           "examples": [
+                     *             "Customer",
+                     *             "Invoice",
+                     *             "invoices"
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TagUsage"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

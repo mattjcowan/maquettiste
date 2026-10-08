@@ -200,7 +200,7 @@
     {
       "name": "get_materialize_status",
       "title": "Materialize status",
-      "description": "What can be materialized in one database: {database, databaseName, entities: [{id, name, package, projected, table}] (the entities with no binding to the database; projected says the database still projects a table for it by convention or a mapping element), sources: [{id, kind (table or view), name, schema, origin, boundBy: [{entity, entityName, binding, constants}]}] (its designed and imported tables and its views; boundBy empty means no entity is bound to it, several entries mean constant columns tell the entities apart)}. Then preview_materialize, and apply_batch with a materialize-tables or materialize-entities operation.",
+      "description": "What can be materialized in one database: {database, databaseName, entities: [{id, name, package, projected, table}] (the entities with no binding to the database; projected says the database still projects a table for it by convention or a mapping element), sources: [{id, kind (table or view), name, schema, origin, boundBy: [{entity, entityName, binding, constants}]}] (its designed and imported tables and its views; boundBy empty means no entity is bound to it, several entries mean constant columns tell the entities apart)}. Then preview_materialize, and apply_batch with a materialize-tables, materialize-entities, materialize-attributes or materialize-columns operation.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -553,7 +553,7 @@
     {
       "name": "preview_materialize",
       "title": "Preview materialize",
-      "description": "What a materialize operation would do, without writing: {operation, database, valid, creates, updates, deletes (each {id, kind, name, path, because, element}: element is the document that would be written), notes, diagnostics}. op materialize-tables with entities (and an optional schema id) writes, per entity, a designed table with exactly the shape its projection has (columns, keys, uniques, checks, indexes, foreign keys, comments; its overlay folds into the table, which keeps the overlay's id), binds the entity to it, deletes its mapping to the database and points relation mappings at the foreign keys; op materialize-entities with tables (designed or imported tables and views) and package writes, per table, an entity (one attribute per column, the key from the primary key) bound to it, and a many-to-one relation per foreign key between them. An entity already bound, or a table an entity is bound to, is refused (MQ4055). Apply it with apply_batch: {\"op\":\"materialize-tables\",\"database\":...,\"entities\":[...]} or {\"op\":\"materialize-entities\",\"database\":...,\"tables\":[...],\"package\":...}.",
+      "description": "What a materialize operation would do, without writing: {operation, database, valid, creates, updates, deletes (each {id, kind, name, path, because, element}: element is the document that would be written), notes, diagnostics}. op materialize-tables with entities (and an optional schema id) writes, per entity, a designed table with exactly the shape its projection has (columns, keys, uniques, checks, indexes, foreign keys, comments; its overlay folds into the table, which keeps the overlay's id), binds the entity to it, deletes its mapping to the database and points relation mappings at the foreign keys; op materialize-entities with tables (designed or imported tables and views) and package writes, per table, an entity (one attribute per column, the key from the primary key) bound to it, and a many-to-one relation per foreign key between them; op materialize-attributes with entities (each bound to the database) and, for one entity, optional columns (keys or physical names) adds, per entity, an attribute per column of its binding's source (the columns named, else every column nothing in the binding names: unaccounted, identity, a default), named and typed from the column and mapped to it in the binding; op materialize-columns with entities (each bound to the database, reading a designed or imported table it writes) and, for one entity, optional attributes (binding field references: attribute ids, attributeId.memberId, to-one end ids) adds a column of that table per attribute the binding leaves unmapped, shaped as the entity's projection would make it (the project's naming and type conventions), mapped to it; a column whose name the table has is left out with a note, and no foreign key is added. An entity already bound, or a table an entity is bound to, is refused (MQ4055), as is an entity with no binding to the database, a query source or a column already mapped (materialize-attributes), or a source that is not a table file or an attribute already mapped (materialize-columns). Apply it with apply_batch: {\"op\":\"materialize-tables\",\"database\":...,\"entities\":[...]}, {\"op\":\"materialize-entities\",\"database\":...,\"tables\":[...],\"package\":...} {\"op\":\"materialize-attributes\",\"database\":...,\"entities\":[...],\"columns\":[...]} or {\"op\":\"materialize-columns\",\"database\":...,\"entities\":[...],\"attributes\":[...]}.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -566,7 +566,7 @@
             "default": null
           },
           "op": {
-            "description": "materialize-tables or materialize-entities; required.",
+            "description": "materialize-tables, materialize-entities, materialize-attributes or materialize-columns; required.",
             "type": [
               "string",
               "null"
@@ -574,7 +574,7 @@
             "default": null
           },
           "entities": {
-            "description": "The entity ids (materialize-tables).",
+            "description": "The entity ids (materialize-tables, materialize-attributes, materialize-columns).",
             "type": [
               "array",
               "null"
@@ -615,6 +615,34 @@
               "string",
               "null"
             ],
+            "default": null
+          },
+          "columns": {
+            "description": "The source columns, as keys or physical names, that get an attribute (materialize-attributes, one entity); omit for every column nothing in the binding names.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "attributes": {
+            "description": "The binding field references (attribute ids, attributeId.memberId, to-one end ids) that get a column (materialize-columns, one entity); omit for every attribute the binding leaves unmapped.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "default": null
           }
         },
@@ -982,6 +1010,24 @@
         "required": [
           "id"
         ]
+      }
+    },
+    {
+      "name": "tag_usage",
+      "title": "Tag usage",
+      "description": "The tags one tag vocabulary governs: {package, vocabulary, strict, tags: [{tag, declared, uses, elements, examples}]}: every tag the vocabulary of package (the global one without it) declares, and every tag used inside that scope that no vocabulary on the element's domain chain declares, with its uses there (the element's own tags and its sub-elements'), the ids of the elements holding them and up to five of their names. A domain that declares the same key keeps its own uses. Remove tags everywhere, or rename one, with apply_batch {\"op\":\"retag\",\"tags\":[...],\"name\":<new key, optional>,\"package\":<domain, optional>}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "description": "The domain whose tag vocabulary it is; omit for the global one.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
       }
     },
     {

@@ -1,12 +1,12 @@
 // Favorites and recents (explorer-redesign.md 3.3): a collapsible strip above the tree with the user's starred
 // elements and the last 20 opened ones, both kept per user in localStorage. Each explorer lists the ones it holds; each section
-// has Clear in its header (favorites ask first) and each row a Remove. A deleted element leaves the recent list.
+// has Clear in its header (favorites ask first) and each row a Remove. A deleted element leaves the recent list. A row's
+// click opens the element as its tree row's double click does (its editor, pinned), not only selects it.
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Eraser, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ElementSummary } from "@/api/types";
 import { useServices } from "@/app/context";
-import { useEditorNavigation } from "@/app/navigation";
 import { local } from "@/lib/storage";
 import { displayName } from "@/model/model";
 import { useEditor } from "@/state/store";
@@ -25,11 +25,10 @@ export function inExplorer(forest: Forest, id: ExplorerId, ids: readonly string[
   return out;
 }
 
-export function FavoritesStrip({ forest, id }: { forest: Forest; id: ExplorerId }) {
+export function FavoritesStrip({ forest, id, onOpen }: { forest: Forest; id: ExplorerId; onOpen: (key: string) => void }) {
   const { store } = useServices();
   const favorites = useEditor(store, (s) => s.explorer.favorites);
   const recent = useEditor(store, (s) => s.recent);
-  const { reveal } = useEditorNavigation();
   const [open, setOpen] = useState(() => local.get("mq.explorer.strip") !== "0");
   const fav = inExplorer(forest, id, favorites);
   const rec = inExplorer(forest, id, recent, RECENT_SHOWN);
@@ -46,7 +45,7 @@ export function FavoritesStrip({ forest, id }: { forest: Forest; id: ExplorerId 
         <button
           type="button"
           className="min-w-0 flex-1 truncate rounded-control px-2 py-0.5 text-left text-12 hover:bg-app"
-          onClick={() => reveal(row)}
+          onClick={() => onOpen(forest.place.get(x) as string)}
           data-testid={`explorer-${group}-${row.name}`}
         >
           {name}

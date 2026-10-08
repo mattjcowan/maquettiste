@@ -14,7 +14,7 @@ import {
   markDataUrl,
   normalizeHexColor,
 } from "@/design/branding";
-import { colorProblem, fileToBase64, generalOf, iconContentType, withGeneral } from "@/workspaces/settings/general";
+import { colorProblem, fileToBase64, generalOf, iconContentType, propertyProblems, withGeneral } from "@/workspaces/settings/general";
 import type { SettingsJson } from "@/api/types";
 
 // Color literals live in tokens.css only (scripts/check-hex.mjs); the tests build them.
@@ -116,15 +116,41 @@ describe("Settings › General", () => {
   const base = { formatVersion: 1, name: "billing", outputs: { allow: [] } } as unknown as SettingsJson;
 
   it("reads and writes the name and branding, leaving empty members out", () => {
-    expect(generalOf(base)).toEqual({ name: "billing", icon: null, light: null, dark: null });
-    const next = withGeneral(base, { name: "  Partner app ", icon: "branding/icon.svg", light: hex("7A1FA2"), dark: null });
+    expect(generalOf(base)).toEqual({ name: "billing", properties: [], icon: null, light: null, dark: null });
+    const next = withGeneral(base, { name: "  Partner app ", properties: [], icon: "branding/icon.svg", light: hex("7A1FA2"), dark: null });
     expect(next.name).toBe("Partner app");
     expect((next as { branding?: unknown }).branding).toEqual({ icon: "branding/icon.svg", colors: { light: PURPLE } });
-    expect(generalOf(next)).toEqual({ name: "Partner app", icon: "branding/icon.svg", light: PURPLE, dark: null });
-    const cleared = withGeneral(next, { name: "", icon: null, light: null, dark: null });
+    expect(generalOf(next)).toEqual({ name: "Partner app", properties: [], icon: "branding/icon.svg", light: PURPLE, dark: null });
+    const cleared = withGeneral(next, { name: "", properties: [], icon: null, light: null, dark: null });
     expect("name" in cleared).toBe(false);
     expect("branding" in cleared).toBe(false);
     expect(base.name).toBe("billing"); // not mutated
+  });
+
+  it("reads and writes the project properties, keys in order, and says which keys cannot be saved", () => {
+    const draft = {
+      ...generalOf(base),
+      properties: [
+        { key: " companyName ", value: "Acme" },
+        { key: "baseNamespace", value: "Acme.Billing" },
+      ],
+    };
+    const next = withGeneral(base, draft);
+    expect((next as { properties?: unknown }).properties).toEqual({ companyName: "Acme", baseNamespace: "Acme.Billing" });
+    expect(generalOf(next).properties).toEqual([
+      { key: "baseNamespace", value: "Acme.Billing" },
+      { key: "companyName", value: "Acme" },
+    ]);
+    expect("properties" in withGeneral(next, { ...draft, properties: [] })).toBe(false);
+    const problems = propertyProblems([
+      { key: "", value: "x" },
+      { key: "2nd", value: "x" },
+      { key: "base.namespace", value: "x" },
+      { key: "ok", value: "x" },
+      { key: "ok", value: "y" },
+    ]);
+    expect([...problems.keys()]).toEqual([0, 1, 2, 4]);
+    expect(problems.get(4)).toContain("used twice");
   });
 
   it("accepts SVG and PNG icons by type or extension and encodes them as base64", async () => {

@@ -37,6 +37,7 @@ import {
 } from "./extensionsModel";
 import { EXTENSIONS_TAB } from "./packTabs";
 import { isDirty, lineDiff, type Buffer } from "./templatesModel";
+import { onListArrowKeys } from "@/lib/listKeys";
 
 interface Conflict {
   path: string;
@@ -464,7 +465,7 @@ function FileGroup({
     <div className="py-0.5">
       <h3 className="flex h-6 items-center px-2 text-11 font-semibold uppercase tracking-wide text-secondary">{title}</h3>
       {files.length ? (
-        <ul>
+        <ul onKeyDown={onListArrowKeys}>
           {files.map((f) => (
             <li key={f.path}>
               <button

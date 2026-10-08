@@ -1,12 +1,24 @@
 {{-
 # Shared C# functions for the csharp-dapper pack. Include this file once at the top of a template; it prints nothing.
 
-# The namespace of an element's package: the "namespace" parameter plus the package's qualified name.
+# The base namespace: the pack's "namespace" parameter when the project sets it, else the project's own
+# baseNamespace property (Settings > General, shared by every pack), else App.Model.
+func base_ns
+  if pack.params.namespace != null && pack.params.namespace != ""
+    ret pack.params.namespace
+  end
+  if project.properties.baseNamespace != null && project.properties.baseNamespace != ""
+    ret project.properties.baseNamespace
+  end
+  ret "App.Model"
+end
+
+# The namespace of an element's package: the base namespace plus the package's qualified name.
 func ns(element)
   if element.package
-    ret pack.params.namespace + "." + element.package.qualified_name
+    ret base_ns + "." + element.package.qualified_name
   end
-  ret pack.params.namespace
+  ret base_ns
 end
 
 func type_name(element)

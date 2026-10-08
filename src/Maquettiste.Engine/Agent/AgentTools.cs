@@ -92,6 +92,7 @@ public sealed partial class AgentTools
             ["preview_query_sql"] = PreviewQuerySqlAsync,
             ["preview_unit"] = PreviewUnitAsync,
             ["reference_type_usage"] = ReferenceTypeUsageAsync,
+            ["tag_usage"] = TagUsageAsync,
             ["validate"] = ValidateAsync,
         };
     }

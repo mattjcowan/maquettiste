@@ -71,7 +71,7 @@ end
 using System;
 using System.Collections.Generic;
 
-namespace {{ pack.params.namespace }};
+namespace {{ base_ns }};
 
 {{ doc(rt.description, "") }}public sealed record {{ name }}({{ code_type }} Code, string Label
 {{- if has_description }}, string? Description{{ end }}

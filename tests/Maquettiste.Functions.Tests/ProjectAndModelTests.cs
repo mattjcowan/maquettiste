@@ -100,7 +100,7 @@ public sealed class ProjectAndModelTests
         Contract.AssertResponse(anonymous, "/api/session");
         Assert.Equal(204, signOut.Status);
         Contract.AssertResponse(signOut, "/api/session");
-        Assert.Contains("mq_session=;", signOut.Headers.SetCookie.ToString(), StringComparison.Ordinal);
+        Assert.Contains("mq_session_8080=;", signOut.Headers.SetCookie.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -133,6 +133,25 @@ public sealed class ProjectAndModelTests
         Assert.Equal(key, ProjectEndpoints.KeyOf(host.RepoRoot + Path.DirectorySeparatorChar));
         Assert.NotEqual(key, ProjectEndpoints.KeyOf(host.RepoRoot + "-clone"));
         Recorder.Json("project.json", response);
+    }
+
+    [Fact]
+    public async Task Tag_usage_lists_the_tags_a_vocabulary_governs_with_their_uses()
+    {
+        await using var host = EditorHost.Create();
+
+        var global = await host.SendAsync(TestRequest.Local("GET", "/api/model/tags/usage"));
+        var domain = await host.SendAsync(TestRequest.Local("GET", "/api/model/tags/usage?package=01J92P0V01KDRN8GX5PGYCNKSX"));
+        var notADomain = await host.SendAsync(TestRequest.Local("GET", "/api/model/tags/usage?package=01J92P0V0FJ23CGSNKM7P1W5V7"));
+
+        Assert.Equal(200, global.Status);
+        Contract.AssertResponse(global, "/api/model/tags/usage");
+        var billing = global.Json["tags"]!.AsArray().Single(t => t!["tag"]!.GetValue<string>() == "billing")!;
+        Assert.True(billing["declared"]!.GetValue<bool>());
+        Assert.True(billing["uses"]!.GetValue<int>() >= 2);
+        Assert.Equal(200, domain.Status);
+        Assert.Null(domain.Json["vocabulary"]?.GetValue<string>());
+        Assert.Equal(404, notADomain.Status);
     }
 
     [Fact]

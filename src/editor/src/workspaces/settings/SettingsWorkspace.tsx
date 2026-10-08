@@ -2,9 +2,9 @@
 // vocabularies only; General (name and branding) came with the 2026-09-29 live test). The global tags and categories (vocabularies/VocabularyEditors; a domain's own are on the domain editor), stereotypes (list and form), conventions for the project and per database, locales (l10n/LocalesSettings), validation rule severities (ValidationSettings), the assistant's house rules and budgets (AssistantSettings),
 // saved through PUT /api/project/settings with the inherited value as placeholder. Type maps,
 // output allowlist and formatters are read-only.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
-import { Plus } from "lucide-react";
+import { Filter, Plus } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { applySaveResult, keys, useElements, useIndex, useProject, useSettings } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
@@ -37,6 +37,16 @@ import { ValidationSettings } from "./ValidationSettings";
 import { AssistantSettings } from "./AssistantSettings";
 import { CommentsConvention } from "./CommentsConvention";
 import { TablesByConvention } from "./DatabaseConvention";
+import { onListArrowKeys } from "@/lib/listKeys";
+import { STEREOTYPE_KIND_GROUPS, STEREOTYPE_KINDS } from "./stereotypeKinds";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/menu";
 
 const TABS = ["general", "tags", "categories", "stereotypes", "conventions", "locales", "validation", "project", "explorer", "assistant"] as const;
 
@@ -59,7 +69,7 @@ export function SettingsWorkspace() {
         <TabsTrigger value="assistant">Assistant</TabsTrigger>
       </TabsList>
       {TABS.map((t) => (
-        <TabsContent key={t} value={t} className="overflow-auto p-2">
+        <TabsContent key={t} value={t} className={t === "stereotypes" ? "overflow-hidden p-2" : "overflow-auto p-2"}>
           {t === "general" ? (
             <GeneralSettings />
           ) : t === "tags" ? (
@@ -143,27 +153,27 @@ function StereotypesSettings() {
   const { json, edit, flush } = useDraftDocument(current);
   const s = json as unknown as StereotypeDoc | undefined;
   const typeOptions = TYPE_KINDS.flatMap((k) => lookup.ofKind(k));
-  const kinds = ["entity", "value-object", "enum", "relation", "attribute", "database", "table", "package"];
+  // The list's "Applies to" filter: a stereotype is listed when it applies to any of the kinds checked (all with none). The
+  // form keeps the picked one when the filter hides it, so unchecking its own kind does not take it away mid-edit.
+  const [appliesFilter, setAppliesFilter] = useState<string[]>([]);
+  // Its choices: the kinds some stereotype applies to, in the form's order (a kind none applies to would list nothing).
+  const inUse = new Set(ids.flatMap((id) => ((docs.byId.get(id)?.json as unknown as StereotypeDoc | undefined)?.appliesTo as string[] | undefined) ?? []));
+  const filterKinds = STEREOTYPE_KINDS.filter((k) => inUse.has(k));
+  const listed = appliesFilter.length
+    ? ids.filter((id) => {
+        const applies = (docs.byId.get(id)?.json as unknown as StereotypeDoc | undefined)?.appliesTo as string[] | undefined;
+        return applies?.some((k) => appliesFilter.includes(k));
+      })
+    : ids;
+  // The picked stereotype is in view in the list (a new one is added at its place in the order, maybe far below).
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [current, ids.length]);
   return (
-    <section className="grid max-w-5xl grid-cols-[220px_1fr] gap-2" aria-label="Stereotypes">
-      <div className="flex flex-col gap-2">
-        <ul className="flex flex-col gap-0.5" aria-label="Stereotype list">
-          {ids.map((id) => {
-            const doc = docs.byId.get(id)?.json as unknown as StereotypeDoc | undefined;
-            return (
-              <li key={id}>
-                <button
-                  type="button"
-                  className={`w-full rounded-control px-2 py-1 text-left text-13 ${id === current ? "bg-accent-subtle" : "hover:bg-surface"}`}
-                  onClick={() => setSelected(id)}
-                  aria-current={id === current || undefined}
-                >
-                  «{doc?.key ?? "…"}» <span className="text-secondary">{doc?.name}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+    // The list scrolls on its own, under the New field, so the form beside it stays in view on a long list.
+    <section className="grid h-full max-w-5xl grid-cols-[220px_1fr] grid-rows-[minmax(0,1fr)] gap-2" aria-label="Stereotypes">
+      <div className="flex min-h-0 flex-col gap-2">
         <form
           className="flex gap-1"
           onSubmit={async (e) => {
@@ -186,9 +196,63 @@ function StereotypesSettings() {
             <Plus />
           </Button>
         </form>
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="min-w-0 flex-1 justify-start"
+                title="List only the stereotypes that apply to the kinds checked"
+                data-testid="stereotype-applies-filter"
+              >
+                <Filter />
+                <span className="truncate">{appliesFilter.length ? `Applies to: ${appliesFilter.join(", ")}` : "Applies to: any kind"}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {filterKinds.map((k) => (
+                <DropdownMenuCheckboxItem
+                  key={k}
+                  checked={appliesFilter.includes(k)}
+                  onCheckedChange={(on) => setAppliesFilter((f) => (on ? filterKinds.filter((x) => x === k || f.includes(x)) : f.filter((x) => x !== k)))}
+                >
+                  {k}
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled={!appliesFilter.length} onSelect={() => setAppliesFilter([])}>
+                Clear the filter
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {appliesFilter.length ? (
+            <span className="shrink-0 text-11 text-secondary" data-testid="stereotype-filter-count">
+              {listed.length} of {ids.length}
+            </span>
+          ) : null}
+        </div>
+        <ul ref={listRef} className="mq-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto" aria-label="Stereotype list" onKeyDown={onListArrowKeys}>
+          {listed.map((id) => {
+            const doc = docs.byId.get(id)?.json as unknown as StereotypeDoc | undefined;
+            return (
+              <li key={id}>
+                <button
+                  type="button"
+                  className={`w-full rounded-control px-2 py-1 text-left text-13 ${id === current ? "bg-accent-subtle" : "hover:bg-surface"}`}
+                  onClick={() => setSelected(id)}
+                  aria-current={id === current || undefined}
+                >
+                  «{doc?.key ?? "…"}» <span className="text-secondary">{doc?.name}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {appliesFilter.length && !listed.length ? <p className="px-2 text-12 text-secondary">No stereotype applies to these kinds.</p> : null}
       </div>
       {s ? (
-        <div className="flex flex-col gap-2 rounded-panel border border-default bg-surface p-2">
+        <div className="mq-scroll flex max-h-full flex-col gap-2 self-start overflow-auto rounded-panel border border-default bg-surface p-2">
           <div className="grid grid-cols-2 gap-2">
             <Field label="Key" htmlFor="st-key" hint="Fixed once created (MQ3020).">
               <Input id="st-key" value={s.key} readOnly className="font-mono" />
@@ -203,24 +267,31 @@ function StereotypesSettings() {
             </Field>
           </div>
           <Field label="Applies to">
-            <div className="flex flex-wrap gap-2">
-              {kinds.map((k) => (
-                <CheckboxField
-                  key={k}
-                  id={`st-applies-${k}`}
-                  label={k}
-                  checked={(s.appliesTo ?? []).includes(k as never)}
-                  onChange={(v) => {
-                    edit((j) => {
-                      const st = j as unknown as StereotypeDoc;
-                      const set = new Set(st.appliesTo ?? []);
-                      if (v) set.add(k as never);
-                      else set.delete(k as never);
-                      st.appliesTo = [...set] as StereotypeDoc["appliesTo"];
-                    });
-                    void flush();
-                  }}
-                />
+            <div className="grid grid-cols-[max-content_1fr] items-baseline gap-x-3 gap-y-1">
+              {STEREOTYPE_KIND_GROUPS.map((g) => (
+                <div key={g.label} role="group" aria-label={g.label} className="contents">
+                  <span className="text-11 text-secondary">{g.label}</span>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {g.kinds.map((k) => (
+                      <CheckboxField
+                        key={k}
+                        id={`st-applies-${k}`}
+                        label={k}
+                        checked={(s.appliesTo ?? []).includes(k)}
+                        onChange={(v) => {
+                          edit((j) => {
+                            const st = j as unknown as StereotypeDoc;
+                            const set = new Set(st.appliesTo ?? []);
+                            if (v) set.add(k);
+                            else set.delete(k);
+                            st.appliesTo = [...set];
+                          });
+                          void flush();
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </Field>

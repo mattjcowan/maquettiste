@@ -7,6 +7,7 @@
     "$schema",
     "formatVersion",
     "name",
+    "properties",
     "branding",
     "outputs",
     "handEdits",
@@ -33,6 +34,17 @@
     },
     "name": {
       "type": "string"
+    },
+    "properties": {
+      "description": "The project's own properties, key to text value (a base namespace, a company name), which every pack's templates read as project.properties; a pack's own parameters are separate (packs.<name>.parameters, pack.params).",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {}
     },
     "branding": {
       "description": "The project's branding in the editor: an icon for the top bar, the browser tab and the sign-in page, and a primary color per theme. It changes no generated output.",

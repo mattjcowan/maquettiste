@@ -341,7 +341,7 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
-| `namespace` | `"App.Model"` | Root namespace; each package adds its qualified name. |
+| `namespace` | `""` | Root namespace; each package adds its qualified name. Unset, the pack takes the project's `baseNamespace` property (Settings › General, `project.properties.baseNamespace`), else `App.Model`. |
 | `database` | `""` | The database the repositories and foreign-key properties use; empty picks, per entity, the first database by name that maps it. |
 | `generatedFolder` | `""` | Folder (under the pack output) for generated files. |
 | `partialFolder` | `""` | Folder (under the pack output) for the once-written companions. |

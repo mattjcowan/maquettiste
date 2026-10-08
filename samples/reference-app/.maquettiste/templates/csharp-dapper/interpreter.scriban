@@ -13,7 +13,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
-namespace {{ pack.params.namespace }}.Runtime;
+namespace {{ base_ns }}.Runtime;
 
 /// <summary>The type of a state.</summary>
 public enum StateKind

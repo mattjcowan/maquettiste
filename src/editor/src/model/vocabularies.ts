@@ -259,3 +259,9 @@ export function mergeCategoryTrees(docs: readonly (CategoryTreeDoc | undefined)[
     }
   return list.length ? { parents, names, list } : undefined;
 }
+
+/** Whether a text is a tag key (common.json tagLabel): 1 to 64 characters, no whitespace and no control characters. */
+export function isTagKey(text: string): boolean {
+  const chars = [...text];
+  return chars.length >= 1 && chars.length <= 64 && chars.every((c) => !/\s/.test(c) && c.charCodeAt(0) > 0x1f && c.charCodeAt(0) !== 0x7f);
+}

@@ -209,10 +209,12 @@ internal sealed class PackTemplateLoader(UnitRun unit) : ITemplateLoader
 
 /// <summary>
 /// The unit's variables (engine-design.md section 8): read-only; reading <c>mapping</c>, <c>mappings</c> or <c>hints</c> records
-/// the element's dependencies, since mapping and hint objects carry none of their own.
+/// the element's dependencies, since mapping and hint objects carry none of their own; reading <c>project</c> records the project's
+/// name and properties (<c>s:project</c>).
 /// </summary>
 /// <param name="recorder">Called when a tracked variable is read.</param>
-internal sealed class UnitGlobals(Action recorder) : ScriptObject(0, false)
+/// <param name="projectRead">Called when <c>project</c> is read.</param>
+internal sealed class UnitGlobals(Action recorder, Action? projectRead = null) : ScriptObject(0, false)
 {
     /// <summary>Variables whose reads record the element's dependencies.</summary>
     public static readonly FrozenSet<string> ElementDerived = FrozenSet.Create(StringComparer.Ordinal, "mapping", "mappings", "hints");
@@ -222,6 +224,9 @@ internal sealed class UnitGlobals(Action recorder) : ScriptObject(0, false)
     {
         if (ElementDerived.Contains(member))
             recorder();
+        // Reading the project variable makes the unit depend on the project's name and properties (s:project), and only then.
+        else if (projectRead is not null && string.Equals(member, "project", StringComparison.Ordinal))
+            projectRead();
         return base.TryGetValue(context, span, member, out value);
     }
 }

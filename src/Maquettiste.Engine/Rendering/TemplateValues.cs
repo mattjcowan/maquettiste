@@ -27,6 +27,11 @@ internal interface ITemplateView;
 /// <param name="Params">The effective parameters.</param>
 internal sealed record PackView(string Name, string Version, MapView Params) : ITemplateView;
 
+/// <summary>The <c>project</c> variable: the project's name and its own properties (<c>maquettiste.json</c> <c>name</c>, <c>properties</c>).</summary>
+/// <param name="Name">The project name, or <see langword="null"/>.</param>
+/// <param name="Properties">The properties, key to text, keys in ordinal order.</param>
+internal sealed record ProjectView(string? Name, MapView Properties) : ITemplateView;
+
 /// <summary>The <c>unit</c> variable.</summary>
 /// <param name="Id">The unit id in <c>pack.json</c>.</param>
 /// <param name="Key">The unit key (<c>&lt;pack&gt;/&lt;unitId&gt;[:&lt;elementId&gt;]</c>).</param>

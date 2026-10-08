@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
@@ -148,6 +149,30 @@ public sealed class IncrementalTests
         var result = await repo.ApplyAsync();
         Assert.Equal(8, result.UnitsRendered);
         Assert.Contains("System.Guid Id,", repo.Repo.ReadFile("db/e2e/types/Customer.cs"), StringComparison.Ordinal);
+        await AssertIncrementalEqualsForcedAsync(repo);
+    }
+
+    [Fact]
+    public async Task Project_properties_reach_templates_and_editing_one_rerenders_only_the_units_that_read_project()
+    {
+        // project.properties (maquettiste.json "properties"): every pack's templates read them; reading project records s:project.
+        await using var repo = E2ERepo.Create(demo: false, settings: s => s["properties"] = new JsonObject { ["baseNamespace"] = "Acme.Billing" });
+        var index = Path.Combine(repo.Repo.ModelRoot, "templates", "e2e", "index.scriban");
+        File.WriteAllText(index, "{{ project.name }}|{{ project.properties.baseNamespace }}\n" + File.ReadAllText(index));
+        await repo.ApplyAsync();
+        Assert.StartsWith("billing|Acme.Billing\n", repo.Repo.ReadFile("db/e2e/index.txt").ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        var before = await PlanAsync(repo);
+        Assert.Equal(["e2e/index"], before.Units.Where(u => u.ReadKeys.Contains("s:project")).Select(u => u.Key));
+
+        var settingsPath = Path.Combine(repo.Repo.ModelRoot, "maquettiste.json");
+        var node = JsonNode.Parse(File.ReadAllBytes(settingsPath))!.AsObject();
+        node["properties"]!["baseNamespace"] = "Acme.Invoicing";
+        File.WriteAllBytes(settingsPath, TestServices.Json.Write(node, "maquettiste.json", "maquettiste.json"));
+
+        var plan = await PlanAsync(repo);
+        Assert.Equal(["e2e/index"], plan.Units.Where(u => !u.Skipped).Select(u => u.Key));
+        await repo.ApplyAsync();
+        Assert.StartsWith("billing|Acme.Invoicing\n", repo.Repo.ReadFile("db/e2e/index.txt").ReplaceLineEndings("\n"), StringComparison.Ordinal);
         await AssertIncrementalEqualsForcedAsync(repo);
     }
 

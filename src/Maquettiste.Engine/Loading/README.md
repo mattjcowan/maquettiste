@@ -65,8 +65,10 @@ The model loader (stage 1), the index cache, the file-name policy, the change pl
   `EnumerateModelFiles()` the files a full load would look at; `ModelStore.LastFileStamps()` forwards to the store's loader. Both are
   computed on request, so hosts that never ask pay nothing (Generation/README.md, "Last-run record").
 
-- **Materialize (2026-10-02, erratum E43).** `Materializer` plans the batch operations `materialize-tables` and
-  `materialize-entities` against one snapshot (resolving it, for tables with every picked entity projected through a mapping
+- **Materialize (2026-10-02, erratum E43).** `Materializer` plans the batch operations `materialize-tables`,
+  `materialize-entities`, `materialize-attributes` and `materialize-columns` (2026-10-07: a bound entity takes attributes for its
+  source's columns, by the same column-to-attribute rule, `AttributeFor`, and its table takes columns for its unmapped attributes,
+  shaped by the projection and written by the same `ColumnNode` as materialize-tables) against one snapshot (resolving it, for tables with every picked entity projected through a mapping
   element added in memory) and returns creates, updates and deletes that `ModelStore` adds to the batch's changes, so they apply
   all or nothing with the rest; the overlay of a materialized entity becomes its designed table under the same id, and after the
   save the committed snapshot records the stored tables' keys as aliases (`Generation.SnapshotAliases`), which the schema diff reads

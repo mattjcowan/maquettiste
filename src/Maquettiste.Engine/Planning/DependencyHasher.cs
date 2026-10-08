@@ -218,6 +218,12 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "typeMaps" => CanonicalForm.Hash("s:typeMaps", settings.TypeMaps),
             "inflection" => CanonicalForm.Hash("s:inflection", settings.Inflection),
             "localization" => CanonicalForm.Hash("s:localization", settings.Localization),
+            // The project variable of templates: the name and the properties, keys in ordinal order.
+            "project" => CanonicalForm.Hash("s:project", new
+            {
+                settings.Name,
+                Properties = new SortedDictionary<string, string>(settings.Properties.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal), StringComparer.Ordinal),
+            }),
             // Strategy declarations and every referenceStorage choice (project and per database), by database name.
             "referenceData" => CanonicalForm.Hash("s:referenceData", new
             {

@@ -149,8 +149,14 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   never projected. To turn an entity the database projects into a table of its own, use materialize instead of relying on
   projection: `get_materialize_status`, `preview_materialize`, then `apply_batch` with `{"op":"materialize-tables",
   "database":...,"entities":[...]}`; to make entities from existing tables, `{"op":"materialize-entities","database":...,
-  "tables":[...],"package":...}`. From a terminal: `maquettiste model materialize tables|entities ... --dry-run`. Which
+  "tables":[...],"package":...}`; to give a bound entity attributes for its table's unmapped columns,
+  `{"op":"materialize-attributes","database":...,"entities":[...]}` (add `"columns":[...]` for some of one entity's); to give its
+  table columns for its unmapped attributes, `{"op":"materialize-columns","database":...,"entities":[...]}` (`"attributes":[...]`
+  for some). From a terminal: `maquettiste model materialize tables|entities|attributes|columns ... --dry-run`. Which
   tables to materialize, and when, is the user's decision.
+- Tags: `tag_usage` counts each tag's uses in a vocabulary's scope (and the undeclared ones in use); to remove tags from the
+  vocabulary and every use, or rename one, use `apply_batch` `{"op":"retag","tags":[...],"name":<new key>,"package":<domain>}`
+  rather than editing every element.
 - Reference data (units, countries, statuses that grow) is a reference type with its rows in a seed; an entity's
   starting rows are a seed of that entity. Deleting an element deletes its seeds and translations in the same save.
 - The engine creates no table or column for reference data on its own: the packs decide the physical form, from the
