@@ -518,6 +518,10 @@ internal sealed partial class ChangePlanner
     private void Stage(string id, Element element, JsonObject node, KindInfo info, string modelPath, ChangeOutcome outcome, Working? previous = null)
     {
         var repoPath = _paths.ToRepoPath(modelPath);
+        // A seed whose rows live in a CSV file (rowsFrom): the rows go to the CSV, the seed file keeps the rest.
+        var csvRows = element is Seed { RowsFrom: not null } ? node["rows"]?.DeepClone() : null;
+        if (csvRows is not null)
+            node.Remove("rows");
         var bytes = _json.Write(node, info.SchemaFile, repoPath);
         var json = Parse(bytes);
         List<(string Source, string Target, byte[] Bytes)>? sidecarMoves = null;
@@ -531,7 +535,10 @@ internal sealed partial class ChangePlanner
                 // A sidecar took a new name in the target folder: the element's description.file changed with it.
                 bytes = _json.Write(node, info.SchemaFile, repoPath);
                 json = Parse(bytes);
+                var rows = (element as Seed)?.Rows;
                 element = ElementReader.ReadElement(json);
+                if (rows is not null && element is Seed renamedSeed)
+                    element = renamedSeed with { Rows = rows };
             }
         }
 
@@ -545,9 +552,21 @@ internal sealed partial class ChangePlanner
                 outcome.Fail(SaveOutcome.Invalid, RuleCatalog.Create("MQ1004", $"{pointer}/id The id {subId} appears twice in the element.", id, repoPath, pointer + "/id"));
         }
 
-        _working[id] = new Working(element, modelPath, bytes, hash, json, previous?.SidecarText);
+        var documentJson = json;
+        if (csvRows is not null)
+        {
+            var withRows = JsonNode.Parse(json.GetRawText())!.AsObject();
+            withRows["rows"] = csvRows;
+            documentJson = JsonSerializer.SerializeToElement(withRows);
+        }
+
+        _working[id] = new Working(element, modelPath, bytes, hash, documentJson, previous?.SidecarText);
+        DropRowsFile(previous, element);
         if (previous is not null && previous.ModelPath == modelPath && previous.Hash == hash && _snapshotPaths.ContainsKey(modelPath))
-            return; // unchanged bytes at the same path: nothing to write
+        {
+            WriteRowsFile(modelPath, element);
+            return; // unchanged bytes at the same path: only the rows file may have changed
+        }
         _writes[modelPath] = bytes;
         if (previous is not null && _snapshotPaths.ContainsKey(previous.ModelPath))
             _touched[previous.ModelPath] = _snapshot.GetDocument(id)!.Hash;
@@ -569,6 +588,32 @@ internal sealed partial class ChangePlanner
         }
 
         _deletes.Remove(modelPath);
+        WriteRowsFile(modelPath, element);
+    }
+
+    /// <summary>A CSV-backed seed's rows (SeedCsv), written beside the seed file when they differ from what is there.</summary>
+    private void WriteRowsFile(string modelPath, Element element)
+    {
+        if (element is not Seed { RowsFrom: { } rowsFrom } seed || ModelPaths.ResolveSidecar(modelPath, rowsFrom.File) is not { } path)
+            return;
+        var bytes = SeedCsv.Write(seed.Columns, seed.Rows);
+        var current = _writes.TryGetValue(path, out var planned) ? planned : Exists(path) ? File.ReadAllBytes(_paths.FullPath(path)) : null;
+        if (current is not null && current.AsSpan().SequenceEqual(bytes))
+            return;
+        _writes[path] = bytes;
+        _deletes.Remove(path);
+    }
+
+    /// <summary>A seed that no longer keeps its rows in a CSV (or keeps them in another one): the old file goes, unless another element uses it.</summary>
+    private void DropRowsFile(Working? previous, Element element)
+    {
+        if (previous?.Element is not Seed { RowsFrom: { } old } || (element as Seed)?.RowsFrom?.File == old.File)
+            return;
+        if (ModelPaths.ResolveSidecar(previous.ModelPath, old.File) is { } path && Exists(path) && !SidecarUsedByOthers(path, previous.Element.Id))
+        {
+            _deletes.Add(path);
+            _writes.Remove(path);
+        }
     }
 
     private static JsonElement Parse(byte[] bytes)

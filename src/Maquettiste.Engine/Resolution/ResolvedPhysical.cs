@@ -3,6 +3,41 @@ namespace Maquettiste.Engine.Resolution;
 /// <summary>A resolved database, with the annotations (<see cref="RAnnotated"/>) of its file (no fallbacks for display and plural names).</summary>
 public sealed class RDatabase : RAnnotated
 {
+    private RList<RSeedTable>? _seedTables;
+    private string? _seedHash;
+
+    /// <summary>
+    /// Every row the model seeds into this database, in database terms, per table in foreign key order (referenced tables first):
+    /// the table seeds, and the entity and relation seeds that reach a table through a binding (field map and constants) or a mapping
+    /// (2026-10-07, table seeds). Built on first read.
+    /// </summary>
+    public RList<RSeedTable> SeedTables
+    {
+        get
+        {
+            if (Volatile.Read(ref _seedTables) is { } tables)
+                return tables;
+            var built = SeedTablesFactory?.Invoke() ?? RList<RSeedTable>.Empty;
+            return Interlocked.CompareExchange(ref _seedTables, built, null) ?? built;
+        }
+    }
+
+    /// <summary>The hash of <see cref="SeedTables"/> in canonical form: changes when any row, its settings or its order changes.</summary>
+    public string SeedHash
+    {
+        get
+        {
+            if (Volatile.Read(ref _seedHash) is { } hash)
+                return hash;
+            var built = SeedHashFactory?.Invoke(SeedTables) ?? "";
+            return Interlocked.CompareExchange(ref _seedHash, built, null) ?? built;
+        }
+    }
+
+    internal Func<RList<RSeedTable>>? SeedTablesFactory { get; set; }
+
+    internal Func<RList<RSeedTable>, string>? SeedHashFactory { get; set; }
+
     /// <inheritdoc/>
     public override string Kind => "database";
 
@@ -175,6 +210,9 @@ public sealed class RTable : RAnnotated
 
     /// <summary>Whether the table is a relation's junction table.</summary>
     public bool IsJunction { get; internal set; }
+
+    /// <summary>The seeds whose target is this table (a table file's), by seed name.</summary>
+    public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 
     /// <summary>
     /// The entity bindings that read or write the table (erratum E43), by (entity name, entity id): the entities that materialize from
@@ -904,4 +942,57 @@ public sealed class RSqlObject : RAnnotated
 
     /// <summary>Whether the file has statements for the database's dialect or for every dialect.</summary>
     public bool HasBody { get; internal set; }
+}
+
+/// <summary>The rows the model seeds into one table of a database (<see cref="RDatabase.SeedTables"/>).</summary>
+public sealed class RSeedTable : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "seed-table";
+
+    /// <summary>The table.</summary>
+    public RTable Table { get; internal set; } = null!;
+
+    /// <summary>The columns that find a row again on the next run: the table seeds' key, else the primary key.</summary>
+    public IReadOnlyList<RColumn> KeyColumns { get; internal set; } = [];
+
+    /// <summary>The columns any row gives a value for, in table order.</summary>
+    public IReadOnlyList<RColumn> Columns { get; internal set; } = [];
+
+    /// <summary>The seeds the rows come from, in row order.</summary>
+    public IReadOnlyList<RSeed> Seeds { get; internal set; } = [];
+
+    /// <summary>The rows: table seeds first (by seed name), then entity and relation seeds, each in its rows' order.</summary>
+    public IReadOnlyList<RDataRow> Rows { get; internal set; } = [];
+
+    /// <summary>Whether the table's foreign keys to other seeded tables form a cycle with them, so the order is the tables' names.</summary>
+    public bool InCycle { get; internal set; }
+}
+
+/// <summary>One row the model seeds into a table, in database terms.</summary>
+public sealed class RDataRow : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "data-row";
+
+    /// <summary>The seed it comes from.</summary>
+    public RSeed Seed { get; internal set; } = null!;
+
+    /// <summary><c>table</c> (a table seed), <c>entity</c> or <c>relation</c> (through a binding or a mapping).</summary>
+    public string Source { get; internal set; } = "table";
+
+    /// <summary>The cells by column name, as the database stores them (an enum by the column's storage, a reference code, a key value).</summary>
+    public IReadOnlyDictionary<string, object?> Values { get; internal set; } = System.Collections.Frozen.FrozenDictionary<string, object?>.Empty;
+
+    /// <summary>The row's key values, in <see cref="RSeedTable.KeyColumns"/> order (null where the row gives none).</summary>
+    public IReadOnlyList<object?> Key { get; internal set; } = [];
+
+    /// <summary>The seed's environments; empty means every environment.</summary>
+    public IReadOnlyList<string> Environments => Seed.Environments;
+
+    /// <summary>The seed's apply mode: <c>once</c> or <c>converge</c>.</summary>
+    public string Apply => Seed.Apply;
+
+    /// <summary>The seed's delete flag (with converge).</summary>
+    public bool Delete => Seed.Delete;
 }

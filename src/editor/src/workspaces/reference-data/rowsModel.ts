@@ -546,6 +546,36 @@ export function entityGridColumns(attributes: readonly AttributeDoc[], ends: rea
   return [...attributes.map(attributeColumn), ...ends.map((e) => endColumn(e.end, nameOf))];
 }
 
+/** A table column as a table seed's grid shows it (2026-10-07). */
+interface TableColumnLike {
+  id: string;
+  name: string;
+  type?: string | null;
+  nullable?: boolean | null;
+  default?: unknown;
+  defaultSql?: Record<string, string> | null;
+  generated?: unknown;
+  identity?: unknown;
+  computed?: string | null;
+  sequence?: string | null;
+  comment?: string | null;
+}
+
+/** A table seed's columns: the table's, less those the database fills (identity, generated, computed), required when NOT NULL without a default. */
+export function tableGridColumns(columns: readonly TableColumnLike[]): GridColumn[] {
+  return columns
+    .filter((c) => !c.identity && !c.generated && !c.computed)
+    .map((c) => ({
+      key: c.id,
+      label: c.name,
+      builtin: false,
+      type: c.type ?? "string",
+      collection: false,
+      required: c.nullable === false && c.default === undefined && !Object.keys(c.defaultSql ?? {}).length && !c.sequence,
+      ...(c.comment ? { help: c.comment } : {}),
+    }));
+}
+
 /** A relation seed's columns: both ends (every link names both), then the relation's attributes. */
 export function relationGridColumns(relation: Pick<RelationDoc, "ends" | "attributes">, nameOf: (id: string) => string | undefined): GridColumn[] {
   return [...(relation.ends ?? []).map((e) => endColumn(e, nameOf)), ...((relation.attributes ?? []) as AttributeDoc[]).map(attributeColumn)];

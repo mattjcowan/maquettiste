@@ -407,6 +407,24 @@ public sealed class ModelSnapshot {                        // immutable, thread-
 ```
 
 The tag vocabulary and the category tree are one per scope (explorer-redesign.md section 1.11): a vocabulary without `package` is global, one with `package` belongs to that domain and the domains nested in it. `Create` keeps the ordinally first file of each kind per scope and adds error MQ1009, naming both paths, to `LoadDiagnostics` for any other; `Tags` and `Categories` are the global ones, `TagVocabularies`, `CategoryTrees`, `TagVocabularyOf(scope)`, `CategoryTreeOf(scope)` and `VocabularyChain(package)` (the package, each enclosing package nearest first, then global) serve the domain chain. An element's tags and categories resolve along its chain: declared nowhere on it but in another domain is MQ2008, declared nowhere is MQ2006; a domain vocabulary redeclaring a key or category name of the global vocabulary or an enclosing domain's is MQ3021. A domain's files live in `model/vocabularies/` as `<name>-tags.json` and `<name>-categories.json`.
+*Table seeds* (2026-10-07; `tmp/scope-table-seeds.md` the proposal). A seed's `target` may be a table file (designed or imported, never
+a synthesized overlay): its `columns` are column ids and its cells column values; `key` names a unique constraint as its row key
+(default the primary key). Every seed takes `environments` (empty: every environment), `apply` (`once`, the default, inserts the rows
+whose key is missing; `converge` also updates changed rows) and `delete` (with converge: remove the rows the seed does not hold).
+`rowsFrom: { file }` keeps the rows in a CSV sidecar (`SeedCsv`: `@id` and the column ids as the header, RFC 4180, a quoted cell
+is text, an unquoted one a JSON number, boolean, array or object when it parses as one): the loader reads them into the seed and
+its document JSON, the change planner writes them back on every save (and deletes the file when `rowsFrom` goes), so the
+editor, the API and batches see rows as for any seed; the sidecar is watched, hashed and moved as description sidecars are. A
+CSV-backed seed is exempt from MQ7104's size limit. Resolution: `RTable.Seeds`; `RDatabase.SeedTables` (built on first read):
+per table in foreign key order (a cycle keeps name order, `InCycle`), the rows the database receives in database terms
+(`RDataRow`: `values` by column name, `key`, `source` `table|entity|relation`, the seed's settings): table seeds, entity seeds
+through the binding to the database (field map, constants, write table; a read-only binding none) or through the mapping of a
+database that projects the entity, relation seeds into junction tables; `RDatabase.SeedHash` hashes them canonically. Rules:
+MQ7107 (a table file and its columns), MQ7108 (no identity, generated or computed column), MQ7109 (a cell fits its column), MQ7111
+(a foreign key names a row of the referenced table's seeds, when it has seeds), MQ7112 (one row per key, across a table's seeds of
+overlapping environments), MQ7113 (warning: a table seeded by its own seeds and a bound entity's), MQ7114 (a row key), MQ7116 (the
+rows file). CHECK constraints are left to the database.
+
 *Tags across the model* (2026-10-07, `ModelStore.Tags.cs`; the owner: a vocabulary created on a model that already used tags turned
 every use into a note). A use of a tag belongs to the nearest vocabulary on the element's chain that declares it, or to none; a
 scope (global, or a domain) governs its own declared tags' uses inside it and the undeclared uses inside it, so a domain that

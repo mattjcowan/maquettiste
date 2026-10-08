@@ -1,0 +1,193 @@
+{{-
+# Table seeds and the entity seeds that reach a table through a binding (database.seed_tables, referenced tables first): seed.sql
+# writes the rows for every environment, seed.<env>.sql an environment's own. A seed applied once inserts the rows whose key is
+# missing; a converging seed also updates the rows whose other columns changed (an upsert on the row key), and with delete it
+# removes the table's rows it does not hold. Entity seeds of a database that projects the entity are written by seed_statements.
+
+# Whether a row is written here: a table seed's, or an entity seed's that reaches the table through a binding, for this environment
+# ("" for the rows of every environment).
+func data_row_here(r, env, db)
+  if r.source == "relation" || (r.source == "entity" && !r.seed.target.bindings[db.name])
+    ret false
+  end
+  if env == ""
+    ret r.environments.size == 0
+  end
+  ret array.contains r.environments env
+end
+
+# The columns a seed's rows give values for, in table order.
+func data_columns(st, rows)
+  $out = []
+  for c in st.columns
+    $given = false
+    for r in rows
+      if object.has_key r.values c.name
+        $given = true
+        break
+      end
+    end
+    if $given
+      $out[$out.size] = c
+    end
+  end
+  ret $out
+end
+
+func data_values(rows, columns, db)
+  $out = []
+  for r in rows
+    $v = ""
+    for c in columns
+      $v = $v + (for.first ? "" : ", ") + cell_sql(r.values[c.name], db)
+    end
+    $out[$out.size] = "(" + $v + ")"
+  end
+  ret $out
+end
+
+func data_key_match(keys, left, right, db)
+  $s = ""
+  for k in keys
+    $s = $s + (for.first ? "" : " AND ") + left + "." + q(k.name, db) + " = " + right + "." + q(k.name, db)
+  end
+  ret $s
+end
+
+# INSERT the rows whose key is missing (update false), or upsert them (update true), in the database's dialect.
+func data_write_sql(t, keys, columns, rows, update, db)
+  $list = cols(columns, db)
+  $values = data_values(rows, columns, db)
+  $rest = []
+  for c in columns
+    $is_key = false
+    for k in keys
+      if k.name == c.name
+        $is_key = true
+      end
+    end
+    if !$is_key
+      $rest[$rest.size] = c
+    end
+  end
+  $identity = false
+  for c in columns
+    if c.identity
+      $identity = true
+    end
+  end
+  $d = db.dialect
+  if $d == "postgresql" || $d == "sqlite"
+    $conflict = keys.size == 0 ? "" : "\nON CONFLICT (" + cols(keys, db) + ")"
+    if keys.size > 0
+      if update && $rest.size > 0
+        $set = ""
+        for c in $rest
+          $set = $set + (for.first ? "" : ", ") + q(c.name, db) + " = EXCLUDED." + q(c.name, db)
+        end
+        $conflict = $conflict + " DO UPDATE SET " + $set
+      else
+        $conflict = $conflict + " DO NOTHING"
+      end
+    end
+    ret "INSERT INTO " + qt(t) + " (" + $list + ") VALUES\n    " + ($values | array.join ",\n    ") + $conflict + ";"
+  end
+  if $d == "mysql" || $d == "mariadb"
+    if !update || $rest.size == 0
+      ret "INSERT IGNORE INTO " + qt(t) + " (" + $list + ") VALUES\n    " + ($values | array.join ",\n    ") + ";"
+    end
+    $set = ""
+    for c in $rest
+      $set = $set + (for.first ? "" : ", ") + q(c.name, db) + " = VALUES(" + q(c.name, db) + ")"
+    end
+    ret "INSERT INTO " + qt(t) + " (" + $list + ") VALUES\n    " + ($values | array.join ",\n    ") + "\nON DUPLICATE KEY UPDATE " + $set + ";"
+  end
+  # SQL Server and Oracle: MERGE on the row key.
+  if $d == "oracle"
+    $selects = []
+    for r in rows
+      $v = ""
+      for c in columns
+        $v = $v + (for.first ? "" : ", ") + cell_sql(r.values[c.name], db) + " AS " + q(c.name, db)
+      end
+      $selects[$selects.size] = "SELECT " + $v + " FROM dual"
+    end
+    $source = "(\n    " + ($selects | array.join "\n    UNION ALL ") + ") v"
+    $target = qt(t) + " x"
+  else
+    $source = "(VALUES\n    " + ($values | array.join ",\n    ") + ") AS v (" + $list + ")"
+    $target = qt(t) + " AS x"
+  end
+  $s = "MERGE INTO " + $target + "\nUSING " + $source + "\nON " + ($d == "oracle" ? "(" : "") + data_key_match(keys, "x", "v", db) + ($d == "oracle" ? ")" : "")
+  if update && $rest.size > 0
+    $set = ""
+    for c in $rest
+      $set = $set + (for.first ? "" : ", ") + "x." + q(c.name, db) + " = v." + q(c.name, db)
+    end
+    $s = $s + "\nWHEN MATCHED THEN UPDATE SET " + $set
+  end
+  $inserted = ""
+  for c in columns
+    $inserted = $inserted + (for.first ? "" : ", ") + "v." + q(c.name, db)
+  end
+  $s = $s + "\nWHEN NOT MATCHED THEN INSERT (" + $list + ") VALUES (" + $inserted + ");"
+  if $d == "sqlserver" && $identity
+    $s = "SET IDENTITY_INSERT " + qt(t) + " ON;\n" + $s + "\nSET IDENTITY_INSERT " + qt(t) + " OFF;"
+  end
+  ret $s
+end
+
+# DELETE the table's rows a converging seed with delete does not hold (by the row key).
+func data_delete_sql(t, keys, rows, db)
+  if keys.size == 0
+    ret null
+  end
+  if rows.size == 0
+    ret "DELETE FROM " + qt(t) + ";"
+  end
+  if keys.size == 1
+    $in = ""
+    for r in rows
+      $in = $in + (for.first ? "" : ", ") + cell_sql(r.values[keys[0].name], db)
+    end
+    ret "DELETE FROM " + qt(t) + "\nWHERE " + q(keys[0].name, db) + " NOT IN (" + $in + ");"
+  end
+  $any = ""
+  for r in rows
+    $one = ""
+    for k in keys
+      $one = $one + (for.first ? "" : " AND ") + q(k.name, db) + " = " + cell_sql(r.values[k.name], db)
+    end
+    $any = $any + (for.first ? "" : "\n    OR ") + "(" + $one + ")"
+  end
+  ret "DELETE FROM " + qt(t) + "\nWHERE NOT (" + $any + ");"
+end
+
+# The statements of the rows written here for an environment ("" for every environment), seed by seed, tables in foreign key order.
+func data_statements(db, env, out)
+  for st in db.seed_tables
+    for seed in st.seeds
+      $rows = []
+      for r in st.rows
+        if r.seed.id == seed.id && data_row_here(r, env, db)
+          $rows[$rows.size] = r
+        end
+      end
+      if $rows.size == 0
+        continue
+      end
+      $cols = data_columns(st, $rows)
+      if $cols.size == 0
+        continue
+      end
+      $converge = seed.apply == "converge"
+      $s = "-- " + $rows.size + ($rows.size == 1 ? " row" : " rows") + " into " + st.table.name + ($converge ? ", kept as the model has them." : ", inserted when missing.")
+      $s = $s + "\n" + data_write_sql(st.table, st.key_columns, $cols, $rows, $converge, db)
+      if $converge && seed.delete
+        $s = $s + "\n" + data_delete_sql(st.table, st.key_columns, $rows, db)
+      end
+      out[out.size] = $s
+    end
+  end
+end
+-}}

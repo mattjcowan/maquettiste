@@ -13,10 +13,20 @@ import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
 import { attributesOf } from "@/model/model";
 import { useEditor } from "@/state/store";
-import { endRowOptions, entityGridColumns, entitySeedEnds, newSeedDocument, relationGridColumns, type EndOption, type GridColumn } from "./rowsModel";
+import {
+  endRowOptions,
+  entityGridColumns,
+  entitySeedEnds,
+  newSeedDocument,
+  relationGridColumns,
+  tableGridColumns,
+  type EndOption,
+  type GridColumn,
+} from "./rowsModel";
 
-/** The kinds whose seeds the entity and relation editors show in the grid. */
-export const isSeedTargetKind = (kind: string | undefined): kind is "entity" | "relation" => kind === "entity" || kind === "relation";
+/** The kinds whose seeds the entity, relation and table editors show in the grid. */
+export const isSeedTargetKind = (kind: string | undefined): kind is "entity" | "relation" | "table" =>
+  kind === "entity" || kind === "relation" || kind === "table";
 
 interface TargetPlan {
   target?: ElementSummary;
@@ -30,7 +40,7 @@ interface TargetPlan {
 export function seedTargetPlan(rows: readonly ElementSummary[], targetId: string): TargetPlan {
   const byId = new Map(rows.map((r) => [r.id, r]));
   const target = byId.get(targetId);
-  if (target?.kind === "relation") return { target, documents: [targetId], lineage: [], relations: [] };
+  if (target?.kind === "relation" || target?.kind === "table") return { target, documents: [targetId], lineage: [], relations: [] };
   if (target?.kind !== "entity") return { target, documents: [], lineage: [], relations: [] };
   const lineage = [targetId, ...baseChain(byId, target.base)];
   const inLineage = new Set(lineage);
@@ -46,6 +56,10 @@ export function seedTargetColumns(rows: readonly ElementSummary[], targetId: str
   if (plan.target?.kind === "relation") {
     const relation = docOf(targetId) as RelationDoc | undefined;
     return relation ? relationGridColumns(relation, nameOf) : null;
+  }
+  if (plan.target?.kind === "table") {
+    const table = docOf(targetId) as unknown as { columns?: Parameters<typeof tableGridColumns>[0] } | undefined;
+    return table ? tableGridColumns(table.columns ?? []) : null;
   }
   if (plan.target?.kind !== "entity") return null;
   const docs = plan.documents.map(docOf);

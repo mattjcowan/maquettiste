@@ -18,7 +18,8 @@ For a database `main` (PostgreSQL, schema `billing`) with a table `invoices`:
 | `table` | `overwrite` | `each table` | `main/billing/tables/invoices.sql`: `CREATE TABLE` with columns, primary key, unique constraints, foreign keys and checks, then its indexes and comments |
 | `schema` | `overwrite` | `select databases` | `main/schema.sql`: schemas, SQL objects that run before the tables, database types, sequences, every table in foreign-key dependency order, then routines and views, then the other SQL objects (see DDL order) |
 | `migration` | `once` | `select databases` | `main/migrations/0001.sql`, `0002.sql`, …: one script per schema revision, from `schema_diff` |
-| `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
+| `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of table seeds and of seeds of entities bound to a table, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
+| `seed-environments` | `overwrite` (file blocks) | `select databases` | `main/seed.<environment>.sql` for each environment the `environments` parameter names and some seed of the database belongs to: those seeds' rows, to run after `seed.sql` |
 | `process-tables` | file blocks | `each process` | `main/processes/purchase-approval.sql`: instance, history and gate audit tables of a process, one script per database; only when `processTables` is `true` (see Process tables) |
 | `view` | file blocks | `each view` | `main/billing/views/outstanding_invoices.sql`: the view's `CREATE VIEW`; only when `objectScripts` is `true` (see Object scripts) |
 | `sequence` | file blocks | `each sequence` | `main/billing/sequences/invoice_number_seq.sql`: the sequence's `CREATE SEQUENCE`; only when `objectScripts` is `true` |
@@ -296,6 +297,13 @@ NOTHING` on PostgreSQL and SQLite, `WHERE NOT EXISTS` on the primary key on SQL 
 fills the foreign key with the referenced row's key; collection cells become junction rows or an array. Value-object cells, and
 seeds of relations stored as a foreign key (set the end on the entity's seed instead), are left to the `seed-data` region.
 
+**Table seeds and bound entities' seeds** (2026-10-07) come before them, tables in foreign key order: the rows of a seed whose
+target is a table, in column terms, and the rows of an entity's seed that reach the table its binding writes (the field map, with
+the binding's constants). A seed applied `once` (the default) inserts the rows whose row key is missing; a `converge` seed upserts
+on the row key (the primary key, or the unique constraint the seed names), and with `delete` also deletes the table's rows it does
+not hold. A seed whose `environments` are set goes to `seed.<environment>.sql` instead, for each environment the `environments`
+parameter names.
+
 ## Seed data and protected regions
 
 `seed.sql` is regenerated on every run (the reference data of reference types, reconciled with the current rows, and the rows
@@ -343,6 +351,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `comments` | `true` | Emit table and column comments: explicit comments, and descriptions under the project's `comments` convention (see Comments above). |
+| `environments` | `[]` | The environments to write a seed script for (`seed.<environment>.sql`, unit `seed-environments`): the rows of the seeds whose `environments` name it. `seed.sql` holds the rows of the seeds of every environment (`environments` empty). |
 | `idempotent` | `false` | Write DDL that can run again on a database that has its objects: `IF NOT EXISTS` / `IF EXISTS` and the dialect's guards (see Idempotent scripts). Off keeps the scripts plain DDL. |
 | `objectScripts` | `false` | Write one script per view, sequence, routine, database type and SQL object under `<db>/[<schema>/]views/`, `sequences/`, `routines/`, `types/` and `objects/` (see Object scripts). |
 | `referenceStrategy` | `"lookup-table"` | The strategy key for reference types whose storage the project leaves to the template (see Reference data). |
@@ -363,7 +372,8 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `_objects.scriban` | Sequences, views, routines, database types, SQL objects, schemas, include directives and the dependency specs for `ddl_order` (foreign keys, and `dependsOn` for the DDL order). |
 | `_migration.scriban` | Statement builders over the schema diff. |
 | `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
-| `table.scriban`, `view.scriban`, `sequence.scriban`, `routine.scriban`, `database-type.scriban`, `sql-object.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `process-tables.scriban` | The unit templates. |
+| `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. |
+| `table.scriban`, `view.scriban`, `sequence.scriban`, `routine.scriban`, `database-type.scriban`, `sql-object.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `seed-environments.scriban`, `process-tables.scriban` | The unit templates. |
 
 ## Notes
 

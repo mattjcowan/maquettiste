@@ -154,6 +154,10 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   table columns for its unmapped attributes, `{"op":"materialize-columns","database":...,"entities":[...]}` (`"attributes":[...]`
   for some). From a terminal: `maquettiste model materialize tables|entities|attributes|columns ... --dry-run`. Which
   tables to materialize, and when, is the user's decision.
+- Seeds: a seed's `target` is an entity, a relation, a reference type, or a table file (a table seed: rows the database needs
+  without an entity, columns by column id, cells as column values, `key` a unique constraint id). `environments` (empty: every
+  environment), `apply` (`once` default, or `converge`) and `delete` say how rows are applied; `rowsFrom: {"file": "<name>.csv"}`
+  keeps large rows in a CSV beside the seed (send rows as usual; the engine writes the CSV).
 - Tags: `tag_usage` counts each tag's uses in a vocabulary's scope (and the undeclared ones in use); to remove tags from the
   vocabulary and every use, or rename one, use `apply_batch` `{"op":"retag","tags":[...],"name":<new key>,"package":<domain>}`
   rather than editing every element.

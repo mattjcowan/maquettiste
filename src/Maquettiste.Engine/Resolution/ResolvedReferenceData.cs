@@ -129,14 +129,29 @@ public sealed class RRow : RObject
     };
 }
 
-/// <summary>A resolved seed (section 2.5): rows of data for an entity, a relation or a reference type.</summary>
+/// <summary>A resolved seed (section 2.5): rows of data for an entity, a relation, a reference type or a table.</summary>
 public sealed class RSeed : RElement
 {
     /// <inheritdoc/>
     public override string Kind => "seed";
 
-    /// <summary>The target: an <see cref="REntity"/>, an <see cref="RRelation"/> or an <see cref="RReferenceType"/>.</summary>
+    /// <summary>The target: an <see cref="REntity"/>, an <see cref="RRelation"/>, an <see cref="RReferenceType"/> or an <see cref="RTable"/>.</summary>
     public IResolvedObject? Target { get; internal set; }
+
+    /// <summary>The environments the rows belong to; empty means every environment.</summary>
+    public IReadOnlyList<string> Environments { get; internal set; } = [];
+
+    /// <summary><c>once</c> (insert the rows whose key is missing) or <c>converge</c> (also update changed rows).</summary>
+    public string Apply { get; internal set; } = "once";
+
+    /// <summary>With <c>converge</c>: whether a row removed from the seed is deleted from the database.</summary>
+    public bool Delete { get; internal set; }
+
+    /// <summary>A table seed's row key: the id of the unique constraint it names, or <see langword="null"/> for the primary key.</summary>
+    public string? Key { get; internal set; }
+
+    /// <summary>The CSV file the rows are kept in (<c>rowsFrom</c>), or <see langword="null"/> when the seed file holds them.</summary>
+    public string? RowsFrom { get; internal set; }
 
     /// <summary>The columns, in file order.</summary>
     public IReadOnlyList<RSeedColumn> Columns { get; internal set; } = [];
@@ -172,8 +187,11 @@ public sealed class RSeedColumn
     /// <summary>The column name: <c>code</c>, <c>label</c>, <c>description</c>, the attribute name or the end role.</summary>
     public string Name { get; internal set; } = "";
 
-    /// <summary><c>builtin</c>, <c>attribute</c> or <c>end</c>.</summary>
+    /// <summary><c>builtin</c>, <c>attribute</c>, <c>end</c> or <c>column</c> (a table seed's).</summary>
     public string Kind { get; internal set; } = "builtin";
+
+    /// <summary>The table column, for a column of a table seed.</summary>
+    public RColumn? Column { get; internal set; }
 
     /// <summary>The attribute, for an attribute column.</summary>
     public RAttribute? Attribute { get; internal set; }

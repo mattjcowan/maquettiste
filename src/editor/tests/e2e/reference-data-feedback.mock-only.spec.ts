@@ -362,7 +362,7 @@ test("Storage explains strategies in plain words and previews a pack's database 
 
   // The preview lists the packs' database-scoped units, names the one it renders, and shows this type's statements.
   const unit = page.getByTestId("storage-preview-unit");
-  await expect(unit.locator("option")).toHaveText(["schema (sql-ddl)", "migration (sql-ddl)", "seed (sql-ddl)"]);
+  await expect(unit.locator("option")).toHaveText(["schema (sql-ddl)", "migration (sql-ddl)", "seed (sql-ddl)", "seed-environments (sql-ddl)"]);
   await expect(unit.locator("option:checked")).toHaveText("seed (sql-ddl)");
   await expect(page.getByTestId("storage-preview-note")).toHaveText(
     "Renders the seed (sql-ddl) unit for main without writing it, and shows the statements for this type.",

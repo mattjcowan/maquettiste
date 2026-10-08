@@ -7975,7 +7975,7 @@ export interface components {
         };
         /**
          * Seed
-         * @description Rows of data for one target: an entity, a relation or a reference type.
+         * @description Rows of data for one target: an entity, a relation, a reference type or a table.
          */
         seed: {
             $schema?: components["schemas"]["schemaPath"];
@@ -7994,8 +7994,30 @@ export interface components {
             category?: components["schemas"]["id"];
             /** @description The entity, relation or reference type the rows are for; the seed belongs to it. */
             target: components["schemas"]["id"];
-            /** @description Built-in keywords (code, label, description) for a reference type, else attribute or relation-end ids. */
+            /** @description Built-in keywords (code, label, description) for a reference type, column ids for a table, else attribute or relation-end ids. */
             columns: (components["schemas"]["id"] | ("code" | "label" | "description"))[];
+            /** @description A table seed's row key: the id of the unique constraint whose columns find a row again on the next run; absent, the primary key. */
+            key?: components["schemas"]["id"];
+            /**
+             * @description The environments the rows belong to (free names such as dev, test, staging); empty means every environment.
+             * @default []
+             */
+            environments?: components["schemas"]["tagLabel"][];
+            /**
+             * @description How the rows are applied: once inserts the rows whose key is missing and never updates or deletes; converge also updates changed rows.
+             * @default once
+             * @enum {unknown}
+             */
+            apply?: "once" | "converge";
+            /**
+             * @description With converge: whether a row removed from the seed is deleted from the database.
+             * @default false
+             */
+            delete?: boolean;
+            /** @description A CSV file beside the seed file that holds the rows instead of rows: a header of @id and the column ids, one row per line. */
+            rowsFrom?: {
+                file: string;
+            };
             /** @default [] */
             rows?: {
                 id: components["schemas"]["id"];

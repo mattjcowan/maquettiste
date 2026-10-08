@@ -119,7 +119,7 @@ internal sealed partial class ResolveRun
         }
 
         FinishConceptual();
-        ResolveSeedsAndUsages();
+        ResolveSeedsAndUsages(resolvedDatabases);
         ResolveProcesses();
         var result = new ResolvedModel
         {

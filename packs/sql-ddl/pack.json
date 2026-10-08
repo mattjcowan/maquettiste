@@ -2,9 +2,10 @@
   "name": "sql-ddl",
   "version": "1.0.0",
   "engine": ">=1.0 <2.0",
-  "description": "SQL DDL for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
+  "description": "SQL DDL for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and writes seed rows (table seeds and bound entities' seeds inserted once or upserted), and one seed script per environment named in the environments parameter.",
   "parameters": {
     "comments": true,
+    "environments": [],
     "idempotent": false,
     "objectScripts": false,
     "processTables": false,
@@ -44,6 +45,11 @@
       "for": "select databases",
       "output": "{{ kebab database.name }}/seed.sql",
       "mode": "regions"
+    },
+    {
+      "id": "seed-environments",
+      "template": "seed-environments.scriban",
+      "for": "select databases"
     },
     {
       "id": "process-tables",

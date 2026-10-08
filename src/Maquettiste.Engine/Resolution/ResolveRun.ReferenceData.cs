@@ -118,8 +118,16 @@ internal sealed partial class ResolveRun
     /// Resolves seeds, their rows and the rows of each reference type, the reference usages of attributes and the seed lists of
     /// every target. Runs after the conceptual layer is finished (it reads flattened attributes and ends).
     /// </summary>
-    private void ResolveSeedsAndUsages()
+    private void ResolveSeedsAndUsages(IReadOnlyList<RDatabase> databases)
     {
+        // Table seeds target a table file of a database (2026-10-07): the tables by key, designed and imported ones only.
+        var tablesByKey = new Dictionary<string, RTable>(StringComparer.Ordinal);
+        foreach (var database in databases)
+        {
+            foreach (var table in database.Tables.Where(t => t.Origin != "synthesized"))
+                tablesByKey.TryAdd(table.Key, table);
+        }
+
         var endOwners = new Dictionary<string, (REnd End, RRelation Relation)>(StringComparer.Ordinal);
         foreach (var relation in _relations.Values)
         {
@@ -140,9 +148,15 @@ internal sealed partial class ResolveRun
             deps.Element(seed.Target);
             IResolvedObject? target = _referenceTypes.TryGetValue(seed.Target, out var rt) ? rt
                 : _entities.TryGetValue(seed.Target, out var entity) && entity.Id.Length > 0 ? entity
-                : _relations.GetValueOrDefault(seed.Target);
+                : _relations.TryGetValue(seed.Target, out var relation) ? relation
+                : tablesByKey.GetValueOrDefault(seed.Target);
             s.Target = target;
             s.Package = (target as RElement)?.Package; // a seed of an entity or relation stays in its target's package
+            s.Environments = seed.Environments;
+            s.Apply = seed.Apply == SeedApply.Converge ? "converge" : "once";
+            s.Delete = seed.Delete;
+            s.Key = seed.Key;
+            s.RowsFrom = seed.RowsFrom?.File;
             s.Columns = SeedColumns(seed, target, endOwners, deps);
             var seedKeys = deps.ToList();
             var rows = new List<RSeedRow>(seed.Rows.Count);
@@ -222,8 +236,12 @@ internal sealed partial class ResolveRun
             entity.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(entity.Id) ?? [], [Keys.Referrers(entity.Id), "k:seed"]);
         foreach (var relation in _relations.Values.Concat(_promotedRelations))
             relation.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(relation.Id) ?? [], [Keys.Referrers(relation.Id), "k:seed"]);
+        foreach (var table in tablesByKey.Values)
+            table.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(table.Key) ?? [], [Keys.Referrers(table.Key), "k:seed"]);
 
         OrderSeeds(seedRowsById);
+        foreach (var database in databases)
+            PrepareSeedTables(database, [.. _seedOrder], seedRowsById);
         ResolveUsages();
     }
 
@@ -237,6 +255,18 @@ internal sealed partial class ResolveRun
             _ => RList<RAttribute>.Empty,
         };
         var columns = new List<RSeedColumn>(seed.Columns.Count);
+        if (target is RTable table)
+        {
+            foreach (var column in seed.Columns)
+            {
+                columns.Add(table.Columns.FirstOrDefault(c => string.Equals(c.Key, column, StringComparison.Ordinal)) is { } found
+                    ? new RSeedColumn { Name = found.Name, Kind = "column", Column = found }
+                    : new RSeedColumn { Name = column, Kind = "column" }); // an unknown column is MQ7107
+            }
+
+            return columns;
+        }
+
         foreach (var column in seed.Columns)
         {
             if (target is RReferenceType && BuiltinColumns.Contains(column, StringComparer.Ordinal))

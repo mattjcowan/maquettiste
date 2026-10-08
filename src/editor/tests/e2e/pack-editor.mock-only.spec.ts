@@ -9,7 +9,7 @@ test("open a pack, edit a unit's output pattern and save", async ({ page }) => {
   await workspace(page, "Generate");
   const tree = page.getByRole("tree", { name: "Packs" });
   const pack = tree.getByTestId("pack-row-p:sql-ddl");
-  await expect(pack).toContainText("10 units");
+  await expect(pack).toContainText("11 units");
 
   // The tree reads the pack's units aloud before anything opens.
   await pack.getByText("sql-ddl", { exact: true }).click();

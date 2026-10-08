@@ -500,7 +500,6 @@ function BindingCard({
           <thead className="text-left text-11 text-secondary">
             <tr>
               <th className="font-medium">Attribute</th>
-              <th className="font-medium">From</th>
               <th className="font-medium">Column</th>
               <th className="font-medium">Status</th>
             </tr>
@@ -511,8 +510,12 @@ function BindingCard({
                 <td className="font-mono">
                   {r.attribute.name}
                   {r.attribute.isKey ? <span className="ml-1 rounded-[4px] bg-app px-1 font-sans text-11">key</span> : null}
+                  {originLabel(r.attribute) ? (
+                    <span className="ml-1 font-sans text-11 text-secondary" title={originTitle(r.attribute)} data-testid="field-origin">
+                      {originLabel(r.attribute)}
+                    </span>
+                  ) : null}
                 </td>
-                <td className="text-12 text-secondary">{r.attribute.from ?? (r.attribute.origin === "own" ? "" : r.attribute.origin)}</td>
                 <td className="w-56 py-0.5">
                   <Select
                     aria-label={`Column of ${r.attribute.name}`}
@@ -724,6 +727,37 @@ function BindingCard({
       ) : null}
     </section>
   );
+}
+
+/** Where an attribute the entity does not declare itself comes from, shown after its name; empty for its own attributes. */
+function originLabel(a: StorageAttribute): string {
+  switch (a.origin) {
+    case "inherited":
+      return `from ${a.from ?? "a base entity"}`;
+    case "virtual":
+      return a.from ?? "stereotype";
+    case "member":
+      return `in ${a.from ?? "a value object"}`;
+    case "relation":
+      return `via ${a.from ?? "a relationship"}`;
+    default:
+      return "";
+  }
+}
+
+function originTitle(a: StorageAttribute): string {
+  switch (a.origin) {
+    case "inherited":
+      return `Inherited from ${a.from ?? "a base entity"}`;
+    case "virtual":
+      return `Added by the stereotype ${a.from ?? ""}`;
+    case "member":
+      return `A member of the value object attribute ${a.from ?? ""}`;
+    case "relation":
+      return `The key of the to-one navigation of ${a.from ?? "a relationship"}`;
+    default:
+      return "";
+  }
 }
 
 function statusText(status: ColumnStatus, attribute: string | undefined, value: unknown): string {

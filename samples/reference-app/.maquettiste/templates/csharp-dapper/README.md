@@ -26,6 +26,7 @@ For entity `Invoice` in package `Billing`:
 | `query` | `overwrite` | `each query` | `Queries/InvoicesByCustomerQuery.g.cs`: `IInvoicesByCustomerQuery` and `InvoicesByCustomerQuery` (see Queries) |
 | `registrations` | file blocks | `model` | `Billing/BillingRepositories.g.cs`: one per package with repositories; `Queries/QueryRegistrations.g.cs` when the model has queries |
 | `type-handlers` | `overwrite` | `model` | `DapperTypeHandlers.g.cs`: the Dapper type handlers and `UlidGenerator` |
+| `seed-loader` | `overwrite` (file block) | `model` | With `seedLoader`: `SeedDataLoader.g.cs`, `SeedDataLoader` and `SeedDialect`. `new SeedDataLoader(connection, SeedDialect.PostgreSql, "data/main").LoadAsync("dev")` applies the seed-data pack's files for a database (`manifest.json` and its CSVs, or `seed-data.json`) in their order: a seed's rows when it belongs to every environment or to the one given, inserted when their key is missing (`once`), or also updated (`converge`, deleting the rows the seed does not hold with `delete`), with parameterized statements found by the table's key. `SeedHash` lets an application skip a load it has done. Nothing calls it. |
 | `gitignore` | `block`, `createFile` | `model` | Only with `gitignorePath` set: a managed block in that ignore file listing the generated folder (see Keeping the generated folder out of version control) |
 
 Folders follow the package tree (`Billing/Catalog/` for package `Catalog` inside `Billing`), and namespaces follow it too:
@@ -345,6 +346,7 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 | `database` | `""` | The database the repositories and foreign-key properties use; empty picks, per entity, the first database by name that maps it. |
 | `generatedFolder` | `""` | Folder (under the pack output) for generated files. |
 | `partialFolder` | `""` | Folder (under the pack output) for the once-written companions. |
+| `seedLoader` | `false` | Also write `SeedDataLoader.g.cs` (unit `seed-loader`): a class that loads the seed-data pack's output for one database with Dapper. Off, nothing changes. |
 | `endpointsFolder` | `""` | Folder (under the pack output) for the process endpoint files; empty writes none. Keep it in a folder you commit: the files have user-code regions. |
 | `testsFolder` | `""` | Folder (under the pack output) for the generated scenario tests (a test project's); empty writes none. |
 | `gitignorePath` | `""` | Path (under the pack output) of an ignore file that gets a managed block listing `generatedFolder`; empty writes none. Allow the file in `outputs.allow`. |

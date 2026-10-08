@@ -1194,6 +1194,33 @@ database shows on the Database screen at once. The explorers remember which rows
   changed since the preview. Translation columns (`@label:<locale>`, `@description:<locale>`) are saved after the rows,
   one save per seed and locale: if one of those saves fails the rows stay imported, and Undo takes back the rows, not
   the translations (fix or remove them in the Translations section or with `maquettiste l10n`).
+
+  **A table's own rows (table seeds).** A table file's editor has a **Data** tab: the same grid over the table's columns
+  (less those the database fills: identity, generated and computed columns), for the rows the database itself needs, such
+  as catalogs or allowed values, with no entity in between. Cells are column values. New seed creates one, as for an
+  entity. A table seed belongs to its table and goes with it.
+
+  **How rows are applied.** Under every seed grid, each seed has its settings:
+  - **Environments**: the environments its rows belong to (`dev, test`); empty means every environment.
+  - **Apply**: **Insert once** (the default: a row whose key is missing is inserted, a row that is there is left alone, so
+    edits made in a database survive) or **Keep as the model has them** (the rows are also updated to the model's values on
+    the next run).
+  - **Delete rows the seed does not hold** (with Keep as the model has them): the table holds exactly the seed's rows.
+  - **Row key** (a table seed): the primary key, or a unique constraint, that finds a row again on the next run.
+  - **Rows in a CSV file**: the rows move to `<seed>.csv` beside the seed file (a header of `@id` and the column ids, one
+    row per line), which suits seeds of thousands of rows and spreadsheet editing; the grid, validation and generation read
+    it the same way, and a save writes it back. Untick to bring the rows back into the seed file.
+
+  An entity's seed reaches the table its binding writes: the field map gives the columns and the binding's constants are
+  added to every row (a read-only binding writes none). Validation checks a table seed's cells against their columns (type,
+  length, precision, NOT NULL), its row keys, and its foreign keys against the referenced table's seeds (MQ7107 to MQ7116),
+  and warns when a table receives rows both from its own seeds and from a bound entity's (MQ7113).
+
+  **Where the rows go.** `sql-ddl`'s `seed.sql` writes the rows of every environment (inserts that skip existing keys, or
+  upserts per dialect for Keep as the model has them, and the deletes), and `seed.<environment>.sql` an environment's own
+  rows for each environment its `environments` parameter names. The `seed-data` pack writes them as files for a loader:
+  per database a `manifest.json` and one CSV per table, or one `seed-data.json` (`format`), in database terms and foreign
+  key order; `csharp-dapper` with `seedLoader` generates a `SeedDataLoader` that applies them. See `packs/seed-data/README.md`.
 - **Generate**: Plan renders every template unit and shows what would change, grouped by unit with the reason each
   renders (see "How the plan explains itself" below); pick a file to see its diff; Apply writes the plan. Generation runs as a job and reports progress; the run history stays in the panel. Clear, beside the Run history heading, deletes the finished runs and their stored plans (not while a run is queued or running), so a plan you have not applied must be made again. The Generate
   explorer and the pack editor (below) show and change what each pack does.

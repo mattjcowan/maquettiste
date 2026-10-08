@@ -536,6 +536,12 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
                         {
                             sidecars.Add((Pointer(path, "description"), file.GetString()!));
                         }
+                        else if (path.Count == 0 && property.NameEquals("rowsFrom"u8) && property.Value.ValueKind == JsonValueKind.Object
+                            && property.Value.TryGetProperty("file"u8, out var rows) && rows.ValueKind == JsonValueKind.String)
+                        {
+                            // A seed's rows file (SeedCsv): a sidecar like a description's, watched, hashed and moved with the seed.
+                            sidecars.Add(("/rowsFrom", rows.GetString()!));
+                        }
                         else if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
                         {
                             path.Add((property, -1));

@@ -293,6 +293,11 @@ test("a relationship between two bound entities names the foreign key that reali
     await tab.getByTestId("storage-create-table").click();
     await page.getByTestId("create-tables-apply").click();
     await expect(tab.getByTestId("binding-card")).toBeVisible();
+    // The field map names where an attribute comes from after its name, only when it is not the entity's own.
+    const fields = tab.getByTestId("binding-fields");
+    await expect(fields.getByRole("columnheader", { name: "From" })).toHaveCount(0);
+    if (name === "Invoice") await expect(fields.getByTestId("field-origin").filter({ hasText: "via places" }).first()).toBeVisible();
+    else await expect(fields.getByTestId("field-row-name").getByTestId("field-origin")).toHaveCount(0);
   }
   const side = explorer(page);
   await side.getByLabel("Search the model").fill("places");

@@ -29,6 +29,7 @@ import { domIdOf, EditorLayout, useEditorContext, type EditorContext } from "../
 import { CommentField, DatabaseLine, SchemaField } from "./fields";
 import { PartTab, useSelectedPart, usePartEdits } from "./TablePartsTabs";
 import { ExclusionsTab, StorageTab } from "./TableOptionsTabs";
+import { SeedDataTab } from "@/editors/SeedDataTab";
 
 type Rec = Record<string, unknown>;
 
@@ -150,6 +151,8 @@ function TableBody({
     { value: "checks", content: <PartTab td={td} kind="check" /> },
     { value: "exclusions", content: <ExclusionsTab td={td} /> },
     { value: "storage", content: <StorageTab td={td} /> },
+    // A table file's own rows (table seeds, 2026-10-07); a table not stored as a file yet has none.
+    ...(laidOut ? [] : [{ value: "data" as const, content: <SeedDataTab id={ctx.id} />, fill: true }]),
     { value: "ddl", content: <DdlTab database={database} tableKey={tableKey} />, fill: true },
     { value: "references", content: <ReferencesTab td={td} /> },
     { value: "json", content: <TableJsonTab td={td} ctx={ctx} />, fill: true },

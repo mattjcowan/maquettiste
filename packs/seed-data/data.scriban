@@ -1,0 +1,127 @@
+{{-
+# The seed data of one database (database.seed_tables: table seeds, and entity and relation seeds through their bindings and
+# mappings), in database terms and foreign key order. csv: <database>/manifest.json and one CSV per table, its header the columns
+# any row gives; json: <database>/seed-data.json. The manifest says, per table, its file, its key columns and, per seed, the rows
+# it holds (first row and count), the columns it gives, its environments (empty: every environment), and how a loader applies
+# it: once (insert the rows whose key is missing) or converge (also update changed rows; with delete, remove the rows it does not
+# hold). seedHash changes whenever any row or setting does, so a loader can skip a database it has loaded already.
+db = database
+folder = kebab db.name
+format = pack.params.format ?? "csv"
+
+func csv_cell(v)
+  if v == null
+    ret ""
+  end
+  $t = object.typeof v
+  if $t == "boolean"
+    ret v ? "true" : "false"
+  end
+  if $t == "number"
+    ret json v
+  end
+  $text = $t == "string" ? v : json v
+  if $text == "" || (string.contains $text ",") || (string.contains $text "\"") || (string.contains $text "\n") || (string.contains $text "\r")
+    ret "\"" + (string.replace $text "\"" "\"\"") + "\""
+  end
+  ret $text
+end
+
+func file_of(st)
+  ret (st.table.schema ? st.table.schema + "." : "") + st.table.name + ".csv"
+end
+
+# Per seed of a table: its first row, row count and the columns it gives.
+func seed_entries(st)
+  $out = []
+  for seed in st.seeds
+    $first = -1
+    $count = 0
+    $given = []
+    for r in st.rows
+      if r.seed.id == seed.id
+        if $first < 0
+          $first = for.index
+        end
+        $count = $count + 1
+        for c in st.columns
+          if (object.has_key r.values c.name) && !(array.contains $given c.name)
+            $given[$given.size] = c.name
+          end
+        end
+      end
+    end
+    $ordered = []
+    for c in st.columns
+      if array.contains $given c.name
+        $ordered[$ordered.size] = c.name
+      end
+    end
+    $out[$out.size] = { seed: seed.name, source: st.rows[$first].source, environments: seed.environments, apply: seed.apply, delete: seed.delete, firstRow: $first, rowCount: $count, columns: $ordered }
+  end
+  ret $out
+end
+
+func table_entry(st, with_rows)
+  $columns = []
+  $types = {}
+  for c in st.columns
+    $columns[$columns.size] = c.name
+    $types[c.name] = c.type
+  end
+  $key = []
+  for c in st.key_columns
+    $key[$key.size] = c.name
+  end
+  $entry = { table: st.table.name, schema: st.table.schema, key: $key, columns: $columns, types: $types, seeds: seed_entries(st) }
+  if with_rows
+    $rows = []
+    for r in st.rows
+      $rows[$rows.size] = { id: r.id, values: r.values }
+    end
+    $entry.rows = $rows
+  else
+    $entry.file = file_of(st)
+  end
+  ret $entry
+end
+-}}
+{{- if db.seed_tables.size > 0 -}}
+{{- if format == "json" -}}
+{{- capture content -}}
+{
+  "database": {{ json db.name }},
+  "dialect": {{ json db.dialect }},
+  "seedHash": {{ json db.seed_hash }},
+  "tables": [
+{{- for st in db.seed_tables }}
+    {{ json (table_entry st true) }}{{ for.last ? "" : "," }}
+{{- end }}
+  ]
+}
+{{ end -}}
+{{- file (folder + "/seed-data.json") content -}}
+{{- else -}}
+{{- capture content -}}
+{
+  "database": {{ json db.name }},
+  "dialect": {{ json db.dialect }},
+  "seedHash": {{ json db.seed_hash }},
+  "tables": [
+{{- for st in db.seed_tables }}
+    {{ json (table_entry st false) }}{{ for.last ? "" : "," }}
+{{- end }}
+  ]
+}
+{{ end -}}
+{{- file (folder + "/manifest.json") content -}}
+{{- for st in db.seed_tables -}}
+{{- capture rows -}}
+{{ for c in st.columns }}{{ for.first ? "" : "," }}{{ csv_cell c.name }}{{ end }}
+{{ for r in st.rows }}{{ for c in st.columns }}{{ for.first ? "" : "," }}{{ csv_cell r.values[c.name] }}{{ end }}
+{{ end -}}
+{{- end -}}
+{{- file (folder + "/" + (file_of st)) rows -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

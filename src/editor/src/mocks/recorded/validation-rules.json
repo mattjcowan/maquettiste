@@ -1256,6 +1256,70 @@
     "canBeOff": true
   },
   {
+    "id": "MQ7107",
+    "defaultSeverity": "error",
+    "description": "A table seed targets a table that is not a table file of a database, or lists a column the table does not have.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7108",
+    "defaultSeverity": "error",
+    "description": "A table seed lists an identity, computed or generated column, whose value the database gives.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7109",
+    "defaultSeverity": "error",
+    "description": "A table seed's cell does not fit its column: its type, length, precision or scale, or NULL in a NOT NULL column without a default.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7111",
+    "defaultSeverity": "error",
+    "description": "A table seed's foreign key names no row of the referenced table's seeds.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7112",
+    "defaultSeverity": "error",
+    "description": "Two rows of one table's seeds share a row key (in environments that overlap).",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7113",
+    "defaultSeverity": "warning",
+    "description": "A table receives rows from its own seeds and from the seeds of an entity bound to it: a row should have one source.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7114",
+    "defaultSeverity": "error",
+    "description": "A table seed has no row key (the unique constraint it names does not exist, or the table has no primary key), or a row lacks a key cell.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7116",
+    "defaultSeverity": "error",
+    "description": "A seed's rows file is missing or cannot be read, or the seed has rows of its own beside it.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
     "id": "MQ7201",
     "defaultSeverity": "error",
     "description": "Invalid localization settings: a locale that is not BCP 47, a default not in the locales, a fallback naming an undeclared locale, a fallback cycle, or a required node kind that does not exist.",

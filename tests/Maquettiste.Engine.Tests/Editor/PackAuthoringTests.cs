@@ -168,7 +168,7 @@ public sealed class PackAuthoringTests
         Assert.Equal(SaveOutcome.Invalid, (await repo.Service.CreatePackAsync("nope", "unknown-starter", null, Ct)).Outcome);
         var list = await repo.Service.ListPacksAsync(Ct);
         Assert.Equal(["csharp-dapper", "ddl-copy", "docs", "sql-ddl"], list.Select(p => p.Name));
-        Assert.Equal(10, list.Single(p => p.Name == "sql-ddl").Units.Count);
+        Assert.Equal(11, list.Single(p => p.Name == "sql-ddl").Units.Count);
     }
 
     [Fact]

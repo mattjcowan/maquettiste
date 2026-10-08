@@ -250,10 +250,19 @@ internal static class ReferenceDataRules
     public static void CheckSeed(ValidationContext context, ElementDocument document, Seed seed, Report report)
     {
         var model = context.Model;
-        if (seed.Rows.Count > MaxRows || (seed.Rows.Count > 1000 && document.Json.GetRawText().Length > MaxBytes))
-            report.Add("MQ7104", $"Seed '{seed.Name}' holds {seed.Rows.Count} rows; seeds are reference data, not bulk data (at most {MaxRows:N0} rows or 5 MB).", "/rows");
+        // A seed whose rows live in a CSV file may hold many more (2026-10-07); an inline one stays small.
+        if (seed.RowsFrom is null && (seed.Rows.Count > MaxRows || (seed.Rows.Count > 1000 && document.Json.GetRawText().Length > MaxBytes)))
+            report.Add("MQ7104", $"Seed '{seed.Name}' holds {seed.Rows.Count} rows; keep larger seeds in a rows file (rowsFrom), or they are not reference data (at most {MaxRows:N0} rows or 5 MB inline).", "/rows");
+        if (seed.RowsProblem is { } rowsProblem)
+            report.Add("MQ7116", rowsProblem, "/rowsFrom");
 
         var target = model.GetDocument(seed.Target)?.Element;
+        if (target is Table table)
+        {
+            TableSeedRules.Check(context, seed, table, report);
+            return;
+        }
+
         if (target is not (Entity or Relation or ReferenceType))
             return; // MQ2001 or MQ2002
         if (target is Entity { Abstract: true } abstractEntity)

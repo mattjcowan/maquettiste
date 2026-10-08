@@ -197,6 +197,13 @@ const kindWord = (s: string) =>
     .replace(/(ies)$/, "y")
     .replace(/s$/, "");
 
+/** Kinds listed in a second explorer besides their place: processes and actors are also in the Processes explorer (by domain,
+ * and its Actors folder), so a search there finds them. */
+const ALSO_IN: ReadonlyMap<string, SearchPlace> = new Map([
+  ["process", "processes"],
+  ["actor", "processes"],
+]);
+
 const zeroCounts = (): Record<SearchPlace, number> => ({ "domain-model": 0, processes: 0, "reference-data": 0, databases: 0, diagrams: 0, settings: 0 });
 
 /** One encoded index row (`encodeRows`) as a document. */
@@ -410,7 +417,9 @@ export class SearchIndex {
         if (match && !match(d.lname) && !(d.ldisplay && match(d.ldisplay))) continue;
         if (narrow && !narrow(d)) continue;
         counts[d.place]++;
-        if (d.place === place) ids.push(d.id);
+        const also = ALSO_IN.get(d.kind);
+        if (also) counts[also]++;
+        if (d.place === place || also === place) ids.push(d.id);
       }
     }
     return { ids: ids.join(RS), counts, tablesLoading: this.tablesLoading };

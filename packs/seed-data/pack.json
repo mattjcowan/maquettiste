@@ -1,0 +1,25 @@
+{
+  "name": "seed-data",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "Seed data as files, for an application, a migration tool or a test fixture to load: per database, the rows every seed gives it (table seeds, and entity and relation seeds through their bindings and mappings) in database terms and foreign key order, as a manifest and one CSV per table, or as one JSON file.",
+  "parameters": {
+    "format": "csv"
+  },
+  "parameterSchema": {
+    "properties": {
+      "format": {
+        "description": "csv: manifest.json and one CSV per table; json: one seed-data.json per database.",
+        "enum": ["csv", "json"]
+      }
+    }
+  },
+  "scripts": ["helpers.js"],
+  "units": [
+    {
+      "id": "data",
+      "template": "data.scriban",
+      "for": "select databases"
+    }
+  ]
+}

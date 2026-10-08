@@ -1,6 +1,8 @@
 using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Json;
@@ -517,7 +519,35 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var dependencyHash = sidecarHash is null && entry.OwnDependencyHash is { } bytesOnly ? bytesOnly : HashBuilder.Of(entry.Hash, sidecarHash);
         if (previousDocuments.TryGetValue(repoPath, out var previous) && previous.Hash == entry.Hash && previous.DependencyHash == dependencyHash)
             return previous;
-        return new ElementDocument(entry.Parsed.Element!, repoPath, entry.Hash, dependencyHash, entry.Parsed.Json, sidecarText);
+        var (element, json) = entry.Parsed.Element is Seed { RowsFrom: { } rowsFrom } seed
+            ? WithCsvRows(seed, rowsFrom, entry.ModelPath, entry.Parsed.Json, entries)
+            : (entry.Parsed.Element!, entry.Parsed.Json);
+        return new ElementDocument(element, repoPath, entry.Hash, dependencyHash, json, sidecarText);
+    }
+
+    /// <summary>
+    /// A seed whose rows live in a CSV sidecar (<c>rowsFrom</c>): its rows read into the element and into the document's JSON, as if
+    /// the file held them, so validation, the editor and every write see the same rows; a change planner writes them back to the CSV.
+    /// A missing or unreadable file, or rows in both places, is <see cref="Seed.RowsProblem"/> (MQ7116).
+    /// </summary>
+    private static (Element Element, JsonElement Json) WithCsvRows(Seed seed, SeedRowsFile rowsFrom, string modelPath, JsonElement json,
+        Dictionary<string, FileEntry> entries)
+    {
+        if (seed.Rows.Count > 0)
+            return (seed with { RowsProblem = $"The seed has rows of its own and a rows file ({rowsFrom.File}); keep one." }, json);
+        var path = ModelPaths.ResolveSidecar(modelPath, rowsFrom.File);
+        if (path is null || !entries.TryGetValue(path, out var file) || file.Kind != ModelFileKind.Sidecar || file.Parsed.Text is not { } text)
+            return (seed with { RowsProblem = $"The rows file {rowsFrom.File} is missing." }, json);
+        var rows = SeedCsv.Read(text, seed.Columns, out var problem);
+        if (problem is not null)
+            return (seed with { RowsProblem = problem }, json);
+        var node = JsonNode.Parse(json.GetRawText())!.AsObject();
+        node["rows"] = new JsonArray([.. rows.Select(r => (JsonNode)new JsonObject
+        {
+            ["id"] = r.Id,
+            ["values"] = new JsonArray([.. r.Values.Select(v => JsonNode.Parse(v.GetRawText()))]),
+        })]);
+        return (seed with { Rows = rows }, JsonSerializer.SerializeToElement(node));
     }
 
     private IEnumerable<Diagnostic> ConventionDiagnostics(List<ElementDocument> documents)

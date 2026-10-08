@@ -10,6 +10,7 @@
     "gitignorePath": "",
     "namespace": "",
     "partialFolder": "",
+    "seedLoader": false,
     "testsFolder": ""
   },
   "units": [
@@ -182,6 +183,11 @@
       "id": "scenario-tests",
       "template": "scenario-tests.scriban",
       "for": "each scenario"
+    },
+    {
+      "id": "seed-loader",
+      "template": "seed-loader.scriban",
+      "for": "model"
     },
     {
       "id": "gitignore",

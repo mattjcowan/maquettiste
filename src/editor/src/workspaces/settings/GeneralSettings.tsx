@@ -294,7 +294,7 @@ export function GeneralSettings() {
                   />
                   <Input
                     id={id}
-                    className="w-28 font-mono"
+                    className="w-40 font-mono"
                     value={color ?? ""}
                     placeholder={defaults[theme] ? `built-in ${defaults[theme]}` : "built-in"}
                     onChange={(e) => edit({ [theme]: e.target.value.trim() || null })}

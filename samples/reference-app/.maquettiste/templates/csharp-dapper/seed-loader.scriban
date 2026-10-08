@@ -1,0 +1,291 @@
+{{-
+# The seed data loader (2026-10-07), written only with the seedLoader parameter: a class that reads the seed-data pack's output
+# for one database (manifest.json and its CSVs, or seed-data.json) and applies it with Dapper. Nothing calls it: an application
+# that seeds itself calls LoadAsync at startup.
+include "_csharp.scriban"
+if !pack.params.seedLoader
+  ret
+end
+capture content
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Dapper;
+
+namespace {{ base_ns }};
+
+/// <summary>The SQL dialect of the database seed data is loaded into: it decides how names are quoted and how some values are bound.</summary>
+public enum SeedDialect
+{
+    /// <summary>PostgreSQL.</summary>
+    PostgreSql,
+
+    /// <summary>SQL Server.</summary>
+    SqlServer,
+
+    /// <summary>MySQL or MariaDB.</summary>
+    MySql,
+
+    /// <summary>SQLite (uuids, dates and times are bound as text).</summary>
+    Sqlite,
+
+    /// <summary>Oracle.</summary>
+    Oracle,
+}
+
+/// <summary>
+/// Loads the seed data the seed-data pack writes for one database: <c>manifest.json</c> and its CSV files, or <c>seed-data.json</c>.
+/// Tables are applied in the manifest's order (referenced tables first). Per seed: its rows are applied when the seed belongs to
+/// every environment or to the one given; <c>once</c> inserts the rows whose key is missing, <c>converge</c> also updates the other
+/// columns of the rows that are there and, with <c>delete</c>, deletes the table's rows the seed does not hold. Each row is found by
+/// the table's key columns with parameterized statements, so the loader runs on any database Dapper reaches.
+/// </summary>
+public sealed class SeedDataLoader
+{
+    private readonly IDbConnection _connection;
+    private readonly SeedDialect _dialect;
+    private readonly string _folder;
+
+    /// <summary>Creates a loader.</summary>
+    /// <param name="connection">An open connection to the database.</param>
+    /// <param name="dialect">The database's dialect.</param>
+    /// <param name="folder">The folder the seed-data pack wrote for the database (it holds manifest.json or seed-data.json).</param>
+    public SeedDataLoader(IDbConnection connection, SeedDialect dialect, string folder)
+    {
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _dialect = dialect;
+        _folder = folder ?? throw new ArgumentNullException(nameof(folder));
+    }
+
+    /// <summary>The hash of the seed data in the folder: store it after a load, and skip the next load while it is the same.</summary>
+    public string SeedHash
+    {
+        get
+        {
+            using var document = Read();
+            return document.RootElement.GetProperty("seedHash").GetString() ?? "";
+        }
+    }
+
+    /// <summary>Applies the seed data.</summary>
+    /// <param name="environment">The environment loaded into (its seeds' rows are applied with those of every environment), or null for the shared rows only.</param>
+    /// <param name="transaction">A transaction to run in, or null.</param>
+    /// <returns>The number of rows inserted, updated or deleted.</returns>
+    public async Task<int> LoadAsync(string? environment = null, IDbTransaction? transaction = null)
+    {
+        using var document = Read();
+        var changed = 0;
+        foreach (var table in document.RootElement.GetProperty("tables").EnumerateArray())
+        {
+            var schema = table.TryGetProperty("schema", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null;
+            var name = Qualified(schema, table.GetProperty("table").GetString()!);
+            var key = table.GetProperty("key").EnumerateArray().Select(k => k.GetString()!).ToList();
+            var types = table.GetProperty("types").EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString() ?? "string", StringComparer.Ordinal);
+            var rows = table.TryGetProperty("rows", out var inline)
+                ? inline.EnumerateArray().Select(r => r.GetProperty("values").EnumerateObject().ToDictionary(p => p.Name, p => FromJson(p.Value, types.GetValueOrDefault(p.Name, "string")), StringComparer.Ordinal)).ToList()
+                : ReadCsv(Path.Combine(_folder, table.GetProperty("file").GetString()!), types);
+            foreach (var seed in table.GetProperty("seeds").EnumerateArray())
+            {
+                var environments = seed.GetProperty("environments").EnumerateArray().Select(e => e.GetString()).ToList();
+                if (environments.Count > 0 && (environment is null || !environments.Contains(environment)))
+                    continue;
+                var columns = seed.GetProperty("columns").EnumerateArray().Select(c => c.GetString()!).ToList();
+                var converge = seed.GetProperty("apply").GetString() == "converge";
+                var slice = rows.Skip(seed.GetProperty("firstRow").GetInt32()).Take(seed.GetProperty("rowCount").GetInt32()).ToList();
+                foreach (var row in slice)
+                {
+                    var match = Match(key, row);
+                    var exists = await _connection.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM " + name + " WHERE " + match.Sql, match.Parameters, transaction).ConfigureAwait(false) > 0;
+                    if (!exists)
+                    {
+                        var parameters = new DynamicParameters();
+                        for (var i = 0; i < columns.Count; i++)
+                            parameters.Add("p" + i.ToString(CultureInfo.InvariantCulture), row.GetValueOrDefault(columns[i]));
+                        var sql = "INSERT INTO " + name + " (" + string.Join(", ", columns.Select(Quote)) + ") VALUES ("
+                            + string.Join(", ", columns.Select((_, i) => "@p" + i.ToString(CultureInfo.InvariantCulture))) + ")";
+                        changed += await _connection.ExecuteAsync(sql, parameters, transaction).ConfigureAwait(false);
+                    }
+                    else if (converge)
+                    {
+                        var rest = columns.Where(c => !key.Contains(c)).ToList();
+                        if (rest.Count == 0)
+                            continue;
+                        var parameters = match.Parameters;
+                        for (var i = 0; i < rest.Count; i++)
+                            parameters.Add("v" + i.ToString(CultureInfo.InvariantCulture), row.GetValueOrDefault(rest[i]));
+                        var sql = "UPDATE " + name + " SET " + string.Join(", ", rest.Select((c, i) => Quote(c) + " = @v" + i.ToString(CultureInfo.InvariantCulture)))
+                            + " WHERE " + match.Sql;
+                        changed += await _connection.ExecuteAsync(sql, parameters, transaction).ConfigureAwait(false);
+                    }
+                }
+
+                if (converge && seed.GetProperty("delete").GetBoolean())
+                {
+                    var kept = slice.Select(r => KeyText(key, r)).ToHashSet(StringComparer.Ordinal);
+                    var present = await _connection.QueryAsync("SELECT " + string.Join(", ", key.Select(Quote)) + " FROM " + name, transaction: transaction).ConfigureAwait(false);
+                    foreach (IDictionary<string, object?> found in present)
+                    {
+                        var values = key.ToDictionary(k => k, k => found.FirstOrDefault(p => string.Equals(p.Key, k, StringComparison.OrdinalIgnoreCase)).Value, StringComparer.Ordinal);
+                        if (kept.Contains(KeyText(key, values)))
+                            continue;
+                        var match = Match(key, values);
+                        changed += await _connection.ExecuteAsync("DELETE FROM " + name + " WHERE " + match.Sql, match.Parameters, transaction).ConfigureAwait(false);
+                    }
+                }
+            }
+        }
+
+        return changed;
+    }
+
+    private JsonDocument Read()
+    {
+        var manifest = Path.Combine(_folder, "manifest.json");
+        var path = File.Exists(manifest) ? manifest : Path.Combine(_folder, "seed-data.json");
+        return JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
+    }
+
+    private (string Sql, DynamicParameters Parameters) Match(List<string> key, IReadOnlyDictionary<string, object?> row)
+    {
+        var parameters = new DynamicParameters();
+        var parts = new List<string>();
+        for (var i = 0; i < key.Count; i++)
+        {
+            parameters.Add("k" + i.ToString(CultureInfo.InvariantCulture), row.GetValueOrDefault(key[i]));
+            parts.Add(Quote(key[i]) + " = @k" + i.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return (string.Join(" AND ", parts), parameters);
+    }
+
+    private static string KeyText(List<string> key, IReadOnlyDictionary<string, object?> row) =>
+        string.Join("\u0000", key.Select(k => Convert.ToString(row.GetValueOrDefault(k), CultureInfo.InvariantCulture)));
+
+    private string Quote(string name) => _dialect switch
+    {
+        SeedDialect.SqlServer => "[" + name.Replace("]", "]]", StringComparison.Ordinal) + "]",
+        SeedDialect.MySql => "`" + name.Replace("`", "``", StringComparison.Ordinal) + "`",
+        _ => "\"" + name.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"",
+    };
+
+    private string Qualified(string? schema, string table) =>
+        schema is { Length: > 0 } && _dialect != SeedDialect.Sqlite ? Quote(schema) + "." + Quote(table) : Quote(table);
+
+    /// <summary>A cell as the parameter its column takes, from its text (CSV) or its JSON value.</summary>
+    private object? Typed(string text, string type) => type switch
+    {
+        "int16" => short.Parse(text, CultureInfo.InvariantCulture),
+        "int32" => int.Parse(text, CultureInfo.InvariantCulture),
+        "int64" => long.Parse(text, CultureInfo.InvariantCulture),
+        "decimal" => decimal.Parse(text, NumberStyles.Number, CultureInfo.InvariantCulture),
+        "float" => float.Parse(text, CultureInfo.InvariantCulture),
+        "double" => double.Parse(text, CultureInfo.InvariantCulture),
+        "bool" => text is "true" or "1",
+        "uuid" when _dialect != SeedDialect.Sqlite => Guid.Parse(text),
+        "date" or "datetime" when _dialect != SeedDialect.Sqlite => DateTime.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+        "datetimeoffset" when _dialect != SeedDialect.Sqlite => DateTimeOffset.Parse(text, CultureInfo.InvariantCulture),
+        "time" when _dialect != SeedDialect.Sqlite => TimeSpan.Parse(text, CultureInfo.InvariantCulture),
+        _ => text,
+    };
+
+    private object? FromJson(JsonElement value, string type) => value.ValueKind switch
+    {
+        JsonValueKind.Null or JsonValueKind.Undefined => null,
+        JsonValueKind.String => Typed(value.GetString()!, type),
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.Number => Typed(value.GetRawText(), type),
+        _ => value.GetRawText(),
+    };
+
+    /// <summary>The rows of a CSV the seed-data pack wrote: the header names the columns; an empty unquoted cell is null.</summary>
+    private List<Dictionary<string, object?>> ReadCsv(string path, Dictionary<string, string> types)
+    {
+        var records = ParseCsv(File.ReadAllText(path, Encoding.UTF8));
+        var header = records.Count > 0 ? records[0].Select(f => f.Text).ToList() : [];
+        var rows = new List<Dictionary<string, object?>>();
+        foreach (var record in records.Skip(1))
+        {
+            var row = new Dictionary<string, object?>(StringComparer.Ordinal);
+            for (var i = 0; i < header.Count && i < record.Count; i++)
+                row[header[i]] = record[i].Quoted || record[i].Text.Length > 0 ? Typed(record[i].Text, types.GetValueOrDefault(header[i], "string")) : null;
+            rows.Add(row);
+        }
+
+        return rows;
+    }
+
+    private static List<List<(string Text, bool Quoted)>> ParseCsv(string text)
+    {
+        var records = new List<List<(string, bool)>>();
+        var record = new List<(string, bool)>();
+        var field = new StringBuilder();
+        bool quoted = false, inQuotes = false, any = false;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (inQuotes)
+            {
+                if (c == '"' && i + 1 < text.Length && text[i + 1] == '"')
+                {
+                    field.Append('"');
+                    i++;
+                }
+                else if (c == '"')
+                {
+                    inQuotes = false;
+                }
+                else
+                {
+                    field.Append(c);
+                }
+
+                continue;
+            }
+
+            switch (c)
+            {
+                case '"' when field.Length == 0 && !quoted:
+                    inQuotes = quoted = any = true;
+                    break;
+                case ',':
+                    record.Add((field.ToString(), quoted));
+                    field.Clear();
+                    quoted = false;
+                    any = true;
+                    break;
+                case '\r':
+                    break;
+                case '\n':
+                    record.Add((field.ToString(), quoted));
+                    records.Add(record);
+                    record = [];
+                    field.Clear();
+                    quoted = any = false;
+                    break;
+                default:
+                    field.Append(c);
+                    any = true;
+                    break;
+            }
+        }
+
+        if (any || field.Length > 0)
+        {
+            record.Add((field.ToString(), quoted));
+            records.Add(record);
+        }
+
+        return records;
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder "SeedDataLoader.g.cs") content -}}

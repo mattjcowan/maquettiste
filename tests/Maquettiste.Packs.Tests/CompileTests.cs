@@ -61,6 +61,63 @@ public sealed class CompileTests
         Assert.True(run.ExitCode == 0 && run.Output.Contains("bindings round trip ok", StringComparison.Ordinal), run.Output);
     }
 
+    [Fact]
+    public async Task The_seed_data_loader_applies_the_seed_data_files_to_sqlite_once_and_converging()
+    {
+        // The seed-data pack's CSVs for the SQLite database, loaded by csharp-dapper's SeedDataLoader (seedLoader on).
+        using var repo = TableSeedSqlTests.DataRepo("csv");
+        repo.EditJson(".maquettiste/maquettiste.json", settings =>
+            settings["packs"]!["csharp-dapper"]!["parameters"] = new System.Text.Json.Nodes.JsonObject { ["seedLoader"] = true });
+        await repo.GenerateCleanlyAsync();
+        Assert.True(File.Exists(repo.PathOf("src/Generated/SeedDataLoader.g.cs")));
+        var project = Path.Combine(repo.Repo.Root, "loader");
+        WriteProject(project, repo.PathOf("src/Generated"), SeedLoaderProgram);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet,
+            [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll"), repo.PathOf("db/local/schema.sql"), repo.PathOf("data/local")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("seed loader ok", StringComparison.Ordinal), run.Output);
+    }
+
+    private const string SeedLoaderProgram = """
+        using System;
+        using System.IO;
+        using System.Linq;
+        using Dapper;
+        using Microsoft.Data.Sqlite;
+        using App.Model;
+
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = File.ReadAllText(args[0]);
+            command.ExecuteNonQuery();
+        }
+
+        void Check(bool condition, string what)
+        {
+            if (!condition)
+                throw new InvalidOperationException("Seed loader failed: " + what);
+        }
+
+        var loader = new SeedDataLoader(connection, SeedDialect.Sqlite, args[1]);
+        Check(loader.SeedHash.Length == 64, "the seed hash");
+        Check(await loader.LoadAsync() >= 2, "the shared rows are written");
+        Check(await connection.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM loc_currencies") == 2, "the shared rows: two currencies");
+        Check(await connection.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM loc_price_lists") == 0, "dev rows wait for dev");
+        await loader.LoadAsync("dev");
+        Check(await connection.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM loc_price_lists") == 2, "the dev rows");
+        await connection.ExecuteAsync("UPDATE loc_currencies SET name = 'Changed' WHERE code = 'EUR'");
+        await connection.ExecuteAsync("INSERT INTO loc_currencies (code, name) VALUES ('XXX', 'Stray')");
+        await connection.ExecuteAsync("UPDATE loc_price_lists SET label = 'Mine' WHERE id = 1");
+        await loader.LoadAsync("dev");
+        var names = (await connection.QueryAsync<string>("SELECT code || ':' || name FROM loc_currencies ORDER BY code")).ToList();
+        Check(names.SequenceEqual(["EUR:Euro", "USD:US dollar"]), "converge restores the name and deletes the stray row: " + string.Join(",", names));
+        Check(await connection.ExecuteScalarAsync<string>("SELECT label FROM loc_price_lists WHERE id = 1") == "Mine", "once leaves an edited row alone");
+        Console.WriteLine("seed loader ok");
+        """;
+
     private const string BindingRoundTripProgram = """
         using System;
         using System.IO;

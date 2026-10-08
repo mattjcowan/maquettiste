@@ -30,6 +30,7 @@ export const TABLE_TABS = {
   checks: "Checks",
   exclusions: "Exclusions",
   storage: "Storage",
+  data: "Data",
   ddl: "DDL",
   references: "References",
   json: "JSON",

@@ -139,6 +139,23 @@ describe("search/rank", () => {
 });
 
 describe("search/engine", () => {
+  it("finds processes and actors from the Processes explorer as well as the Domain model", () => {
+    const index = new SearchIndex();
+    index.loadRows(
+      1,
+      encodeRows([
+        row("P1", "package", "Workshop"),
+        row("PR", "process", "RepairOrchestration", { package: "P1", displayName: "Repair orchestration" }),
+        row("AC", "actor", "Repair lead"),
+        row("SC", "scenario", "Repair done", { package: "P1" }),
+      ]),
+    );
+    const there = filterOf(index, "repair", "processes");
+    expect(there.ids.sort()).toEqual(["AC", "PR", "SC"]);
+    expect(filterOf(index, "Repair orchestration", "processes").ids).toEqual(["PR"]);
+    expect(filterOf(index, "repair", "domain-model").ids.sort()).toEqual(["AC", "PR"]);
+  });
+
   it("filters one explorer and counts every place", () => {
     const r = filterOf(loaded(), "line", "domain-model");
     expect(r.ids.sort()).toEqual(["E2", "E4"]);

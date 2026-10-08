@@ -2,7 +2,7 @@
 
 **Owner:** W10 Packs. See docs/engineering/engine-design.md sections 8, 9 and 18.
 
-This folder holds the example packs (two from phase 1, `process-docs` from phase 3), and this file is the guide to writing a pack
+This folder holds the example packs (two from phase 1, `process-docs` from phase 3, `seed-data` from 2026-10-07), and this file is the guide to writing a pack
 of your own.
 
 | Pack | Default root | Generates |
@@ -10,11 +10,12 @@ of your own.
 | [`sql-ddl`](sql-ddl/README.md) | `db` | Table DDL for PostgreSQL, SQL Server and SQLite, one schema script per database, `once` migrations from the schema diff, a `regions` seed script, and (with `processTables`) instance, history and audit tables per process |
 | [`csharp-dapper`](csharp-dapper/README.md) | `src/Generated` | Entity `pair` files, enums, value objects, a Dapper repository per mapped entity, one registration file per package, `types/csharp.json`; per process the states, definition and contracts, handler, service, machine and store pairs, `regions` endpoints, a typed dispatcher with pipeline behaviours, a generated statechart interpreter, one xunit test per scenario and, with `gitignorePath`, a managed block in an ignore file |
 | [`process-docs`](process-docs/README.md) | `docs` | Markdown pages: one per process (a state diagram in diagram text, states, transitions, gates and their audit record, events, actors), one per actor, a walk-through per scenario, and an index |
+| [`seed-data`](seed-data/README.md) | `data` | Per database, the rows every seed gives it in database terms and foreign key order, for a loader: a manifest and one CSV per table, or one JSON file |
 
 `sql-ddl` and `csharp-dapper` are embedded into the CLI: `maquettiste init --pack <name>` copies one into
 `.maquettiste/templates/<name>/`, and `maquettiste pack new <name> --from <pack>` starts a new pack from one; the bench generates
-them over a synthetic model of 5,000 entities. A project uses `process-docs` by copying its folder into `.maquettiste/templates/`
-(its README shows the settings). The tests of all three are in `tests/Maquettiste.Packs.Tests/` (golden output under
+them over a synthetic model of 5,000 entities. A project uses `process-docs` or `seed-data` by copying its folder into
+`.maquettiste/templates/` (each README shows the settings). The tests of all four are in `tests/Maquettiste.Packs.Tests/` (golden output under
 `tests/fixtures/golden/`; `MAQUETTISTE_UPDATE_GOLDEN=1` rewrites it).
 
 ## Writing a pack

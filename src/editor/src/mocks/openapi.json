@@ -30656,7 +30656,7 @@
       "seed": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Seed",
-        "description": "Rows of data for one target: an entity, a relation or a reference type.",
+        "description": "Rows of data for one target: an entity, a relation, a reference type or a table.",
         "type": "object",
         "x-order": [
           "$schema",
@@ -30671,6 +30671,11 @@
           "category",
           "target",
           "columns",
+          "key",
+          "environments",
+          "apply",
+          "delete",
+          "rowsFrom",
           "rows",
           "properties",
           "generation",
@@ -30715,7 +30720,7 @@
             "$ref": "#/components/schemas/id"
           },
           "columns": {
-            "description": "Built-in keywords (code, label, description) for a reference type, else attribute or relation-end ids.",
+            "description": "Built-in keywords (code, label, description) for a reference type, column ids for a table, else attribute or relation-end ids.",
             "type": "array",
             "items": {
               "anyOf": [
@@ -30733,6 +30738,49 @@
             },
             "minItems": 1,
             "uniqueItems": true
+          },
+          "key": {
+            "description": "A table seed's row key: the id of the unique constraint whose columns find a row again on the next run; absent, the primary key.",
+            "$ref": "#/components/schemas/id"
+          },
+          "environments": {
+            "description": "The environments the rows belong to (free names such as dev, test, staging); empty means every environment.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/tagLabel"
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "apply": {
+            "description": "How the rows are applied: once inserts the rows whose key is missing and never updates or deletes; converge also updates changed rows.",
+            "enum": [
+              "once",
+              "converge"
+            ],
+            "default": "once"
+          },
+          "delete": {
+            "description": "With converge: whether a row removed from the seed is deleted from the database.",
+            "type": "boolean",
+            "default": false
+          },
+          "rowsFrom": {
+            "description": "A CSV file beside the seed file that holds the rows instead of rows: a header of @id and the column ids, one row per line.",
+            "type": "object",
+            "x-order": [
+              "file"
+            ],
+            "properties": {
+              "file": {
+                "type": "string",
+                "pattern": "^[^/\\\\]+\\.csv$"
+              }
+            },
+            "required": [
+              "file"
+            ],
+            "additionalProperties": false
           },
           "rows": {
             "type": "array",
