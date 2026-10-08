@@ -4,6 +4,20 @@ What each version added, newest first. Every version is a tag on the repository,
 (`mattjcowan/maquettiste:<version>`) and the `Maquettiste.Cli` and `Maquettiste.Engine` packages of the same number. The
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new one.
 
+## 0.10.1 (2026-10-08)
+
+- **Table seeds.** A seed can fill a table directly, by column, besides entities, relations and reference types. Entity seeds
+  of an entity bound to a table now write their rows too.
+- **Where and how a seed applies.** Environments (a seed for every environment, or only some, such as `demo`), insert once
+  (the default) or keep the rows as the model has them, and optionally delete the rows the model no longer holds. sql-ddl
+  writes `seed.sql` for every environment and `seed.<env>.sql` for each one.
+- **Rows in a CSV file.** A seed can keep its rows in a CSV file beside it.
+- **Seed data files.** The new seed-data pack writes the rows as data files (CSV with a manifest, or JSON), and csharp-dapper
+  can add a loader that applies them (off by default).
+- The documentation site, with guides and screenshots of every main screen.
+- Fixes: the Processes explorer's search finds processes and actors; the field map labels where a mapping comes from; the
+  primary color fields show their whole value.
+
 ## 0.10.0 (2026-10-07)
 
 - **Storage both ways.** From an entity's Storage tab, create the attributes for a table's unmapped columns, or the columns for
