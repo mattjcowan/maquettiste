@@ -39,3 +39,7 @@ Thumbs.db
 
 # The engine's working folders (unit state, run journal, locks) are never committed.
 **/.maquettiste/.cache/
+
+# The docs site's hook (docs/.hooks) and its build output
+__pycache__/
+site/

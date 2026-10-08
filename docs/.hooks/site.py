@@ -44,6 +44,15 @@ def on_files(files, config):
     for uri, (source, start, end) in SOURCES.items():
         text = _section((ROOT / source).read_text(encoding="utf-8"), start, end)
         files.append(File.generated(config, uri, content=text))
+    # The API page renders the contract, whose schemas are the repository's schemas/v1 two folders up: the site publishes
+    # them at schemas/v1 and the contract's copy points one folder up instead (two would leave the site's base path).
+    for schema in sorted((ROOT / "schemas" / "v1").glob("*.json")):
+        files.append(File.generated(config, f"schemas/v1/{schema.name}", abs_src_path=str(schema)))
+    contract = files.get_file_from_path("api/openapi.yaml")
+    if contract is not None:
+        files.remove(contract)
+        text = (ROOT / "docs" / "api" / "openapi.yaml").read_text(encoding="utf-8").replace("'../../schemas/v1/", "'../schemas/v1/")
+        files.append(File.generated(config, "api/openapi.yaml", content=text))
     return files
 
 
