@@ -451,6 +451,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         Property(list, "comment", a.Comment, b.Comment);
         Property(list, "referenceType", a.ReferenceType, b.ReferenceType);
         Property(list, "strategy", a.Strategy, b.Strategy);
+        Property(list, "referenceTable", a.ReferenceTable, b.ReferenceTable);
         return list;
     }
 

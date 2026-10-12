@@ -73,7 +73,7 @@ if diff && diff.to_revision >= 1
       for tc in diff.tables
         if tc.kind == "renamed" || tc.kind == "altered"
           for cc in tc.columns
-            if cc.kind == "dropped" || has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType", "collation", "strategy", "codeType"])
+            if cc.kind == "dropped" || has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType", "collation", "strategy", "referenceTable", "codeType"])
               mq_all_views = true
             end
           end

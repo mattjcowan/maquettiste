@@ -198,6 +198,12 @@ public sealed record SnapshotColumn
 
     /// <summary>For a reference column: the effective storage strategy, or <see langword="null"/> for template-defined.</summary>
     public string? Strategy { get; init; }
+
+    /// <summary>
+    /// For a reference column whose reference type is bound to a table of the column's database (2026-10-11): that table's key. The
+    /// binding wins over <see cref="Strategy"/>, so a migration retypes the column when it comes or goes.
+    /// </summary>
+    public string? ReferenceTable { get; init; }
 }
 
 /// <summary>A primary key or unique constraint in a snapshot.</summary>

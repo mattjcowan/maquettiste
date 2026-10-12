@@ -10,10 +10,18 @@
 # every object has a deterministic name (ck_<table>_<column>_ref, fk_<table>_<column>_ref, <type snake>_t). SQLite cannot add or
 # drop constraints on an existing table, so there the check and the foreign key are triggers with the same names plus _i
 # (insert), _u (update) and _d (delete from the lookup table).
+#
+# A type bound to a table file of the database (type.bindings, 2026-10-11) is realized as "table" there: the pack creates no lookup
+# table, CHECK or enum type for it, its rows go into the bound table with the table's other seed rows (_data.scriban, by each
+# seed's apply), and each column holding its codes gets a foreign key to the bound table's code column when that column alone is
+# a key of the table (with constant columns in the key, a single column cannot name a row, so the column gets none).
 
 # The realization of a reference type in a database, after the dialect fallback: "native" is PostgreSQL only and falls back to a
 # CHECK elsewhere.
 func type_realization(rt, db)
+  if rt.bindings[db.name]
+    ret "table"
+  end
   $choice = rt.storage[db.name]
   $r = ref_realization($choice ? $choice.strategy : null)
   if $r == "native" && db.dialect != "postgresql"
@@ -24,8 +32,47 @@ end
 
 # The realization before the dialect fallback, for comments.
 func declared_realization(rt, db)
+  if rt.bindings[db.name]
+    ret "table"
+  end
   $choice = rt.storage[db.name]
   ret ref_realization($choice ? $choice.strategy : null)
+end
+
+# How a type is stored in a database, in words for comments: its realization, or the table it is bound to.
+func realization_words(rt, db)
+  $b = rt.bindings[db.name]
+  ret $b ? "rows in table " + $b.table.name : declared_realization(rt, db)
+end
+
+# The table and column a column holding a type's codes points to: the lookup table's code, or for a bound type the bound table's
+# code column when that column alone is the table's primary key or a unique constraint; null otherwise.
+func ref_target(rt, db)
+  $r = type_realization(rt, db)
+  if $r == "lookup-table"
+    ret [qlookup(rt, db), "code"]
+  end
+  if $r != "table"
+    ret null
+  end
+  $b = rt.bindings[db.name]
+  $code = $b.code_column
+  if !$code
+    ret null
+  end
+  $keys = []
+  if $b.table.primary_key
+    $keys[$keys.size] = $b.table.primary_key.columns
+  end
+  for u in $b.table.uniques
+    $keys[$keys.size] = u.columns
+  end
+  for k in $keys
+    if k.size == 1 && k[0].name == $code.name
+      ret [qt($b.table), $code.name]
+    end
+  end
+  ret null
 end
 
 func storage_option(rt, db, name)
@@ -180,8 +227,9 @@ func lookup_table_sql(rt, db)
   end
   $body = $body + ",\n    CONSTRAINT " + q("pk_" + $name, db) + " PRIMARY KEY (" + q("code", db) + ")"
   for f in lookup_fields(rt)
-    if f.type.kind == "reference" && type_realization(f.type.reference_type, db) == "lookup-table"
-      $body = $body + ",\n    CONSTRAINT " + q("fk_" + $name + "_" + (snake f.name) + "_ref", db) + " FOREIGN KEY (" + q(snake f.name, db) + ") REFERENCES " + qlookup(f.type.reference_type, db) + " (" + q("code", db) + ")"
+    $target = f.type.kind == "reference" ? ref_target(f.type.reference_type, db) : null
+    if $target
+      $body = $body + ",\n    CONSTRAINT " + q("fk_" + $name + "_" + (snake f.name) + "_ref", db) + " FOREIGN KEY (" + q(snake f.name, db) + ") REFERENCES " + $target[0] + " (" + q($target[1], db) + ")"
     end
   end
   $create = "CREATE TABLE " + qlookup(rt, db) + " (\n" + $body + "\n);"
@@ -273,12 +321,16 @@ end
 func column_objects_sql(t, c, rt, db)
   $d = db.dialect
   $r = type_realization(rt, db)
+  $target = ref_target(rt, db)
   $ck = "ck_" + t.name + "_" + c + "_ref"
   $fk = "fk_" + t.name + "_" + c + "_ref"
   $col = q(c, db)
   $s = ""
   if $r == "check" && declared_realization(rt, db) == "native"
     $s = "-- " + rt.name + " is stored as \"native\"; " + dialect_title(db) + " has no enum type, so " + t.name + "." + c + " gets a CHECK.\n"
+  end
+  if $r == "table" && !$target
+    $s = "-- The key of " + rt.bindings[db.name].table.name + " is not its code column alone, so a foreign key from " + t.name + "." + c + " cannot name a row of " + rt.name + "; it gets none.\n"
   end
   if $d == "sqlite"
     for n in [$ck + "_i", $ck + "_u", $fk + "_i", $fk + "_u", $fk + "_d"]
@@ -289,14 +341,15 @@ func column_objects_sql(t, c, rt, db)
       $raise = lit($ck + ": " + t.name + "." + c + " must be a code of " + rt.name, db)
       $s = $s + "CREATE TRIGGER " + q($ck + "_i", db) + " BEFORE INSERT ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
       $s = $s + "CREATE TRIGGER " + q($ck + "_u", db) + " BEFORE UPDATE OF " + $col + " ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;"
-    else
-      $when = "NEW." + $col + " IS NOT NULL AND NOT EXISTS (SELECT 1 FROM " + qlookup(rt, db) + " WHERE " + q("code", db) + " = NEW." + $col + ")"
+    else if $target
+      $code = q($target[1], db)
+      $when = "NEW." + $col + " IS NOT NULL AND NOT EXISTS (SELECT 1 FROM " + $target[0] + " WHERE " + $code + " = NEW." + $col + ")"
       $raise = lit($fk + ": " + t.name + "." + c + " must be a code of " + rt.name, db)
       $s = $s + "CREATE TRIGGER " + q($fk + "_i", db) + " BEFORE INSERT ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
       $s = $s + "CREATE TRIGGER " + q($fk + "_u", db) + " BEFORE UPDATE OF " + $col + " ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
-      $s = $s + "CREATE TRIGGER " + q($fk + "_d", db) + " BEFORE DELETE ON " + qlookup(rt, db) + " WHEN EXISTS (SELECT 1 FROM " + qt(t) + " WHERE " + $col + " = OLD." + q("code", db) + ") BEGIN SELECT RAISE(ABORT, " + lit($fk + ": a code still stored in " + t.name + "." + c + " cannot be deleted", db) + "); END;"
+      $s = $s + "CREATE TRIGGER " + q($fk + "_d", db) + " BEFORE DELETE ON " + $target[0] + " WHEN EXISTS (SELECT 1 FROM " + qt(t) + " WHERE " + $col + " = OLD." + $code + ") BEGIN SELECT RAISE(ABORT, " + lit($fk + ": a code still stored in " + t.name + "." + c + " cannot be deleted", db) + "); END;"
     end
-    ret $s
+    ret $s | string.rstrip
   end
   $alter = "ALTER TABLE " + qt(t)
   if $d == "sqlserver"
@@ -308,8 +361,8 @@ func column_objects_sql(t, c, rt, db)
   end
   if $r == "check"
     $s = $s + "\n" + $alter + " ADD CONSTRAINT " + q($ck, db) + " CHECK (" + $col + " IN (" + code_list(rt, db) + "));"
-  else if $r == "lookup-table"
-    $s = $s + "\n" + $alter + " ADD CONSTRAINT " + q($fk, db) + " FOREIGN KEY (" + $col + ") REFERENCES " + qlookup(rt, db) + " (" + q("code", db) + ");"
+  else if $target
+    $s = $s + "\n" + $alter + " ADD CONSTRAINT " + q($fk, db) + " FOREIGN KEY (" + $col + ") REFERENCES " + $target[0] + " (" + q($target[1], db) + ");"
   end
   ret $s
 end
@@ -389,9 +442,38 @@ func collection_sql(t, a, owner, db)
   ret $create + "\n" + column_objects_sql($jt, junction_code_column(a), $rt, db)
 end
 
+# The strategy objects of the reference-typed columns and the collections of a database: of the types bound to a table there
+# (bound true), or of the others. A bound type's objects come after the table rows (bound_reference_statements), since a foreign
+# key added to a column that already holds codes needs the bound table's rows.
+func reference_column_statements(db, bound, out)
+  for t in db.tables
+    for c in t.columns
+      if c.reference_type && (type_realization(c.reference_type, db) == "table") == bound
+        out[out.size] = "-- " + t.name + "." + c.name + " (" + c.reference_type.name + ", " + realization_words(c.reference_type, db) + ").\n" + column_objects_sql(t, c.name, c.reference_type, db)
+      end
+    end
+  end
+  for x in ref_collections(db)
+    # Named by where the codes are kept (the array column, or the junction table), in the database's own words.
+    $rt = x[1].type.reference_type
+    if (type_realization($rt, db) == "table") != bound
+      continue
+    end
+    $where = type_realization($rt, db) == "native" ? x[0].name + "." + (snake x[1].name) : junction_name(x[0], x[1])
+    out[out.size] = "-- " + $where + " (codes of " + $rt.name + ", " + realization_words($rt, db) + ").\n" + collection_sql(x[0], x[1], x[2], db)
+  end
+end
+
+# The objects of the columns and collections holding the codes of types bound to a table of the database, for seed.sql after the
+# table rows (the bound tables' rows among them) and before the entity seeds.
+func bound_reference_statements(db, out)
+  reference_column_statements(db, true, out)
+end
+
 # Every reference-data statement of a database for seed.sql, in the order they must run: native types and their new codes;
 # lookup tables and their rows; the strategy objects of every reference-typed column (validating what the tables hold); the
-# collections; then the retire deletes and the native guards, which the objects above protect.
+# collections; then the retire deletes and the native guards, which the objects above protect. The columns and collections of
+# bound types are left to bound_reference_statements.
 func reference_statements(db, out)
   $lookups = lookup_order(types_realized(db, "lookup-table"))
   $natives = types_realized(db, "native")
@@ -413,19 +495,7 @@ func reference_statements(db, out)
     end
     out[out.size] = $sql
   end
-  for t in db.tables
-    for c in t.columns
-      if c.reference_type
-        out[out.size] = "-- " + t.name + "." + c.name + " (" + c.reference_type.name + ", " + declared_realization(c.reference_type, db) + ").\n" + column_objects_sql(t, c.name, c.reference_type, db)
-      end
-    end
-  end
-  for x in ref_collections(db)
-    # Named by where the codes are kept (the array column, or the junction table), in the database's own words.
-    $rt = x[1].type.reference_type
-    $where = type_realization($rt, db) == "native" ? x[0].name + "." + (snake x[1].name) : junction_name(x[0], x[1])
-    out[out.size] = "-- " + $where + " (codes of " + $rt.name + ", " + declared_realization($rt, db) + ").\n" + collection_sql(x[0], x[1], x[2], db)
-  end
+  reference_column_statements(db, false, out)
   for rt in $lookups
     out[out.size] = "-- Codes no longer in the seeds of " + rt.name + ".\n" + lookup_retire_sql(rt, db)
   end

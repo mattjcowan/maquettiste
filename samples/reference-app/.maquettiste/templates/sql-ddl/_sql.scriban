@@ -334,11 +334,11 @@ func native_type_name(rt)
   ret (snake rt.name) + "_t"
 end
 
-# The SQL type of a column: the enum type for a reference-typed column realized as "native" on PostgreSQL, else type_of (for a
-# reference-typed column, the code's type).
+# The SQL type of a column: the enum type for a reference-typed column realized as "native" on PostgreSQL (unless its type is
+# bound to a table of the database, whose code column it then holds), else type_of (for a reference-typed column, the code's type).
 func column_type(c)
   $d = c.table.database.dialect
-  if c.reference_type && $d == "postgresql" && ref_realization(c.strategy) == "native"
+  if c.reference_type && $d == "postgresql" && !c.reference_binding && ref_realization(c.strategy) == "native"
     ret q(native_type_name(c.reference_type), c.table.database)
   end
   ret type_of c $d

@@ -219,6 +219,7 @@ internal static class SnapshotCapture
         Comment = column.Comment,
         ReferenceType = column.Type == "reference" ? column.ReferenceType?.Id : null,
         Strategy = column.Type == "reference" ? column.Strategy : null,
+        ReferenceTable = column.Type == "reference" ? column.ReferenceBinding?.Table.Key : null,
     };
 
     private static SnapshotSequence CaptureSequence(RSequence sequence) => new()

@@ -86,7 +86,8 @@
                 "collation",
                 "comment",
                 "referenceType",
-                "strategy"
+                "strategy",
+                "referenceTable"
               ],
               "properties": {
                 "key": {
@@ -167,6 +168,11 @@
                   "$ref": "common.json#/$defs/id"
                 },
                 "strategy": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "referenceTable": {
+                  "description": "For a reference column whose reference type is bound to a table of the column's database: that table's key. The binding wins over the strategy.",
                   "type": "string",
                   "minLength": 1
                 }

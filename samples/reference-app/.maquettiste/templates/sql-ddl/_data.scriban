@@ -1,14 +1,15 @@
 {{-
-# Table seeds and the entity seeds that reach a table through a binding (database.seed_tables, referenced tables first): seed.sql
+# Table seeds, the entity seeds that reach a table through a binding and the seeds of reference types bound to a table (their rows
+# first in it; database.seed_tables, referenced tables first): seed.sql
 # writes the rows for every environment, seed.<env>.sql an environment's own. A seed applied once inserts the rows whose key is
 # missing; a converging seed also updates the rows whose other columns changed (an upsert on the row key), and with delete it
 # removes the table's rows it does not hold. Entity seeds of a database that projects the entity are written by seed_statements.
 
-# Whether a row is written here: a table seed's, or an entity seed's that reaches the table through a binding, for this environment
-# ("" for the rows of every environment). A bound reference type's rows (source list) are not written yet: this pack still realizes
-# every reference type by its storage choice.
+# Whether a row is written here: a table seed's, an entity seed's that reaches the table through a binding, or a bound reference
+# type's (source list; such a type gets no lookup table, check or enum type in this database, _reference.scriban), for this
+# environment ("" for the rows of every environment).
 func data_row_here(r, env, db)
-  if r.source == "relation" || r.source == "list" || (r.source == "entity" && !r.seed.target.bindings[db.name])
+  if r.source == "relation" || (r.source == "entity" && !r.seed.target.bindings[db.name])
     ret false
   end
   if env == ""

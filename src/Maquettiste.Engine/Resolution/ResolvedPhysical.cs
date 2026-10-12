@@ -555,6 +555,12 @@ public sealed class RColumn : RAnnotated
     /// </summary>
     public RReferenceType? ReferenceType { get; internal set; }
 
+    /// <summary>
+    /// For a reference column: the binding of its reference type in the column's database (2026-10-11), when the type's rows live in
+    /// a table file there; the binding wins over <see cref="Strategy"/>, so a pack points the column at that table.
+    /// </summary>
+    public RReferenceTypeBinding? ReferenceBinding => ReferenceType?.Bindings.GetValueOrDefault(Table.Database.Name);
+
     /// <summary>For a reference column: the code's logical type (<c>string</c>, <c>int16</c>, <c>int32</c> or <c>int64</c>).</summary>
     public string? CodeType { get; internal set; }
 

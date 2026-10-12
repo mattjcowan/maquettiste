@@ -163,9 +163,11 @@ Without a binding nothing changes: it is optional, and a database without one ke
 - The `sql-ddl` pack's `seed.sql` reconciles the reference data (by the type's storage strategy) and writes the seed
   rows, as inserts that skip existing keys or as upserts for Keep as the model has them. A seed with environments goes to
   `seed.<environment>.sql`, for each environment the pack's `environments` parameter names.
+- For a type bound to a table (section 10), `sql-ddl` creates no lookup table, CHECK or enum type in that database: it
+  writes the type's rows into the bound table with the table's seed rows, and points each column holding the type's codes
+  at the table's code column with a foreign key.
 - The `seed-data` pack writes the rows as files for a loader instead, including a bound reference type's rows in its
-  table (first, source `list`). `sql-ddl` still realizes every reference type by its storage strategy and does not write
-  a bound type's rows yet.
+  table (first, source `list`).
 
 ## See also
 

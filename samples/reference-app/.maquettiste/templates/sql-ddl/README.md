@@ -18,7 +18,7 @@ For a database `main` (PostgreSQL, schema `billing`) with a table `invoices`:
 | `table` | `overwrite` | `each table` | `main/billing/tables/invoices.sql`: `CREATE TABLE` with columns, primary key, unique constraints, foreign keys and checks, then its indexes and comments |
 | `schema` | `overwrite` | `select databases` | `main/schema.sql`: schemas, SQL objects that run before the tables, database types, sequences, every table in foreign-key dependency order, then routines and views, then the other SQL objects (see DDL order) |
 | `migration` | `once` | `select databases` | `main/migrations/0001.sql`, `0002.sql`, …: one script per schema revision, from `schema_diff` |
-| `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of table seeds and of seeds of entities bound to a table, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
+| `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of table seeds, of seeds of entities bound to a table and of reference types bound to one, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
 | `seed-environments` | `overwrite` (file blocks) | `select databases` | `main/seed.<environment>.sql` for each environment the `environments` parameter names and some seed of the database belongs to: those seeds' rows, to run after `seed.sql` |
 | `process-tables` | file blocks | `each process` | `main/processes/purchase-approval.sql`: instance, history and gate audit tables of a process, one script per database; only when `processTables` is `true` (see Process tables) |
 | `view` | file blocks | `each view` | `main/billing/views/outstanding_invoices.sql`: the view's `CREATE VIEW`; only when `objectScripts` is `true` (see Object scripts) |
@@ -292,14 +292,24 @@ add or drop constraints on an existing table, so there the check and the foreign
 before the tables that use them. A lookup table's shape follows the type when the table is created; a field added later needs an
 `ALTER TABLE` by hand.
 
+**A type stored in a table of your own** (2026-10-12). A reference type bound to a table file of the database (its `bindings`)
+is realized as `table` there, whatever its strategy: no lookup table, CHECK or enum type. Its rows go into the bound table with
+the table's seed rows (below, first in the table, by each of the type's seeds' `apply`), and each column holding its codes, and
+each junction table of a collection, gets `fk_<table>_<column>_ref` to the bound table's code column (on SQLite, the triggers),
+when that column alone is the table's primary key or a unique constraint; `seed.sql` adds these after the table rows, since a
+column that already holds codes needs the rows there, and before the entity seeds. When the key also holds constant columns (several types
+sharing one table), a single code column cannot name a row, so it gets no foreign key and a comment says so; model the foreign key
+on the table file. On PostgreSQL a column of a type stored as `native` becomes the code's type once the type is bound, and the
+next migration retypes it (the snapshot records the bound table as `referenceTable`).
+
 **Seed rows.** The rows of entity and relation seeds follow as inserts, targets of referenced rows first: `ON CONFLICT DO
 NOTHING` on PostgreSQL and SQLite, `WHERE NOT EXISTS` on the primary key on SQL Server, so a second run skips them. An end column
 fills the foreign key with the referenced row's key; collection cells become junction rows or an array. Value-object cells, and
 seeds of relations stored as a foreign key (set the end on the entity's seed instead), are left to the `seed-data` region.
 
 **Table seeds and bound entities' seeds** (2026-10-07) come before them, tables in foreign key order: the rows of a seed whose
-target is a table, in column terms, and the rows of an entity's seed that reach the table its binding writes (the field map, with
-the binding's constants). A seed applied `once` (the default) inserts the rows whose row key is missing; a `converge` seed upserts
+target is a table, in column terms, the rows of an entity's seed that reach the table its binding writes (the field map, with
+the binding's constants), and the rows of a reference type bound to the table (first in it, through the type's binding). A seed applied `once` (the default) inserts the rows whose row key is missing; a `converge` seed upserts
 on the row key (the primary key, or the unique constraint the seed names), and with `delete` also deletes the table's rows it does
 not hold. A seed whose `environments` are set goes to `seed.<environment>.sql` instead, for each environment the `environments`
 parameter names.
@@ -372,7 +382,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `_objects.scriban` | Sequences, views, routines, database types, SQL objects, schemas, include directives and the dependency specs for `ddl_order` (foreign keys, and `dependsOn` for the DDL order). |
 | `_migration.scriban` | Statement builders over the schema diff. |
 | `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
-| `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. |
+| `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. A reference type bound to a table writes its rows here too (source `list`). |
 | `table.scriban`, `view.scriban`, `sequence.scriban`, `routine.scriban`, `database-type.scriban`, `sql-object.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `seed-environments.scriban`, `process-tables.scriban` | The unit templates. |
 
 ## Notes

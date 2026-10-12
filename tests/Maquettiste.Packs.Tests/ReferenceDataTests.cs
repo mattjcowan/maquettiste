@@ -207,7 +207,7 @@ public sealed class ReferenceDataTests
         return new Scripts(schema, migration, seed, added, repo.Read(folder + "seed.sql"));
     }
 
-    private static async Task<(int Code, string Output)> PsqlAsync(string docker, string container, string script)
+    internal static async Task<(int Code, string Output)> PsqlAsync(string docker, string container, string script)
     {
         var name = "mq_ref_" + Guid.NewGuid().ToString("N")[..8];
         Task<ProcessRunner.Result> Exec(string db, string sql) =>

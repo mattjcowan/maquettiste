@@ -118,7 +118,7 @@ func sqlite_rebuild_reason(tc)
   for cc in tc.columns
     if cc.kind == "added" && !sqlite_can_add(cc.column)
       $why = $why + (($why == "") ? "" : ", ") + "add " + cc.column.name
-    else if (cc.kind == "renamed" || cc.kind == "altered") && has_change(cc.changes, ["type", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "strategy", "codeType"])
+    else if (cc.kind == "renamed" || cc.kind == "altered") && has_change(cc.changes, ["type", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "strategy", "referenceTable", "codeType"])
       $why = $why + (($why == "") ? "" : ", ") + cc.new_name + " " + change_list(cc.changes)
     end
   end
@@ -272,7 +272,7 @@ func narrowing_notes(t, cc, out)
       if ($d == "sqlserver" || $d == "oracle") && national_type(ch.old) && !national_type(ch.new)
         $back = $d == "sqlserver" ? "CAST(CAST(" + $col + " AS " + ch.new + ") AS " + ch.old + ")" : "TO_NCHAR(TO_CHAR(" + $col + "))"
         emit(out, "-- TODO: " + $where + " switches from Unicode to single-byte text (" + ch.old + " -> " + ch.new + "); characters outside the code page become '?'. Check first: SELECT count(*) FROM " + qt(t) + " WHERE " + $back + " <> " + $col + ";")
-      else if !$facets && !has_change(cc.changes, ["type", "length", "precision", "scale", "strategy", "codeType"])
+      else if !$facets && !has_change(cc.changes, ["type", "length", "precision", "scale", "strategy", "referenceTable", "codeType"])
         emit(out, "-- TODO: " + $where + " changes its native type (" + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + "); check that every value converts before running this.")
       end
     end
@@ -646,9 +646,9 @@ func column_statements(tc, cc, out)
     end
     ret
   end
-  $retype = has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType", "strategy", "codeType", "collation"])
+  $retype = has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType", "strategy", "referenceTable", "codeType", "collation"])
   narrowing_notes($t, cc, out)
-  $physical = ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "comment", "strategy", "codeType"]
+  $physical = ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "comment", "strategy", "referenceTable", "codeType"]
   if $d == "mysql"
     # MySQL redefines the whole column; its comment is part of the definition. A key and the columns that reference it must agree on
     # the type, so the foreign keys on the column and those that reference it are dropped first and added back after every column.
@@ -715,7 +715,7 @@ func column_statements(tc, cc, out)
     if $retype
       if $d == "postgresql"
         # USING casts explicitly when the logical type or the native type itself changes; a new length, precision or scale needs none.
-        $using = has_change(cc.changes, ["type", "strategy", "codeType"]) || (has_change(cc.changes, ["nativeType"]) && !has_change(cc.changes, ["length", "precision", "scale"]))
+        $using = has_change(cc.changes, ["type", "strategy", "referenceTable", "codeType"]) || (has_change(cc.changes, ["nativeType"]) && !has_change(cc.changes, ["length", "precision", "scale"]))
         emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " TYPE " + $native + $collate + ($using ? " USING " + $col + "::" + $native : "") + ";")
       else
         emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " " + $native + $collate + ($c.nullable ? " NULL" : " NOT NULL") + ";")
@@ -750,7 +750,7 @@ func column_statements(tc, cc, out)
   if has_change(cc.changes, ["comment"]) && pack.params.comments
     column_comment_statement($t, $c, $name, out)
   end
-  $handled = ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "defaultName", "comment", "collation", "strategy", "codeType", "identity", "identitySeed", "identityIncrement", "identityAlways"]
+  $handled = ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "defaultName", "comment", "collation", "strategy", "referenceTable", "codeType", "identity", "identitySeed", "identityIncrement", "identityAlways"]
   $rest = []
   for ch in cc.changes
     if !has_change([ch], $handled)
