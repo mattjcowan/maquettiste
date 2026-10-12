@@ -39,6 +39,7 @@ internal sealed class ValidationContext
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<string>>> _derived;
     private readonly Lazy<ReferenceDataIndex> _referenceData;
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<Seed>>> _seeds;
+    private readonly Lazy<FrozenDictionary<string, ImmutableArray<(ReferenceType Type, ReferenceTypeBinding Binding)>>> _boundTypes;
     private readonly Lazy<FrozenDictionary<string, Seed>> _rowSeeds;
     private readonly Lazy<FrozenSet<string>> _cyclicRows;
     private readonly ConcurrentDictionary<Dialect, FrozenSet<string>> _knownNativeTypes;
@@ -66,6 +67,7 @@ internal sealed class ValidationContext
         _derived = new(BuildDerived);
         _referenceData = new(() => ReferenceDataIndex.Build(Documents.Select(d => d.Element)));
         _seeds = new(BuildSeeds);
+        _boundTypes = new(BuildBoundTypes);
         _rowSeeds = new(BuildRowSeeds);
         _cyclicRows = new(() => ReferenceDataRules.CyclicRows(this));
         _knownNativeTypes = new();
@@ -92,6 +94,7 @@ internal sealed class ValidationContext
         _derived = other._derived;
         _referenceData = other._referenceData;
         _seeds = other._seeds;
+        _boundTypes = other._boundTypes;
         _rowSeeds = other._rowSeeds;
         _cyclicRows = other._cyclicRows;
         _knownNativeTypes = other._knownNativeTypes;
@@ -131,6 +134,19 @@ internal sealed class ValidationContext
                 g => g.Key,
                 g => g.OrderBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.Id, StringComparer.Ordinal).ToImmutableArray(),
                 StringComparer.Ordinal);
+
+    /// <summary>The reference types bound to a table file, with their binding, ordered by (type name, type id, binding index).</summary>
+    /// <param name="tableId">The table id.</param>
+    /// <returns>The bindings.</returns>
+    public ImmutableArray<(ReferenceType Type, ReferenceTypeBinding Binding)> BoundTypesOf(string tableId) =>
+        _boundTypes.Value.TryGetValue(tableId, out var list) ? list : [];
+
+    private FrozenDictionary<string, ImmutableArray<(ReferenceType Type, ReferenceTypeBinding Binding)>> BuildBoundTypes() =>
+        Documents.Select(d => d.Element).OfType<ReferenceType>()
+            .OrderBy(t => t.Name, StringComparer.Ordinal).ThenBy(t => t.Id, StringComparer.Ordinal)
+            .SelectMany(t => t.Bindings.Select(b => (Type: t, Binding: b)))
+            .GroupBy(x => x.Binding.Table, StringComparer.Ordinal)
+            .ToFrozenDictionary(g => g.Key, g => g.ToImmutableArray(), StringComparer.Ordinal);
 
     private FrozenDictionary<string, Seed> BuildRowSeeds()
     {

@@ -32,6 +32,12 @@ public sealed class RReferenceType : RElement
     /// <summary>The effective storage choice by database name (a choice with a null strategy is template-defined).</summary>
     public IReadOnlyDictionary<string, RStorageChoice> Storage { get; internal set; } = FrozenDictionary<string, RStorageChoice>.Empty;
 
+    /// <summary>
+    /// The bindings by database name (2026-10-11, optional): the table file that holds the rows in that database. A binding wins over
+    /// <see cref="Storage"/> there, so a template does not realize the storage choice again for that database.
+    /// </summary>
+    public IReadOnlyDictionary<string, RReferenceTypeBinding> Bindings { get; internal set; } = FrozenDictionary<string, RReferenceTypeBinding>.Empty;
+
     /// <summary>Rows by code key (<see cref="RRow.CodeKey"/>), for <c>row</c> and <c>refs</c>.</summary>
     internal IReadOnlyDictionary<string, RRow> RowsByCode { get; set; } = FrozenDictionary<string, RRow>.Empty;
 
@@ -39,6 +45,50 @@ public sealed class RReferenceType : RElement
     /// <param name="code">The code (a string, or an integer for integer codes).</param>
     /// <returns>The row.</returns>
     internal RRow? RowOf(object? code) => code is null ? null : RowsByCode.GetValueOrDefault(RRow.KeyOf(code));
+}
+
+/// <summary>
+/// A resolved reference type binding (2026-10-11): the table file of one database that holds the type's rows, the column each field
+/// fills and the constant columns. The database's seed tables carry the rows through it (source <c>list</c>).
+/// </summary>
+public sealed class RReferenceTypeBinding : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "reference-type-binding";
+
+    /// <summary>The reference type.</summary>
+    public RReferenceType Type { get; internal set; } = null!;
+
+    /// <summary>The database.</summary>
+    public RDatabase Database { get; internal set; } = null!;
+
+    /// <summary>The table that holds the rows.</summary>
+    public RTable Table { get; internal set; } = null!;
+
+    /// <summary>The field map, in file order (entries whose field or column does not resolve are left out; MQ7118 reports them).</summary>
+    public IReadOnlyList<RReferenceBindingField> Fields { get; internal set; } = [];
+
+    /// <summary>The constant columns, in file order.</summary>
+    public IReadOnlyList<RBindingConstant> Constants { get; internal set; } = [];
+
+    /// <summary>The column the code fills, or <see langword="null"/> when none does (MQ7118).</summary>
+    public RColumn? CodeColumn { get; internal set; }
+
+    /// <summary>The binding's description text, when it has one.</summary>
+    public string? Description { get; internal set; }
+}
+
+/// <summary>One entry of a reference type binding's field map.</summary>
+public sealed class RReferenceBindingField
+{
+    /// <summary>The field: <c>code</c>, <c>label</c>, <c>description</c>, or a user field's name (the row's cell name).</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The user field, or <see langword="null"/> for a built-in one.</summary>
+    public RAttribute? Attribute { get; internal set; }
+
+    /// <summary>The column the field fills.</summary>
+    public RColumn Column { get; internal set; } = null!;
 }
 
 /// <summary>The code or label field of a reference type.</summary>

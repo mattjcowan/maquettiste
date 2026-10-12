@@ -28,7 +28,7 @@ The manifest (and the JSON file) holds:
 - `database`, `dialect`, and `seedHash`: the hash of every row and setting below, so a loader can skip a database it has loaded.
 - `tables`, in foreign key order, each with `table`, `schema`, `key` (the columns that find a row again on the next run: the
   seed's row key, else the primary key), `columns`, `types` (each column's built-in type keyword: `string`, `int32`, `decimal`, `uuid`, `date`...), `file` (CSV) or `rows` (JSON: `id` and `values` by column name), and `seeds`:
-  per seed, its `seed` name, `source` (`table`, `entity` or `relation`), `environments` (empty: every environment), `apply`
+  per seed, its `seed` name, `source` (`table`, `entity`, `relation`, or `list` for a reference type bound to the table, whose rows come first), `environments` (empty: every environment), `apply`
   (`once`: insert the rows whose key is missing; `converge`: also update changed rows), `delete` (with converge: remove the
   table's rows the seed does not hold), the `columns` it gives, and its rows as `firstRow` and `rowCount`.
 

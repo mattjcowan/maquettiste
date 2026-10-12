@@ -96,9 +96,9 @@ internal sealed partial class ChangePlanner
 
         var narrow = mode == DeleteResolution.DeleteDependents;
 
-        // A reference from an entity's binding (erratum E43) never deletes the entity, in either resolution: the binding goes (a field, a
-        // constant or a listed column only that entry), and the entity stays with its other bindings.
-        if (referrer.Element is Entity && BindingPart(reference.JsonPointer) is { } bindingPart)
+        // A reference from an entity's binding (erratum E43) or a reference type's (2026-10-11) never deletes its owner, in either
+        // resolution: the binding goes (a field, a constant or a listed column only that entry), and the owner stays with its other bindings.
+        if (referrer.Element is Entity or ReferenceType && BindingPart(reference.JsonPointer) is { } bindingPart)
         {
             var drop = new CascadeOp(bindingPart, true, reference, index);
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != bindingPart && !IsUnder(o.Pointer, bindingPart)), drop];
@@ -403,8 +403,9 @@ internal sealed partial class ChangePlanner
                 {
                     var sub = DocumentReader.Scan(document.Json).Ids.Where(x => x.Pointer == op.Pointer).Select(x => x.Id).FirstOrDefault();
                     var subKind = sub is not null && _snapshot.TryGetEntry(sub, out var entry) ? entry.Kind : null;
-                    var because = document.Element.Kind == ElementKind.Entity && op.Pointer.StartsWith("/bindings/", StringComparison.Ordinal)
-                        ? (subKind == "binding" ? "the binding" : "this entry of its binding") + " needs " + Label(op.Reference.ToId) + "; the entity stays"
+                    var because = document.Element.Kind is ElementKind.Entity or ElementKind.ReferenceType && op.Pointer.StartsWith("/bindings/", StringComparison.Ordinal)
+                        ? (subKind == "binding" ? "the binding" : "this entry of its binding") + " needs " + Label(op.Reference.ToId)
+                            + (document.Element.Kind == ElementKind.Entity ? "; the entity stays" : "; the reference type stays")
                         : "needs " + Label(op.Reference.ToId);
                     removes.Add(new DeletePlanRemove(referrerId, document.Element.KindName, NameOf(document.Element), op.Pointer,
                         Part(document.Json, op.Pointer, subKind, ShortName(op.Reference.ToId)), sub, subKind, because));

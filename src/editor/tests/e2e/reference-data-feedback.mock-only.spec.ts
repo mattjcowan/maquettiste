@@ -351,7 +351,11 @@ test("Storage explains strategies in plain words and previews a pack's database 
   await page.getByRole("tab", { name: "Storage" }).click();
   const storage = page.getByTestId("reference-storage");
   await expect(page.getByTestId("storage-explanation")).toContainText("A storage strategy says how the packs store this type");
-  await expect(storage.getByRole("columnheader")).toHaveText(["Database", "Strategy in use", "Set for this type"]);
+  await expect(storage.getByRole("table", { name: "Storage per database" }).getByRole("columnheader")).toHaveText([
+    "Database",
+    "Strategy in use",
+    "Set for this type",
+  ]);
   const all = storage.getByLabel("Storage for All databases");
   await expect(all.locator("option")).toHaveText(["Use the default (the packs decide)", "Let the packs decide", "lookup-table", "check", "native"]);
   await expect(storage.getByTestId("storage-main").getByTestId("strategy-in-use")).toHaveText("The packs decide, nothing is set");

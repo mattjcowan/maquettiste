@@ -128,6 +128,8 @@ internal sealed partial class ResolveRun
                 tablesByKey.TryAdd(table.Key, table);
         }
 
+        ResolveReferenceBindings(tablesByKey);
+
         var endOwners = new Dictionary<string, (REnd End, RRelation Relation)>(StringComparer.Ordinal);
         foreach (var relation in _relations.Values)
         {
@@ -243,6 +245,79 @@ internal sealed partial class ResolveRun
         foreach (var database in databases)
             PrepareSeedTables(database, [.. _seedOrder], seedRowsById);
         ResolveUsages();
+    }
+
+    /// <summary>
+    /// Resolves each reference type's bindings (2026-10-11): the first binding per database whose table is a table file of that
+    /// database, its fields and constants by column id or physical name (what does not resolve is left out; MQ7117 and MQ7118 report
+    /// it); sets <see cref="RReferenceType.Bindings"/> and each table's <see cref="RTable.ReferenceBindings"/>.
+    /// </summary>
+    private void ResolveReferenceBindings(Dictionary<string, RTable> tablesByKey)
+    {
+        var byTable = new Dictionary<RTable, List<RReferenceTypeBinding>>(ReferenceEqualityComparer.Instance);
+        foreach (var r in _referenceTypeOrder)
+        {
+            if (Model.GetDocument(r.Id)?.Element is not ReferenceType { Bindings.Count: > 0 } type)
+                continue;
+            var bindings = new SortedDictionary<string, RReferenceTypeBinding>(StringComparer.Ordinal);
+            foreach (var binding in type.Bindings)
+            {
+                if (!tablesByKey.TryGetValue(binding.Table, out var table) || !string.Equals(table.Database.Id, binding.Database, StringComparison.Ordinal)
+                    || bindings.ContainsKey(table.Database.Name))
+                    continue;
+                RColumn? ColumnOf(string reference) =>
+                    table.Columns.FirstOrDefault(c => string.Equals(c.Key, reference, StringComparison.Ordinal))
+                    ?? table.Columns.FirstOrDefault(c => string.Equals(c.Name, reference, StringComparison.Ordinal));
+                var fields = new List<RReferenceBindingField>();
+                foreach (var field in binding.Fields)
+                {
+                    if (ColumnOf(field.Column) is not { } column || fields.Any(f => ReferenceEquals(f.Column, column)))
+                        continue;
+                    if (BuiltinColumns.Contains(field.Attribute, StringComparer.Ordinal))
+                    {
+                        if (!fields.Any(f => f.Attribute is null && f.Name == field.Attribute))
+                            fields.Add(new RReferenceBindingField { Name = field.Attribute, Column = column });
+                    }
+                    else if (r.Attributes.FirstOrDefault(a => string.Equals(a.Id, field.Attribute, StringComparison.Ordinal)) is { Collection: false } attribute
+                        && !fields.Any(f => ReferenceEquals(f.Attribute, attribute)))
+                    {
+                        fields.Add(new RReferenceBindingField { Name = attribute.Name, Attribute = attribute, Column = column });
+                    }
+                }
+
+                var constants = new List<RBindingConstant>();
+                foreach (var constant in binding.Constants)
+                {
+                    if (ColumnOf(constant.Column) is not { } column || fields.Any(f => ReferenceEquals(f.Column, column)) || constants.Any(c => ReferenceEquals(c.SourceColumn, column)))
+                        continue;
+                    constants.Add(new RBindingConstant
+                    {
+                        Column = constant.Column, ColumnName = column.Name, SourceColumn = column, WriteColumn = column,
+                        Value = constant.Value is { } value ? ResolutionValues.Plain(value) : null,
+                    });
+                }
+
+                var resolved = new RReferenceTypeBinding
+                {
+                    Id = binding.Id, Type = r, Database = table.Database, Table = table, Fields = fields, Constants = constants,
+                    CodeColumn = fields.FirstOrDefault(f => f.Attribute is null && f.Name == "code")?.Column,
+                    Description = binding.Description is { } description
+                        ? description.Text ?? (description.File is null ? null : Model.GetDocument(type.Id)?.SidecarText)
+                        : null,
+                };
+                DepsOf(resolved).Element(type.Id).Element(binding.Table);
+                bindings[table.Database.Name] = resolved;
+                if (!byTable.TryGetValue(table, out var list))
+                    byTable[table] = list = [];
+                list.Add(resolved);
+                Register(resolved);
+            }
+
+            r.Bindings = SortedMap(bindings);
+        }
+
+        foreach (var (table, list) in byTable)
+            table.ReferenceBindings = new RList<RReferenceTypeBinding>(list, [Keys.Referrers(table.Key)]);
     }
 
     private List<RSeedColumn> SeedColumns(Seed seed, IResolvedObject? target, Dictionary<string, (REnd End, RRelation Relation)> endOwners, DependencySet deps)
@@ -420,9 +495,19 @@ internal sealed partial class ResolveRun
 
         var keys = new DependencySet(Keys).Add("k:seed");
         foreach (var seed in _seedOrder)
+        {
             keys.Element(seed.Id);
+            if (seed.Target is RTable table)
+                keys.Element(table.Key); // its foreign keys order table seeds
+        }
+
         foreach (var type in _referenceTypeOrder)
+        {
             keys.Element(type.Id);
+            foreach (var binding in type.Bindings.Values)
+                keys.Element(binding.Table.Key);
+        }
+
         _seedsInOrderKeys = keys.ToList();
         var frozen = _seedsInOrderKeys;
         _seedsInOrder = () => new RList<RSeed>(ordering.InsertOrder(), frozen);
@@ -436,6 +521,8 @@ internal sealed partial class ResolveRun
     {
         private readonly Lazy<(RList<RSeedRow> Ordered, SortedSet<int> Across)>?[] _perSeed = new Lazy<(RList<RSeedRow>, SortedSet<int>)>?[seeds.Count];
         private Dictionary<RSeed, int>? _index;
+        private readonly Dictionary<string, Dictionary<string, List<RSeedRow>>> _rowsByKey = new(StringComparer.Ordinal);
+        private Dictionary<RTable, List<RSeed>>? _seedsByTable;
 
         private Dictionary<RSeed, int> Index => LazyInitializer.EnsureInitialized(ref _index, () =>
         {
@@ -461,9 +548,10 @@ internal sealed partial class ResolveRun
         private (RList<RSeedRow> Ordered, SortedSet<int> Across) Order(RSeed seed)
         {
             var rows = seed.Rows;
-            // A seed whose columns name no other row (no end, no reference type) keeps its file order and depends on no seed: the
-            // general pass below would find no edge, so its cells are not read.
-            if (!seed.Columns.Any(c => c.End is not null || c.Attribute?.Type.ReferenceType is not null))
+            var foreignKeys = ForeignKeysGiven(seed);
+            // A seed whose columns name no other row (no end, no reference type, no foreign key) keeps its file order and depends on no
+            // seed: the general pass below would find no edge, so its cells are not read.
+            if (foreignKeys.Count == 0 && !seed.Columns.Any(c => c.End is not null || c.Attribute?.Type.ReferenceType is not null))
                 return (new RList<RSeedRow>(rows, rows.MembershipKeys), []);
             var position = new Dictionary<string, int>(rows.Count, StringComparer.Ordinal);
             for (var i = 0; i < rows.Count; i++)
@@ -473,7 +561,7 @@ internal sealed partial class ResolveRun
             var across = new SortedSet<int>();
             for (var i = 0; i < rows.Count; i++)
             {
-                foreach (var (id, owner) in Named(rows[i], seedRowsById).Distinct())
+                foreach (var (id, owner) in Named(rows[i], seedRowsById).Concat(NamedByKeys(seed, rows[i], foreignKeys)).Distinct())
                 {
                     if (ReferenceEquals(owner, seed) && position.TryGetValue(id, out var p))
                     {
@@ -512,6 +600,156 @@ internal sealed partial class ResolveRun
             }
 
             return (new RList<RSeedRow>(ordered, rows.MembershipKeys), across);
+        }
+
+        /// <summary>
+        /// The foreign keys whose every column a seed gives, with how to read each column's cell: those of a table seed's table, and for
+        /// a reference type's seed those of the tables its bindings name (through the field map and the constants).
+        /// </summary>
+        private static List<(RForeignKey Key, Func<RSeedRow, object?>[] Cells)> ForeignKeysGiven(RSeed seed)
+        {
+            var result = new List<(RForeignKey, Func<RSeedRow, object?>[])>();
+            IEnumerable<RTable> tables = seed.Target switch
+            {
+                RTable table => [table],
+                RReferenceType type => type.Bindings.Values.Select(b => b.Table),
+                _ => [],
+            };
+            foreach (var table in tables)
+            {
+                foreach (var fk in table.ForeignKeys)
+                {
+                    if (fk.Columns.Count == 0 || fk.ReferencedColumns.Count != fk.Columns.Count || CellsOf(seed, table, fk.Columns) is not { } cells)
+                        continue;
+                    result.Add((fk, cells));
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// How a seed's row gives each of some columns of a table: a table seed's cell, or for a seed of a reference type bound to the
+        /// table its field's cell or a constant (2026-10-11); <see langword="null"/> when the seed gives not every column.
+        /// </summary>
+        private static Func<RSeedRow, object?>[]? CellsOf(RSeed seed, RTable table, IReadOnlyList<RColumn> columns)
+        {
+            var binding = seed.Target is RReferenceType type && type.Bindings.TryGetValue(table.Database.Name, out var b) && ReferenceEquals(b.Table, table) ? b : null;
+            if (binding is null && !ReferenceEquals(seed.Target, table))
+                return null;
+            var cells = new Func<RSeedRow, object?>[columns.Count];
+            for (var i = 0; i < columns.Count; i++)
+            {
+                var column = columns[i];
+                if (binding is null)
+                {
+                    if (seed.Columns.FirstOrDefault(c => ReferenceEquals(c.Column, column)) is not { } cell)
+                        return null;
+                    var name = cell.Name;
+                    cells[i] = row => row.Values.GetValueOrDefault(name);
+                }
+                else if (binding.Fields.FirstOrDefault(f => ReferenceEquals(f.Column, column)) is { } field)
+                {
+                    var name = field.Name;
+                    cells[i] = row => row.Values.GetValueOrDefault(name);
+                }
+                else if (binding.Constants.FirstOrDefault(c => ReferenceEquals(c.SourceColumn, column)) is { } constant)
+                {
+                    var value = constant.Value;
+                    cells[i] = _ => value;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+
+            return cells;
+        }
+
+        /// <summary>A row's key over some cells (codes as <see cref="RRow.KeyOf"/> reads them), or <see langword="null"/> when a cell is null.</summary>
+        private static string? KeyOf(RSeedRow row, Func<RSeedRow, object?>[] cells)
+        {
+            var parts = new string[cells.Length];
+            for (var i = 0; i < cells.Length; i++)
+            {
+                if (cells[i](row) is not { } value)
+                    return null;
+                parts[i] = RRow.KeyOf(value);
+            }
+
+            return string.Join("\u0000", parts);
+        }
+
+        /// <summary>
+        /// The rows of the referenced tables that a seed row's foreign keys name: every row of that key whose seed is loaded with
+        /// <paramref name="seed"/> somewhere (seeds of different environments may hold the same key; each is a parent where it loads).
+        /// </summary>
+        private IEnumerable<(string Id, RSeed? Seed)> NamedByKeys(RSeed seed, RSeedRow row, List<(RForeignKey Key, Func<RSeedRow, object?>[] Cells)> foreignKeys)
+        {
+            foreach (var (fk, cells) in foreignKeys)
+            {
+                if (KeyOf(row, cells) is not { } key || !RowsByKey(fk.ReferencedTable, fk.ReferencedColumns).TryGetValue(key, out var targets))
+                    continue;
+                foreach (var target in targets)
+                {
+                    if (target.Seed is not { } holder || LoadedTogether(seed, holder))
+                        yield return (target.Id, target.Seed);
+                }
+            }
+        }
+
+        /// <summary>
+        /// The rows a table holds by their key over some columns: its table seeds' rows and the rows of the reference types bound to it,
+        /// every holder of a key in seed order (seeds of different environments may share keys; MQ7112 reports a repeat where they meet).
+        /// </summary>
+        private Dictionary<string, List<RSeedRow>> RowsByKey(RTable table, IReadOnlyList<RColumn> columns)
+        {
+            var name = table.Key + "\u0000" + string.Join("\u0000", columns.Select(c => c.Name));
+            lock (_rowsByKey)
+            {
+                if (_rowsByKey.TryGetValue(name, out var found))
+                    return found;
+                var rows = new Dictionary<string, List<RSeedRow>>(StringComparer.Ordinal);
+                foreach (var seed in SeedsOf(table))
+                {
+                    if (CellsOf(seed, table, columns) is not { } cells)
+                        continue;
+                    foreach (var row in seed.Rows)
+                    {
+                        if (KeyOf(row, cells) is { } key)
+                            ListOf(rows, key).Add(row);
+                    }
+                }
+
+                return _rowsByKey[name] = rows;
+            }
+        }
+
+        /// <summary>The seeds that put rows in a table, in seed order: its table seeds and the seeds of the reference types bound to it (called under the lock).</summary>
+        private List<RSeed> SeedsOf(RTable table)
+        {
+            if (_seedsByTable is null)
+            {
+                _seedsByTable = new Dictionary<RTable, List<RSeed>>(ReferenceEqualityComparer.Instance);
+                foreach (var seed in seeds)
+                {
+                    IEnumerable<RTable> targets = seed.Target switch
+                    {
+                        RTable t => [t],
+                        RReferenceType type => type.Bindings.Values.Select(b => b.Table),
+                        _ => [],
+                    };
+                    foreach (var target in targets.Distinct(ReferenceEqualityComparer.Instance).Cast<RTable>())
+                    {
+                        if (!_seedsByTable.TryGetValue(target, out var list))
+                            _seedsByTable[target] = list = [];
+                        list.Add(seed);
+                    }
+                }
+            }
+
+            return _seedsByTable.GetValueOrDefault(table) ?? [];
         }
 
         /// <summary>Every seed by (dependency depth, name, id): depth 0 without dependencies, else one more than the deepest seed it names; a back edge of a cycle counts as none.</summary>

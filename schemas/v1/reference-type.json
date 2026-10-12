@@ -18,6 +18,7 @@
     "label",
     "attributes",
     "storage",
+    "bindings",
     "properties",
     "generation",
     "source"
@@ -126,6 +127,82 @@
         "$ref": "common.json#/$defs/storageChoice"
       },
       "default": {}
+    },
+    "bindings": {
+      "description": "The table files that hold the rows, at most one per database (optional). A binding wins over the storage choice in its database.",
+      "type": "array",
+      "items": {
+        "title": "Reference type binding",
+        "description": "The table file of one database that holds the type's rows: the column of each field and the constant columns that tell the type's rows apart in a shared table.",
+        "type": "object",
+        "x-order": ["id", "database", "table", "constants", "fields", "description"],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "database": {
+            "description": "The id of the database.",
+            "$ref": "common.json#/$defs/id"
+          },
+          "table": {
+            "description": "The id of a table file of the database.",
+            "$ref": "common.json#/$defs/id"
+          },
+          "constants": {
+            "description": "Columns with a fixed value on every row of the type.",
+            "type": "array",
+            "items": {
+              "title": "Reference type binding constant",
+              "type": "object",
+              "x-order": ["column", "value"],
+              "properties": {
+                "column": {
+                  "description": "A column of the table: its id or physical name.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "value": {
+                  "description": "The value; absent or null is SQL NULL.",
+                  "type": ["string", "number", "boolean", "null"]
+                }
+              },
+              "required": ["column"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "fields": {
+            "description": "The field map: code, label, description or a user field's id, and the table column it fills.",
+            "type": "array",
+            "items": {
+              "title": "Reference type binding field",
+              "type": "object",
+              "x-order": ["attribute", "column"],
+              "properties": {
+                "attribute": {
+                  "description": "code, label, description, or the id of a user field of the type.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "column": {
+                  "description": "A column of the table: its id or physical name.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": ["attribute", "column"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "description": {
+            "$ref": "common.json#/$defs/description"
+          }
+        },
+        "required": ["id", "database", "table"],
+        "additionalProperties": false
+      },
+      "default": []
     },
     "properties": {
       "$ref": "common.json#/$defs/properties",

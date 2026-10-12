@@ -70,6 +70,7 @@ internal static class ReferenceDataRules
 
         foreach (var (key, choice) in type.Storage.OrderBy(kv => kv.Key, StringComparer.Ordinal))
             CheckChoice(context.Model.Settings, choice, "/storage/" + Ptr.Escape(key), $"Reference type '{type.Name}'", report.Add);
+        ReferenceBindingRules.Check(context, type, report);
     }
 
     /// <summary>Checks one storage choice against the project's strategy declarations (MQ7007, MQ7008).</summary>
@@ -272,7 +273,10 @@ internal static class ReferenceDataRules
         CheckMissingColumns(context, seed, target, columns, report);
         CheckRows(context, seed, target, columns, report);
         if (target is ReferenceType type)
+        {
             CheckCodes(context, seed, type, columns, report);
+            ReferenceBindingRules.CheckSeed(context, seed, type, report);
+        }
         if (target is Entity entity)
             CheckKeys(context, seed, entity, columns, report);
         for (var r = 0; r < seed.Rows.Count; r++)

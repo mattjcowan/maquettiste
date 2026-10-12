@@ -372,7 +372,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `_objects.scriban` | Sequences, views, routines, database types, SQL objects, schemas, include directives and the dependency specs for `ddl_order` (foreign keys, and `dependsOn` for the DDL order). |
 | `_migration.scriban` | Statement builders over the schema diff. |
 | `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
-| `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. |
+| `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. A reference type bound to a table (source `list` rows) is not written yet: the pack still realizes every type by its storage strategy. |
 | `table.scriban`, `view.scriban`, `sequence.scriban`, `routine.scriban`, `database-type.scriban`, `sql-object.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `seed-environments.scriban`, `process-tables.scriban` | The unit templates. |
 
 ## Notes

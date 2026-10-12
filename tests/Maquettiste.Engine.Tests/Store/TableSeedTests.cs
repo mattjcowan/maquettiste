@@ -149,6 +149,125 @@ public sealed class TableSeedTests
         Assert.Equal([CurrencySeed], model.Databases.SelectMany(d => d.Tables).Single(t => t.Name == "currencies").Seeds.Select(s => s.Id));
     }
 
+    private const string Categories = "01K6TSD0000000000000000050", CategoryId = "01K6TSD0000000000000000051", CategoryParent = "01K6TSD0000000000000000052";
+    private const string CategoryParentKey = "01K6TSD0000000000000000053", RootSeed = "01K6TSD0000000000000000060", ChildSeed = "01K6TSD0000000000000000070";
+
+    /// <summary>A table whose rows name a parent row of the same table, with a seed of every environment holding the root.</summary>
+    private static async Task<EditorRepo> CategoriesAsync()
+    {
+        var r = await RepoAsync();
+        await CreateAsync(r, $$"""
+            {"kind":"table","id":"{{Categories}}","name":"categories","database":"{{EditorRepo.MainDatabaseId}}","columns":[
+              {"id":"{{CategoryId}}","name":"id","type":"int32","nullable":false},
+              {"id":"{{CategoryParent}}","name":"parent_id","type":"int32"}],
+             "primaryKey":{"columns":["{{CategoryId}}"]},
+             "foreignKeys":[{"id":"{{CategoryParentKey}}","name":"fk_categories_parent","columns":["{{CategoryParent}}"],"referencesTable":"{{Categories}}"}]}
+            """);
+        await CreateAsync(r, $$"""
+            {"kind":"seed","id":"{{RootSeed}}","name":"root","target":"{{Categories}}","columns":["{{CategoryId}}","{{CategoryParent}}"],
+             "rows":[{"id":"01K6TSD0000000000000000061","values":[1,null]}]}
+            """);
+        return r;
+    }
+
+    [Fact]
+    public async Task Seeds_in_order_put_a_table_seed_after_the_seeds_of_the_rows_its_foreign_keys_name()
+    {
+        await using var r = await RepoAsync();
+        // By name the price lists come first; their currency names a row of the currencies seed.
+        await CreateAsync(r, $$"""
+            {"kind":"seed","id":"{{CurrencySeed}}","name":"currencies","target":"{{Currencies}}","columns":["{{CurrencyCode}}","{{CurrencyName}}"],
+             "rows":[{"id":"01K6TSD0000000000000000021","values":["EUR","Euro"]}]}
+            """);
+        await CreateAsync(r, $$"""
+            {"kind":"seed","id":"{{PriceListSeed}}","name":"aPriceLists","target":"{{PriceLists}}","columns":["{{PriceListId}}","{{PriceListCurrency}}"],
+             "rows":[{"id":"01K6TSD0000000000000000031","values":[1,"EUR"]}]}
+            """);
+
+        var model = await ResolvedAsync(r);
+        Assert.Equal(["aPriceLists", "currencies"], model.Seeds.Select(s => s.Name));
+        Assert.Equal(["currencies", "aPriceLists"], model.SeedsInOrder.Select(s => s.Name));
+    }
+
+    [Fact]
+    public async Task A_tables_rows_that_name_rows_of_the_same_table_come_after_them_seed_by_seed()
+    {
+        await using var r = await CategoriesAsync();
+        // By name this seed comes before the root; its first row names its second.
+        await CreateAsync(r, $$"""
+            {"kind":"seed","id":"{{ChildSeed}}","name":"children","target":"{{Categories}}","columns":["{{CategoryId}}","{{CategoryParent}}"],
+             "environments":["demo"],
+             "rows":[{"id":"01K6TSD0000000000000000071","values":[3,2]},{"id":"01K6TSD0000000000000000072","values":[2,1]}]}
+            """);
+
+        var model = await ResolvedAsync(r);
+        Assert.Equal(["root", "children"], model.SeedsInOrder.Where(s => s.Target is RTable { Name: "categories" }).Select(s => s.Name));
+        Assert.Equal(["01K6TSD0000000000000000072", "01K6TSD0000000000000000071"], model.Seeds.Single(s => s.Name == "children").OrderedRows.Select(x => x.Id));
+
+        var categories = model.Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).SeedTables.Single(t => t.Table.Name == "categories");
+        Assert.Equal(["root", "children"], categories.Seeds.Select(s => s.Name));
+        Assert.Equal([1L, 2L, 3L], categories.Rows.Select(x => x.Values["id"]));
+    }
+
+    [Fact]
+    public async Task A_row_comes_after_the_holder_of_its_parent_key_that_loads_with_it_when_seeds_of_other_environments_share_the_key()
+    {
+        await using var r = await CategoriesAsync();
+        // Category 2 is held by a prod seed (a top row) and by a demo seed (under the root); the demo child names it, so it follows
+        // the demo holder, not the first holder by name.
+        string Seed(string id, string name, string environment, string rowId, int key, string parent) => $$"""
+            {"kind":"seed","id":"{{id}}","name":"{{name}}","target":"{{Categories}}","columns":["{{CategoryId}}","{{CategoryParent}}"],
+             "environments":["{{environment}}"],"rows":[{"id":"{{rowId}}","values":[{{key}},{{parent}}]}]}
+            """;
+        await CreateAsync(r, Seed("01K6TSD0000000000000000092", "bProd", "prod", "01K6TSD0000000000000000093", 2, "null"));
+        await CreateAsync(r, Seed("01K6TSD0000000000000000094", "cDemo", "demo", "01K6TSD0000000000000000095", 2, "1"));
+        await CreateAsync(r, Seed("01K6TSD0000000000000000090", "aDemoChild", "demo", "01K6TSD0000000000000000091", 3, "2"));
+        Assert.DoesNotContain((await r.Store.ValidateAsync(new ValidationScope(), Ct)).Diagnostics, d => d.Rule is "MQ7111" or "MQ7112");
+
+        var model = await ResolvedAsync(r);
+        var order = model.SeedsInOrder.Where(s => s.Target is RTable { Name: "categories" }).Select(s => s.Name).ToList();
+        Assert.True(order.IndexOf("cDemo") < order.IndexOf("aDemoChild"), string.Join(", ", order));
+        var categories = model.Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).SeedTables.Single(t => t.Table.Name == "categories");
+        Assert.Equal(["bProd", "root", "cDemo", "aDemoChild"], categories.Seeds.Select(s => s.Name));
+    }
+
+    [Fact]
+    public async Task A_foreign_key_must_name_a_row_held_in_every_environment_its_row_is_loaded_in()
+    {
+        await using var r = await CategoriesAsync();
+        await CreateAsync(r, $$"""
+            {"kind":"seed","id":"{{ChildSeed}}","name":"children","target":"{{Categories}}","columns":["{{CategoryId}}","{{CategoryParent}}"],
+             "environments":["demo"],
+             "rows":[{"id":"01K6TSD0000000000000000071","values":[2,1]}]}
+            """);
+        // Row 2 is there in demo only: a seed of every environment and a seed of demo and test cannot name it; one of demo can.
+        string Seed(string id, string name, string environments, string rowId, int key) => $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{id}}","name":"{{name}}","target":"{{Categories}}",
+             "columns":["{{CategoryId}}","{{CategoryParent}}"],"environments":{{environments}},
+             "rows":[{"id":"{{rowId}}","values":[{{key}},2]}]}
+            """;
+        var seeds = new[]
+        {
+            ("01K6TSD0000000000000000080", Seed("01K6TSD0000000000000000080", "everywhere", "[]", "01K6TSD0000000000000000081", 4)),
+            ("01K6TSD0000000000000000082", Seed("01K6TSD0000000000000000082", "demoAndTest", "[\"demo\",\"test\"]", "01K6TSD0000000000000000083", 5)),
+            ("01K6TSD0000000000000000084", Seed("01K6TSD0000000000000000084", "demoOnly", "[\"demo\"]", "01K6TSD0000000000000000085", 6)),
+        };
+        var paths = new List<string>();
+        foreach (var (id, json) in seeds)
+        {
+            var path = r.Repo.PathOf($".maquettiste/model/seeds/{id}/{id}.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonNode.Parse(json)!.ToJsonString());
+            paths.Add(path);
+        }
+
+        await r.Store.RefreshAsync(paths, Ct);
+        var rules = (await r.Store.ValidateAsync(new ValidationScope([.. seeds.Select(s => s.Item1)]), Ct)).Diagnostics.Where(d => d.Rule == "MQ7111").ToList();
+        Assert.Equal(2, rules.Count);
+        Assert.Contains(rules, d => d.Message.StartsWith("Row 01K6TSD0000000000000000081:", StringComparison.Ordinal) && d.Message.Contains("do not hold in every environment", StringComparison.Ordinal));
+        Assert.Contains(rules, d => d.Message.StartsWith("Row 01K6TSD0000000000000000083:", StringComparison.Ordinal) && d.Message.Contains("in the environment 'test'", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Table_seed_rules_check_columns_cells_keys_and_foreign_keys()
     {

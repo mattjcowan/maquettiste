@@ -6,10 +6,11 @@ namespace Maquettiste.Engine.Validation;
 
 /// <summary>
 /// The rules of a seed whose target is a table (2026-10-07, table seeds): MQ7107 (a table file and its own columns), MQ7108 (no
-/// column the database fills), MQ7109 (each cell fits its column), MQ7111 (a foreign key names a seeded row), MQ7112 (one row per key),
-/// MQ7113 (one source for a table's rows) and MQ7114 (a row key). Cells are column values: a text column takes any scalar (a number
-/// or a boolean read from a rows file stands for its text), numbers fit their type, a NOT NULL column without a default needs a value.
-/// CHECK constraints are left to the database.
+/// column the database fills), MQ7109 (each cell fits its column), MQ7111 (a foreign key names a seeded row, in every environment the
+/// row is loaded in), MQ7112 (one row per key), MQ7113 (one source for a table's rows) and MQ7114 (a row key). The rows of the
+/// reference types bound to a table count as its rows for MQ7111 and MQ7112 (2026-10-11). Cells are column values: a text column
+/// takes any scalar (a number or a boolean read from a rows file stands for its text), numbers fit their type, a NOT NULL column
+/// without a default needs a value. CHECK constraints are left to the database.
 /// </summary>
 internal static class TableSeedRules
 {
@@ -181,14 +182,29 @@ internal static class TableSeedRules
         _ => "no value",
     };
 
-    /// <summary>Two seeds of one table with overlapping environments that give the same row key (MQ7112, reported on the later seed by name).</summary>
+    /// <summary>
+    /// Two seeds of one table with overlapping environments that give the same row key (MQ7112, reported on the later seed by name),
+    /// and a row whose key is a row of a reference type bound to the table where both are loaded (reported on the table seed).
+    /// </summary>
     private static void CheckOtherSeeds(ValidationContext context, Seed seed, Table table, IReadOnlyList<string>? keyIds, Report report)
     {
         if (keyIds is null)
             return;
+        foreach (var (listSeed, keys) in ReferenceBindingRules.KeysOf(context, table, keyIds))
+        {
+            if (!Overlap(seed, listSeed))
+                continue;
+            var type = context.Model.GetDocument(listSeed.Target)?.Element.Name ?? listSeed.Target;
+            for (var r = 0; r < seed.Rows.Count; r++)
+            {
+                if (KeyOf(seed, seed.Rows[r], keyIds) is { } key && keys.Contains(key))
+                    report.Add("MQ7112", $"Row {seed.Rows[r].Id} repeats the row key of a row of reference type '{type}' (seed '{listSeed.Name}'), which is bound to table '{table.Name}'.", "/rows/" + Str(r), seed.Rows[r].Id);
+            }
+        }
+
         foreach (var other in context.SeedsOf(table.Id).Where(o => o.Id != seed.Id && string.CompareOrdinal(o.Name, seed.Name) < 0))
         {
-            if (seed.Environments.Count > 0 && other.Environments.Count > 0 && !seed.Environments.Intersect(other.Environments, StringComparer.Ordinal).Any())
+            if (!Overlap(seed, other))
                 continue;
             var theirs = KeysOf(other, keyIds);
             for (var r = 0; r < seed.Rows.Count; r++)
@@ -198,6 +214,10 @@ internal static class TableSeedRules
             }
         }
     }
+
+    /// <summary>Whether two seeds are loaded together somewhere: either is for every environment, or they share one.</summary>
+    internal static bool Overlap(Seed a, Seed b) =>
+        a.Environments.Count == 0 || b.Environments.Count == 0 || a.Environments.Intersect(b.Environments, StringComparer.Ordinal).Any();
 
     private static string? KeyOf(Seed seed, SeedRow row, IReadOnlyList<string> columnIds)
     {
@@ -216,28 +236,71 @@ internal static class TableSeedRules
     private static HashSet<string> KeysOf(Seed seed, IReadOnlyList<string> columnIds) =>
         [.. seed.Rows.Select(r => KeyOf(seed, r, columnIds)).OfType<string>()];
 
-    /// <summary>A foreign key whose columns the seed gives must name a row of the referenced table's seeds, when that table has seeds (MQ7111).</summary>
+    /// <summary>
+    /// A foreign key whose columns the seed gives must name a row of the referenced table's seeds, when that table has seeds (MQ7111),
+    /// and a row that is there in every environment the row is loaded in: a seed of every environment needs the row in a seed of every
+    /// environment; a seed of named environments needs it, for each of them, in a seed of every environment or of that one.
+    /// </summary>
     private static void CheckForeignKeys(ValidationContext context, Seed seed, Table table, Report report)
     {
         foreach (var fk in table.ForeignKeys)
         {
             if (fk.Columns.Count == 0 || fk.Columns.Any(c => !seed.Columns.Contains(c, StringComparer.Ordinal)))
                 continue;
-            if (context.Model.GetDocument(fk.ReferencesTable)?.Element is not Table referenced)
+            if (HoldersOf(context, fk) is not { } holders)
                 continue;
-            var seeds = context.SeedsOf(referenced.Id);
-            if (seeds.Length == 0)
-                continue; // the referenced rows come from elsewhere
-            IReadOnlyList<string>? referencedColumns = fk.ReferencesColumns is { Count: > 0 } named ? named : referenced.PrimaryKey?.Columns;
-            if (referencedColumns is null || referencedColumns.Count != fk.Columns.Count)
-                continue;
-            var known = new HashSet<string>(seeds.SelectMany(s => KeysOf(s, referencedColumns)), StringComparer.Ordinal);
             for (var r = 0; r < seed.Rows.Count; r++)
             {
-                if (KeyOf(seed, seed.Rows[r], fk.Columns) is { } key && !known.Contains(key))
-                    report.Add("MQ7111", $"Row {seed.Rows[r].Id}: foreign key '{fk.Name}' names no row of the seeds of table '{referenced.Name}'.", "/rows/" + Str(r), seed.Rows[r].Id);
+                if (KeyOf(seed, seed.Rows[r], fk.Columns) is { } key && ForeignKeyProblem(context, seed, fk, holders, key) is { } problem)
+                    report.Add("MQ7111", $"Row {seed.Rows[r].Id}: {problem}.", "/rows/" + Str(r), seed.Rows[r].Id);
             }
         }
+    }
+
+    /// <summary>
+    /// The rows the table a foreign key references holds, by their key over the referenced columns, per seed: its table seeds' rows and
+    /// the rows of the reference types bound to it (2026-10-11); <see langword="null"/> when it has neither (its rows come from
+    /// elsewhere) or the key's columns do not line up.
+    /// </summary>
+    internal static (Table Table, List<(Seed Seed, HashSet<string> Keys)> Keys)? HoldersOf(ValidationContext context, ForeignKey fk)
+    {
+        if (context.Model.GetDocument(fk.ReferencesTable)?.Element is not Table referenced)
+            return null;
+        var seeds = context.SeedsOf(referenced.Id);
+        if (seeds.Length == 0 && context.BoundTypesOf(referenced.Id).Length == 0)
+            return null;
+        IReadOnlyList<string>? referencedColumns = fk.ReferencesColumns is { Count: > 0 } named ? named : referenced.PrimaryKey?.Columns;
+        if (referencedColumns is null || referencedColumns.Count != fk.Columns.Count)
+            return null;
+        return (referenced, seeds.Select(s => (Seed: s, Keys: KeysOf(s, referencedColumns)))
+            .Concat(ReferenceBindingRules.KeysOf(context, referenced, referencedColumns)).ToList());
+    }
+
+    /// <summary>
+    /// Why a row of <paramref name="seed"/> whose foreign key cells give <paramref name="key"/> breaks MQ7111 (no such row, or not in
+    /// every environment the row is loaded in), or <see langword="null"/>.
+    /// </summary>
+    internal static string? ForeignKeyProblem(ValidationContext context, Seed seed, ForeignKey fk, (Table Table, List<(Seed Seed, HashSet<string> Keys)> Keys) holders, string key)
+    {
+        var referenced = holders.Table;
+        var having = holders.Keys.Where(s => s.Keys.Contains(key)).Select(s => s.Seed).ToList();
+        if (having.Count == 0)
+            return $"foreign key '{fk.Name}' names no row of the seeds of table '{referenced.Name}'{(context.BoundTypesOf(referenced.Id).Length > 0 ? " or of the reference types bound to it" : "")}";
+        return MissingIn(seed, having) is { } missing
+            ? $"foreign key '{fk.Name}' names a row of table '{referenced.Name}' that its seeds do not hold {missing}, where this row is loaded"
+            : null;
+    }
+
+    /// <summary>Where a row of <paramref name="seed"/> is loaded and none of <paramref name="holders"/> is, in words, or <see langword="null"/>.</summary>
+    private static string? MissingIn(Seed seed, IEnumerable<Seed> holders)
+    {
+        var list = holders.ToList();
+        if (list.Any(h => h.Environments.Count == 0))
+            return null;
+        if (seed.Environments.Count == 0)
+            return "in every environment";
+        var missing = seed.Environments.Where(e => !list.Any(h => h.Environments.Contains(e, StringComparer.Ordinal))).ToList();
+        return missing.Count == 0 ? null : "in the environment" + (missing.Count == 1 ? " '" : "s '") + string.Join("', '", missing) + "'";
     }
 
     /// <summary>A table seeded by its own seeds and by the seeds of an entity bound to it (MQ7113, once per seed).</summary>

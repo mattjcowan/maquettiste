@@ -3924,6 +3924,8 @@ export interface components {
             };
             /** @description The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before. */
             boundBy?: components["schemas"]["BoundByView"][];
+            /** @description The reference types whose rows it holds (their bindings), by type name; absent in recordings made before. */
+            referenceBindings?: components["schemas"]["ReferenceBindingView"][];
         };
         /** @description One resolved view, with the annotations of its file (as `TableView`). */
         ViewView: {
@@ -4362,6 +4364,23 @@ export interface components {
             /** @description Whether it is the binding's write table. */
             writes: boolean;
             constants: components["schemas"]["BindingConstantView"][];
+        };
+        /** @description A reference type whose rows a table holds (its binding to the table's database). */
+        ReferenceBindingView: {
+            typeId: components["schemas"]["Ulid"];
+            typeName: string;
+            bindingId: components["schemas"]["Ulid"];
+            /** @description The physical name of the column the code fills, or null when none does. */
+            codeColumn: string | null;
+            fields: components["schemas"]["ReferenceBindingFieldView"][];
+            constants: components["schemas"]["BindingConstantView"][];
+        };
+        /** @description One entry of a reference type binding's field map. */
+        ReferenceBindingFieldView: {
+            /** @description code, label, description, or a user field's name. */
+            field: string;
+            /** @description The column's physical name. */
+            column: string;
         };
         /** @description A constant column of a binding (a filter on every read, a value on every insert). */
         BindingConstantView: {
@@ -7967,6 +7986,38 @@ export interface components {
             storage?: {
                 [key: string]: components["schemas"]["storageChoice"];
             };
+            /**
+             * @description The table files that hold the rows, at most one per database (optional). A binding wins over the storage choice in its database.
+             * @default []
+             */
+            bindings?: {
+                id: components["schemas"]["id"];
+                /** @description The id of the database. */
+                database: components["schemas"]["id"];
+                /** @description The id of a table file of the database. */
+                table: components["schemas"]["id"];
+                /**
+                 * @description Columns with a fixed value on every row of the type.
+                 * @default []
+                 */
+                constants?: {
+                    /** @description A column of the table: its id or physical name. */
+                    column: string;
+                    /** @description The value; absent or null is SQL NULL. */
+                    value?: string | number | boolean | null;
+                }[];
+                /**
+                 * @description The field map: code, label, description or a user field's id, and the table column it fills.
+                 * @default []
+                 */
+                fields?: {
+                    /** @description code, label, description, or the id of a user field of the type. */
+                    attribute: string;
+                    /** @description A column of the table: its id or physical name. */
+                    column: string;
+                }[];
+                description?: components["schemas"]["description"];
+            }[];
             /** @default {} */
             properties?: components["schemas"]["properties"];
             /** @default {} */

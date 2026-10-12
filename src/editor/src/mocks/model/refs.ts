@@ -63,6 +63,20 @@ export function referencesOf(doc: Json): Ref[] {
     case "stereotype":
       attributeRefs(id, "/attributes", doc.attributes, out);
       break;
+    case "reference-type":
+      attributeRefs(id, "/attributes", doc.attributes, out);
+      // A binding's database and table, and the columns of its fields and constants (2026-10-11): removing the table drops the
+      // binding, removing a column drops the entry that names it; the type stays.
+      arr(doc.bindings).forEach((b, i) => {
+        const at = `/bindings/${i}`;
+        push(`${at}/database`, "database", b.database, false, at);
+        push(`${at}/table`, "table", b.table, false, at);
+        for (const part of ["fields", "constants"] as const)
+          arr(b[part]).forEach((x, j) => {
+            if (ULID.test(str(x.column) ?? "")) push(`${at}/${part}/${j}/column`, "column", x.column, false, `${at}/${part}/${j}`);
+          });
+      });
+      break;
     case "relation":
       arr(doc.ends).forEach((e, i) => {
         if (str(e.entity)) out.push({ fromId: str(e.id) ?? id, pointer: `/ends/${i}/entity`, field: "entity", toId: e.entity as string, required: true });
@@ -200,7 +214,7 @@ export function subElementIds(doc: Json): string[] {
   collect(doc.columns);
   collect(doc.indexes);
   collect(doc.checks);
-  if (doc.kind === "entity") collect(doc.bindings);
+  if (doc.kind === "entity" || doc.kind === "reference-type") collect(doc.bindings);
   if (doc.kind === "enum") collect(doc.members);
   if (doc.kind === "process") {
     collect(doc.context);

@@ -16112,6 +16112,13 @@
             "items": {
               "$ref": "#/components/schemas/BoundByView"
             }
+          },
+          "referenceBindings": {
+            "type": "array",
+            "description": "The reference types whose rows it holds (their bindings), by type name; absent in recordings made before.",
+            "items": {
+              "$ref": "#/components/schemas/ReferenceBindingView"
+            }
           }
         }
       },
@@ -17723,6 +17730,68 @@
             "items": {
               "$ref": "#/components/schemas/BindingConstantView"
             }
+          }
+        }
+      },
+      "ReferenceBindingView": {
+        "x-engine-record": "Maquettiste.Engine.ReferenceBindingView",
+        "description": "A reference type whose rows a table holds (its binding to the table's database).",
+        "type": "object",
+        "required": [
+          "typeId",
+          "typeName",
+          "bindingId",
+          "codeColumn",
+          "fields",
+          "constants"
+        ],
+        "properties": {
+          "typeId": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "typeName": {
+            "type": "string"
+          },
+          "bindingId": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "codeColumn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The physical name of the column the code fills, or null when none does."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReferenceBindingFieldView"
+            }
+          },
+          "constants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BindingConstantView"
+            }
+          }
+        }
+      },
+      "ReferenceBindingFieldView": {
+        "x-engine-record": "Maquettiste.Engine.ReferenceBindingFieldView",
+        "description": "One entry of a reference type binding's field map.",
+        "type": "object",
+        "required": [
+          "field",
+          "column"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "code, label, description, or a user field's name."
+          },
+          "column": {
+            "type": "string",
+            "description": "The column's physical name."
           }
         }
       },
@@ -30501,6 +30570,7 @@
           "label",
           "attributes",
           "storage",
+          "bindings",
           "properties",
           "generation",
           "source"
@@ -30631,6 +30701,109 @@
               "$ref": "#/components/schemas/storageChoice"
             },
             "default": {}
+          },
+          "bindings": {
+            "description": "The table files that hold the rows, at most one per database (optional). A binding wins over the storage choice in its database.",
+            "type": "array",
+            "items": {
+              "title": "Reference type binding",
+              "description": "The table file of one database that holds the type's rows: the column of each field and the constant columns that tell the type's rows apart in a shared table.",
+              "type": "object",
+              "x-order": [
+                "id",
+                "database",
+                "table",
+                "constants",
+                "fields",
+                "description"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "database": {
+                  "description": "The id of the database.",
+                  "$ref": "#/components/schemas/id"
+                },
+                "table": {
+                  "description": "The id of a table file of the database.",
+                  "$ref": "#/components/schemas/id"
+                },
+                "constants": {
+                  "description": "Columns with a fixed value on every row of the type.",
+                  "type": "array",
+                  "items": {
+                    "title": "Reference type binding constant",
+                    "type": "object",
+                    "x-order": [
+                      "column",
+                      "value"
+                    ],
+                    "properties": {
+                      "column": {
+                        "description": "A column of the table: its id or physical name.",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "value": {
+                        "description": "The value; absent or null is SQL NULL.",
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "column"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "fields": {
+                  "description": "The field map: code, label, description or a user field's id, and the table column it fills.",
+                  "type": "array",
+                  "items": {
+                    "title": "Reference type binding field",
+                    "type": "object",
+                    "x-order": [
+                      "attribute",
+                      "column"
+                    ],
+                    "properties": {
+                      "attribute": {
+                        "description": "code, label, description, or the id of a user field of the type.",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "column": {
+                        "description": "A column of the table: its id or physical name.",
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "attribute",
+                      "column"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "description": {
+                  "$ref": "#/components/schemas/description"
+                }
+              },
+              "required": [
+                "id",
+                "database",
+                "table"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
           },
           "properties": {
             "$ref": "#/components/schemas/properties",

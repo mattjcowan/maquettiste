@@ -102,6 +102,7 @@ public sealed record ConventionPackageView(string PackageId, string? Schema);
 /// <param name="Properties">The custom properties: stereotype defaults merged under the file's own.</param>
 /// <param name="Generation">The generation hints, by pack name or <c>"*"</c>.</param>
 /// <param name="BoundBy">The entity bindings that read or write the table (erratum E43): the entities that materialize from it.</param>
+/// <param name="ReferenceBindings">The reference types whose rows the table holds (their bindings, 2026-10-11).</param>
 public sealed record TableView(
     string Key,
     string Name,
@@ -125,7 +126,23 @@ public sealed record TableView(
     string? Category,
     IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation,
-    IReadOnlyList<BoundByView> BoundBy);
+    IReadOnlyList<BoundByView> BoundBy,
+    IReadOnlyList<ReferenceBindingView> ReferenceBindings);
+
+/// <summary>A reference type whose rows a table holds (2026-10-11): what the table's <c>referenceBindings</c> lists.</summary>
+/// <param name="TypeId">The reference type's id.</param>
+/// <param name="TypeName">The reference type's name.</param>
+/// <param name="BindingId">The binding's id.</param>
+/// <param name="CodeColumn">The physical name of the column the code fills, or <see langword="null"/> when none does.</param>
+/// <param name="Fields">The field map: each field (<c>code</c>, <c>label</c>, <c>description</c> or a user field's name) and its column's physical name.</param>
+/// <param name="Constants">The binding's constants: what tells several types of one table apart.</param>
+public sealed record ReferenceBindingView(string TypeId, string TypeName, string BindingId, string? CodeColumn,
+    IReadOnlyList<ReferenceBindingFieldView> Fields, IReadOnlyList<BindingConstantView> Constants);
+
+/// <summary>One entry of a reference type binding's field map.</summary>
+/// <param name="Field">The field: <c>code</c>, <c>label</c>, <c>description</c> or a user field's name.</param>
+/// <param name="Column">The column's physical name.</param>
+public sealed record ReferenceBindingFieldView(string Field, string Column);
 
 /// <summary>One resolved view, projected from <see cref="RView"/>.</summary>
 /// <param name="Id">The view file's id.</param>
@@ -545,7 +562,10 @@ internal static class DatabaseViews
         table.Category?.Id,
         table.Properties,
         table.Generation,
-        BindingViews.BoundBy(table.BoundBy, table));
+        BindingViews.BoundBy(table.BoundBy, table),
+        [.. table.ReferenceBindings.Select(b => new ReferenceBindingView(b.Type.Id, b.Type.Name, b.Id, b.CodeColumn?.Name,
+            [.. b.Fields.Select(f => new ReferenceBindingFieldView(f.Name, f.Column.Name))],
+            [.. b.Constants.Select(c => new BindingConstantView(c.ColumnName, c.Value))]))]);
 
     private static ViewView View(RView view) => new(
         view.Id,

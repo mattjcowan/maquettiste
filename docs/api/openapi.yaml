@@ -9991,6 +9991,11 @@ components:
           description: The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before.
           items:
             $ref: '#/components/schemas/BoundByView'
+        referenceBindings:
+          type: array
+          description: The reference types whose rows it holds (their bindings), by type name; absent in recordings made before.
+          items:
+            $ref: '#/components/schemas/ReferenceBindingView'
     ViewView:
       x-engine-record: Maquettiste.Engine.ViewView
       description: One resolved view, with the annotations of its file (as `TableView`).
@@ -10761,6 +10766,41 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BindingConstantView'
+    ReferenceBindingView:
+      x-engine-record: Maquettiste.Engine.ReferenceBindingView
+      description: A reference type whose rows a table holds (its binding to the table's database).
+      type: object
+      required: [typeId, typeName, bindingId, codeColumn, fields, constants]
+      properties:
+        typeId:
+          $ref: '#/components/schemas/Ulid'
+        typeName:
+          type: string
+        bindingId:
+          $ref: '#/components/schemas/Ulid'
+        codeColumn:
+          type: [string, 'null']
+          description: The physical name of the column the code fills, or null when none does.
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceBindingFieldView'
+        constants:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingConstantView'
+    ReferenceBindingFieldView:
+      x-engine-record: Maquettiste.Engine.ReferenceBindingFieldView
+      description: One entry of a reference type binding's field map.
+      type: object
+      required: [field, column]
+      properties:
+        field:
+          type: string
+          description: code, label, description, or a user field's name.
+        column:
+          type: string
+          description: The column's physical name.
     BindingConstantView:
       x-engine-record: Maquettiste.Engine.BindingConstantView
       description: A constant column of a binding (a filter on every read, a value on every insert).

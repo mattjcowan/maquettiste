@@ -214,6 +214,9 @@ public sealed class RTable : RAnnotated
     /// <summary>The seeds whose target is this table (a table file's), by seed name.</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 
+    /// <summary>The reference types whose rows the table holds (their bindings, 2026-10-11), by (type name, type id).</summary>
+    public RList<RReferenceTypeBinding> ReferenceBindings { get; internal set; } = RList<RReferenceTypeBinding>.Empty;
+
     /// <summary>
     /// The entity bindings that read or write the table (erratum E43), by (entity name, entity id): the entities that materialize from
     /// it, several when constants (an entity type column) tell them apart. The table itself knows nothing about them.
@@ -962,7 +965,10 @@ public sealed class RSeedTable : RObject
     /// <summary>The seeds the rows come from, in row order.</summary>
     public IReadOnlyList<RSeed> Seeds { get; internal set; } = [];
 
-    /// <summary>The rows: table seeds first (by seed name), then entity and relation seeds, each in its rows' order.</summary>
+    /// <summary>
+    /// The rows: the bound reference types' rows first, then table seeds (by seed name), then entity and relation seeds, each in its
+    /// rows' order; a table whose own foreign key names its rows orders its seeds and their rows by it, each seed's rows together.
+    /// </summary>
     public IReadOnlyList<RDataRow> Rows { get; internal set; } = [];
 
     /// <summary>Whether the table's foreign keys to other seeded tables form a cycle with them, so the order is the tables' names.</summary>
@@ -978,7 +984,10 @@ public sealed class RDataRow : RObject
     /// <summary>The seed it comes from.</summary>
     public RSeed Seed { get; internal set; } = null!;
 
-    /// <summary><c>table</c> (a table seed), <c>entity</c> or <c>relation</c> (through a binding or a mapping).</summary>
+    /// <summary>
+    /// <c>table</c> (a table seed), <c>entity</c> or <c>relation</c> (through a binding or a mapping), or <c>list</c> (a reference
+    /// type's row through its binding).
+    /// </summary>
     public string Source { get; internal set; } = "table";
 
     /// <summary>The cells by column name, as the database stores them (an enum by the column's storage, a reference code, a key value).</summary>

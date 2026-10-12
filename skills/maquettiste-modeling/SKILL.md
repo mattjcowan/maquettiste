@@ -164,7 +164,9 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
 - Reference data (units, countries, statuses that grow) is a reference type with its rows in a seed; an entity's
   starting rows are a seed of that entity. Deleting an element deletes its seeds and translations in the same save.
 - The engine creates no table or column for reference data on its own: the packs decide the physical form, from the
-  storage strategy the project declares. Stereotypes and their meaning are the project's own, not built in.
+  storage strategy the project declares. When a table file already holds a reference type's rows, the type's optional
+  `bindings` say so per database (`database`, `table`, `fields` mapping `code`, `label`, `description` or a field id to a
+  column, `constants` for a table several types share); its rows then count as the table's rows in validation and seed data. Stereotypes and their meaning are the project's own, not built in.
 - Tag, stereotype or typed field: a tag is a label for grouping and search that no generation depends on (`domain:billing`);
   a stereotype is a named, reusable meaning that changes what is generated or validated (`audited`, `tenant-scoped`, a
   `high-churn` table storage profile); the values a feature needs are typed fields (a table's or index's `storage`, a

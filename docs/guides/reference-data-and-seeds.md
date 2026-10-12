@@ -6,7 +6,8 @@ An enum, by contrast, is a closed set that belongs to the code.
 
 **Seeds** are the rows an element starts with. A reference type's rows are a seed; so are an entity's initial rows and a
 table's own rows. This guide makes a `BikeType` reference type, fills it, uses it on `Bike`, then adds an entity seed and a
-table seed with environments and apply modes, moves rows to a CSV file and translates the labels.
+table seed with environments and apply modes, moves rows to a CSV file, translates the labels and keeps the type's rows in
+a table of its own.
 
 ## 1. Create the BikeType reference type
 
@@ -134,12 +135,37 @@ maquettiste l10n import fr bike-types.fr.xlf            # preview
 maquettiste l10n import fr bike-types.fr.xlf --apply
 ```
 
+## 10. Keep the type's rows in a table of your own
+
+By default the packs decide how `BikeType` is stored. When the database already has a table for it, say it. Make a table
+`bike_types` in `main` with a `code` column (`string`, length 20, not null, the primary key), a `name` column (`string`,
+not null) and a `sort_order` column.
+
+1. On **BikeType › Storage**, under **Stored in a table**, pick `bike_types` for `main`. Code and Label map to `code` and
+   `name` (the column named like each field); map any other field the same way, or leave it **Not stored**.
+2. **Strategy in use** for `main` now reads **Table bike_types**: the table wins over the strategy in that database.
+
+The engine now knows the rows are in `bike_types`:
+
+- A foreign key into `bike_types` from a table seed may name `cargo`, and it orders after the type's rows.
+- Rows the table needs besides the type's own (a demo-only `tandem`, say) go in a table seed of `bike_types` with
+  `environments` `dev, test`. Validation refuses a row there that repeats a code of the type in an environment where both
+  are loaded.
+- When several types share one table, give each a **constant column** (a `kind` column holding `bike-type`, say) and make
+  the table's key the code column with it. Validation refuses two types whose rows would share a key in the table.
+- When a column the binding fills is itself a foreign key (that `kind` column into a `kinds` table with seeds, say), the
+  value must be a seeded row there, and the type's rows load after it.
+
+Without a binding nothing changes: it is optional, and a database without one keeps its strategy.
+
 ## Where the rows go
 
 - The `sql-ddl` pack's `seed.sql` reconciles the reference data (by the type's storage strategy) and writes the seed
   rows, as inserts that skip existing keys or as upserts for Keep as the model has them. A seed with environments goes to
   `seed.<environment>.sql`, for each environment the pack's `environments` parameter names.
-- The `seed-data` pack writes the rows as files for a loader instead.
+- The `seed-data` pack writes the rows as files for a loader instead, including a bound reference type's rows in its
+  table (first, source `list`). `sql-ddl` still realizes every reference type by its storage strategy and does not write
+  a bound type's rows yet.
 
 ## See also
 

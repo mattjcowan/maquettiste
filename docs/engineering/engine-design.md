@@ -416,12 +416,15 @@ is text, an unquoted one a JSON number, boolean, array or object when it parses 
 its document JSON, the change planner writes them back on every save (and deletes the file when `rowsFrom` goes), so the
 editor, the API and batches see rows as for any seed; the sidecar is watched, hashed and moved as description sidecars are. A
 CSV-backed seed is exempt from MQ7104's size limit. Resolution: `RTable.Seeds`; `RDatabase.SeedTables` (built on first read):
-per table in foreign key order (a cycle keeps name order, `InCycle`), the rows the database receives in database terms
+per table in foreign key order (a cycle keeps name order, `InCycle`; within a table, the seeds and then each seed's rows in the
+order the table's own foreign keys name them, a seed's rows kept together), the rows the database receives in database terms
 (`RDataRow`: `values` by column name, `key`, `source` `table|entity|relation`, the seed's settings): table seeds, entity seeds
 through the binding to the database (field map, constants, write table; a read-only binding none) or through the mapping of a
-database that projects the entity, relation seeds into junction tables; `RDatabase.SeedHash` hashes them canonically. Rules:
+database that projects the entity, relation seeds into junction tables, and (2026-10-11) the rows of the reference types bound to a
+table first (source `list`, through the type's binding); `RDatabase.SeedHash` hashes them canonically. Rules:
 MQ7107 (a table file and its columns), MQ7108 (no identity, generated or computed column), MQ7109 (a cell fits its column), MQ7111
-(a foreign key names a row of the referenced table's seeds, when it has seeds), MQ7112 (one row per key, across a table's seeds of
+(a foreign key a table seed or a reference type's binding fills names a row of the referenced table's seeds or of a reference type
+bound to it, when it has any, held in every environment the row is loaded in), MQ7117 to MQ7120 (a reference type's binding: its table, field map, key and NOT NULL columns), MQ7112 (one row per key, across a table's seeds of
 overlapping environments), MQ7113 (warning: a table seeded by its own seeds and a bound entity's), MQ7114 (a row key), MQ7116 (the
 rows file). CHECK constraints are left to the database.
 

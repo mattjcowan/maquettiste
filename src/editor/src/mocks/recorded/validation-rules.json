@@ -1282,7 +1282,7 @@
   {
     "id": "MQ7111",
     "defaultSeverity": "error",
-    "description": "A table seed's foreign key names no row of the referenced table's seeds.",
+    "description": "A foreign key that a table seed or a reference type's binding fills names no row of the referenced table's seeds, or one they do not hold in every environment the row is loaded in.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true
@@ -1290,7 +1290,7 @@
   {
     "id": "MQ7112",
     "defaultSeverity": "error",
-    "description": "Two rows of one table's seeds share a row key (in environments that overlap).",
+    "description": "Two rows of one table's seeds share a row key (in environments that overlap), or a table seed's row has the key of a row of a reference type bound to the table.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true
@@ -1298,7 +1298,7 @@
   {
     "id": "MQ7113",
     "defaultSeverity": "warning",
-    "description": "A table receives rows from its own seeds and from the seeds of an entity bound to it: a row should have one source.",
+    "description": "A table receives rows from the seeds of an entity bound to it and from its own seeds or a reference type bound to it: a row should have one source.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true
@@ -1315,6 +1315,38 @@
     "id": "MQ7116",
     "defaultSeverity": "error",
     "description": "A seed's rows file is missing or cannot be read, or the seed has rows of its own beside it.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7117",
+    "defaultSeverity": "error",
+    "description": "A reference type's binding names a table that is not a table file of its database, or the type has two bindings to one database.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7118",
+    "defaultSeverity": "error",
+    "description": "A reference type's binding maps a field or a constant wrongly: no code column, an unknown field or column, a column filled twice or by the database, or a column the field does not fit.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7119",
+    "defaultSeverity": "error",
+    "description": "A reference type's binding has no key: no primary key or unique constraint of its table is made of the code column (and constant columns), or another type bound to the table has the same constants or puts rows of the same key there.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7120",
+    "defaultSeverity": "error",
+    "description": "A reference type's binding fills no value for a NOT NULL column of its table that has no default.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true

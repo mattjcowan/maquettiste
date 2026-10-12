@@ -4,12 +4,14 @@ using Maquettiste.Engine.Planning;
 namespace Maquettiste.Engine.Resolution;
 
 /// <summary>
-/// The rows a database receives (2026-10-07, table seeds; <see cref="RDatabase.SeedTables"/>): the seeds of its table files, and the
+/// The rows a database receives (2026-10-07, table seeds; <see cref="RDatabase.SeedTables"/>): the rows of the reference types bound to
+/// its table files (2026-10-11, source <c>list</c>, first), the seeds of its table files, and the
 /// entity and relation seeds that reach one of its tables, through the entity's binding (the field map, the binding's constants, the
 /// write table) or, for an entity the database projects, through its mapping (the attribute columns, the foreign keys of its to-one
 /// ends, the discriminator), and a relation seed through its junction table. Cells are in database terms: an enum member by the
 /// column's storage (its code or name in a text column, else its value), a to-one end as the referenced row's key. Tables come in
-/// foreign key order, referenced tables first; a cycle among seeded tables keeps their name order and marks them. Built on first read
+/// foreign key order, referenced tables first; a cycle among seeded tables keeps their name order and marks them. Within a table, a row
+/// that another of its rows names through the table's own foreign key comes first, across the table's seeds. Built on first read
 /// per database, so a run whose templates never read seed tables pays nothing.
 /// </summary>
 internal sealed partial class ResolveRun
@@ -26,6 +28,7 @@ internal sealed partial class ResolveRun
         public List<RSeed> Seeds { get; } = [];
         public List<RDataRow> Rows { get; } = [];
         public IReadOnlyList<RColumn>? Key { get; set; }
+        public IReadOnlyList<RColumn>? ListKey { get; set; }
         public HashSet<string> Dependencies { get; } = new(StringComparer.Ordinal);
     }
 
@@ -35,7 +38,17 @@ internal sealed partial class ResolveRun
         var pending = new Dictionary<RTable, Pending>(ReferenceEqualityComparer.Instance);
         Pending Of(RTable table) => pending.TryGetValue(table, out var p) ? p : pending[table] = new Pending(table);
 
-        // Table seeds first, by seed name (the seeds come in name order).
+        // The rows of the reference types bound to a table of the database come first (2026-10-11), then the table seeds, by seed
+        // name (the seeds come in name order).
+        foreach (var seed in seeds)
+        {
+            if (seed.Target is not RReferenceType type || !type.Bindings.TryGetValue(database.Name, out var binding) || !tables.Contains(binding.Table))
+                continue;
+            var p = Of(binding.Table);
+            p.ListKey ??= KeyOfReferenceBinding(binding);
+            Add(p, seed, "list", seed.OrderedRows.Select(row => ThroughReferenceBinding(seed, row, binding)));
+        }
+
         foreach (var seed in seeds)
         {
             if (seed.Target is not RTable table || !tables.Contains(table))
@@ -84,7 +97,8 @@ internal sealed partial class ResolveRun
         var result = new List<RSeedTable>(ordered.Count);
         foreach (var (p, cycle) in ordered)
         {
-            var key = p.Key ?? (IReadOnlyList<RColumn>?)p.Table.PrimaryKey?.Columns ?? [];
+            OrderBySelfReferences(p);
+            var key = p.Key ?? p.ListKey ?? (IReadOnlyList<RColumn>?)p.Table.PrimaryKey?.Columns ?? [];
             var used = new HashSet<string>(p.Rows.SelectMany(r => r.Values.Keys), StringComparer.Ordinal);
             foreach (var row in p.Rows)
                 row.Key = [.. key.Select(c => row.Values.GetValueOrDefault(c.Name))];
@@ -124,6 +138,24 @@ internal sealed partial class ResolveRun
     private static IReadOnlyList<RColumn>? KeyOfTableSeed(RTable table, RSeed seed) =>
         seed.Key is { } id && table.Uniques.FirstOrDefault(u => u.Id == id) is { } unique ? unique.Columns : table.PrimaryKey?.Columns;
 
+    /// <summary>
+    /// The row key of a table that only reference types fill: its primary key when the binding fills every column of it, else the
+    /// first unique constraint the binding fills that holds the code column (MQ7119 asks for one of the two), else none.
+    /// </summary>
+    private static IReadOnlyList<RColumn>? KeyOfReferenceBinding(RReferenceTypeBinding binding)
+    {
+        var filled = new HashSet<RColumn>(binding.Fields.Select(f => f.Column).Concat(binding.Constants.Select(c => c.SourceColumn).OfType<RColumn>()),
+            ReferenceEqualityComparer.Instance);
+        if (binding.Table.PrimaryKey is { Columns.Count: > 0 } pk && pk.Columns.All(filled.Contains))
+            return pk.Columns;
+        return binding.Table.Uniques.FirstOrDefault(u => u.Columns.Count > 0 && u.Columns.All(filled.Contains)
+            && (binding.CodeColumn is null || u.Columns.Contains(binding.CodeColumn)))?.Columns;
+    }
+
+    /// <summary>Whether two seeds are loaded together somewhere: either is for every environment, or they share one.</summary>
+    private static bool LoadedTogether(RSeed a, RSeed b) =>
+        a.Environments.Count == 0 || b.Environments.Count == 0 || a.Environments.Intersect(b.Environments, StringComparer.Ordinal).Any();
+
     /// <summary>The cells of a row by column name in database terms, in column order (the first value of a column wins).</summary>
     private static IReadOnlyDictionary<string, object?> Cells(IEnumerable<(RColumn Column, object? Value)> cells)
     {
@@ -141,6 +173,26 @@ internal sealed partial class ResolveRun
         ImmutableArray<object?> items => items.Select(v => Stored(v, column)).ToImmutableArray(),
         _ => value,
     };
+
+    /// <summary>A reference type's row through its binding: each field the seed gives a value for, then the binding's constants.</summary>
+    private static IReadOnlyDictionary<string, object?> ThroughReferenceBinding(RSeed seed, RSeedRow row, RReferenceTypeBinding binding)
+    {
+        var given = new HashSet<string>(seed.Columns.Select(c => c.Name), StringComparer.Ordinal);
+        var cells = new List<(RColumn, object?)>();
+        foreach (var field in binding.Fields)
+        {
+            if (given.Contains(field.Name))
+                cells.Add((field.Column, row.Values.GetValueOrDefault(field.Name)));
+        }
+
+        foreach (var constant in binding.Constants)
+        {
+            if (constant.WriteColumn is { } column)
+                cells.Add((column, constant.Value));
+        }
+
+        return Cells(cells);
+    }
 
     /// <summary>An entity row through its binding: each field the seed gives a value for, then the binding's constants.</summary>
     private static IReadOnlyDictionary<string, object?> ThroughBinding(RSeed seed, RSeedRow row, REntityBinding binding, Dictionary<string, RSeedRow> seedRowsById)
@@ -249,6 +301,122 @@ internal sealed partial class ResolveRun
             return null;
         var name = keyAttributes[index].Name;
         return referenced.Values.GetValueOrDefault(name);
+    }
+
+    /// <summary>
+    /// A table's rows with the rows its own foreign keys name first. A seed's rows stay together (packs apply them seed by seed): the
+    /// table's seeds come in the order their rows name each other, then each seed's rows in that order (Kahn's algorithm, ties by the
+    /// order before; a cycle, which only nullable or deferred keys allow, is broken at its first remaining seed or row).
+    /// </summary>
+    private static void OrderBySelfReferences(Pending p)
+    {
+        var rows = p.Rows;
+        var keys = p.Table.ForeignKeys.Where(f => ReferenceEquals(f.ReferencedTable, p.Table) && f.Columns.Count > 0 && f.Columns.Count == f.ReferencedColumns.Count).ToList();
+        if (keys.Count == 0 || rows.Count < 2)
+            return;
+        var seedOf = rows.Select(r => p.Seeds.IndexOf(r.Seed)).ToArray();
+        var rowDependents = new List<int>?[rows.Count];
+        var rowPending = new int[rows.Count];
+        var seedDependents = new HashSet<int>?[p.Seeds.Count];
+        var seedPending = new int[p.Seeds.Count];
+        var any = false;
+        foreach (var fk in keys)
+        {
+            // Every row of a key: seeds of different environments may hold the same one, and each is a parent where it loads.
+            var byKey = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (KeyOfCells(rows[i].Values, fk.ReferencedColumns) is { } key)
+                    ListOf(byKey, key).Add(i);
+            }
+
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (KeyOfCells(rows[i].Values, fk.Columns) is not { } key || !byKey.TryGetValue(key, out var parents))
+                    continue;
+                foreach (var parent in parents)
+                {
+                    if (parent == i || !LoadedTogether(rows[parent].Seed, rows[i].Seed))
+                        continue;
+                    any = true;
+                    if (seedOf[parent] == seedOf[i])
+                    {
+                        (rowDependents[parent] ??= []).Add(i);
+                        rowPending[i]++;
+                    }
+                    else if ((seedDependents[seedOf[parent]] ??= []).Add(seedOf[i]))
+                    {
+                        seedPending[seedOf[i]]++;
+                    }
+                }
+            }
+        }
+
+        if (!any)
+            return;
+        var seeds = Kahn(p.Seeds.Count, seedDependents, seedPending);
+        var ordered = new List<RDataRow>(rows.Count);
+        foreach (var s in seeds)
+        {
+            var mine = Enumerable.Range(0, rows.Count).Where(i => seedOf[i] == s).ToList();
+            var at = new Dictionary<int, int>();
+            for (var k = 0; k < mine.Count; k++)
+                at[mine[k]] = k;
+            var dependents = new List<int>?[mine.Count];
+            var pending = new int[mine.Count];
+            for (var k = 0; k < mine.Count; k++)
+            {
+                foreach (var dependent in rowDependents[mine[k]] ?? [])
+                {
+                    (dependents[k] ??= []).Add(at[dependent]);
+                    pending[at[dependent]]++;
+                }
+            }
+
+            ordered.AddRange(Kahn(mine.Count, dependents, pending).Select(k => rows[mine[k]]));
+        }
+
+        var seedOrder = seeds.Select(s => p.Seeds[s]).ToList();
+        p.Seeds.Clear();
+        p.Seeds.AddRange(seedOrder);
+        rows.Clear();
+        rows.AddRange(ordered);
+    }
+
+    /// <summary>Positions 0 to <paramref name="count"/> - 1 in dependency order (Kahn's algorithm, ties by position; a cycle is broken at its first remaining position).</summary>
+    private static List<int> Kahn(int count, IReadOnlyList<IEnumerable<int>?> dependents, int[] pending)
+    {
+        var result = new List<int>(count);
+        var ready = new SortedSet<int>(Enumerable.Range(0, count).Where(i => pending[i] == 0));
+        var remaining = new SortedSet<int>(Enumerable.Range(0, count));
+        while (remaining.Count > 0)
+        {
+            var next = ready.Count > 0 ? ready.Min : remaining.Min;
+            ready.Remove(next);
+            remaining.Remove(next);
+            result.Add(next);
+            foreach (var dependent in dependents[next] ?? [])
+            {
+                if (--pending[dependent] <= 0 && remaining.Contains(dependent))
+                    ready.Add(dependent);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>A row's key over some columns (codes as <see cref="RRow.KeyOf"/> reads them), or <see langword="null"/> when a cell is null.</summary>
+    private static string? KeyOfCells(IReadOnlyDictionary<string, object?> values, IReadOnlyList<RColumn> columns)
+    {
+        var parts = new string[columns.Count];
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (values.GetValueOrDefault(columns[i].Name) is not { } value)
+                return null;
+            parts[i] = RRow.KeyOf(value);
+        }
+
+        return string.Join("\u0000", parts);
     }
 
     /// <summary>The seeded tables in foreign key order (Kahn's algorithm, ties by schema and name); a cycle's tables follow by name, marked.</summary>

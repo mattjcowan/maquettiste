@@ -344,6 +344,14 @@ database shows on the Database screen at once. The explorers remember which rows
     packs decide. **Set for this type** offers **Use the default (…)**, naming what the default is, **Let the packs
     decide** (no strategy: the templates choose), then each declared strategy by its name; a chosen strategy's
     description shows under it, with its options.
+    **Stored in a table**, under it, is optional: per database, the table file that holds the type's rows. Choosing a
+    table maps each field (Code, Label, Description, the type's own fields) to the column named like it; change any of
+    them, and add **constant columns** (a fixed value on every row, such as a column naming the type, when several types
+    share one table). A database with a table shows **Table <name>** as its strategy in use: the table wins over the
+    strategy there. Validation then counts the type's rows as the table's rows: a table seed's foreign key into the table
+    may name a code, a table seed of the table may not repeat one where both are loaded, and the binding itself is checked
+    (MQ7117 to MQ7120: a table file of its database, a code column, a key made of the code column and the constants, every
+    NOT NULL column filled). The database's seed data lists the type's rows first in the table (source `list`).
 
   **New reference type** asks for the name (letters, digits and underscores, not starting with a digit, such as
   `UnitOfMeasure` or `car_models`; no case is required), display name, category and **Stored as**: **Let the packs
@@ -1198,7 +1206,9 @@ database shows on the Database screen at once. The explorers remember which rows
   **A table's own rows (table seeds).** A table file's editor has a **Data** tab: the same grid over the table's columns
   (less those the database fills: identity, generated and computed columns), for the rows the database itself needs, such
   as catalogs or allowed values, with no entity in between. Cells are column values. New seed creates one, as for an
-  entity. A table seed belongs to its table and goes with it.
+  entity. A table seed belongs to its table and goes with it. When reference types keep their rows in the table (Stored in
+  a table, on the type's Storage tab), a line above the grid names them, each a link to the type: their rows come first,
+  and the table's own rows may not repeat their codes.
 
   **How rows are applied.** Under every seed grid, each seed has its settings:
   - **Environments**: the environments its rows belong to (`dev, test`); empty means every environment.

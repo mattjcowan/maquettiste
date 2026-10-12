@@ -5,9 +5,10 @@
 # removes the table's rows it does not hold. Entity seeds of a database that projects the entity are written by seed_statements.
 
 # Whether a row is written here: a table seed's, or an entity seed's that reaches the table through a binding, for this environment
-# ("" for the rows of every environment).
+# ("" for the rows of every environment). A bound reference type's rows (source list) are not written yet: this pack still realizes
+# every reference type by its storage choice.
 func data_row_here(r, env, db)
-  if r.source == "relation" || (r.source == "entity" && !r.seed.target.bindings[db.name])
+  if r.source == "relation" || r.source == "list" || (r.source == "entity" && !r.seed.target.bindings[db.name])
     ret false
   end
   if env == ""

@@ -2,7 +2,8 @@ import { useState } from "react";
 // The Storage tab (reference-types-seeds-localization.md 1.4 and 4.3): per database, the strategy in use and where it
 // comes from (this type, the database, the project, or nothing: the packs decide), and the choice set for this type:
 // the default, "Let the packs decide", or one of the strategies the project declares, whose description shows under
-// it. A line above the table says what a strategy is. The engine knows no strategy; the packs realize the choice.
+// it. A line above the table says what a strategy is. The engine knows no strategy; the packs realize the choice. Below,
+// "Stored in a table" names the table file that holds the rows in a database (optional), which wins over the strategy there.
 import { useElements, useIndex, usePacks, useSettings } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import type { ReferenceTypeDoc, StorageChoice } from "@/api/types";
 import { Input, Select } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/misc";
 import { useDraftDocument } from "@/inspector/useDraft";
+import { TableBindings, type TypeBinding } from "./TableBindings";
 
 const INHERIT = "__inherit";
 const TEMPLATE = "__template";
@@ -66,6 +68,8 @@ export function StorageTab({ typeId }: { typeId: string }) {
     | undefined;
   const strategies = project?.referenceData?.strategies ?? {};
   const storage = (type.storage ?? {}) as Record<string, StorageChoice>;
+  const bound = ((type as { bindings?: TypeBinding[] }).bindings ?? []) as TypeBinding[];
+  const tableName = (id: string) => (index.data ?? []).find((r) => r.id === id)?.name ?? id;
   const databases = (index.data ?? []).filter((r) => r.kind === "database").sort((a, b) => a.name.localeCompare(b.name));
   const projectChoice = project?.conventions?.referenceStorage;
 
@@ -137,7 +141,13 @@ export function StorageTab({ typeId }: { typeId: string }) {
               <tr key={row.key} className="border-t border-default align-top" data-testid={`storage-${row.label}`}>
                 <td className="h-6 px-1 py-1">{row.label}</td>
                 <td className="px-1.5 py-1" data-testid="strategy-in-use">
-                  {strategyInUse(effective)}
+                  {row.id && bound.some((b) => b.database === row.id) ? (
+                    <span title="A table of this database holds the rows (Stored in a table, below): it wins over the strategy">
+                      Table {tableName(bound.find((b) => b.database === row.id)!.table)}
+                    </span>
+                  ) : (
+                    strategyInUse(effective)
+                  )}
                 </td>
                 <td className="px-1.5 py-1">
                   <Select aria-label={`Storage for ${row.label}`} className="h-7 text-12" value={value} onChange={(e) => setChoice(row.key, e.target.value)}>
@@ -180,6 +190,7 @@ export function StorageTab({ typeId }: { typeId: string }) {
           })}
         </tbody>
       </table>
+      <TableBindings typeId={typeId} databases={databases} />
       <StoragePreview typeId={typeId} databases={databases} />
     </div>
   );

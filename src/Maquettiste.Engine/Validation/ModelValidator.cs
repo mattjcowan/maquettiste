@@ -265,6 +265,50 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         }
     }
 
+    /// <summary>
+    /// The files whose row checks read the rows or keys of a table that a seed, a reference type's binding or the table itself shapes:
+    /// the table's own seeds and the types bound to it with their seeds (MQ7111, MQ7112, MQ7119), and the seeds of the tables whose
+    /// foreign keys point to it, with the types bound to those tables and their seeds (MQ7111). A reference type's own seeds follow
+    /// its bindings. The tables a change named before it are added by the store (a binding removed or retargeted, a seed deleted).
+    /// </summary>
+    private static IEnumerable<ElementDocument> RowPeers(ValidationContext context, Element element)
+    {
+        var model = context.Model;
+        IEnumerable<string> tables = element switch
+        {
+            Table table => [table.Id],
+            Seed seed when model.GetDocument(seed.Target)?.Element is Table => [seed.Target],
+            Seed seed when model.GetDocument(seed.Target)?.Element is ReferenceType type => type.Bindings.Select(b => b.Table),
+            ReferenceType type => type.Bindings.Select(b => b.Table),
+            _ => [],
+        };
+        var ids = new List<string>();
+        if (element is ReferenceType { Bindings.Count: > 0 } bound)
+            ids.AddRange(context.SeedsOf(bound.Id).Select(s => s.Id));
+        foreach (var tableId in tables.Distinct(StringComparer.Ordinal))
+        {
+            Holders(tableId);
+            foreach (var referencing in model.All<Table>().Where(t => t.ForeignKeys.Any(fk => string.Equals(fk.ReferencesTable, tableId, StringComparison.Ordinal))))
+                Holders(referencing.Id);
+        }
+
+        foreach (var id in ids)
+        {
+            if (model.GetDocument(id) is { } peer)
+                yield return peer;
+        }
+
+        void Holders(string tableId)
+        {
+            ids.AddRange(context.SeedsOf(tableId).Select(s => s.Id));
+            foreach (var (type, _) in context.BoundTypesOf(tableId))
+            {
+                ids.Add(type.Id);
+                ids.AddRange(context.SeedsOf(type.Id).Select(s => s.Id));
+            }
+        }
+    }
+
     /// <summary>The database of a routine, database type or SQL object; <see langword="null"/> for any other element.</summary>
     private static string? DatabaseOfObject(Element element) => element switch
     {
@@ -317,6 +361,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 }
             }
         }
+
+        foreach (var peer in RowPeers(context, element))
+            yield return peer;
 
         foreach (var (key, _) in ValidationContext.NameKeys(element))
         {

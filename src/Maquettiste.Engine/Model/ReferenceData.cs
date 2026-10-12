@@ -26,6 +26,12 @@ public sealed record ReferenceType : Element
 
     /// <summary>Storage choices keyed by database id, or <c>*</c> for every database.</summary>
     public IReadOnlyDictionary<string, StorageChoice> Storage { get; init; } = ImmutableDictionary<string, StorageChoice>.Empty;
+
+    /// <summary>
+    /// The table files that hold the rows, at most one per database (2026-10-11, optional): a binding wins over the storage choice
+    /// in its database. A type without one is stored as its storage choice says.
+    /// </summary>
+    public IReadOnlyList<ReferenceTypeBinding> Bindings { get; init; } = [];
 }
 
 /// <summary>The built-in code field of a reference type.</summary>

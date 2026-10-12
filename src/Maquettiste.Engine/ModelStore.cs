@@ -763,7 +763,8 @@ public sealed partial class ModelStore : IAsyncDisposable
             return;
         // A deleted database or mapping is not among the changed ids, but the entities it placed are revisited (7.2a); they are in the
         // baseline too, so their pre-existing errors never block the delete.
-        var placements = FormerPlacements([.. plan.ChangeByElement.Keys.Order(StringComparer.Ordinal)], before, candidate).Distinct(StringComparer.Ordinal).ToList();
+        var changed = plan.ChangeByElement.Keys.Order(StringComparer.Ordinal).ToList();
+        var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
         if (plan.ChangedIds.Count == 0 && placements.Count == 0)
             return;
         // Files that referenced a changed element or sub-element before the change are validated too: a reference the change broke
@@ -819,6 +820,30 @@ public sealed partial class ModelStore : IAsyncDisposable
         {
             foreach (var entity in candidate.All<Entity>())
                 yield return entity.Id;
+        }
+    }
+
+    /// <summary>
+    /// The tables whose rows a changed seed or reference type gave rows to before the change (a seed's table, a type's bound tables):
+    /// a binding removed or retargeted, or a seed deleted, changes the row checks of files that do not reference it (MQ7111, MQ7112,
+    /// MQ7119); in scope, a table brings those files in through the validator's peers.
+    /// </summary>
+    private static IEnumerable<string> FormerRowTables(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        foreach (var id in changedIds)
+        {
+            IEnumerable<string> tables = before.GetDocument(id)?.Element switch
+            {
+                Seed seed when before.GetDocument(seed.Target)?.Element is Table => [seed.Target],
+                Seed seed when before.GetDocument(seed.Target)?.Element is ReferenceType type => type.Bindings.Select(b => b.Table),
+                ReferenceType type => type.Bindings.Select(b => b.Table),
+                _ => [],
+            };
+            foreach (var table in tables)
+            {
+                if (candidate.GetDocument(table) is { Element: Table })
+                    yield return table;
+            }
         }
     }
 
