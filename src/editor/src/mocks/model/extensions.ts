@@ -39,6 +39,8 @@ interface Registered {
   id: string;
   severity: Diagnostic["severity"];
   kinds: string[] | null;
+  /** Registered with scope "model": check(model, report) runs once, each finding naming its element. */
+  wholeModel: boolean;
   check: (element: unknown, model: unknown, report: (message: string, options?: { pointer?: string; severity?: string }) => void) => void;
   file: string;
 }
@@ -92,7 +94,7 @@ export class MockExtensions {
           size: new TextEncoder().encode(text).length,
           hash: sha256Hex(text),
           diagnostics: rule ? loaded!.diagnostics : this.schemaProblems(path, text),
-          rules: loaded?.rules.map((r) => ({ id: `x/${r.id}`, severity: r.severity })) ?? [],
+          rules: loaded?.rules.map((r) => ({ id: `x/${r.id}`, severity: r.severity, wholeModel: r.wholeModel })) ?? [],
         };
       }),
     };
@@ -163,7 +165,29 @@ export class MockExtensions {
       all: (kind: string) => freeze(entries.filter((e) => e.json.kind === kind).map((e) => structuredClone(e.json))),
       referencesTo: (id: string) => freeze(structuredClone(this.model.references(id) ?? [])),
     });
-    for (const rule of rules)
+    for (const rule of rules.filter((r) => r.wholeModel)) {
+      // A whole-model rule runs once; each finding names the element whose file it takes.
+      const report = (message: string, options?: { element?: string; pointer?: string; severity?: string }) => {
+        const entry = byId.get(options?.element ?? "");
+        if (!entry) throw new TypeError(`report(message, { element }): no element has the id '${options?.element ?? ""}'.`);
+        out.push({
+          rule: `x/${rule.id}`,
+          severity: (options?.severity as Diagnostic["severity"] | undefined) ?? rule.severity,
+          message: String(message),
+          elementId: entry.id,
+          filePath: entry.path,
+          jsonPointer: options?.pointer ?? "",
+          line: null,
+          column: null,
+        });
+      };
+      try {
+        (rule.check as unknown as (model: unknown, report: unknown) => void)(model, report);
+      } catch (error) {
+        out.push(diagnostic("MQ5002", `Rule 'x/${rule.id}' threw ${String((error as Error).message ?? error)}`, rule.file, { line: 1, column: 1 }));
+      }
+    }
+    for (const rule of rules.filter((r) => !r.wholeModel))
       for (const entry of entries) {
         if (rule.kinds && !rule.kinds.includes(String(entry.json.kind))) continue;
         const report = (message: string, options?: { pointer?: string; severity?: string }) =>
@@ -201,10 +225,16 @@ export class MockExtensions {
         if (!id || /\s/.test(id)) throw new TypeError("maquettiste.rule: id must be a non-empty string without whitespace.");
         if (typeof spec.check !== "function") throw new TypeError(`maquettiste.rule '${id}': check must be a function.`);
         const severity = (spec.severity as Diagnostic["severity"] | undefined) ?? "error";
+        const wholeModel = spec.scope === "model";
+        if (spec.scope !== undefined && !wholeModel && spec.scope !== "element")
+          throw new TypeError(`maquettiste.rule '${id}': scope must be 'element' or 'model'.`);
+        if (wholeModel && spec.kinds !== undefined && spec.kinds !== null)
+          throw new TypeError(`maquettiste.rule '${id}': a rule with scope 'model' checks the whole model once and takes no kinds.`);
         rules.push({
           id,
           severity,
           kinds: Array.isArray(spec.kinds) && spec.kinds.length ? (spec.kinds as string[]) : null,
+          wholeModel,
           check: spec.check as Registered["check"],
           file: path,
         });

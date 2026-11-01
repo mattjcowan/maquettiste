@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Model;
@@ -11,7 +12,7 @@ namespace Maquettiste.Engine.Planning;
 
 /// <summary>
 /// Stage 4: expands packs into render units (W6; engine-design.md section 8): template × element for each unit's <c>for</c> scope
-/// (<c>model</c>, <c>each package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario</c>, or
+/// (<c>model</c>, <c>each package|entity|attribute|relation|enum|value object|database|table|view|sequence|reference type|seed|locale|process|actor|scenario</c>, or
 /// <c>select &lt;name&gt;</c> through the sandbox),
 /// minus elements whose <c>generation["*"|pack].skip</c> is set, filtered by <c>where</c> (<see cref="UnitFilter"/>). Units are
 /// ordered by pack order, then key ordinal; a key produced twice (a selector returning an id twice) is planned once.
@@ -43,7 +44,9 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
     /// output base, formatter settings or "none", template hashes, unit key)</c>. The pack version and the hashes of the unit's
     /// template and companion template are additions to the section 11 list: templates see the version as <c>pack.version</c> with no
     /// dependency key, and the renderer records <c>t:</c> keys for what it loads, so folding the unit's own templates in here keeps a
-    /// template edit visible whether or not the renderer records the top-level template.
+    /// template edit visible whether or not the renderer records the top-level template. A copy unit has no template: in its place
+    /// comes <c>H("copy", path, hash, ...)</c> over every file its sources match (<see cref="CopySources"/>), so editing, adding or
+    /// removing a source renders it again.
     /// </remarks>
     public static string StaticHash(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters, string key) =>
         new UnitHashPrefix(pack, unit, formatters).For(key);
@@ -116,10 +119,19 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                         continue;
                     }
 
+                    // MQ6030 and MQ6031 (next-phase-1-design.md section 5.4): a copy unit whose pattern matches no pack file, or whose
+                    // token names a parameter that is undeclared or not a string, is skipped like an MQ6019 unit.
+                    if (unit.Mode == OutputMode.Copy && CopySources.Of(pack, unit).Diagnostics is { Count: > 0 } copyProblems)
+                    {
+                        diagnostics.AddRange(copyProblems);
+                        progress?.Report(new ProgressUpdate(PipelineStage.Plan, ++doneUnits, totalUnits, packFile, pack.Name));
+                        continue;
+                    }
+
                     foreach (var element in Candidates(model, pack, unit, parameters, Pool, packFile, pointer, diagnostics, ct))
                     {
                         ct.ThrowIfCancellationRequested();
-                        if (element is RElement or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
+                        if (element is RElement or RDatabase or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
                             continue;
                         if (element is RTable table && filter.FileOf(table) is { } tableFile && SkippedByHints(tableFile.Generation, pack.Name))
                             continue;
@@ -218,7 +230,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             }
 
             var filter = new UnitFilter(model);
-            if (element is RElement or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
+            if (element is RElement or RDatabase or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
                 return ("skip-hint", $"{Describe(element)} has generation.skip for this pack (or for every pack).");
             if (element is RTable table && filter.FileOf(table) is { } tableFile && SkippedByHints(tableFile.Generation, pack.Name))
                 return ("skip-hint", $"The table file of {Describe(element)} has generation.skip for this pack (or for every pack).");
@@ -345,9 +357,11 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             case "model": return [null];
             case "each package": return model.Packages;
             case "each entity": return model.Entities;
+            case "each attribute": return DeclaredAttributes(model);
             case "each relation": return model.Relations;
             case "each enum": return model.Enums;
             case "each value object": return model.ValueObjects;
+            case "each database": return model.Databases;
             case "each table": return model.Databases.SelectMany(d => d.Tables);
             case "each view": return model.Databases.SelectMany(d => d.Views);
             case "each sequence": return model.Databases.SelectMany(d => d.Sequences);
@@ -398,6 +412,40 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
         return elements;
     }
 
+    /// <summary>
+    /// The attributes of <c>each attribute</c> (next-phase-1-design.md section 5.5): every attribute declared in a model file, once, at
+    /// its declaring owner: each entity's own attributes (a promoted entity's are copies of its relation's under the same ids, so it
+    /// gives none), each relation's, each value object's and each reference type's, never a stereotype's virtual attribute (one id
+    /// across owners) nor an inherited copy (its declaring id). The planner keeps the first of duplicate keys, so a copy would drop
+    /// units silently.
+    /// </summary>
+    /// <param name="model">The resolved model.</param>
+    /// <returns>The attributes, owner by owner in model order.</returns>
+    internal static IEnumerable<RAttribute> DeclaredAttributes(ResolvedModel model)
+    {
+        foreach (var entity in model.Entities)
+        {
+            if (entity.IsPromoted)
+                continue;
+            foreach (var attribute in entity.OwnAttributes)
+            {
+                if (!attribute.IsVirtual && !attribute.IsInherited)
+                    yield return attribute;
+            }
+        }
+
+        IEnumerable<RList<RAttribute>> others = [.. model.Relations.Select(r => r.Attributes), .. model.ValueObjects.Select(v => v.Attributes),
+            .. model.ReferenceTypes.Select(t => t.Attributes)];
+        foreach (var list in others)
+        {
+            foreach (var attribute in list)
+            {
+                if (!attribute.IsVirtual)
+                    yield return attribute;
+            }
+        }
+    }
+
     /// <summary>The static-hash fields shared by every key of one pack unit.</summary>
     private sealed class UnitHashPrefix
     {
@@ -420,7 +468,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             _unit = unit;
             _loaded = pack;
             _version = pack.Manifest.Version;
-            _unitJson = CanonicalForm.Json(unit);
+            _unitJson = UnitJson(unit);
             _scriptsHash = pack.ScriptsHash;
             _parameters = CanonicalForm.Json(pack.Parameters);
             _output = pack.Settings.Output;
@@ -433,9 +481,39 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                     ? CanonicalForm.Json(f)
                     : "unknown:" + name,
             };
-            _templates = HashBuilder.Of(
-                unit.Template, PackFiles.Hash(pack.RootPath, unit.Template) ?? DependencyHasher.Absent,
+            _templates = unit.Mode == OutputMode.Copy ? CopyHash(CopySources.Of(pack, unit)) : HashBuilder.Of(
+                unit.Template, unit.Template is { } t ? PackFiles.Hash(pack.RootPath, t) ?? DependencyHasher.Absent : null,
                 unit.Companion?.Template, unit.Companion is { } c ? PackFiles.Hash(pack.RootPath, c.Template) ?? DependencyHasher.Absent : null);
+        }
+
+        /// <summary>
+        /// The unit's canonical JSON for the hash, without <c>sources</c> and <c>tokens</c> when they are empty, as they are on every
+        /// unit outside mode copy: units written before copy units keep their static hash, so an upgrade renders nothing again.
+        /// </summary>
+        private static string UnitJson(PackUnit unit)
+        {
+            if (unit.Sources.Count > 0 && unit.Tokens.Count > 0)
+                return CanonicalForm.Json(unit);
+            var node = JsonSerializer.SerializeToNode(unit, EngineJson.Options)!.AsObject();
+            if (unit.Sources.Count == 0)
+                node.Remove("sources");
+            if (unit.Tokens.Count == 0)
+                node.Remove("tokens");
+            return CanonicalForm.Json(JsonSerializer.SerializeToElement(node, EngineJson.Options));
+        }
+
+        /// <summary>A copy unit's stand-in for its template hashes: <c>H("copy", path, hash, ...)</c> over the matched files, ordinal by path.</summary>
+        private static string CopyHash(CopySources sources)
+        {
+            var fields = new string?[1 + (2 * sources.Files.Count)];
+            fields[0] = "copy";
+            for (var i = 0; i < sources.Files.Count; i++)
+            {
+                fields[1 + (2 * i)] = sources.Files[i].Path;
+                fields[2 + (2 * i)] = sources.Files[i].Hash;
+            }
+
+            return HashBuilder.Of(fields);
         }
 
         /// <summary>
@@ -474,8 +552,17 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                 ["pack-version"] = _version.Replace('\n', ' '),
                 ["scripts"] = Short(_scriptsHash),
                 ["unit"] = Short(_unitJson),
-                ["template:" + _unit.Template] = Template(_unit.Template),
             };
+            if (_unit.Mode == OutputMode.Copy)
+            {
+                foreach (var source in CopySources.Of(_loaded, _unit).Files)
+                    parts["source:" + source.Path] = source.Hash[..Math.Min(32, source.Hash.Length)];
+            }
+            else if (_unit.Template is { } template)
+            {
+                parts["template:" + template] = Template(template);
+            }
+
             if (_unit.Companion is { } companion)
                 parts["template:" + companion.Template] = Template(companion.Template);
             foreach (var (name, value) in _loaded.Parameters)
@@ -521,9 +608,10 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
 /// <summary>
 /// The <c>where</c> filters of a unit (engine-design.md section 2.5): every set filter must match; lists match any value. Tags,
 /// stereotypes, categories and packages are those of the element; a table uses its own file (designed, imported, or the overlay of a
-/// synthesized table) together with the entity or relation it comes from; a view or sequence uses its own file. Categories and
-/// packages match by id or name (qualified name for packages) and include descendants. <c>database</c>: a table, view or sequence in
-/// that database; an entity or relation mapped (not ignored) there; any other element when the database exists. <c>abstract</c>
+/// synthesized table) together with the entity or relation it comes from; a view, sequence or database uses its own file, an attribute
+/// its own entry (and its owner's package). Categories and packages match by id or name (qualified name for packages) and include
+/// descendants. <c>database</c>: a table, view or sequence in that database; the database of that name; an entity or relation mapped
+/// (not ignored) there, and an attribute through its entity or relation owner; any other element when the database exists. <c>abstract</c>
 /// matches entities by <see cref="REntity.IsAbstract"/> and other elements as not abstract. <c>script</c> calls a JavaScript filter.
 /// </summary>
 internal sealed class UnitFilter
@@ -631,8 +719,12 @@ internal sealed class UnitFilter
         RDatabaseType type => string.Equals(type.Database.Name, database, StringComparison.Ordinal),
         RSqlObject obj => string.Equals(obj.Database.Name, database, StringComparison.Ordinal),
         RQuery query => string.Equals(query.Database.Name, database, StringComparison.Ordinal),
+        RDatabase db => string.Equals(db.Name, database, StringComparison.Ordinal),
         REntity entity => entity.Mappings.ContainsKey(database),
         RRelation relation => relation.Mappings.ContainsKey(database),
+        // An attribute matches through its owner; a value object's or reference type's takes the default arm.
+        RAttribute { Owner: REntity owner } => owner.Mappings.ContainsKey(database),
+        RAttribute { Owner: RRelation owner } => owner.Mappings.ContainsKey(database),
         _ => _model.Databases.Any(d => string.Equals(d.Name, database, StringComparison.Ordinal)),
     };
 
@@ -650,7 +742,7 @@ internal sealed class UnitFilter
             set.UnionWith(source.Tags);
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file))
             set.UnionWith(file.Tags);
-        if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery)
+        if (element is RDatabase or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery)
             set.UnionWith(((RAnnotated)element).Tags);
         return set;
     }
@@ -663,7 +755,7 @@ internal sealed class UnitFilter
         // A table file's effective set (implied stereotypes included), as the resolved objects carry theirs.
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file))
             set.UnionWith(_model.Source.EffectiveStereotypes(file.Stereotypes).Select(s => s.Stereotype.Key));
-        if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery)
+        if (element is RDatabase or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery)
             set.UnionWith(((RAnnotated)element).Stereotypes.Select(s => s.Key));
         return set;
     }
@@ -675,7 +767,7 @@ internal sealed class UnitFilter
             ids.Add(own);
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file) && file.Category is { } fileCategory)
             ids.Add(fileCategory);
-        if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery && ((RAnnotated)element).Category?.Id is { } physicalCategory)
+        if (element is RDatabase or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery && ((RAnnotated)element).Category?.Id is { } physicalCategory)
             ids.Add(physicalCategory);
         foreach (var start in ids)
         {

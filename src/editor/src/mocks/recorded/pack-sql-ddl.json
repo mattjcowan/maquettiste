@@ -33,19 +33,19 @@
       {
         "id": "schema",
         "template": "schema.scriban",
-        "for": "select databases",
+        "for": "each database",
         "output": "{{ kebab database.name }}/schema.sql"
       },
       {
         "id": "migration",
         "template": "migration.scriban",
-        "for": "select databases",
+        "for": "each database",
         "mode": "once"
       },
       {
         "id": "seed",
         "template": "seed.scriban",
-        "for": "select databases",
+        "for": "each database",
         "output": "{{ kebab database.name }}/seed.sql",
         "mode": "regions"
       },
@@ -337,11 +337,6 @@
     {
       "kind": "helper",
       "name": "reference_realization",
-      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js"
-    },
-    {
-      "kind": "selector",
-      "name": "databases",
       "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js"
     }
   ]

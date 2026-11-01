@@ -70,7 +70,7 @@ internal static class SnapshotCapture
                     Key = v.Id,
                     Name = v.Name,
                     Schema = v.Schema,
-                    Body = v.Body,
+                    Body = v.Body ?? "",
                     Columns = v.ColumnList ? [.. v.Columns.Select(c => c.Name)] : [],
                     WithCheckOption = v.WithCheckOption,
                     Materialized = v.Materialized,

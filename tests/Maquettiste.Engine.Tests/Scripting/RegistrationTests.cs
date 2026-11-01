@@ -75,6 +75,7 @@ public sealed class RegistrationTests
     [InlineData("maquettiste.rule({ id: 'r', severity: 'fatal', check() {} });", "severity")]
     [InlineData("maquettiste.rule({ id: 'r', kinds: ['widget'], check() {} });", "unknown kind 'widget'")]
     [InlineData("maquettiste.rule({ id: 'r' });", "check must be a function")]
+    [InlineData("maquettiste.rule({ id: 'r', scope: 'file', check() {} });", "scope must be 'element' or 'model'")]
     [InlineData("maquettiste.rule({ id: 'r', check() {} });\nmaquettiste.rule({ id: 'r', check() {} });", "already registered")]
     public void Invalid_registrations_fail_the_pool_with_file_and_line(string code, string expected)
     {
@@ -184,8 +185,12 @@ public sealed class RegistrationTests
             new Diagnostic("x/pascal-names", DiagnosticSeverity.Warning, "customer should be PascalCase", s.Customer.Id, document.Path, "/name", null, null),
             new Diagnostic("x/pascal-names", DiagnosticSeverity.Info, "frozen", s.Customer.Id, document.Path, "", null, null),
         ], diagnostics);
-        Assert.Contains("r:" + s.Customer.Id, reads.Keys);
+        // referencesTo records rt:, whose hash covers every reference entry; get and all record e: per document.
+        Assert.Contains("rt:" + s.Customer.Id, reads.Keys);
+        Assert.DoesNotContain("r:" + s.Customer.Id, reads.Keys);
         Assert.Contains("k:entity", reads.Keys);
+        Assert.Contains("e:" + ((Entity)document.Element).Attributes[0].Id, reads.Keys);
+        Assert.Contains("e:" + s.Invoice.Id, reads.Keys);
     }
 
     [Fact]

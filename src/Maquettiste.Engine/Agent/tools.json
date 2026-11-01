@@ -395,10 +395,25 @@
     {
       "name": "get_project",
       "title": "Project",
-      "description": "The project: name, the release running (productVersion, build) beside the engine contract (engineVersion) and the model format, the workspace (MAQUETTISTE_WORKSPACE, else the git branch, else the worktree name) with the branch and worktree, settings and their hash, databases, template packs (with pack diagnostics) and extension schemas. Start here.",
+      "description": "The project as a summary: name, the release running (productVersion, build) beside the engine contract (engineVersion) and the model format, the workspace (MAQUETTISTE_WORKSPACE, else the git branch, else the worktree name) with the branch and worktree, the settings hash, databases, packs ({name, version, description, units}), packDiagnosticCounts ({errors, warnings, info}), extensions (their names) and sections, the sections you can ask for. Each section adds its full members: settings adds settings (the typed settings, also from get_settings), packs adds packManifests and packDiagnostics (also from list_packs), extensions adds extensionSchemas. Start here.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "sections": {
+            "description": "The sections to add in full: settings, packs, extensions. Omit for the summary alone.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          }
+        }
       }
     },
     {
@@ -549,10 +564,57 @@
     {
       "name": "list_validation_rules",
       "title": "Validation rules",
-      "description": "The built-in validation rules, ordered by id: id, defaultSeverity, description, family (the hundreds group such as MQ72xx) and familyLabel, and canBeOff (false for MQ1xxx). Override a rule's severity with validation.rules in the settings (get_settings, save_settings): error, warning, info or off.",
+      "description": "The built-in validation rules. With no argument, a summary by family: {total, families: [{family, familyLabel, rules, first, last}]}, family being the hundreds group such as MQ72xx. With family, ids, query, cursor or limit, full entries in id order, one page {items, next}: each item is id, defaultSeverity, description, family, familyLabel, canBeOff (false for MQ1xxx) and quickFix (when the rule has one); the filters combine with AND; pass next as cursor until it is null. Override a rule's severity with validation.rules in the settings (get_settings, save_settings): error, warning, info or off.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "family": {
+            "description": "Only the rules of this family, for example MQ41xx.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "ids": {
+            "description": "Only these rule ids, matched exactly, for example [\"MQ2001\", \"MQ4101\"].",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "query": {
+            "description": "Only the rules whose id or description contains this text, ignoring case.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "cursor": {
+            "description": "The next value of the previous page.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 1000 (default 100).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          }
+        }
       }
     },
     {
@@ -760,7 +822,7 @@
     {
       "name": "preview_unit",
       "title": "Preview unit",
-      "description": "Renders one unit of a pack for one element with no writes and returns each file's output path and text, the diagnostics and the keys the render read. overlay (pack-relative path to unsaved text), unitOverride (an unsaved unit with the same id) and parameters render unsaved work; a disabled pack previews too. A render that does not finish within limits.scriptTimeoutMs x 4 fails with MQ6007. An element outside the unit's scope (none for an each unit, another kind, one a selector does not return, any for a model unit) renders nothing and returns MQ6026, which names the kind the template expects. A unit whose one render covers the whole model (for: model), a database or a locale renders all of it: preview it when its output is what you need.",
+      "description": "Renders one unit of a pack for one element with no writes and returns each file's output path and text, the diagnostics and the keys the render read. A copy unit lists every file it copies: a text file with its output text, a binary file with binary true and empty text; a source pattern matching nothing fails it with MQ6030. overlay (pack-relative path to unsaved text), unitOverride (an unsaved unit with the same id) and parameters render unsaved work; a disabled pack previews too. A render that does not finish within 4 x limits.scriptTimeoutMs (8000 ms when it is 0, the wall clock off for scripts) fails with MQ6007. An element outside the unit's scope (none for an each unit, another kind, one a selector does not return, any for a model unit) renders nothing and returns MQ6026, which names the kind the template expects. A unit whose one render covers the whole model (for: model), a database or a locale renders all of it: preview it when its output is what you need.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1075,7 +1137,7 @@
     {
       "name": "tag_usage",
       "title": "Tag usage",
-      "description": "The tags one tag vocabulary governs: {package, vocabulary, strict, tags: [{tag, declared, uses, elements, examples}]}: every tag the vocabulary of package (the global one without it) declares, and every tag used inside that scope that no vocabulary on the element's domain chain declares, with its uses there (the element's own tags and its sub-elements'), the ids of the elements holding them and up to five of their names. A domain that declares the same key keeps its own uses. Remove tags everywhere, or rename one, with apply_batch {\"op\":\"retag\",\"tags\":[...],\"name\":<new key, optional>,\"package\":<domain, optional>}.",
+      "description": "The tags one tag vocabulary governs, as a summary: {package, vocabulary, strict, tags: [{tag, declared, uses, examples}], next}: every tag the vocabulary of package (the global one without it) declares, and every tag used inside that scope that no vocabulary on the element's domain chain declares, in key order, with its uses there (the element's own tags and its sub-elements') and up to five names of the elements holding it. The whole list unless limit or cursor pages it. With tag: {package, tag, declared, uses, elements, next}, the ids of the elements holding that tag in pages, in id order; a tag the scope neither declares nor uses is not-found. Pass next as cursor until it is null. A domain that declares the same key keeps its own uses. Remove tags everywhere, or rename one, with apply_batch {\"op\":\"retag\",\"tags\":[...],\"name\":<new key, optional>,\"package\":<domain, optional>}.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1083,6 +1145,30 @@
             "description": "The domain whose tag vocabulary it is; omit for the global one.",
             "type": [
               "string",
+              "null"
+            ],
+            "default": null
+          },
+          "tag": {
+            "description": "One tag key: answers the ids of the elements holding it, in pages.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "cursor": {
+            "description": "The next value of the previous page; pages the answer.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 1000 (100 when only a cursor is given; always paged with tag); pages the answer.",
+            "type": [
+              "integer",
               "null"
             ],
             "default": null

@@ -3367,6 +3367,23 @@ database container run.
    the Generate screen, when a screen needs them.
 8. `generate` takes 3.1's `against`, as `plan` does. `patch_element`'s `facts` come from `BatchResult.Facts`, since a
    patch saves as a one-operation batch and its items carry no facts.
+9. The test whose rules part changes, `Project_index_element_references_database_packs_settings_and_schema`, lives in
+   `McpReadTests`, not `McpSurfaceTests`; it changes there and runs beside the Verify line's filter. (Taken in C10.)
+10. `PatchAsync` looks the target up as an element id: a sub-element id is `NotFound` like a name. A patch that is not
+    JSON or not an array has no operation index, so its MQ1016 points at `""`. The server instructions name
+    `patch_element` beside `save_element`, where the hash is explained; `generate` goes beside plan in C12. (Taken in
+    C11.)
+11. `generate`'s `packs` list is in ordinal pack order and leaves out a pack that changed nothing; each pack's `counts`
+    holds only the kinds that occur, keyed by their JSON names. An invalid run may already have written the files of
+    the units without errors (only unit-level errors such as MQ6033 let the others render), so `FromRun` takes an
+    optional title for `invalid` and `generate` passes one that says so; plan and apply keep theirs. `handEdits`,
+    `units` and `elements` are checked as in `plan` (a shared helper): an empty unit or element value is
+    `bad-request`. The summary records live in the CLI (`Mcp/GenerateSummary.cs`, internal), not in the engine API.
+    (Taken in C12.)
+12. `patch_element` answers in two pointer spaces: MQ1016 in the patch, every other diagnostic in the document.
+    `PatchAsync` strips `/operations/0/element` from the batch's own diagnostics (those with no file path) and turns any
+    other pointer into the operation into `""`. The MCP tool passes any JSON value but null to the engine, so an object
+    or a number is `invalid` with MQ1016 at `""`, not `bad-request`. (Taken in the milestone C review.)
 
 **Public API**
 
@@ -3551,6 +3568,15 @@ Scope 7.5 has no "done when" line; each part has an acceptance test. `JsonPatchT
   no entry is refused. It is not appended, because appending would shift the positional cells of every other row.
 - A name `SeedInput` cannot turn into an id stays a string the schema refuses, so it is MQ1002 with a message that says
   why. No rule id is added; 5.1's MQ1012 and MQ1013 stay batch rules.
+- (C15, while building) `seed_row` also records the target of an entity or table seed, whose key it reads, besides
+  what `row` records. A table seed whose table has no primary key and names no unique constraint, and an entity seed
+  whose entity has no key, have no row key either: MQ6006, as for a relation seed. A seed whose target does not resolve
+  gives null. `DependencyHasher` hashes `n:<kind>:<form>` for any kind with names in the same way; only `n:seed:` is
+  recorded today.
+- (C16, while building) In a batch, `Names` runs in a pass of its own right after 5.1's resolver and before the
+  operations are planned, in operation order, and reads the earlier operations' elements only up to the last seed that
+  holds a bare entry; a batch without one reads nothing more. A `columns` entry `code`, `label` or `description` counts
+  as such an entry, since only the target tells whether it is a keyword.
 
 **Public API**
 
@@ -3671,6 +3697,32 @@ Legend in section 2; order in section 6. Each task in 5.3 to 5.7 updates the doc
   information (`WriteRun.cs:808`), finds closed blocks, as `Find` already ignores the opening comment
   (`ManagedBlock.cs:111`).
 - Copy files reach disk only through `PostProcessor` (its `IOutputPathPolicy` check) and `WriteRun`, like every output.
+- (C18) `sources` declares `"default": []` in `schemas/v1/pack.json`, not none: the record's initializer is `[]` and
+  `SchemaConsistencyTests` requires an initializer to match a schema default. `minItems: 1` and the copy `if`/`then`
+  still require a non-empty list on a copy unit.
+- (C18) The schema's copy shape uses `not` (a copy unit's `template`; another unit's `sources` or `tokens`), whose own
+  failure text names no key, so `PackLoader` rewrites those failures as a plain MQ6001 at the offending key.
+- (C18) A unit is "declared" for MQ6031 as for MQ6024: a key of `parameters` or of `parameterSchema.properties`.
+- (C18) Copy sources get no `usedBy` entries, since the pack file delete and move checks treat any entry as a unit
+  naming the file, and their text is left out of the `include` scan. The role order is manifest, script, type map,
+  template, partial, `copy-source`, other.
+- (C18) A file a copy unit copies is never a default script or a type map: when `scripts` is empty, the `*.js` files a
+  copy unit matches are not loaded as pack helpers, and a matched `types/*.json` is not read as a type map
+  (`PackFileRoles.CopiedFiles`). So a skeleton holding JavaScript or a `types` folder is copied, never run or parsed.
+  A file `scripts` names is still a script, and also copied.
+- (C18) The unit's canonical form in the static hash leaves out empty `sources` and `tokens`, so units outside mode
+  copy keep the hash they had before copy units and an upgrade renders nothing again.
+- (C18) `PackUnit` in `docs/api/openapi.yaml` follows the record: `template` nullable, `sources`, `tokens`,
+  `blockCommentEnd`; `OutputMode` gains `copy`.
+- (C19) A copy unit's files come in the order of their sources (ordinal by pack path), each with role `main`; the
+  writer lists changes by path, as for any unit.
+- (C19) One text test, the internal `DiffGenerator.IsText` (strict UTF-8 without a NUL byte), serves the renderer and
+  the diff. The diff's one line `Binary file <path> differs` applies to any file whose old or new bytes are not text.
+- (C19) Tokens are replaced by an internal `CopyTokens` beside `UnitRun` in `Rendering/RenderRun.cs`, on UTF-8 bytes
+  for paths as for text files, so one pass serves both.
+- (C19) Two sources on one path fail the unit with MQ6005 at `pack.json` `/units/<i>/sources`. A preview's copy unit
+  with MQ6030 or MQ6031 fails with the matcher's diagnostics as they are.
+- (C19) Post-processing selects no formatter for a copy unit, so a copy unit is never warned about one (MQ6014).
 
 **Model and schema**
 
@@ -3859,6 +3911,80 @@ marker in the preview.
 - JavaScript fast path: `maquettiste.helper(name, fn, { plain: true })` opts in; proxies stay the default. The flag
   lives in the sandbox's registry, so no public type changes. A plain copy is bounded by member hops (below), because a
   copy of everything reachable would copy the whole model through `database.tables`.
+- (C21) `Rendering/RenderRun.cs` joins C21's files: `CreateGlobals` binds a scope's element under its kind only when the
+  kind is not a reserved variable or is on its list of scope kinds, so reserving `database` and `attribute` in
+  `BuiltinHelpers.Variables` adds both to that list; without it `each database`, `each attribute` and today's
+  `select databases` units would lose their `database` or `attribute` variable.
+- (C20) `n:table:<text>` hashes the sorted `<database id>/<table key>` of every matching table, so moving a designed
+  table (whose key is its file id) to another database changes the hash too. `table_named` takes a database or its
+  name; a name records `k:database` and every database, as a `schema_diff` miss does. The first dot splits the schema.
+- (C20) `json` fields are one path or a list of them. A map's missing key writes null, since a map's keys are data;
+  only an unknown member of a resolved object or view is MQ6006. `toposort` matches an end to every equal item and
+  ignores an edge from an item to itself.
+- (C21) `UnitRules.Scopes` lists `each attribute` after `each entity` and `each database` before `each table`; the
+  MQ6021 text in `tests/fixtures/validation/generation/expected.json` follows.
+- (C22) `seed-data/helpers.js` held only the `databases` selector, so it is deleted with the manifest's `scripts` entry:
+  the pack loads no script. `sql-ddl/helpers.js` keeps its helpers, and the CLI's starter copy, embedded from
+  `packs/sql-ddl`, follows.
+- (C22) The editor mocks follow the switch. `mocks/model/packs.ts` refused any scope outside its list (MQ6021), so it
+  takes `each database` and `each attribute`. `packAuthoring.ts`'s explain answers as `UnitPlanner.WhyNot` does for an
+  element an `each <kind>` unit covers (`skip-hint`, else planned) and gives an unrendered `select` unit the
+  `selector` reason in the engine's words; `generation.ts` previews a database unit the mock does not model (migration,
+  the environment scripts) as rendering nothing, as it already did for object units. With every database covered, the
+  e2e spec's migration step now shows no statement, and its failure step first saves a pack whose `seed-environments`
+  is still `select databases` (a copy from before the switch, whose scripts no longer register the selector). The
+  spec's unit list also gains A28's `object-environments`.
+  `workspaces/generate/previewScope.ts` lists `each database` by kind, so the preview picker says "Database" for the
+  shipped units, as it did for `select databases`.
+- (C22) The recorded mocks keep only this task's change (each unit's `for` and the dropped selector registration);
+  the rest of a fresh recording's drift is not part of the task.
+- (C23) Definition order and shapes: one stereotype per key (`GetStereotype`), by key; vocabularies and trees the
+  global one first, then by (package qualified name, id). A stereotype definition's attributes have the definition as
+  `Owner`, `IsVirtual` and `FromStereotype` set and the ids of their carriers' copies, so they are not registered for
+  `model.find` (the definitions, vocabularies and trees are). Siblings go by `order` (none counts as 0), then file
+  order; a parent the tree lacks, or the category itself, makes a root; a category in a longer parent cycle follows
+  the depth-first walk, in file order. `ResolveRun.cs` completes the `RCategory` instances `ResolveCategories`
+  creates, so `ResolveRun.Conceptual.cs` is unchanged.
+- (C23) `ResolvedCoverageTests`: a category's own names and annotations outside 4.5 (`displayName`, `pluralName`,
+  `stereotypes`, `tags`, `category`, `properties`, `generation`) and a stereotype's `storage` move from `Pending` to
+  `NotResolved` with their reasons, since the API above leaves them out on purpose; 4.2's stereotype keys and 4.5's
+  category keys stay in `Pending`.
+- (C24) The contract covers single values: a list or map is never absent, only empty, so
+  `Every_optional_value_without_a_default_is_nullable` skips list and map members. Its `Derived` list holds what the
+  test found beyond the survey, each with its rule: a database's `ByConvention`; a column's `Key`, `Type`, `NativeType`
+  and `Identity`; constraint names; a routine's `Language` and `Volatility`; the native type of a routine parameter, a
+  table result's column, a composite's field and a query parameter (the slot's own, else its database type's native
+  name, else the type map's; empty only when the database type has no native name for the dialect, kept as text because
+  the editor's previews concatenate it); a query source's `Alias`, a query field's `Name` and `Nullable`, an
+  expression's `Null`; an attribute's `Order`; the display name of an enum member and of a process node; a scenario's
+  `Start`.
+- (C24) `No_string_is_empty_unless_its_default_is` also walks a built model holding what no fixture has (a routine, a
+  database type and a SQL object without SQLite text on SQLite, a routine returning a table, a partitioned table with an
+  exclusion and storage parameters, a derived attribute, a view's generation hints) and asserts their nulls. The view
+  types it still cannot reach are excused by name with the tests that resolve them: migration facts
+  (`MigrationResolutionTests`), case branches (`QueryTests`) and reference type bindings (`ReferenceBindingTests`).
+- (C24) The records follow the members, which takes three files beyond the task's list: `Editor/DatabaseViews.cs` and
+  `Editor/QueryViews.cs` (`ViewView.Body`, `RoutineView.Body`, `SqlObjectView.Body`, `RoutineReturnsView.NativeType`,
+  `DatabaseTypeView.NativeName` and `QueryView.Sql` become nullable, with `docs/api/openapi.yaml` and the editor mocks),
+  and `SchemaDiff/SnapshotCapture.cs`, which keeps `""` for a view without a body so captured snapshots stay
+  byte-identical. A conceptual record keeps a non-null display and plural name (`ResolvedAnnotations`), since a
+  conceptual object always falls back. `pluralize` of an element falls back to the inflector
+  (`Rendering/BuiltinHelpers.cs`). `RQuery.Sql` is also null on a nested query, which never had its own SQL. A slot with
+  no type has a null native type, so a scalar result without one stays null in a query expression.
+- (C24) `display_name`, `plural_name` and `description_of` on a database object, which has no translations, now give its
+  own file's text and record the object's read; null when unset, now that unset is null rather than `""`. Before, they
+  gave null even when the file set a display name.
+- (C24) Goldens: the null audit description reaches csharp-dapper's
+  `f.description ?? ("Audit attribute " + f.name + ".")`, which `""` had made dead, so one line of
+  `tests/fixtures/golden/csharp-dapper/processes` changes, from an empty `<summary>` to `Audit attribute costCentre.`.
+  Every other golden stays byte-identical.
+- (C25) A stub needs an id and a kind, so the hops count resolved objects (`IResolvedObject`). The model's helper
+  objects (`RType`, `RStereotype`, `RCategory`, a mapping, an expression) are copied whole at their holder's hop and add
+  none, as lists and maps do; the memo entry is made before the members are copied, so a cycle of helper objects (a
+  category's parent and children) closes on its copy. Plain lists are frozen arrays (`Array.isArray` is true).
+- (C25) Only `helper` reads a third argument: absent, or an object whose only key is `plain`, `true` or `false`. Any
+  other key, a `plain` that is not a boolean, or a value that is not an object (null and arrays included) is a
+  `TypeError` at load, MQ6016 on the registering line. `selector`, `filter` and `transform` are unchanged.
 
 **Model and schema**
 
@@ -3990,7 +4116,8 @@ definition completions.
   "~Rendering"`; `E "~PlanCauseTests"`.
 - **C21. Database and attribute scopes.** `each database`, `each attribute`. Files: schema (+ copy),
   `Planning/UnitRules.cs`, `Planning/UnitPlanner.cs`, `Planning/PackLoader.cs`, `GenerationService.Authoring.cs`,
-  `Rendering/BuiltinHelpers.cs`. Tests: `ObjectScopeTests`, `A_pack_helper_named_database_or_attribute_is_MQ6013`.
+  `Rendering/BuiltinHelpers.cs`, `Rendering/RenderRun.cs` (the scope alias list). Tests: `ObjectScopeTests`,
+  `A_pack_helper_named_database_or_attribute_is_MQ6013`.
   Verify: `E "~Planning|~ModelHelperTests"`.
 - **C22. Shipped packs on `each database`** (after C21 and A28). Files: `packs/sql-ddl/{pack.json,helpers.js,README.md}`
   (object-environments included),
@@ -4010,7 +4137,7 @@ definition completions.
   the resolver files that set them (`DatabaseRun.cs`, `ResolveRun.Processes.cs` among them),
   `Rendering/LocalizationHelpers.cs`, `Editor/ResolvedRecords.cs`, `packs/sql-ddl/_objects.scriban` (+ copy),
   `docs/api/openapi.yaml`. Tests: `ResolvedNullContractTests`. Verify: `E "~Resolution|~Editor"`; `PG P` (goldens
-  unchanged); `editor`.
+  unchanged but the csharp-dapper audit line a (C24) decision names); `editor`.
 - **C25. Plain helpers.** Files: `Scripting/ScriptSandbox.cs`, `Scripting/ScriptSandbox.Calls.cs`,
   `Scripting/ScriptValues.cs`. Tests: `PlainHelperTests`. Verify: `E "~Scripting"`.
 
@@ -4020,7 +4147,7 @@ definition completions.
 
 - `--unit` takes `<pack>/<unit>`, or a bare unit id that exactly one run pack has; `--element` takes ids, never names.
   Both repeat; values of one flag OR, the two flags AND. `--element` never selects model-scope units; a synthesized
-  table's id is its key (`<entityId>@<dbId>`).
+  table's id is its key (`<entityId>@<dbId>`). An empty `Units` or `Elements` list is no filter, as null is (C26).
 - The selection filters the plan once, at the end of `GenerationRun.PrepareAsync`, so skip, render, write, capture and
   plan apply see selected units only.
 - The writer keeps every manifest entry and unit state of unselected units, and still deletes orphans of selected
@@ -4035,6 +4162,14 @@ definition completions.
   `sql-ddl/migration` reads it today; per-table DDL stays scopable. Since a database element selects every unit of
   `each database`, `--element <database id>` alone reaches `sql-ddl/migration` and exits 1; one database's schema is
   regenerated with `--unit sql-ddl/schema --element <database id>`.
+- An empty or blank `--unit` or `--element` value is a usage error (exit 4), and an empty `units` or `elements` value
+  is an MCP `bad-request`; repeated values are passed once. MCP `plan` answers a scoped plan that MQ6032 or MQ6033 makes
+  invalid as it answers any invalid plan that holds a plan: `{ outcome: "invalid", plan }` with the diagnostics in the
+  plan, not a tool error. `POST /api/generate/plan` passes both filters through unchecked; an empty value there is
+  MQ6032 or MQ6034. (Taken in C28.)
+- When every unit value names its pack, only those packs load; a pack that only a unit value names and whose folder
+  has no `pack.json` is left out of the load, so the value reports MQ6032 (a pack the run lacks) rather than the
+  loader's MQ6001 for a missing pack. (Recorded in the milestone C review; `Generation/README.md` already said so.)
 
 **Public API**
 
@@ -4160,6 +4295,46 @@ unit" actions.
   diagnostics are cached before `ApplySettings`, so `validation.rules` overrides apply after the cache and `off` rules
   never run; a file with top-level `let` or `var` (state that cannot be frozen) gets MQ5005 and is never cached. A
   mutated `const` object is a breach the engine cannot see; the guide states the rule.
+- (C29) The sandbox clamps statements with the internal `ScriptSandbox.StatementLimit` (to `StatementCap`,
+  2,000,000,000), and MQ5003/MQ6007's statement message names the clamped limit, not the setting. `PreviewDeadlineMs`
+  computes 4 × the timeout in 64 bits, so a large `scriptTimeoutMs` no longer overflows the deadline.
+- (C29) `LimitMemory` counts every byte a call allocates on its thread, not what it keeps, and a loop allocates its
+  numbers, so a rule spending 5 million statements reaches the default 64 MB before the statement limit. The
+  determinism acceptance test therefore raises `scriptMemoryBytes` with `scriptStatements`. A call's first run on an
+  engine also allocates more (the rule model view is built once per snapshot per engine), so a rule within a few
+  kilobytes of the memory limit can still differ between runs whatever the clock; this is left as it is.
+- (C30) "Top-level" means outside every function and class body: a `let` or `var` in a top-level block or loop head is
+  MQ5005 too, since a closure can capture it. The warning sits at the first one, by line, and names its variable.
+- (C30) A rule file's prepared program must be exactly the call of its wrapper (one statement, the function the prefix
+  opens, closed by the suffix's brace); otherwise a closing brace in the code ended the scope early, which would let it
+  declare script-level bindings another file sees, and the file is MQ5002 ("closes the function scope its code runs
+  in"), at the brace that closed it.
+- (C30) `CheckRuleScript` applies `validation.rules` to the pool's warnings, so MQ5005 set `off` is hidden on the
+  Extensions screen as it is in `validate`.
+- (C31) The index functions read what the files state, as `get` returns it: `withStereotype` finds the elements whose
+  file lists the key (not the ones that only imply it), `withTag` the file's tags, `withProperty` its own `properties`;
+  only top-level elements, the first document of each id. `all(kind)` reads `ModelSnapshot.DocumentsOf`, so a duplicate
+  id (MQ1004) is no longer listed twice. Index names in keys: `ix:stereotype:`, `ix:tag:`, `ix:property:`, `ix:qn:`.
+- (C31) `byQualifiedName` lists its candidates ordinal by id: they share the name's last segment, so this is the (name,
+  id) order of the other lists, and it is the order its `ix:qn:` hash covers.
+- (C31) `RuleKeyHasher` hashes `e:` with the holding file's `Hash`, not its `DependencyHash`: a rule never sees
+  sidecars.
+- (C32) A model rule's finding takes the given id as its element id (a sub-element's when `element` names one), as the
+  built-in rules do; its `Math.random` seed is `x/<id>`. `RunRule` returns nothing for a model rule, and `RunModelRule`
+  on an id that is not a model rule is MQ5002.
+- (C32) `wholeModel` is required in the contract, since the engine always writes it, so the editor's mock backend
+  (`src/editor/src/mocks/model/extensions.ts`, which also runs model rules once) and its unit test carry it; the MCP
+  description of `list_extension_files` (`ModelTools.Extensions.cs`) names `wholeModel` and MQ5005, as 2.5's row says.
+- (C33) An entry also needs the element file's path unchanged, since the cached findings carry it. A registration whose
+  `DeclaredIn` is not one of the snapshot's rule scripts (the test fakes) is never cached. Only a whole-model validation
+  that ran element rules sweeps the cache (so `includeScriptRules: false` keeps it); each validation takes a ticket, and
+  the sweep keeps entries a later validation running at the same time used. `RuleDeterminismTests` builds a validator
+  per run, so its loaded run executes the rules instead of reusing the idle run's results.
+- (C review) Every whole-model validation with script rules sweeps the cache, not only one that ran element rules, so
+  entries go when every element rule is gone (rule files deleted or failing to load, only whole-model rules left);
+  `includeScriptRules: false` still keeps them. A rule whose `kinds` leave a document out is skipped before the cache
+  lookup (no lease, no `RunRule`, no empty entry); the kinds ride on `ScriptRegistration` as an internal member, so the
+  contract does not change.
 
 **Model and schema**
 

@@ -90,10 +90,10 @@ public sealed class ResolvedCoverageTests
         new("step", "scenario.json", "$defs/step", typeof(RStep)),
 
         // Vocabularies, mappings and diagrams.
-        new("stereotype", "stereotype.json", "", typeof(RStereotype)),
+        new("stereotype", "stereotype.json", "", typeof(RStereotypeDefinition)),
         new("category", "category-tree.json", "categories/[]", typeof(RCategory)),
-        new("category tree", "category-tree.json", "", null),
-        new("tag vocabulary", "tag-vocabulary.json", "", null),
+        new("category tree", "category-tree.json", "", typeof(RCategoryTree)),
+        new("tag vocabulary", "tag-vocabulary.json", "", typeof(RTagVocabulary)),
         new("mapping", "mapping.json", "", null),
         new("diagram", "diagram.json", "", null),
 
@@ -108,7 +108,7 @@ public sealed class ResolvedCoverageTests
     ];
 
     /// <summary>Properties no resolved object carries, anywhere, and why.</summary>
-    private static readonly Dictionary<string, string> NotResolvedAnywhere = new(StringComparer.Ordinal)
+    internal static readonly Dictionary<string, string> NotResolvedAnywhere = new(StringComparer.Ordinal)
     {
         // The relative path to the file's JSON schema: editor completion for the file, not part of the model.
         ["$schema"] = "file layout",
@@ -120,10 +120,22 @@ public sealed class ResolvedCoverageTests
     /// <summary>Properties of one target that are deliberately not resolved, and why.</summary>
     private static readonly Dictionary<(string Target, string Property), string> NotResolved = new()
     {
+        // A stereotype's storage reaches templates merged under a table's own (table.storage), as its defaultProperties do on each
+        // carrier; model.stereotypes lists the definition without it (next-phase-1-design.md section 5.5).
+        [("stereotype", "storage")] = "merged into table.storage",
+        // A category is the one summary every annotated object in it shares (id, name, path, parent, children, order, description,
+        // next-phase-1-design.md section 5.5); its own names and annotations describe the vocabulary, not the model.
+        [("category", "displayName")] = "category summary",
+        [("category", "pluralName")] = "category summary",
+        [("category", "stereotypes")] = "category summary",
+        [("category", "tags")] = "category summary",
+        [("category", "category")] = "category summary",
+        [("category", "properties")] = "category summary",
+        [("category", "generation")] = "category summary",
     };
 
     /// <summary>Properties resolved under another member name.</summary>
-    private static readonly Dictionary<(string Target, string Property), string> Renamed = new()
+    internal static readonly Dictionary<(string Target, string Property), string> Renamed = new()
     {
         // The overlay entry's synthesized column key is the column's key.
         [("column", "attribute")] = "Key",
@@ -151,28 +163,15 @@ public sealed class ResolvedCoverageTests
         // A relation end resolves its role, entity, cardinality and navigation, not its own names and description.
         ("relation end", "displayName"), ("relation end", "pluralName"), ("relation end", "description"),
 
-        // A stereotype reaches templates only as the summary an annotated object carries (key, name, icon, color).
-        ("stereotype", "kind"), ("stereotype", "id"), ("stereotype", "displayName"), ("stereotype", "pluralName"), ("stereotype", "description"),
-        ("stereotype", "stereotypes"), ("stereotype", "tags"), ("stereotype", "category"), ("stereotype", "appliesTo"), ("stereotype", "attributes"),
-        ("stereotype", "defaultProperties"), ("stereotype", "properties"), ("stereotype", "generation"),
-        // A stereotype's storage reaches templates merged under a table's own (table.storage), as its defaultProperties do.
-        ("stereotype", "storage"),
-        // A stereotype's package (next-phase-1-design.md section 4.3) is membership, which layering and the index read from the
-        // file; the summary an annotated object carries has no package.
-        ("stereotype", "package"),
         // A stereotype's group, requires, conflicts, implies and parameters (next-phase-1-design.md section 4.2) are judged by
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
-        // the merged properties), not as members of the summary.
+        // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
 
-        // A category reaches templates only as the summary an annotated object carries (id, name, path).
-        ("category", "displayName"), ("category", "pluralName"), ("category", "parent"), ("category", "order"), ("category", "description"),
-        ("category", "stereotypes"), ("category", "tags"), ("category", "category"), ("category", "properties"), ("category", "generation"),
-
-        // Rationale, decision and status (next-phase-1-design.md section 4.5) resolve on every RAnnotated object; these three
-        // targets resolve to types that are not RAnnotated (an enum member is a plain RObject, a stereotype and a category reach
-        // templates only as the summaries above), so their annotations wait with their other pending members.
-        .. Annotations("enum member", "stereotype", "category"),
+        // Rationale, decision and status (next-phase-1-design.md section 4.5) resolve on every RAnnotated object; these two
+        // targets resolve to types that are not RAnnotated (an enum member is a plain RObject, a category the summary annotated
+        // objects share), so their annotations wait with their other pending members.
+        .. Annotations("enum member", "category"),
     ];
 
     private static IEnumerable<(string Target, string Property)> Annotations(params string[] targets) =>
@@ -181,10 +180,11 @@ public sealed class ResolvedCoverageTests
     /// <summary>
     /// Kinds with no resolved object at all (found 2026-10-01, a later round): every property of their files is pending. A mapping
     /// resolves into <c>entity.mappings</c> and <c>relation.mappings</c> (<see cref="REntityMapping"/>, <see cref="RRelationMapping"/>)
-    /// rather than an object of its own, so its annotations and its own fields are not reachable; a diagram, the tag vocabulary and
-    /// the category tree are not resolved (tags reach templates as keys, categories as the summary above).
+    /// rather than an object of its own, so its annotations and its own fields are not reachable; a diagram is not resolved. The tag
+    /// vocabularies and category trees resolve into <c>model.tag_vocabularies</c> and <c>model.category_trees</c>
+    /// (next-phase-1-design.md section 5.5).
     /// </summary>
-    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "category tree", "tag vocabulary", "mapping", "diagram" };
+    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram" };
 
     [Fact]
     public void Every_property_of_every_model_file_is_a_member_of_its_resolved_object()
@@ -231,11 +231,18 @@ public sealed class ResolvedCoverageTests
             Assert.Contains(kind.SchemaFile, files);
     }
 
+    /// <summary>The resolved member a target's schema property maps to (through <see cref="Renamed"/>), or <see langword="null"/>.</summary>
+    internal static PropertyInfo? MemberOf(Target target, string property) =>
+        target.Type is null ? null : Member(target.Type, Renamed.GetValueOrDefault((target.Label, property)) ?? property);
+
     private static PropertyInfo? Member(Type type, string property) =>
         type.GetProperty(char.ToUpperInvariant(property[0]) + property[1..], BindingFlags.Public | BindingFlags.Instance);
 
     /// <summary>The property names the schema object declares, in schema order.</summary>
-    private static IReadOnlyList<string> Properties(Target target)
+    private static IReadOnlyList<string> Properties(Target target) => [.. SchemaObject(target).Node["properties"]!.AsObject().Select(p => p.Key)];
+
+    /// <summary>The schema object a target names, with the file its relative references resolve against.</summary>
+    internal static (JsonNode Node, string File) SchemaObject(Target target)
     {
         var (node, file) = Resolve(Load(target.File), target.File);
         foreach (var step in target.Path.Split('/', StringSplitOptions.RemoveEmptyEntries))
@@ -250,10 +257,11 @@ public sealed class ResolvedCoverageTests
             (node, file) = Resolve(node, file);
         }
 
-        return [.. node["properties"]!.AsObject().Select(p => p.Key)];
+        return (node, file);
     }
 
-    private static (JsonNode Node, string File) Resolve(JsonNode node, string file)
+    /// <summary>Follows <c>$ref</c> from a node that declares no properties of its own.</summary>
+    internal static (JsonNode Node, string File) Resolve(JsonNode node, string file)
     {
         while (node["$ref"]?.GetValue<string>() is { } reference && node["properties"] is null)
         {
@@ -268,5 +276,5 @@ public sealed class ResolvedCoverageTests
         return (node, file);
     }
 
-    private static JsonNode Load(string file) => JsonNode.Parse(TestServices.Schemas.GetFileBytes(file).Span)!;
+    internal static JsonNode Load(string file) => JsonNode.Parse(TestServices.Schemas.GetFileBytes(file).Span)!;
 }

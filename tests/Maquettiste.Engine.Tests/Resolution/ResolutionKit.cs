@@ -161,9 +161,9 @@ internal static partial class ResolutionKit
     private static string Annotations(RAnnotated o, Func<object?, string> v)
     {
         var sb = new StringBuilder();
-        if (o.DisplayName.Length > 0)
+        if (!string.IsNullOrEmpty(o.DisplayName))
             sb.Append(" display=").Append(v(o.DisplayName));
-        if (o.PluralName.Length > 0)
+        if (!string.IsNullOrEmpty(o.PluralName))
             sb.Append(" plural=").Append(v(o.PluralName));
         if (o.Description is { } description)
             sb.Append(" description=").Append(v(description));

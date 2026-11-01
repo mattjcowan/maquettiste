@@ -9,7 +9,9 @@ namespace Maquettiste.Engine.Writing;
 /// file the team otherwise owns. Everything here works on bytes, so the rest of the file stays byte for byte as it was, whatever
 /// its encoding or line ends. A delimiter line matches when, trimmed of surrounding whitespace (a <c>\r</c> included), it is one
 /// run of non-whitespace characters (any comment marker), a space, then <c>maquettiste: begin &lt;pack&gt;/&lt;unit&gt;</c> (or
-/// <c>end</c>); the comment of an existing block may differ from the unit's, and is rewritten when the block is.
+/// <c>end</c>), optionally followed by one space and one run of non-whitespace characters (any closing text, such as <c>--&gt;</c>);
+/// the comment and closing text of an existing block may differ from the unit's, and are rewritten when the block is. So a scan
+/// that knows nothing of the unit (the orphan scan) still finds closed blocks.
 /// </summary>
 internal static class ManagedBlock
 {
@@ -66,15 +68,19 @@ internal static class ManagedBlock
 
     /// <summary>The begin line (no line end).</summary>
     /// <param name="comment">The comment marker.</param>
+    /// <param name="end">The closing text (<c>blockCommentEnd</c>), or <see langword="null"/>.</param>
     /// <param name="marker">The block marker.</param>
     /// <returns>The line.</returns>
-    public static string BeginLine(string comment, string marker) => comment + " maquettiste: begin " + marker;
+    public static string BeginLine(string comment, string? end, string marker) => Closed(comment + " maquettiste: begin " + marker, end);
 
     /// <summary>The end line (no line end).</summary>
     /// <param name="comment">The comment marker.</param>
+    /// <param name="end">The closing text (<c>blockCommentEnd</c>), or <see langword="null"/>.</param>
     /// <param name="marker">The block marker.</param>
     /// <returns>The line.</returns>
-    public static string EndLine(string comment, string marker) => comment + " maquettiste: end " + marker;
+    public static string EndLine(string comment, string? end, string marker) => Closed(comment + " maquettiste: end " + marker, end);
+
+    private static string Closed(string line, string? end) => string.IsNullOrEmpty(end) ? line : line + " " + end;
 
     /// <summary>
     /// The block's lines as they are written: the rendered text (already LF, no BOM) with a final line end added when the text is
@@ -84,7 +90,7 @@ internal static class ManagedBlock
     /// <returns>The body.</returns>
     public static string Body(string text) => text.Length == 0 || text[^1] == '\n' ? text : text + "\n";
 
-    /// <summary>Whether a body holds one of the block's own delimiter lines (which would end the block early).</summary>
+    /// <summary>Whether a body holds one of the block's own delimiter lines, closed or not (which would end the block early).</summary>
     /// <param name="body">The body.</param>
     /// <param name="marker">The block marker.</param>
     /// <returns><see langword="true"/> when it does.</returns>
@@ -161,16 +167,17 @@ internal static class ManagedBlock
         return prefix + ContentHash.Of(bytes[scan.BodyStart..scan.BodyEnd]);
     }
 
-    /// <summary>The file with the block's lines replaced (delimiters rewritten with <paramref name="comment"/>).</summary>
+    /// <summary>The file with the block's lines replaced (delimiters rewritten with <paramref name="comment"/> and <paramref name="end"/>).</summary>
     /// <param name="bytes">The file bytes.</param>
     /// <param name="scan">A scan that found the block.</param>
     /// <param name="comment">The comment marker.</param>
+    /// <param name="end">The closing text, or <see langword="null"/>.</param>
     /// <param name="marker">The block marker.</param>
     /// <param name="body">The new body.</param>
     /// <returns>The new file bytes.</returns>
-    public static byte[] Replace(ReadOnlySpan<byte> bytes, Scan scan, string comment, string marker, string body)
+    public static byte[] Replace(ReadOnlySpan<byte> bytes, Scan scan, string comment, string? end, string marker, string body)
     {
-        var block = Encoding.UTF8.GetBytes(Text(comment, marker, body));
+        var block = Encoding.UTF8.GetBytes(Text(comment, end, marker, body));
         var result = new byte[scan.Begin + block.Length + (bytes.Length - scan.End)];
         bytes[..scan.Begin].CopyTo(result);
         block.CopyTo(result, scan.Begin);
@@ -184,12 +191,13 @@ internal static class ManagedBlock
     /// </summary>
     /// <param name="bytes">The file bytes (empty for a new file).</param>
     /// <param name="comment">The comment marker.</param>
+    /// <param name="end">The closing text, or <see langword="null"/>.</param>
     /// <param name="marker">The block marker.</param>
     /// <param name="body">The body.</param>
     /// <returns>The new file bytes.</returns>
-    public static byte[] Insert(ReadOnlySpan<byte> bytes, string comment, string marker, string body)
+    public static byte[] Insert(ReadOnlySpan<byte> bytes, string comment, string? end, string marker, string body)
     {
-        var block = Encoding.UTF8.GetBytes(Text(comment, marker, body));
+        var block = Encoding.UTF8.GetBytes(Text(comment, end, marker, body));
         if (bytes.IsEmpty)
             return block;
         var separator = bytes[^1] != (byte)'\n' ? "\n\n" : bytes.Length >= 2 && bytes[^2] == (byte)'\n' ? "" : "\n";
@@ -234,8 +242,8 @@ internal static class ManagedBlock
         return true;
     }
 
-    private static string Text(string comment, string marker, string body) =>
-        BeginLine(comment, marker) + "\n" + body + EndLine(comment, marker) + "\n";
+    private static string Text(string comment, string? end, string marker, string body) =>
+        BeginLine(comment, end, marker) + "\n" + body + EndLine(comment, end, marker) + "\n";
 
     private static Kind Delimiter(ReadOnlySpan<byte> line, string marker)
     {
@@ -258,9 +266,14 @@ internal static class ManagedBlock
         return Matches(rest, End, marker) ? Kind.End : Kind.None;
     }
 
+    /// <summary>
+    /// Whether the rest of a trimmed line (after the comment and its space) is the keyword and the marker, then the line's end or one
+    /// space and one run of non-whitespace bytes (the closing text, whatever it is).
+    /// </summary>
     private static bool Matches(ReadOnlySpan<byte> rest, string keyword, string marker)
     {
-        if (rest.Length != keyword.Length + Encoding.UTF8.GetByteCount(marker))
+        var length = keyword.Length + Encoding.UTF8.GetByteCount(marker);
+        if (rest.Length < length)
             return false;
         for (var i = 0; i < keyword.Length; i++)
         {
@@ -268,7 +281,20 @@ internal static class ManagedBlock
                 return false;
         }
 
-        return rest[keyword.Length..].SequenceEqual(Encoding.UTF8.GetBytes(marker));
+        if (!rest[keyword.Length..length].SequenceEqual(Encoding.UTF8.GetBytes(marker)))
+            return false;
+        var closing = rest[length..];
+        if (closing.IsEmpty)
+            return true;
+        if (closing.Length < 2 || closing[0] != (byte)' ')
+            return false;
+        foreach (var b in closing[1..])
+        {
+            if (b is (byte)' ' or (byte)'\t' or (byte)'\n' or (byte)'\v' or (byte)'\f' or (byte)'\r')
+                return false;
+        }
+
+        return true;
     }
 
     private static ReadOnlySpan<byte> Trim(ReadOnlySpan<byte> line)

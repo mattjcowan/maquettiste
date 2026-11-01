@@ -62,11 +62,12 @@ internal static class Outcomes
 
     /// <summary>
     /// Whether a planning error is unit-level: it skipped one unit, and the pack's other units still render (MQ6019, generation-ui.md
-    /// section 5.3). The run's outcome is still <see cref="RunOutcome.Invalid"/>.
+    /// section 5.3; MQ6030 and MQ6031, a copy unit's sources and tokens, next-phase-1-design.md section 5.4). The run's outcome is still
+    /// <see cref="RunOutcome.Invalid"/>.
     /// </summary>
     /// <param name="diagnostic">The diagnostic.</param>
-    /// <returns><see langword="true"/> for MQ6019.</returns>
-    public static bool IsUnitLevel(Diagnostic diagnostic) => diagnostic.Rule == "MQ6019";
+    /// <returns><see langword="true"/> for MQ6019, MQ6030 and MQ6031.</returns>
+    public static bool IsUnitLevel(Diagnostic diagnostic) => diagnostic.Rule is "MQ6019" or "MQ6030" or "MQ6031";
 
     /// <summary>Sorts diagnostics: path, line, column, rule, message, element.</summary>
     /// <param name="diagnostics">The diagnostics.</param>

@@ -367,7 +367,7 @@ func type_sql(t, db)
   $d = db.dialect
   if !t.is_created || ($d != "postgresql" && $d != "sqlserver")
     $s = "-- " + dialect_title(db) + " has no " + t.type_kind + " types; " + t.name + " is not created"
-    ret $s + (t.native_name != "" ? " (columns of this type are " + t.native_name + ")." : ".")
+    ret $s + (t.native_name != null ? " (columns of this type are " + t.native_name + ")." : ".")
   end
   $name = qn(t.schema, t.name, db)
   if t.definition

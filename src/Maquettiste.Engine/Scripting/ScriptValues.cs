@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Jint;
 using JsEngine = Jint.Engine;
@@ -9,6 +10,7 @@ using Jint.Native.Array;
 using Jint.Native.Function;
 using Jint.Native.Object;
 using Jint.Runtime;
+using Jint.Runtime.Descriptors;
 using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine.Scripting;
@@ -155,8 +157,130 @@ internal sealed class ScriptValues
         throw new ScriptValueException($"A value of type {type.Name} cannot be passed to a script.");
     }
 
+    /// <summary>
+    /// Converts the arguments of one call to a plain helper (<c>maquettiste.helper(name, fn, { plain: true })</c>,
+    /// next-phase-1-design.md section 5.5) into frozen plain copies, bounded by member hops. A resolved object given as an argument,
+    /// or as an item of an argument list or map, is at hop 0; its copy holds every member a proxy lists, without the functions. A
+    /// resolved object a member holds, directly or inside a list or map, is copied at the next hop (lists, maps and the model's helper
+    /// objects add none); at hop 2 it becomes the stub <c>{ id, kind }</c>. Scalars, strings, enum names and null copy as
+    /// <see cref="ToJs(object?)"/> converts them. One memo keyed by (object, hop) serves the whole call, so a record shared by two
+    /// arguments is one copy at a hop. Every resolved object copied at hop 0 or 1 records its dependencies, and every copied
+    /// <see cref="RList{T}"/> its membership keys; a stub records nothing.
+    /// </summary>
+    /// <param name="values">The arguments.</param>
+    /// <returns>The copies, in order.</returns>
+    /// <exception cref="JavaScriptException">An argument holds the <see cref="ResolvedModel"/> (a <c>TypeError</c>).</exception>
+    public JsValue[] ToPlainJs(IReadOnlyList<object?> values)
+    {
+        var copier = new PlainCopier(this);
+        var result = new JsValue[values.Count];
+        for (var i = 0; i < result.Length; i++)
+            result[i] = copier.Copy(values[i], 0, 0);
+        return result;
+    }
+
     private static IList? AsList(object value) =>
         value is IReadOnlyList<object?> list ? new ReadOnlyListAdapter(list) : null;
+
+    /// <summary>The plain copies of one call (<see cref="ToPlainJs"/>).</summary>
+    private sealed class PlainCopier(ScriptValues owner)
+    {
+        /// <summary>The hop at which a resolved object is copied as its stub.</summary>
+        private const int StubHop = 2;
+
+        private readonly Dictionary<(object Value, int Hop), JsValue> _memo = new(MemoComparer.Instance);
+        private int _copied;
+
+        public JsValue Copy(object? value, int hop, int depth)
+        {
+            if (depth > owner._maxDepth)
+                throw new ScriptValueException($"A value passed to a script nests deeper than {owner._maxDepth} levels.");
+            switch (value)
+            {
+                case null or JsValue or string or bool or char or Enum or JsonElement:
+                case int or long or short or byte or sbyte or ushort or uint or ulong or double or float or decimal:
+                    return owner.ToJs(value, depth);
+                case ResolvedModel:
+                    throw new JavaScriptException(owner.Engine.Intrinsics.TypeError,
+                        "A plain helper cannot take the model, whose copy would be the whole model: pass the list it needs (model.entities, database.tables).");
+            }
+
+            if (_memo.TryGetValue((value, hop), out var done))
+                return done;
+            if (_copied++ % CheckInterval == 0)
+                owner.Engine.Constraints.Check();
+            var type = value.GetType();
+            if (MemberCatalog.IsProxyType(type))
+                return CopyObject(value, type, hop, depth);
+
+            JsValue copy;
+            if (value is ScriptObjectMap map)
+            {
+                copy = owner.FrozenObject(map.Select(p => KeyValuePair.Create(p.Key, Copy(p.Value, hop, depth + 1))).ToList());
+            }
+            else if (owner._catalog.TryReadMap(value, out var entries))
+            {
+                entries.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
+                copy = owner.FrozenObject(entries.Select(p => KeyValuePair.Create(p.Key, Copy(p.Value, hop, depth + 1))).ToList());
+            }
+            else if (value is IEnumerable enumerable)
+            {
+                if (owner._catalog.MembershipKeys(value) is { } keys)
+                    owner.State.Record(keys);
+                var items = new List<JsValue>();
+                foreach (var item in enumerable)
+                    items.Add(Copy(item, hop, depth + 1));
+                copy = owner.FrozenArray([.. items]);
+            }
+            else
+            {
+                throw new ScriptValueException($"A value of type {type.Name} cannot be passed to a script.");
+            }
+
+            _memo[(value, hop)] = copy;
+            return copy;
+        }
+
+        /// <summary>A resolved object (or a helper object of the model) at a hop: its members, or its stub from hop 2.</summary>
+        private JsValue CopyObject(object value, Type type, int hop, int depth)
+        {
+            var next = hop;
+            if (value is IResolvedObject resolved)
+            {
+                if (hop >= StubHop)
+                {
+                    var stub = owner.FrozenObject([KeyValuePair.Create("id", (JsValue)new JsString(resolved.Id)), KeyValuePair.Create("kind", (JsValue)new JsString(resolved.Kind))]);
+                    _memo[(value, hop)] = stub;
+                    return stub;
+                }
+
+                owner.State.Record(resolved.Dependencies);
+                next = hop + 1;
+            }
+
+            // Kept before the members are copied, so a cycle of helper objects (a category's parent and children) closes on it.
+            var copy = new JsObject(owner.Engine);
+            _memo[(value, hop)] = copy;
+            foreach (var member in owner._catalog.GetTable(type).Members)
+            {
+                if (member.Function != ProxyFunction.None)
+                    continue;
+                copy.FastSetProperty(member.Name, new PropertyDescriptor(Copy(member.Property!.GetValue(value), next, depth + 1), PropertyFlag.ConfigurableEnumerableWritable));
+            }
+
+            return owner.Freeze(copy);
+        }
+    }
+
+    /// <summary>Compares (object, hop) pairs by the object's identity.</summary>
+    private sealed class MemoComparer : IEqualityComparer<(object Value, int Hop)>
+    {
+        public static readonly MemoComparer Instance = new();
+
+        public bool Equals((object Value, int Hop) x, (object Value, int Hop) y) => ReferenceEquals(x.Value, y.Value) && x.Hop == y.Hop;
+
+        public int GetHashCode((object Value, int Hop) obj) => HashCode.Combine(RuntimeHelpers.GetHashCode(obj.Value), obj.Hop);
+    }
 
     private ObjectInstance Remember(object key, ObjectInstance proxy)
     {

@@ -365,7 +365,10 @@ paths:
                         where: null
                         output: '{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql'
                         mode: overwrite
+                        sources: []
+                        tokens: {}
                         blockComment: '#'
+                        blockCommentEnd: null
                         createFile: false
                         formatter: null
                         delimiters: null
@@ -373,11 +376,14 @@ paths:
                         transforms: []
                       - id: schema
                         template: schema.scriban
-                        for: select databases
+                        for: each database
                         where: null
                         output: '{{ kebab database.name }}/schema.sql'
                         mode: overwrite
+                        sources: []
+                        tokens: {}
                         blockComment: '#'
+                        blockCommentEnd: null
                         createFile: false
                         formatter: null
                         delimiters: null
@@ -3543,7 +3549,8 @@ paths:
         Every tag the tag vocabulary of `package` (the global one without it) declares, and every tag used inside that scope that no
         vocabulary on the element's domain chain declares, each with its uses there (the element's own tags and its sub-elements'),
         the ids of the elements holding them and up to five of their names. A domain that declares the same key keeps its own uses.
-        Remove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers the same.
+        Remove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers a summary of the
+        same, with pages and one tag's elements on request.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.GetTagUsageAsync(package)
       parameters:
@@ -4000,7 +4007,8 @@ paths:
         functions force `includeDiffs: false`, `stageBarriers: false` and `lock: wait`; `mode` is ignored (a plan is
         always a dry run). `against` diffs the schema from a model snapshot for this plan instead of the committed
         physical snapshots, which its apply leaves alone; the functions take snapshot ids only, so a folder, or an id
-        that names no snapshot, is 400 `bad-request`.
+        that names no snapshot, is 400 `bad-request`. `units` and `elements` limit the plan to some units (scoped
+        generation): it holds those units only, and its apply writes their files and leaves every other file alone.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: JobQueue.TryEnqueue(new JobRequest(JobKind.Plan, request, null))
       requestBody:
@@ -4489,9 +4497,9 @@ paths:
         element for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders
         (pointer `/units/<i>/for` of the pack's `pack.json`).
         With `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the
-        pack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4
-        (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below
-        it). Nothing is written.
+        pack loads even when disabled, the sandbox limits apply and the render has a deadline of 4 x `limits.scriptTimeoutMs`,
+        or 8000 ms when it is 0 (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the
+        maintainer role (403 below it). Nothing is written.
 
         Bounds (generation-ui.md section 5.2): only this unit is rendered, for this element, and no unit is planned. The
         server keeps a preview session per pack (the model validated and resolved once per model version, shared with
@@ -4603,8 +4611,9 @@ paths:
         whole model, a database or a locale (`for: model`, `each locale`, a selector that returns databases): its paths come
         with a preview the user asks for. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020
         (two of the rendered elements render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused
-        path, and MQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or
-        `parameters` it uses unsaved text, which needs the maintainer role (403 below it). Nothing is written.
+        path, and MQ6007 when the deadline (4 x `limits.scriptTimeoutMs`, or 8000 ms when it is 0) is hit. With
+        `unitOverride`, `overlay` or `parameters` it uses unsaved text, which needs the maintainer role (403 below it).
+        Nothing is written.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.PathsAsync(pack, unit, elementIds, options, limit)
       parameters:
@@ -5134,7 +5143,8 @@ paths:
         The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules
         (`rules/<name>.js`), each ordinal by path, with size, hash and what is wrong with the file on its own: an invalid schema
         (MQ5004) or a rule script that does not load alone in the sandbox (MQ5002 for a syntax error or a registration without an
-        id, MQ5003 for a limit), with line and column. Rule findings (`x/<id>`) come from `POST /api/validate`.
+        id, MQ5003 for a limit), with line and column, or that declares `let` or `var` at its top level (MQ5005, a warning).
+        Rule findings (`x/<id>`) come from `POST /api/validate`.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.ListExtensionFilesAsync()
       responses:
@@ -5181,9 +5191,9 @@ paths:
         write goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its
         MQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is
         written as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in
-        `diagnostics` (MQ5002 with line and column). The model is refreshed before the answer, `project.changed` is published and a
-        validation follows, so the rule's `x/<id>` findings reach the Problems panel. A path other than `<name>.json` or
-        `rules/<name>.js`, or one through a link, is 400.
+        `diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is
+        refreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings
+        reach the Problems panel. A path other than `<name>.json` or `rules/<name>.js`, or one through a link, is 400.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: ModelStore.WriteExtensionFileAsync(path, text, expectedHash)
       parameters:
@@ -7168,12 +7178,13 @@ components:
     PackUnit:
       x-engine-record: Maquettiste.Engine.Model.PackUnit
       type: object
-      required: [id, template, for, where, output, mode, blockComment, createFile, formatter, delimiters, companion, transforms]
+      required: [id, template, for, where, output, mode, sources, tokens, blockComment, blockCommentEnd, createFile, formatter, delimiters, companion, transforms]
       properties:
         id:
           type: string
         template:
-          type: string
+          type: [string, 'null']
+          description: The pack-relative template path; null only in mode `copy`, which takes none.
         for:
           type: string
           description: '`each <kind>`, `select <kinds>` or `model`.'
@@ -7185,9 +7196,22 @@ components:
           type: [string, 'null']
         mode:
           $ref: '#/components/schemas/OutputMode'
+        sources:
+          type: array
+          description: 'Mode `copy`: pack-relative glob patterns of the files to copy, matched case-sensitively; empty otherwise.'
+          items:
+            type: string
+        tokens:
+          type: object
+          description: 'Mode `copy`: literal text replaced in copied text files and output paths, mapped to a parameter name; empty otherwise.'
+          additionalProperties:
+            type: string
         blockComment:
           type: string
           description: 'Mode `block`: the comment marker of the delimiter lines (`#` by default).'
+        blockCommentEnd:
+          type: [string, 'null']
+          description: 'Mode `block`: the text closing each delimiter line (for example `-->`), or null.'
         createFile:
           type: boolean
           description: 'Mode `block`: create the target file when it does not exist (otherwise the unit writes nothing: `target-missing`).'
@@ -10302,8 +10326,8 @@ components:
         schema:
           type: [string, 'null']
         body:
-          type: string
-          description: The body for the database's dialect.
+          type: [string, 'null']
+          description: The body for the database's dialect (or the `*` body); null when the file has none for it.
         columns:
           type: array
           items:
@@ -10439,8 +10463,8 @@ components:
           type: string
           description: The file's language, else the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere).
         body:
-          type: string
-          description: The body for the database's dialect (or the `*` body); empty when the file has none for it.
+          type: [string, 'null']
+          description: The body for the database's dialect (or the `*` body); null when the file has none for it.
         hasBody:
           type: boolean
         deterministic:
@@ -10555,8 +10579,8 @@ components:
         scale:
           type: [integer, 'null']
         nativeType:
-          type: string
-          description: The native type of a single value; empty for a table result.
+          type: [string, 'null']
+          description: The native type of a single value; null for a table result.
         table:
           description: The columns of a table result, or null for a single value.
           oneOf:
@@ -10640,7 +10664,8 @@ components:
         isCreated:
           type: boolean
         nativeName:
-          type: string
+          type: [string, 'null']
+          description: What a column or parameter typed by it writes; null when the dialect has none for it (a composite or range outside PostgreSQL).
         dependsOn:
           type: array
           description: The ids of the database types its fields use.
@@ -10750,8 +10775,8 @@ components:
           items:
             type: string
         body:
-          type: string
-          description: The statements for the database's dialect (or the `*` ones); empty when the file has none for it.
+          type: [string, 'null']
+          description: The statements for the database's dialect (or the `*` ones); null when the file has none for it.
         hasBody:
           type: boolean
         displayName:
@@ -10857,8 +10882,8 @@ components:
           items:
             $ref: '#/components/schemas/QueryCollectionView'
         sql:
-          type: string
-          description: The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need.
+          type: [string, 'null']
+          description: The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need; null when it cannot be rendered there (MQ4029).
         sqlParameters:
           type: array
           description: The parameters the SQL names, in first-appearance order.
@@ -11671,7 +11696,7 @@ components:
       enum: [main, block, companion]
     OutputMode:
       type: string
-      enum: [overwrite, once, regions, pair, block]
+      enum: [overwrite, once, regions, pair, block, copy]
     FileChangeKind:
       description: >-
         What Apply does to a file. `added`, `modified` and `deleted` are written or removed. `unchanged` (rendered, identical to the
@@ -11749,6 +11774,28 @@ components:
             never writes those; applying its plan opens the baseline again, and a baseline changed in between makes the
             plan stale.
           type: [string, 'null']
+          default: null
+        units:
+          description: >-
+            Scoped generation: only these units, each `<pack>/<unit>` or a unit id that exactly one pack of the run has
+            (values OR, and AND with `elements`). `null` or an empty list: every unit. A unit no run pack has, a pack the
+            run lacks or a unit id several run packs have is MQ6032. A scoped run writes only the selected units' files
+            (and deletes the files they no longer produce), keeps every other output and unit state, never advances the
+            schema snapshots (a selected unit that reads the schema diff is MQ6033) and, as a plan, stores the filters
+            that its apply plans again with.
+          type: [array, 'null']
+          items:
+            type: string
+          default: null
+        elements:
+          description: >-
+            Scoped generation: only the units of these elements, by id, never by name (a synthesized table's id is
+            `<entityId>@<databaseId>`); units that run once for the whole model never match. Values OR, and AND with
+            `units`. `null` or an empty list: every element. A filter that selects no unit and no earlier output is the
+            warning MQ6034.
+          type: [array, 'null']
+          items:
+            type: string
           default: null
     ApplyRequest:
       type: object
@@ -12071,9 +12118,15 @@ components:
         path:
           $ref: '#/components/schemas/RepoPath'
         text:
+          description: The rendered text; a copy unit's binary file carries "".
           type: string
         role:
           $ref: '#/components/schemas/FileRole'
+        binary:
+          description: >-
+            A copy unit's file that is not text (not strict UTF-8, or holding a NUL byte); written only when true. Its text is
+            empty.
+          type: boolean
     PreviewResult:
       x-engine-record: Maquettiste.Engine.PreviewResult
       type: object
@@ -12154,7 +12207,8 @@ components:
           $ref: '#/components/schemas/Hash'
         role:
           type: string
-          enum: [manifest, template, partial, script, type-map, other]
+          description: '`copy-source`: a copy unit''s sources match the file, which is copied as it is and never parsed.'
+          enum: [manifest, template, partial, script, type-map, copy-source, other]
         usedBy:
           type: array
           description: '`unit:<id>`, `companion:<id>` and `include:<path>`, ordinal.'
@@ -12264,13 +12318,18 @@ components:
     ExtensionRuleInfo:
       x-engine-record: Maquettiste.Engine.ExtensionRuleInfo
       type: object
-      required: [id, severity]
+      required: [id, severity, wholeModel]
       properties:
         id:
           type: string
           pattern: '^x/'
         severity:
           $ref: '#/components/schemas/DiagnosticSeverity'
+        wholeModel:
+          type: boolean
+          description: >-
+            The rule was registered with scope "model": check(model, report) runs once per whole-model validation (validate,
+            generation), not per element, and a validation of some elements (a save) skips it.
     ExtensionFileContent:
       x-engine-record: Maquettiste.Engine.ExtensionFileContent
       type: object

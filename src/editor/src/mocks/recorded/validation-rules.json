@@ -120,6 +120,14 @@
     "canBeOff": false
   },
   {
+    "id": "MQ1016",
+    "defaultSeverity": "error",
+    "description": "A JSON Patch cannot be applied: an unknown op, a path or from that does not resolve, an index out of range, a failed test, or a change to id or kind; nothing is written.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
     "id": "MQ2001",
     "defaultSeverity": "error",
     "description": "Dangling reference.",
@@ -1136,6 +1144,14 @@
     "canBeOff": true
   },
   {
+    "id": "MQ5005",
+    "defaultSeverity": "warning",
+    "description": "A rule file declares top-level let or var variables; a rule keeps no state between calls, so its results are never cached.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
     "id": "MQ6001",
     "defaultSeverity": "error",
     "description": "Invalid pack.json.",
@@ -1355,6 +1371,46 @@
     "id": "MQ6029",
     "defaultSeverity": "error",
     "description": "A write against a model snapshot opened read-only; nothing is written (restore the snapshot to change it).",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6030",
+    "defaultSeverity": "error",
+    "description": "A copy unit's source pattern matches no pack file; the unit is skipped and the pack's other units still render.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6031",
+    "defaultSeverity": "error",
+    "description": "A copy unit's token names a parameter the pack does not declare, or one whose value is not a string; the unit is skipped.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6032",
+    "defaultSeverity": "error",
+    "description": "A generation filter names a pack the run lacks, a unit no run pack has, or a bare unit id several run packs have.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6033",
+    "defaultSeverity": "error",
+    "description": "A run limited by unit or element renders a unit that reads the schema diff; schema snapshots advance only in whole-pack runs.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6034",
+    "defaultSeverity": "warning",
+    "description": "A generation filter selects no unit and no output; nothing is generated.",
     "family": "MQ60xx",
     "familyLabel": "Packs and generation",
     "canBeOff": true

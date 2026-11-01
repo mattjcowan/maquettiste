@@ -212,7 +212,7 @@ public sealed class PhysicalFileTests
         Assert.Equal("Overlay.", rdb.Table("payments").Description);
         var invoices = rdb.Table("invoices");
         Assert.True(invoices.Entity!.HasStereotype("ledger"));
-        Assert.Equal(("", "", null, 0, 0, null, 0, 0), (invoices.DisplayName, invoices.PluralName, invoices.Description, invoices.Stereotypes.Count,
+        Assert.Equal((null, null, null, 0, 0, null, 0, 0), (invoices.DisplayName, invoices.PluralName, invoices.Description, invoices.Stereotypes.Count,
             invoices.Tags.Count, invoices.Category, invoices.Properties.Count, invoices.Generation.Count));
 
         var view = Assert.Single(rdb.Views);
@@ -282,7 +282,7 @@ public sealed class PhysicalFileTests
         Assert.Equal(["ledger"], id.Stereotypes.Select(s => s.Key));
         Assert.Equal(["masking", "retentionDays"], id.Properties.Keys);
         var note = ledger.Column("note");
-        Assert.Equal(("", 0, 0, "C"), (note.DisplayName, note.Stereotypes.Count, note.Properties.Count, note.Collation));
+        Assert.Equal(((string?)null, 0, 0, "C"), (note.DisplayName, note.Stereotypes.Count, note.Properties.Count, note.Collation));
         Assert.False(ledger.PrimaryKey!.Clustered);
         Assert.Equal(uniqueId, Assert.Single(ledger.Uniques).Id);
         Assert.Equal(checkId, Assert.Single(ledger.Checks).Id);

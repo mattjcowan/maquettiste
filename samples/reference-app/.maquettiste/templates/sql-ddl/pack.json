@@ -30,31 +30,31 @@
     {
       "id": "schema",
       "template": "schema.scriban",
-      "for": "select databases",
+      "for": "each database",
       "output": "{{ kebab database.name }}/schema.sql"
     },
     {
       "id": "migration",
       "template": "migration.scriban",
-      "for": "select databases",
+      "for": "each database",
       "mode": "once"
     },
     {
       "id": "seed",
       "template": "seed.scriban",
-      "for": "select databases",
+      "for": "each database",
       "output": "{{ kebab database.name }}/seed.sql",
       "mode": "regions"
     },
     {
       "id": "seed-environments",
       "template": "seed-environments.scriban",
-      "for": "select databases"
+      "for": "each database"
     },
     {
       "id": "object-environments",
       "template": "object-environments.scriban",
-      "for": "select databases"
+      "for": "each database"
     },
     {
       "id": "process-tables",

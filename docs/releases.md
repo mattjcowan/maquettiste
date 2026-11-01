@@ -107,6 +107,104 @@ one.
 - The editor's forms do not show the new keys yet: edit them on the inspector's **JSON** tab. The new guide [Typed
   properties and layers](guides/typed-properties-and-layers.md) walks through all of them, and the modeling skill
   (`maquettiste init --skill` refreshes it) teaches agents to use them.
+- **Seeds by name in templates.** `seed_named "currencies"` finds a seed by its name (`Billing.currencies` when its
+  file states a package), so a template can write one constant per row of one seed without looping over every seed;
+  a name two seeds share fails the unit (MQ6006). Renaming a seed into or out of the name renders the unit again.
+  `seed_row <seed> <key>` finds one row by the code of a reference type's seed, the row key of a table seed or the key
+  of an entity's seed. Templates read a seed's longest name as `qualified_name`. New built-in helper names: a pack
+  helper named `seed_named` or `seed_row` is now MQ6013; rename it.
+- **Seed columns and cells by name.** A seed written through `create_element`, `save_element`, `patch_element`,
+  `apply_batch`, `model apply` or the editor's API may give its `columns` and `key` by name and a row's cells as a
+  `values` object keyed by its columns; the file still stores ids and one cell per column. A name that finds nothing or
+  several is MQ1002 and nothing is written. See [seeds by name](mcp.md#seeds-by-name).
+- **Closed block comments.** A `block` unit can set `blockCommentEnd`, the text that ends each delimiter line, so a
+  managed block fits a file whose comments must be closed: `<!--` and `-->` in an XML or HTML file. A delimiter line is
+  found whatever its comment and closing text, and other closing text is rewritten on the next run. See [managed
+  blocks](user-guide.md#managed-blocks-a-few-generated-lines-in-a-file-you-own).
+- **Copy units.** A unit in the new mode `copy` names no template: its `sources` (glob patterns over the pack's files,
+  matched case-sensitively) are copied under its `output` folder, each after the pattern's fixed folders. `tokens` maps
+  literal text to a pack parameter, so a skeleton stays code that builds: `"Skeleton.Api": "rootNamespace"` writes the
+  project's namespace into every text file and path. Text files change only where a token occurs (line endings and
+  every other byte stay, no formatter runs); other files, such as images, are copied byte for byte. The copies are
+  managed like overwrite files: a changed, added or removed source renders the unit again, and a hand edit is MQ6009. A
+  pattern that matches no pack file is MQ6030 and a token whose parameter is undeclared or not a string is MQ6031;
+  either skips the unit while the pack's other units render. The preview lists every copied file and marks binary ones
+  (`binary: true`, no text), a binary file's diff reads `Binary file <path> differs`, and the editor's file list marks
+  the files a copy unit copies as `copy-source`; they are never parsed, loaded as pack scripts or read as type maps. See
+  [copy units](user-guide.md#copy-units-a-folder-of-files-copied-as-they-are).
+- **Template helpers that find and order.** `table_named "billing.invoices"` finds a table by name in every database (or
+  the one you pass), `column_named` one of its columns; renaming a table into or out of the name renders the unit again,
+  and a name two tables share fails the unit (MQ6006). `array_index_of` and `array_find` search a list by an item's
+  member, `toposort` orders a list by `[before, after]` pairs (stable; a cycle releases the earliest item left), and
+  `json` takes member paths, `json table ["name", "columns.name"]`, so a table or entity can be written as JSON.
+- **Two scopes.** `each database` runs a unit once per database, without a selector script; `each attribute` once per
+  attribute declared in a model file (never an inherited or added copy). Their `where` filters as the user guide says.
+  The example packs' database units (sql-ddl's schema, migration, seed and environment scripts, seed-data's data) now
+  use `each database`, and their scripts no longer register a `databases` selector; unit keys and outputs are unchanged.
+- **Definitions on `model`.** `model.stereotypes`, `model.tag_vocabularies` and `model.category_trees` list the
+  stereotypes (with the attributes they add and their default properties), the tag vocabularies and the category trees.
+  A category now also has `parent`, `children`, `order` and `description`.
+- New built-in names: the helpers `array_index_of`, `array_find`, `table_named`, `column_named` and `toposort`, and the
+  template variables `database` and `attribute`. A pack helper with one of these names is now MQ6013; rename it.
+- **Absent values are null.** A value a model file leaves out reads as null in templates, pack scripts and
+  `get_resolved_model`, never as an empty text: the display and plural names of tables, columns and other database
+  objects without them, the `body` of a view, routine or SQL object without text for the database's dialect, the
+  `returns.native_type` of a routine that returns a table, the `native_name` of a database type the dialect cannot
+  create, the `sql` of a query that cannot be written for the dialect (and of a nested query), and the `description` of
+  a gate's audit field. A template that compares one of these with `""` should compare with `null`; sql-ddl now does.
+  Values that are worked out keep their rule (an element's display name falls back to its name). `display_name`,
+  `plural_name` and `description_of` give a database object's own text. csharp-dapper's audit records now describe an
+  audit attribute without a description as `Audit attribute <name>.` instead of leaving the summary empty.
+- **Plain helpers.** `maquettiste.helper(name, fn, { plain: true })` gives a pack helper frozen plain copies of its
+  arguments instead of read-only views, which are faster to read in a loop. A copy reaches two hops: a table argument
+  has its columns and its database, and what they hold is `{ id, kind }`. Everything copied counts as read. A copy has
+  no `hasStereotype`, `hasTag` or `find`, and the model itself cannot be passed; any other option stops the script from
+  loading (MQ6016).
+- **Scoped generation.** `maquettiste generate --element <id>` and `--unit <pack>/<unit>` (both repeatable; values of
+  one option OR, the two options AND) run only those units: their files are written, their outputs that are no longer
+  produced are deleted, and every other file and unit record stays as the last run left it, so the next full run
+  writes the rest. `--unit sql-ddl/schema --element <database id>` regenerates one database's schema script. A limited
+  run never moves the schema snapshots, so a selected unit that reads the schema difference (`sql-ddl/migration`)
+  fails with MQ6033; migrations render only in a full run. New rules MQ6032 (a unit filter that names a pack the run
+  lacks, a unit no run pack has, or a unit id several run packs have) and MQ6034 (a warning: the filters select
+  nothing). MCP `plan` and `generate` take `units` and `elements`, and so does `POST /api/generate/plan` in its body;
+  a limited plan's apply writes only its own units' files. See [regenerate one element or one
+  unit](user-guide.md#regenerate-one-element-or-one-unit).
+- **Short answers for agents.** Three MCP tools answer a summary first, so an agent's first calls stay small on a large
+  model. `get_project` names the packs with their unit counts, counts the pack diagnostics and names the extensions;
+  `sections` (`settings`, `packs`, `extensions`) adds the typed settings, the pack manifests and diagnostics, or the
+  extension schemas, which the answer no longer carries by default (`packs` and `extensions` now hold the summaries and
+  the names), and the always-empty `git` member is gone.
+  `list_validation_rules` with no argument answers the rule families with their counts; `family`, `ids` or `query`
+  answer full entries in pages. `tag_usage` answers each tag with its use count and a few element names; `tag` answers
+  the ids of the elements that hold one tag, in pages. The editor's HTTP routes answer as before. The assistant's
+  `get_project`, `list_validation_rules` and `tag_usage` answer the same summaries. See [reading a large
+  model](mcp.md#reading-a-large-model).
+- **Patches.** The new MCP tool `patch_element` changes part of one element with an RFC 6902 JSON Patch and the hash
+  the caller read, instead of the whole document: the same conflict check, validation and migration facts as
+  `save_element`, and the engine mints the id of a new sub-element sent without one. A patch that cannot be applied (an
+  unknown operation, a path that does not resolve, a failed `test`, a change to `/id` or `/kind`) is the new rule
+  MQ1016, and nothing is written.
+- **Generate in one call.** The new MCP tool `generate` renders and writes in one run, as `maquettiste generate` does,
+  and answers a summary per pack: counts by kind, the first 50 paths, and at most 100 diagnostics, errors first. No
+  plan is stored. `plan`, `get_plan_diff` and `apply_plan` remain for a review before writing. The MCP server now has
+  71 tools.
+- **Script limits without the clock.** `limits.scriptTimeoutMs: 0` in `maquettiste.json` turns the scripts' wall clock
+  off, so script rules and pack scripts give the same results on a busy machine as on a quiet one; the statement limit
+  and the memory limit (`limits.scriptMemoryBytes`, every byte a call allocates) then bound each call. Use it in CI. A
+  regular expression match keeps its 250 ms bound, and previews and path listings keep a deadline of 8 seconds. `limits.scriptStatements` is now at most 2,000,000,000.
+- **A scope per rule file.** Each file in `extensions/rules/` now runs in its own function scope, and the globals are
+  frozen before the rule files run. A rule can no longer call a function of another rule file, and a rule file that sets
+  a global or adds to a built-in prototype fails to load with MQ5002: copy a shared function into each file that needs
+  it. Pack scripts are unchanged. New rule MQ5005 (a warning): a rule file declares `let` or `var` at its top level,
+  state a rule must not keep between calls; `validate` and the Extensions tab show it.
+- **Whole-model rules.** `maquettiste.rule({ id, severity, scope: "model", check(model, report) })` checks the model
+  once per full validation instead of once per element, such as "every reference type is used"; each `report` names the
+  `element` its finding is about. Element saves do not run it. `list_extension_files` marks such rules `wholeModel`.
+- **Faster script rules.** A rule's `model` gains `withStereotype(key)`, `withTag(tag)`, `withProperty(key)` and
+  `byQualifiedName(name)` (the qualified names batches take), backed by indexes built once per model, and
+  `model.all(kind)` no longer scans every file. The editor, the MCP server and `generate --watch` keep each rule's
+  findings per element in memory and run a rule again only on the elements whose inputs changed.
 
 ## 0.10.1 (2026-10-08)
 

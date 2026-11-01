@@ -148,6 +148,8 @@ public sealed class CliApp(CliEnvironment environment)
                                   --check (render every root in memory; exit 2 when a file would change),
                                   --against <snapshot id | folder> (diff the schema from a baseline model
                                   for this run; the committed snapshots stay as they are),
+                                  --unit <pack/unit | unit> and --element <id> (repeatable: only those units
+                                  run, values of one option OR, the two AND; every other file stays as it is),
                                   --format text|json, --no-wait
           migrate               Upgrade the model format (format 1 is current)
           migration list        The open migration facts in applied order: order, id, fact, state and the intent

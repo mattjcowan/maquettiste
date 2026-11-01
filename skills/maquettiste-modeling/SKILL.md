@@ -47,6 +47,10 @@ clobber a concurrent edit or leave a dangling id.
 
 1. Find: `get_project`, then `get_model_index` (filter by `kind`, `package`, `tag`, `category`, `stereotype`, `query`)
    for ids; `get_references` for where an element is used; `get_database_view` for a database's tables and columns.
+   `get_project`, `list_validation_rules` and `tag_usage` answer a short summary first; ask for more only when you need
+   it: `get_project` with `sections` (`settings`, `packs`, `extensions`), `list_validation_rules` with `family`
+   (`MQ41xx`), `ids` or `query` for full entries, `tag_usage` with `tag` for the ids of the elements that hold one tag.
+   Pass a page's `next` as `cursor` until it is null.
 2. Read: `get_schema` for the kind before building a document (its `extensions` and `stereotypeParameters` constrain
    `properties`); `get_element` returns the document (`json`) and its `hash`. Read an element's `rationale` and
    `status` before you edit it: the rationale says why it is shaped this way, and a `deprecated` or `retired` element is
@@ -56,6 +60,12 @@ clobber a concurrent edit or leave a dangling id.
    processes) as flat records; pass each page's `next` as `cursor` until it is null, and never loop `get_element` over thousands of ids.
 3. Change: `save_element` (the whole edited document plus `expectedHash` = the hash you read), `create_element`,
    `delete_element`, or `apply_batch` for several changes that must land together (all or nothing).
+   - To change part of a large element, `patch_element` takes its `id` (an id, never a name), an RFC 6902 `patch` over
+     the document `get_element` returned and the same `expectedHash`, so you do not send the whole document back.
+     Put a `test` before a `replace` to check you change what you read: `[{"op":"test","path":"/columns/3/name",
+     "value":"body"},{"op":"replace","path":"/columns/3/name","value":"content"}]` renames the column.
+     It saves like `save_element` (conflict check, validation, `facts`); a new column added without an id gets one,
+     listed in `ids`. A path that does not resolve or a failed `test` is MQ1016 and nothing is written.
    - In `apply_batch`, write names instead of ids: every id field and reference takes a qualified name, `@kind:path`
      with the name as stored (`@database:main`, `@table:billing.notes`, `@column:billing.notes.body`,
      `@entity:Billing.Invoice`, `@attribute:Invoice.total`), and `"as": "$pm"` on a create names the new element for
@@ -90,15 +100,24 @@ clobber a concurrent edit or leave a dangling id.
    (MQ4021 to MQ4043) that point at the node to fix. For an entity's binding, `preview_binding_sql` returns its select,
    insert, update and delete statements; `validate` reports MQ4044 to MQ4054 for bindings.
    Custom property schemas (`extensions/<name>.json`) and script rules (`extensions/rules/<name>.js`, findings `x/<id>`, run by `validate`) are files: `list_extension_files`, `read_extension_file`, `write_extension_file` (with `expectedHash`, `new` to create; a rule's syntax error comes back at once), `move_extension_file`, `delete_extension_file`.
+   A check across the model (every reference type used, no two tables alike) is a whole-model rule: `scope: "model"`,
+   `check(model, report)`, each `report` naming its `element` id; it runs once per whole-model `validate`, never on a
+   save. Read with `model.withStereotype`, `withTag`, `withProperty` or `byQualifiedName` rather than scanning
+   `model.all`. For CI, set `limits.scriptTimeoutMs` to 0 so findings do not depend on the machine's load.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
    per database; `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as
    CSV; `localization_status`, `get_translations` and `set_translations` (with the `shardHash` values you read as
    `expected`) read and write translations, which never go in element files. From a terminal, `maquettiste l10n status`,
    `l10n export|import <locale>`, `l10n prune`, `l10n set-default <locale>` and `maquettiste seed new|export|import` do
    the same; import, prune, set-default and seed import only preview until given `--apply`.
-6. Generate: `plan` (stores a plan, touches nothing), `get_plan` / `get_plan_diff` for the files that matter, then
-   `apply_plan` with the plan id. `stale` means the inputs changed since the plan: plan again. `list_packs`,
-   `get_settings` and `save_settings` (with `expectedHash`) cover the packs and `maquettiste.json`.
+6. Generate: `generate` renders and writes in one call and answers a summary per pack (counts by kind, the first 50
+   paths, at most 100 diagnostics, errors first); no plan is stored. When someone should review the files first, use
+   `plan` (stores a plan, touches nothing), `get_plan` / `get_plan_diff` for the files that matter, then `apply_plan`
+   with the plan id. `stale` means the inputs changed since the plan: plan again. To regenerate part of the model,
+   `generate` and `plan` take `units` (`<pack>/<unit>`) and `elements` (ids, never names); every other file stays as it
+   is. Migrations render only in a full run (a selected `sql-ddl/migration` is MQ6033): for one database's schema,
+   pass `units: ["sql-ddl/schema"]` with the database id. `list_packs`, `get_settings` and `save_settings` (with
+   `expectedHash`) cover the packs and `maquettiste.json`.
 7. Explain and author templates: `get_plan` with `units` true gives each unit's pack, template, element, `reason` and
    `causes`; `explain_unit` answers why a unit renders or not (a plan unit by `planId` and `key`, or any `pack`, `unit`
    and `elementId`). Packs are files: `get_pack`, `list_pack_files`, `read_pack_file`, `write_pack_file` (with
@@ -149,7 +168,8 @@ Without the server (or for bulk mechanical edits the tools do not cover), edit t
    add elements, write a batch file instead and run `maquettiste model apply <batch.json>` (`--dry-run` first): it takes
    the `apply_batch` shapes, names and placeholders, and mints every id.
 2. `maquettiste validate` (exit 1 on errors; `--format sarif` for annotations). Fix dangling ids first.
-3. `maquettiste generate --dry-run --diff` to see what would change, then `maquettiste generate`.
+3. `maquettiste generate --dry-run --diff` to see what would change, then `maquettiste generate` (`--element <id>` and
+   `--unit <pack>/<unit>` limit it to some units and leave every other file as it is).
 4. `maquettiste generate --check` is what CI runs: it renders every output root and fails on stale, missing, orphaned or
    hand-edited output (guard only what the team commits, or run `generate` and compare the working tree).
 
@@ -184,6 +204,13 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   without an entity, columns by column id, cells as column values, `key` a unique constraint id). `environments` (empty: every
   environment), `apply` (`once` default, or `converge`) and `delete` say how rows are applied; `rowsFrom: {"file": "<name>.csv"}`
   keeps large rows in a CSV beside the seed (send rows as usual; the engine writes the CSV).
+- Seeds by name: when you write a seed, `columns` and `key` may hold names instead of ids (a table's column and unique
+  constraint names, an entity's attribute names and to-one end roles, a relation's end roles and attributes, a reference
+  type's attribute names, where `code`, `label` and `description` stay keywords), and a row may give
+  `"values": {"<column>": ...}` keyed by the `columns` entries as you wrote them. The engine stores ids and positional
+  cells; a name that finds nothing or several is MQ1002 and nothing is written. In a batch, `@column:...` names and
+  placeholders resolve first, so a seed can name the columns of a table created earlier in the same batch. Templates
+  find a seed with `seed_named "currencies"` and a row by its key with `seed_row`.
 - Tags: `tag_usage` counts each tag's uses in a vocabulary's scope (and the undeclared ones in use); to remove tags from the
   vocabulary and every use, or rename one, use `apply_batch` `{"op":"retag","tags":[...],"name":<new key>,"package":<domain>}`
   rather than editing every element.

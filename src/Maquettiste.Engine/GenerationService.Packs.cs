@@ -55,7 +55,8 @@ public sealed partial class GenerationService
     /// overlay of pack files and parameter values (generation-ui.md section 5.2). Only that unit is rendered and no unit is planned: the
     /// preview session (<see cref="PrepareSessionAsync"/>) holds the resolved model and the pack, and nothing of the model is read beyond
     /// what the template reads. A disabled pack previews as an enabled one. The render runs under the sandbox limits and a deadline of
-    /// <c>limits.scriptTimeoutMs</c> x 4; a render that does not finish fails with MQ6007.
+    /// 4 × <c>limits.scriptTimeoutMs</c>, or 8000 ms when it is 0 (<see cref="PreviewDeadlineMs"/>); a render that does not finish fails
+    /// with MQ6007.
     /// </summary>
     /// <param name="pack">The pack name.</param>
     /// <param name="unitId">The unit id.</param>
@@ -85,7 +86,7 @@ public sealed partial class GenerationService
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             slot?.Dispose();
-            return new PreviewResult([], [RuleCatalog.Create("MQ6007", $"The preview of '{pack}/{unitId}' did not finish within {deadline} ms (limits.scriptTimeoutMs x 4).",
+            return new PreviewResult([], [RuleCatalog.Create("MQ6007", $"The preview of '{pack}/{unitId}' did not finish within {deadline} ms ({PreviewDeadlineText}).",
                 elementId)]) { ElapsedMs = clock.ElapsedMilliseconds };
         }
         using var held = slot;
@@ -110,8 +111,8 @@ public sealed partial class GenerationService
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return new PreviewResult([], [RuleCatalog.Create("MQ6007", $"The preview of '{pack}/{unit.Id}' did not finish within {deadline} ms (limits.scriptTimeoutMs x 4).",
-                element?.Id, loaded.RelativePath + "/" + unit.Template)])
+            return new PreviewResult([], [RuleCatalog.Create("MQ6007", $"The preview of '{pack}/{unit.Id}' did not finish within {deadline} ms ({PreviewDeadlineText}).",
+                element?.Id, loaded.RelativePath + "/" + (unit.Template ?? "pack.json"))])
             {
                 ElapsedMs = clock.ElapsedMilliseconds,
             };
@@ -121,8 +122,18 @@ public sealed partial class GenerationService
     /// <summary>The previews and path listings rendering at once, across every connection; more wait for a slot within their deadline.</summary>
     private readonly SemaphoreSlim _previewSlots = new(Math.Max(2, Environment.ProcessorCount / 2));
 
-    /// <summary>A preview's deadline: limits.scriptTimeoutMs x 4 from the current settings.</summary>
-    private int PreviewDeadlineMs() => Math.Max(1, _store.Current?.Settings.Limits.ScriptTimeoutMs ?? 5000) * 4;
+    /// <summary>How the MQ6007 deadline messages of previews and path listings name the deadline.</summary>
+    internal const string PreviewDeadlineText = "the preview deadline: 4 × limits.scriptTimeoutMs, or 8000 ms when it is 0";
+
+    /// <summary>
+    /// A preview's deadline from the current settings: 4 × <c>limits.scriptTimeoutMs</c>, or 4 × 2000 ms when it is 0 (the wall clock
+    /// off for scripts, next-phase-1-design.md section 5.7), since text being typed can loop without end.
+    /// </summary>
+    private int PreviewDeadlineMs()
+    {
+        var timeout = _store.Current?.Settings.Limits.ScriptTimeoutMs ?? 5000;
+        return (int)Math.Min(int.MaxValue, (timeout > 0 ? timeout : 2000) * 4L);
+    }
 
     /// <summary>Waits for a preview slot; disposing the result frees it.</summary>
     private async Task<IDisposable> EnterPreviewAsync(CancellationToken ct)

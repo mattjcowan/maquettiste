@@ -571,7 +571,7 @@
         {
           "id": "schema",
           "template": "schema.scriban",
-          "for": "select databases",
+          "for": "each database",
           "where": null,
           "output": "{{ kebab database.name }}/schema.sql",
           "mode": "overwrite",
@@ -585,7 +585,7 @@
         {
           "id": "migration",
           "template": "migration.scriban",
-          "for": "select databases",
+          "for": "each database",
           "where": null,
           "output": null,
           "mode": "once",
@@ -599,7 +599,7 @@
         {
           "id": "seed",
           "template": "seed.scriban",
-          "for": "select databases",
+          "for": "each database",
           "where": null,
           "output": "{{ kebab database.name }}/seed.sql",
           "mode": "regions",

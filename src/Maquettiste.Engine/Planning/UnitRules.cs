@@ -18,8 +18,8 @@ internal static class UnitRules
     /// <summary>The fixed scopes a unit's <c>for</c> may name; <c>select &lt;name&gt;</c> is the open one.</summary>
     public static readonly IReadOnlyList<string> Scopes =
     [
-        "model", "each package", "each entity", "each relation", "each enum", "each value object", "each table", "each view", "each sequence",
-        "each routine", "each database type", "each sql object", "each query", "each reference type", "each seed", "each locale", "each process", "each actor", "each scenario",
+        "model", "each package", "each entity", "each attribute", "each relation", "each enum", "each value object", "each database", "each table",
+        "each view", "each sequence", "each routine", "each database type", "each sql object", "each query", "each reference type", "each seed", "each locale", "each process", "each actor", "each scenario",
     ];
 
     /// <summary>The MQ6021 message for an unknown scope, with the nearest valid one.</summary>

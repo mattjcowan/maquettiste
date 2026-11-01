@@ -54,6 +54,12 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   a column whose file's `nativeType` names a database type (id, name or schema-qualified name) gets `RColumn.DbType` and the
   type's native name; `dependsOn` resolves to the database's objects once every one exists (engine-design.md section 7,
   "Routines, database types and SQL objects").
+- Definitions (`ResolveRun.cs` `ResolveDefinitions`, `ResolvedVocabularies.cs`, next-phase-1-design.md section 5.5):
+  `model.stereotypes` (one `RStereotypeDefinition` per key, by key, with its virtual attributes owned by the definition),
+  `model.tag_vocabularies` and `model.category_trees` (the global one first, then by package qualified name and id), each
+  depending on its own file, with membership keys `k:stereotype`, `k:tag-vocabulary` and `k:category-tree`. A tree lists
+  the same `RCategory` instances annotated objects carry; the run completes their `Parent`, `Children` (by order, none
+  counting as 0, then file order), `Order` and `Description`.
 - Dependency keys (section 11, D38): `e:` of every contributing file, `s:conventions`, `s:typeMaps`, `s:inflection` when used, and
   `r:<id>` for every entity and relation an object derives from (lookup tables: `r:<enumId>`; designed tables: `r:<tableId>`).
   A foreign-key relation also lists what its resolved `RForeignKey`'s name and actions come from (the host table's designed or
@@ -293,3 +299,23 @@ fixture, ordering, keys, the interpreter's chart, the duration rules), `Planning
 Tests: `Resolution/MigrationResolutionTests.cs`, `Editor/ResolvedRecordsTests.cs` (the `migrations` scope),
 `Migrations/FactHashTests.cs`, the `migration` targets of `ResolvedCoverageTests`; the resolved goldens print every
 table's, column's, view's and sequence's `former_names` and `since`.
+
+## The null contract (next-phase-1-design.md section 5.5, task C24)
+
+- A member backed by a schema property with a default carries the default; an absent value is `null`, never `""` or
+  `false`. A physical object's `DisplayName` and `PluralName` are its file's or `null` (a conceptual object still falls
+  back to its name and the inflector); `RView.Body`, `RRoutine.Body` and `RSqlObject.Body` are `null` without text for
+  the dialect; `RRoutineReturns.NativeType` is `null` for a table result; `RDatabaseType.NativeName` is `null` where the
+  dialect stores the type as nothing (a composite or range outside PostgreSQL); `RQuery.Sql` is `null` when the query
+  cannot be rendered there (MQ4029) and on a nested query; `RAuditField.Description` is `null` for an attribute without
+  one.
+- Derived members (fallbacks, inferences) keep a value and document their rule: `ResolvedNullContractTests.Derived`
+  lists them (a column's key, type, native type and identity, constraint names, a routine's language and volatility, the
+  native type of a routine parameter, result column, composite field or query parameter, a query source's alias, a query
+  field's name and nullability, an attribute's order, the display name of an enum member or process node, a scenario's
+  start).
+- The physical snapshot keeps `""` for a view without a body, so captured snapshots stay byte-identical.
+
+Tests: `Resolution/ResolvedNullContractTests.cs` (every optional schema value without a default has a nullable member or
+a `Derived` entry; no `""` in a member of any fixture model, or of a built model holding what no fixture has, unless its
+schema default is `""` or `Derived` lists it).

@@ -75,6 +75,28 @@ diagnostic can land on a file other than the one being saved, a scoped run also 
   Because they no longer carry `x/<id>`, the rule's own `validation.rules` setting is applied in `RunScripts`: a rule set to
   `off` is not run at all (so a throwing rule that is off no longer stops generation), and a severity setting also applies to
   that rule's MQ5002 and MQ5003 failures. An explicit `MQ5002` or `MQ5003` setting still applies on top (WI review).
+  Whole-model reports also carry the pool's load warnings (`IScriptSandboxPool.Warnings`: MQ5005 per rule file with a
+  top-level `let` or `var`, at the first; next-phase-1-design.md section 5.7), as they carry the settings rules; a validation
+  of some elements does not.
+- **Whole-model rules** (section 5.7). A rule registered with `scope: "model"` (`ScriptRegistration.WholeModel`) is left
+  out of `RunScripts` and runs once, on one lease, after the per-document loop, in id order, when the validation is
+  whole-model (`scope.ElementIds` null) and `IncludeScriptRules` is set, unless `validation.rules` sets it `off`. That
+  covers `validate` on every host, generation's validate stage, the store's whole-model report and both validations of a
+  settings save (so a settings change that raises a model rule's finding to an error is refused); element saves skip it.
+  Its findings carry the file of the element they name; a throw is MQ5002 and a limit MQ5003 on the rule file, with the
+  rule's severity setting applied as for element rules. Its results are not cached.
+- **Rule result cache** (section 5.7). `RuleResultCache`, one per validator (so per store: the MCP server, the editor
+  host and watch mode keep it), holds each element rule's raw diagnostics per (rule id, element id), before
+  `ApplySettings`, so `validation.rules` applies after the cache and an `off` rule never runs. An entry is reused only
+  while the element file's hash and path, the rule file's hash (`ScriptSource.Hash` of the registration's `DeclaredIn`),
+  the limits and the current hash of every key the call recorded (`RuleKeyHasher`: `e:` the holding file's hash, `k:`
+  the kind's id set, `ix:` the sorted ids found, `rt:` every reference entry) are unchanged. Not cached: a run that
+  failed (MQ5002 among its results, a limit, cancellation), a rule of a file with MQ5005, a registration whose file is
+  not one of the snapshot's rule scripts (the test fakes). A rule whose `kinds` leave a document out is skipped before
+  the cache: no lease, no call, no entry. Every whole-model validation with script rules drops the entries it did not
+  use, all of them when no element rule ran (every rule file deleted or failing to load, or only whole-model rules
+  left); a ticket per validation, so one running at the same time keeps what it uses. `includeScriptRules: false` keeps
+  them. Nothing is written to disk.
 - **Extensions.** Compiled here with JsonSchema.Net (base URI `https://maquettiste.invalid/extensions/<file>`, invariant
   culture), not through `ISchemaRegistry`, whose `Evaluate` only takes the embedded schema files. Leaf failures only, as D34.
   A failing value that comes from a stereotype's `defaultProperties` points at that stereotype in the element's `stereotypes`.

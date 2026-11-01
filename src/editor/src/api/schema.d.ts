@@ -984,7 +984,8 @@ export interface paths {
          * @description Every tag the tag vocabulary of `package` (the global one without it) declares, and every tag used inside that scope that no
          *     vocabulary on the element's domain chain declares, each with its uses there (the element's own tags and its sub-elements'),
          *     the ids of the elements holding them and up to five of their names. A domain that declares the same key keeps its own uses.
-         *     Remove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers the same.
+         *     Remove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers a summary of the
+         *     same, with pages and one tag's elements on request.
          */
         get: operations["getTagUsage"];
         put?: never;
@@ -1181,7 +1182,8 @@ export interface paths {
          *     functions force `includeDiffs: false`, `stageBarriers: false` and `lock: wait`; `mode` is ignored (a plan is
          *     always a dry run). `against` diffs the schema from a model snapshot for this plan instead of the committed
          *     physical snapshots, which its apply leaves alone; the functions take snapshot ids only, so a folder, or an id
-         *     that names no snapshot, is 400 `bad-request`.
+         *     that names no snapshot, is 400 `bad-request`. `units` and `elements` limit the plan to some units (scoped
+         *     generation): it holds those units only, and its apply writes their files and leaves every other file alone.
          */
         post: operations["startPlan"];
         delete?: never;
@@ -1324,9 +1326,9 @@ export interface paths {
          *     element for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders
          *     (pointer `/units/<i>/for` of the pack's `pack.json`).
          *     With `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the
-         *     pack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4
-         *     (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below
-         *     it). Nothing is written.
+         *     pack loads even when disabled, the sandbox limits apply and the render has a deadline of 4 x `limits.scriptTimeoutMs`,
+         *     or 8000 ms when it is 0 (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the
+         *     maintainer role (403 below it). Nothing is written.
          *
          *     Bounds (generation-ui.md section 5.2): only this unit is rendered, for this element, and no unit is planned. The
          *     server keeps a preview session per pack (the model validated and resolved once per model version, shared with
@@ -1361,8 +1363,9 @@ export interface paths {
          *     whole model, a database or a locale (`for: model`, `each locale`, a selector that returns databases): its paths come
          *     with a preview the user asks for. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020
          *     (two of the rendered elements render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused
-         *     path, and MQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or
-         *     `parameters` it uses unsaved text, which needs the maintainer role (403 below it). Nothing is written.
+         *     path, and MQ6007 when the deadline (4 x `limits.scriptTimeoutMs`, or 8000 ms when it is 0) is hit. With
+         *     `unitOverride`, `overlay` or `parameters` it uses unsaved text, which needs the maintainer role (403 below it).
+         *     Nothing is written.
          */
         post: operations["unitPaths"];
         delete?: never;
@@ -1555,7 +1558,8 @@ export interface paths {
          * @description The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules
          *     (`rules/<name>.js`), each ordinal by path, with size, hash and what is wrong with the file on its own: an invalid schema
          *     (MQ5004) or a rule script that does not load alone in the sandbox (MQ5002 for a syntax error or a registration without an
-         *     id, MQ5003 for a limit), with line and column. Rule findings (`x/<id>`) come from `POST /api/validate`.
+         *     id, MQ5003 for a limit), with line and column, or that declares `let` or `var` at its top level (MQ5005, a warning).
+         *     Rule findings (`x/<id>`) come from `POST /api/validate`.
          */
         get: operations["listExtensionFiles"];
         put?: never;
@@ -1584,9 +1588,9 @@ export interface paths {
          *     write goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its
          *     MQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is
          *     written as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in
-         *     `diagnostics` (MQ5002 with line and column). The model is refreshed before the answer, `project.changed` is published and a
-         *     validation follows, so the rule's `x/<id>` findings reach the Problems panel. A path other than `<name>.json` or
-         *     `rules/<name>.js`, or one through a link, is 400.
+         *     `diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is
+         *     refreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings
+         *     reach the Problems panel. A path other than `<name>.json` or `rules/<name>.js`, or one through a link, is 400.
          */
         put: operations["putExtensionFile"];
         post?: never;
@@ -2581,7 +2585,8 @@ export interface components {
         };
         PackUnit: {
             id: string;
-            template: string;
+            /** @description The pack-relative template path; null only in mode `copy`, which takes none. */
+            template: string | null;
             /** @description `each <kind>`, `select <kinds>` or `model`. */
             for: string;
             /** @description The unit's filter (`UnitWhere`), as in `schemas/v1/pack.json`, every member written. */
@@ -2590,8 +2595,16 @@ export interface components {
             } | null;
             output: string | null;
             mode: components["schemas"]["OutputMode"];
+            /** @description Mode `copy`: pack-relative glob patterns of the files to copy, matched case-sensitively; empty otherwise. */
+            sources: string[];
+            /** @description Mode `copy`: literal text replaced in copied text files and output paths, mapped to a parameter name; empty otherwise. */
+            tokens: {
+                [key: string]: string;
+            };
             /** @description Mode `block`: the comment marker of the delimiter lines (`#` by default). */
             blockComment: string;
+            /** @description Mode `block`: the text closing each delimiter line (for example `-->`), or null. */
+            blockCommentEnd: string | null;
             /** @description Mode `block`: create the target file when it does not exist (otherwise the unit writes nothing: `target-missing`). */
             createFile: boolean;
             formatter: string | null;
@@ -4074,8 +4087,8 @@ export interface components {
             id: components["schemas"]["Ulid"];
             name: string;
             schema: string | null;
-            /** @description The body for the database's dialect. */
-            body: string;
+            /** @description The body for the database's dialect (or the `*` body); null when the file has none for it. */
+            body: string | null;
             columns: components["schemas"]["ViewColumnView"][];
             comment: string | null;
             displayName: string | null;
@@ -4184,8 +4197,8 @@ export interface components {
             returns: components["schemas"]["RoutineReturnsView"] | null;
             /** @description The file's language, else the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere). */
             language: string;
-            /** @description The body for the database's dialect (or the `*` body); empty when the file has none for it. */
-            body: string;
+            /** @description The body for the database's dialect (or the `*` body); null when the file has none for it. */
+            body: string | null;
             hasBody: boolean;
             deterministic: boolean;
             /** @enum {string} */
@@ -4232,8 +4245,8 @@ export interface components {
             length: number | null;
             precision: number | null;
             scale: number | null;
-            /** @description The native type of a single value; empty for a table result. */
-            nativeType: string;
+            /** @description The native type of a single value; null for a table result. */
+            nativeType: string | null;
             /** @description The columns of a table result, or null for a single value. */
             table: components["schemas"]["RoutineColumnView"][] | null;
         };
@@ -4304,7 +4317,8 @@ export interface components {
             /** @description The definition for the dialect (the text after the type's name), or null to build it from the structured form. */
             definition: string | null;
             isCreated: boolean;
-            nativeName: string;
+            /** @description What a column or parameter typed by it writes; null when the dialect has none for it (a composite or range outside PostgreSQL). */
+            nativeName: string | null;
             /** @description The ids of the database types its fields use. */
             dependsOn: string[];
             comment: string | null;
@@ -4369,8 +4383,8 @@ export interface components {
              */
             phase: "before" | "after";
             dependsOn: string[];
-            /** @description The statements for the database's dialect (or the `*` ones); empty when the file has none for it. */
-            body: string;
+            /** @description The statements for the database's dialect (or the `*` ones); null when the file has none for it. */
+            body: string | null;
             hasBody: boolean;
             displayName: string | null;
             pluralName: string | null;
@@ -4407,8 +4421,8 @@ export interface components {
             distinct: boolean;
             paging: components["schemas"]["paging"] | null;
             collections: components["schemas"]["QueryCollectionView"][];
-            /** @description The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need. */
-            sql: string;
+            /** @description The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need; null when it cannot be rendered there (MQ4029). */
+            sql: string | null;
             /** @description The parameters the SQL names, in first-appearance order. */
             sqlParameters: string[];
             /** @description The ids (a synthesized table's key) of the tables, views, routines and database types the query reads. */
@@ -4815,7 +4829,7 @@ export interface components {
         /** @enum {string} */
         FileRole: "main" | "block" | "companion";
         /** @enum {string} */
-        OutputMode: "overwrite" | "once" | "regions" | "pair" | "block";
+        OutputMode: "overwrite" | "once" | "regions" | "pair" | "block" | "copy";
         /**
          * @description What Apply does to a file. `added`, `modified` and `deleted` are written or removed. `unchanged` (rendered, identical to the disk), `not-rendered` (plans only: its unit was skipped because nothing it read changed; listed from the unit's stored state) and `kept` (a `once` file or companion that exists: the team's, never overwritten) are left alone. `hand-edited`, `conflict` and `orphaned-owned` follow the hand-edit policy and the owned-file rule.
          * @enum {string}
@@ -4856,6 +4870,16 @@ export interface components {
              * @default null
              */
             against?: string | null;
+            /**
+             * @description Scoped generation: only these units, each `<pack>/<unit>` or a unit id that exactly one pack of the run has (values OR, and AND with `elements`). `null` or an empty list: every unit. A unit no run pack has, a pack the run lacks or a unit id several run packs have is MQ6032. A scoped run writes only the selected units' files (and deletes the files they no longer produce), keeps every other output and unit state, never advances the schema snapshots (a selected unit that reads the schema diff is MQ6033) and, as a plan, stores the filters that its apply plans again with.
+             * @default null
+             */
+            units?: string[] | null;
+            /**
+             * @description Scoped generation: only the units of these elements, by id, never by name (a synthesized table's id is `<entityId>@<databaseId>`); units that run once for the whole model never match. Values OR, and AND with `units`. `null` or an empty list: every element. A filter that selects no unit and no earlier output is the warning MQ6034.
+             * @default null
+             */
+            elements?: string[] | null;
         };
         ApplyRequest: {
             planId: components["schemas"]["Ulid"];
@@ -5005,8 +5029,11 @@ export interface components {
         };
         RenderedFile: {
             path: components["schemas"]["RepoPath"];
+            /** @description The rendered text; a copy unit's binary file carries "". */
             text: string;
             role: components["schemas"]["FileRole"];
+            /** @description A copy unit's file that is not text (not strict UTF-8, or holding a NUL byte); written only when true. Its text is empty. */
+            binary?: boolean;
         };
         PreviewResult: {
             files: components["schemas"]["RenderedFile"][];
@@ -5039,8 +5066,11 @@ export interface components {
             path: string;
             size: number;
             hash: components["schemas"]["Hash"];
-            /** @enum {string} */
-            role: "manifest" | "template" | "partial" | "script" | "type-map" | "other";
+            /**
+             * @description `copy-source`: a copy unit's sources match the file, which is copied as it is and never parsed.
+             * @enum {string}
+             */
+            role: "manifest" | "template" | "partial" | "script" | "type-map" | "copy-source" | "other";
             /** @description `unit:<id>`, `companion:<id>` and `include:<path>`, ordinal. */
             usedBy: string[];
         };
@@ -5098,6 +5128,8 @@ export interface components {
         ExtensionRuleInfo: {
             id: string;
             severity: components["schemas"]["DiagnosticSeverity"];
+            /** @description The rule was registered with scope "model": check(model, report) runs once per whole-model validation (validate, generation), not per element, and a validation of some elements (a save) skips it. */
+            wholeModel: boolean;
         };
         ExtensionFileContent: {
             path: string;
@@ -6275,9 +6307,15 @@ export interface components {
             };
             /** @default {} */
             limits?: {
-                /** @default 2000 */
+                /**
+                 * @description The wall-clock limit of one script call, in milliseconds. 0 turns the clock off, so results do not depend on the machine's load (use it in CI); the statement limit still bounds every call, and a regular expression match keeps a 250 ms bound.
+                 * @default 2000
+                 */
                 scriptTimeoutMs?: number;
-                /** @default 5000000 */
+                /**
+                 * @description The statement limit of one script call, at most 2,000,000,000.
+                 * @default 5000000
+                 */
                 scriptStatements?: number;
                 /** @default 256 */
                 scriptRecursion?: number;
@@ -9500,9 +9538,10 @@ export interface components {
             scripts?: string[];
             /** @default false */
             usesSchemaDiff?: boolean;
-            units: {
+            units: ({
                 id: string;
-                template: string;
+                /** @description The pack-relative template path. Required unless mode is copy; a copy unit takes none. */
+                template?: string;
                 for: string;
                 /** Unit filters */
                 where?: {
@@ -9526,16 +9565,30 @@ export interface components {
                 };
                 output?: string;
                 /**
-                 * @description overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs.
+                 * @description overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' (each followed by blockCommentEnd when set) are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs. copy: the pack files that sources match are copied as they are, with tokens replaced, into the folder output names (the pack's output base when absent); a copy unit takes no template. Copied files are managed like overwrite files.
                  * @default overwrite
                  * @enum {unknown}
                  */
-                mode?: "overwrite" | "once" | "regions" | "pair" | "block";
+                mode?: "overwrite" | "once" | "regions" | "pair" | "block" | "copy";
+                /**
+                 * @description Mode copy, required there: pack-relative glob patterns of the files to copy. * and ? match within one path segment, ** across segments; matching is case-sensitive and skips dot files and folders. A pattern that matches no pack file is MQ6030. Each file lands at the output folder plus its path after the pattern's literal base. Matched files are copied, never run or parsed: a matched *.js is not a pack script unless scripts names it, and a matched types/*.json is not a type map.
+                 * @default []
+                 */
+                sources?: string[];
+                /**
+                 * @description Mode copy: literal text replaced in copied text files and their output paths, mapped to the name of a pack parameter whose value is a string (MQ6031). Files that are not UTF-8 text are copied byte for byte.
+                 * @default {}
+                 */
+                tokens?: {
+                    [key: string]: string;
+                };
                 /**
                  * @description Mode block: the comment marker that starts the block's delimiter lines, for example // or ;.
                  * @default #
                  */
                 blockComment?: string;
+                /** @description Mode block: the text that closes each delimiter line, for example --> after <!-- in XML or HTML. A closed delimiter line is recognized whatever closing text it has, and other closing text is rewritten. */
+                blockCommentEnd?: string;
                 /**
                  * @description Mode block: create the target file (holding just the block) when it does not exist. When false and the file is missing, the unit writes nothing and is listed as skipped (target-missing). A file the engine created is deleted when its block is removed and nothing but whitespace is left; any other file is kept.
                  * @default false
@@ -9552,7 +9605,7 @@ export interface components {
                 };
                 /** @default [] */
                 transforms?: components["schemas"]["identifier"][];
-            }[];
+            } & (unknown & unknown))[];
         };
     };
     responses: {

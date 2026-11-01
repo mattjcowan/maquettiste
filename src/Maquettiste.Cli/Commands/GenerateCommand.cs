@@ -15,6 +15,10 @@ namespace Maquettiste.Cli.Commands;
 /// in memory: a file that would be added, changed or deleted exits 2, hand edits 3) or <c>--watch</c> (the engine's debounced watch hook over a file watcher on the model root).
 /// <c>--against &lt;snapshot id | folder&gt;</c> diffs the schema from a baseline model for one run instead of the committed physical
 /// snapshots, and leaves those alone (next-phase-1-design.md section 3.1); a value that names nothing exits 4.
+/// <c>--unit &lt;pack/unit | unit&gt;</c> and <c>--element &lt;id&gt;</c> (both repeatable; values of one flag OR, the two flags AND)
+/// limit the run to those units, keeping every other output and unit state (next-phase-1-design.md section 5.6): an unknown or
+/// ambiguous unit (MQ6032) or a selected unit that reads the schema diff (MQ6033) exits 1, a filter that selects nothing (MQ6034)
+/// warns and exits 0.
 /// </summary>
 internal static class GenerateCommand
 {
@@ -29,7 +33,7 @@ internal static class GenerateCommand
     {
         var line = context.Line;
         line.Expect("generate", 1, "--pack", "--force", "--roots", "--hand-edits", "--watch", "--dry-run", "--diff", "--check", "--format", "--no-wait",
-            "--against");
+            "--against", "--unit", "--element");
         var dryRun = line.Has("--dry-run");
         var check = line.Has("--check");
         var watch = line.Has("--watch");
@@ -59,6 +63,12 @@ internal static class GenerateCommand
         var packs = line.Values("--pack");
         if (packs.Any(string.IsNullOrWhiteSpace))
             throw new UsageException("--pack needs a pack name.");
+        var units = line.Values("--unit");
+        if (units.Any(string.IsNullOrWhiteSpace))
+            throw new UsageException("--unit needs a unit: <pack>/<unit>, or a unit id that only one pack has.");
+        var elements = line.Values("--element");
+        if (elements.Any(string.IsNullOrWhiteSpace))
+            throw new UsageException("--element needs an element id.");
 
         if (await ProjectGuard.RepoAsync(context).ConfigureAwait(false) is not { } repo)
             return Program.ExitCodes.Invalid;
@@ -67,6 +77,8 @@ internal static class GenerateCommand
         {
             Mode = check ? GenerationMode.Check : dryRun ? GenerationMode.DryRun : GenerationMode.Apply,
             Packs = packs.Count > 0 ? [.. packs.Distinct(StringComparer.Ordinal)] : null,
+            Units = units.Count > 0 ? [.. units.Distinct(StringComparer.Ordinal)] : null,
+            Elements = elements.Count > 0 ? [.. elements.Distinct(StringComparer.Ordinal)] : null,
             Force = line.Has("--force"),
             Jobs = context.Jobs,
             HandEdits = handEdits,
@@ -88,7 +100,8 @@ internal static class GenerateCommand
                 return await WatchAsync(context, service, request, options, ct).ConfigureAwait(false);
 
             // A one-shot apply keeps and uses the engine's last-run record: a process whose model, templates, engine files and outputs
-            // are as the last apply left them answers without loading, validating, resolving or planning (Generation/README.md).
+            // are as the last apply left them answers without loading, validating, resolving or planning (Generation/README.md). A run
+            // against a baseline or limited by unit or element only forgets it, so a later full run never replays a stale record.
             service.ReuseLastRun = true;
 
             var progress = new ConsoleProgress(context.Progress, context.Error, hideWrite: check);

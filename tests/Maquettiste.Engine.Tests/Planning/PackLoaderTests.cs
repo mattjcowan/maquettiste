@@ -72,6 +72,8 @@ public sealed class PackLoaderTests
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each scenario\", \"where\": { \"database\": \"main\" } } ] }", "MQ6001", "/units/0/where/database")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each actor\", \"where\": { \"abstract\": false } } ] }", "MQ6001", "/units/0/where/abstract")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each sequence\", \"where\": { \"abstract\": false } } ] }", "MQ6001", "/units/0/where/abstract")]
+    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each database\", \"where\": { \"abstract\": false } } ] }", "MQ6001", "/units/0/where/abstract")]
+    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each attribute\", \"where\": { \"abstract\": true } } ] }", "MQ6001", "/units/0/where/abstract")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"scripts\": [\"nope.js\"], \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/scripts/0")]
     public async Task Invalid_pack_json_is_reported_and_the_pack_left_out(string json, string rule, string pointer)
     {
@@ -207,6 +209,68 @@ public sealed class PackLoaderTests
         Assert.Empty(set.Packs);
         Assert.Contains(set.Diagnostics, d => d.FilePath == ".maquettiste/templates/basic/pack.json" && d.Line is not null);
         Assert.Contains(set.Diagnostics, d => d.FilePath == ".maquettiste/templates/scripted/types/sql.json" && d.JsonPointer == "/string");
+    }
+
+    private const string CopyPack = "{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"index\", \"template\": \"index.tpl\", \"for\": \"model\" }, UNIT ] }";
+
+    [Theory]
+    [InlineData("{ \"id\": \"skeleton\", \"template\": \"index.tpl\", \"for\": \"model\", \"mode\": \"copy\", \"sources\": [\"skeleton/**\"] }", "/units/1/template", "takes no template")]
+    [InlineData("{ \"id\": \"skeleton\", \"template\": \"index.tpl\", \"for\": \"model\", \"sources\": [\"skeleton/**\"] }", "/units/1/sources", "only mode copy")]
+    [InlineData("{ \"id\": \"skeleton\", \"template\": \"index.tpl\", \"for\": \"model\", \"tokens\": { \"Skeleton\": \"greeting\" } }", "/units/1/tokens", "only mode copy")]
+    public async Task A_copy_unit_with_a_template_is_MQ6001(string unit, string pointer, string text)
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
+        f.WritePackFile("basic", "skeleton/Program.cs", "class Program { }\n");
+        f.WritePackFile("basic", "pack.json", CopyPack.Replace("UNIT", unit, StringComparison.Ordinal));
+        var snapshot = await f.Store.GetSnapshotAsync(Ct);
+
+        var set = await new PackLoader(f.Repo.Options, TestServices.Schemas).LoadAsync(snapshot, null, null, Ct);
+
+        Assert.Empty(set.Packs);
+        var error = Assert.Single(set.Diagnostics);
+        Assert.Equal(("MQ6001", pointer, ".maquettiste/templates/basic/pack.json"), (error.Rule, error.JsonPointer, error.FilePath));
+        Assert.Contains("Unit 'skeleton'", error.Message, StringComparison.Ordinal);
+        Assert.Contains(text, error.Message, StringComparison.Ordinal);
+        Assert.NotNull(error.Line);
+
+        // A copy unit without sources, and a template unit without a template, fail the schema too.
+        f.WritePackFile("basic", "pack.json", CopyPack.Replace("UNIT", "{ \"id\": \"skeleton\", \"for\": \"model\", \"mode\": \"copy\" }", StringComparison.Ordinal));
+        var missing = await new PackLoader(f.Repo.Options, TestServices.Schemas).LoadAsync(snapshot, null, null, Ct);
+        Assert.Contains(missing.Diagnostics, d => d.Rule == "MQ6001" && d.JsonPointer == "/units/1" && d.Message.Contains("sources", StringComparison.Ordinal));
+        f.WritePackFile("basic", "pack.json", CopyPack.Replace("UNIT", "{ \"id\": \"skeleton\", \"for\": \"model\" }", StringComparison.Ordinal));
+        var untemplated = await new PackLoader(f.Repo.Options, TestServices.Schemas).LoadAsync(snapshot, null, null, Ct);
+        Assert.Contains(untemplated.Diagnostics, d => d.Rule == "MQ6001" && d.JsonPointer == "/units/1" && d.Message.Contains("template", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("/skeleton/**", "absolute")]
+    [InlineData("C:/skeleton/**", "absolute")]
+    [InlineData("skeleton//*.cs", "empty segment")]
+    [InlineData("skeleton/", "empty segment")]
+    [InlineData("./skeleton/*.cs", "'.' or '..'")]
+    [InlineData("skeleton/../*.cs", "'.' or '..'")]
+    [InlineData("skeleton\\*.cs", "backslash")]
+    public async Task A_malformed_source_pattern_is_MQ6001(string pattern, string text)
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
+        f.WritePackFile("basic", "skeleton/Program.cs", "class Program { }\n");
+        var unit = $"{{ \"id\": \"skeleton\", \"for\": \"model\", \"mode\": \"copy\", \"sources\": [\"skeleton/*.cs\", {JsonSerializer.Serialize(pattern)}] }}";
+        f.WritePackFile("basic", "pack.json", CopyPack.Replace("UNIT", unit, StringComparison.Ordinal));
+        var snapshot = await f.Store.GetSnapshotAsync(Ct);
+
+        var set = await new PackLoader(f.Repo.Options, TestServices.Schemas).LoadAsync(snapshot, null, null, Ct);
+
+        Assert.Empty(set.Packs);
+        var error = Assert.Single(set.Diagnostics);
+        Assert.Equal(("MQ6001", "/units/1/sources/1"), (error.Rule, error.JsonPointer));
+        Assert.Contains(text, error.Message, StringComparison.Ordinal);
+
+        // A well-formed copy unit loads: it has no template to check.
+        f.WritePackFile("basic", "pack.json", CopyPack.Replace("UNIT", "{ \"id\": \"skeleton\", \"for\": \"model\", \"mode\": \"copy\", \"sources\": [\"skeleton/**\"], \"tokens\": { \"Skeleton\": \"greeting\" } }", StringComparison.Ordinal));
+        var loaded = await new PackLoader(f.Repo.Options, TestServices.Schemas).LoadAsync(snapshot, null, null, Ct);
+        Assert.Empty(loaded.Diagnostics);
+        var copy = Assert.Single(loaded.Packs).Manifest.Units[1];
+        Assert.Equal((OutputMode.Copy, null, "greeting"), (copy.Mode, copy.Template, copy.Tokens["Skeleton"]));
     }
 
     [Theory]

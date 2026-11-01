@@ -208,8 +208,40 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "l" => LocaleHash(rest),
             "t" => TemplateHash(rest),
             "d" => resolved.Find(rest) is RDatabase database && schemaDiffs.TryGetValue(database.Name, out var diff) ? DiffHash(diff) : Absent,
+            "n" => NameHash(rest),
             _ => Absent,
         };
+    }
+
+    /// <summary>
+    /// <c>n:&lt;kind&gt;:&lt;form&gt;</c> (next-phase-1-design.md section 5.3; <c>seed_named</c> records <c>n:seed:</c>): the sorted ids the
+    /// kind's name index finds under the canonical form, or absent when it finds none, so renaming an element into or out of the name
+    /// changes the hash. <c>n:table:&lt;text&gt;</c> (section 5.5; <c>table_named</c>) matches resolved table names instead.
+    /// </summary>
+    private string NameHash(string kindAndForm)
+    {
+        var colon = kindAndForm.IndexOf(':', StringComparison.Ordinal);
+        if (colon > 0 && string.Equals(kindAndForm[..colon], "table", StringComparison.Ordinal))
+            return TableNameHash(kindAndForm[(colon + 1)..]);
+        if (colon <= 0 || !Loading.NameIndex.NamedKinds.Contains(kindAndForm[..colon]))
+            return Absent;
+        var kind = kindAndForm[..colon];
+        var ids = model.Names(kind).Find(kindAndForm[(colon + 1)..]).Select(e => e.Id).Order(StringComparer.Ordinal).ToList();
+        return ids.Count == 0 ? Absent : HashBuilder.Of(["n:" + kind, .. ids]);
+    }
+
+    /// <summary>
+    /// <c>n:table:&lt;text&gt;</c>: the sorted keys (database id and table key) of every resolved table <c>table_named</c> matches with the
+    /// text in any database, or absent when none, so a table renamed into or out of the name, or moved to another database, changes
+    /// the hash. A synthesized table has no stored name, so the resolved names are matched, not the name index.
+    /// </summary>
+    private string TableNameHash(string text)
+    {
+        if (!Rendering.BuiltinHelpers.TryParseTableName(text, out var schema, out var name, out _))
+            return Absent;
+        var keys = Rendering.BuiltinHelpers.TablesNamed(resolved.Databases, schema, name)
+            .Select(t => t.Database.Id + "/" + t.Key).Order(StringComparer.Ordinal).ToList();
+        return keys.Count == 0 ? Absent : HashBuilder.Of(["n:table", .. keys]);
     }
 
     /// <summary>A schema diff's hash, with the baseline's model hash when the run diffs from a baseline model.</summary>

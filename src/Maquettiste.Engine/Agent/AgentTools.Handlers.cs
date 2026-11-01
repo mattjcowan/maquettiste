@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -10,6 +11,9 @@ namespace Maquettiste.Engine;
 /// <summary>The handlers of the shared read tools, one per tool, in name order.</summary>
 public sealed partial class AgentTools
 {
+    /// <summary>The sections <c>get_project</c> adds on request, in name order.</summary>
+    private static readonly IReadOnlyList<string> ProjectSections = ["extensions", "packs", "settings"];
+
     private async Task<AgentToolResult> GetDatabaseViewAsync(ToolArguments args, CancellationToken ct)
     {
         var id = args.String("id");
@@ -122,13 +126,27 @@ public sealed partial class AgentTools
 
     private async Task<AgentToolResult> GetProjectAsync(ToolArguments args, CancellationToken ct)
     {
+        var sections = args.Strings("sections") ?? [];
+        if (sections.FirstOrDefault(s => !ProjectSections.Contains(s, StringComparer.Ordinal)) is { } unknown)
+            return BadRequest($"sections holds {string.Join(", ", ProjectSections)}, not '{unknown}'.");
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var packs = await _generation.GetPacksAsync(ct).ConfigureAwait(false);
         var name = snapshot.Settings.Name is { Length: > 0 } n ? n : Path.GetFileName(_options.RepoRoot);
         var where = _options.Workspace ?? WorkspaceInfo.None;
+        bool Wants(string section) => sections.Contains(section, StringComparer.Ordinal);
         return Ok(new AgentProjectInfo(name, snapshot.Settings.FormatVersion, EngineVersion.Value, EngineVersion.Product, EngineVersion.Build, where.Workspace,
-            where.Branch, where.Worktree, where.Repository, _options.Mode, snapshot.Settings, snapshot.SettingsHash,
-            [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics, [.. snapshot.Extensions.Select(e => e.Schema)], null));
+            where.Branch, where.Worktree, where.Repository, _options.Mode, snapshot.SettingsHash,
+            [.. snapshot.Summaries().Where(s => s.Kind == "database")],
+            [.. packs.Packs.Select(p => new AgentPackSummary(p.Name, p.Version, p.Description, p.Units.Count))],
+            new AgentDiagnosticCounts(packs.Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Error), packs.Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Warning),
+                packs.Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Info)),
+            [.. snapshot.Extensions.Select(e => e.Schema.Name)], ProjectSections)
+        {
+            Settings = Wants("settings") ? snapshot.Settings : null,
+            PackManifests = Wants("packs") ? packs.Packs : null,
+            PackDiagnostics = Wants("packs") ? packs.Diagnostics : null,
+            ExtensionSchemas = Wants("extensions") ? [.. snapshot.Extensions.Select(e => e.Schema)] : null,
+        });
     }
 
     private async Task<AgentToolResult> GetReferencesAsync(ToolArguments args, CancellationToken ct)
@@ -234,7 +252,26 @@ public sealed partial class AgentTools
         return Ok(await _generation.GetPacksAsync(ct).ConfigureAwait(false));
     }
 
-    private Task<AgentToolResult> ListValidationRulesAsync(ToolArguments args, CancellationToken ct) => Task.FromResult(Ok(RuleCatalog.Describe()));
+    private Task<AgentToolResult> ListValidationRulesAsync(ToolArguments args, CancellationToken ct)
+    {
+        var family = args.String("family");
+        var ids = args.Strings("ids");
+        var query = args.String("query");
+        var cursor = args.String("cursor");
+        var limit = args.Int("limit");
+        if (limit is < 1 or > ModelPages.MaxLimit)
+            return Task.FromResult(BadRequest($"limit must be from 1 to {ModelPages.MaxLimit}."));
+        if (string.IsNullOrEmpty(family) && ids is null && string.IsNullOrEmpty(query) && string.IsNullOrEmpty(cursor) && limit is null)
+            return Task.FromResult(Ok(RuleCatalog.Summarize()));
+        try
+        {
+            return Task.FromResult(Ok(RuleCatalog.Page(family, ids, query, cursor, limit ?? ModelPages.DefaultLimit)));
+        }
+        catch (FormatException ex)
+        {
+            return Task.FromResult(BadRequest(ex.Message));
+        }
+    }
 
     private async Task<AgentToolResult> LocalizationStatusAsync(ToolArguments args, CancellationToken ct) =>
         Ok(await _store.GetLocalizationStatusAsync(ct).ConfigureAwait(false));
@@ -360,8 +397,34 @@ public sealed partial class AgentTools
     private async Task<AgentToolResult> TagUsageAsync(ToolArguments args, CancellationToken ct)
     {
         var package = args.String("package") is { Length: > 0 } p ? p : null;
+        var tag = args.String("tag") is { Length: > 0 } t ? t : null;
+        var cursor = args.String("cursor");
+        var limit = args.Int("limit");
+        if (limit is < 1 or > ModelPages.MaxLimit)
+            return BadRequest($"limit must be from 1 to {ModelPages.MaxLimit}.");
         var usage = await _store.GetTagUsageAsync(package, ct).ConfigureAwait(false);
-        return usage is null ? NotFound("package", package!) : Ok(usage);
+        if (usage is null)
+            return NotFound("package", package!);
+        try
+        {
+            if (tag is not null)
+            {
+                if (usage.Tags.FirstOrDefault(u => string.Equals(u.Tag, tag, StringComparison.Ordinal)) is not { } use)
+                    return Problem("not-found", 404, $"The tag vocabulary scope has no tag '{tag}': it is neither declared nor used there.");
+                var (elements, nextElements) = ModelPages.Page(use.Elements, e => ("element", e, ""), cursor, limit ?? ModelPages.DefaultLimit);
+                return Ok(new TagUseElements(usage.Package, use.Tag, use.Declared, use.Uses, elements, nextElements));
+            }
+
+            IReadOnlyList<TagUse> tags = usage.Tags;
+            string? next = null;
+            if (limit is not null || !string.IsNullOrEmpty(cursor))
+                (tags, next) = ModelPages.Page(usage.Tags, u => ("tag", u.Tag, ""), cursor, limit ?? ModelPages.DefaultLimit);
+            return Ok(new TagUsageSummary(usage.Package, usage.Vocabulary, usage.Strict, [.. tags.Select(u => new TagUseSummary(u.Tag, u.Declared, u.Uses, u.Examples))], next));
+        }
+        catch (FormatException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     private async Task<AgentToolResult> ValidateAsync(ToolArguments args, CancellationToken ct)
@@ -409,25 +472,83 @@ public sealed partial class AgentTools
     }
 }
 
-/// <summary>The body of <c>get_project</c>: the editor API's <c>ProjectInfo</c> (getProject) without the editor's git status and icon.</summary>
+/// <summary>
+/// The body of <c>get_project</c> (next-phase-1-design.md section 5.2): a summary that fits an agent's context. The settings, the pack
+/// manifests with their diagnostics and the extension schemas come only when <c>sections</c> asks for them.
+/// </summary>
 /// <param name="Name">The project name.</param>
 /// <param name="FormatVersion">The model format version.</param>
 /// <param name="EngineVersion">The engine contract version (<see cref="Engine.EngineVersion.Value"/>), not the release.</param>
 /// <param name="ProductVersion">The release running (<see cref="Engine.EngineVersion.Product"/>).</param>
 /// <param name="Build">The build of the release (<see cref="Engine.EngineVersion.Build"/>).</param>
 /// <param name="Workspace">What the checkout is called (<see cref="WorkspaceInfo.Workspace"/>).</param>
-/// <param name="Branch">The git branch, when it can be read.</param>
+/// <param name="Branch">The branch the host detected, when it knows one.</param>
 /// <param name="Worktree">The linked worktree's name.</param>
 /// <param name="Repository">The main checkout's folder name, for a linked worktree.</param>
 /// <param name="Mode">The host's mode (<c>local</c> for the CLI).</param>
-/// <param name="Settings">The typed settings.</param>
 /// <param name="SettingsHash">The settings file hash.</param>
 /// <param name="Databases">The database summaries.</param>
-/// <param name="Packs">The pack manifests.</param>
-/// <param name="PackDiagnostics">The diagnostics of loading the packs.</param>
-/// <param name="Extensions">The extension schemas.</param>
-/// <param name="Git">Always <see langword="null"/> (the tools do not read git).</param>
+/// <param name="Packs">Each pack's name, version, description and unit count.</param>
+/// <param name="PackDiagnosticCounts">The diagnostics of loading the packs, counted by severity.</param>
+/// <param name="Extensions">The extension schemas' names.</param>
+/// <param name="Sections">The sections <c>sections</c> may ask for: always <c>extensions</c>, <c>packs</c> and <c>settings</c>.</param>
 public sealed record AgentProjectInfo(string Name, int FormatVersion, string EngineVersion, string ProductVersion, string Build, string? Workspace,
-    string? Branch, string? Worktree, string? Repository, string Mode, ProjectSettings Settings, string SettingsHash,
-    IReadOnlyList<ElementSummary> Databases, IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> PackDiagnostics,
-    IReadOnlyList<ExtensionSchema> Extensions, object? Git);
+    string? Branch, string? Worktree, string? Repository, string Mode, string SettingsHash, IReadOnlyList<ElementSummary> Databases,
+    IReadOnlyList<AgentPackSummary> Packs, AgentDiagnosticCounts PackDiagnosticCounts, IReadOnlyList<string> Extensions, IReadOnlyList<string> Sections)
+{
+    /// <summary>With the <c>settings</c> section: the typed settings.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProjectSettings? Settings { get; init; }
+
+    /// <summary>With the <c>packs</c> section: the pack manifests.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<PackManifest>? PackManifests { get; init; }
+
+    /// <summary>With the <c>packs</c> section: the diagnostics of loading the packs.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<Diagnostic>? PackDiagnostics { get; init; }
+
+    /// <summary>With the <c>extensions</c> section: the extension schemas.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ExtensionSchema>? ExtensionSchemas { get; init; }
+}
+
+/// <summary>A template pack in the <c>get_project</c> summary.</summary>
+/// <param name="Name">The pack name.</param>
+/// <param name="Version">The pack version.</param>
+/// <param name="Description">What the pack generates.</param>
+/// <param name="Units">The number of render units.</param>
+public sealed record AgentPackSummary(string Name, string Version, string? Description, int Units);
+
+/// <summary>Diagnostics counted by severity.</summary>
+/// <param name="Errors">The errors.</param>
+/// <param name="Warnings">The warnings.</param>
+/// <param name="Info">The infos.</param>
+public sealed record AgentDiagnosticCounts(int Errors, int Warnings, int Info);
+
+/// <summary>
+/// The body of <c>tag_usage</c> without a tag (next-phase-1-design.md section 5.2): the tags one vocabulary scope governs, in key order,
+/// without their element ids; the whole list unless <c>limit</c> or <c>cursor</c> pages it.
+/// </summary>
+/// <param name="Package">The domain whose vocabulary it is, or <see langword="null"/> for the global one.</param>
+/// <param name="Vocabulary">The vocabulary's id, or <see langword="null"/> when the scope has none.</param>
+/// <param name="Strict">Whether the vocabulary is strict.</param>
+/// <param name="Tags">The tags.</param>
+/// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one or when not paged.</param>
+public sealed record TagUsageSummary(string? Package, string? Vocabulary, bool Strict, IReadOnlyList<TagUseSummary> Tags, string? Next);
+
+/// <summary>One tag in <see cref="TagUsageSummary"/>.</summary>
+/// <param name="Tag">The tag key.</param>
+/// <param name="Declared">Whether the scope's vocabulary declares it.</param>
+/// <param name="Uses">Its uses in the scope (the element's own tags and its sub-elements').</param>
+/// <param name="Examples">Up to five names of the elements that hold it.</param>
+public sealed record TagUseSummary(string Tag, bool Declared, int Uses, IReadOnlyList<string> Examples);
+
+/// <summary>The body of <c>tag_usage</c> with a tag: the ids of the elements that hold it, a page in id order.</summary>
+/// <param name="Package">The domain whose vocabulary it is, or <see langword="null"/> for the global one.</param>
+/// <param name="Tag">The tag key.</param>
+/// <param name="Declared">Whether the scope's vocabulary declares it.</param>
+/// <param name="Uses">Its uses in the scope.</param>
+/// <param name="Elements">The element ids of this page.</param>
+/// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one.</param>
+public sealed record TagUseElements(string? Package, string Tag, bool Declared, int Uses, IReadOnlyList<string> Elements, string? Next);

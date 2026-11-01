@@ -146,7 +146,7 @@ internal sealed partial class DatabaseRun
                 Name = view.Name,
                 Schema = SchemaName(view.Schema),
                 Database = _rdb,
-                Body = ForDialect(view.Body) ?? "",
+                Body = ForDialect(view.Body),
                 Columns = [.. view.Columns.Select(c => new RViewColumn
                 {
                     Name = c.Name,

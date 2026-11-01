@@ -27,6 +27,9 @@ public interface IScriptSandboxPool : IDisposable
     /// <summary>What the scripts registered.</summary>
     IReadOnlyList<ScriptRegistration> Registrations { get; }
 
+    /// <summary>Load warnings, ordinal by path: MQ5005 per rule file with top-level let or var, at the first.</summary>
+    IReadOnlyList<Diagnostic> Warnings { get; }
+
     /// <summary>Rents an engine for a whole unit; dispose the lease to return it.</summary>
     /// <returns>The lease.</returns>
     IScriptSandboxLease Rent();
@@ -43,7 +46,17 @@ public interface IScriptSandboxLease : IDisposable
 /// <param name="Kind">What was registered.</param>
 /// <param name="Name">The registered name (the rule id for rules).</param>
 /// <param name="DeclaredIn">The script path.</param>
-public sealed record ScriptRegistration(ScriptRegistrationKind Kind, string Name, string DeclaredIn);
+public sealed record ScriptRegistration(ScriptRegistrationKind Kind, string Name, string DeclaredIn)
+{
+    /// <summary>A rule registered with scope "model": run once per whole-model validation, not per element.</summary>
+    public bool WholeModel { get; init; }
+
+    /// <summary>
+    /// The kinds an element rule checks, or <see langword="null"/> for every kind (and for other registrations), so the validator skips
+    /// a document of another kind before it rents a sandbox or reads the result cache. Internal: not part of the contract.
+    /// </summary>
+    internal IReadOnlySet<string>? Kinds { get; init; }
+}
 
 /// <summary>What a script registered.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ScriptRegistrationKind>))]
@@ -115,6 +128,16 @@ public interface IScriptSandbox
     /// <param name="ctx">The call context.</param>
     /// <returns>The rule's diagnostics.</returns>
     IReadOnlyList<Diagnostic> RunRule(string ruleId, ElementDocument element, ModelSnapshot model, ScriptCallContext ctx);
+
+    /// <summary>Runs a whole-model rule once; report(message, { element, pointer, severity }).</summary>
+    /// <param name="ruleId">The rule id (without <c>x/</c>) of a rule registered with <c>scope: "model"</c>.</param>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="ctx">The call context.</param>
+    /// <returns>
+    /// The rule's diagnostics, each on the file of the element or sub-element its <c>element</c> option names, the entry's pointer
+    /// prefixing the given one; a rule that throws (an unknown element id included) ends with its MQ5002 on the rule file.
+    /// </returns>
+    IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model, ScriptCallContext ctx);
 }
 
 /// <summary>Thrown when a script or template exceeds a sandbox limit (MQ6007 while rendering, MQ5003 in validation rules).</summary>

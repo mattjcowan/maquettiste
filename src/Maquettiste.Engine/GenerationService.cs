@@ -435,11 +435,13 @@ public sealed partial class GenerationService
 
                 // The last-run record (one-shot hosts only): answer from it when nothing changed, else drop it before this run changes
                 // what it describes, and hash the templates before the packs load, for the record this run may write. A run against a
-                // baseline never answers from it or writes it (its key holds no baseline), and forgets it before it applies.
+                // baseline or limited by unit or element never answers from it or writes it (its key holds neither), and forgets it
+                // before it applies (next-phase-1-design.md sections 3.1 and 5.6).
                 var oneShot = ReuseLastRun && mode == GenerationMode.Apply && capture is null && !request.StageBarriers;
-                if (oneShot && baseline is not null)
+                var served = LastRun.Serves(request);
+                if (oneShot && !served)
                     new LastRun(_services).Forget();
-                var lastRun = oneShot && baseline is null ? new LastRun(_services) : null;
+                var lastRun = oneShot && served ? new LastRun(_services) : null;
                 string? templates = null;
                 if (lastRun is not null)
                 {
@@ -450,7 +452,8 @@ public sealed partial class GenerationService
                     run.CollectRenderedInputHashes();
                 }
 
-                var prepared = await run.PrepareAsync(request.Packs, mode, ct, barriers: request.StageBarriers, baseline: baseline).ConfigureAwait(false);
+                var prepared = await run.PrepareAsync(request.Packs, mode, ct, barriers: request.StageBarriers, baseline: baseline,
+                    selection: UnitSelection.Of(request)).ConfigureAwait(false);
                 if (prepared is null)
                     return Result(runId, mode, RunOutcome.Invalid, run);
                 var skip = await run.SkipAsync(prepared, mode, request.Force, ct).ConfigureAwait(false);
@@ -496,7 +499,8 @@ public sealed partial class GenerationService
                 }
 
                 var outcome = Outcomes.Of(mode, run.Diagnostics, changes, !stale.IsEmpty);
-                if (mode == GenerationMode.Apply && outcome == RunOutcome.Succeeded)
+                // A scoped run never advances schema snapshots (next-phase-1-design.md section 5.6).
+                if (mode == GenerationMode.Apply && outcome == RunOutcome.Succeeded && prepared.Selection is null)
                     await run.SaveSnapshotsAsync(prepared, ct).ConfigureAwait(false);
                 if (journal is not null)
                 {
@@ -571,7 +575,8 @@ public sealed partial class GenerationService
     private async Task<ApplyResult> ApplyLockedAsync(GenerationPlan plan, GenerationRequest request, string runId, GenerationRun run, ModelBaseline? baseline,
         CancellationToken ct)
     {
-        var prepared = await run.PrepareAsync(request.Packs, GenerationMode.Apply, ct, baseline: baseline).ConfigureAwait(false);
+        // A scoped plan plans again with its filters, so the units it did not select never count as appeared or vanished.
+        var prepared = await run.PrepareAsync(request.Packs, GenerationMode.Apply, ct, baseline: baseline, selection: UnitSelection.Of(request)).ConfigureAwait(false);
         if (prepared is null)
             return new ApplyResult(RunOutcome.Invalid, [], [], Result(runId, GenerationMode.Apply, RunOutcome.Invalid, run));
 
@@ -661,7 +666,7 @@ public sealed partial class GenerationService
             var write = run.WriteContext(prepared, request, GenerationMode.Apply, runId, rendered.Select(u => current[u.Key]), skipped, journal, plannedPaths);
             summary = await run.WriteAsync(prepared, FromPlan(plan.Id, rendered, current, prepared.Hasher.CurrentHash, prepared.Resolved.Find, ct), write, ct).ConfigureAwait(false);
             outcome = Outcomes.Of(GenerationMode.Apply, run.Diagnostics, summary.Changes);
-            if (outcome == RunOutcome.Succeeded)
+            if (outcome == RunOutcome.Succeeded && prepared.Selection is null)
                 await run.SaveSnapshotsAsync(prepared, ct).ConfigureAwait(false);
             await journal.EndAsync(ct).ConfigureAwait(false);
             ended = true;
@@ -771,6 +776,25 @@ public sealed record GenerationRequest
     /// record.
     /// </summary>
     public string? Against { get; init; }
+
+    /// <summary>Units to run, "pack/unit" or a bare unit id; null means every unit of the selected packs.</summary>
+    /// <remarks>
+    /// Scoped generation (next-phase-1-design.md section 5.6): values OR, and AND with <see cref="Elements"/>; an empty list is no
+    /// filter. A bare unit id must name a unit exactly one run pack has, and a value naming a pack the run lacks or a unit no run pack
+    /// has is MQ6032. When every value names its pack, only those packs load (intersected with <see cref="Packs"/>). A scoped run
+    /// keeps every output and unit state of the units it does not select, still deletes the orphans of the ones it does, never
+    /// advances schema snapshots (a selected unit that reads the schema diff fails with MQ6033), and neither answers from nor writes
+    /// the last-run record. A plan stores the filters and its apply plans again with them.
+    /// </remarks>
+    public IReadOnlyList<string>? Units { get; init; }
+
+    /// <summary>Element ids whose units run (never model-scope units); null means every element.</summary>
+    /// <remarks>
+    /// Ids, never names; values OR, and AND with <see cref="Units"/>; an empty list is no filter. A synthesized table's id is its key
+    /// (<c>&lt;entityId&gt;@&lt;dbId&gt;</c>). The id of a deleted element selects its old outputs, so the run removes them and nothing
+    /// else. A filter that selects no unit and no output is MQ6034.
+    /// </remarks>
+    public IReadOnlyList<string>? Elements { get; init; }
 }
 
 /// <summary>The outcome of a run.</summary>

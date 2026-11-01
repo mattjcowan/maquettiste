@@ -123,6 +123,8 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
   100 ms and observes cancellation.
 - Diff: GNU-style unified diff (`--- a/<path>`, `+++ b/<path>`, `\ No newline at end of file`); common prefix and suffix trimmed,
   Myers for the middle, and a middle needing more than 2,000 edits is shown as one replacement to bound memory.
+  When either side is not text (not strict UTF-8, or holding a NUL byte: a copy unit's binary file,
+  next-phase-1-design.md section 5.4), the diff is the one line `Binary file <path> differs`.
 
 ## Performance notes (WP, gate 1)
 

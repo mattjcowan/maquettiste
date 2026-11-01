@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Collections.Immutable;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
@@ -145,6 +146,7 @@ internal sealed partial class ResolveRun
         FinishConceptual();
         ResolveSeedsAndUsages(resolvedDatabases);
         ResolveProcesses();
+        var (stereotypes, vocabularies, trees) = ResolveDefinitions();
         var result = new ResolvedModel
         {
             Source = Model,
@@ -164,11 +166,133 @@ internal sealed partial class ResolveRun
             Databases = new RList<RDatabase>(resolvedDatabases, ["k:database"]),
             Migrations = new RList<RMigration>(_migrationOrder, MigrationMembership()),
             Locales = new RList<RLocale>(RLocale.Of(Settings.Localization), [RLocale.SettingsKey]),
+            Stereotypes = new RList<RStereotypeDefinition>(stereotypes, ["k:stereotype"]),
+            TagVocabularies = new RList<RTagVocabulary>(vocabularies, ["k:tag-vocabulary"]),
+            CategoryTrees = new RList<RCategoryTree>(trees, ["k:category-tree"]),
             Diagnostics = [.. Diagnostics.Order(Diagnostic.Order)],
             ById = _byId, // lookups only, never enumerated; freezing a few hundred thousand ids costs more than it saves
         };
         FreezeDependencies();
         return result;
+    }
+
+    /// <summary>
+    /// The definitions <c>model</c> lists (next-phase-1-design.md section 5.5): the stereotype of each key (the one
+    /// <see cref="ModelSnapshot.GetStereotype"/> gives, by key), and the tag vocabularies and category trees validation uses, one per
+    /// scope, the global one first, then by (package qualified name, id). Each depends on its own file; a tree also completes the
+    /// shared <see cref="RCategory"/> instances (parent, children, order, description) the conceptual pass created.
+    /// </summary>
+    private (List<RStereotypeDefinition> Stereotypes, List<RTagVocabulary> Vocabularies, List<RCategoryTree> Trees) ResolveDefinitions()
+    {
+        var stereotypes = new List<RStereotypeDefinition>();
+        foreach (var key in Model.All<Stereotype>().Select(s => s.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            if (Model.GetStereotype(key) is not { } stereotype)
+                continue;
+            var r = new RStereotypeDefinition();
+            var deps = DepsOf(r);
+            FillCommon(r, stereotype, deps);
+            r.Package = PackageOf(stereotype.Package);
+            r.Key = stereotype.Key;
+            r.AppliesTo = [.. stereotype.AppliesTo];
+            var attributes = StableByOrder(stereotype.Attributes.DistinctBy(a => a.Id, StringComparer.Ordinal), a => a.Order)
+                .Select(a => MakeAttribute(a, r, r.Package, null, false, stereotype, stereotype.Id))
+                .ToList();
+            SetOrder(attributes);
+            r.Attributes = new RList<RAttribute>(attributes, deps.ToList());
+            r.DefaultProperties = stereotype.DefaultProperties.Count == 0
+                ? FrozenDictionary<string, object?>.Empty
+                : ResolutionValues.PlainMap(stereotype.DefaultProperties);
+            r.Icon = stereotype.Icon;
+            r.Color = stereotype.Color;
+            Register(r);
+            stereotypes.Add(r);
+        }
+
+        var vocabularies = new List<RTagVocabulary>();
+        foreach (var vocabulary in Model.TagVocabularies)
+        {
+            var r = new RTagVocabulary();
+            FillCommon(r, vocabulary, DepsOf(r));
+            r.Package = PackageOf(vocabulary.Package);
+            r.Strict = vocabulary.Strict;
+            r.Definitions = [.. vocabulary.Definitions.Select(d => new RTagDefinition { Key = d.Key, Description = d.Description, Color = d.Color })];
+            Register(r);
+            vocabularies.Add(r);
+        }
+
+        var trees = new List<RCategoryTree>();
+        foreach (var tree in Model.CategoryTrees)
+        {
+            var r = new RCategoryTree();
+            FillCommon(r, tree, DepsOf(r));
+            r.Package = PackageOf(tree.Package);
+            (r.Roots, r.Categories) = CategoryTreeOf(tree);
+            Register(r);
+            trees.Add(r);
+        }
+
+        return (stereotypes, ScopeOrder(vocabularies), ScopeOrder(trees));
+    }
+
+    /// <summary>The global definition first (no <c>package</c>), then by (package qualified name, id), ordinal.</summary>
+    private static List<T> ScopeOrder<T>(List<T> values) where T : RElement =>
+        [.. values.OrderBy(v => v.Package is null ? 0 : 1).ThenBy(v => v.Package?.QualifiedName ?? "", StringComparer.Ordinal).ThenBy(v => v.Id, StringComparer.Ordinal)];
+
+    /// <summary>
+    /// A tree's roots and its categories depth-first, on the <see cref="RCategory"/> instances the conceptual pass registered for this
+    /// tree (the first entry of an id). Siblings go by order (none counts as 0), then file order; a parent the tree lacks, or the
+    /// category itself, makes a root; a category caught in a longer parent cycle is walked after the roots, in file order.
+    /// </summary>
+    private (IReadOnlyList<RCategory> Roots, IReadOnlyList<RCategory> Categories) CategoryTreeOf(CategoryTree tree)
+    {
+        var own = new List<(Category Source, RCategory Category)>();
+        var byId = new Dictionary<string, RCategory>(StringComparer.Ordinal);
+        foreach (var category in tree.Categories)
+        {
+            if (byId.ContainsKey(category.Id) || !_categories.TryGetValue(category.Id, out var rc)
+                || !string.Equals(_categoryTreeOf.GetValueOrDefault(category.Id), tree.Id, StringComparison.Ordinal))
+                continue;
+            byId.Add(category.Id, rc);
+            own.Add((category, rc));
+        }
+
+        var roots = new List<RCategory>();
+        var children = new Dictionary<RCategory, List<RCategory>>(ReferenceEqualityComparer.Instance);
+        foreach (var (source, rc) in StableByOrder(own, x => x.Source.Order))
+        {
+            rc.Order = source.Order;
+            rc.Description = source.Description?.Text;
+            rc.Parent = source.Parent is { } parentId && byId.TryGetValue(parentId, out var parent) && !ReferenceEquals(parent, rc) ? parent : null;
+            if (rc.Parent is null)
+                roots.Add(rc);
+            else if (children.TryGetValue(rc.Parent, out var siblings))
+                siblings.Add(rc);
+            else
+                children.Add(rc.Parent, [rc]);
+        }
+
+        foreach (var (_, rc) in own)
+            rc.Children = children.TryGetValue(rc, out var list) ? list : [];
+
+        var ordered = new List<RCategory>(own.Count);
+        var seen = new HashSet<RCategory>(ReferenceEqualityComparer.Instance);
+        var stack = new Stack<RCategory>();
+        foreach (var start in roots.Concat(own.Select(x => x.Category)))
+        {
+            stack.Push(start);
+            while (stack.Count > 0)
+            {
+                var current = stack.Pop();
+                if (!seen.Add(current))
+                    continue;
+                ordered.Add(current);
+                for (var i = current.Children.Count - 1; i >= 0; i--)
+                    stack.Push(current.Children[i]);
+            }
+        }
+
+        return (roots, ordered);
     }
 
     /// <summary>Registers an object for <see cref="ResolvedModel.Find"/>; the first registration of an id wins.</summary>

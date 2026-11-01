@@ -18,7 +18,7 @@ A project uses it by copying the pack into `.maquettiste/templates/seed-data/`, 
 
 | Unit | Mode | For | Writes |
 | --- | --- | --- | --- |
-| `data` | `overwrite` (file blocks) | each database (`select databases`) | with `format` `csv`: `<database>/manifest.json` and one `<schema>.<table>.csv` per table that receives rows; with `json`: `<database>/seed-data.json`. Nothing for a database no seed reaches |
+| `data` | `overwrite` (file blocks) | `each database` | with `format` `csv`: `<database>/manifest.json` and one `<schema>.<table>.csv` per table that receives rows; with `json`: `<database>/seed-data.json`. Nothing for a database no seed reaches |
 
 A CSV's header names the columns any row of the table gives; a cell a row does not give is empty. Text is quoted when it holds a
 comma, a quote or a line break, or is empty; numbers and booleans are written as they are; lists and objects as JSON text.

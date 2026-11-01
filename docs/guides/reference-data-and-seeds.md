@@ -186,6 +186,32 @@ A seed in a domain that declares layers (`dependsOn`, see
 - The `seed-data` pack writes the rows as files for a loader instead, including a bound reference type's rows in its
   table (first, source `list`).
 
+## Seeds by name
+
+A template can find one seed by its name rather than loop over every seed. The table seed of section 6 is named
+`app_settings` after its table. A unit that renders once for the whole model can write one constant per setting:
+
+```scriban
+{{~ settings = seed_named "app_settings" ~}}
+{{~ if settings; for r in settings.rows ~}}
+public const string {{ pascal r.values.key }} = "{{ r.values.value }}";
+{{~ end; end ~}}
+```
+
+- `seed_named` takes the seed's name, or its domain's path and its name when the seed's file states a package
+  (`Rentals.app_settings`). It gives nothing when no seed has the name, and fails the unit when two seeds share it:
+  give one of them a domain and use the longer name, or rename one. Renaming a seed into or out of the name renders the
+  unit again.
+- `seed_row` finds one row by its key: the code of a reference type's row (`seed_row "BikeType" "cargo"`), the row key
+  of a table seed (`seed_row "app_settings" "late_fee_per_hour"`, by the unique constraint on `key`) or the key of an
+  entity's row. A key of several columns is a list in key order, such as `["city", 2026]`.
+
+An agent or a script that writes a seed through the API may also give its columns, its row key and its cells by name:
+`"columns": ["key", "value"]` for `app_settings`, `"key"` holding the unique constraint's name, and a row as
+`{ "values": { "key": "late_fee_per_hour", "value": "2.50" } }`. The engine stores ids and one cell per column, as the
+editor does. A name the target does not have, or has twice, is refused (MQ1002) and nothing is written. The order and
+the rules are in [Seeds by name](../mcp.md#seeds-by-name).
+
 ## See also
 
 - [The explorers and screens](../user-guide.md#the-explorers-and-screens), under **Reference data** and **Seed data**,

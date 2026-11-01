@@ -362,6 +362,23 @@ public sealed class ModelSnapshot
     /// <returns>The elements.</returns>
     internal IEnumerable<Element> ElementsOf(ElementKind kind) => _byKind.TryGetValue(kind, out var list) ? list : [];
 
+    /// <summary>
+    /// The documents of one kind from the sorted kind index, ordinal by (name, id), without a scan of every document: the first
+    /// document of each id (a duplicate id, MQ1004, is left out). A rule's <c>model.all(kind)</c> reads it (next-phase-1-design.md
+    /// section 5.7).
+    /// </summary>
+    /// <param name="kind">The kind.</param>
+    /// <returns>The documents.</returns>
+    internal IReadOnlyList<ElementDocument> DocumentsOf(ElementKind kind)
+    {
+        if (!_byKind.TryGetValue(kind, out var list))
+            return [];
+        var documents = new ElementDocument[list.Length];
+        for (var i = 0; i < documents.Length; i++)
+            documents[i] = _documentsById[list[i].Id];
+        return documents;
+    }
+
     /// <summary>Returns a summary of every element, ordinal by path.</summary>
     /// <returns>The summaries.</returns>
     public IReadOnlyList<ElementSummary> Summaries() => _summaries;

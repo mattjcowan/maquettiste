@@ -16,11 +16,11 @@ For a database `main` (PostgreSQL, schema `billing`) with a table `invoices`:
 | Unit | Mode | For | Writes |
 | --- | --- | --- | --- |
 | `table` | `overwrite` | `each table` | `main/billing/tables/invoices.sql`: `CREATE TABLE` with columns, primary key, unique constraints, foreign keys and checks, then its indexes and comments |
-| `schema` | `overwrite` | `select databases` | `main/schema.sql`: schemas, SQL objects that run before the tables, database types, sequences, every table in foreign-key dependency order, then routines and views, then the other SQL objects (see DDL order) |
-| `migration` | `once` | `select databases` | `main/migrations/0001-<key>.sql`, `0002-<key>.sql`, …: one script per schema revision, named by revision and content, from `schema_diff` and the migration facts that render with it (see Migration facts) |
-| `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of table seeds, of seeds of entities bound to a table and of reference types bound to one, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
-| `seed-environments` | `overwrite` (file blocks) | `select databases` | `main/seed.<environment>.sql` for each environment the `environments` parameter names and some seed of the database belongs to: those seeds' rows, to run after `seed.sql` |
-| `object-environments` | `overwrite` (file blocks) | `select databases` | `main/objects.<environment>.sql` for each environment the `environments` parameter names and some SQL object of the database runs in: those objects' statements, to run on every deploy after `schema.sql` or the migrations and before the seed scripts (see SQL object environments and run-once) |
+| `schema` | `overwrite` | `each database` | `main/schema.sql`: schemas, SQL objects that run before the tables, database types, sequences, every table in foreign-key dependency order, then routines and views, then the other SQL objects (see DDL order) |
+| `migration` | `once` | `each database` | `main/migrations/0001-<key>.sql`, `0002-<key>.sql`, …: one script per schema revision, named by revision and content, from `schema_diff` and the migration facts that render with it (see Migration facts) |
+| `seed` | `regions` | `each database` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of table seeds, of seeds of entities bound to a table and of reference types bound to one, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
+| `seed-environments` | `overwrite` (file blocks) | `each database` | `main/seed.<environment>.sql` for each environment the `environments` parameter names and some seed of the database belongs to: those seeds' rows, to run after `seed.sql` |
+| `object-environments` | `overwrite` (file blocks) | `each database` | `main/objects.<environment>.sql` for each environment the `environments` parameter names and some SQL object of the database runs in: those objects' statements, to run on every deploy after `schema.sql` or the migrations and before the seed scripts (see SQL object environments and run-once) |
 | `process-tables` | file blocks | `each process` | `main/processes/purchase-approval.sql`: instance, history and gate audit tables of a process, one script per database; only when `processTables` is `true` (see Process tables) |
 | `view` | file blocks | `each view` | `main/billing/views/outstanding_invoices.sql`: the view's `CREATE VIEW`; only when `objectScripts` is `true` (see Object scripts) |
 | `sequence` | file blocks | `each sequence` | `main/billing/sequences/invoice_number_seq.sql`: the sequence's `CREATE SEQUENCE`; only when `objectScripts` is `true` |
@@ -523,7 +523,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | File | Holds |
 | --- | --- |
 | `pack.json` | Units and parameter defaults. |
-| `helpers.js` | The `databases` selector, the `ddl_order` / `ddl_cycle_breaks` helpers (foreign-key dependency order) and `reference_realization` (the `strategyMap` lookup). |
+| `helpers.js` | The `ddl_order` / `ddl_cycle_breaks` helpers (foreign-key dependency order) and `reference_realization` (the `strategyMap` lookup). |
 | `_sql.scriban` | Shared functions: quoting, qualified names, column definitions, foreign keys, indexes, comments. |
 | `_table.scriban` | The `CREATE TABLE` block of one table, used by `table`, `schema` and `migration`. |
 | `_objects.scriban` | Sequences, views, routines, database types, SQL objects, schemas, include directives and the dependency specs for `ddl_order` (foreign keys, and `dependsOn` for the DDL order). |

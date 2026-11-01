@@ -21,6 +21,10 @@ hand (`ResolvedFixture`) and element documents with `ModelBuilder`, so they need
   `Set`, `RegExp`, `Error` or class instance result is a script error.
 - `LargeModelWalkTests`: a script walking every item of a 5,000-item list whose membership has 20,000 keys (the packs' walk of
   a database's tables) stays well inside the time limit and records exactly the keys read, again in a second call.
-- `RegistrationTests`: the `maquettiste` registration API, validation rules and their diagnostics (MQ5002, MQ5003, `x/<id>`),
-  script errors mapped to diagnostics with file, line and column, and which paths count as rule scripts (only files directly
-  in the model's `extensions/rules/`).
+- `RegistrationTests`: the `maquettiste` registration API, validation rules and their diagnostics (MQ5002, MQ5003,
+  `x/<id>`), the read keys a rule records (`rt:` for `referencesTo`, `e:` and `k:`), script errors mapped to diagnostics
+  with file, line and column, and which paths count as rule scripts (only files directly in the model's
+  `extensions/rules/`).
+- `RuleIndexTests`: a rule's `withStereotype`, `withTag` and `withProperty` (name then id order) and `byQualifiedName`
+  (by id), the `ix:` keys and what their hashes cover, and `referencesTo` with the id's own file and diagrams (`rt:`
+  against `r:`).

@@ -195,12 +195,13 @@ claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /
   -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:<tag> maquettiste mcp
 ```
 
-Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 69), `validate` in 55 ms,
-the container removed on exit. The registration (the arguments exactly, both forms and both runtimes, the merge, the replacement and the
-removal of an earlier `mcp.sh`) is covered by the CLI tests; the `/bin/sh` line was run with a stand-in `docker` reachable only
-through `$HOME/.docker/bin` from a folder behind a symbolic link (the real path mounted, stderr in the log). A Mac client started
-from the Dock over this entry has not been run **(not verified)**.
+Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`:
+`initialize` in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24,
+the current source 71), `validate` in 55 ms, the container removed on exit. The registration (the arguments exactly,
+both forms and both runtimes, the merge, the replacement and the removal of an earlier `mcp.sh`) is covered by the CLI
+tests; the `/bin/sh` line was run with a stand-in `docker` reachable only through `$HOME/.docker/bin` from a folder
+behind a symbolic link (the real path mounted, stderr in the log). A Mac client started from the Dock over this entry
+has not been run **(not verified)**.
 
 ### In this repository
 
@@ -218,7 +219,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 69 tools
+claude                               # then /mcp shows maquettiste connected with 71 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):
@@ -257,13 +258,14 @@ changes for the user to review (`propose_changes`) instead.
 
 | Tool | API operation | Arguments | Returns |
 | --- | --- | --- | --- |
-| `get_project` | getProject | | name, `productVersion` (the release, such as `0.5.3`) and `build` beside `engineVersion` (the engine contract, not the release) and `formatVersion`, `workspace` (`MAQUETTISTE_WORKSPACE`, else the git branch, else the worktree name) with `branch`, `worktree` and `repository`, settings and `settingsHash`, databases, packs, pack diagnostics, extensions (`mode` is `local`, `git` is null) |
+| `get_project` | getProject | `sections` (optional: `settings`, `packs`, `extensions`) | a summary: name, `productVersion` (the release, such as `0.5.3`) and `build` beside `engineVersion` (the engine contract, not the release) and `formatVersion`, `workspace` (`MAQUETTISTE_WORKSPACE`, else the git branch, else the worktree name) with `branch`, `worktree` and `repository`, `mode` (`local`), `settingsHash`, databases, `packs` (`{ name, version, description, units }`), `packDiagnosticCounts` (`{ errors, warnings, info }`), `extensions` (their names) and `sections` (always `extensions`, `packs`, `settings`); each section asked for adds its full members: `settings` the typed settings, `packs` `packManifests` and `packDiagnostics`, `extensions` `extensionSchemas`; an unknown section is `bad-request` |
 | `get_model_index` | getModelIndex | `kind`, `package` (id or name), `tag`, `category`, `stereotype`, `query` (name contains, ignoring case), all optional, AND; `cursor`, `limit` (1 to 1000) | element summaries; with `cursor` or `limit`, one page `{ items, next }` ordered by kind, name and id |
 | `get_model_kinds` | getModelKinds | `by` (`kind` default, or `package`) | `{ total, kinds: [{ kind, count }], packages }`; with `package`, per package `{ package, name, count, kinds }`, the elements in no package first |
 | `get_element` | getElement | `id` | the document: `json` (canonical), `hash`, `path`, the typed element, the sidecar text |
 | `get_elements` | getElements | `ids` (element or sub-element ids, at most 1000), the index filters, `fields` (top-level members to keep), `cursor`, `limit` (default 100, at most 1000) | `{ items: [{ id, kind, path, hash, json }], next, missing }`: the canonical documents in pages, ordered by kind, name and id |
-| `get_resolved_model` | getResolvedModel | `scope` (`all` default, `packages`, `entities`, `relations`, `enums`, `value-objects`, `scalar-types`, `reference-types`, `seeds`, `processes`, `actors`, `scenarios`, `databases`, `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations`), `database` (an id), `cursor`, `limit` | `{ items, next, diagnostics }`: what templates read, as flat records with `id`, `kind` and `name` (other objects by id); `migrations` lists open migration facts by database name, then applied order; a model with errors returns no items and the errors, unless its only errors are pending migration facts (MQ4101), which still return items |
+| `get_resolved_model` | getResolvedModel | `scope` (`all` default, `packages`, `entities`, `relations`, `enums`, `value-objects`, `scalar-types`, `reference-types`, `seeds`, `processes`, `actors`, `scenarios`, `databases`, `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations`), `database` (an id), `cursor`, `limit` | `{ items, next, diagnostics }`: what templates read, as flat records with `id`, `kind` and `name` (other objects by id; a value the file leaves out is null, never empty text); `migrations` lists open migration facts by database name, then applied order; a model with errors returns no items and the errors, unless its only errors are pending migration facts (MQ4101), which still return items |
 | `save_element` | saveElement | `id`, `element` (whole document), `expectedHash` | the save result (new `hash`, changes, and `facts`: the migration facts the save recorded, `{ id, database, fact, state, missing, summary, path }`; a pending fact's MQ4101 is among the diagnostics and the save still goes through) |
+| `patch_element` | (CLI `model apply` with an update) | `id` (an id, not a qualified name), `patch` (an RFC 6902 array of operations, or a string holding one), `expectedHash`; all required | the save result as `save_element` answers it (`hash`, changes, diagnostics, `facts`), plus `ids` (`{ names, minted }`, as `apply_batch`); see "Patches" under Semantics |
 | `create_element` | createElement | `element` (an id is assigned when absent) | the save result with the new `id` and its `facts`; write a database with `byConvention` (`none`, `packages` or `all`): without it a database with no `packages` takes every entity (the rule from before 0.3.0) |
 | `delete_element` | deleteElement, getDeletePlan | `id`, `expectedHash` (not with `dryRun`), `resolution` (`refuse` default, `remove-references` or `delete-dependents`), `dryRun` (`true`: write nothing and return the plan; the resolution then defaults to `delete-dependents`) | the save result with its `facts` (a dropped table or column records a `drop`, cascades included); with `dryRun` the delete plan `{ ids, resolution, outcome, deletes: [{ id, kind, name, path, because }], clears: [{ id, kind, name, pointer, field, target, because }], removes: [{ id, kind, name, pointer, what, subId, subKind, because }], refused: [{ id, kind, name, pointer, why, rule }], settings: [{ pointer, what }], warnings: [{ message, pack, unit }] }`. A custom property value an `x-ref` types is cleared by `remove-references` when optional and by `delete-dependents` either way (its holder stays); a schema declaring the property that would then fail (`required`, `minItems`) refuses with MQ2001. A pack parameter value naming the element refuses a plain delete (MQ2001 in `maquettiste.json`, `id` null in `refused`); the resolutions remove it in the same change (`settings`) as for properties, unless the parameter is required |
 | `apply_batch` | applyBatch | `operations` (the batch's `operations` array, or the whole `{ "operations": [...] }` body); besides create, update and delete, the database schema operations `add-schema`, `rename-schema`, `remove-schema` (with `target` to move what lives there, `default` when removing the default) and `set-default-schema`; the process operations `sync-enum` (`id` a lifecycle process: its bound enum's members become the root-level states in order; a removal of a member still used by a default, allowed values, a seed cell or a scenario value is refused with MQ9019; change the uses first), `set-lifecycle` (`id` an entity, `target` a process, both sides in one change; no `target` clears it), `set-initial` (`id` a process or compound state, `target` a direct child) and `refresh-scenario` (`id` a scenario: its steps' `expect` and its `outcome` are rewritten from the engine's replay; refused when the batch also writes the scenario or its process, or when the replay stops early); the tag operations `retag` (`tags`, optional `name` to rename the one tag, optional `package` for a domain's vocabulary: the vocabulary and every use it governs, see `tag_usage`) and `tags-to-property` (`prefix`, `name` a custom property, optional `package` and `elementIds`: the tags that start with `prefix` move into the property of each element and sub-element holding them, converted by the schema that declares it, one suffix for a string, number, integer, boolean or `enum`, all of them for a string array, the one id the suffix names for an `x-ref`; the tags leave their holders and, without `elementIds`, the vocabulary, unless something without properties such as a relation end still uses them; no matching tag is MQ1002, a holder whose property no schema declares, whose suffix does not fit or that holds another value is MQ5001); `names-to-ids` (optional `elementIds`: every custom property value an `x-ref` types that is still a name becomes the one id it finds, in those elements or in every document with `x-ref` sites; a value that finds nothing or several is MQ2010 at the value, nothing to convert writes nothing); the materialize operations `materialize-tables` (`database`, `entities`, optional `schema`), `materialize-entities` (`database`, `tables`, `package`), `materialize-attributes` (`database`, `entities`, for one entity optional `columns`: an attribute per unnamed column of its binding's source) and `materialize-columns` (`database`, `entities`, for one entity optional `attributes`: a table column per unmapped attribute), refused with MQ4055 for what is already bound or has nothing to add (preview them with `preview_materialize`). Every id field takes an id, a qualified name such as `@table:billing.notes` or a placeholder declared with `as` (see "Batches by name"), and the engine mints every missing id; `dryRun` (`true`: write nothing) | the batch result, all or nothing, with `ids` (`{ names, minted }`: each name and placeholder to its id, and each minted `{ operation, pointer, kind, id, name, placeholder }`) and the migration facts the batch recorded in `facts` (its items carry none); with `dryRun` `{ outcome, items, files: [{ path, action, id, kind, name, beforeHash, diff }], diagnosticsAdded, diagnosticsRemoved, ids, facts }`: a unified diff per file, the diagnostics the change adds and removes over the elements it touches, and the facts it would record (`null` when the change reaches every database) |
@@ -281,9 +283,9 @@ changes for the user to review (`propose_changes`) instead.
 | `export_seed_csv` | exportSeedCsv | `id` of a seed, `bom` (byte order mark and CRLF), `locales` (adds `@label:<locale>` and `@description:<locale>`) | the CSV text: `@id`, then `@code`, `@label`, `@description` for a reference type, then attribute names and end roles |
 | `import_seed_csv` | importSeedCsv | `id`, `csv`, `mode` (`merge` default, or `replace`), `apply` (false: a dry run), `expectedHash` | the preview: `added`, `changed` (before and after), `removed`, `blocked` (rows other seeds reference, kept), `ignoredHeaders`, `applied`, `hash` |
 | `reference_type_usage` | getReferenceTypeUsage | `id` of a reference type | `usages`: attribute, owner, domain, collection, required and the effective storage per database |
-| `tag_usage` | getTagUsage | optional `package` (a domain; the global vocabulary without it) | `{ package, vocabulary, strict, tags }`, each tag `{ tag, declared, uses, elements, examples }`: the tags the vocabulary declares and the undeclared ones used in its scope, with their uses there; remove or rename them everywhere with `apply_batch` `retag` |
-| `validate` | validate | `elementIds` (optional scope), `includeReferrers`, `includeScriptRules` (default `true`: the script rules of `extensions/rules/` run, their findings are `x/<id>`), `against` (a model snapshot id, or a folder holding another copy of the project, relative to the server's current directory; the editor's assistant takes snapshot ids only: compares the whole model with that baseline, without `elementIds`) | the report: diagnostics with rule ids, file, JSON pointer, line and column; counts. With `against`, a change since the baseline that no migration fact explains is MQ4102, a stale fact MQ4103, baseline objects whose owners have errors, or whose files did not load, are skipped with MQ4109; a value that names nothing is `bad-request` |
-| `list_validation_rules` | listValidationRules | | the built-in rules, ordered by id: `id`, `defaultSeverity`, `description`, `family` (the hundreds group, such as `MQ72xx`) and `familyLabel`, `canBeOff` (false for MQ1xxx), `quickFix` (the batch operation that fixes a finding, when the rule has one); override a severity with `validation.rules` through `save_settings` |
+| `tag_usage` | getTagUsage | `package` (a domain; the global vocabulary without it), `tag`, `cursor`, `limit` (1 to 1000), all optional | a summary, `{ package, vocabulary, strict, tags, next }`, each tag `{ tag, declared, uses, examples }` in key order: the tags the vocabulary declares and the undeclared ones used in its scope, with their uses there and up to five names of the elements that hold them; the whole list unless `limit` or `cursor` pages it. With `tag`: `{ package, tag, declared, uses, elements, next }`, the ids of the elements that hold it in pages, in id order (a tag the scope neither declares nor uses is `not-found`). Remove or rename tags everywhere with `apply_batch` `retag` |
+| `validate` | validate | `elementIds` (optional scope), `includeReferrers`, `includeScriptRules` (default `true`: the script rules of `extensions/rules/` run, their findings are `x/<id>`; whole-model rules, `scope: "model"`, run only without `elementIds`), `against` (a model snapshot id, or a folder holding another copy of the project, relative to the server's current directory; the editor's assistant takes snapshot ids only: compares the whole model with that baseline, without `elementIds`) | the report: diagnostics with rule ids, file, JSON pointer, line and column; counts. With `against`, a change since the baseline that no migration fact explains is MQ4102, a stale fact MQ4103, baseline objects whose owners have errors, or whose files did not load, are skipped with MQ4109; a value that names nothing is `bad-request` |
+| `list_validation_rules` | listValidationRules | `family` (such as `MQ41xx`), `ids` (exact rule ids), `query` (text in the id or description, ignoring case), `cursor`, `limit` (1 to 1000, default 100), all optional, AND | none given: a summary, `{ total, families: [{ family, familyLabel, rules, first, last }] }` in id order; else one page `{ items, next }` of full entries in id order: `id`, `defaultSeverity`, `description`, `family` (the hundreds group, such as `MQ72xx`) and `familyLabel`, `canBeOff` (false for MQ1xxx), `quickFix` (the batch operation that fixes a finding, when the rule has one); override a severity with `validation.rules` through `save_settings` |
 | `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views, sequences, `routines` (parameters and result with native types, language, body, `dependsOn`), `types` (database types with `isCreated` and `nativeName`), `objects` (SQL objects with `objectKind`, `phase`, `dependsOn` and body), `queries` (parameters, sources, the select list with each field's inferred type, the trees as the file writes them, collections with their correlation keys, `sql` for the database's dialect and `uses`) and `schemas` (`name`, `isDefault`, `isDeclared`). The database, each schema, table, column, view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry: `displayName`, `pluralName`, `description`, `stereotypes` (keys), `tags`, `category` (id), `properties` (merged with the stereotypes' defaults) and `generation`; a synthesized table without an overlay, or a synthesized column without an overlay entry, has none, whatever its entity or attribute carries. The database also gives `quoting`, `maxIdentifierLength`, `byConvention` and `packages`; a column its `default`, `sequenceId`, `dbTypeId` (the database type its native type names), `collation`, `comment` and `computedStored`. A new database with nothing mapped has no tables |
 | `preview_binding_sql` | getBindingSql | `entity` (id), `binding` (the binding's id, `entity.bindings[i].id`), `dialect` (the binding's database's when absent), `placeholder` (`@` default, `:` or `$`) | `{ preview: { entityId, bindingId, database, dialect, select, selectByKey, insert, update, delete }, diagnostics }`: each statement `{ sql, parameters }`, or null when the binding does not have it (a read-only binding has no insert, update or delete; no key fields, no selectByKey). `select` reads every row with the constants as a filter (and without soft-deleted rows; a query source is a derived table), `insert` writes the fields and constants without the columns the database fills and returns generated keys (`RETURNING`, `OUTPUT INSERTED`, or `SELECT LAST_INSERT_ID()` on MySQL), `update` sets the updatable fields by key with the constants in the where clause, `delete` deletes by key or runs the soft-delete update. Parameters are named after the fields; `$` numbers them after a query source's own. `preview` is null on a model with errors; an unknown binding is `not-found` (`not-a-binding`) |
 | `get_materialize_status` | getMaterializeStatus | `database` (id) | `{ database, databaseName, entities: [{ id, name, package, projected, table }], sources: [{ id, kind, name, schema, origin, boundBy: [{ entity, entityName, binding, constants }] }] }`: the entities with no binding to the database (`projected`: the database still projects a table for it, by convention or a mapping element), and its designed and imported tables and its views with the entities bound to each (none means no entity reads it; several are told apart by their constants) |
@@ -293,10 +295,11 @@ changes for the user to review (`propose_changes`) instead.
 | `get_settings` | getSettings | | `maquettiste.json`: typed settings, canonical `json`, `hash` |
 | `save_settings` | saveSettings | `settings` (whole document), `expectedHash` | the save result |
 | `format_model` | formatModel | `paths` (repo-relative model files; default every model file) | `{ formatted, skipped, refused, total }`: the files rewritten in canonical form (MQ1003 then goes away; `maquettiste.json` also loses the retired `commit` flag, MQ1010); content does not change; a path that is not a model file fails with `bad-request` and nothing is written |
-| `plan` | startPlan, run to completion | `packs`, `force`, `handEdits` (`fail`, `overwrite`, `skip`), `jobs`, `against` (a model snapshot id, or a folder holding another copy of the project, relative to the server's current directory: the schema diff runs from that baseline instead of the committed physical snapshots, which the apply leaves alone) | `{ outcome, plan }`, the plan without its per-unit list (as a plan job's `planResult`), with `counts` of every file kind and `unitsRendered` / `unitsSkipped` by reason; files left alone because they are identical (`unchanged`) or were not rendered (`not-rendered`) are only counted. The plan stores `against` (a folder as its full path); a value that names nothing is `bad-request` |
+| `plan` | startPlan, run to completion | `packs`, `units` (`<pack>/<unit>`, or a unit id only one run pack has), `elements` (element ids, never names; a synthesized table's id is `<entityId>@<databaseId>`), `force`, `handEdits` (`fail`, `overwrite`, `skip`), `jobs`, `against` (a model snapshot id, or a folder holding another copy of the project, relative to the server's current directory: the schema diff runs from that baseline instead of the committed physical snapshots, which the apply leaves alone) | `{ outcome, plan }`, the plan without its per-unit list (as a plan job's `planResult`), with `counts` of every file kind and `unitsRendered` / `unitsSkipped` by reason; files left alone because they are identical (`unchanged`) or were not rendered (`not-rendered`) are only counted. The plan stores `against` (a folder as its full path); a value that names nothing is `bad-request`. `units` and `elements` limit the plan (values of one OR, the two AND; see "Scoped generation" under Semantics): it holds the selected units only, the plan stores both, and its apply writes only their files |
 | `get_plan` | getPlan | `planId`, `units` | a stored plan with every file the packs produce, each with what apply does to it (`added`, `modified`, `deleted`; `unchanged`, `not-rendered` and `kept` are left alone; the hand-edit kinds); with `units` true, every unit with its pack, unit, template, element, `reason`, `causes` and `skipped` |
 | `get_plan_diff` | getPlanDiff | `planId`, `path` | the unified diff text of one planned file |
 | `apply_plan` | startApply, run to completion | `planId` | the apply result (as an apply job's `applyResult`); a plan made `against` a baseline opens it again (`stale` when it changed, `bad-request` when it no longer opens) |
+| `generate` | (CLI `generate`) | `packs`, `units`, `elements`, `against`, `force`, `handEdits`, `jobs` as for `plan`; `noWait` (`true`: `busy` at once when another run holds the run lock) | renders and writes in one run, storing no plan: `{ outcome, unitsRendered, unitsSkipped, filesWritten, filesDeleted, packs: [{ pack, counts, files: [{ path, kind }], more }], diagnostics, moreDiagnostics }`. Each pack that changed something has its files counted by kind (only the kinds that occur), its first 50 paths in path order and `more` for the rest; files left alone as `unchanged` or `not-rendered` are not listed. At most 100 diagnostics, errors first, and `moreDiagnostics` counts the others. No run id or timings. Any other outcome is a tool error with the same fields: `invalid` (units without errors may have written their files), `conflicts`, `busy`, `failed`; a baseline that names nothing is `bad-request` |
 | `get_pack` | getPack | `pack` | pack.json as a document with its `hash` (for `save_pack`), the parameters (default, project value, schema), every file with its hash, role and users, and the diagnostics |
 | `save_pack` | savePack | `pack`, `document` (the whole pack.json), `expectedHash` | the write result; written in canonical form; a schema failure (MQ6001, MQ6021) writes nothing |
 | `save_pack_settings` | savePackSettings | `pack`, `settings` (`enabled`, `output`, `parameters`), `expectedHash` (the settings hash) | the settings save result; only `packs.<pack>` of `maquettiste.json` changes |
@@ -308,13 +311,13 @@ changes for the user to review (`propose_changes`) instead.
 | `delete_pack_file` | deletePackFile | `pack`, `path`, `expectedHash` | the delete result; refused while a unit names the file or a template includes it |
 | `delete_pack` | deletePack | `pack`, `expectedHash` (the pack.json hash from `get_pack`) | the removal result: `files` deleted from `.maquettiste/templates/<pack>/`, the `packs.<pack>` settings entry removed (`settingsHash`), and `untracked`, the generated files the pack's manifests recorded, which stay on disk and are no longer tracked |
 | `rename_pack` | renamePack | `pack`, `name` (the new name: lowercase letters and digits separated by single hyphens), `expectedHash` (the pack.json hash from `get_pack`), `updateHints` (default `true`) | the rename result: `from`, `to`, the new pack.json `hash`, `files` moved from `.maquettiste/templates/<pack>/` to `.maquettiste/templates/<name>/`, the `packs.<pack>` settings entry moved to `packs.<name>` with its values (`settingsHash`), `tracked`, the generated files whose manifest entries moved so they stay tracked, `hints`, the elements whose generation hints name the old pack, and `hintsUpdated`, the ones moved to the new name in one model batch after the rename (`updateHints`, default `true`; a refused batch leaves the rename in place and adds a warning); a name that is taken or not a pack name is `invalid` and changes nothing |
-| `list_extension_files` | listExtensionFiles | | the files of `.maquettiste/extensions/`: custom property schemas (`<name>.json`, kind `schema`) and script rules (`rules/<name>.js`, kind `rule`), each with size, hash and what is wrong with it on its own (MQ5004 for an invalid schema, MQ5002 or MQ5003 for a rule script that does not load, with line and column) |
+| `list_extension_files` | listExtensionFiles | | the files of `.maquettiste/extensions/`: custom property schemas (`<name>.json`, kind `schema`) and script rules (`rules/<name>.js`, kind `rule`), each with size, hash and what is wrong with it on its own (MQ5004 for an invalid schema, MQ5002 or MQ5003 for a rule script that does not load, with line and column, MQ5005 for one that declares `let` or `var` at its top level), and for a rule script its `rules`: `{ id, severity, wholeModel }`, `wholeModel` true for a rule registered with `scope: "model"` |
 | `read_extension_file` | getExtensionFile | `path` (under `extensions/`) | the text and hash of one schema or rule script |
-| `write_extension_file` | putExtensionFile | `path`, `text`, `expectedHash` (`new` creates) | the write result; a schema that is not JSON or fails `extension.json` is `invalid` (MQ5004) and nothing is written, a valid one is written in canonical form (`text` is what was written); a rule script is written as sent and loaded alone in the sandbox, its syntax error or registration without an id returned in `diagnostics` (MQ5002 with line and column) |
+| `write_extension_file` | putExtensionFile | `path`, `text`, `expectedHash` (`new` creates) | the write result; a schema that is not JSON or fails `extension.json` is `invalid` (MQ5004) and nothing is written, a valid one is written in canonical form (`text` is what was written); a rule script is written as sent and loaded alone in the sandbox, its syntax error or registration without an id returned in `diagnostics` (MQ5002 with line and column), as is the warning MQ5005 for a top-level `let` or `var` |
 | `move_extension_file` | moveExtensionFile | `from`, `to`, `expectedHash` | the move result; the target must not exist and keeps the kind (`<name>.json` or `rules/<name>.js`) |
 | `delete_extension_file` | deleteExtensionFile | `path`, `expectedHash` | the delete result |
 | `get_template_context` | getTemplateContext | `pack`, `unit` | what the unit's templates can use: the globals, the members of the model and of the scope's records, the helpers |
-| `preview_unit` | previewTemplate | `pack`, `unit`, `elementId`, `overlay` (path to unsaved text), `unitOverride` | each rendered file's output path and text, the diagnostics and the keys the render read; nothing is written; an element outside the unit's scope (none for an `each` unit, another kind, one its selector does not return, any for a `model` unit) renders nothing and returns MQ6026, which names the kind the template expects; only that unit is rendered, for that element, and no unit is planned; a unit whose one render covers the whole model (`for: model`), a database or a locale renders all of it, so ask for it when its output is what you need |
+| `preview_unit` | previewTemplate | `pack`, `unit`, `elementId`, `overlay` (path to unsaved text), `unitOverride` | each rendered file's output path and text (a copy unit's binary file has `binary: true` and empty text), the diagnostics and the keys the render read; nothing is written; an element outside the unit's scope (none for an `each` unit, another kind, one its selector does not return, any for a `model` unit) renders nothing and returns MQ6026, which names the kind the template expects; only that unit is rendered, for that element, and no unit is planned; a unit whose one render covers the whole model (`for: model`), a database or a locale renders all of it, so ask for it when its output is what you need |
 | `unit_paths` | unitPaths | `pack`, `unit`, `elementIds` (at most 20), `limit` | without `elementIds`: how many elements the unit plans (`count`) and the elements themselves (`elements`: id, name, kind, up to `limit`, default 200), rendering nothing; with `elementIds`: those elements rendered for their output paths, with their root and whether the writer allows them, each path naming its element (`elementName`: an element's name, a table as `customers (billing)`, a locale's tag) and `elementKind`; more than 20 is `bad-request`. `wide` is true for a unit whose one render covers the whole model, a database or a locale: its paths come with `preview_unit`. MQ6020 also flags an output pattern with no code span over several elements |
 | `get_pack_outputs` | getPackOutputs | `pack` | the files the pack's manifest records: path, unit, element, root, mode (`overwrite`, `regions`, `once`, `block`) and state on disk (intact, edited, missing; a block by its lines) |
 | `explain_unit` | getPlanUnit, explainUnit | `planId` and `key` (a unit of a stored plan), or `pack`, `unit`, `elementId` (any unit and element) | the reason (`new`, `forced`, `inputs`, `outputs`, `unchanged`, or why it does not run: `pack-disabled`, `not-selected`, `scope`, `filter`, `skip-hint`, `selector`, ...; a rendered block unit whose target file is missing without `createFile` answers `target-missing`), the causes and a one-sentence summary |
@@ -335,12 +338,21 @@ as `overlay` to try it before saving), fix the diagnostics, check where the file
 `get_plan` with `units` true, and `explain_unit` for the reason each unit renders or does not. The files are the ones under
 `.maquettiste/templates/<pack>/` that the command line, the editor and git all see.
 
-The extension file tools edit the model's own extension points the way the editor's Extensions screen does: custom property
-schemas (`extensions/<name>.json`, the properties the inspector shows for a kind or a stereotype) and script rules
-(`extensions/rules/<name>.js`, each registering `maquettiste.rule({ id, severity, kinds, check(element, model, report) })`). Write a
-rule with `write_extension_file`, read its syntax check in the answer, then run `validate`: script rules run by default
-(`includeScriptRules`), their findings are `x/<id>`, and a rule file that does not load is MQ5002 on that file with line and
-column while the other rule files keep running. docs/user-guide.md, "Extending the model and the generation", has the contract.
+The extension file tools edit the model's own extension points the way the editor's Extensions screen does: custom
+property schemas (`extensions/<name>.json`, the properties the inspector shows for a kind or a stereotype) and script
+rules (`extensions/rules/<name>.js`, each registering
+`maquettiste.rule({ id, severity, kinds, check(element, model, report) })`, or a whole-model rule with `scope: "model"`
+and `check(model, report)`, whose `report` names the `element` of each finding). Write a rule with
+`write_extension_file`, read its syntax check in the answer, then run `validate`: script rules run by default
+(`includeScriptRules`), their findings are `x/<id>`, and a rule file that does not load is MQ5002 on that file with line
+and column while the other rule files keep running. A whole-model rule runs once per `validate` without `elementIds`,
+never on a save. A rule's `model` also finds documents by stereotype, tag, own property key or qualified name
+(`withStereotype`, `withTag`, `withProperty`, `byQualifiedName`). Each rule file runs in its own scope with the globals
+frozen first, so a rule cannot call a function of another file; a file that declares `let` or `var` at its top level is
+MQ5005 and its results are never kept. The server keeps each rule's result per element in memory and runs it again only
+when what it read changed. For CI, `limits.scriptTimeoutMs: 0` turns the scripts' wall clock off so findings do not
+depend on the machine's load; the statement limit still bounds every call. docs/user-guide.md, "Extending the model and
+the generation", has the contract.
 
 The process tools mirror the process operations of the editor API (phase-3-design.md section 4.4) and the `maquettiste process`
 verbs. A process argument is an id, a name or a model path. Simulation keeps no state on the server: an agent holds the input list,
@@ -401,13 +413,30 @@ live in locale shards, not in element files: read them with `get_translations`, 
 
 ### Semantics
 
-- **Hashes.** `get_element` and `get_settings` return the file's `hash` (the API's ETag). `save_element`, `delete_element`,
-  `save_settings` and batch updates and deletes take it as `expectedHash` (the API's `If-Match`). `save_element`,
-  `delete_element` and `save_settings` without it fail with `precondition-required`; a batch operation without it fails with
-  `invalid` (rule MQ1002 on `/operations/<n>`), like applyBatch's 422.
-- **Conflicts never overwrite.** When the file changed since it was read (by the editor, git, or the agent's own file edits), the
-  save writes nothing and fails with `conflict`: `current` and `hash` are the disk version and `submitted` is the document the caller
-  sent, so both versions are in hand to merge and retry with the new hash.
+- **Hashes.** `get_element` and `get_settings` return the file's `hash` (the API's ETag). `save_element`,
+  `patch_element`, `delete_element`, `save_settings` and batch updates and deletes take it as `expectedHash` (the API's
+  `If-Match`). `save_element`, `patch_element`, `delete_element` and `save_settings` without it fail with
+  `precondition-required`; a batch operation without it fails with `invalid` (rule MQ1002 on `/operations/<n>`), like
+  applyBatch's 422.
+- **Conflicts never overwrite.** When the file changed since it was read (by the editor, git, or the agent's own file
+  edits), the save writes nothing and fails with `conflict`: `current` and `hash` are the disk version and `submitted`
+  is the document (or the patch) the caller sent, so both versions are in hand to merge and retry with the new hash.
+- **Patches.** `patch_element` changes part of one element without sending the whole document: `patch` is an RFC 6902
+  JSON Patch, an array of `add`, `remove`, `replace`, `move`, `copy` and `test` operations with RFC 6901 paths, applied
+  in order to the file document `get_element` returns in `json` (`$schema` included). The operations apply all or
+  nothing, and the result is saved like a one-operation `apply_batch` update with `expectedHash`: the same conflict
+  check, validation, renames and migration facts (the answer's `facts`). The `id` is an id, never a qualified name, so a
+  name is `not-found`. Values inside the patch may name other elements as a batch does, and a new sub-element sent
+  without an id gets a minted one, listed in `ids`; keep the ids of sub-elements you move or re-send, as the "keep its
+  id" refusal (MQ1014) applies. Numbers in `test` compare by value, so `1` and `1.0` are equal. An unknown `op`, a
+  missing member, a `path` or `from` that does not resolve, an array index out of range, a `test` that fails, or a
+  change to `/id` or `/kind` is `invalid` with one MQ1016 whose pointer is `/<operation index>` in the patch (`""` when
+  the patch is not an array of operations, such as an object or a number), and nothing is written. Every other
+  diagnostic points into the document, as `save_element`'s do: a name in the patch that does not resolve (MQ1012 to
+  MQ1015) or a value that does not read (MQ1002) is reported at its place in the patched document, never in the batch
+  the patch is saved as. Example, on billing: `{ "id": "<notes table id>", "expectedHash": "<hash>", "patch": [ { "op":
+  "test", "path": "/columns/3/name", "value": "body" }, { "op": "replace", "path": "/columns/3/name", "value": "content"
+  } ] }` renames the column and records its rename fact.
 - **Referenced deletes.** `delete_element` refuses while other elements reference the element (`referenced`, with `referrers`),
   unless `resolution` is `remove-references`, which clears optional references (a required reference then makes the delete
   `invalid`, with a readable MQ2001 first), or `delete-dependents`, which also removes the part of a referrer that needs the
@@ -423,6 +452,20 @@ live in locale shards, not in element files: read them with `get_translations`, 
   `apply_plan` writes exactly the planned bytes, or fails with `stale` (`staleUnits`, `stalePaths`) writing nothing when
   the model, the templates, a planned file or the plan's `against` baseline changed since. Generation runs one at a
   time: the run lock is shared with every other process on the repo (a second run waits).
+- **Generate in one call.** `generate` renders and writes in one run under the run lock, as `maquettiste generate`
+  does, so it renders once, nothing can change in between, and no plan is stored. Its answer is a summary by pack. Use
+  `plan`, `get_plan_diff` and `apply_plan` when someone should read the files before they are written.
+- **Scoped generation.** `units` and `elements` on `plan` and `generate` limit a run to some units. A unit value is
+  `<pack>/<unit>` or a unit id that exactly one run pack has; an element value is an id, never a name, and never selects
+  a unit that runs once for the whole model. Values of one argument OR, the two arguments AND. The run writes only the
+  selected units' files and still deletes the files they no longer produce, so `elements: ["<deleted id>"]` removes
+  that element's outputs; every other file, manifest entry and unit state stays as the last run left it. A scoped run
+  never advances the schema snapshots, so a selected unit that reads the schema diff (`sql-ddl/migration`, which a
+  database id selects with every other `each database` unit) fails with MQ6033 and keeps its files; regenerate one
+  database's schema with `units: ["sql-ddl/schema"], elements: ["<database id>"]`. A unit value naming a pack the run
+  lacks, a unit no run pack has or a unit id several run packs have is MQ6032; both errors make the run `invalid`. A
+  filter that selects no unit and no earlier output is the warning MQ6034 and generates nothing. A scoped plan stores
+  its filters, and `apply_plan` plans again with them, so the units it left out never make it stale.
 - **Fresh reads.** Every model read (and every element write) starts with a stat rescan of the model folder, so files edited
   behind the server are seen; settings reads and saves check the settings file on disk; `get_plan` and `get_plan_diff` read the
   stored plan.
@@ -542,6 +585,45 @@ seed, without one id:
 With `"dryRun": true` the answer shows the three files as diffs, the ten ids it would mint and the diagnostics the
 change adds or removes, and writes nothing; `maquettiste model apply payment-methods.json --dry-run` prints the same.
 
+### Seeds by name
+
+A seed's `columns`, its `key` and its row cells may be given by name too, in `create_element`, `save_element`,
+`patch_element` and `apply_batch` (and the editor's save and batch endpoints). The file still stores ids and one cell
+per column. The engine works in a fixed order:
+
+1. In a batch, the names and placeholders above resolve first, at `target`, `columns` and `key` as at any reference
+   site: `"@column:billing.currency.code"` or `"$code"` becomes the column's id.
+2. Then a bare name left in `columns` or `key` resolves among the seed's target: a table's columns by name (and for
+   `key` its unique constraints), an entity's attributes (its own and inherited) and the roles of its to-one relation
+   ends, a relation's end roles and attributes, a reference type's attributes. These are the names the seed CSV headers
+   use. A bare name never starts with `@` or `$`, so the two steps never claim the same entry. Outside a batch only this
+   step runs. In a batch the target may be a table an earlier operation creates.
+
+`code`, `label` and `description` are keywords only when the target is a reference type. For a table, an entity or a
+relation they are names like any other, so a table column named `code` is stored as its id.
+
+A row may give its cells as a `values` object instead of an array: `{ "values": { "code": "EUR", "label": "Euro" } }`.
+Its keys are the `columns` entries as the body writes them; a column left out is null. A key that is no entry is
+MQ1002 at `/rows/<i>/values/<key>`. It is not added as a column, because that would shift the cells of every other row.
+
+A name that finds nothing, or more than one child of the target, is MQ1002 at `/columns/<i>` or `/key`, naming the
+target and each candidate's id; nothing is written. A seed on the billing model, with its table created in the same
+batch:
+
+```json
+{ "operations": [
+  { "op": "create", "as": "$cur", "element": { "kind": "table", "name": "currency", "database": "@database:main",
+      "columns": [ { "name": "code", "type": "string", "length": 3, "nullable": false },
+                   { "name": "label", "type": "string", "length": 40, "nullable": false } ],
+      "primaryKey": { "columns": [ "@column:billing.currency.code" ] } } },
+  { "op": "create", "element": { "kind": "seed", "name": "currencies", "target": "$cur", "columns": [ "code", "label" ],
+      "rows": [ { "values": { "code": "EUR", "label": "Euro" } }, { "values": [ "USD", "US dollar" ] } ] } }
+] }
+```
+
+Templates find the same seed by name with `seed_named "currencies"` (or `"Billing.currencies"` when its file states a
+package) and one of its rows with `seed_row`; see the helpers in the pack-writing guide (`packs/README.md`).
+
 ### Errors
 
 A failure is a tool error (`isError: true`), never a crash of the server. Its text is a problem object: the API's `code`, `status`
@@ -552,7 +634,7 @@ and `title`, an optional `detail`, and the fields of the body the API returns wi
 | `bad-request` | 400 | a missing, wrongly typed or malformed argument, found by the tool's own checks | `detail` |
 | `precondition-required` | 428 | no `expectedHash` | |
 | `not-found`, `not-a-database` | 404 | no such element, plan, planned file or schema | `detail` for schemas (the known names) |
-| `conflict` | 409 | the file changed since it was read | `current`, `hash`, `submitted` (saves), `items` (batches) |
+| `conflict` | 409 | the file changed since it was read | `current`, `hash`, `submitted` (saves and patches), `items` (batches) |
 | `referenced` | 409 | a delete refused by references | `referrers` |
 | `invalid` | 422 | the change, batch, model or templates have errors | `diagnostics` (and `items` for batches) |
 | `stale` | 409 | a plan's inputs changed | `staleUnits`, `stalePaths` |
@@ -574,13 +656,38 @@ The index, the bulk read and the resolved read answer different questions:
   statecharts, as flat records. Use it to feed another system the model as templates read it.
 - `get_model_kinds` says what there is to iterate: each kind with its count, per package with `by: "package"`.
 
-Every paged read orders its rows by kind, then name, then id (ordinal), so the order is stable. Pass the `next` of a page as
-`cursor` to get the following one, until `next` is null; a cursor is opaque and encodes the last position read. A change to the
-model between two pages does not fail the read: the next page starts after that position in the changed model, so an element
+Three tools answer a summary by default, so an agent's first calls stay small, and give the full content on request:
+
+- `get_project` names the packs with their unit counts, counts the pack diagnostics by severity and names the
+  extensions. `sections` adds the typed settings (`settings`), the pack manifests and their diagnostics (`packs`) or the
+  extension schemas (`extensions`).
+- `list_validation_rules` with no argument answers the rule families with their counts and first and last ids. `family`,
+  `ids` or `query` answer the full entries that match, in pages.
+- `tag_usage` answers each tag with its use count and up to five element names, without element ids. `tag` answers the
+  ids of the elements that hold one tag, in pages.
+
+```json
+list_validation_rules {}
+{ "total": ..., "families": [
+  { "family": "MQ10xx", "familyLabel": "Model files", "rules": 16, "first": "MQ1001", "last": "MQ1016" }, ... ] }
+
+list_validation_rules { "family": "MQ41xx", "limit": 2 }
+{ "items": [ { "id": "MQ4101", "defaultSeverity": "error", "description": "...", "family": "MQ41xx", ... }, ... ],
+  "next": "..." }
+
+tag_usage { "tag": "billing" }
+{ "package": null, "tag": "billing", "declared": true, "uses": 3,
+  "elements": [ "01J92P0V0ETQKXXP951CMMNHH3", ... ], "next": null }
+```
+
+Every paged read orders its rows by kind, then name, then id (ordinal), so the order is stable; the rule pages go by
+rule id, the tag pages by tag key or, with `tag`, by element id. Pass the `next` of a page as `cursor` to get the
+following one, until `next` is null; a cursor is opaque and encodes the last position read. A change to the model
+between two pages does not fail the read: the next page starts after that position in the changed model, so an element
 renamed in between may be read twice or not at all, and every other element is read once. The editor API serves the same
-pages (`GET /api/model/elements`, `/api/model/resolved`, `/api/model/kinds`, and `/api/model/index` with `limit` or `cursor`,
-whose next page comes in a `Link` header), and so does the command line (`maquettiste model export` and `model stats`, in
-docs/user-guide.md, "The command line"). The examples below run on the billing fixture.
+pages (`GET /api/model/elements`, `/api/model/resolved`, `/api/model/kinds`, and `/api/model/index` with `limit` or
+`cursor`, whose next page comes in a `Link` header), and so does the command line (`maquettiste model export` and `model
+stats`, in docs/user-guide.md, "The command line"). The examples below run on the billing fixture.
 
 ### Every entity's documents, trimmed
 

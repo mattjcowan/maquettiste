@@ -325,14 +325,17 @@
       ],
       "properties": {
         "scriptTimeoutMs": {
+          "description": "The wall-clock limit of one script call, in milliseconds. 0 turns the clock off, so results do not depend on the machine's load (use it in CI); the statement limit still bounds every call, and a regular expression match keeps a 250 ms bound.",
           "type": "integer",
           "default": 2000,
-          "minimum": 1
+          "minimum": 0
         },
         "scriptStatements": {
+          "description": "The statement limit of one script call, at most 2,000,000,000.",
           "type": "integer",
           "default": 5000000,
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 2000000000
         },
         "scriptRecursion": {
           "type": "integer",

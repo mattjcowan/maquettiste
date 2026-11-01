@@ -33,6 +33,12 @@ golden tree).
   reports its own cancellation as `ScriptAbortException`) is rethrown as cancellation, never MQ6006, and `RenderAsync` checks the
   token again after each result arrives, so a unit rendered while the cancel was arriving is never yielded. `InputHash = Hasher.InputHash(StaticHash, sorted read keys)`. Progress: one `Render` update per
   unit, in order, with the first output path (else the unit key).
+- **Copy units** (next-phase-1-design.md section 5.4). A `copy` unit renders no template: each file its sources match
+  comes from the shared matcher (`Planning.CopySources`), never from disk, and lands at the unit's output folder
+  (rendered; the pack's output base when absent) plus its path after the literal base of the first pattern that matched
+  it. Tokens are replaced in that relative path and in a text file's bytes in one left-to-right pass, longest token
+  first; a file that is not text (not strict UTF-8, or holding a NUL) is copied byte for byte. MQ6030 or MQ6031 from the
+  matcher fails the unit, and two sources on one path are MQ6005.
 - **Template cache.** Per run (`EngineServices.CreateRenderer()`), so nothing outlives a run in a long-lived host. Each
   (pack root, path) is read and hashed once per run (UTF-8 strict, BOM stripped, CRLF/CR to LF); each
   (pack, path, file hash, delimiters) is parsed once, whatever the number of threads; failures are cached, so every unit of a
@@ -61,7 +67,8 @@ golden tree).
   per object and per key list.
 - **Helpers** (all section 9 names): `pascal camel snake kebab upper_snake` (`Text/Casing`), `pluralize singularize` (`Text/Inflector`
   with `inflection` overrides, records `s:inflection`; an element argument returns its `PluralName`/`Name`), `type_of`,
-  `sql_quote`, `sql_literal`, `indent`, `dedent`, `escape_md`, `escape_xml`, `escape_json`, `json`, `has_stereotype`, `has_tag`,
+  `sql_quote`, `sql_literal`, `indent`, `dedent`, `escape_md`, `escape_xml`, `escape_json`, `json` (with optional
+  fields), `array_index_of`, `array_find`, `table_named`, `column_named`, `toposort`, `has_stereotype`, `has_tag`,
   `in_category` (these three take any `RAnnotated`: a conceptual element, a database, schema, table, column, view or sequence), `lookup`, `banner`, `file`,
   `query_sql` and `query_collection_sql` (2026-10-02: a query's or a collection's statement from `QuerySql`, for the database's
   dialect or the one given, with `{ placeholder, lists }` options; they record the top query and fail the unit with MQ4029 when an
@@ -117,7 +124,27 @@ golden tree).
 - A failure with no Scriban position names the unit's main template (or no file when the main template did not load).
 - Scriban's date members (`d.year`, `d.hour`, …) render empty: the member filter admits no CLR members outside the
   template-visible types, `DateTime` included. Use `date.to_string` with a pattern.
-- `json` refuses model objects (MQ6006) rather than walking the object graph; pass plain values such as `element.properties`.
+- `json` refuses model objects (MQ6006) rather than walking the object graph; pass plain values such as
+  `element.properties`. With fields (`json table ["name", "columns.name"]`, next-phase-1-design.md section 5.5) it
+  projects snake_case member paths through the template accessors, so every read is recorded: shared prefixes merge, a
+  path through a list applies per item, keys are ordinal, a map's missing key is null, and a path ending on a resolved
+  object or naming a member a resolved object lacks is MQ6006.
+- Model helpers (section 5.5): `array_index_of <list> [<path>] <value>` and `array_find <list> <path> <value>` read
+  members through `MemberValue` (recorded) and compare as `array.sort` orders (a resolved object, list or map equals
+  only itself). `table_named "<schema>.<name>" [<database or name>]` matches resolved table names (a synthesized table
+  has no stored name): without a schema part, no schema or the database's default schema; with one, a schemaless table
+  counts as in the default schema. It records **`n:table:<text>`**, which `DependencyHasher` hashes over the sorted
+  `<database id>/<table key>` of every table the text matches in any database, so renaming or moving a table into or out
+  of the name renders the unit again; two matches in the searched databases are MQ6006. A database given by name records
+  `k:database` and every database. `column_named` records the table, its columns' membership and the hit. `toposort` is
+  a stable Kahn sort (the earliest free item next; a cycle releases the earliest item left), matching edge ends by
+  identity or by value (numbers by value). `PlanExplainer` words the key "The tables named <text>".
+- The null contract (section 5.5): an absent value reads as `null`, never `""`, so a template tests `x != null`
+  (sql-ddl's `t.native_name != null`). `display_name`, `plural_name` and `description_of` on a database object (a table,
+  column, view, ...), which is not translated, give its own file's text and record the object's read; `null` when unset.
+  `pluralize` of an element falls back to the inflector.
+- Pack helpers registered with `{ plain: true }` take plain copies of their arguments (Scripting/README.md, "Plain
+  helpers"): `RenderRun.CallHelper` passes the unwrapped arguments as before, and the sandbox copies them.
 - Maps keep their keys as written (`pack.params.useRecords`, `data.attributeCount`); only CLR property names are snake_cased.
 - A pair companion is rendered on every run; writing it only when missing is the writer's owned-file rule (section 12.3).
 - An escaped text span keeps its leading and trailing whitespace, `-` and `~` outside the escape block (Scriban reads

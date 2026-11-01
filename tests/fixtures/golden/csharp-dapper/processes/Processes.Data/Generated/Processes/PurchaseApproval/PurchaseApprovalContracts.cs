@@ -161,7 +161,7 @@ public sealed partial record PurchaseApprovalPurchaseApprovalAuditRecord
     /// <summary>signed, completed, refused (an attempt the gate did not count) or discarded (the source state was exited).</summary>
     public string Outcome { get; init; } = "";
 
-    /// <summary></summary>
+    /// <summary>Audit attribute costCentre.</summary>
     public string? CostCentre { get; init; }
 
     /// <summary>The typed record of a runtime audit record.</summary>

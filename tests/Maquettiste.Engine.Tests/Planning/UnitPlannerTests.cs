@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -151,8 +152,12 @@ public sealed class UnitPlannerTests
                 null => formatters.Length == 0 ? "none" : CanonicalForm.Json(formatters),
                 var name => CanonicalForm.Json(formatters.First(f => f.Name == name)),
             };
-            var templates = HashBuilder.Of(u.Template, PackFiles.Hash(pack.RootPath, u.Template) ?? DependencyHasher.Absent, null, null);
-            var expected = HashBuilder.Of("mq-unit-1", EngineVersion.Value, pack.Name, pack.Manifest.Version, CanonicalForm.Json(u), pack.ScriptsHash,
+            var templates = HashBuilder.Of(u.Template, PackFiles.Hash(pack.RootPath, u.Template!) ?? DependencyHasher.Absent, null, null);
+            // A unit outside mode copy hashes as it did before copy units: its empty 'sources' and 'tokens' are left out.
+            var unitJson = JsonSerializer.SerializeToNode(u, EngineJson.Options)!.AsObject();
+            Assert.True(unitJson.Remove("sources") && unitJson.Remove("tokens"));
+            var expected = HashBuilder.Of("mq-unit-1", EngineVersion.Value, pack.Name, pack.Manifest.Version,
+                CanonicalForm.Json(JsonSerializer.SerializeToElement(unitJson, EngineJson.Options)), pack.ScriptsHash,
                 CanonicalForm.Json(pack.Parameters), pack.Settings.Output, formatterField, templates, "p/u:é" + new string('x', 2000));
             Assert.Equal(expected, UnitPlanner.StaticHash(pack, u, formatters, "p/u:é" + new string('x', 2000)));
         }

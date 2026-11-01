@@ -798,7 +798,7 @@ internal sealed partial class ResolveRun
 
     /// <summary>
     /// Fills the annotations of a physical object (database, table, view, sequence) from its own file: display and plural names as
-    /// written (empty when unset, with no fallback), then what <see cref="FillAnnotations(RAnnotated, ElementBase, string?, DependencySet)"/>
+    /// written (<see langword="null"/> when unset, with no fallback), then what <see cref="FillAnnotations(RAnnotated, ElementBase, string?, DependencySet)"/>
     /// fills. Without a file (a synthesized table with no overlay, a key sequence) the annotations stay empty. The caller adds the
     /// file's own <c>e:</c> key.
     /// </summary>
@@ -826,8 +826,8 @@ internal sealed partial class ResolveRun
     {
         if (part is null)
             return;
-        r.DisplayName = part.DisplayName ?? "";
-        r.PluralName = part.PluralName ?? "";
+        r.DisplayName = part.DisplayName;
+        r.PluralName = part.PluralName;
         FillAnnotations(r, part, sidecar, deps);
     }
 

@@ -9,9 +9,10 @@ namespace Maquettiste.Engine.Planning;
 
 /// <summary>
 /// The one set of rules for what a pack file is (GU2), shared by <see cref="PackLoader"/> and the editor's pack read: scripts
-/// (<c>scripts</c>, or every <c>*.js</c> when the list is empty), type maps (<c>types/*.json</c>), the units' templates and
-/// companions, literal <c>include</c>s (partials), and the unit-level parse pass: MQ6003 for a template or partial a unit reaches,
-/// MQ6025 for a file no unit reaches that does not parse.
+/// (<c>scripts</c>, or every <c>*.js</c> no copy unit copies when the list is empty), type maps (<c>types/*.json</c> no copy unit
+/// copies), the units' templates and companions, literal <c>include</c>s (partials), the files copy units copy (<c>copy-source</c>,
+/// never parsed or loaded), and the unit-level parse pass: MQ6003 for a template or partial a unit reaches, MQ6025 for a file no
+/// unit reaches that does not parse.
 /// </summary>
 internal static partial class PackFileRoles
 {
@@ -31,12 +32,44 @@ internal static partial class PackFileRoles
                 .Where(p => !p.Split('/').Any(s => s.StartsWith('.')))
                 .Order(StringComparer.Ordinal)];
 
-    /// <summary>The pack's scripts: its <c>scripts</c> list, or every <c>*.js</c> file when the list is empty.</summary>
+    /// <summary>
+    /// The files the pack's copy units copy: every path a copy unit's well-formed source patterns match. They are copied as they
+    /// are, so they are never default scripts or type maps (next-phase-1-design.md section 5.4).
+    /// </summary>
     /// <param name="paths">The pack's files (<see cref="EnumerateFiles"/>).</param>
     /// <param name="manifest">The manifest, when it parses.</param>
+    /// <returns>The copied paths.</returns>
+    public static IReadOnlySet<string> CopiedFiles(IReadOnlyList<string> paths, PackManifest? manifest)
+    {
+        var copied = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var unit in manifest?.Units ?? [])
+        {
+            if (unit.Mode == OutputMode.Copy)
+                copied.UnionWith(CopySources.Matching(paths, unit.Sources));
+        }
+
+        return copied;
+    }
+
+    /// <summary>
+    /// The pack's scripts: its <c>scripts</c> list, or every <c>*.js</c> file no copy unit copies when the list is empty. A file the
+    /// list names is a script even when a copy unit also copies it.
+    /// </summary>
+    /// <param name="paths">The pack's files (<see cref="EnumerateFiles"/>).</param>
+    /// <param name="manifest">The manifest, when it parses.</param>
+    /// <param name="copied">The files copy units copy (<see cref="CopiedFiles"/>).</param>
     /// <returns>Pack-relative script paths, in load order.</returns>
-    public static IReadOnlyList<string> Scripts(IReadOnlyList<string> paths, PackManifest? manifest) =>
-        manifest is { Scripts.Count: > 0 } ? manifest.Scripts : [.. paths.Where(p => p.EndsWith(".js", StringComparison.Ordinal))];
+    public static IReadOnlyList<string> Scripts(IReadOnlyList<string> paths, PackManifest? manifest, IReadOnlySet<string> copied) =>
+        manifest is { Scripts.Count: > 0 }
+            ? manifest.Scripts
+            : [.. paths.Where(p => p.EndsWith(".js", StringComparison.Ordinal) && !copied.Contains(p))];
+
+    /// <summary>The pack's type maps: the <c>types/&lt;target&gt;.json</c> files (<see cref="IsTypeMap"/>) no copy unit copies.</summary>
+    /// <param name="paths">The pack's files (<see cref="EnumerateFiles"/>).</param>
+    /// <param name="copied">The files copy units copy (<see cref="CopiedFiles"/>).</param>
+    /// <returns>Pack-relative type map paths, ordinal.</returns>
+    public static IReadOnlyList<string> TypeMaps(IReadOnlyList<string> paths, IReadOnlySet<string> copied) =>
+        [.. paths.Where(p => IsTypeMap(p) && !copied.Contains(p))];
 
     /// <summary>Roles and users of every file of a pack (GU2: the loader's rules for scripts and type maps, the units' templates,
     /// literal <c>include</c>s).</summary>
@@ -60,11 +93,17 @@ internal static partial class PackFileRoles
 
         var used = paths.ToDictionary(p => p, _ => new SortedSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
         var named = new HashSet<string>(StringComparer.Ordinal);
+        // A copy unit names no template: its sources' matches are copy sources, which no rename or delete check counts as used.
+        var copied = CopiedFiles(paths, manifest);
         foreach (var unit in manifest?.Units ?? [])
         {
-            if (used.TryGetValue(unit.Template, out var users))
-                users.Add("unit:" + unit.Id);
-            named.Add(unit.Template);
+            if (unit.Template is { } template)
+            {
+                if (used.TryGetValue(template, out var users))
+                    users.Add("unit:" + unit.Id);
+                named.Add(template);
+            }
+
             if (unit.Companion is { } companion)
             {
                 named.Add(companion.Template);
@@ -73,11 +112,13 @@ internal static partial class PackFileRoles
             }
         }
 
-        var scripts = new HashSet<string>(Scripts(paths, manifest), StringComparer.Ordinal);
+        var scripts = new HashSet<string>(Scripts(paths, manifest, copied), StringComparer.Ordinal);
+        var typeMaps = new HashSet<string>(TypeMaps(paths, copied), StringComparer.Ordinal);
         var included = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (path, text) in texts)
         {
-            if (scripts.Contains(path) || path == "pack.json" || IsTypeMap(path))
+            // A copy source is copied as it is, so its text is no template and its includes reach nothing.
+            if (scripts.Contains(path) || path == "pack.json" || typeMaps.Contains(path) || (copied.Contains(path) && !named.Contains(path)))
                 continue;
             foreach (Match match in IncludePattern().Matches(text))
             {
@@ -91,11 +132,11 @@ internal static partial class PackFileRoles
         }
 
         return [.. paths.Select(p => new PackFileInfo(p, hashes[p].Size, hashes[p].Hash,
-            p == "pack.json" ? "manifest" : scripts.Contains(p) ? "script" : IsTypeMap(p) ? "type-map" : named.Contains(p) ? "template"
-            : included.Contains(p) ? "partial" : "other", [.. used[p]]))];
+            p == "pack.json" ? "manifest" : scripts.Contains(p) ? "script" : typeMaps.Contains(p) ? "type-map" : named.Contains(p) ? "template"
+            : included.Contains(p) ? "partial" : copied.Contains(p) ? "copy-source" : "other", [.. used[p]]))];
     }
 
-    /// <summary>A type map: <c>types/&lt;target&gt;.json</c> directly in the pack's <c>types</c> folder.</summary>
+    /// <summary>A type map's path: <c>types/&lt;target&gt;.json</c> directly in the pack's <c>types</c> folder (one no copy unit copies, <see cref="TypeMaps"/>).</summary>
     public static bool IsTypeMap(string path) => path.StartsWith("types/", StringComparison.Ordinal) && path.Count(c => c == '/') == 1
         && path.EndsWith(".json", StringComparison.Ordinal);
 

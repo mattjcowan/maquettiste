@@ -46,13 +46,19 @@ A pack is a folder `.maquettiste/templates/<name>/` whose `pack.json` has the sa
 - **Parameters** are defaults; a project overrides them in `maquettiste.json` under `packs.<name>.parameters`, and templates read
   them as `pack.params.<name>` (keys keep their spelling). Values the whole project shares (a base namespace, a company name) are
   the project's `properties` (Settings › General), which every pack's templates read as `project.properties.<key>`.
-- **`for`** is `model` (one unit), `each package|entity|relation|enum|value object|table|reference type|seed|locale|process|actor|scenario`
-  (one unit per element; `table` covers every database), or `select <name>` with a JavaScript selector. There is no `each database`: register a selector that returns
-  `model.databases`, as `sql-ddl` does, and the unit's element is then `database`.
-- **`where`** filters by tags, stereotypes, categories, packages, `database` (tables in it, entities and relations mapped there;
-  it also picks `mapping`), `abstract` and a JavaScript filter. On `each process`, `each actor` and `each scenario` it takes tags,
-  stereotypes, categories and packages only (a scenario's package is its process's; an actor has none): `database` and `abstract`
-  are refused when the pack loads (MQ6001).
+- **`for`** is `model` (one unit), `each package|entity|attribute|relation|enum|value object|database|table|reference
+  type|seed|locale|process|actor|scenario` (one unit per element; `table` covers every database), or `select <name>`
+  with a JavaScript selector. `each database` runs once per database (element `database`), as the database units of
+  `sql-ddl` and `seed-data` do; a selector that returns `model.databases` does the same. `each attribute` runs once
+  per attribute declared in a model file, at its entity, relation, value object or reference type (element
+  `attribute`): never an inherited copy, a stereotype's added attribute or a promoted relation's copy.
+- **`where`** filters by tags, stereotypes, categories, packages, `database` (tables in it, entities and relations
+  mapped there; it also picks `mapping`), `abstract` and a JavaScript filter. On `each process`, `each actor` and `each
+  scenario` it takes tags, stereotypes, categories and packages only (a scenario's package is its process's; an actor
+  has none): `database` and `abstract` are refused when the pack loads (MQ6001). On `each database` it reads the
+  database file and `database` matches the name; on `each attribute` it reads the attribute's own tags, stereotypes and
+  category, its owner's package, and `database` keeps the attributes of entities and relations mapped there (a value
+  object's or reference type's only when a database of that name exists). Both refuse `abstract`.
 - **`output`** is a Scriban expression rendered with the unit's context, relative to `packs.<name>.output`. Never repeat that
   prefix: `init` sets it (`db` for sql-ddl, `src/Generated` for csharp-dapper), and a project may move it.
 
@@ -126,12 +132,38 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
   `state_paths` and `final`, null when the replay stopped before the step) and `outcome`.
 - `schema_diff.<database>` when the pack sets `"usesSchemaDiff": true`: `from_revision`, `to_revision`, `is_empty` and ordered
   `tables` (`kind` added/renamed/altered/dropped, `columns`, constraint and index changes).
+- Definitions: `model.stereotypes` (one per key, by key: `key`, `name`, `applies_to`, the `attributes` it adds,
+  `default_properties`, `icon`, `color`), `model.tag_vocabularies` (the global one first, then each domain's: `package`,
+  `strict`, `definitions` with `key`, `description`, `color`) and `model.category_trees` (the global one first:
+  `package`, `roots`, `categories` depth-first). A category, wherever a template meets it, has `parent`, `children`,
+  `order` and `description`.
+- A value the model file leaves out is null, never `""`: a database object's `display_name` without one, a view's,
+  routine's or SQL object's `body` without text for the dialect, a database type's `native_name` the dialect cannot
+  create. Compare with `null`, not `""`. Worked-out values keep their rule (an element's display name falls back to its
+  name).
 
 Helpers: `pascal camel snake kebab upper_snake`, `pluralize singularize`, `type_of <attribute|column> "<target>"` (a
 `types/<target>.json` map or a SQL dialect; for a dialect, a value of a custom type that declares a native type for it takes that one), `sql_quote`, `sql_literal`, `indent`, `escape_xml`/`escape_json`/`escape_md`, `json`,
-`has_stereotype`, `has_tag`, `in_category` (each takes an element, a database, schema, table, column, view or sequence), `lookup`, `banner "<comment prefix>"`, `file`, `state_path <state>` (a state's dotted path) and
+`has_stereotype`, `has_tag`, `in_category` (each takes an element, a database, schema, table, column, view or
+sequence), `lookup`, `banner "<comment prefix>"`, `file`, `state_path <state>` (a state's dotted path),
 `iso_duration_ms <text>` (an ISO 8601 duration in milliseconds, a month 30 days and a year 365 as the interpreter counts them; a
-text that is not a duration fails the unit with MQ6006). Partials are templates included with
+text that is not a duration fails the unit with MQ6006), `seed_named "<name>"` (the seed with that name, `currencies`,
+or with its package path when its file states one, `Billing.currencies`; null when none has it, MQ6006 when two share
+it; renaming a seed into or out of the name renders the unit again) and `seed_row <seed or name> <key>` (the row
+whose key is the code of a reference type's seed, the key columns' value of a table seed or the key attributes' value
+of an entity's seed, a list in key order for a key of several parts; null when none has it),
+`table_named "<schema>.<name>" [<database or its name>]` (the resolved table, or null; without a schema part a table
+with no schema or in the default schema; every database is searched unless one is given, and two matches are MQ6006;
+renaming a table into or out of the name renders the unit again), `column_named <table> "<name>"`, `array_index_of
+<list> [<member path>] <value>` (the first index whose item, or its member at a snake_case path such as `"name"` or
+`"type.kind"`, equals the value, else -1; numbers compare by value and strings ordinally), `array_find <list> <member
+path> <value>` (that item, else null), `toposort <items> <edges>` (the items ordered so that each `[before, after]`
+pair's first end comes first, ends matching items by identity or value; ties keep input order and a cycle releases the
+earliest item left) and `json <value> [<fields>]` (with fields, the named member paths such as `["name",
+"columns.name"]` as an object, a path through a list applied per item; a path ending on a resolved object or naming no
+member is MQ6006). These names, and the template variables `database` and `attribute`, are taken: a pack helper
+registered under one of them is MQ6013.
+Partials are templates included with
 `{{ include "_name.scriban" arg }}` (paths relative to the pack folder); a partial that only defines functions is a good home for
 shared logic.
 
@@ -164,7 +196,7 @@ Every `*.js` in the pack (or the `scripts` list) runs in a sandbox with no CLR, 
 
 ```js
 maquettiste.helper("join_path", (...parts) => parts.filter((p) => p).join("/"));
-maquettiste.selector("databases", (model) => model.databases);
+maquettiste.selector("roots", (model) => model.entities.filter((e) => !e.base));
 maquettiste.transform("summary", (entity) => ({ count: entity.attributes.length }));
 ```
 
@@ -172,6 +204,17 @@ Helpers are called like built-ins (`{{ join_path a b }}`) and also work in `outp
 read-only proxies that record dependencies; they are much slower than template access, so walk large parts of the model in the
 template and pass plain strings or numbers to scripts (see `dependency_spec` and `ddl_order` in `sql-ddl`). Scripts run under
 `limits.scriptTimeoutMs` (2 s by default) per call.
+
+A helper that must read many members can ask for plain copies instead:
+`maquettiste.helper("columns_json", fn, { plain: true })` receives frozen plain objects and arrays, bounded by member
+hops. A model object passed as an argument (or inside a list or map argument) has every member; the model objects its
+members hold are copied the same way; theirs are only `{ id, kind }`. So a table argument has `table.columns[0].name`
+and `table.database.name`, and `table.columns[0].attribute` is `{ id, kind }`. A copy has no `hasStereotype`, `hasTag`
+or `find` (read `stereotypes` and `tags`), everything copied counts as read, and the model itself cannot be passed
+(MQ6016).
+
+An absent value is null in scripts as in templates, never `""`: a database object's `displayName` without one, a view's
+`body` without text for the dialect.
 
 ### 7. Type maps
 

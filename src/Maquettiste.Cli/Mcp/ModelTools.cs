@@ -84,6 +84,42 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         return FromOutcome(result.Outcome, result, element);
     }, ct);
 
+    /// <summary>Patches an element if its file still has the expected hash (next-phase-1-design.md section 5.2).</summary>
+    /// <param name="id">The element id.</param>
+    /// <param name="patch">The RFC 6902 patch: an array, or a string holding one.</param>
+    /// <param name="expectedHash">The hash the caller read.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The save result with the batch's ids and facts.</returns>
+    [McpServerTool(Name = "patch_element", Title = "Patch element", Destructive = true, OpenWorld = false)]
+    [Description("Changes part of an element with an RFC 6902 JSON Patch instead of the whole document, if its file still has expectedHash. The patch is an array of operations applied in order to the file document as get_element returns it in json ($schema included), all or nothing: {\"op\":\"add\",\"path\":\"/columns/-\",\"value\":{...}}, {\"op\":\"remove\",\"path\":\"/attributes/2\"}, {\"op\":\"replace\",\"path\":\"/description\",\"value\":\"...\"}, {\"op\":\"move\",\"from\":...,\"path\":...}, {\"op\":\"copy\",\"from\":...,\"path\":...} and {\"op\":\"test\",\"path\":...,\"value\":...} (numbers compare by value, so 1 and 1.0 are equal). The result is saved like save_element: conflict check, validation, renames and migration facts. Values may name other elements as apply_batch does (@table:billing.notes), and the engine mints the id of a new sub-element sent without one (keep the ids of the ones you move or re-send: dropping one and adding one with the same name and no id is MQ1014). An unknown op, a path or from that does not resolve, an index out of range, a failed test or a change to /id or /kind is invalid with MQ1016 at /<operation index>, and nothing is written. The answer is save_element's (hash, changes, diagnostics, facts: the migration facts the save recorded) plus ids ({names, minted}, as apply_batch). A conflict returns the disk version (current, hash) and the submitted patch.")]
+    public Task<CallToolResult> PatchElement(
+        [Description("The element id (an id, not a qualified name); required.")] string? id = null,
+        [Description("The RFC 6902 patch: an array of operations, or a string holding one; required.")] JsonElement? patch = null,
+        [Description("The hash returned by get_element (or by the last save); required.")] string? expectedHash = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(id))
+            return BadRequest("id is required.");
+        if (string.IsNullOrEmpty(expectedHash))
+            return Problem("precondition-required", 428, "expectedHash is required: read the element with get_element first.");
+        // Any JSON value goes to the engine, which refuses a patch that is not an array of operations (MQ1016 at "").
+        var text = patch?.ValueKind switch
+        {
+            null or JsonValueKind.Undefined or JsonValueKind.Null => null,
+            JsonValueKind.String => patch.Value.GetString(),
+            _ => patch.Value.GetRawText(),
+        };
+        if (text is null)
+            return BadRequest("patch is required: an array of RFC 6902 operations, or a string holding one.");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var result = await _store.PatchAsync(id, Encoding.UTF8.GetBytes(text), expectedHash, ChangeSource.Cli, ct).ConfigureAwait(false);
+        var answer = Node(result.Items[0] with { Facts = result.Outcome == SaveOutcome.Saved ? result.Facts : null })!;
+        answer["ids"] = JsonSerializer.SerializeToNode(result.Ids, JsonOptions);
+        if (result.Outcome == SaveOutcome.Conflict)
+            answer["submitted"] = Submitted(text);
+        return FromOutcome(result.Outcome, answer, null);
+    }, ct);
+
     /// <summary>Creates an element (createElement).</summary>
     /// <param name="element">The document.</param>
     /// <param name="ct">Cancellation.</param>
@@ -365,6 +401,8 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
 
     /// <summary>Plans generation (startPlan, run to completion).</summary>
     /// <param name="packs">Pack names.</param>
+    /// <param name="units">Units to run: <c>pack/unit</c> or a bare unit id.</param>
+    /// <param name="elements">Element ids whose units run.</param>
     /// <param name="force">Whether to ignore the unit cache.</param>
     /// <param name="handEdits">A hand-edit policy.</param>
     /// <param name="jobs">Parallelism.</param>
@@ -372,9 +410,11 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The plan result, without the per-unit list.</returns>
     [McpServerTool(Name = "plan", Title = "Plan generation", ReadOnly = false, Destructive = false, OpenWorld = false)]
-    [Description("Plans generation without touching the repository: renders what changed and stores the plan. Returns the outcome and the plan (id, packs, file changes with their actions, counts of every kind, units rendered and skipped by reason, diagnostics). Files identical to the disk (unchanged) or not rendered because their inputs did not change (not-rendered) are only counted; get_plan lists every file. Read diffs with get_plan_diff, then apply with apply_plan. against diffs the schema (migrations) from a baseline model for this plan instead of the committed physical snapshots, which the apply then leaves as they are; apply_plan opens the same baseline again, and a baseline changed in between makes the plan stale.")]
+    [Description("Plans generation without touching the repository: renders what changed and stores the plan. Returns the outcome and the plan (id, packs, file changes with their actions, counts of every kind, units rendered and skipped by reason, diagnostics). Files identical to the disk (unchanged) or not rendered because their inputs did not change (not-rendered) are only counted; get_plan lists every file. Read diffs with get_plan_diff, then apply with apply_plan. units and elements limit the plan to some units (values of one OR, the two AND): the apply writes only their files and leaves every other file and unit as it is, and still deletes the files those units no longer produce; an unknown or ambiguous unit is MQ6032 (invalid), a selected unit that reads the schema diff (sql-ddl/migration) is MQ6033 (invalid: migrations render only in a run without units and elements), a filter that selects nothing is the warning MQ6034. against diffs the schema (migrations) from a baseline model for this plan instead of the committed physical snapshots, which the apply then leaves as they are; apply_plan opens the same baseline again, and a baseline changed in between makes the plan stale.")]
     public Task<CallToolResult> Plan(
         [Description("Only these packs (default: every enabled pack).")] string[]? packs = null,
+        [Description("Only these units: \"<pack>/<unit>\" (sql-ddl/schema), or a unit id that exactly one run pack has (default: every unit).")] string[]? units = null,
+        [Description("Only the units of these elements, by id, never by name (a synthesized table's id is <entityId>@<databaseId>); units that run once for the whole model never match (default: every element).")] string[]? elements = null,
         [Description("Render every unit, ignoring the unit cache.")] bool force = false,
         [Description("fail, overwrite or skip: overrides the project's hand-edit policy.")] string? handEdits = null,
         [Description("Parallelism for this run (at least 1).")] int? jobs = null,
@@ -383,29 +423,17 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     {
         if (jobs is < 1)
             return BadRequest("jobs must be at least 1.");
-        HandEditPolicy? policy;
-        switch (handEdits)
-        {
-            case null or "":
-                policy = null;
-                break;
-            case "fail":
-                policy = HandEditPolicy.Fail;
-                break;
-            case "overwrite":
-                policy = HandEditPolicy.Overwrite;
-                break;
-            case "skip":
-                policy = HandEditPolicy.Skip;
-                break;
-            default:
-                return BadRequest($"handEdits must be fail, overwrite or skip, not '{handEdits}'.");
-        }
+        if (!TryHandEdits(handEdits, out var policy))
+            return BadRequest($"handEdits must be fail, overwrite or skip, not '{handEdits}'.");
+        if (ScopeProblem(units, elements) is { } scope)
+            return BadRequest(scope);
 
         var request = new GenerationRequest
         {
             Mode = GenerationMode.Apply,
             Packs = packs is { Length: > 0 } ? packs : null,
+            Units = Scope(units),
+            Elements = Scope(elements),
             Force = force,
             Jobs = jobs,
             HandEdits = policy,
@@ -470,6 +498,37 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         return result.Outcome == RunOutcome.Succeeded ? Ok(result) : FromRun(result.Outcome, result, ct);
     }, ct);
 
+    /// <summary>Reads a <c>handEdits</c> argument: empty or absent is the project's policy.</summary>
+    /// <param name="value">The argument.</param>
+    /// <param name="policy">The policy, or <see langword="null"/> for the project's.</param>
+    /// <returns><see langword="false"/> for a value that is not <c>fail</c>, <c>overwrite</c> or <c>skip</c>.</returns>
+    private static bool TryHandEdits(string? value, out HandEditPolicy? policy)
+    {
+        policy = value switch
+        {
+            null or "" => null,
+            "fail" => HandEditPolicy.Fail,
+            "overwrite" => HandEditPolicy.Overwrite,
+            "skip" => HandEditPolicy.Skip,
+            _ => null,
+        };
+        return value is null or "" or "fail" or "overwrite" or "skip";
+    }
+
+    /// <summary>The problem with the <c>units</c> and <c>elements</c> filters of a scoped run, or <see langword="null"/>.</summary>
+    /// <param name="units">The unit values.</param>
+    /// <param name="elements">The element ids.</param>
+    /// <returns>The detail of the <c>bad-request</c>, or <see langword="null"/>.</returns>
+    private static string? ScopeProblem(string[]? units, string[]? elements) =>
+        units?.Any(string.IsNullOrWhiteSpace) == true ? "units takes \"<pack>/<unit>\" or a unit id; an empty value names nothing."
+        : elements?.Any(string.IsNullOrWhiteSpace) == true ? "elements takes element ids; an empty value names nothing."
+        : null;
+
+    /// <summary>A scoped run's filter values, each once in the order given; empty or absent is no filter.</summary>
+    /// <param name="values">The values.</param>
+    /// <returns>The filter, or <see langword="null"/>.</returns>
+    private static string[]? Scope(string[]? values) => values is { Length: > 0 } ? [.. values.Distinct(StringComparer.Ordinal)] : null;
+
     private CallToolResult Ok<T>(T value) => Text(JsonSerializer.Serialize(value, JsonOptions), isError: false);
 
     private static CallToolResult Text(string text, bool isError) => new() { Content = [new TextContentBlock { Text = text }], IsError = isError ? true : null };
@@ -524,8 +583,11 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         };
     }
 
-    /// <summary>A plan or apply that did not succeed: the problem for the run outcome with the result's fields.</summary>
-    private CallToolResult FromRun<T>(RunOutcome outcome, T result, CancellationToken ct)
+    /// <summary>
+    /// A plan, apply or generate run that did not succeed: the problem for the run outcome with the result's fields. A run that writes
+    /// as it renders (<c>generate</c>) passes its own <paramref name="invalidTitle"/>, since the units without errors may have written.
+    /// </summary>
+    private CallToolResult FromRun<T>(RunOutcome outcome, T result, CancellationToken ct, string? invalidTitle = null)
     {
         if (outcome == RunOutcome.Cancelled)
             ct.ThrowIfCancellationRequested();
@@ -533,7 +595,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         return outcome switch
         {
             RunOutcome.Stale => Problem("stale", 409, "The plan is stale: its inputs or planned files changed since it was made; nothing was written. Plan again.", body: body),
-            RunOutcome.Invalid => Problem("invalid", 422, "The model or the templates have errors; nothing was written. See diagnostics.", body: body),
+            RunOutcome.Invalid => Problem("invalid", 422, invalidTitle ?? "The model or the templates have errors; nothing was written. See diagnostics.", body: body),
             RunOutcome.Conflicts => Problem("conflicts", 409, "Generated files were edited by hand; see the changes and the hand-edit policy.", body: body),
             RunOutcome.Drift => Problem("drift", 409, "Generated files are stale, missing or orphaned.", body: body),
             RunOutcome.Busy => Problem("busy", 503, "Another generation run holds the run lock.", body: body),
@@ -569,6 +631,19 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
             await _log.WriteLineAsync($"maquettiste mcp: {name} failed: {e.GetType().FullName}: {e.Message}".AsMemory(), CancellationToken.None).ConfigureAwait(false);
             await _log.FlushAsync(CancellationToken.None).ConfigureAwait(false);
             return Problem("internal", 500, "The server failed to answer this request.", e.Message);
+        }
+    }
+
+    /// <summary>A submitted text as JSON when it parses, else as the string it is.</summary>
+    private static JsonNode? Submitted(string text)
+    {
+        try
+        {
+            return JsonNode.Parse(text);
+        }
+        catch (JsonException)
+        {
+            return JsonValue.Create(text);
         }
     }
 

@@ -190,9 +190,16 @@ public sealed record SkipResult(IReadOnlyList<PlannedUnit> ToRender, IReadOnlyLi
 
 /// <summary>One rendered file.</summary>
 /// <param name="Path">The repo-relative path with <c>/</c> separators.</param>
-/// <param name="Text">The rendered text.</param>
+/// <param name="Text">The rendered text; a copy unit's text file carries its output text, a binary one <c>""</c>.</param>
 /// <param name="Role">The file's role.</param>
-public sealed record RenderedFile(string Path, string Text, FileRole Role);
+public sealed record RenderedFile(string Path, string Text, FileRole Role)
+{
+    /// <summary>A copy unit's output bytes, written as they are; null for rendered text. Never serialized.</summary>
+    [JsonIgnore] public byte[]? Bytes { get; init; }
+
+    /// <summary>A copy unit's file that is not text (not strict UTF-8, or holding a NUL); its Text is empty.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool Binary { get; init; }
+}
 
 /// <summary>The result of rendering one unit.</summary>
 /// <param name="Unit">The unit.</param>

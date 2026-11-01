@@ -24,6 +24,7 @@ describe("unitScope", () => {
       ["each relation", "relation", "relation", "relation"],
       ["each enum", "enum", "enum", "enum"],
       ["each value object", "value object", "value-object", "value_object"],
+      ["each database", "database", "database", "database"],
       ["each table", "table", null, "table"],
       ["each reference type", "reference type", "reference-type", "reference_type"],
       ["each seed", "seed", "seed", "seed"],

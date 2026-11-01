@@ -225,8 +225,17 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
 
     /// <summary>Converts a deny glob to an anchored regular expression: <c>**</c> spans folders, <c>*</c> and <c>?</c> stay in one segment.</summary>
     /// <param name="pattern">The glob; a leading <c>/</c> is ignored and a trailing <c>/</c> means the folder and everything under it.</param>
-    /// <returns>The expression.</returns>
-    internal static Regex GlobToRegex(string pattern)
+    /// <returns>The expression, case-insensitive.</returns>
+    internal static Regex GlobToRegex(string pattern) =>
+        new(GlobPattern(pattern), RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Singleline, TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// The text of the anchored expression <see cref="GlobToRegex"/> builds, without its options, so a caller can compile it with
+    /// others (copy units match pack files case-sensitively, next-phase-1-design.md section 5.4).
+    /// </summary>
+    /// <param name="pattern">The glob.</param>
+    /// <returns>The expression's text.</returns>
+    internal static string GlobPattern(string pattern)
     {
         var glob = pattern.Replace('\\', '/').TrimStart('/');
         var folder = glob.EndsWith('/');
@@ -265,7 +274,7 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
         }
 
         sb.Append(folder ? "(?:/.*)?$" : "$");
-        return new Regex(sb.ToString(), RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Singleline, TimeSpan.FromSeconds(1));
+        return sb.ToString();
     }
 
     private static bool MatchesPathOrAncestor(Regex regex, string path)

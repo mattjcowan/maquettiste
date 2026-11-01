@@ -960,7 +960,10 @@ public static class ResolvedRecords
         return result;
     }
 
-    /// <summary>The projection of one resolved model: the database name to id map the per-database dictionaries need.</summary>
+    /// <summary>
+    /// The projection of one resolved model: the database name to id map the per-database dictionaries need. A conceptual object always
+    /// has its display and plural names (the resolver falls back to the name and the inflector), so the records read them as set.
+    /// </summary>
     private sealed class Projection(ResolvedModel model)
     {
         private readonly Dictionary<string, string> _databaseIds = model.Databases.GroupBy(d => d.Name, StringComparer.Ordinal)
@@ -969,7 +972,7 @@ public static class ResolvedRecords
         private string DatabaseId(string name) => _databaseIds.GetValueOrDefault(name) ?? name;
 
         public PackageRecord Package(RPackage p) => new(p.Id, "package", p.Name, p.Package?.Id ?? p.Parent?.Id, p.QualifiedName, Ids(p.Children),
-            Ids(p.Entities), Ids(p.ValueObjects), Ids(p.Enums), Ids(p.Relations), p.DisplayName, p.PluralName, p.Description, p.Tags, p.Category?.Id,
+            Ids(p.Entities), Ids(p.ValueObjects), Ids(p.Enums), Ids(p.Relations), p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id,
             Keys(p.Stereotypes), Plain(p.Properties), p.Generation);
 
         public EntityRecord Entity(REntity e)
@@ -984,7 +987,7 @@ public static class ResolvedRecords
                 [.. e.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new EntityMappingRecord(m.Value.Database.Id, m.Value.Table.Key, m.Value.Inheritance,
                     m.Value.DiscriminatorColumn?.Key, Plain(m.Value.DiscriminatorValue), [.. m.Value.Columns.Select(c => new ColumnMappingRecord(c.AttributePath, c.Column.Key))]))],
                 e.IsPromoted, e.PromotedFrom?.Id, Ids(e.Seeds), e.Lifecycle?.Id,
-                e.DisplayName, e.PluralName, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation,
+                e.DisplayName!, e.PluralName!, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation,
                 [.. e.Bindings.OrderBy(b => b.Key, StringComparer.Ordinal).Select(b => BindingViews.Record(b.Value))]);
         }
 
@@ -995,35 +998,35 @@ public static class ResolvedRecords
             a.Derived is { } d ? new DerivedRecord(d.Expression, d.Stored) : null, a.Sensitive, Validation(a.Validation), a.Order,
             key is not null && key.Contains(a.Id), a.IsInherited, a.IsVirtual, a.FromStereotype?.Key,
             a.Reference is { } r ? new ReferenceUsageRecord(r.Type.Id, r.IsCollection, r.Required, Ids(r.Allowed), r.DefaultRow?.Id, Storage(r.Storage)) : null,
-            a.DisplayName, a.PluralName, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);
+            a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);
 
         public RelationRecord Relation(RRelation r) => new(r.Id, "relation", r.Name, r.Package?.Id, r.InverseName, r.RelationKind, r.Cardinality, r.AllowDuplicates,
             [.. r.Ends.Select(e => new EndRecord(e.Id, e.Entity.Id, e.Role, e.Navigation, e.Min, e.Max, e.IsMany, e.OnDelete, e.Ordered, e.Opposite?.Id))],
             [.. r.Attributes.Select(a => Attribute(a))],
             [.. r.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new RelationMappingRecord(DatabaseId(m.Key), m.Value.Shape, m.Value.ForeignKey?.Name,
                 m.Value.JunctionTable?.Key, m.Value.PromotedEntity?.Id))],
-            Ids(r.Seeds), r.DisplayName, r.PluralName, r.Description, r.Tags, r.Category?.Id, Keys(r.Stereotypes), Plain(r.Properties), r.Generation);
+            Ids(r.Seeds), r.DisplayName!, r.PluralName!, r.Description, r.Tags, r.Category?.Id, Keys(r.Stereotypes), Plain(r.Properties), r.Generation);
 
         public EnumRecord Enum(REnum e) => new(e.Id, "enum", e.Name, e.Package?.Id, e.Flags,
             [.. e.Members.Select(m => new EnumMemberRecord(m.Id, m.Name, m.DisplayName, m.Description, m.Value, m.Code, Plain(m.Properties)))],
-            e.DisplayName, e.PluralName, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation);
+            e.DisplayName!, e.PluralName!, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation);
 
         public ValueObjectRecord ValueObject(RValueObject v) => new(v.Id, "value-object", v.Name, v.Package?.Id, [.. v.Attributes.Select(a => Attribute(a))],
-            v.DisplayName, v.PluralName, v.Description, v.Tags, v.Category?.Id, Keys(v.Stereotypes), Plain(v.Properties), v.Generation);
+            v.DisplayName!, v.PluralName!, v.Description, v.Tags, v.Category?.Id, Keys(v.Stereotypes), Plain(v.Properties), v.Generation);
 
         public ScalarTypeRecord ScalarType(RScalarType s) => new(s.Id, "scalar-type", s.Name, s.Package?.Id, s.Base, s.Length, s.Precision, s.Scale, Validation(s.Validation),
-            s.NativeTypes, s.DisplayName, s.PluralName, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
+            s.NativeTypes, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
 
         public ReferenceTypeRecord ReferenceType(RReferenceType t) => new(t.Id, "reference-type", t.Name, t.Package?.Id, Field(t.Code), Field(t.Label),
             [.. t.Attributes.Select(a => Attribute(a))],
             [.. t.Rows.Select(r => new RowRecord(r.Id, Plain(r.Code), r.Label, r.Description, Plain(r.Values), r.Seed.Id, r.Order))],
             Ids(t.Seeds), Ids(t.UsedBy), Storage(t.Storage),
-            t.DisplayName, t.PluralName, t.Description, t.Tags, t.Category?.Id, Keys(t.Stereotypes), Plain(t.Properties), t.Generation);
+            t.DisplayName!, t.PluralName!, t.Description, t.Tags, t.Category?.Id, Keys(t.Stereotypes), Plain(t.Properties), t.Generation);
 
         public SeedRecord Seed(RSeed s) => new(s.Id, "seed", s.Name, s.Package?.Id, s.Target?.Id,
             [.. s.Columns.Select(c => new SeedColumnRecord(c.Name, c.Kind, c.Attribute?.Id, c.End?.Id))],
             [.. s.Rows.Select(r => new SeedRowRecord(r.Id, r.Order, Plain(r.Values)))],
-            s.DisplayName, s.PluralName, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
+            s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
 
         public ProcessRecord Process(RProcess p) => new(p.Id, "process", p.Name, p.Package?.Id, p.Use, p.Subject?.Id, p.BoundAttribute?.Id, p.BoundEnum?.Id, p.Initial?.Id,
             [.. p.Context.Select(a => Attribute(a))],
@@ -1042,16 +1045,16 @@ public static class ResolvedRecords
                 g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties)))],
             [.. p.Invokes.Select(i => new InvokeRecord(i.Id, i.Name, i.Type, i.Process?.Id, Ids(i.Actors), i.State.Id, i.DisplayName, i.Description, Keys(i.Stereotypes), Plain(i.Properties)))],
             Ids(p.Actors), Ids(p.Scenarios),
-            p.DisplayName, p.PluralName, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation);
+            p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation);
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),
-            a.DisplayName, a.PluralName, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);
+            a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);
 
         public ScenarioRecord Scenario(RScenario s) => new(s.Id, "scenario", s.Name, s.Package?.Id, s.Process.Id, new ScenarioStartRecord(Plain(s.Start.Context), s.Start.At),
             [.. s.Steps.Select(t => new StepRecord(t.Id, t.Index, t.Input, t.Event?.Id, t.Invoke?.Id, t.After, t.AfterMs, t.AfterTicks, t.Actor?.Id, t.Signer, t.Meaning?.Id,
                 t.Reason, Plain(t.Payload), Plain(t.Assume),
                 t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context)) : null, t.Description))],
-            s.Outcome, s.DisplayName, s.PluralName, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
+            s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
 
         private List<StorageChoiceRecord> Storage(IReadOnlyDictionary<string, RStorageChoice> storage) =>
             [.. storage.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => new StorageChoiceRecord(DatabaseId(s.Key), s.Value.Strategy, Plain(s.Value.Options), s.Value.Source,

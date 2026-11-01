@@ -94,8 +94,9 @@ its model store warm and neither reads nor writes the record, so its runs are un
   listing, the outputs decoded only once every input matched. A file that cannot be read, or a path the file system refuses (only a
   record whose trailer was made to match could hold one), makes the replay give way to the full run instead of failing the run. A miss costs about 60 ms on the benchmark repo in a fresh
   process, most of it the thread pool starting, which the load then does not pay.
-- **Against a baseline.** A run with `GenerationRequest.Against` never answers from the record or writes one (the key
-  holds no baseline); an apply run with `ReuseLastRun` deletes it first.
+- **Against a baseline, or scoped.** A run with `GenerationRequest.Against`, `Units` or `Elements` never answers from
+  the record or writes one (the key holds none of them, `LastRun.Serves`); an apply run with `ReuseLastRun` deletes it
+  first.
 - **Recording.** Any other apply run with `ReuseLastRun` first deletes the record, hashes the templates folder (before the packs
   load, so a template changed during the run shows as changed), and after the run writes a new record when the run `Succeeded`, no
   run pack has a non-empty schema diff (saving the snapshot changes what `d:` keys hash, so the next run is not a no-op), no
@@ -298,6 +299,21 @@ and before the path reaches the store, so a manifest write under the real prefix
   the schema diff the run calls `SnapshotStore.Retain` with its databases (none when no pack diffs), so the store does not hold a
   removed or renamed database's snapshot.
 - The diff also runs its capture and unchanged-table check on `EngineOptions.EffectiveParallelism` threads (`SchemaDiff/README.md`).
+
+## Scoped runs (next-phase-1-design.md section 5.6)
+
+- `GenerationRequest.Units` and `Elements` make a `UnitSelection` (`UnitSelection.cs`). When every unit value names its
+  pack, only those packs load (intersected with `Packs`; a pack only a unit names and whose `pack.json` is missing is
+  left out, so the value is MQ6032 rather than the loader's MQ6001). The values resolve against the loaded packs (MQ6032
+  → `Invalid`), and at the end of `PrepareAsync` the plan keeps the selected units only, so skip, render, write, plan
+  capture and plan apply see nothing else; a selection matching no planned unit and no manifest entry is MQ6034 (a
+  warning, an empty plan). A plan stores the filters in its request and `ApplyLockedAsync` plans again with them.
+- `WriteContext.Selection`: the writer keeps every manifest entry of an unselected unit (and counts its path as
+  produced, so another pack's orphan there is not deleted) and carries over the unselected units' states; orphans of
+  selected units are deleted as usual, so selecting a deleted element's id removes its outputs. `AllPacks` is off for a
+  scoped run.
+- `RenderContext.Scoped`: a rendered unit whose keys hold `d:` fails with MQ6033 and keeps its outputs and state. A
+  scoped run prepares no snapshot for saving and never calls `SaveSnapshotsAsync`.
 
 ## Previews (2026-10-05, generation-ui.md section 5.2 "Bounds")
 

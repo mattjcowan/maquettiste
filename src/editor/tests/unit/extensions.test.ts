@@ -42,7 +42,7 @@ const files: ExtensionFile[] = [
     size: 10,
     hash: "b".repeat(64),
     diagnostics: [finding("MQ5002", ".maquettiste/extensions/rules/naming.js", { line: 2 })],
-    rules: [{ id: "x/entity-names", severity: "warning" }],
+    rules: [{ id: "x/entity-names", severity: "warning", wholeModel: false }],
   },
 ];
 
@@ -68,7 +68,7 @@ describe("extension files", () => {
     const written = backend.extensions.write("rules/my-rule.js", ruleTemplate("rules/my-rule.js"), null);
     expect(written.body.outcome).toBe("saved");
     expect(written.body.diagnostics).toEqual([]);
-    expect(backend.extensions.list().files.find((f) => f.path === "rules/my-rule.js")?.rules).toEqual([{ id: "x/my-rule", severity: "warning" }]);
+    expect(backend.extensions.list().files.find((f) => f.path === "rules/my-rule.js")?.rules).toEqual([{ id: "x/my-rule", severity: "warning", wholeModel: false }]);
     expect(backend.model.validate().diagnostics.filter((d) => d.rule === "x/my-rule")).toEqual([]);
   });
 

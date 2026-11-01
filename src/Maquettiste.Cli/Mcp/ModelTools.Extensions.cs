@@ -14,7 +14,7 @@ internal sealed partial class ModelTools
 {
     /// <summary>The extension files (listExtensionFiles).</summary>
     [McpServerTool(Name = "list_extension_files", Title = "Extension files", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The files of .maquettiste/extensions/: custom property schemas (<name>.json, kind schema) and script rules (rules/<name>.js, kind rule), each with size, hash (the expectedHash for write_extension_file, move_extension_file and delete_extension_file) and what is wrong with it on its own: MQ5004 for an invalid schema, MQ5002 or MQ5003 for a rule script that does not load (a syntax error, a rule without an id), with line and column.")]
+    [Description("The files of .maquettiste/extensions/: custom property schemas (<name>.json, kind schema) and script rules (rules/<name>.js, kind rule), each with size, hash (the expectedHash for write_extension_file, move_extension_file and delete_extension_file) and what is wrong with it on its own: MQ5004 for an invalid schema, MQ5002 or MQ5003 for a rule script that does not load (a syntax error, a rule without an id), with line and column, MQ5005 (a warning) for one that declares let or var at its top level. A rule script lists its rules: id, severity and wholeModel (true for a rule registered with scope \"model\", which runs once per whole-model validate).")]
     public Task<CallToolResult> ListExtensionFiles(CancellationToken ct = default) => GuardAsync(async () =>
         Ok(await _store.ListExtensionFilesAsync(ct).ConfigureAwait(false)), ct);
 
@@ -31,7 +31,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Writes one extension file (putExtensionFile).</summary>
     [McpServerTool(Name = "write_extension_file", Title = "Write extension file", Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Writes one extension file if it still has expectedHash; expectedHash 'new' creates a file that must not exist. UTF-8 text, no NUL, at most 1 MB. A schema (<name>.json: name, description, appliesTo { kinds, stereotypes }, properties, required) must pass get_schema's extension schema, else invalid with MQ5004 and nothing written; it is written in canonical form and text returns what was written. A script rule (rules/<name>.js, registering maquettiste.rule({ id, severity, kinds, check(element, model, report) })) is written as sent and loaded alone in the sandbox: a syntax error or a rule without an id comes back in diagnostics (MQ5002 with line and column). Run validate for the rule's x/<id> findings.")]
+    [Description("Writes one extension file if it still has expectedHash; expectedHash 'new' creates a file that must not exist. UTF-8 text, no NUL, at most 1 MB. A schema (<name>.json: name, description, appliesTo { kinds, stereotypes }, properties, required) must pass get_schema's extension schema, else invalid with MQ5004 and nothing written; it is written in canonical form and text returns what was written. A script rule (rules/<name>.js, registering maquettiste.rule({ id, severity, kinds, check(element, model, report) })) is written as sent and loaded alone in the sandbox: a syntax error or a rule without an id comes back in diagnostics (MQ5002 with line and column), as does the warning MQ5005 for a top-level let or var. Run validate for the rule's x/<id> findings.")]
     public Task<CallToolResult> WriteExtensionFile(
         [Description("The path under extensions/; required.")] string? path = null,
         [Description("The whole file text; required.")] string? text = null,

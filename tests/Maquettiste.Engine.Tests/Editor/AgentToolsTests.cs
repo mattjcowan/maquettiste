@@ -61,6 +61,157 @@ public sealed partial class AgentToolsTests
     }
 
     [Fact]
+    public async Task Get_project_answers_a_summary_and_sections_on_request()
+    {
+        await using var r = EditorRepo.Create();
+        var catalog = Catalog(r);
+
+        var summary = JsonNode.Parse((await catalog.CallAsync("get_project", null, Ct)).Text)!.AsObject();
+
+        Assert.Equal("billing", (string?)summary["name"]);
+        Assert.Equal(["extensions", "packs", "settings"], summary["sections"]!.AsArray().Select(n => (string?)n));
+        Assert.Equal(["csharp-dapper", "sql-ddl"], summary["packs"]!.AsArray().Select(p => (string?)p!["name"]).Order(StringComparer.Ordinal));
+        var ddl = summary["packs"]!.AsArray().Single(p => (string?)p!["name"] == "sql-ddl")!;
+        Assert.True((int)ddl["units"]! > 0);
+        Assert.False(string.IsNullOrEmpty((string?)ddl["version"]));
+        Assert.Equal(0, (int)summary["packDiagnosticCounts"]!["errors"]!);
+        Assert.Equal(["retention"], summary["extensions"]!.AsArray().Select(n => (string?)n));
+        Assert.False(string.IsNullOrEmpty((string?)summary["settingsHash"]));
+        Assert.Single(summary["databases"]!.AsArray());
+        foreach (var full in new[] { "settings", "packManifests", "packDiagnostics", "extensionSchemas", "git" })
+            Assert.False(summary.ContainsKey(full), full);
+
+        var settings = JsonNode.Parse((await catalog.CallAsync("get_project", JsonSerializer.SerializeToElement(new { sections = new[] { "settings" } }), Ct)).Text)!.AsObject();
+        Assert.Equal("billing", (string?)settings["settings"]!["name"]);
+        Assert.False(settings.ContainsKey("packManifests"));
+
+        var all = JsonNode.Parse((await catalog.CallAsync("get_project", JsonSerializer.SerializeToElement(new { sections = new[] { "packs", "extensions", "settings" } }), Ct)).Text)!;
+        Assert.Equal(2, all["packManifests"]!.AsArray().Count);
+        Assert.NotNull(all["packManifests"]![0]!["units"]);
+        Assert.NotNull(all["packDiagnostics"]);
+        Assert.Equal("retention", (string?)Assert.Single(all["extensionSchemas"]!.AsArray())!["name"]);
+        Assert.NotNull(all["settings"]);
+
+        var unknown = await catalog.CallAsync("get_project", JsonSerializer.SerializeToElement(new { sections = new[] { "git" } }), Ct);
+        Assert.True(unknown.IsError);
+        Assert.Equal("bad-request", (string?)JsonNode.Parse(unknown.Text)!["code"]);
+    }
+
+    [Fact]
+    public async Task List_validation_rules_summarizes_families_and_pages_rules()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        var catalog = Catalog(r);
+        async Task<JsonNode> CallAsync(object? args)
+        {
+            var answer = await catalog.CallAsync("list_validation_rules", args is null ? null : JsonSerializer.SerializeToElement(args), Ct);
+            Assert.False(answer.IsError, answer.Text);
+            return JsonNode.Parse(answer.Text)!;
+        }
+
+        // No argument: the families, in id order, with their counts and ranges; no description.
+        var summary = await CallAsync(null);
+        Assert.Equal(Diagnostics.RuleCatalog.All.Count, (int)summary["total"]!);
+        var families = summary["families"]!.AsArray();
+        Assert.Equal(Diagnostics.RuleCatalog.All.Count, families.Sum(f => (int)f!["rules"]!));
+        var models = families[0]!;
+        Assert.Equal(("MQ10xx", "Model files", "MQ1001"), ((string)models["family"]!, (string)models["familyLabel"]!, (string)models["first"]!));
+        Assert.Equal("MQ1016", (string)models["last"]!);
+        Assert.Contains(families, f => (string)f!["family"]! == "MQ41xx" && (string)f["familyLabel"]! == "Migrations");
+        Assert.DoesNotContain("description", summary.ToJsonString(), StringComparison.Ordinal);
+
+        // A family: its full entries, one page.
+        var migrations = await CallAsync(new { family = "MQ41xx" });
+        var items = migrations["items"]!.AsArray();
+        Assert.All(items, i => Assert.Equal("MQ41xx", (string)i!["family"]!));
+        Assert.Equal(items.Count, (int)families.Single(f => (string)f!["family"]! == "MQ41xx")!["rules"]!);
+        Assert.Null(migrations["next"]);
+        Assert.False(string.IsNullOrEmpty((string?)items[0]!["description"]));
+
+        // Ids exactly, query by id or description ignoring case, AND together.
+        var two = await CallAsync(new { ids = new[] { "MQ4101", "MQ2001", "MQ99" } });
+        Assert.Equal(["MQ2001", "MQ4101"], two["items"]!.AsArray().Select(i => (string?)i!["id"]));
+        var text = await CallAsync(new { query = "DANGLING" });
+        Assert.Contains(text["items"]!.AsArray(), i => (string)i!["id"]! == "MQ2001");
+        var both = await CallAsync(new { family = "MQ10xx", query = "json patch" });
+        Assert.Equal(["MQ1016"], both["items"]!.AsArray().Select(i => (string?)i!["id"]));
+        Assert.Empty((await CallAsync(new { family = "MQ20xx", ids = new[] { "MQ4101" } }))["items"]!.AsArray());
+
+        // Pages in id order, keyed by rule id, until next is null.
+        var seen = new List<string>();
+        string? cursor = null;
+        do
+        {
+            var page = await CallAsync(new { family = "MQ10xx", limit = 5, cursor });
+            seen.AddRange(page["items"]!.AsArray().Select(i => (string)i!["id"]!));
+            cursor = (string?)page["next"];
+        }
+        while (cursor is not null);
+        Assert.Equal(Diagnostics.RuleCatalog.All.Where(x => x.Id.StartsWith("MQ10", StringComparison.Ordinal)).Select(x => x.Id), seen);
+        var first = await CallAsync(new { limit = 3 });
+        Assert.Equal(["MQ1001", "MQ1002", "MQ1003"], first["items"]!.AsArray().Select(i => (string?)i!["id"]));
+
+        var bad = await catalog.CallAsync("list_validation_rules", JsonSerializer.SerializeToElement(new { cursor = "nope" }), Ct);
+        Assert.Equal("bad-request", (string?)JsonNode.Parse(bad.Text)!["code"]);
+        var big = await catalog.CallAsync("list_validation_rules", JsonSerializer.SerializeToElement(new { limit = 1001 }), Ct);
+        Assert.Equal("bad-request", (string?)JsonNode.Parse(big.Text)!["code"]);
+    }
+
+    [Fact]
+    public async Task Tag_usage_summarizes_tags_and_pages_one_tags_elements()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        var catalog = Catalog(r);
+        async Task<JsonNode> CallAsync(object args)
+        {
+            var answer = await catalog.CallAsync("tag_usage", JsonSerializer.SerializeToElement(args), Ct);
+            Assert.False(answer.IsError, answer.Text);
+            return JsonNode.Parse(answer.Text)!;
+        }
+
+        var usage = (await r.Store.GetTagUsageAsync(null, Ct))!;
+
+        // Without a tag: every tag in key order, without element ids, the whole list.
+        var summary = await CallAsync(new { });
+        Assert.Equal(usage.Vocabulary, (string?)summary["vocabulary"]);
+        Assert.Equal(usage.Strict, (bool)summary["strict"]!);
+        Assert.Null(summary["next"]);
+        var tags = summary["tags"]!.AsArray();
+        Assert.Equal(["billing", "pii"], tags.Select(t => (string?)t!["tag"]));
+        Assert.All(tags, t => Assert.Null(t!["elements"]));
+        var billing = usage.Tags.Single(t => t.Tag == "billing");
+        Assert.Equal((billing.Declared, billing.Uses), ((bool)tags[0]!["declared"]!, (int)tags[0]!["uses"]!));
+        Assert.Equal(billing.Examples, tags[0]!["examples"]!.AsArray().Select(e => (string)e!));
+
+        // limit or cursor pages the tags.
+        var firstTag = await CallAsync(new { limit = 1 });
+        Assert.Equal("billing", (string?)Assert.Single(firstTag["tags"]!.AsArray())!["tag"]);
+        var secondTag = await CallAsync(new { cursor = (string)firstTag["next"]! });
+        Assert.Equal("pii", (string?)Assert.Single(secondTag["tags"]!.AsArray())!["tag"]);
+        Assert.Null(secondTag["next"]);
+
+        // With a tag: its element ids, paged in id order.
+        var elements = new List<string>();
+        var page = await CallAsync(new { tag = "billing", limit = 2 });
+        Assert.Equal(("billing", true, billing.Uses), ((string)page["tag"]!, (bool)page["declared"]!, (int)page["uses"]!));
+        Assert.Null(page["package"]);
+        elements.AddRange(page["elements"]!.AsArray().Select(e => (string)e!));
+        Assert.Equal(2, elements.Count);
+        var rest = await CallAsync(new { tag = "billing", limit = 2, cursor = (string)page["next"]! });
+        elements.AddRange(rest["elements"]!.AsArray().Select(e => (string)e!));
+        Assert.Null(rest["next"]);
+        Assert.Equal(billing.Elements.Order(StringComparer.Ordinal), elements);
+        Assert.Contains(EditorRepo.InvoiceId, elements);
+
+        var unknown = await catalog.CallAsync("tag_usage", JsonSerializer.SerializeToElement(new { tag = "nope" }), Ct);
+        Assert.Equal("not-found", (string?)JsonNode.Parse(unknown.Text)!["code"]);
+        var notDomain = await catalog.CallAsync("tag_usage", JsonSerializer.SerializeToElement(new { package = EditorRepo.InvoiceId }), Ct);
+        Assert.Equal("not-found", (string?)JsonNode.Parse(notDomain.Text)!["code"]);
+        var badCursor = await catalog.CallAsync("tag_usage", JsonSerializer.SerializeToElement(new { tag = "billing", cursor = "nope" }), Ct);
+        Assert.Equal("bad-request", (string?)JsonNode.Parse(badCursor.Text)!["code"]);
+    }
+
+    [Fact]
     public async Task Get_schema_lists_stereotype_parameters()
     {
         await using var r = EditorRepo.Create(packs: false);

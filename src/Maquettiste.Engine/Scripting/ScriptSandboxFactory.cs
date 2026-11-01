@@ -1,3 +1,4 @@
+using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 
@@ -15,6 +16,8 @@ internal sealed class ScriptSandboxFactory : IScriptSandboxFactory
         ArgumentNullException.ThrowIfNull(limits);
         ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
         ct.ThrowIfCancellationRequested();
-        return new ScriptSandboxPool(PreparedScript.PrepareAll(scripts, limits), limits, size, ct);
+        var prepared = PreparedScript.PrepareAll(scripts, limits);
+        IReadOnlyList<Diagnostic> warnings = [.. prepared.Select(p => p.Warning).OfType<Diagnostic>().OrderBy(d => d.FilePath, StringComparer.Ordinal)];
+        return new ScriptSandboxPool(prepared, limits, size, ct, warnings);
     }
 }

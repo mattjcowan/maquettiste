@@ -8,6 +8,44 @@ public sealed class GenerateTests
 {
     private const string CustomerFile = ".maquettiste/model/entities/customer.json";
     private const string CustomersSql = "db/main/customers.sql";
+    private const string CustomerClass = "src/Generated/Customer.g.cs";
+    private const string CustomerId = "01J92P0V0ETQKXXP951CMMNHH3";
+    private const string MainDatabaseId = "01J92P0V1QRN2181XM2ZWE02W4";
+    private const string SnapshotPath = ".maquettiste/snapshots/main.json";
+
+    /// <summary>
+    /// Adds a third pack to <see cref="CliRepo.Billing"/>: <c>changes</c>, whose one unit (<c>diff</c>, <c>each database</c>) reads the
+    /// database's schema diff and writes <c>db/changes/&lt;database&gt;.txt</c>, so runs keep the committed schema snapshot.
+    /// </summary>
+    /// <param name="repo">The billing repo.</param>
+    internal static void AddDiffPack(CliRepo repo)
+    {
+        repo.Replace(".maquettiste/maquettiste.json", "\"packs\": {\n", "\"packs\": {\n    \"changes\": {\n      \"output\": \"db/changes\"\n    },\n");
+        repo.Write(".maquettiste/templates/changes/pack.json", """
+            {
+              "name": "changes",
+              "version": "1.0.0",
+              "engine": ">=1.0 <2.0",
+              "usesSchemaDiff": true,
+              "units": [
+                {
+                  "id": "diff",
+                  "template": "diff.scriban",
+                  "for": "each database",
+                  "output": "{{ database.name }}.txt"
+                }
+              ]
+            }
+
+            """);
+        repo.Write(".maquettiste/templates/changes/diff.scriban", """
+            {{ diff = schema_diff[database.name] -}}
+            from_baseline: {{ diff.from_baseline }}
+            empty: {{ diff.is_empty }}
+            revision: {{ diff.to_revision }}
+
+            """);
+    }
 
     [Fact]
     public async Task Apply_writes_both_roots_lists_changes_and_a_rerun_skips_everything()
@@ -261,6 +299,73 @@ public sealed class GenerateTests
         Assert.True(against.ExitCode == 0, against.ToString());
         Assert.True(File.Exists(repo.PathOf(CustomersSql)));
         Assert.False(File.Exists(repo.PathOf(".maquettiste/snapshots/main.json")), "a run against a baseline writes no committed snapshot");
+    }
+
+    [Fact]
+    public async Task Unit_and_element_flags_limit_the_run_and_exit_codes_follow_the_outcome()
+    {
+        using var repo = CliRepo.Billing();
+        AddDiffPack(repo);
+        var full = await repo.RunAsync("generate", "--format", "json");
+        Assert.True(full.ExitCode == 0, full.ToString());
+        string table;
+        using (var doc = JsonDocument.Parse(full.Out))
+        {
+            var unit = doc.RootElement.GetProperty("changes").EnumerateArray().Single(c => c.GetProperty("path").GetString() == CustomersSql).GetProperty("unit").GetString()!;
+            Assert.StartsWith("ddl/table:", unit, StringComparison.Ordinal);
+            table = unit["ddl/table:".Length..];
+        }
+
+        var snapshot = repo.Read(SnapshotPath);
+        var diffFile = repo.Read("db/changes/main.txt");
+
+        // A wider customer name changes the customers table and the schema diff; a deleted class file is one any classes run writes again.
+        repo.Replace(CustomerFile, "\"length\": 120", "\"length\": 150");
+        File.Delete(repo.PathOf(CustomerClass));
+
+        // The table's id: its script only. The class stays missing and the schema snapshot stays where the full run left it.
+        var element = await repo.RunAsync("generate", "--element", table);
+        Assert.True(element.ExitCode == 0, element.ToString());
+        Assert.Equal(["M " + CustomersSql], Text.Lines(element.Out));
+        Assert.Contains("varchar(150)", repo.Read(CustomersSql), StringComparison.Ordinal);
+        Assert.False(File.Exists(repo.PathOf(CustomerClass)));
+        Assert.Equal(snapshot, repo.Read(SnapshotPath));
+        Assert.Equal(diffFile, repo.Read("db/changes/main.txt"));
+
+        // A bare unit id and two element ids, the two flags ANDed: the customer's class only (the table is not an entity unit).
+        var unit2 = await repo.RunAsync("generate", "--unit", "entity", "--element", CustomerId, "--element", table, "--dry-run");
+        Assert.True(unit2.ExitCode == 0, unit2.ToString());
+        Assert.Equal(["A " + CustomerClass], Text.Lines(unit2.Out));
+        Assert.False(File.Exists(repo.PathOf(CustomerClass)), "a dry run writes nothing");
+        var applied = await repo.RunAsync("generate", "--unit", "classes/entity", "--element", CustomerId);
+        Assert.Equal(["A " + CustomerClass], Text.Lines(applied.Out));
+
+        // A filter that selects nothing (the entity's id names no table unit): the warning MQ6034, exit 0, nothing written.
+        var nothing = await repo.RunAsync("generate", "--unit", "ddl/table", "--element", CustomerId);
+        Assert.True(nothing.ExitCode == 0, nothing.ToString());
+        Assert.Contains("MQ6034", nothing.Error, StringComparison.Ordinal);
+        Assert.Equal("", nothing.Out);
+
+        // An unknown unit is MQ6032, and the database's id selects its each-database unit, which reads the schema diff: MQ6033. Both
+        // exit 1, and neither moves the schema snapshot nor the diff's file.
+        var unknown = await repo.RunAsync("generate", "--unit", "nosuch");
+        Assert.Equal(1, unknown.ExitCode);
+        Assert.Contains("MQ6032", unknown.Error, StringComparison.Ordinal);
+        var database = await repo.RunAsync("generate", "--element", MainDatabaseId);
+        Assert.Equal(1, database.ExitCode);
+        Assert.Contains("MQ6033", database.Error, StringComparison.Ordinal);
+        Assert.Equal(snapshot, repo.Read(SnapshotPath));
+        Assert.Equal(diffFile, repo.Read("db/changes/main.txt"));
+
+        // Usage errors exit 4.
+        Assert.Equal(4, (await repo.RunAsync("generate", "--unit", "")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("generate", "--element", " ")).ExitCode);
+
+        // A full run renders what the scoped runs left (the diff) and advances the snapshot; the table and the class are current.
+        var rest = await repo.RunAsync("generate");
+        Assert.True(rest.ExitCode == 0, rest.ToString());
+        Assert.Equal(["M db/changes/main.txt"], Text.Lines(rest.Out));
+        Assert.NotEqual(snapshot, repo.Read(SnapshotPath));
     }
 
     [Fact]

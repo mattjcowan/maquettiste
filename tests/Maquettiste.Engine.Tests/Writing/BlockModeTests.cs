@@ -322,6 +322,96 @@ public sealed class BlockModeTests
         Assert.Equal("MQ6009", Assert.Single(edited.Diagnostics).Rule);
     }
 
+    private const string Config = "src/Generated/app.config.xml";
+    private const string Xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<configuration>\n  <appSettings />\n</configuration>\n";
+    private const string Setting = "<add key=\"Billing.InvoicePrefix\" value=\"INV\" />\n";
+
+    private static ProcessedUnit Settings(string comment = "<!--", string? end = "-->", string lines = Setting) =>
+        BlockUnit("p/settings", Config, lines, comment: comment, commentEnd: end);
+
+    [Fact]
+    public async Task An_xml_file_holds_a_managed_block()
+    {
+        using var f = new WritingFixture();
+        f.Repo.WriteFile(Config, Xml);
+        const string Block = "<!-- maquettiste: begin p/settings -->\n" + Setting + "<!-- maquettiste: end p/settings -->\n";
+
+        var first = await f.RunAsync([Settings()]);
+
+        Assert.Equal([(Config, FileChangeKind.Added)], first.Changes.Select(c => (c.Path, c.Kind)));
+        Assert.Empty(first.Diagnostics);
+        Assert.Equal(Xml + "\n" + Block, Bytes(f, Config));
+        Assert.Contains($"\"b:{ContentHash.Of(Setting)}\"", f.ManifestText("p"), StringComparison.Ordinal);
+
+        // Kept on a rerun: nothing changes, not even the file's time.
+        File.SetLastWriteTimeUtc(f.Repo.PathOf(Config), Old);
+        var second = await f.RunAsync([Settings()]);
+        Assert.Empty(second.Changes);
+        Assert.Empty(second.Diagnostics);
+        Assert.Equal(Xml + "\n" + Block, Bytes(f, Config));
+        Assert.Equal(Old, File.GetLastWriteTimeUtc(f.Repo.PathOf(Config)));
+
+        // The orphan scan knows nothing of the unit's closing text, and still finds and removes the closed block.
+        var orphan = await f.RunAsync([]);
+        Assert.Equal([(Config, FileChangeKind.Deleted)], orphan.Changes.Select(c => (c.Path, c.Kind)));
+        Assert.Empty(orphan.Diagnostics);
+        Assert.Equal(Xml, Bytes(f, Config));
+        Assert.Equal("", f.ManifestText("p"));
+    }
+
+    [Fact]
+    public async Task A_changed_closing_text_is_rewritten()
+    {
+        using var f = new WritingFixture();
+        f.Repo.WriteFile(Config, Xml);
+        await f.RunAsync([Settings("/*", "*/")]);
+        Assert.Equal(Xml + "\n/* maquettiste: begin p/settings */\n" + Setting + "/* maquettiste: end p/settings */\n", Bytes(f, Config));
+
+        // Only the delimiter lines change: the block's lines, and so its manifest entry, stay.
+        var manifest = f.ManifestText("p");
+        var changed = await f.RunAsync([Settings("/*", "**/")]);
+        Assert.Equal(FileChangeKind.Modified, Assert.Single(changed.Changes).Kind);
+        Assert.Empty(changed.Diagnostics);
+        Assert.Equal(Xml + "\n/* maquettiste: begin p/settings **/\n" + Setting + "/* maquettiste: end p/settings **/\n", Bytes(f, Config));
+        Assert.Equal(manifest, f.ManifestText("p"));
+        Assert.Empty((await f.RunAsync([Settings("/*", "**/")])).Changes);
+
+        // A unit without closing text drops it from a closed block, and a closed block written by hand is found and rewritten too.
+        var dropped = await f.RunAsync([Settings("#", null)]);
+        Assert.Equal(FileChangeKind.Modified, Assert.Single(dropped.Changes).Kind);
+        Assert.Equal(Xml + "\n# maquettiste: begin p/settings\n" + Setting + "# maquettiste: end p/settings\n", Bytes(f, Config));
+
+        using var g = new WritingFixture();
+        g.Repo.WriteFile(Config, "<!-- maquettiste: begin p/settings --!>\n" + Setting + "<!-- maquettiste: end p/settings --!>\n" + Xml);
+        var adopted = await g.RunAsync([Settings()]);
+        Assert.Equal(FileChangeKind.Modified, Assert.Single(adopted.Changes).Kind);
+        Assert.Equal("<!-- maquettiste: begin p/settings -->\n" + Setting + "<!-- maquettiste: end p/settings -->\n" + Xml, Bytes(g, Config));
+    }
+
+    [Fact]
+    public async Task A_body_holding_a_closed_delimiter_is_refused()
+    {
+        Assert.True(ManagedBlock.HoldsDelimiter("a\n<!-- maquettiste: end p/x -->\n", "p/x"));
+        Assert.True(ManagedBlock.HoldsDelimiter("  /* maquettiste: begin p/x */  \r\n", "p/x"));
+        Assert.False(ManagedBlock.HoldsDelimiter("<!-- maquettiste: end p/xy -->\n", "p/x"));
+        Assert.False(ManagedBlock.HoldsDelimiter("<!-- maquettiste: end p/x--> \n", "p/x"));
+        Assert.False(ManagedBlock.HoldsDelimiter("<!-- maquettiste: end p/x  -->\n", "p/x"));
+        Assert.False(ManagedBlock.HoldsDelimiter("<!-- maquettiste: end p/x --> more\n", "p/x"));
+
+        using var repo = new Maquettiste.Testing.TempRepo();
+        var processor = new Maquettiste.Engine.PostProcessing.PostProcessor(repo.Options, new PostProcessing.FakeFormatterRunner());
+        var context = new PostProcessContext(repo.RepoRoot, new PostProcessing.FakePathPolicy(null, new OutputRootInfo("src/Generated")), [], true);
+        var unit = PostProcessing.Units.Rendered(OutputMode.Block, null, PostProcessing.Units.File(Config, "x\n<!-- maquettiste: end pack/unit -->\n"));
+
+        var result = await processor.ProcessAsync(unit, context, TestContext.Current.CancellationToken);
+
+        Assert.True(result.Failed);
+        Assert.Empty(result.Files);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(("MQ6006", Config), (error.Rule, error.FilePath));
+        Assert.Contains("with or without closing text", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task The_scanner_and_the_edits_are_byte_exact()
     {
@@ -329,7 +419,7 @@ public sealed class BlockModeTests
         var scan = ManagedBlock.Find(text, "p/x");
         Assert.True(scan.Found);
         Assert.Equal("old\r\n", Encoding.UTF8.GetString(text.AsSpan(scan.BodyStart, scan.BodyEnd - scan.BodyStart)));
-        Assert.Equal("a\r\n# maquettiste: begin p/x\nnew\n# maquettiste: end p/x\nz", Encoding.UTF8.GetString(ManagedBlock.Replace(text, scan, "#", "p/x", "new\n")));
+        Assert.Equal("a\r\n# maquettiste: begin p/x\nnew\n# maquettiste: end p/x\nz", Encoding.UTF8.GetString(ManagedBlock.Replace(text, scan, "#", null, "p/x", "new\n")));
         Assert.Equal("a\r\nz", Encoding.UTF8.GetString(ManagedBlock.Remove(text, scan)));
         Assert.False(ManagedBlock.Find(Encoding.UTF8.GetBytes("# maquettiste: begin p/xy\n# maquettiste: end p/xy\n"), "p/x").Found);
         Assert.True(ManagedBlock.HoldsDelimiter("a\n; maquettiste: end p/x\n", "p/x"));

@@ -60,6 +60,7 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
 | `Mcp/ModelTools.cs` | the MCP tools: thin wrappers over `ModelStore` and `GenerationService` with the editor API's bodies and problem codes (docs/mcp.md) |
 | `Mcp/ModelTools.Bulk.cs` | the bulk read tools `get_model_kinds`, `get_elements` and `get_resolved_model` (docs/mcp.md, "Reading a large model") |
 | `Mcp/ModelTools.Migrations.cs` | `fold_migrations` (`list_migrations` is a catalog tool of the engine's `AgentTools`) |
+| `Mcp/ModelTools.Generate.cs`, `Mcp/GenerateSummary.cs` | `generate`: plan and apply in one `GenerationService.RunAsync` call, answered as a summary by pack (no plan is stored) |
 
 ## Behavior
 
@@ -161,6 +162,9 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   (`GenerationRequest.Against`, a relative folder resolved against the current directory and passed as its full path by
   `ModelBaseline.RequestText`); the run never writes the committed snapshots nor uses the last-run record; a value that names
   nothing exits 4, and `--watch` refuses it.
+  `--unit <pack/unit | unit>` and `--element <id>` (both repeatable, passed once each as `GenerationRequest.Units` and
+  `Elements`) limit the run to those units (next-phase-1-design.md section 5.6); they combine with every other flag, a blank
+  value is a usage error (4), MQ6032 and MQ6033 make the outcome invalid (1) and MQ6034 alone is a warning (0).
 - **generate (one-shot):** a `generate` that applies (no `--dry-run`, `--check` or `--watch`) sets the engine's
   `GenerationService.ReuseLastRun`, so it keeps `<cache-dir>/last-run.v1.bin` and, when the model, templates, engine files and
   outputs are all as the last apply left them and the tool is the same build (an updated or rebuilt tool runs in full once), is

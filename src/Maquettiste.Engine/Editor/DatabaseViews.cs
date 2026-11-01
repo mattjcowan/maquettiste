@@ -148,7 +148,7 @@ public sealed record ReferenceBindingFieldView(string Field, string Column);
 /// <param name="Id">The view file's id.</param>
 /// <param name="Name">The physical name.</param>
 /// <param name="Schema">The schema name, or <see langword="null"/>.</param>
-/// <param name="Body">The body for the database's dialect.</param>
+/// <param name="Body">The body for the database's dialect (or the <c>"*"</c> body), or <see langword="null"/> when the file has none for it.</param>
 /// <param name="Columns">The declared columns.</param>
 /// <param name="Comment">The comment.</param>
 /// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
@@ -164,7 +164,7 @@ public sealed record ViewView(
     string Id,
     string Name,
     string? Schema,
-    string Body,
+    string? Body,
     IReadOnlyList<ViewColumnView> Columns,
     string? Comment,
     string? DisplayName,
@@ -233,7 +233,7 @@ public sealed record SequenceView(
 /// <param name="Parameters">The parameters, in order.</param>
 /// <param name="Returns">The result, or <see langword="null"/> when the routine returns nothing.</param>
 /// <param name="Language">The body's language: the file's, else the dialect's own.</param>
-/// <param name="Body">The body for the database's dialect, or the empty string when the file has none for it.</param>
+/// <param name="Body">The body for the database's dialect, or <see langword="null"/> when the file has none for it.</param>
 /// <param name="HasBody">Whether the file has a body for the database's dialect (or for every dialect).</param>
 /// <param name="Deterministic">Whether the routine returns the same result for the same arguments.</param>
 /// <param name="Security"><c>invoker</c> or <c>definer</c>.</param>
@@ -255,7 +255,7 @@ public sealed record RoutineView(
     IReadOnlyList<RoutineParameterView> Parameters,
     RoutineReturnsView? Returns,
     string Language,
-    string Body,
+    string? Body,
     bool HasBody,
     bool Deterministic,
     string Security,
@@ -288,9 +288,9 @@ public sealed record RoutineParameterView(string Name, string? Type, string? DbT
 /// <param name="Length">The length facet.</param>
 /// <param name="Precision">The precision facet.</param>
 /// <param name="Scale">The scale facet.</param>
-/// <param name="NativeType">The native type of a single value; empty for a table result.</param>
+/// <param name="NativeType">The native type of a single value, or <see langword="null"/> for a table result.</param>
 /// <param name="Table">The columns of a table result, or <see langword="null"/>.</param>
-public sealed record RoutineReturnsView(string? Type, string? DbTypeId, int? Length, int? Precision, int? Scale, string NativeType, IReadOnlyList<RoutineColumnView>? Table);
+public sealed record RoutineReturnsView(string? Type, string? DbTypeId, int? Length, int? Precision, int? Scale, string? NativeType, IReadOnlyList<RoutineColumnView>? Table);
 
 /// <summary>A column of a routine's table result.</summary>
 /// <param name="Name">The name.</param>
@@ -348,7 +348,7 @@ public sealed record DatabaseTypeView(
     string? SubtypeNativeType,
     string? Definition,
     bool IsCreated,
-    string NativeName,
+    string? NativeName,
     IReadOnlyList<string> DependsOn,
     string? Comment,
     string? DisplayName,
@@ -377,7 +377,7 @@ public sealed record DatabaseTypeFieldView(string Name, string? Type, string? Db
 /// <param name="ObjectKind">What the object is, as the file says (trigger, grant, extension...).</param>
 /// <param name="Phase"><c>before</c> or <c>after</c> the tables.</param>
 /// <param name="DependsOn">The ids (or keys, for a synthesized table) of the objects of the database it names in <c>dependsOn</c>.</param>
-/// <param name="Body">The statements for the database's dialect, or the empty string when the file has none for it.</param>
+/// <param name="Body">The statements for the database's dialect, or <see langword="null"/> when the file has none for it.</param>
 /// <param name="HasBody">Whether the file has statements for the database's dialect (or for every dialect).</param>
 /// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
 /// <param name="PluralName">As <see cref="TableView.PluralName"/>.</param>
@@ -394,7 +394,7 @@ public sealed record SqlObjectView(
     string ObjectKind,
     string Phase,
     IReadOnlyList<string> DependsOn,
-    string Body,
+    string? Body,
     bool HasBody,
     string? DisplayName,
     string? PluralName,
@@ -681,7 +681,7 @@ internal static class DatabaseViews
         obj.Properties,
         obj.Generation);
 
-    private static string? OrNull(string value) => value.Length == 0 ? null : value;
+    private static string? OrNull(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     private static ColumnView Column(RColumn column) => new(
         column.Key,

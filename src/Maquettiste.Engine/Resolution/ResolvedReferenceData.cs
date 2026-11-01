@@ -185,6 +185,9 @@ public sealed class RSeed : RElement
     /// <inheritdoc/>
     public override string Kind => "seed";
 
+    /// <summary>The longest form 5.1 registers for the seed: its stored package path and name, else the name.</summary>
+    public string QualifiedName { get; internal set; } = "";
+
     /// <summary>The target: an <see cref="REntity"/>, an <see cref="RRelation"/>, an <see cref="RReferenceType"/> or an <see cref="RTable"/>.</summary>
     public IResolvedObject? Target { get; internal set; }
 
@@ -229,6 +232,68 @@ public sealed class RSeed : RElement
     }
 
     internal void SetOrderedRows(Func<RList<RSeedRow>> factory) => _orderedRowsFactory = factory;
+
+    private FrozenDictionary<string, RSeedRow>? _rowsByKey;
+
+    /// <summary>
+    /// The cells that find a row of the seed (next-phase-1-design.md section 5.3, <c>seed_row</c>), in key order: <c>code</c> for a
+    /// reference type's seed, the key columns of a table seed (the unique constraint <see cref="Key"/> names, else the primary key),
+    /// the key attributes of an entity's seed; <see langword="null"/> for a relation's seed and a target without a key.
+    /// </summary>
+    internal IReadOnlyList<string>? KeyCells => Target switch
+    {
+        RReferenceType => ["code"],
+        RTable table => (Key is { } id && table.Uniques.FirstOrDefault(u => string.Equals(u.Id, id, StringComparison.Ordinal)) is { } unique
+            ? unique.Columns
+            : table.PrimaryKey?.Columns) is { Count: > 0 } columns ? [.. columns.Select(c => c.Name)] : null,
+        REntity entity => entity.Key is { Attributes.Count: > 0 } key ? [.. key.Attributes.Select(a => a.Name)] : null,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The row whose <see cref="KeyCells"/> hold these values, compared as <see cref="RRow.KeyOf"/> compares codes (an enum member by its
+    /// name), or <see langword="null"/>. The index is built on first use; a key repeated in the seed (MQ7001, MQ7102, MQ7112) finds its
+    /// first row.
+    /// </summary>
+    /// <param name="key">One value per key cell, in key order.</param>
+    /// <returns>The row.</returns>
+    internal RSeedRow? RowOf(IReadOnlyList<object?> key)
+    {
+        var index = Volatile.Read(ref _rowsByKey) ?? BuildRowIndex();
+        return KeyText(key) is { } text ? index.GetValueOrDefault(text) : null;
+    }
+
+    private FrozenDictionary<string, RSeedRow> BuildRowIndex()
+    {
+        var cells = KeyCells ?? [];
+        var byKey = new Dictionary<string, RSeedRow>(StringComparer.Ordinal);
+        if (cells.Count > 0)
+        {
+            foreach (var row in Rows)
+            {
+                if (KeyText([.. cells.Select(c => row.Values.GetValueOrDefault(c))]) is { } text)
+                    byKey.TryAdd(text, row);
+            }
+        }
+
+        var built = byKey.ToFrozenDictionary(StringComparer.Ordinal);
+        return Interlocked.CompareExchange(ref _rowsByKey, built, null) ?? built;
+    }
+
+    /// <summary>A key's lookup text: each part as <see cref="RRow.KeyOf"/> writes it, length-prefixed; <see langword="null"/> when a part is null.</summary>
+    private static string? KeyText(IReadOnlyList<object?> parts)
+    {
+        var text = new System.Text.StringBuilder();
+        foreach (var part in parts)
+        {
+            if (part is null)
+                return null;
+            var key = RRow.KeyOf(part is REnumMember member ? member.Name : part);
+            text.Append(key.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(':').Append(key);
+        }
+
+        return text.ToString();
+    }
 }
 
 /// <summary>A column of a seed.</summary>

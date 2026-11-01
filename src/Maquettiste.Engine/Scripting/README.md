@@ -29,9 +29,13 @@ Tests: `tests/Maquettiste.Engine.Tests/Scripting/`.
 (no `eval`, `Function`, or generator/async function constructors), no modules (`import()` fails), invariant culture, UTC time zone,
 a `TimeSystem` fixed at 2000-01-01T00:00:00Z (so `Date.now()`, `new Date()` and `Temporal.Now` are constant), a Temporal time zone
 provider whose default zone is UTC (`UtcDefaultTimeZoneProvider`; Jint's default provider takes the host's zone), `LimitRecursion`,
-`LimitMemory`, `TimeoutInterval` and `MaxStatements` from `SandboxLimits` (statements clamped to `int.MaxValue`), the pool's run
-token through `Options.CancellationToken`, and `Constraints.Reset()` before every top-level call. So every limit applies per call
-(each helper call, selector, filter, transform or rule check), as SPEC S19 says.
+`LimitMemory`, `TimeoutInterval` and `MaxStatements` from `SandboxLimits`, the pool's run token through
+`Options.CancellationToken`, and `Constraints.Reset()` before every top-level call. So every limit applies per call
+(each helper call, selector, filter, transform or rule check), as SPEC S19 says. `scriptTimeoutMs: 0` sets no
+`TimeoutInterval`: the wall clock is off and statements alone bound a call, so results do not depend on the machine's
+load (next-phase-1-design.md section 5.7). Statements are clamped to 1 to `ScriptSandbox.StatementCap` (2,000,000,000),
+below `int.MaxValue`, which Jint reads as no limit. `LimitMemory` counts the bytes a call allocates on its thread, not
+what it keeps, so a long loop that makes new numbers can reach it before the statement limit.
 
 Additions beyond section 10, all to keep the host process safe or the output deterministic:
 
@@ -41,14 +45,15 @@ Additions beyond section 10, all to keep the host process safe or the output det
   array) becomes a catchable `RangeError` instead of ending the process.
 - `MaxArraySize = ScriptMemoryBytes / 16`, and `String.prototype.repeat`, `padStart` and `padEnd` refuse results larger than the
   memory limit: those allocate in one step, before the per-statement memory check can run.
-- Every regular expression match is bounded by `min(ScriptTimeoutMs, 250 ms)`, so a catastrophic pattern cannot outlive the
-  cancellation budget. Jint needs three settings for that: `Constraints.RegexTimeout`; the prepared scripts' parsing option
-  `RegexTimeout` (a prepared script ignores the constraint and gives its literals 10 s); and a guard on `RegExp.prototype.exec`,
-  `test`, `[Symbol.match]`, `[Symbol.matchAll]`, `[Symbol.replace]`, `[Symbol.search]` and `[Symbol.split]` that re-creates the
-  .NET regex of a `RegExp` built at run time (`new RegExp(...)`, or the one `'...'.match(string)` builds), which Jint always
-  gives a 5 s timeout. The guard also checks the engine's constraints on every call, so a built-in that matches many times
-  (a global `replace`, `split`, `matchAll`) observes the time limit and both tokens between matches. A regex timeout while a
-  token is cancelled surfaces as cancellation. Because `exec` is no longer the built-in, Jint takes its spec-compliant slow
+- Every regular expression match is bounded by `min(ScriptTimeoutMs, 250 ms)`, or 250 ms when `ScriptTimeoutMs` is 0, so
+  a catastrophic pattern cannot outlive the cancellation budget. Jint needs three settings for that:
+  `Constraints.RegexTimeout`; the prepared scripts' parsing option `RegexTimeout` (a prepared script ignores the
+  constraint and gives its literals 10 s); and a guard on `RegExp.prototype.exec`, `test`, `[Symbol.match]`,
+  `[Symbol.matchAll]`, `[Symbol.replace]`, `[Symbol.search]` and `[Symbol.split]` that re-creates the .NET regex of a
+  `RegExp` built at run time (`new RegExp(...)`, or the one `'...'.match(string)` builds), which Jint always gives a 5 s
+  timeout. The guard also checks the engine's constraints on every call, so a built-in that matches many times (a global
+  `replace`, `split`, `matchAll`) observes the time limit and both tokens between matches. A regex timeout while a token
+  is cancelled surfaces as cancellation. Because `exec` is no longer the built-in, Jint takes its spec-compliant slow
   path for `replace`, `split` and `matchAll`; results are the same.
 - The match bound is wall-clock time, so a thread that a busy machine does not schedule for 250 ms times out even on a trivial
   pattern (CI saw `/\?$/.test(type)` fail once with MQ6007 while nine workflows shared the runner). The guard therefore tries a
@@ -69,6 +74,16 @@ Additions beyond section 10, all to keep the host process safe or the output det
   script-declared globals) is deep-frozen. Consequence: the strict-mode "override mistake" applies, so `obj.toString = f` on an
   ordinary object throws; use an object literal, a class or `Object.defineProperty`. Closure state (`let` at the top level, captured
   variables) cannot be frozen; helpers must be pure (D12).
+- Rule scripts (next-phase-1-design.md section 5.7). `PreparedScript.PrepareAll` wraps each one as `(function () {` +
+  code + `\n})();`, the prefix on the code's first line, so line numbers stay; `PreparedScript.Map` takes the prefix off
+  first-line columns and puts a position in the suffix at the end of the last line, for syntax errors and in
+  `Translate`. A program that is not exactly that one call (a closing brace in the code that ends the function early) is
+  MQ5002. When every script of a pool is a rule script, the globals are deep-frozen after the setup and before the
+  scripts run, so a rule file cannot publish anything for another: a global or a new prototype member is a `TypeError`
+  while it loads (MQ5002), and a function of another file is not in scope. Pack scripts keep one scope per pack and the
+  freeze after loading. The first `let` or `var` outside every function and class body of a rule script (a top-level
+  block or loop head included) is MQ5005, a warning the factory passes to the pool (`IScriptSandboxPool.Warnings`,
+  ordinal by path).
 
 A limit breach, a cancellation or a host failure marks the engine faulted, and the pool disposes it on return and builds a fresh
 one when needed.
@@ -79,20 +94,38 @@ Scripts run in load order against a global `maquettiste`:
 
 | Call | Invoked as | Returns |
 | --- | --- | --- |
-| `helper(name, fn)` | `fn(...args)` | any JSON-like value or model object |
+| `helper(name, fn[, { plain }])` | `fn(...args)` | any JSON-like value or model object |
 | `selector(name, fn)` | `fn(model)` | an array (or array-like) of model objects or id strings → `IReadOnlyList<string>` |
 | `filter(name, fn)` | `fn(element, model)` | truthy/falsy → `bool` |
 | `transform(name, fn)` | `fn(element, model)` | a plain object (or `null`/`undefined` for none) → `IReadOnlyDictionary<string, object?>` |
 | `rule({ id, severity, kinds, check })` | `check(element, model, report)` | nothing; `report(message, { pointer, severity })` |
+| `rule({ id, severity, scope: "model", check })` | `check(model, report)`, once per whole-model validation | nothing; `report(message, { element, pointer, severity })` |
 
 - Names are unique per kind (a helper and a filter may share a name); registering after loading is a `TypeError`.
+- `helper`'s optional third argument is an object whose only key is `plain`, a boolean; any other value, key or `plain`
+  value is a `TypeError`, so the script fails to load (MQ6016). `{ plain: true }` makes the helper take plain copies
+  (below).
 - `maquettiste.params` is a read-only accessor returning the current call's `ScriptCallContext.Parameters` (frozen; empty while
   loading). Section 10 does not say how scripts see parameters; this is the choice made here.
-- `rule`: `id` has no whitespace (the diagnostic rule is `x/<id>`); `severity` is `error` (default), `warning` or `info`; `kinds`
-  lists kind names from `KindInfo` (empty or missing = all kinds; `RunRule` returns no diagnostics for other kinds). `element` is
-  a deep-frozen copy of the element's canonical JSON; `model` offers `get(id)` (an element, or a sub-element found through its
-  index pointer), `all(kind)` (ordinal by name, then id) and `referencesTo(id)` (`{ fromElementId, fromId, jsonPointer, field, toId }`),
-  all frozen. Report diagnostics carry the element id, the element file path and the pointer; W2 fills line and column.
+- `rule`: `id` has no whitespace (the diagnostic rule is `x/<id>`); `severity` is `error` (default), `warning` or
+  `info`; `kinds` lists kind names from `KindInfo` (empty or missing = all kinds; `RunRule` returns no diagnostics for
+  other kinds). `element` is a deep-frozen copy of the element's canonical JSON; `model` offers `get(id)` (an element,
+  or a sub-element found through its index pointer), `all(kind)` (the snapshot's sorted kind index, ordinal by name,
+  then id), `referencesTo(id)` (`{ fromElementId, fromId, jsonPointer, field, toId }`, the id's own file and diagrams
+  included), and (next-phase-1-design.md section 5.7) `withStereotype(key)`, `withTag(tag)` and `withProperty(key)` (the
+  documents whose own file lists the key, ordinal by name, then id, from `Validation/RuleModelIndex`, built once per
+  snapshot) and `byQualifiedName(name)` (what `get` returns for each id a 5.1 name such as `@entity:Billing.Invoice`
+  finds in the snapshot's `NameIndex`, ordinal by id; a malformed name or a kind without names is a `TypeError`), all
+  frozen. Report diagnostics carry the element id, the element file path and the pointer; W2 fills line and column.
+- `scope` is `"element"` (the default) or `"model"`; anything else, or `kinds` with `"model"`, is a `TypeError`.
+  `ScriptRegistration.WholeModel` marks a model rule. `RunModelRule` runs it once under one statement budget; its
+  `report` needs an `element` option naming a document or sub-element, whose file the diagnostic takes (the entry's
+  pointer before the given one, the given id as the element id); a missing or unknown id is a `TypeError`, so MQ5002 on
+  the rule file. `RunRule` returns nothing for a model rule.
+- Read keys: `get` records `e:<id>`; `all` records `k:<kind>` and `e:` per document; the index functions record
+  `ix:<index>:<value>` (`ix:stereotype:`, `ix:tag:`, `ix:property:`, and `ix:qn:<canonical name>` for `byQualifiedName`)
+  and `e:` per document; `referencesTo` records `rt:<id>`. `Validation/RuleKeyHasher` hashes them per snapshot for the
+  validator's result cache (`Validation/README.md`).
 
 ## Model view
 
@@ -126,6 +159,30 @@ Values crossing the boundary:
   same script object for the engine's lifetime (so identity holds). Any other CLR map or list (a `List<T>`, a `Dictionary`, a
   template engine's arrays and objects) and `maquettiste.params` are converted afresh on every call, so a caller that mutates
   them between calls is seen correctly and the engine does not keep them alive.
+
+### Plain helpers
+
+A helper registered with `{ plain: true }` (next-phase-1-design.md section 5.5) takes frozen plain copies of its
+arguments (`ScriptValues.ToPlainJs`) instead of proxies, which are cheaper to read in a loop. The flag lives in the
+sandbox's registry (`Registered.Plain`); no public type changes.
+
+- A copy is bounded by member hops, since a copy of everything reachable would be the whole model (`database.tables`). A
+  resolved object given as an argument, or as an item of an argument list or map, is at hop 0, and its copy is a frozen
+  object of every camelCase member `MemberCatalog` lists. A resolved object a member holds, directly or inside a list or
+  map, is copied at the next hop; lists, maps and the model's helper objects (`RType`, `RStereotype`, `RCategory`, ...)
+  add no hop of their own. From hop 2 a resolved object is the stub `{ id, kind }`. Scalars, strings, enums (their JSON
+  names), `JsonElement` and null copy as above; lists become frozen arrays (`Array.isArray` is true) and maps frozen
+  objects. A map read through `MemberCatalog.TryReadMap` has its keys in ordinal order; a `ScriptObjectMap` (a value a
+  script built) keeps its insertion order, which is just as deterministic.
+- One memo keyed by (object, hop) serves the whole call, so a record shared by two arguments is one object at a hop, and
+  a cycle of helper objects (a category's parent and children) closes on its copy.
+- Copies carry no functions: `hasStereotype`, `hasTag` and `find` exist on proxies only; a plain helper reads
+  `stereotypes` and `tags`. The `ResolvedModel` itself, as an argument or inside one, is a `TypeError` (MQ6016): pass
+  the list the helper needs.
+- Recording: every resolved object copied at hop 0 or 1 records its `Dependencies` when it is copied, whether the helper
+  reads it or not, and every copied `RList<T>` its `MembershipKeys`. A stub records nothing: its id and kind change only
+  with the member or list that holds it, which its holder records.
+- Limits, seeded random and cancellation are unchanged; the copy checks the engine's constraints every 1,024 objects.
 
 ## Errors
 

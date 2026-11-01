@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Engine.Scripting;
@@ -23,12 +24,15 @@ internal sealed class ScriptSandboxPool : IScriptSandboxPool
     /// <param name="limits">The limits.</param>
     /// <param name="size">The number of engines kept.</param>
     /// <param name="runToken">The run's cancellation, wired into every engine.</param>
-    public ScriptSandboxPool(IReadOnlyList<PreparedScript> scripts, SandboxLimits limits, int size, CancellationToken runToken)
+    /// <param name="warnings">The scripts' load warnings (MQ5005), ordinal by path.</param>
+    public ScriptSandboxPool(IReadOnlyList<PreparedScript> scripts, SandboxLimits limits, int size, CancellationToken runToken,
+        IReadOnlyList<Diagnostic>? warnings = null)
     {
         _scripts = scripts;
         _limits = limits;
         _size = size;
         _runToken = runToken;
+        Warnings = warnings ?? [];
         var first = ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken);
         Registrations = first.Registrations;
         _idle.Push(first);
@@ -36,6 +40,9 @@ internal sealed class ScriptSandboxPool : IScriptSandboxPool
 
     /// <inheritdoc/>
     public IReadOnlyList<ScriptRegistration> Registrations { get; }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<Diagnostic> Warnings { get; }
 
     /// <inheritdoc/>
     public IScriptSandboxLease Rent()

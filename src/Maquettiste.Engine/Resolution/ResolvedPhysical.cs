@@ -633,8 +633,8 @@ public sealed class RView : RAnnotated
     /// <summary>The database.</summary>
     public RDatabase Database { get; internal set; } = null!;
 
-    /// <summary>The body for the database's dialect.</summary>
-    public string Body { get; internal set; } = "";
+    /// <summary>The body for the database's dialect (or the <c>"*"</c> body), or <see langword="null"/> when the file has none for it.</summary>
+    public string? Body { get; internal set; }
 
     /// <summary>The columns.</summary>
     public IReadOnlyList<RViewColumn> Columns { get; internal set; } = [];
@@ -766,8 +766,8 @@ public sealed class RRoutine : RAnnotated
     /// <summary>The body's language: the file's, else the dialect's own (<c>plpgsql</c>, <c>tsql</c>, <c>sql</c>).</summary>
     public string Language { get; internal set; } = "";
 
-    /// <summary>The body for the database's dialect (or the <c>"*"</c> body); empty when the file has none for it.</summary>
-    public string Body { get; internal set; } = "";
+    /// <summary>The body for the database's dialect (or the <c>"*"</c> body), or <see langword="null"/> when the file has none for it.</summary>
+    public string? Body { get; internal set; }
 
     /// <summary>Whether the file has a body for the database's dialect or for every dialect.</summary>
     public bool HasBody { get; internal set; }
@@ -850,8 +850,8 @@ public sealed class RRoutineReturns
     /// <summary>The scale facet.</summary>
     public int? Scale { get; internal set; }
 
-    /// <summary>The native type of a single value for the database's dialect; empty for a table result.</summary>
-    public string NativeType { get; internal set; } = "";
+    /// <summary>The native type of a single value for the database's dialect, or <see langword="null"/> for a table result.</summary>
+    public string? NativeType { get; internal set; }
 
     /// <summary>The columns of a table result, or <see langword="null"/> for a single value.</summary>
     public IReadOnlyList<RRoutineColumn>? Table { get; internal set; }
@@ -948,9 +948,9 @@ public sealed class RDatabaseType : RAnnotated
     /// <summary>
     /// What a column or parameter typed by it writes: the file's <c>nativeName</c>; else, when the database creates the type, its name
     /// (schema-qualified outside the default schema); else the native type a dialect without the kind stores it as (a domain's base,
-    /// an enum's string as long as its longest label), or the empty string (a composite or range there).
+    /// an enum's string as long as its longest label), or <see langword="null"/> (a composite or range there).
     /// </summary>
-    public string NativeName { get; internal set; } = "";
+    public string? NativeName { get; internal set; }
 
     /// <summary>The database types its fields use, in field order (a type is created after them).</summary>
     public IReadOnlyList<IResolvedObject> DependsOn { get; internal set; } = [];
@@ -1008,8 +1008,8 @@ public sealed class RSqlObject : RAnnotated
     /// <summary>The tables, views, sequences, routines, database types and SQL objects of the database it names in <c>dependsOn</c>, in file order.</summary>
     public IReadOnlyList<IResolvedObject> DependsOn { get; internal set; } = [];
 
-    /// <summary>The statements for the database's dialect (or the <c>"*"</c> ones); empty when the file has none for it.</summary>
-    public string Body { get; internal set; } = "";
+    /// <summary>The statements for the database's dialect (or the <c>"*"</c> ones), or <see langword="null"/> when the file has none for it.</summary>
+    public string? Body { get; internal set; }
 
     /// <summary>Whether the file has statements for the database's dialect or for every dialect.</summary>
     public bool HasBody { get; internal set; }

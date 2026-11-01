@@ -152,6 +152,9 @@ internal sealed partial class ResolveRun
             var s = new RSeed();
             var deps = DepsOf(s);
             FillCommon(s, seed, deps);
+            // The longest form a batch or seed_named finds the seed by (next-phase-1-design.md section 5.3): it reads the seed's name and
+            // the names of its package chain, which the seed's keys and the chain's keys below cover.
+            s.QualifiedName = Model.Names("seed").Get(seed.Id)?.Longest ?? seed.Name;
             deps.Element(seed.Target);
             // The merge order reads the qualified name of the seed's package: renaming or moving a package of its chain can reorder the
             // target's seeds (its rows, the first table seed's key) without touching the seed's file.

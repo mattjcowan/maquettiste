@@ -34,7 +34,7 @@ public sealed record PackSummary(string Name, string? Version, string? Descripti
 /// <param name="Size">Bytes.</param>
 /// <param name="Hash">The SHA-256 of the bytes (the file's ETag).</param>
 /// <param name="Role"><c>manifest</c>, <c>template</c> (a unit names it), <c>partial</c> (a template includes it), <c>script</c>,
-/// <c>type-map</c> or <c>other</c>, derived with the loader's own rules (GU2).</param>
+/// <c>type-map</c>, <c>copy-source</c> (a copy unit's sources match it) or <c>other</c>, derived with the loader's own rules (GU2).</param>
 /// <param name="UsedBy">What uses it: <c>unit:&lt;id&gt;</c>, <c>companion:&lt;id&gt;</c> and <c>include:&lt;path&gt;</c>, ordinal.</param>
 public sealed record PackFileInfo(string Path, long Size, string Hash, string Role, IReadOnlyList<string> UsedBy);
 

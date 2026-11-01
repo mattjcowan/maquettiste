@@ -12,7 +12,9 @@ namespace Maquettiste.Engine.Validation;
 /// Stage 2: built-in rules, extension schemas and JavaScript rules (W2; engine-design.md section 6).
 /// <para>
 /// The report holds the snapshot's load diagnostics (MQ1xxx, filtered to the scope), the built-in rules of every file in scope,
-/// extension schema failures, extension file problems (whole-model scope only) and JavaScript rule results. Rule severities
+/// extension schema failures, extension file problems (whole-model scope only) and JavaScript rule results: element rules on each file
+/// in scope, their results reused from <see cref="RuleResultCache"/> while their inputs are unchanged, and whole-model rules
+/// (<c>scope: "model"</c>) once per whole-model validation (next-phase-1-design.md section 5.7). Rule severities
 /// follow <c>validation.rules</c> in <c>maquettiste.json</c> (<c>off</c> drops a rule; MQ1xxx cannot be turned off, and the MQ1xxx
 /// errors that leave a file out of the snapshot keep their severity). Line and
 /// column are filled for every diagnostic with a file and pointer. Files are validated in parallel
@@ -40,6 +42,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     private static readonly ReferenceWalker SelectionWalker = new();
 
     private readonly ReferenceWalker _walker = new();
+
+    /// <summary>The per-element results of script rules, reused while their inputs are unchanged (next-phase-1-design.md section 5.7).</summary>
+    private readonly RuleResultCache _ruleResults = new();
+
+    /// <summary>The rule result cache, for tests.</summary>
+    internal RuleResultCache RuleResults => _ruleResults;
 
     /// <summary>The schema registry.</summary>
     internal ISchemaRegistry Schemas => schemas;
@@ -83,6 +91,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         IScriptSandboxPool? pool = null;
         FrozenSet<string>? ruleNames = model.RuleScripts.Count == 0 ? FrozenSet<string>.Empty : null;
         IReadOnlyList<string> rules = [];
+        IReadOnlyList<ScriptRegistration> modelRules = [];
         if (needScripts)
         {
             // A rule file that does not load (a syntax error, a registration without an id, a limit) is reported on that file with its
@@ -95,9 +104,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 try
                 {
                     pool = scripts.CreatePool(loadable, model.Settings.Limits, Math.Max(1, Math.Min(parallelism, targets.Count)), ct);
-                    rules = [.. pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Rule).Select(r => Bare(r.Name))
-                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
-                    ruleNames = failed ? null : rules.ToFrozenSet(StringComparer.Ordinal);
+                    var registered = pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Rule).ToList();
+                    // Element rules run on each document; whole-model rules (scope "model") once, after them, on whole-model runs only.
+                    rules = [.. registered.Where(r => !r.WholeModel).Select(r => Bare(r.Name)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                    modelRules = [.. registered.Where(r => r.WholeModel).DistinctBy(r => Bare(r.Name), StringComparer.Ordinal)
+                        .OrderBy(r => Bare(r.Name), StringComparer.Ordinal)];
+                    ruleNames = failed ? null : registered.Select(r => Bare(r.Name)).ToFrozenSet(StringComparer.Ordinal);
                     break;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -120,6 +132,10 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     break;
                 }
             }
+
+            // The rule files' load warnings (MQ5005: top-level let or var) are about the files, so whole-model reports carry them.
+            if (wholeModel && pool is not null)
+                diagnostics.AddRange(pool.Warnings);
         }
 
         var runtime = targets.Any(d => d.Element is Scenario) ? new ProcessRuntime(model, parallelism, ct) : null;
@@ -137,10 +153,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             }
         }
 
+        var ticket = _ruleResults.Begin();
+        var runScripts = scope.IncludeScriptRules && pool is not null && rules.Count > 0;
         try
         {
             var context = shared.WithRuleNames(ruleNames);
-            var runScripts = scope.IncludeScriptRules && pool is not null && rules.Count > 0;
+            var ruleRun = runScripts ? new RuleRun(pool!, rules, RuleKinds(pool!), CachedRuleFiles(model, pool!), _ruleResults, ticket) : null;
             var perDocument = new IReadOnlyList<Diagnostic>[targets.Count];
             var done = 0;
             await Parallel.ForEachAsync(
@@ -157,8 +175,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     if (facts is not null)
                         MigrationRules.Validate(context, report, facts);
                     extensions.Check(context, report);
-                    if (runScripts)
-                        RunScripts(pool!, rules, model, report, token);
+                    if (ruleRun is not null)
+                        RunScripts(ruleRun, model, report, token);
                     perDocument[i] = report.Items;
                     progress?.Report(new ProgressUpdate(PipelineStage.Validate, Interlocked.Increment(ref done), targets.Count, targets[i].Path, null));
                     return ValueTask.CompletedTask;
@@ -166,12 +184,22 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
             foreach (var items in perDocument)
                 diagnostics.AddRange(items);
+
+            // Whole-model rules run once per whole-model validation, on one lease, after the per-document loop (section 5.7); scoped
+            // validations (element saves) skip them, so they never refuse a save over elements outside the change.
+            if (wholeModel && scope.IncludeScriptRules && pool is not null && modelRules.Count > 0)
+                RunModelRules(pool, modelRules, model, diagnostics, ct);
         }
         finally
         {
             pool?.Dispose();
             runtime?.Dispose();
         }
+
+        // A whole-model validation with script rules used every entry that is still current, so the others go (bounding memory). That
+        // holds when no element rule ran too (every rule file deleted or failing to load, or only whole-model rules left): all go.
+        if (wholeModel && scope.IncludeScriptRules)
+            _ruleResults.Sweep(ticket);
 
         ct.ThrowIfCancellationRequested();
         var configured = ApplySettings(model.Settings, diagnostics).Distinct().ToList(); // one diagnostic per distinct finding
@@ -788,18 +816,179 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     }
 
     /// <summary>
-    /// Runs every registered rule on one document. A rule whose <c>validation.rules</c> setting (<c>x/&lt;rule&gt;</c>) is <c>off</c>
-    /// is not run at all, so its own failures are off too; a severity setting also applies to the rule's failures (MQ5002, MQ5003),
-    /// which keep their catalog id. An explicit MQ5002 or MQ5003 setting still applies on top, in <see cref="ApplySettings"/>.
+    /// The script rules of one validation: the pool, the element rules and their kinds, the rule files whose results may be cached, the
+    /// cache.
     /// </summary>
-    private static void RunScripts(IScriptSandboxPool pool, IReadOnlyList<string> rules, ModelSnapshot model, Report report, CancellationToken ct)
+    /// <param name="Pool">The pool.</param>
+    /// <param name="Rules">The element rules (without <c>x/</c>), ordinal.</param>
+    /// <param name="Kinds">Rule id → the kinds it checks, for the element rules that name kinds (<see cref="RuleKinds"/>).</param>
+    /// <param name="Cached">Rule id → its rule file, for the rules whose results are cached (<see cref="CachedRuleFiles"/>).</param>
+    /// <param name="Cache">The validator's result cache.</param>
+    /// <param name="Ticket">The validation's cache ticket.</param>
+    private sealed record RuleRun(IScriptSandboxPool Pool, IReadOnlyList<string> Rules, IReadOnlyDictionary<string, IReadOnlySet<string>> Kinds,
+        IReadOnlyDictionary<string, ScriptSource> Cached, RuleResultCache Cache, long Ticket);
+
+    /// <summary>The kinds of each element rule that names kinds; a rule missing here checks every kind.</summary>
+    private static Dictionary<string, IReadOnlySet<string>> RuleKinds(IScriptSandboxPool pool)
+    {
+        var kinds = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+        foreach (var registration in pool.Registrations)
+        {
+            if (registration is { Kind: ScriptRegistrationKind.Rule, WholeModel: false, Kinds: { } set })
+                kinds.TryAdd(Bare(registration.Name), set);
+        }
+
+        return kinds;
+    }
+
+    /// <summary>
+    /// The rules whose per-element results may be cached, with their rule file: a rule declared in one of the snapshot's rule scripts
+    /// whose file has no MQ5005 warning (top-level <c>let</c> or <c>var</c>, state the sandbox cannot freeze). One scope per file and
+    /// the globals frozen before the files run make a file's hash, with the shared sandbox setup, its behaviour (section 5.7).
+    /// </summary>
+    private static Dictionary<string, ScriptSource> CachedRuleFiles(ModelSnapshot model, IScriptSandboxPool pool)
+    {
+        var stateful = pool.Warnings.Where(w => w.Rule == "MQ5005" && w.FilePath is not null).Select(w => w.FilePath!).ToHashSet(StringComparer.Ordinal);
+        var files = new Dictionary<string, ScriptSource>(StringComparer.Ordinal);
+        foreach (var script in model.RuleScripts)
+            files.TryAdd(script.Path, script);
+        var cached = new Dictionary<string, ScriptSource>(StringComparer.Ordinal);
+        foreach (var registration in pool.Registrations)
+        {
+            if (registration.Kind == ScriptRegistrationKind.Rule && !registration.WholeModel && !stateful.Contains(registration.DeclaredIn)
+                && files.TryGetValue(registration.DeclaredIn, out var file))
+                cached.TryAdd(Bare(registration.Name), file);
+        }
+
+        return cached;
+    }
+
+    /// <summary>The keys one rule call records.</summary>
+    private sealed class RuleReads : IReadRecorder
+    {
+        public HashSet<string> Keys { get; } = new(StringComparer.Ordinal);
+
+        public void Record(string dependencyKey) => Keys.Add(dependencyKey);
+    }
+
+    /// <summary>
+    /// Runs every element rule on one document. A rule whose <c>validation.rules</c> setting (<c>x/&lt;rule&gt;</c>) is <c>off</c>
+    /// is not run at all, so its own failures are off too; a severity setting also applies to the rule's failures (MQ5002, MQ5003),
+    /// which keep their catalog id. An explicit MQ5002 or MQ5003 setting still applies on top, in <see cref="ApplySettings"/>. A rule's
+    /// raw diagnostics come from the cache when its inputs are unchanged (<see cref="RuleResultCache"/>), and a clean run is stored. A
+    /// rule whose kinds leave the document out is skipped first: no lease, no call, no cache entry.
+    /// </summary>
+    private static void RunScripts(RuleRun run, ModelSnapshot model, Report report, CancellationToken ct)
     {
         var document = report.Document;
+        var kind = KindInfo.Get(document.Element.Kind).Name;
+        var settings = model.Settings.Validation.Rules;
+        var limits = model.Settings.Limits;
+        var hasher = RuleKeyHasher.Of(model);
+        IScriptSandboxLease? lease = null;
+        try
+        {
+            foreach (var rule in run.Rules)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (run.Kinds.TryGetValue(rule, out var kinds) && !kinds.Contains(kind))
+                    continue;
+                var ruleId = "x/" + rule;
+                var setting = settings.TryGetValue(ruleId, out var configured) ? configured : null;
+                if (string.Equals(setting, "off", StringComparison.Ordinal))
+                    continue;
+                var failureSeverity = SeverityOf(setting);
+                var ruleFile = run.Cached.GetValueOrDefault(rule);
+                if (ruleFile is not null && run.Cache.TryGet(rule, document, ruleFile, limits, hasher, run.Ticket, out var cached))
+                {
+                    AddRuleDiagnostics(report, ruleId, failureSeverity, cached);
+                    continue;
+                }
+
+                try
+                {
+                    var reads = ruleFile is null ? null : new RuleReads();
+                    var context = new ScriptCallContext(reads, document.Element.Id, NoParameters, ct);
+                    lease ??= run.Pool.Rent();
+                    var diagnostics = lease.Sandbox.RunRule(rule, document, model, context);
+                    // Only a clean run is kept: a rule that threw ends with its MQ5002 (a catalog id) after its reports.
+                    if (reads is not null && !diagnostics.Any(d => RuleCatalog.TryGet(d.Rule, out _)))
+                        run.Cache.Store(rule, document, ruleFile!, limits, reads.Keys, hasher, diagnostics, run.Ticket);
+                    AddRuleDiagnostics(report, ruleId, failureSeverity, diagnostics);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (ScriptLimitException e)
+                {
+                    Fail("MQ5003", $"Rule {ruleId} exceeded a sandbox limit on this element: {e.Diagnostic.Message}");
+                }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    Fail("MQ5002", $"Rule {ruleId} failed on this element: {e.Message}");
+                }
+
+                void Fail(string id, string message)
+                {
+                    if (failureSeverity is { } severity)
+                        report.Add(id, severity, message, "");
+                    else
+                        report.Add(id, message, "");
+                }
+            }
+        }
+        finally
+        {
+            lease?.Dispose();
+        }
+    }
+
+    /// <summary>Adds a rule's raw diagnostics on one document, as they come from the sandbox or from the cache.</summary>
+    private static void AddRuleDiagnostics(Report report, string ruleId, DiagnosticSeverity? failureSeverity, IEnumerable<Diagnostic> diagnostics)
+    {
+        var document = report.Document;
+        foreach (var d in diagnostics)
+        {
+            // The sandbox returns a rule that throws as its own MQ5002 diagnostic (after the rule's reports), located at the failing
+            // line of the rule script: it keeps its catalog id and its script position instead of becoming x/<id>.
+            if (RuleCatalog.TryGet(d.Rule, out _))
+            {
+                report.Add(d with
+                {
+                    Severity = failureSeverity ?? d.Severity,
+                    ElementId = d.ElementId ?? document.Element.Id,
+                    FilePath = d.FilePath ?? document.Path,
+                    JsonPointer = d.FilePath is null ? "" : d.JsonPointer,
+                });
+                continue;
+            }
+
+            report.Add(d with
+            {
+                Rule = d.Rule.StartsWith("x/", StringComparison.Ordinal) ? d.Rule : ruleId,
+                ElementId = d.ElementId ?? document.Element.Id,
+                FilePath = d.FilePath ?? document.Path,
+                JsonPointer = d.JsonPointer ?? "",
+            });
+        }
+    }
+
+    /// <summary>
+    /// Runs the whole-model rules (<c>scope: "model"</c>) once each, on one lease, in id order, except those <c>validation.rules</c>
+    /// sets <c>off</c> (next-phase-1-design.md section 5.7). Each finding is on the file of the element it names. A rule that throws is
+    /// MQ5002 and one that breaks a limit MQ5003, on the rule file at the failing line, with the rule's severity setting applied as for
+    /// element rules. Their results are never cached.
+    /// </summary>
+    private static void RunModelRules(IScriptSandboxPool pool, IReadOnlyList<ScriptRegistration> modelRules, ModelSnapshot model, List<Diagnostic> diagnostics,
+        CancellationToken ct)
+    {
         var settings = model.Settings.Validation.Rules;
         using var lease = pool.Rent();
-        foreach (var rule in rules)
+        foreach (var registration in modelRules)
         {
             ct.ThrowIfCancellationRequested();
+            var rule = Bare(registration.Name);
             var ruleId = "x/" + rule;
             var setting = settings.TryGetValue(ruleId, out var configured) ? configured : null;
             if (string.Equals(setting, "off", StringComparison.Ordinal))
@@ -807,30 +996,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             var failureSeverity = SeverityOf(setting);
             try
             {
-                var context = new ScriptCallContext(null, document.Element.Id, NoParameters, ct);
-                foreach (var d in lease.Sandbox.RunRule(rule, document, model, context))
+                var context = new ScriptCallContext(null, ruleId, NoParameters, ct);
+                foreach (var d in lease.Sandbox.RunModelRule(rule, model, context))
                 {
-                    // The sandbox returns a rule that throws as its own MQ5002 diagnostic (after the rule's reports), located at the
-                    // failing line of the rule script: it keeps its catalog id and its script position instead of becoming x/<id>.
                     if (RuleCatalog.TryGet(d.Rule, out _))
                     {
-                        report.Add(d with
-                        {
-                            Severity = failureSeverity ?? d.Severity,
-                            ElementId = d.ElementId ?? document.Element.Id,
-                            FilePath = d.FilePath ?? document.Path,
-                            JsonPointer = d.FilePath is null ? "" : d.JsonPointer,
-                        });
+                        diagnostics.Add(d with { Severity = failureSeverity ?? d.Severity, FilePath = d.FilePath ?? registration.DeclaredIn });
                         continue;
                     }
 
-                    report.Add(d with
-                    {
-                        Rule = d.Rule.StartsWith("x/", StringComparison.Ordinal) ? d.Rule : ruleId,
-                        ElementId = d.ElementId ?? document.Element.Id,
-                        FilePath = d.FilePath ?? document.Path,
-                        JsonPointer = d.JsonPointer ?? "",
-                    });
+                    diagnostics.Add(d with { Rule = d.Rule.StartsWith("x/", StringComparison.Ordinal) ? d.Rule : ruleId, JsonPointer = d.JsonPointer ?? "" });
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -839,19 +1014,18 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             }
             catch (ScriptLimitException e)
             {
-                Fail("MQ5003", $"Rule {ruleId} exceeded a sandbox limit on this element: {e.Diagnostic.Message}");
+                Fail("MQ5003", $"Rule {ruleId} exceeded a sandbox limit: {e.Diagnostic.Message}", e.Diagnostic);
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
-                Fail("MQ5002", $"Rule {ruleId} failed on this element: {e.Message}");
+                Fail("MQ5002", $"Rule {ruleId} failed: {e.Message}", null);
             }
 
-            void Fail(string id, string message)
+            void Fail(string id, string message, Diagnostic? located)
             {
-                if (failureSeverity is { } severity)
-                    report.Add(id, severity, message, "");
-                else
-                    report.Add(id, message, "");
+                var failure = RuleCatalog.Create(id, message, null, located?.FilePath ?? registration.DeclaredIn)
+                    with { Line = located?.Line, Column = located?.Column };
+                diagnostics.Add(failureSeverity is { } severity ? failure with { Severity = severity } : failure);
             }
         }
     }

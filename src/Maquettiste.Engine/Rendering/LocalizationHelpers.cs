@@ -76,7 +76,11 @@ internal static class LocalizationHelpers
         return model.Source.Localization.Text(locale, id, field) is not null;
     }
 
-    /// <summary>The node id and its default-locale text of a field (the resolved value, with its built-in fallbacks).</summary>
+    /// <summary>
+    /// The node id and its default-locale text of a field (the resolved value, with its built-in fallbacks). A database object (a
+    /// table, column, view, ...) is not translated: its text is its own file's, and <see langword="null"/> when the file sets none
+    /// (next-phase-1-design.md section 5.5, the null contract).
+    /// </summary>
     private static (string? Id, string? Default) Node(TrackingTemplateContext context, object? value, string field, string helper)
     {
         var nodes = context.Unit.Run.Context.Model.Source.Localization.Nodes;
@@ -119,10 +123,24 @@ internal static class LocalizationHelpers
             }),
             RStep step => (step.Id, field == LocalizationIndex.DescriptionField ? step.Description : null),
             REnd end => (end.Id, Source(end.Id) ?? (field is LocalizationIndex.DisplayNameField or LocalizationIndex.PluralNameField ? end.Role : null)),
+            RAnnotated physical => (physical.Id, Physical(context, physical, field)),
             string id when context.Unit.Run.Context.Model.Find(id) is { } found => Node(context, found, field, helper),
             string id => (id, Source(id)),
             RObject other => (other.Id, Source(other.Id)),
             _ => throw new RenderHelperException("MQ6006", $"`{helper}` takes a model element, sub-element, row or id, not a {TemplateValues.TypeName(value)}."),
+        };
+    }
+
+    /// <summary>A database object's own text of a standard field, or <see langword="null"/> when its file sets none; the read is recorded.</summary>
+    private static string? Physical(TrackingTemplateContext context, RAnnotated physical, string field)
+    {
+        context.RecordRead(physical);
+        return field switch
+        {
+            LocalizationIndex.DisplayNameField => physical.DisplayName,
+            LocalizationIndex.PluralNameField => physical.PluralName,
+            LocalizationIndex.DescriptionField => physical.Description,
+            _ => null,
         };
     }
 

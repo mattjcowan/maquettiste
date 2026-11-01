@@ -15,6 +15,9 @@ Line endings, protected regions and formatters (stage 7; engine-design.md sectio
   companions), else the content hash. A `pair` unit's file blocks get mode `overwrite`; every other file keeps the unit's mode.
   A `block` file (spec-errata E42, engine-design.md §12.3b) stops after step 1: its body is the normalized text with a final line
   end, never formatted, hashed `b:` over those lines; the writer puts it in the file.
+  A `copy` file (next-phase-1-design.md section 5.4) keeps the renderer's bytes as they are: no line-ending
+  normalization, formatter or regions (no formatter is selected or warned about for a copy unit). It is managed like an
+  `overwrite` file: its manifest hash is the content hash.
 - `FormatterRunner` (`IFormatterRunner`): runs `Command` with `ArgumentList` (no shell; `{path}` replaced by the repo-relative
   path) in the repo root, input on stdin, output from stdout, stderr captured for the message. Non-zero exit, timeout
   (`TimeoutSeconds`, process tree killed), a command that cannot start, or output that is not UTF-8 is MQ6008.

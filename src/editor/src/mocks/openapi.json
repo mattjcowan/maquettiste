@@ -445,7 +445,10 @@
                               "where": null,
                               "output": "{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql",
                               "mode": "overwrite",
+                              "sources": [],
+                              "tokens": {},
                               "blockComment": "#",
+                              "blockCommentEnd": null,
                               "createFile": false,
                               "formatter": null,
                               "delimiters": null,
@@ -455,11 +458,14 @@
                             {
                               "id": "schema",
                               "template": "schema.scriban",
-                              "for": "select databases",
+                              "for": "each database",
                               "where": null,
                               "output": "{{ kebab database.name }}/schema.sql",
                               "mode": "overwrite",
+                              "sources": [],
+                              "tokens": {},
                               "blockComment": "#",
+                              "blockCommentEnd": null,
                               "createFile": false,
                               "formatter": null,
                               "delimiters": null,
@@ -4973,7 +4979,7 @@
         ],
         "operationId": "getTagUsage",
         "summary": "The tags one tag vocabulary governs, with their uses",
-        "description": "Every tag the tag vocabulary of `package` (the global one without it) declares, and every tag used inside that scope that no\nvocabulary on the element's domain chain declares, each with its uses there (the element's own tags and its sub-elements'),\nthe ids of the elements holding them and up to five of their names. A domain that declares the same key keeps its own uses.\nRemove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers the same.\n",
+        "description": "Every tag the tag vocabulary of `package` (the global one without it) declares, and every tag used inside that scope that no\nvocabulary on the element's domain chain declares, each with its uses there (the element's own tags and its sub-elements'),\nthe ids of the elements holding them and up to five of their names. A domain that declares the same key keeps its own uses.\nRemove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers a summary of the\nsame, with pages and one tag's elements on request.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelStore.GetTagUsageAsync(package)",
         "parameters": [
@@ -5686,7 +5692,7 @@
         ],
         "operationId": "startPlan",
         "summary": "Start a dry run as a job",
-        "description": "Queues a plan job and returns it at once. Join the realtime group `job:{id}` for `job.progress` and\n`job.completed`, then read `GET /api/jobs/{id}` once, so an event sent before the join is not missed. The\nfunctions force `includeDiffs: false`, `stageBarriers: false` and `lock: wait`; `mode` is ignored (a plan is\nalways a dry run). `against` diffs the schema from a model snapshot for this plan instead of the committed\nphysical snapshots, which its apply leaves alone; the functions take snapshot ids only, so a folder, or an id\nthat names no snapshot, is 400 `bad-request`.\n",
+        "description": "Queues a plan job and returns it at once. Join the realtime group `job:{id}` for `job.progress` and\n`job.completed`, then read `GET /api/jobs/{id}` once, so an event sent before the join is not missed. The\nfunctions force `includeDiffs: false`, `stageBarriers: false` and `lock: wait`; `mode` is ignored (a plan is\nalways a dry run). `against` diffs the schema from a model snapshot for this plan instead of the committed\nphysical snapshots, which its apply leaves alone; the functions take snapshot ids only, so a folder, or an id\nthat names no snapshot, is 400 `bad-request`. `units` and `elements` limit the plan to some units (scoped\ngeneration): it holds those units only, and its apply writes their files and leaves every other file alone.\n",
         "x-maquettiste-role": "maintainer",
         "x-maquettiste-engine": "JobQueue.TryEnqueue(new JobRequest(JobKind.Plan, request, null))",
         "requestBody": {
@@ -6326,7 +6332,7 @@
         ],
         "operationId": "previewTemplate",
         "summary": "Render one unit against one element, with no writes",
-        "description": "The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`\nfor a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.\nThe unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no\nfiles. An element outside the unit's scope (another kind than its `each`, one its selector does not return, an\nelement for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders\n(pointer `/units/<i>/for` of the pack's `pack.json`).\nWith `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the\npack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4\n(MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below\nit). Nothing is written.\n\nBounds (generation-ui.md section 5.2): only this unit is rendered, for this element, and no unit is planned. The\nserver keeps a preview session per pack (the model validated and resolved once per model version, shared with\nvalidation; the pack; schema diffs computed per database on first read), reused until the model, the settings, the\npack's files or the committed schema snapshots change. A unit whose one render covers the whole model (`for: model`),\na database or a locale renders all of it, so the editor sends it only when the user asks.\n",
+        "description": "The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`\nfor a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.\nThe unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no\nfiles. An element outside the unit's scope (another kind than its `each`, one its selector does not return, an\nelement for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders\n(pointer `/units/<i>/for` of the pack's `pack.json`).\nWith `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the\npack loads even when disabled, the sandbox limits apply and the render has a deadline of 4 x `limits.scriptTimeoutMs`,\nor 8000 ms when it is 0 (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the\nmaintainer role (403 below it). Nothing is written.\n\nBounds (generation-ui.md section 5.2): only this unit is rendered, for this element, and no unit is planned. The\nserver keeps a preview session per pack (the model validated and resolved once per model version, shared with\nvalidation; the pack; schema diffs computed per database on first read), reused until the model, the settings, the\npack's files or the committed schema snapshots change. A unit whose one render covers the whole model (`for: model`),\na database or a locale renders all of it, so the editor sends it only when the user asks.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.PreviewAsync(pack, unit, elementId, options)",
         "parameters": [
@@ -6461,7 +6467,7 @@
         ],
         "operationId": "unitPaths",
         "summary": "A unit's scope, and the output paths of the elements asked for, with collisions and root checks",
-        "description": "Plans this unit alone as the planner does (its scope, then `generation.skip` hints, then its filter) and renders\nnothing for that: `count` is how many elements it plans and `elements` lists them (up to `limit`, default 200, at most\n2000) with their names and kinds, which is what an element picker shows. Output paths are rendered only for\n`elementIds`, the elements the caller asks for (at most 20; more is 400): `count` and `elements` are then those of the\nlisted elements the unit plans, `rendered` how many were rendered, and `paths` their files. Without `elementIds`\nnothing is rendered (generation-ui.md section 5.2, \"Bounds\"). `wide` is true for a unit whose one render covers the\nwhole model, a database or a locale (`for: model`, `each locale`, a selector that returns databases): its paths come\nwith a preview the user asks for. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020\n(two of the rendered elements render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused\npath, and MQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or\n`parameters` it uses unsaved text, which needs the maintainer role (403 below it). Nothing is written.\n",
+        "description": "Plans this unit alone as the planner does (its scope, then `generation.skip` hints, then its filter) and renders\nnothing for that: `count` is how many elements it plans and `elements` lists them (up to `limit`, default 200, at most\n2000) with their names and kinds, which is what an element picker shows. Output paths are rendered only for\n`elementIds`, the elements the caller asks for (at most 20; more is 400): `count` and `elements` are then those of the\nlisted elements the unit plans, `rendered` how many were rendered, and `paths` their files. Without `elementIds`\nnothing is rendered (generation-ui.md section 5.2, \"Bounds\"). `wide` is true for a unit whose one render covers the\nwhole model, a database or a locale (`for: model`, `each locale`, a selector that returns databases): its paths come\nwith a preview the user asks for. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020\n(two of the rendered elements render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused\npath, and MQ6007 when the deadline (4 x `limits.scriptTimeoutMs`, or 8000 ms when it is 0) is hit. With\n`unitOverride`, `overlay` or `parameters` it uses unsaved text, which needs the maintainer role (403 below it).\nNothing is written.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.PathsAsync(pack, unit, elementIds, options, limit)",
         "parameters": [
@@ -7262,7 +7268,7 @@
         ],
         "operationId": "listExtensionFiles",
         "summary": "The custom property schemas and script rules of the model",
-        "description": "The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules\n(`rules/<name>.js`), each ordinal by path, with size, hash and what is wrong with the file on its own: an invalid schema\n(MQ5004) or a rule script that does not load alone in the sandbox (MQ5002 for a syntax error or a registration without an\nid, MQ5003 for a limit), with line and column. Rule findings (`x/<id>`) come from `POST /api/validate`.\n",
+        "description": "The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules\n(`rules/<name>.js`), each ordinal by path, with size, hash and what is wrong with the file on its own: an invalid schema\n(MQ5004) or a rule script that does not load alone in the sandbox (MQ5002 for a syntax error or a registration without an\nid, MQ5003 for a limit), with line and column, or that declares `let` or `var` at its top level (MQ5005, a warning).\nRule findings (`x/<id>`) come from `POST /api/validate`.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelStore.ListExtensionFilesAsync()",
         "responses": {
@@ -7329,7 +7335,7 @@
         ],
         "operationId": "putExtensionFile",
         "summary": "Write one extension file",
-        "description": "`If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB, and the\nwrite goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its\nMQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is\nwritten as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in\n`diagnostics` (MQ5002 with line and column). The model is refreshed before the answer, `project.changed` is published and a\nvalidation follows, so the rule's `x/<id>` findings reach the Problems panel. A path other than `<name>.json` or\n`rules/<name>.js`, or one through a link, is 400.\n",
+        "description": "`If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB, and the\nwrite goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its\nMQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is\nwritten as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in\n`diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is\nrefreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings\nreach the Problems panel. A path other than `<name>.json` or `rules/<name>.js`, or one through a link, is 400.\n",
         "x-maquettiste-role": "maintainer",
         "x-maquettiste-engine": "ModelStore.WriteExtensionFileAsync(path, text, expectedHash)",
         "parameters": [
@@ -10580,7 +10586,10 @@
           "where",
           "output",
           "mode",
+          "sources",
+          "tokens",
           "blockComment",
+          "blockCommentEnd",
           "createFile",
           "formatter",
           "delimiters",
@@ -10592,7 +10601,11 @@
             "type": "string"
           },
           "template": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The pack-relative template path; null only in mode `copy`, which takes none."
           },
           "for": {
             "type": "string",
@@ -10615,9 +10628,30 @@
           "mode": {
             "$ref": "#/components/schemas/OutputMode"
           },
+          "sources": {
+            "type": "array",
+            "description": "Mode `copy`: pack-relative glob patterns of the files to copy, matched case-sensitively; empty otherwise.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tokens": {
+            "type": "object",
+            "description": "Mode `copy`: literal text replaced in copied text files and output paths, mapped to a parameter name; empty otherwise.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
           "blockComment": {
             "type": "string",
             "description": "Mode `block`: the comment marker of the delimiter lines (`#` by default)."
+          },
+          "blockCommentEnd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Mode `block`: the text closing each delimiter line (for example `-->`), or null."
           },
           "createFile": {
             "type": "boolean",
@@ -16677,8 +16711,11 @@
             ]
           },
           "body": {
-            "type": "string",
-            "description": "The body for the database's dialect."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The body for the database's dialect (or the `*` body); null when the file has none for it."
           },
           "columns": {
             "type": "array",
@@ -16974,8 +17011,11 @@
             "description": "The file's language, else the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere)."
           },
           "body": {
-            "type": "string",
-            "description": "The body for the database's dialect (or the `*` body); empty when the file has none for it."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The body for the database's dialect (or the `*` body); null when the file has none for it."
           },
           "hasBody": {
             "type": "boolean"
@@ -17225,8 +17265,11 @@
             ]
           },
           "nativeType": {
-            "type": "string",
-            "description": "The native type of a single value; empty for a table result."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The native type of a single value; null for a table result."
           },
           "table": {
             "description": "The columns of a table result, or null for a single value.",
@@ -17432,7 +17475,11 @@
             "type": "boolean"
           },
           "nativeName": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What a column or parameter typed by it writes; null when the dialect has none for it (a composite or range outside PostgreSQL)."
           },
           "dependsOn": {
             "type": "array",
@@ -17640,8 +17687,11 @@
             }
           },
           "body": {
-            "type": "string",
-            "description": "The statements for the database's dialect (or the `*` ones); empty when the file has none for it."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The statements for the database's dialect (or the `*` ones); null when the file has none for it."
           },
           "hasBody": {
             "type": "boolean"
@@ -17841,8 +17891,11 @@
             }
           },
           "sql": {
-            "type": "string",
-            "description": "The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need; null when it cannot be rendered there (MQ4029)."
           },
           "sqlParameters": {
             "type": "array",
@@ -19529,7 +19582,8 @@
           "once",
           "regions",
           "pair",
-          "block"
+          "block",
+          "copy"
         ]
       },
       "FileChangeKind": {
@@ -19644,6 +19698,28 @@
               "string",
               "null"
             ],
+            "default": null
+          },
+          "units": {
+            "description": "Scoped generation: only these units, each `<pack>/<unit>` or a unit id that exactly one pack of the run has (values OR, and AND with `elements`). `null` or an empty list: every unit. A unit no run pack has, a pack the run lacks or a unit id several run packs have is MQ6032. A scoped run writes only the selected units' files (and deletes the files they no longer produce), keeps every other output and unit state, never advances the schema snapshots (a selected unit that reads the schema diff is MQ6033) and, as a plan, stores the filters that its apply plans again with.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "default": null
+          },
+          "elements": {
+            "description": "Scoped generation: only the units of these elements, by id, never by name (a synthesized table's id is `<entityId>@<databaseId>`); units that run once for the whole model never match. Values OR, and AND with `units`. `null` or an empty list: every element. A filter that selects no unit and no earlier output is the warning MQ6034.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
             "default": null
           }
         }
@@ -20292,10 +20368,15 @@
             "$ref": "#/components/schemas/RepoPath"
           },
           "text": {
+            "description": "The rendered text; a copy unit's binary file carries \"\".",
             "type": "string"
           },
           "role": {
             "$ref": "#/components/schemas/FileRole"
+          },
+          "binary": {
+            "description": "A copy unit's file that is not text (not strict UTF-8, or holding a NUL byte); written only when true. Its text is empty.",
+            "type": "boolean"
           }
         }
       },
@@ -20442,12 +20523,14 @@
           },
           "role": {
             "type": "string",
+            "description": "`copy-source`: a copy unit's sources match the file, which is copied as it is and never parsed.",
             "enum": [
               "manifest",
               "template",
               "partial",
               "script",
               "type-map",
+              "copy-source",
               "other"
             ]
           },
@@ -20653,7 +20736,8 @@
         "type": "object",
         "required": [
           "id",
-          "severity"
+          "severity",
+          "wholeModel"
         ],
         "properties": {
           "id": {
@@ -20662,6 +20746,10 @@
           },
           "severity": {
             "$ref": "#/components/schemas/DiagnosticSeverity"
+          },
+          "wholeModel": {
+            "type": "boolean",
+            "description": "The rule was registered with scope \"model\": check(model, report) runs once per whole-model validation (validate, generation), not per element, and a validation of some elements (a save) skips it."
           }
         }
       },
@@ -24998,14 +25086,17 @@
             ],
             "properties": {
               "scriptTimeoutMs": {
+                "description": "The wall-clock limit of one script call, in milliseconds. 0 turns the clock off, so results do not depend on the machine's load (use it in CI); the statement limit still bounds every call, and a regular expression match keeps a 250 ms bound.",
                 "type": "integer",
                 "default": 2000,
-                "minimum": 1
+                "minimum": 0
               },
               "scriptStatements": {
+                "description": "The statement limit of one script call, at most 2,000,000,000.",
                 "type": "integer",
                 "default": 5000000,
-                "minimum": 1
+                "minimum": 1,
+                "maximum": 2000000000
               },
               "scriptRecursion": {
                 "type": "integer",
@@ -35274,7 +35365,10 @@
                 "where",
                 "output",
                 "mode",
+                "sources",
+                "tokens",
                 "blockComment",
+                "blockCommentEnd",
                 "createFile",
                 "formatter",
                 "delimiters",
@@ -35287,12 +35381,13 @@
                   "pattern": "^[a-z][a-z0-9-]*$"
                 },
                 "template": {
+                  "description": "The pack-relative template path. Required unless mode is copy; a copy unit takes none.",
                   "type": "string",
                   "minLength": 1
                 },
                 "for": {
                   "type": "string",
-                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
+                  "pattern": "^(model|each (package|entity|attribute|relation|enum|value object|database|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "where": {
                   "title": "Unit filters",
@@ -35368,21 +35463,49 @@
                   "minLength": 1
                 },
                 "mode": {
-                  "description": "overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs.",
+                  "description": "overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' (each followed by blockCommentEnd when set) are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs. copy: the pack files that sources match are copied as they are, with tokens replaced, into the folder output names (the pack's output base when absent); a copy unit takes no template. Copied files are managed like overwrite files.",
                   "enum": [
                     "overwrite",
                     "once",
                     "regions",
                     "pair",
-                    "block"
+                    "block",
+                    "copy"
                   ],
                   "default": "overwrite"
+                },
+                "sources": {
+                  "description": "Mode copy, required there: pack-relative glob patterns of the files to copy. * and ? match within one path segment, ** across segments; matching is case-sensitive and skips dot files and folders. A pattern that matches no pack file is MQ6030. Each file lands at the output folder plus its path after the pattern's literal base. Matched files are copied, never run or parsed: a matched *.js is not a pack script unless scripts names it, and a matched types/*.json is not a type map.",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1,
+                  "default": []
+                },
+                "tokens": {
+                  "description": "Mode copy: literal text replaced in copied text files and their output paths, mapped to the name of a pack parameter whose value is a string (MQ6031). Files that are not UTF-8 text are copied byte for byte.",
+                  "type": "object",
+                  "propertyNames": {
+                    "minLength": 1
+                  },
+                  "additionalProperties": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "default": {}
                 },
                 "blockComment": {
                   "description": "Mode block: the comment marker that starts the block's delimiter lines, for example // or ;.",
                   "type": "string",
                   "pattern": "^[^\\s]+$",
                   "default": "#"
+                },
+                "blockCommentEnd": {
+                  "description": "Mode block: the text that closes each delimiter line, for example --> after <!-- in XML or HTML. A closed delimiter line is recognized whatever closing text it has, and other closing text is rewritten.",
+                  "type": "string",
+                  "pattern": "^[^\\s]+$"
                 },
                 "createFile": {
                   "description": "Mode block: create the target file (holding just the block) when it does not exist. When false and the file is missing, the unit writes nothing and is listed as skipped (target-missing). A file the engine created is deleted when its block is removed and nothing but whitespace is left; any other file is kept.",
@@ -35447,25 +35570,69 @@
               },
               "required": [
                 "id",
-                "template",
                 "for"
               ],
               "additionalProperties": false,
-              "if": {
-                "properties": {
-                  "mode": {
-                    "const": "pair"
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "mode": {
+                        "const": "pair"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "companion"
+                    ]
                   }
                 },
-                "required": [
-                  "mode"
-                ]
-              },
-              "then": {
-                "required": [
-                  "companion"
-                ]
-              }
+                {
+                  "if": {
+                    "properties": {
+                      "mode": {
+                        "const": "copy"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "sources"
+                    ],
+                    "not": {
+                      "required": [
+                        "template"
+                      ]
+                    }
+                  },
+                  "else": {
+                    "required": [
+                      "template"
+                    ],
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "sources"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "tokens"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
             },
             "minItems": 1
           }

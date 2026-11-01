@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Unicode;
 using Maquettiste.Engine.Pipeline;
 
 namespace Maquettiste.Engine.Writing;
@@ -8,7 +9,8 @@ namespace Maquettiste.Engine.Writing;
 /// Unified diffs for dry runs and plans (W7): the common prefix and suffix are trimmed, the middle is diffed with Myers' algorithm,
 /// and a middle whose edit distance exceeds <see cref="MaxEditDistance"/> is shown as one replacement, so memory stays bounded. The
 /// output is deterministic: <c>--- a/&lt;path&gt;</c>, <c>+++ b/&lt;path&gt;</c>, then GNU-style hunks with <c>\ No newline at end
-/// of file</c> markers. Identical inputs give an empty string.
+/// of file</c> markers. Identical inputs give an empty string. When either side is not text (not strict UTF-8, or holding a NUL byte:
+/// a copy unit's binary file, next-phase-1-design.md section 5.4), the diff is the one line <c>Binary file &lt;path&gt; differs</c>.
 /// </summary>
 internal sealed class DiffGenerator : IDiffGenerator
 {
@@ -30,6 +32,8 @@ internal sealed class DiffGenerator : IDiffGenerator
             throw new ArgumentOutOfRangeException(nameof(context));
         if (before.SequenceEqual(after))
             return "";
+        if (!IsText(before) || !IsText(after))
+            return "Binary file " + path + " differs\n";
         var a = SplitLines(Encoding.UTF8.GetString(before), out var aNewline);
         var b = SplitLines(Encoding.UTF8.GetString(after), out var bNewline);
         var script = EditScript(a, b, aNewline, bNewline);
@@ -41,6 +45,14 @@ internal sealed class DiffGenerator : IDiffGenerator
             AppendHunk(sb, script, start, end, a, b, aNewline, bNewline);
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Whether bytes are text: strict UTF-8 without a NUL byte (next-phase-1-design.md section 5.4). A copy unit's file that is not
+    /// text is copied byte for byte, and its diff is one line.
+    /// </summary>
+    /// <param name="bytes">The bytes.</param>
+    /// <returns><see langword="true"/> for text.</returns>
+    internal static bool IsText(ReadOnlySpan<byte> bytes) => !bytes.Contains((byte)0) && Utf8.IsValid(bytes);
 
     private static string[] SplitLines(string text, out bool endsWithNewline)
     {

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -242,7 +243,8 @@ internal sealed class WriteRun
         if (file.Mode == OutputMode.Block)
         {
             var packUnit = record.Unit.Rendered.Unit.Unit;
-            var block = new BlockInfo(string.IsNullOrWhiteSpace(packUnit.BlockComment) ? ManagedBlock.DefaultComment : packUnit.BlockComment, ManagedBlock.Marker(pack.Name, unitName), packUnit.CreateFile);
+            var block = new BlockInfo(string.IsNullOrWhiteSpace(packUnit.BlockComment) ? ManagedBlock.DefaultComment : packUnit.BlockComment,
+                string.IsNullOrWhiteSpace(packUnit.BlockCommentEnd) ? null : packUnit.BlockCommentEnd, ManagedBlock.Marker(pack.Name, unitName), packUnit.CreateFile);
             var blockHash = ManagedBlock.Prefix + ManagedBlock.BodyHash(file.ManifestHash);
             return new FileJob(pack.Name, record.Unit.Rendered.Unit.Key, unitName, path, root, file, false, blockHash) { Block = block };
         }
@@ -456,7 +458,7 @@ internal sealed class WriteRun
 
             if (body is null)
                 return Conflict("was removed after the plan was made");
-            var added = ManagedBlock.Insert([], block.Comment, block.Marker, body);
+            var added = ManagedBlock.Insert([], block.Comment, block.CommentEnd, block.Marker, body);
             return await FinishFileAsync(job, full, FileChangeKind.Added, Entry(true), true, false, null, added, old?.Hash, _context.IncludeDiffs).ConfigureAwait(false);
         }
 
@@ -476,7 +478,9 @@ internal sealed class WriteRun
                 : Conflict("changed after the plan was made");
         }
 
-        var updated = scan.Found ? ManagedBlock.Replace(disk, scan, block.Comment, block.Marker, body) : ManagedBlock.Insert(disk, block.Comment, block.Marker, body);
+        var updated = scan.Found
+            ? ManagedBlock.Replace(disk, scan, block.Comment, block.CommentEnd, block.Marker, body)
+            : ManagedBlock.Insert(disk, block.Comment, block.CommentEnd, block.Marker, body);
         if (updated.AsSpan().SequenceEqual(disk))
             return await FinishFileAsync(job, full, FileChangeKind.Unchanged, Entry(created), false, false, disk, updated, old?.Hash, false).ConfigureAwait(false);
 
@@ -484,7 +488,7 @@ internal sealed class WriteRun
         if (!scan.Found && old is null)
             kind = FileChangeKind.Added; // a new block in a file the team has
         else if (scan.Found && string.Equals(diskBody, bodyHash, StringComparison.Ordinal))
-            kind = FileChangeKind.Modified; // only the delimiter lines' comment changes
+            kind = FileChangeKind.Modified; // only the delimiter lines' comment or closing text changes
         else if (old is not null && scan.Found && string.Equals(diskBody, ManagedBlock.BodyHash(old.Hash), StringComparison.Ordinal))
             kind = FileChangeKind.Modified;
         else if (scan.Found && await WrittenHereAsync(job.Pack, job.UnitKey, job.Path, disk, ContentHash.Of(disk)).ConfigureAwait(false))
@@ -567,12 +571,15 @@ internal sealed class WriteRun
 
         pack.Next = next;
 
-        // Units whose old entries stay: skipped units, failed units, and units with a file this run could not take.
+        // Units whose old entries stay: skipped units, failed units, and units with a file this run could not take; in a scoped run
+        // also every unit it does not select (next-phase-1-design.md section 5.6), a rule over entries, since such a unit may have
+        // entries but no state. An unselected unit's kept path counts as produced, so another pack's orphan there is not deleted.
         var keepUnits = new HashSet<string>(StringComparer.Ordinal);
         foreach (var skipped in pack.Skipped)
             keepUnits.Add(UnitName(skipped.Unit.Key, pack.Name));
         foreach (var record in pack.Units.Where(u => u.Failed || u.KeepPrevious))
             keepUnits.Add(UnitName(record.Unit.Rendered.Unit.Key, pack.Name));
+        var selection = _context.Selection;
 
         foreach (var (path, (entry, bucket)) in _context.Manifests.Data.Pack(pack.Name).Entries)
         {
@@ -584,9 +591,16 @@ internal sealed class WriteRun
             // knows about is checked first, since no manifest ever held it.
             if (bucket != ManifestBucket.Journal)
             {
-                if (keepUnits.Contains(StripCompanion(entry.Unit)))
+                if (keepUnits.Contains(UnitSelection.StripCompanion(entry.Unit)))
                 {
                     next[path] = entry;
+                    continue;
+                }
+
+                if (selection is not null && !selection.MatchesName(pack.Name, UnitSelection.StripCompanion(entry.Unit)))
+                {
+                    next[path] = entry;
+                    _produced.Add(path);
                     continue;
                 }
 
@@ -601,9 +615,16 @@ internal sealed class WriteRun
                 continue;
             }
 
-            if (keepUnits.Contains(StripCompanion(entry.Unit)))
+            if (keepUnits.Contains(UnitSelection.StripCompanion(entry.Unit)))
             {
                 next[path] = entry;
+                continue;
+            }
+
+            if (selection is not null && !selection.MatchesName(pack.Name, UnitSelection.StripCompanion(entry.Unit)))
+            {
+                next[path] = entry;
+                _produced.Add(path);
                 continue;
             }
 
@@ -730,7 +751,7 @@ internal sealed class WriteRun
     /// <summary>Handles one orphan; returns whether its entry stays in the manifest.</summary>
     private async Task<bool> OrphanAsync(string pack, ManifestEntry entry, OutputRootInfo root, List<(string, string)> deletedFolders)
     {
-        var unitKey = pack + "/" + StripCompanion(entry.Unit);
+        var unitKey = pack + "/" + UnitSelection.StripCompanion(entry.Unit);
         if (ManifestHashes.IsOwned(entry.Hash))
         {
             // Owned files belong to the team and are never deleted (D29). A once file of a pack that still exists stays owned while it is
@@ -908,6 +929,17 @@ internal sealed class WriteRun
             };
         }
 
+        // A scoped run carries over the states of the units it does not select (next-phase-1-design.md section 5.6).
+        if (_context.Selection is { } selection)
+        {
+            previous ??= await _context.State.LoadAsync(pack.Name, ct).ConfigureAwait(false);
+            foreach (var (key, state) in previous)
+            {
+                if (!states.ContainsKey(key) && !selection.MatchesName(pack.Name, UnitName(key, pack.Name)))
+                    states[key] = state;
+            }
+        }
+
         var ordered = states.Values.ToList();
         ordered.Sort(static (a, b) => string.CompareOrdinal(a.Key, b.Key));
         await _context.State.SaveAsync(pack.Name, ordered, ct).ConfigureAwait(false);
@@ -955,9 +987,6 @@ internal sealed class WriteRun
 
     private static bool SameUnit(string a, string b) => string.Equals(UnitIdOf(a), UnitIdOf(b), StringComparison.Ordinal);
 
-    private static string StripCompanion(string unit) =>
-        IsCompanion(unit) ? unit[..^"#companion".Length] : unit;
-
     /// <summary>Whether a manifest entry's unit names a pair's companion file (<c>&lt;unit&gt;#companion</c>).</summary>
     private static bool IsCompanion(string unit) => unit.EndsWith("#companion", StringComparison.Ordinal);
 
@@ -1001,8 +1030,8 @@ internal sealed class WriteRun
         public BlockInfo? Block { get; init; }
     }
 
-    /// <summary>A <c>block</c> file's delimiters and whether a missing file is created.</summary>
-    private sealed record BlockInfo(string Comment, string Marker, bool CreateFile);
+    /// <summary>A <c>block</c> file's delimiters (comment, closing text or <see langword="null"/>, marker) and whether a missing file is created.</summary>
+    private sealed record BlockInfo(string Comment, string? CommentEnd, string Marker, bool CreateFile);
 
     private sealed record FileResult(FileChangeKind Kind, ManifestEntry? Entry, bool KeepPrevious, UnitOutput? Output);
 }

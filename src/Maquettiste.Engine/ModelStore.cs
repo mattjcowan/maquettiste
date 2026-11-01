@@ -152,6 +152,8 @@ public sealed partial class ModelStore : IAsyncDisposable
         if (!TryParseRequest(json, null, out var node, out var invalid))
             return invalid;
         await DefaultSeedColumnsAsync(node, ct).ConfigureAwait(false);
+        if (await SeedInputAsync(node, null, ct).ConfigureAwait(false) is { } refused)
+            return refused;
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Create, null, null, node, DeleteResolution.Refuse)], source, ct).ConfigureAwait(false);
         return Single(result);
     }
@@ -168,8 +170,28 @@ public sealed partial class ModelStore : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(id);
         if (!TryParseRequest(json, id, out var node, out var invalid))
             return invalid;
+        if (await SeedInputAsync(node, id, ct).ConfigureAwait(false) is { } refused)
+            return refused;
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Update, id, expectedHash, node, DeleteResolution.Refuse)], source, ct).ConfigureAwait(false);
         return Single(result);
+    }
+
+    /// <summary>
+    /// Seed input by name on a create's or a save's body (next-phase-1-design.md section 5.3): each row's <c>values</c> object becomes
+    /// its cells, then the bare names in <c>columns</c> and <c>key</c> become ids on the model as loaded.
+    /// </summary>
+    /// <returns><see langword="null"/> when the body is no seed or its input resolved; otherwise the invalid result (MQ1002).</returns>
+    private async Task<SaveResult?> SeedInputAsync(JsonNode? node, string? id, CancellationToken ct)
+    {
+        if (!SeedInput.IsSeed(node))
+            return null;
+        var seed = (JsonObject)node!;
+        var errors = new List<Diagnostic>();
+        SeedInput.Rows(seed, errors);
+        if (SeedInput.NeedsNames(seed))
+            SeedInput.Names(seed, new SeedTargets(await LoadedAsync(ct).ConfigureAwait(false)), errors);
+        return errors.Count == 0 ? null
+            : new SaveResult(SaveOutcome.Invalid, id ?? (seed["id"] as JsonValue)?.ToString(), null, null, [.. errors.Order(Diagnostic.Order)], [], null);
     }
 
     /// <summary>Deletes an element (host-contracts requirement 13).</summary>
@@ -252,7 +274,19 @@ public sealed partial class ModelStore : IAsyncDisposable
 
             // A hand-built operation may carry an element ParseBatch never saw: parse it as strictly as a request body.
             if (!IsExpandedOperation(o.Op) && o.Element is { } e && !TryParseRequest(JsonMarshal.GetRawUtf8Value(e).ToArray(), o.Id, out nodes[i], out var failure))
+            {
                 invalid[i] = failure with { Diagnostics = [.. failure.Diagnostics.Select(d => d with { JsonPointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/element", Line = null, Column = null })] };
+                continue;
+            }
+
+            // A seed row's values object becomes its cells (section 5.3) before 5.1's resolver reads the element as a typed record.
+            if (o.Op is BatchOp.Create or BatchOp.Update && SeedInput.IsSeed(nodes[i]))
+            {
+                var errors = new List<Diagnostic>();
+                SeedInput.Rows((JsonObject)nodes[i]!, errors);
+                if (errors.Count > 0)
+                    invalid[i] = SeedRefusal(i, o.Id, errors);
+            }
         }
 
         if (invalid.Any(r => r is not null))
@@ -260,7 +294,8 @@ public sealed partial class ModelStore : IAsyncDisposable
 
         // Names, placeholders and minted ids (next-phase-1-design.md section 5.1): resolved on the snapshot as loaded, outside the gate,
         // before anything is planned or expanded; a change in between is caught as for any write (hashes on disk, MQ2001).
-        var resolved = BatchNames.Resolve(await LoadedAsync(ct).ConfigureAwait(false), batch, nodes, _services.Schemas, _options.EffectiveIdGenerator);
+        var loaded = await LoadedAsync(ct).ConfigureAwait(false);
+        var resolved = BatchNames.Resolve(loaded, batch, nodes, _services.Schemas, _options.EffectiveIdGenerator);
         if (resolved.Failed)
         {
             for (var i = 0; i < batch.Operations.Count; i++)
@@ -273,6 +308,8 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
 
         batch = resolved.Batch;
+        if (SeedNames(loaded, batch, nodes, invalid))
+            return Invalid(batch, invalid);
         var changes = new List<PlannedChange>(batch.Operations.Count);
         var schemaOps = false;
         for (var i = 0; i < batch.Operations.Count; i++)
@@ -295,6 +332,60 @@ public sealed partial class ModelStore : IAsyncDisposable
 
         static BatchResult Invalid(ModelBatch batch, SaveResult?[] invalid) => new(SaveOutcome.Invalid,
             [.. invalid.Select((r, i) => r ?? new SaveResult(SaveOutcome.Saved, batch.Operations[i].Id, null, null, [], [], null))], null);
+    }
+
+    /// <summary>
+    /// Seed columns and keys by name in a batch (next-phase-1-design.md section 5.3), after 5.1's resolver: each seed create or update
+    /// turns its bare names into ids on the model as loaded with the batch's earlier creates, updates and deletes laid over it, so a
+    /// seed names the columns of a table an earlier operation creates. Reads elements only up to the last seed that has names.
+    /// </summary>
+    /// <returns><see langword="true"/> when a name failed; its operation's slot of <paramref name="invalid"/> says why.</returns>
+    private static bool SeedNames(ModelSnapshot loaded, ModelBatch batch, JsonNode?[] nodes, SaveResult?[] invalid)
+    {
+        var last = -1;
+        for (var i = 0; i < batch.Operations.Count; i++)
+        {
+            if (batch.Operations[i].Op is BatchOp.Create or BatchOp.Update && SeedInput.NeedsNames(nodes[i]))
+                last = i;
+        }
+
+        if (last < 0)
+            return false;
+        var view = new SeedTargets(loaded);
+        var failed = false;
+        for (var i = 0; i <= last; i++)
+        {
+            var o = batch.Operations[i];
+            if (o.Op is BatchOp.Create or BatchOp.Update && nodes[i] is JsonObject node)
+            {
+                if (SeedInput.NeedsNames(node))
+                {
+                    var errors = new List<Diagnostic>();
+                    SeedInput.Names(node, view, errors);
+                    if (errors.Count > 0)
+                    {
+                        invalid[i] = SeedRefusal(i, o.Id ?? (node["id"] as JsonValue)?.ToString(), errors);
+                        failed = true;
+                    }
+                }
+
+                if (i < last)
+                    view.Lay(node);
+            }
+            else if (o.Op == BatchOp.Delete && o.Id is { } id)
+            {
+                view.Remove(id);
+            }
+        }
+
+        return failed;
+    }
+
+    /// <summary>A batch operation refused by its seed input, the diagnostics' pointers under <c>/operations/&lt;i&gt;/element</c>.</summary>
+    private static SaveResult SeedRefusal(int i, string? id, List<Diagnostic> errors)
+    {
+        var prefix = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/element";
+        return new SaveResult(SaveOutcome.Invalid, id, null, null, [.. errors.Select(d => d with { JsonPointer = prefix + d.JsonPointer }).Order(Diagnostic.Order)], [], null);
     }
 
     /// <summary>

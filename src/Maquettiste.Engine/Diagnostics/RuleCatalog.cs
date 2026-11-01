@@ -28,6 +28,24 @@ public sealed record RuleInfo(string Id, DiagnosticSeverity DefaultSeverity, str
 public sealed record RuleCatalogEntry(string Id, DiagnosticSeverity DefaultSeverity, string Description, string Family, string FamilyLabel, bool CanBeOff,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuickFix = null);
 
+/// <summary>The rule catalog in a few lines (<see cref="RuleCatalog.Summarize"/>): what <c>list_validation_rules</c> answers with no argument.</summary>
+/// <param name="Total">The number of built-in rules.</param>
+/// <param name="Families">Each family with its rule count and id range, in id order.</param>
+public sealed record RuleCatalogSummary(int Total, IReadOnlyList<RuleFamilySummary> Families);
+
+/// <summary>One family of the rule catalog.</summary>
+/// <param name="Family">The hundreds group, for example <c>MQ72xx</c>.</param>
+/// <param name="FamilyLabel">What the family's rules cover.</param>
+/// <param name="Rules">The number of rules in the family.</param>
+/// <param name="First">The family's lowest rule id.</param>
+/// <param name="Last">The family's highest rule id.</param>
+public sealed record RuleFamilySummary(string Family, string FamilyLabel, int Rules, string First, string Last);
+
+/// <summary>One page of full catalog entries (<see cref="RuleCatalog.Page"/>).</summary>
+/// <param name="Items">The entries, in id order.</param>
+/// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one.</param>
+public sealed record RuleCatalogPage(IReadOnlyList<RuleCatalogEntry> Items, string? Next);
+
 /// <summary>The built-in rule catalog (engine-design.md section 6). JavaScript rules use <c>x/&lt;id&gt;</c> and are not listed here.</summary>
 public static class RuleCatalog
 {
@@ -52,6 +70,7 @@ public static class RuleCatalog
         new("MQ1013", E, "A name in a batch finds more than one element or sub-element. Use a longer form (package, database, schema, owner or seed), or the id when every form is shared; the message lists each candidate's longest form and id."),
         new("MQ1014", E, "A write misuses an identity: a placeholder declared twice; as on a delete, a schema, materialize, process or tag operation, or on an object that is not a sub-element; two expectedHashes keys for one element; or an update that drops a sub-element and adds one without an id under the same parent and property with the same name (send the existing id to keep it)."),
         new("MQ1015", E, "A name in a batch is malformed or misplaced: not @kind:path or $name, an unknown kind or one without names, an empty or unclosed quoted segment, a name as a create's id (declare a placeholder with as), or a placeholder where the element must exist before the batch (an update's or delete's id, an expectedHashes key)."),
+        new("MQ1016", E, "A JSON Patch cannot be applied: an unknown op, a path or from that does not resolve, an index out of range, a failed test, or a change to id or kind; nothing is written."),
 
         new("MQ2001", E, "Dangling reference."),
         new("MQ2002", E, "Reference to an element of the wrong kind."),
@@ -184,6 +203,7 @@ public static class RuleCatalog
         new("MQ5002", E, "Validation rule script error."),
         new("MQ5003", E, "Validation rule exceeded a sandbox limit."),
         new("MQ5004", E, "Invalid extension file."),
+        new("MQ5005", W, "A rule file declares top-level let or var variables; a rule keeps no state between calls, so its results are never cached."),
 
         new("MQ6001", E, "Invalid pack.json."),
         new("MQ6002", E, "Engine version range not satisfied."),
@@ -213,6 +233,11 @@ public static class RuleCatalog
         new("MQ6027", E, "A block unit's target file holds its block twice, or a block that is not closed; the file is left alone."),
         new("MQ6028", I, "A block unit's target file does not exist and createFile is false; nothing is written (target-missing)."),
         new("MQ6029", E, "A write against a model snapshot opened read-only; nothing is written (restore the snapshot to change it)."),
+        new("MQ6030", E, "A copy unit's source pattern matches no pack file; the unit is skipped and the pack's other units still render."),
+        new("MQ6031", E, "A copy unit's token names a parameter the pack does not declare, or one whose value is not a string; the unit is skipped."),
+        new("MQ6032", E, "A generation filter names a pack the run lacks, a unit no run pack has, or a bare unit id several run packs have."),
+        new("MQ6033", E, "A run limited by unit or element renders a unit that reads the schema diff; schema snapshots advance only in whole-pack runs."),
+        new("MQ6034", W, "A generation filter selects no unit and no output; nothing is generated."),
 
         new("MQ7001", E, "Duplicate code in a reference type, across all its seeds."),
         new("MQ7002", W, "Two codes of one reference type differ only by case."),
@@ -358,8 +383,53 @@ public static class RuleCatalog
 
     /// <summary>Every built-in rule with its family and whether it can be turned off, ordered by id.</summary>
     /// <returns>The catalog entries.</returns>
-    public static IReadOnlyList<RuleCatalogEntry> Describe() =>
-        [.. Rules.Select(r => new RuleCatalogEntry(r.Id, r.DefaultSeverity, r.Description, FamilyOf(r.Id), FamilyLabel(FamilyOf(r.Id)), r.CanBeDisabled, r.QuickFix))];
+    public static IReadOnlyList<RuleCatalogEntry> Describe() => [.. Rules.Select(Entry)];
+
+    /// <summary>
+    /// The catalog by family (next-phase-1-design.md section 5.2): the total, then each family with its label, rule count and first and
+    /// last ids, in id order, so an agent sees what there is without every description.
+    /// </summary>
+    /// <returns>The summary.</returns>
+    public static RuleCatalogSummary Summarize()
+    {
+        var families = new List<RuleFamilySummary>();
+        foreach (var rule in Rules)
+        {
+            var family = FamilyOf(rule.Id);
+            if (families.Count > 0 && families[^1].Family == family)
+                families[^1] = families[^1] with { Rules = families[^1].Rules + 1, Last = rule.Id };
+            else
+                families.Add(new RuleFamilySummary(family, FamilyLabel(family), 1, rule.Id, rule.Id));
+        }
+
+        return new RuleCatalogSummary(Rules.Length, families);
+    }
+
+    /// <summary>
+    /// One page of full entries that match every filter given (AND), in id order: <paramref name="family"/> equals the rule's
+    /// <see cref="FamilyOf"/>, <paramref name="ids"/> holds the rule id exactly, and <paramref name="query"/> occurs in the id or the
+    /// description, ignoring case (ordinal). Pages use the keyset cursor of the model's paged reads, keyed by rule id.
+    /// </summary>
+    /// <param name="family">A family key such as <c>MQ72xx</c>, or <see langword="null"/>.</param>
+    /// <param name="ids">Rule ids, or <see langword="null"/>; an empty collection matches nothing.</param>
+    /// <param name="query">Text to find, or <see langword="null"/>.</param>
+    /// <param name="cursor">The <see cref="RuleCatalogPage.Next"/> of the previous page, or <see langword="null"/> for the first.</param>
+    /// <param name="limit">The page size, 1 to 1000.</param>
+    /// <returns>The page.</returns>
+    /// <exception cref="FormatException"><paramref name="cursor"/> is not a cursor a paged read returned.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="limit"/> is out of range.</exception>
+    public static RuleCatalogPage Page(string? family, IReadOnlyCollection<string>? ids, string? query, string? cursor, int limit)
+    {
+        var only = ids is null ? null : new HashSet<string>(ids, StringComparer.Ordinal);
+        var rows = Rules.Where(r => (string.IsNullOrEmpty(family) || string.Equals(FamilyOf(r.Id), family, StringComparison.Ordinal))
+            && (only is null || only.Contains(r.Id))
+            && (string.IsNullOrEmpty(query) || r.Id.Contains(query, StringComparison.OrdinalIgnoreCase) || r.Description.Contains(query, StringComparison.OrdinalIgnoreCase)));
+        var (items, next) = ModelPages.Page(rows, r => ("rule", r.Id, ""), cursor, limit);
+        return new RuleCatalogPage([.. items.Select(Entry)], next);
+    }
+
+    private static RuleCatalogEntry Entry(RuleInfo r) =>
+        new(r.Id, r.DefaultSeverity, r.Description, FamilyOf(r.Id), FamilyLabel(FamilyOf(r.Id)), r.CanBeDisabled, r.QuickFix);
 
     /// <summary>Every built-in rule, ordered by id.</summary>
     public static IReadOnlyList<RuleInfo> All => Rules;

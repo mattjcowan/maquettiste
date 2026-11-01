@@ -16,6 +16,7 @@ sections 8 and 11). Implemented; no stubs left.
 | `CanonicalForm.cs` | sorted-key compact JSON for hashing settings sections, units and parameters |
 | `EngineFiles.cs` | guarded atomic writes for W6's stores (unit state, plans, jobs), through `IOutputPathPolicy.CheckEngineWrite` |
 | `PackFiles.cs` | pack-relative path confinement and file hashes |
+| `CopySources.cs` | the one matcher of `copy` units: sources against the pack's files, read once per pack instance, MQ6030 and MQ6031 |
 
 Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtures/packs/`.
 
@@ -28,14 +29,16 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
 - `pack.json`: strict JSON (MQ6001 with line and column), `pack.json` schema (each failure re-coded MQ6001 with its pointer and
   position), `name` equal to the folder (MQ6001), engine range (MQ6002 when not satisfied, MQ6001 when unparseable), unique unit ids,
   template and companion template paths relative, inside the pack and existing (MQ6001), and no `where` filter other than
-  `database` on a `for: model` unit (MQ6001; such a unit has no element to filter).
-- Scripts: `scripts` lists pack-relative paths (inside the pack, existing, listed once); empty means every `*.js` in the pack,
-  recursively, dot files and folders skipped, ordinal by pack-relative path. `ScriptSource.Path` is repo-relative
-  (`.maquettiste/templates/<pack>/helpers.js`), so the sandbox reports pack script errors as MQ6016 (it recognizes rule scripts by
-  path). `ScriptsHash = H("mq-scripts-1", count, path₁, hash₁, …)`.
+  `database` on a `for: model` unit (MQ6001; such a unit has no element to filter). A `copy` unit takes no template; each
+  `sources` pattern must be relative, without empty, `.` or `..` segments or backslashes (MQ6001). A pattern that matches
+  nothing (MQ6030) or a bad token (MQ6031) is the planner's: the unit is skipped and the pack's other units render.
+- Scripts: `scripts` lists pack-relative paths (inside the pack, existing, listed once); empty means every `*.js` in the
+  pack, recursively, dot files and folders skipped, and files a `copy` unit copies left out, ordinal by pack-relative path.
+  `ScriptSource.Path` is repo-relative (`.maquettiste/templates/<pack>/helpers.js`), so the sandbox reports pack script
+  errors as MQ6016 (it recognizes rule scripts by path). `ScriptsHash = H("mq-scripts-1", count, path₁, hash₁, …)`.
 - Parameters: the manifest's defaults overlaid by `packs.<name>.parameters`, in an ordinal sorted map.
-- Type maps: `types/*.json` (top level of `types/`), each a JSON object of strings (`$schema` ignored); the target is the file
-  name without `.json`. A non-string value or bad JSON is MQ6001.
+- Type maps: `types/*.json` (top level of `types/`) that no `copy` unit copies, each a JSON object of strings (`$schema`
+  ignored); the target is the file name without `.json`. A non-string value or bad JSON is MQ6001.
 - A pack with any error is left out of `PackSet.Packs`; the orchestrator stops the run on any pack error, so a broken pack is never
   treated as removed (which would orphan its whole manifest).
 - Shared packs by git reference are phase 4.
@@ -55,6 +58,13 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
   `notPackages` and `abstract` on those scopes are refused at pack load (MQ6001). `each routine`, `each database type` and
   `each sql object` (2026-10-01) and `each query` (2026-10-02) plan one unit per object of every database and follow the same
   rules as `each view`.
+- `each database` (next-phase-1-design.md section 5.5) plans one unit per database: the database file's hints count,
+  `where` reads its tags, stereotypes, category and package, and `database` matches its name. `each attribute` plans one
+  unit per attribute declared in a model file, at its declaring owner (`UnitPlanner.DeclaredAttributes`: an entity's own
+  attributes except a promoted entity's, a relation's, a value object's and a reference type's, never a virtual or
+  inherited copy, since the planner keeps the first of duplicate keys); `where` reads the attribute's own tags,
+  stereotypes and category and its owner's package, and `database` matches through an entity or relation owner (any
+  existing database for a value object's or reference type's). Both refuse `abstract` at pack load (MQ6001).
 - `where` (every set filter must match; lists match any value): tags and stereotypes of the element; categories by id or name
   with descendants (through the category tree); packages by id or qualified name with sub-packages (a package unit matches on the
   package itself and its ancestors); `database` (a table, view, sequence, routine, database type, SQL object or query in it; an entity or relation with a mapping there, i.e. in

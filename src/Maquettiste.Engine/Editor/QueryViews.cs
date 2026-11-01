@@ -21,7 +21,10 @@ namespace Maquettiste.Engine;
 /// <param name="Distinct">Whether duplicate rows are removed.</param>
 /// <param name="Paging">The paging as the file writes it, or <see langword="null"/>.</param>
 /// <param name="Collections">The collections.</param>
-/// <param name="Sql">The SQL for the database's dialect (<c>@name</c> placeholders), with the hidden key columns its collections need.</param>
+/// <param name="Sql">
+/// The SQL for the database's dialect (<c>@name</c> placeholders), with the hidden key columns its collections need, or
+/// <see langword="null"/> when it cannot be rendered there (as <see cref="RQuery.Sql"/>).
+/// </param>
 /// <param name="SqlParameters">The parameters the SQL names, in first-appearance order.</param>
 /// <param name="Uses">The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads.</param>
 /// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
@@ -48,7 +51,7 @@ public sealed record QueryView(
     bool Distinct,
     JsonElement? Paging,
     IReadOnlyList<QueryCollectionView> Collections,
-    string Sql,
+    string? Sql,
     IReadOnlyList<string> SqlParameters,
     IReadOnlyList<string> Uses,
     string? DisplayName,
@@ -153,7 +156,7 @@ internal static class QueryViews
     public static QueryView Project(RQuery query)
     {
         var file = query.Definition as Query;
-        var rendered = query.Sql.Length == 0 ? null : QuerySql.Render(query);
+        var rendered = query.Sql is null ? null : QuerySql.Render(query);
         return new QueryView(
             query.Id,
             query.Name,
@@ -170,7 +173,7 @@ internal static class QueryViews
             query.Distinct,
             Tree(file?.Paging),
             [.. query.Collections.Select(Collection)],
-            rendered?.Sql ?? "",
+            rendered?.Sql,
             rendered?.Parameters ?? [],
             [.. query.Uses.Select(u => u is RTable table ? table.Key : u.Id)],
             OrNull(query.DisplayName),
@@ -204,7 +207,7 @@ internal static class QueryViews
 
     private static QueryCollectionView Collection(RQueryCollection collection)
     {
-        var rendered = RootOf(collection.Query).Sql.Length == 0 ? null : QuerySql.RenderCollection(collection);
+        var rendered = RootOf(collection.Query).Sql is null ? null : QuerySql.RenderCollection(collection);
         return new QueryCollectionView(
             collection.Name,
             collection.Definition?.Attribute ?? collection.Name,
@@ -236,5 +239,5 @@ internal static class QueryViews
     private static JsonElement? Tree<T>(T? value) where T : class =>
         value is null ? null : JsonSerializer.SerializeToElement(value, EngineJson.Options);
 
-    private static string? OrNull(string value) => value.Length == 0 ? null : value;
+    private static string? OrNull(string? value) => string.IsNullOrEmpty(value) ? null : value;
 }

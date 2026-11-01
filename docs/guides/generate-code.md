@@ -73,6 +73,22 @@ transaction, so a failed run records nothing. A model without facts gets the sam
 applies changes with a migrator of its own, `maquettiste migration ledger --grant-read <role>` prints the tables' DDL
 and a read grant for it; [The migration ledger](../ledger.md) has the rules.
 
+### Regenerate one element, or one database's schema
+
+Sometimes you want one element's files now and the rest later. `--element` takes the element's id (the `id` in its
+file, never its name) and `--unit` takes `<pack>/<unit>`:
+
+```sh
+maquettiste generate --element <id of Member>                        # Member's files, in every pack
+maquettiste generate --unit sql-ddl/schema --element <database id>   # one database's schema script
+```
+
+Every other generated file stays as the last run left it, and the next full `maquettiste generate` writes the rest. A
+migration renders only in a full run, because only a full run moves the schema snapshot that migrations are diffed
+from: `--element <database id>` alone also selects `sql-ddl/migration` and stops with MQ6033 (exit 1), so add
+`--unit sql-ddl/schema`. [Regenerate one element or one unit](../user-guide.md#regenerate-one-element-or-one-unit) has
+the rules.
+
 ## 5. Guard the outputs in CI
 
 `generate --check` renders every output in memory, writes nothing, and exits 2 when any file would be added, changed or
@@ -146,12 +162,39 @@ Spoke & Chain wants one short Markdown sheet per entity for the volunteers' hand
 From a terminal, `maquettiste pack new entity-sheets --from empty` makes the same pack (`--from sql-ddl` or
 `--from csharp-dapper` copies a starter). The copy is yours: the example packs are not updated under you.
 
+## 8. Copy a project skeleton
+
+Not every file needs a template. A unit in mode `copy` copies pack files as they are, and can swap a piece of literal
+text, such as a namespace, for a pack parameter, so the skeleton stays ordinary code that builds on its own.
+
+1. Put the skeleton in the pack, all in the namespace `Skeleton.Api`: `skeleton/Skeleton.Api.csproj`,
+   `skeleton/Program.cs`, `skeleton/Api/Invoices.cs` and `skeleton/logo.png`.
+2. Declare the parameter and the unit in the pack's `pack.json`:
+
+   ```json
+   "parameters": { "rootNamespace": "Skeleton.Api" },
+   "units": [
+     { "id": "api-skeleton", "for": "model", "mode": "copy", "sources": ["skeleton/**"],
+       "tokens": { "Skeleton.Api": "rootNamespace" }, "output": "src/Billing.Api" }
+   ]
+   ```
+
+3. In `.maquettiste/maquettiste.json`, allow `src/Billing.Api` in `outputs.allow` and give the project's value under
+   `packs.<pack>.parameters`: `"rootNamespace": "Billing.Api"`.
+4. **Plan** lists `Billing.Api.csproj`, `Program.cs`, `Api/Invoices.cs` and `logo.png` under `src/Billing.Api`. Every
+   `Skeleton.Api` in the text files and in the paths reads `Billing.Api`; the logo is copied byte for byte.
+
+The unit renders again only when a source is edited, added or removed. The copies are managed like other generated
+files, so change the source in the pack, not the copy, or the next run reports a hand edit.
+[Copy units](../user-guide.md#copy-units-a-folder-of-files-copied-as-they-are) has the rules.
+
 ## See also
 
 - [Generation: how the model becomes files](../user-guide.md#generation-how-the-model-becomes-files): templates, units,
   scopes, output patterns, parameters and write modes.
-- [How the plan explains itself](../user-guide.md#how-the-plan-explains-itself) and
-  [Change a template and see the result](../user-guide.md#change-a-template-and-see-the-result).
+- [How the plan explains itself](../user-guide.md#how-the-plan-explains-itself),
+  [Change a template and see the result](../user-guide.md#change-a-template-and-see-the-result) and
+  [Regenerate one element or one unit](../user-guide.md#regenerate-one-element-or-one-unit).
 - [Make your own pack from a starter](../user-guide.md#make-your-own-pack-from-a-starter),
   [outputs.allow: what generation may touch](../user-guide.md#outputsallow-what-generation-may-touch) and
   [Packs in the editor](../user-guide.md#packs-in-the-editor-what-generation-does).

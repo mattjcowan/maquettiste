@@ -17,15 +17,20 @@ namespace Maquettiste.Engine;
 /// <param name="Kind"><c>schema</c> (custom properties, <c>extensions/*.json</c>) or <c>rule</c> (a script rule, <c>extensions/rules/*.js</c>).</param>
 /// <param name="Size">The size in bytes.</param>
 /// <param name="Hash">The content hash (the expected hash of a write, delete or move).</param>
-/// <param name="Diagnostics">What is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load (MQ5002, MQ5003).</param>
-/// <param name="Rules">For a rule script that loads, the rules it registers; empty for a schema.</param>
+/// <param name="Diagnostics">What is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load (MQ5002, MQ5003)
+/// or keeps state at its top level (MQ5005, a warning).</param>
+/// <param name="Rules">For a rule script that loads, the rules it registers (whole-model rules marked); empty for a schema.</param>
 public sealed record ExtensionFileInfo(string Path, string Kind, long Size, string Hash, IReadOnlyList<Diagnostic> Diagnostics,
     IReadOnlyList<ExtensionRuleInfo> Rules);
 
 /// <summary>One rule a script registers.</summary>
 /// <param name="Id">The rule id as findings carry it: <c>x/&lt;id&gt;</c>.</param>
 /// <param name="Severity">The severity the rule declares (<c>validation.rules</c> can override it).</param>
-public sealed record ExtensionRuleInfo(string Id, DiagnosticSeverity Severity);
+public sealed record ExtensionRuleInfo(string Id, DiagnosticSeverity Severity)
+{
+    /// <summary>Whether the rule was registered with <c>scope: "model"</c>: it checks the whole model once per whole-model validation.</summary>
+    public bool WholeModel { get; init; }
+}
 
 /// <summary>The body of <c>GET /api/extensions/files</c>.</summary>
 /// <param name="Folder">The repo-relative folder the paths are under (<c>.maquettiste/extensions</c>).</param>
@@ -50,7 +55,8 @@ public sealed record ExtensionFileMove(string? From, string? To);
 /// <param name="Hash">The new hash when saved (null after a delete); the disk hash on conflict.</param>
 /// <param name="Current">The disk text on conflict, else null.</param>
 /// <param name="Text">The text written when saved: a schema is written in canonical form, so it may differ from the text sent.</param>
-/// <param name="Diagnostics">Why it was refused; for a saved rule script, its syntax and load check (MQ5002, MQ5003 with line and column).</param>
+/// <param name="Diagnostics">Why it was refused; for a saved rule script, its syntax and load check (MQ5002, MQ5003 with line and column, or
+/// the warning MQ5005).</param>
 /// <param name="Files">The paths written or deleted.</param>
 public sealed record ExtensionWriteResult(SaveOutcome Outcome, string? Hash, string? Current, string? Text, IReadOnlyList<Diagnostic> Diagnostics,
     IReadOnlyList<string> Files);
@@ -253,7 +259,8 @@ public sealed partial class ModelStore
     /// <summary>
     /// Loads one rule script alone in the sandbox, as validation does: a syntax error, a <c>maquettiste.rule</c> call without an id, a
     /// script that throws or breaks a limit while loading. Returns its MQ5002 or MQ5003 diagnostic with the script's path, line and
-    /// column; empty when it loads, and then fills <paramref name="rules"/> with what it registers.
+    /// column; when it loads, its load warning (MQ5005, top-level <c>let</c> or <c>var</c>, unless <c>validation.rules</c> sets it
+    /// off), and then fills <paramref name="rules"/> with what it registers.
     /// </summary>
     private List<Diagnostic> CheckRuleScript(ModelSnapshot snapshot, string repoPath, string code, CancellationToken ct, List<ExtensionRuleInfo>? rules = null)
     {
@@ -265,10 +272,10 @@ public sealed partial class ModelStore
             {
                 using var lease = pool.Rent();
                 if (lease.Sandbox is ScriptSandbox sandbox)
-                    rules.AddRange(sandbox.Rules.Select(r => new ExtensionRuleInfo("x/" + r.Id, r.Severity)));
+                    rules.AddRange(sandbox.Rules.Select(r => new ExtensionRuleInfo("x/" + r.Id, r.Severity) { WholeModel = r.WholeModel }));
             }
 
-            return [];
+            return Validation.ModelValidator.ApplySettings(snapshot.Settings, [.. pool.Warnings]);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

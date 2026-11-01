@@ -270,7 +270,7 @@ export function viewSql(v: ViewView, dialect = "postgresql", docs?: ReadonlyMap<
   const materialized = file?.materialized === true && (dialect === "postgresql" || dialect === "oracle");
   const columnList = file?.columnList === true && v.columns.length ? ` (${v.columns.map((c) => c.name).join(", ")})` : "";
   const check = file?.withCheckOption === true && dialect !== "sqlite" && !materialized ? "\nWITH CHECK OPTION" : "";
-  return `CREATE ${materialized ? "MATERIALIZED " : ""}VIEW ${qualifiedObject(v)}${columnList} AS\n${v.body.trim()}${check};`;
+  return `CREATE ${materialized ? "MATERIALIZED " : ""}VIEW ${qualifiedObject(v)}${columnList} AS\n${(v.body ?? "").trim()}${check};`;
 }
 
 /** A sequence's CREATE SEQUENCE. */
@@ -322,9 +322,9 @@ export function routineSql(r: RoutineView, dialect: string): string {
     : r.returns.table
       ? ` RETURNS TABLE (${r.returns.table.map((c) => `${c.name} ${c.nativeType}`).join(", ")})`
       : ` RETURNS ${r.returns.nativeType}`;
-  if (sqlserver) return `CREATE ${what} ${qualifiedObject(r)}(${parameters.join(", ")})${returns}\nAS\n${r.body.trim()};`;
+  if (sqlserver) return `CREATE ${what} ${qualifiedObject(r)}(${parameters.join(", ")})${returns}\nAS\n${(r.body ?? "").trim()};`;
   const marks = [`LANGUAGE ${r.language}`, ...(r.deterministic ? ["IMMUTABLE"] : []), ...(r.security === "definer" ? ["SECURITY DEFINER"] : [])];
-  return `CREATE ${what} ${qualifiedObject(r)}(${parameters.join(", ")})${returns}\n${marks.join(" ")}\nAS $$\n${r.body.trim()}\n$$;`;
+  return `CREATE ${what} ${qualifiedObject(r)}(${parameters.join(", ")})${returns}\n${marks.join(" ")}\nAS $$\n${(r.body ?? "").trim()}\n$$;`;
 }
 
 /** A database type's CREATE DOMAIN or CREATE TYPE (its definition for the dialect, else built from the structured form). */
@@ -349,7 +349,7 @@ export function typeSql(t: DatabaseTypeView, dialect: string): string {
 
 /** A SQL object's statements as written, or a comment when it has none for the dialect. */
 export function objectSql(o: SqlObjectView): string {
-  return o.hasBody ? o.body.trim() : `-- SQL object ${o.name} (${o.objectKind}) has no statements for this dialect.`;
+  return o.hasBody ? (o.body ?? "").trim() : `-- SQL object ${o.name} (${o.objectKind}) has no statements for this dialect.`;
 }
 
 /** One of the sql-ddl pack's per-object scripts (its `routine`, `database-type` and `sql-object` units, written when the

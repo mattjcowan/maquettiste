@@ -401,7 +401,7 @@ internal sealed partial class ResolveRun
     private static List<RAuditField> AuditFields(RGate gate, List<RAttribute> attributes, IReadOnlyList<string> keys)
     {
         var fields = new List<RAuditField>();
-        void Add(string name, string type, bool required, string description, IReadOnlyList<string>? values = null, RAttribute? attribute = null) =>
+        void Add(string name, string type, bool required, string? description, IReadOnlyList<string>? values = null, RAttribute? attribute = null) =>
             fields.Add(new RAuditField
             {
                 Id = gate.Id + "/audit/" + name, Name = name, Type = type, Required = required, Description = description,
@@ -421,7 +421,7 @@ internal sealed partial class ResolveRun
         Add("outcome", "string", true, "signed, completed, refused (an attempt the gate did not count) or discarded (the source state was exited).",
             ["signed", "completed", "refused", "discarded"]);
         foreach (var attribute in attributes)
-            Add(attribute.Name, attribute.Type.Builtin ?? attribute.Type.Name, attribute.Required, attribute.Description ?? "", null, attribute);
+            Add(attribute.Name, attribute.Type.Builtin ?? attribute.Type.Name, attribute.Required, attribute.Description, null, attribute);
         return fields;
     }
 

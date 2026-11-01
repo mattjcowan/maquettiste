@@ -53,6 +53,13 @@ internal sealed record PreparedRun(
     /// are neither read nor written (<see cref="GenerationRun.SaveSnapshotsAsync"/> writes nothing).
     /// </summary>
     public bool FromBaseline { get; init; }
+
+    /// <summary>
+    /// The resolved filters of a scoped run (<see cref="GenerationRequest.Units"/>, <see cref="GenerationRequest.Elements"/>;
+    /// next-phase-1-design.md section 5.6), which <see cref="Plan"/> already holds only the selected units of; <see langword="null"/>
+    /// for a run of every unit of its packs.
+    /// </summary>
+    public UnitSelection? Selection { get; init; }
 }
 
 /// <summary>What stages 6 to 8 produced.</summary>
@@ -130,10 +137,17 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     /// <param name="barriers">Whether stages run one after another (<see cref="GenerationRequest.StageBarriers"/>).</param>
     /// <param name="baseline">The baseline model the schema diffs run from (<see cref="GenerationRequest.Against"/>), opened by the
     /// caller for this run; <see langword="null"/> diffs from the committed physical snapshots.</param>
+    /// <param name="selection">The unit and element filters of a scoped run (<see cref="UnitSelection.Of"/>), or <see langword="null"/>.
+    /// When every unit value names its pack only those packs load; the values are resolved once the packs have loaded (MQ6032 makes
+    /// the run invalid), and the plan keeps the selected units only, so skip, render, write, plan capture and plan apply see nothing
+    /// else. A selection that matches no planned unit and no manifest entry is MQ6034 (a warning; the plan is empty).</param>
     /// <returns>The prepared run, or <see langword="null"/>.</returns>
     public async Task<PreparedRun?> PrepareAsync(IReadOnlyList<string>? packNames, GenerationMode mode, CancellationToken ct, bool locked = true,
-        bool barriers = true, ModelBaseline? baseline = null)
+        bool barriers = true, ModelBaseline? baseline = null, UnitSelection? selection = null)
     {
+        if (selection is not null)
+            packNames = selection.PackNames(packNames, Path.Combine(new ModelPaths(services.Options).ModelRoot, "templates"));
+
         var journal = locked ? await services.Journal.ReadUnfinishedAsync(ct).ConfigureAwait(false) : null;
         var snapshot = await Clock.TimeAsync(PipelineStage.Load, progress, () => store.GetSnapshotAsync(ct), s => s.Documents.Count).ConfigureAwait(false);
 
@@ -165,6 +179,17 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             Add(packDiagnostics);
             if (packDiagnostics.Any(Outcomes.IsInvalid))
                 return null;
+
+            // A scoped run's unit values name units of the loaded packs (MQ6032); next-phase-1-design.md section 5.6.
+            if (selection is not null)
+            {
+                var unknown = new List<Diagnostic>();
+                selection = selection.Resolve(packs, unknown);
+                unknown = ModelValidator.ApplySettings(snapshot.Settings, unknown);
+                Add(unknown);
+                if (unknown.Any(Outcomes.IsInvalid))
+                    return null;
+            }
 
             // Reads that need neither the resolved model nor the plan go on beside resolve and plan: the manifests, and the unit states
             // the skip stage loads again (the store keeps what it decoded, so its second load reuses this one). A preview (not locked)
@@ -199,7 +224,7 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
                 return null;
 
             var (diffs, pendingSnapshots) = baseline is null
-                ? await SchemaDiffsAsync(resolved, packs, mode, ct).ConfigureAwait(false)
+                ? await SchemaDiffsAsync(resolved, packs, mode, selection is null, ct).ConfigureAwait(false)
                 : (await BaselineDiffsAsync(snapshot, resolved, packs, baseline, ct).ConfigureAwait(false), null);
             if (diffs is null)
                 return null;
@@ -215,6 +240,16 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             var manifests = await manifestsTask.ConfigureAwait(false);
             if (journal is not null)
                 manifests = manifests.WithJournalOverlay(journal);
+
+            // The plan filter of a scoped run, applied once here: everything downstream sees the selected units only.
+            if (selection is not null)
+            {
+                var units = plan.Units.Where(selection.Matches).ToList();
+                if (units.Count == 0 && !selection.MatchesAnyEntry(manifests, packs.Packs.Select(p => p.Name)))
+                    Add(ModelValidator.ApplySettings(snapshot.Settings, [selection.NothingSelected()]));
+                plan = plan with { Units = units };
+            }
+
             var hasher = services.CreateHasher(snapshot, resolved, packs, diffs, baseline?.ModelHash);
             return new PreparedRun(snapshot, resolved, packs, diffs, plan, manifests, journal, hasher, services.CreatePathPolicy(snapshot.Settings),
                 statesLoaded)
@@ -222,6 +257,7 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
                 OutputStats = outputStats,
                 PendingSnapshots = pendingSnapshots,
                 FromBaseline = baseline is not null,
+                Selection = selection,
             };
         }
         finally
@@ -350,8 +386,12 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             counts[unit.Pack.Name] = counts.GetValueOrDefault(unit.Pack.Name) + 1;
         var policies = Policies(run, request, mode);
 
-        return new WriteContext(mode, runId, policies, run.Manifests, skipped, counts, request.Packs is null,
-            request.IncludeDiffs && mode != GenerationMode.Apply, mode == GenerationMode.Apply ? journal : null, services.UnitState, plannedPaths);
+        // A scoped run never orphans the manifests of packs it does not run (next-phase-1-design.md section 5.6).
+        return new WriteContext(mode, runId, policies, run.Manifests, skipped, counts, request.Packs is null && run.Selection is null,
+            request.IncludeDiffs && mode != GenerationMode.Apply, mode == GenerationMode.Apply ? journal : null, services.UnitState, plannedPaths)
+        {
+            Selection = run.Selection,
+        };
     }
 
     /// <summary>
@@ -398,7 +438,7 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     {
         var renderer = services.CreateRenderer();
         var writer = services.CreateWriter(run.Paths);
-        var renderContext = new RenderContext(run.Resolved, run.Packs, run.SchemaDiffs, services.Scripts, run.Hasher, jobs);
+        var renderContext = new RenderContext(run.Resolved, run.Packs, run.SchemaDiffs, services.Scripts, run.Hasher, jobs) { Scoped = run.Selection is not null };
         var postContext = new PostProcessContext(Path.GetFullPath(services.Options.RepoRoot), run.Paths, run.Snapshot.Settings.Formatters, _formattersVerified);
         var processor = new UnitProcessor(this, services.PostProcessor, postContext, hook, toRender.Count, progress);
 
@@ -531,15 +571,16 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     /// snapshot) is an MQ1001 error on that file and stops the run: generating migrations from a guessed base would be wrong.
     /// </summary>
     /// <remarks>
-    /// In apply mode, each non-empty diff's snapshot (the capture the diff made, stamped with the new revision) is serialized on the
-    /// thread pool from here on, beside planning and rendering, so saving it after a successful apply only writes bytes. On the
-    /// benchmark model that moves about 0.8 s (a second capture and the canonical serialization of a 10,005-table snapshot) off the
-    /// end of the run. A run that fails or is cancelled leaves the task to finish on its own (no I/O; its failure is observed).
+    /// In apply mode, unless <paramref name="saves"/> is off (a scoped run, which never saves one), each non-empty diff's snapshot
+    /// (the capture the diff made, stamped with the new revision) is serialized on the thread pool from here on, beside planning and
+    /// rendering, so saving it after a successful apply only writes bytes. On the benchmark model that moves about 0.8 s (a second
+    /// capture and the canonical serialization of a 10,005-table snapshot) off the end of the run. A run that fails or is cancelled
+    /// leaves the task to finish on its own (no I/O; its failure is observed).
     /// </remarks>
     /// <returns>The diffs by database name, or <see langword="null"/> when a snapshot could not be read; and the snapshots being
     /// prepared for saving (apply mode only).</returns>
     private async Task<(IReadOnlyDictionary<string, SchemaDiffResult>? Diffs, IReadOnlyDictionary<string, Task<PreparedSnapshot>>? Pending)> SchemaDiffsAsync(
-        ResolvedModel resolved, PackSet packs, GenerationMode mode, CancellationToken ct)
+        ResolvedModel resolved, PackSet packs, GenerationMode mode, bool saves, CancellationToken ct)
     {
         var diffs = new SortedDictionary<string, SchemaDiffResult>(StringComparer.Ordinal);
         if (!packs.Packs.Any(p => p.Manifest.UsesSchemaDiff))
@@ -549,7 +590,8 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             return (diffs, null);
         }
 
-        var store = mode == GenerationMode.Apply ? services.Snapshots as SnapshotStore : null;
+        // A scoped run never saves a snapshot (next-phase-1-design.md section 5.6), so none is prepared for saving.
+        var store = mode == GenerationMode.Apply && saves ? services.Snapshots as SnapshotStore : null;
         var differ = services.SchemaDiffer as SchemaDiffer;
         Dictionary<string, Task<PreparedSnapshot>>? pending = null;
         var paths = new ModelPaths(services.Options);

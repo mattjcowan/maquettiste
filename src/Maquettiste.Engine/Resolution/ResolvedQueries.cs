@@ -60,9 +60,10 @@ public sealed class RQuery : RAnnotated
 
     /// <summary>
     /// The SQL for the database's dialect with <c>@name</c> placeholders (<c>QuerySql.Render</c> with the default options), with the
-    /// hidden key columns the collections need; empty when it cannot be rendered there (MQ4029).
+    /// hidden key columns the collections need; <see langword="null"/> when it cannot be rendered there (MQ4029) and for a nested
+    /// query (a collection's or a subquery's), whose SQL is part of its root's.
     /// </summary>
-    public string Sql { get; internal set; } = "";
+    public string? Sql { get; internal set; }
 
     /// <summary>
     /// The tables, views, routines and database types the query (and its nested queries) reads, in first-use order; a query is a

@@ -288,10 +288,13 @@ public sealed record ValidationSettings
 /// <summary>Limits for the Jint sandbox and the Scriban renderer.</summary>
 public sealed record SandboxLimits
 {
-    /// <summary>The wall-clock limit of one top-level script call, in milliseconds.</summary>
+    /// <summary>
+    /// The wall-clock limit of one top-level script call, in milliseconds; 0 turns the wall clock off, and the statement limit then
+    /// bounds every call alone (a regular expression match keeps a 250 ms bound, previews a deadline of 8000 ms).
+    /// </summary>
     public int ScriptTimeoutMs { get; init; } = 2000;
 
-    /// <summary>The statement limit of one top-level script call.</summary>
+    /// <summary>The statement limit of one top-level script call, at most 2,000,000,000 (larger values are clamped to it).</summary>
     public long ScriptStatements { get; init; } = 5_000_000;
 
     /// <summary>The script recursion depth limit.</summary>

@@ -363,7 +363,7 @@ database shows on the Database screen at once. The explorers remember which rows
   **Preview output** lists the units of the enabled packs that render once per database (a unit whose name mentions
   seed is picked first), names the unit and the database it renders, and shows that unit's output for the chosen
   database without writing it, narrowed to the statements for the type. When the unit does not render for that
-  database (its selector does not return it, its pack is disabled…), the preview says why in the engine's words, with
+  database (its scope or filter leaves it out, its pack is disabled…), the preview says why in the engine's words, with
   the preview's own message under **Message from the preview**. Hovering a type in the list shows its first codes. When
   a type has several seeds, a picker beside **Import CSV** and **Export CSV** chooses the seed. Removing a field also
   removes its column from the type's seeds, in the same save (one undo step).
@@ -1352,8 +1352,8 @@ database shows on the Database screen at once. The explorers remember which rows
   count says how many rules are overridden, and **Reset all** sets every picker back to Default. Save writes only the
   overrides to `validation.rules` in `maquettiste.json` (Default removes the rule's entry) and the Problems panel
   revalidates; Discard drops the unsaved changes. The rows take the keyboard: the arrow keys move between rows, Enter
-  moves into the picker, whose arrows change the value. The same catalog is `GET /api/validation/rules` and the MCP tool
-  `list_validation_rules`.
+  moves into the picker, whose arrows change the value. The same catalog is `GET /api/validation/rules`; the MCP tool
+  `list_validation_rules` summarizes it by family and pages its entries.
 
 ## Binding entities to tables, views and queries
 
@@ -1924,7 +1924,8 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9506 | warning | Two guarded transitions of one source and trigger were enabled at once; the first in priority order was taken | |
 | MQ9507 | error | One input ran more than 1,000 microsteps (an eventless loop, or events that keep raising each other) | |
 
-`GET /api/validation/rules` and the MCP tool `list_validation_rules` return the full descriptions.
+`GET /api/validation/rules` returns the full descriptions. The MCP tool `list_validation_rules` returns a summary by
+family, and full entries by family, id or text, in pages.
 
 ### Generating code from processes
 
@@ -2183,6 +2184,40 @@ a column typed by a database type names it at `column.db_type`. `has_stereotype`
 `in_category` take any of these as well as an element. A child table (a value object or collection stored as a table)
 names its attribute at `table.attribute`, and the constraints of a table file keep their ids (`table.indexes[0].id`).
 
+A value a file leaves out reads as null in a template, never as an empty text or `false`, unless its schema gives a
+default, which it then carries. So `{{ table.display_name ?? table.name }}` works, and a test against `""` is wrong:
+`t.native_name != ""` is true when the value is null, so write `t.native_name != null`. Some values are worked out and
+always set, each by its own rule: an element's display and plural names fall back to its name and the plural the
+inflector makes; a column's type and native type come from the type maps; constraint names from the naming conventions;
+a routine's language and volatility from the dialect; a query field's name from its attribute and its nullability from
+its expression. A table, column or other database object has no such fallback: its `display_name` and `plural_name` are
+its own file's, or null. A view, routine or SQL object without text for the database's dialect has a null `body` (and
+`has_body` false); a routine that returns a table has a null `returns.native_type`; a database type the dialect cannot
+create, such as a composite outside PostgreSQL, has a null `native_name`; a query that cannot be written for the
+dialect, or a nested one, has a null `sql`. The helpers `display_name`, `plural_name` and `description_of` give a
+database object's own text, or null.
+
+A few helpers find and order things so a template does not loop to search. `table_named "billing.invoices"` gives the
+table of that name (without a schema part, a table with no schema or in its database's default schema), or null; it
+searches every database unless you pass one, `table_named "invoices" database` or `table_named "invoices" "main"`, and a
+name two tables share fails the unit (MQ6006). Renaming a table into or out of the name renders the unit again.
+`column_named table "total"` gives one column. `array_index_of list "name" "Invoice"` gives the first index whose item's
+member equals the value (-1 when none; without the member path it compares the items themselves), and `array_find list
+"name" "Invoice"` gives that item or null; values compare exactly, so `"Invoice"` and `"invoice"` differ. `toposort
+items edges` orders a list so that, for each `[before, after]` pair in `edges`, `before` comes first; items keep their
+order where no pair decides, and a cycle lets the earliest item left go first. `json value ["name", "columns.name"]`
+writes the named members as JSON, so a table or an entity can be written without a script: a path through a list applies
+to each item, and a path must end on a value, not on a table or column (MQ6006). Pack helpers may not take these names,
+nor `database` and `attribute` (MQ6013).
+
+The model also lists its definitions. `model.stereotypes` has one stereotype per key, by key: `key`, its label as
+`name`, `applies_to`, the `attributes` it adds (each with the stereotype as `owner`), `default_properties`, `icon`,
+`color`, and the package, description, rationale, decision and status of its file. `model.tag_vocabularies` has the
+global vocabulary first, then each domain's: `package` (none for the global one), `strict` and `definitions`, each with
+`key`, `description` and `color`. `model.category_trees` has the global tree first, then each domain's: `package`,
+`roots`, and `categories`, every category depth-first in sibling order. A category, wherever a template meets it
+(`table.category`, a tree's `categories`), also has `parent`, `children`, `order` and `description`.
+
 **A pack** is a folder, `.maquettiste/templates/<pack>/`, holding the templates and one `pack.json` that says what to
 run. The example packs are `sql-ddl` (database scripts), `csharp-dapper` (classes and repositories, and the process
 code) and `process-docs` (Markdown pages for processes, actors and scenarios); your own packs sit beside them and work
@@ -2197,13 +2232,15 @@ and where the result goes (the output pattern). `sql-ddl` has twelve units: `tab
 | Scope | Runs | Result |
 | --- | --- | --- |
 | `each table`, `each entity`, `each enum`, … | once per element of that kind | one file per element: 40 tables give 40 scripts |
+| `each attribute` | once per attribute declared in a model file: an entity's own, a relation's, a value object's and a reference type's (never an inherited copy, a stereotype's added attribute or a promoted relation's copy) | one file each, the template variable being `attribute`; a filter reads the attribute's own tags, stereotypes and category and its owner's package, and `database` keeps the attributes of entities and relations mapped there (a value object's or reference type's only when a database of that name exists) |
+| `each database` | once per database | one file each, the template variable being `database`; a filter reads the database file's tags, stereotypes, category and package, and `database` matches its name |
 | `each view`, `each sequence` | once per view or sequence of every database (the key sequences the engine creates included) | one file each; a filter takes tags, stereotypes, categories and the database, read from the view's or sequence's own file |
 | `each routine`, `each database type`, `each sql object` | once per routine, database type or SQL object of every database | one file each, the template variable being `routine`, `database_type` or `sql_object`; a filter works as for views |
 | `each query` | once per query of every database | one file each, the template variable being `query`; `query_sql` and `query_collection_sql` render its SQL; a filter works as for views |
 | `model` | once, with the whole model | one file for many: a template that loops over every entity writes them all into one file |
 | `each locale` | once per declared language | one file per language (a resource file, a dictionary) |
 | `each process`, `each actor`, `each scenario` | once per process, actor or scenario | one file each: a page per process, a test per scenario (see "Generating code from processes") |
-| `select <name>` | once per element a pack script returns | `select databases` gives one file per database |
+| `select <name>` | once per element a pack script returns | `select roots` gives one file per element the pack's `roots` selector returns |
 
 A **filter** (`where`) narrows a scope: only entities tagged `api`, only one package, not the abstract ones. An element
 can also opt out of a pack with `generation.skip`.
@@ -2230,8 +2267,9 @@ re-renders only the units whose templates read `project`.
 
 **The write mode** says what happens to a file that already exists: Overwrite (the default), Create only if missing
 (`once`), Protected regions (your code between markers survives), Pair (a generated file plus a companion file for
-hand-written code that is created once and then left alone), or Managed block (`block`: a few lines the pack keeps inside a
-file that is otherwise yours, such as an ignore file; see "Managed blocks").
+hand-written code that is created once and then left alone), Managed block (`block`: a few lines the pack keeps inside a
+file that is otherwise yours, such as an ignore file; see "Managed blocks"), or Copy (`copy`: pack files copied as they
+are, with no template; see "Copy units").
 
 ### Change a template and see the result
 
@@ -2340,6 +2378,44 @@ answers "Skipped: its 23 recorded inputs are unchanged since its last render, an
 **Explain** answers for any pack, unit and element, planned or not: the pack is disabled, not in this run, the scope
 does not cover that kind, a filter excludes it, `generation.skip` is set, or it renders and why.
 
+### Regenerate one element or one unit
+
+A full run is the usual way to generate, and it is quick when little changed. When you want the files of one element
+or one unit now and the rest later, limit the run from a terminal:
+
+```sh
+maquettiste generate --element <entity id>                           # one entity's files, in every pack
+maquettiste generate --unit csharp-dapper/entity                     # one unit, for every element it runs for
+maquettiste generate --unit sql-ddl/schema --element <database id>   # one database's schema script
+```
+
+`--unit` takes `<pack>/<unit>`, or a unit id that only one pack of the run has (`schema` alone fails when two packs have
+a `schema` unit). `--element` takes an element id, never a name. A table that the engine builds from an entity has the
+id `<entity id>@<database id>`, and a unit that runs once for the whole model is never selected by an element. Both
+options repeat: values of one option add up (OR), and the two options narrow each other (AND). They combine with
+`--pack`, `--dry-run`, `--check`, `--diff` and `--watch`. The MCP tools `plan` and `generate` take the same filters as
+`units` and `elements`, and so does `POST /api/generate/plan` in its body; a limited plan's apply writes only its own
+units' files.
+
+**What a limited run leaves alone.** It writes only the files of the units it selects. Every other generated file, its
+entry in `.maquettiste/manifest/` and its unit's record stay as the last run left them, so the next full run still sees
+what is left to do. The selected units still delete the files they no longer produce: `generate --element <id>` for an
+element you deleted removes that element's files and nothing else. A limited run neither answers from nor writes the
+record of the last run that lets a later run with nothing changed finish at once.
+
+**Migrations need a full run.** A migration is the difference between the model and the schema snapshot of the last
+full run, and only a full run moves that snapshot forward. A limited run therefore refuses to render a unit that reads
+the schema difference (`sql-ddl/migration`): that unit fails with MQ6033 and keeps its files, and the next full run
+writes it from the snapshot it diffs from. A database id selects every unit that runs once per database, the migration
+among them, so `--element <database id>` alone exits 1; add `--unit sql-ddl/schema` to regenerate only that
+database's schema script.
+
+| Rule | Severity | What it reports |
+| --- | --- | --- |
+| MQ6032 | error | A `--unit` value names a pack the run lacks (it does not exist, is disabled, or is left out by `--pack`), a unit that no pack of the run has, or a unit id that several packs of the run have. Nothing is generated; exit 1 |
+| MQ6033 | error | A limited run selects a unit that reads the schema difference. That unit fails and keeps its files, and the schema snapshot stays where it was; exit 1 |
+| MQ6034 | warning | The filters select no unit and no file an earlier run wrote. Nothing is generated; exit 0 |
+
 ### Make your own pack from a starter
 
 In the editor, **+** in the Generate explorer header (or **New pack…** in the palette): a name, then **Start from**
@@ -2405,7 +2481,18 @@ else. Its template renders the block's lines; the engine puts them between two d
 ```
 
 where `#` is the unit's `blockComment` (default `#`; `//`, `;` or any other comment marker without spaces) and the name
-after `begin` and `end` is the pack and the unit id. Each run then:
+after `begin` and `end` is the pack and the unit id. A file whose comments must be closed, such as XML or HTML, also
+sets `blockCommentEnd`, the text that ends each delimiter line. A unit with `"blockComment": "<!--"` and
+`"blockCommentEnd": "-->"` keeps its block in `app.config.xml` like this:
+
+```xml
+<!-- maquettiste: begin billing/settings -->
+<add key="Billing.InvoicePrefix" value="INV" />
+<!-- maquettiste: end billing/settings -->
+```
+
+A delimiter line is found whatever its comment and closing text, so a block written with other ones is still found, and
+removed when its unit goes; the next run rewrites its delimiter lines with the unit's. Each run then:
 
 - replaces the lines between the delimiters when the block is there (the rest of the file, every byte of it, is left as it was);
 - appends the block when the file has none: after a line break if the file lacks a final one, and after a blank line unless
@@ -2439,6 +2526,45 @@ does it this way:
 
 The block then holds `/Generated/`. With `gitignorePath` empty (the default) the unit writes nothing.
 
+### Copy units: a folder of files copied as they are
+
+Some files need no template: a project skeleton, a logo, a configuration file. A unit in mode `copy` names no template;
+its `sources` are glob patterns over the pack's files, and every file they match is copied as it is:
+
+```json
+{
+  "id": "api-skeleton",
+  "for": "model",
+  "mode": "copy",
+  "sources": ["skeleton/**"],
+  "tokens": { "Skeleton.Api": "rootNamespace" },
+  "output": "src/Billing.Api"
+}
+```
+
+- A pattern is relative to the pack folder: `*` and `?` match inside one folder or file name, `**` across folders.
+  Patterns match case-sensitively and skip dot files and dot folders, whatever the file system. A pattern that matches
+  no pack file is MQ6030: the unit is skipped, the pack's other units still render, and the run is invalid.
+- `output` is the destination folder, under the pack's output base, rendered like any output path; without it the files
+  land at the output base itself. Each file keeps its path after the pattern's fixed folders (those before the first `*`
+  or `?`): with `skeleton/**`, `skeleton/Api/Invoices.cs` lands at `src/Billing.Api/Api/Invoices.cs`. A pattern with no
+  wildcard, such as `skeleton/logo.png`, keeps the file's own folder as its base, so the file lands at
+  `src/Billing.Api/logo.png`. Two files on one path are MQ6005. A copy unit keeps `for` and `where`: with `each entity`
+  it copies the files once per entity, so its `output` must differ per element.
+- `tokens` maps literal text to a pack parameter, so the sources stay ordinary code that builds on its own. With the
+  project value `Billing.Api` for `rootNamespace`, every `Skeleton.Api` in a text file and in a copied file's path
+  becomes `Billing.Api`. Tokens are replaced in one pass, the longest first where two start at the same place. A token
+  that names a parameter the pack does not declare, or one whose value is not text, is MQ6031 and skips the unit.
+- A text file (valid UTF-8 without a NUL byte) changes only where a token occurs: line endings, a byte order mark and
+  every other byte stay, and no formatter runs. Any other file, an image for example, is copied byte for byte.
+- The copies are managed like Overwrite files. Editing, adding or removing a source renders the unit again (a copy whose
+  source went is removed), and a hand edit of a copy is MQ6009 and follows `handEdits`: edit the source in the pack
+  instead. The preview lists every file the unit copies; a binary file shows as binary, with no text, and its diff
+  reads `Binary file <path> differs`.
+
+The pack's file list marks the files a copy unit copies as copy sources: they are never parsed as templates, loaded as
+pack scripts (unless `scripts` names them) or read as type maps.
+
 ## Packs in the editor: what generation does
 
 A **pack** is a folder of templates and one `pack.json` under `.maquettiste/templates/<pack>/`; generation runs every
@@ -2448,7 +2574,7 @@ same pack. The words the screens use:
 | Word | Meaning |
 | --- | --- |
 | Unit | One line of the pack's work list: which elements, which template, which output path |
-| Scope | Which elements a unit runs for: once (`model`), once per element of a kind (`each table`), or once per element a selector returns (`select databases`) |
+| Scope | Which elements a unit runs for: once (`model`), once per element of a kind (`each table`, `each database`), or once per element a selector returns (`select roots`) |
 | Files | The scope read as files: "Each table" writes one file per table, "Once" one file for the whole model, "Once per package" and "Once per database" one file per group |
 | Filter | Narrows the scope by tags, stereotypes, categories, packages (and their "not" lists), database, abstract, or a script filter |
 | Output path | A pattern rendered with the template's variables; the file lands under the pack's output base, inside an allowed output root |
@@ -2518,12 +2644,13 @@ Alt+4:
   renders one element and nothing else: the element picker comes from the unit's scope, which the server counts and
   lists without rendering it, and no other unit of the pack is planned or rendered. **Preview a list…** (beside the
   picker) renders up to 20 elements you tick, when you click **Preview**, each under its name; **Back to one** returns
-  to the single element. A unit whose one render covers the whole model (`for: model`), a whole database (a selector
-  that returns databases, such as sql-ddl's schema, migration and seed units) or a whole locale is never rendered as
-  you type: the pane offers **Preview (renders the whole model)** (or "a whole database"). Once you asked, it renders
-  again as you type while a render takes under a second; a slower render stays up marked **Out of date** with
-  **Preview again**. The server keeps what a preview needs (the model resolved once per change, shared with
-  validation, and the pack) until the model, the settings, the pack's files or the committed schema snapshots change.
+  to the single element. A unit whose one render covers the whole model (`for: model`), a whole database (`each
+  database`, such as sql-ddl's schema, migration and seed units, or a selector that returns databases) or a whole
+  locale is never rendered as you type: the pane offers **Preview (renders the whole model)** (or "a whole database").
+  Once you asked, it renders again as you type while a render takes under a second; a slower render stays up marked
+  **Out of date** with **Preview again**. The server keeps what a preview needs (the model resolved once per change,
+  shared with validation, and the pack) until the model, the settings, the pack's files or the committed schema
+  snapshots change.
   **Save** (or Ctrl+S) writes the file under `.maquettiste/templates/<pack>/` with the version you opened; a template
   that does not parse is still saved and its MQ6003 error marked. When the file changed on disk since you opened it
   (someone else, git, or your text editor), the save is refused and a bar offers **Keep mine** (write your text over
@@ -2733,7 +2860,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | --- | --- |
 | `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) with the output entries `db` and `src/Generated`. It never reads or writes the repository's ignore file (the `--gitignore` option of earlier releases is gone; a pack's managed block can keep lines there, see "Managed blocks"). A block an earlier version wrote stays as it is: it is yours to keep, edit or remove. `--hooks` installs git hooks that run `generate` after a checkout or merge. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers it as a `docker run` of the image (`--runtime podman` for `podman run`; docs/mcp.md). `--skill` writes the modeling skill, `.claude/skills/maquettiste-modeling/SKILL.md`, which belongs to Maquettiste: put your own modeling conventions in `CONVENTIONS.md` in the same folder, which `init` never touches and which agents read after the skill (the MCP conventions resource and prompt end with it). A skill nobody changed is refreshed to the installed version; one edited by hand is left alone, the new version goes to `SKILL.md.new` beside it with a one-line message, and `--force` overwrites it. `init --skill --check` writes nothing and exits 2 when the skill is missing, stale or edited, for CI. The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
 | `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. `--against <snapshot id or folder>` also compares the model with a baseline (a model snapshot, or a folder holding another copy of the project): a change since it that a migration must follow and no migration fact explains is MQ4102 (see "Migration facts"); a value that names nothing exits 4. |
-| `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. `--against <snapshot id or folder>` diffs the schema (migrations) from a baseline model for this run instead of the committed physical snapshots, and leaves those alone; a value that names nothing exits 4. |
+| `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. `--against <snapshot id or folder>` diffs the schema (migrations) from a baseline model for this run instead of the committed physical snapshots, and leaves those alone; a value that names nothing exits 4. `--unit <pack/unit or unit>` and `--element <id>` (both repeatable) run only those units and leave every other file as it is (see "Regenerate one element or one unit"); MQ6032 or MQ6033 exits 1, a filter that selects nothing warns (MQ6034) and exits 0. |
 | `maquettiste migration list` | The open migration facts in applied order, one line each (database, order, id, fact, state and the intent a pending fact lacks, `stale`, summary); `--database <name or id>`, `--format json` for scripts. An unknown database exits 1. |
 | `maquettiste migration fold` | Removes stale facts and joins consecutive facts on one object into the last one (see the schema changes guide); `--against <snapshot id or folder>` (its facts stay; default: the facts the committed snapshot lists as rendered, else pending facts only), `--database`, `--dry-run`, `--format json`. Exit 3 when a fact file changed meanwhile, 1 when the model has errors outside the migration rules or for an unknown database, 4 when `--against` names nothing. |
 | `maquettiste migration ledger` | Prints the migration ledger's DDL (see "The migration ledger" under Migration facts) for a PostgreSQL database: `--database <name or id>` (needed when the model has several), `--grant-read <role>` also prints the read grant, `--format json` prints `{ contractVersion, database, dialect, schema, ddl, grant }`, `--output <file>` writes it under an allowed output root. Exit 1 when the model has no PostgreSQL database, when the database named is missing or not PostgreSQL, or when several exist and none is named. |
@@ -2757,7 +2884,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations` (open migration facts by database, in applied order), `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
-| `maquettiste model apply <batch.json>` | Applies a batch file all or nothing, as the agent server's `apply_batch` does: `{ "operations": [...] }` or the bare array of creates, updates, deletes and the schema, materialize, process and tag operations. Id fields take ids, qualified names such as `@table:billing.notes` or `@entity:Billing.Invoice`, and placeholders (`"as": "$pm"` names a new element for the whole batch), and the engine mints every missing id, so a batch needs no id written by hand (docs/mcp.md, "Batches by name"). Prints a line per path written or deleted, then each name and placeholder with its id; `--dry-run` writes nothing and prints the diffs, the names, and a `+` or `-` line per diagnostic the change adds or removes; `--format json` prints the `apply_batch` answer. Exit 1 when the file is not a valid batch or the batch is invalid or refused, 3 on a conflict. |
+| `maquettiste model apply <batch.json>` | Applies a batch file all or nothing, as the agent server's `apply_batch` does: `{ "operations": [...] }` or the bare array of creates, updates, deletes and the schema, materialize, process and tag operations. Id fields take ids, qualified names such as `@table:billing.notes` or `@entity:Billing.Invoice`, and placeholders (`"as": "$pm"` names a new element for the whole batch), and the engine mints every missing id, so a batch needs no id written by hand (docs/mcp.md, "Batches by name"). A name or placeholder that finds nothing is MQ1012, a name that finds several is MQ1013 (use a longer form or the id), a misused identity (a placeholder declared twice, a misplaced `as`, a sub-element dropped and added again without its id) is MQ1014 and a malformed or misplaced name is MQ1015; any of them writes nothing. Prints a line per path written or deleted, then each name and placeholder with its id; `--dry-run` writes nothing and prints the diffs, the names, and a `+` or `-` line per diagnostic the change adds or removes; `--format json` prints the `apply_batch` answer. Exit 1 when the file is not a valid batch or the batch is invalid or refused, 3 on a conflict. The agent server's `patch_element` changes part of one element with an RFC 6902 JSON Patch instead; a patch that cannot be applied (an unknown operation, a path that does not resolve, a failed `test`, a change to `/id` or `/kind`) is MQ1016 and writes nothing. |
 | `maquettiste snapshot create <name>` | Takes a snapshot of the whole model: a zip under `.maquettiste/model-snapshots/` named `<name in kebab case>-<yyyymmdd-hhmmss>.zip` (the snapshot's id) holding `maquettiste.json`, `model/`, `extensions/` and `branding/`; `--packs` holds the template packs too, `--description <text>`, `--format json`. |
 | `maquettiste snapshot list` | The snapshots, newest first, with their elements and flags (`[published]`, `[packs]`, `[before-restore]`); `snapshot show <id>` prints one snapshot's metadata, `snapshot delete <id>` deletes it. |
 | `maquettiste snapshot compare <from> [<to>]` | What differs between two snapshots, or a snapshot and the working model (`working`, the default `to`): counts per kind, then `+` added, `-` removed and `~` changed elements (a rename and a moved file say so) and the other documents; `--element <id>` prints that element's changed fields; `--format json`. |
@@ -2945,6 +3072,11 @@ rows as files people outside the model can work with (reference-types-seeds-loca
   `@code`), and `?dryRun=false` applies it (`?mode=replace` also removes the rows the file leaves out).
 - `GET /api/reference-types/<id>/usage` lists the attributes that use a reference type and how each database stores it.
 - `GET /api/model/index?locale=fr` fills the display names from French, falling back as the settings say.
+- A seed saved through the API (an element save, `POST /api/model/batch`) or by an agent may give its `columns` and its
+  `key` by name (a table's column and unique constraint names, an entity's attribute names and to-one end roles) and a
+  row's cells as a `values` object keyed by those columns. The seed is stored with ids and one cell per column; a name
+  that finds nothing, or several, is MQ1002 and nothing is written (docs/mcp.md, "Seeds by name"). Templates find a
+  seed by its name with `seed_named "<name>"` and one of its rows by key with `seed_row`.
 
 Enums are stored as `int` or `string` columns. Storing an enum through a lookup table (`enumStorage` or a mapping's `storage`
 set to `lookup`) is no longer offered: a file that still uses it does not load and reports error MQ7012. Convert the enum to a
@@ -3225,8 +3357,37 @@ maquettiste.rule({
 | `element` | The element's JSON as saved (the canonical document), read-only. |
 | `model.get(id)` | An element, or a part of one such as an attribute, by id; `null` when there is none. Read-only. |
 | `model.all(kind)` | Every element of a kind, ordered by name, then id. Read-only. |
-| `model.referencesTo(id)` | Where an element or part is referenced: `{ fromElementId, fromId, jsonPointer, field, toId }` for each reference. |
+| `model.referencesTo(id)` | Where an element or part is referenced: `{ fromElementId, fromId, jsonPointer, field, toId }` for each reference, diagrams and the element's own file included. |
+| `model.withStereotype(key)`, `model.withTag(tag)`, `model.withProperty(key)` | The elements whose file lists that stereotype, that tag, or that key in its own `properties`, ordered by name, then id. Read-only. Faster than filtering `model.all`. |
+| `model.byQualifiedName(name)` | What `model.get` returns for each element or part a qualified name finds, such as `@entity:Billing.Invoice` or `@attribute:Invoice.total` (the names batches take), ordered by id: one when the name is unique, several when it is ambiguous, none when it finds nothing. A malformed name is an error of the rule. |
 | `report(message, { pointer, severity })` | One finding on the element. `pointer` is a JSON pointer into the element (`/name`, `/attributes/0/type`), so the finding points at the right line; `severity` overrides the rule's for this finding. |
+
+**Whole-model rules.** A check about the model as a whole, such as "every reference type is used", is a rule with
+`scope: "model"`. Its `check(model, report)` runs once per validation of the whole model instead of once per element,
+and each `report` names the element or part the finding is about with `element` (an id); the finding lands on that file,
+and `pointer` is relative to that part:
+
+```js
+maquettiste.rule({
+  id: "unused-reference-types",
+  severity: "warning",
+  scope: "model",
+  check(model, report) {
+    for (const type of model.all("reference-type")) {
+      if (model.referencesTo(type.id).length === 0) {
+        report(`${type.name} is not used.`, { element: type.id, pointer: "/name" });
+      }
+    }
+  },
+});
+```
+
+A whole-model rule runs in `maquettiste validate`, the MCP `validate` tool without `elementIds`, generation and the
+editor's full validation, and when settings are saved (raising its finding to an error there refuses the save). It does
+not run when an element is saved, so it never refuses a save over elements the change did not touch. `kinds` does not
+apply to it (giving both is MQ5002), and one call spends one `scriptStatements` budget for the whole model. An `element`
+that names nothing, or a `report` without one, is MQ5002 on the rule file. The MCP tool `list_extension_files` marks
+such a rule (`wholeModel`).
 
 **New script rule…** writes a rule that reports nothing until you edit it, with this contract in its comments. In the code
 editor, completion offers `maquettiste.rule` (a whole rule), `report`, `element.` and `model.` members, the severities and
@@ -3241,17 +3402,41 @@ by default everywhere: the editor's validation, `maquettiste validate`, `generat
 
 **Severities in Settings › Validation.** The family **Extensions and script rules** holds the built-in rules about these
 files: MQ5001 (a custom property value that fails its schema), MQ5002 (a rule script error), MQ5003 (a rule that broke a
-sandbox limit) and MQ5004 (an invalid extension file). Below the built-in families, **Script rules** lists every `x/<id>`
-the project's rule files register, with the severity the rule declares as its Default. Each row's picker sets `error`,
-`warning`, `info` or `off` in `validation.rules` of `maquettiste.json`, as for the built-in rules; `off` stops the rule from
-running, and the severity you set also applies to the rule's own failures (MQ5002 and MQ5003 on that rule).
+sandbox limit), MQ5004 (an invalid extension file) and MQ5005 (a rule file that keeps state at its top level). Below the
+built-in families, **Script rules** lists every `x/<id>` the project's rule files register, with the severity the rule
+declares as its Default. Each row's picker sets `error`, `warning`, `info` or `off` in `validation.rules` of
+`maquettiste.json`, as for the built-in rules; `off` stops the rule from running, and the severity you set also applies
+to the rule's own failures (MQ5002 and MQ5003 on that rule).
 
 **The sandbox.** Rules run in the same sandbox as pack scripts: no files, no network, no access to the .NET runtime, a
-fixed clock in UTC, a `Math.random` seeded per file, and the globals frozen once the scripts have loaded. Each call runs
-under the limits of `limits` in `maquettiste.json`: `scriptTimeoutMs` (2000 ms by default), `scriptStatements` (5,000,000),
-`scriptRecursion` (256) and `scriptMemoryBytes` (64 MB). A rule that breaks one is reported as MQ5003 on that element, and the
-other elements and rules still run. Rules run in parallel over the elements, so a rule must not rely on the order of the
-calls or keep state between them.
+fixed clock in UTC and a `Math.random` seeded per file. Each rule file runs in its own function scope, and the globals
+are frozen before the rule files run, so one file cannot share anything with another: a rule cannot call a function of
+another rule file, and a file that sets a global (`globalThis.helper = ...`) or adds to a built-in prototype fails to
+load with MQ5002. Copy a shared function into each file that needs it. Each call runs under the limits of `limits` in
+`maquettiste.json`: `scriptTimeoutMs` (2000 ms by default), `scriptStatements` (5,000,000, at most 2,000,000,000),
+`scriptRecursion` (256) and `scriptMemoryBytes` (64 MB). A rule that breaks one is reported as MQ5003 on that element,
+and the other elements and rules still run. Rules run in parallel over the elements, so a rule must not rely on the
+order of the calls or keep state between them.
+
+**The same findings on every machine.** `scriptTimeoutMs` is a wall-clock limit, so a rule that runs close to it can
+pass on a quiet machine and fail with MQ5003 on a busy one. `scriptTimeoutMs: 0` turns the clock off: the statement
+limit and the memory limit then bound each call, and the findings no longer depend on the machine's load. Use 0 in CI.
+`scriptMemoryBytes` counts every byte a call allocates, not what it keeps, so a long loop can reach 64 MB before the
+statement limit: raise `scriptMemoryBytes` along with `scriptStatements`. Pack scripts share the setting; previews and
+path listings keep their deadline of 8 seconds when it is 0. One bound stays on the clock: a regular expression match
+stops after 250 ms, because a match cannot be interrupted. A match that times out is tried once more when it cannot have
+run script code, so a busy machine fails it only when the thread waits that long twice in a row. For rules that CI runs,
+match regular expression literals against strings and give them strings (`/^[A-Z]/.test(element.name)`), not objects or
+a replacer function.
+
+**State between calls.** A rule keeps nothing between calls. The editor, the MCP server and
+`maquettiste generate --watch` keep each rule's findings per element in memory, and run the rule on an element again
+only when the element, the rule file, the limits or something the rule read through `model` changed; nothing is written
+to disk. A rule file that declares a variable with `let` or `var` at its top level, outside every function, gets the
+warning MQ5005 on its first such line, in `validate` and on the Extensions tab as soon as it is saved, since that
+variable is state the sandbox cannot freeze: the file's results are never cached. Declare values computed once with
+`const`, keep `let` and `var` inside functions, and never change an object a `const` holds (the sandbox cannot see
+that).
 
 **When a rule file is broken.**
 
@@ -3280,7 +3465,19 @@ details; in short:
 - `maquettiste.params`: the pack's parameters, read-only.
 
 Model objects reach pack scripts as read-only views of the resolved model that record what was read, so a unit re-renders
-when what its scripts read changes. A script error is MQ6016 and a broken limit MQ6007. Pack scripts are edited on the pack's
+when what its scripts read changes. A script error is MQ6016 and a broken limit MQ6007.
+
+A helper that reads many members in a loop can ask for plain copies instead of views:
+`maquettiste.helper("columns_json", fn, { plain: true })`. Its arguments arrive as frozen plain objects and arrays,
+which are faster to read, bounded by member hops so a copy never grows into the whole model. A model object passed as an
+argument, or as an item of a list or map argument, is at hop 0 and has every member a view has. A model object one of
+its members holds, directly or in a list, is at hop 1 and is copied the same way. From hop 2 a model object is only
+`{ id, kind }`. So for a table, `table.columns[0].name` and `table.database.name` are there, and
+`table.columns[0].attribute` is `{ id, kind }`. A copy has no functions: read `stereotypes` and `tags` rather than
+calling `hasStereotype` or `hasTag`. Everything copied at hops 0 and 1 counts as read, whether the helper reads it or
+not, so the unit renders again when any of it changes. The model itself cannot be passed (MQ6016, its copy would be the
+whole model): pass the list the helper needs, such as `model.entities`. Any other option, or a `plain` that is not
+`true` or `false`, stops the script from loading (MQ6016). Pack scripts are edited on the pack's
 Templates tab (helpers.js and the other files of the pack), and agents use the pack file tools.
 
 ### Formatters and linters

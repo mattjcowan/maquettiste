@@ -84,16 +84,16 @@ public abstract class RObject : IResolvedObject
 public abstract class RAnnotated : RObject
 {
     /// <summary>
-    /// The display name. A conceptual object falls back to its name; a physical object holds its file's value, or the empty string
-    /// when the file sets none or the object has no file.
+    /// The display name. A conceptual object falls back to its name, so it always has one; a physical object holds its file's value,
+    /// or <see langword="null"/> when the file sets none or the object has no file.
     /// </summary>
-    public string DisplayName { get; internal set; } = "";
+    public string? DisplayName { get; internal set; }
 
     /// <summary>
-    /// The plural name. A conceptual object falls back to the inflector; a physical object holds its file's value, or the empty
-    /// string when the file sets none or the object has no file.
+    /// The plural name. A conceptual object falls back to the inflector, so it always has one; a physical object holds its file's
+    /// value, or <see langword="null"/> when the file sets none or the object has no file.
     /// </summary>
-    public string PluralName { get; internal set; } = "";
+    public string? PluralName { get; internal set; }
 
     /// <summary>
     /// The owning package, or <see langword="null"/> for the root (for a package: its parent). A conceptual object holds its own; a
@@ -150,7 +150,10 @@ public abstract class RElement : RAnnotated
     public string Name { get; internal set; } = "";
 }
 
-/// <summary>A resolved category.</summary>
+/// <summary>
+/// A resolved category: the one instance every annotated object in it carries as its category, and an item of its
+/// <see cref="RCategoryTree"/>.
+/// </summary>
 public sealed class RCategory
 {
     /// <summary>The category id.</summary>
@@ -161,6 +164,18 @@ public sealed class RCategory
 
     /// <summary>Names from the root to this category, joined with <c>/</c>.</summary>
     public string Path { get; internal set; } = "";
+
+    /// <summary>The parent category, or <see langword="null"/> for a root (or a parent the tree lacks).</summary>
+    public RCategory? Parent { get; internal set; }
+
+    /// <summary>The child categories, in sibling order: by <see cref="Order"/> (none counts as 0), then file order.</summary>
+    public IReadOnlyList<RCategory> Children { get; internal set; } = [];
+
+    /// <summary>The position among siblings, or <see langword="null"/> when the file sets none.</summary>
+    public int? Order { get; internal set; }
+
+    /// <summary>The description text, or <see langword="null"/> when there is none.</summary>
+    public string? Description { get; internal set; }
 }
 
 /// <summary>A stereotype applied to an object.</summary>
@@ -262,6 +277,15 @@ public sealed class ResolvedModel
     /// <see cref="RDatabase.Migrations"/> in turn.
     /// </summary>
     public RList<RMigration> Migrations { get; internal init; } = RList<RMigration>.Empty;
+
+    /// <summary>The stereotype definitions (next-phase-1-design.md section 5.5), one per key, by key.</summary>
+    public RList<RStereotypeDefinition> Stereotypes { get; internal init; } = RList<RStereotypeDefinition>.Empty;
+
+    /// <summary>The tag vocabularies, one per scope: the global one first, then by (package qualified name, id).</summary>
+    public RList<RTagVocabulary> TagVocabularies { get; internal init; } = RList<RTagVocabulary>.Empty;
+
+    /// <summary>The category trees, one per scope: the global one first, then by (package qualified name, id).</summary>
+    public RList<RCategoryTree> CategoryTrees { get; internal init; } = RList<RCategoryTree>.Empty;
 
     /// <summary>Resolution diagnostics.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics { get; internal init; } = [];

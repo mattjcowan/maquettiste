@@ -845,7 +845,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
         id: String(d.id),
         name: String(d.name ?? ""),
         schema: schemaOf(d),
-        body: body[dialect] ?? body["*"] ?? "",
+        body: body[dialect] ?? body["*"] ?? null,
         columns: arr(d.columns).map((c) => ({
           name: String(c.name),
           type: typeof c.type === "string" ? c.type : null,
@@ -924,13 +924,13 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
                 length: null,
                 precision: null,
                 scale: null,
-                nativeType: "",
+                nativeType: null,
                 table: arr(returns.table).map((c) => ({ name: String(c.name ?? ""), ...slot(c), nullable: c.nullable !== false })),
               }
-            : { ...slot(returns), table: null }
+            : { ...slot(returns), nativeType: slot(returns).nativeType || null, table: null }
           : null,
         language: typeof d.language === "string" ? d.language : dialect === "postgresql" ? "plpgsql" : dialect === "sqlserver" ? "tsql" : "sql",
-        body: body ?? "",
+        body,
         hasBody: body !== null,
         deterministic: d.deterministic === true,
         security: (d.security === "definer" ? "definer" : "invoker") as RoutineView["security"],
@@ -984,7 +984,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
         objectKind: String(d.objectKind ?? ""),
         phase: (d.phase === "before" ? "before" : "after") as SqlObjectView["phase"],
         dependsOn: ((d.dependsOn as string[] | undefined) ?? []).filter((x) => typeof x === "string"),
-        body: body ?? "",
+        body,
         hasBody: body !== null,
         ...annotationsOf(d, stereotypes),
       };
