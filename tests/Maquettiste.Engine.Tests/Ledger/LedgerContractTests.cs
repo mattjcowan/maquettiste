@@ -15,6 +15,24 @@ namespace Maquettiste.Engine.Tests.Ledger;
 public sealed partial class LedgerContractTests
 {
     [Fact]
+    public void Version_1_ddl_text_and_version_are_pinned()
+    {
+        // Version 1 is frozen (docs/ledger.md): its DDL text never changes. A change to the tables is version 2, whose DDL
+        // converts what a version 1 database holds.
+        const string Frozen = "9608d21694e64fb0d62922277aae1c20cc0a93a69a2355f138fb422e2011fd2d";
+        using var stream = typeof(LedgerContract).Assembly.GetManifestResourceStream("Maquettiste.Engine.Ledger.ledger.postgresql.sql");
+        Assert.NotNull(stream);
+        using var reader = new StreamReader(stream);
+        var text = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
+        var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
+
+        Assert.True(LedgerContract.Version == 1, "The ledger contract is frozen at version 1; a change needs version 2 and a conversion.");
+        Assert.True(hash == Frozen,
+            "ledger.postgresql.sql changed, but ledger contract version 1 is frozen. Restore the version 1 text, or write version 2: "
+            + "a new contract version whose DDL converts the version 1 tables.");
+    }
+
+    [Fact]
     public void Ddl_is_idempotent_text_without_transaction_control_or_time()
     {
         var ddl = LedgerContract.Ddl(Dialect.PostgreSql, LedgerContract.DefaultSchema);

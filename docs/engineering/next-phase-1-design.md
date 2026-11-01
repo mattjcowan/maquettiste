@@ -1363,6 +1363,9 @@ a Migrations explorer node. Phase 1 editor work is `npm run gen`, the exhaustive
   puts one blank line between the DDL and the grant. `EngineBoundaryTests` also asserts that the engine references no
   database driver assembly. `docs/ledger.md` says object rows arrive with run-once SQL objects (A28); until then the
   scripts write fact rows only.
+- (A23) The review of A22's note asked for no change, so version 1 is frozen as drafted: the DDL text is pinned by
+  `Version_1_ddl_text_and_version_are_pinned` (the SHA-256 of the resource text with line feeds only), and
+  `docs/ledger.md` says "Frozen, version 1".
 
 **Model and schema**
 

@@ -38,12 +38,12 @@ one.
   `generate --check` never reports them.
 - `get_project`'s workspace (the branch) is now read by the MCP server and the editor's assistant once, when they start:
   restart the server after switching branches. The engine itself reads no version control.
-- **The migration ledger (draft, version 1).** On PostgreSQL, the sql-ddl scripts record the migration facts they reach
+- **The migration ledger, version 1.** On PostgreSQL, the sql-ddl scripts record the migration facts they reach
   in three bookkeeping tables, in the schema `migrations.ledgerSchema` names (default `migration_ledger`), inside the
   script's own transaction. `maquettiste migration ledger --grant-read <role>` and the `get_ledger_ddl` tool print the
-  DDL and the read grant for a team's own migrator. [The migration ledger](ledger.md) has the contract, which may still
-  gain columns, never lose or change one, until it is frozen. New rule MQ4067 (a warning): the ledger schema is also a
-  schema of the database's modeled objects.
+  DDL and the read grant for a team's own migrator. [The migration ledger](ledger.md) has the contract, frozen at
+  version 1: a change to it is version 2, with a conversion in its DDL. New rule MQ4067 (a warning): the ledger schema
+  is also a schema of the database's modeled objects.
 - New built-in helper name: `ledger_ddl`. A pack helper of that name is now MQ6013; rename it.
 - **Range columns.** A column can be a `range` or `multirange` with a `subtype` (PostgreSQL's built-in range types);
   sql-ddl migrates between them with the cast PostgreSQL has, and csharp-dapper holds them as text. Elsewhere they are

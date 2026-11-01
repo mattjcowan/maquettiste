@@ -1,9 +1,7 @@
 # The migration ledger
 
-**Status: Draft, version 1.** Version 1 is reviewed before it is frozen. Until the freeze, a change is additive only: a
-new column that may be null or has a default, added by `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` after its
-`CREATE TABLE` in the same DDL. A column is never renamed, retyped or removed, so a database that holds the draft tables
-converges when the DDL runs again. After the freeze, any change is version 2, and its DDL converts the tables.
+**Status: Frozen, version 1.** Version 1 was reviewed and frozen as drafted, with no change to its tables. Its DDL text
+is pinned: any change is version 2, and the version 2 DDL converts the tables a version 1 database holds.
 
 The migration ledger is a small set of bookkeeping tables in each PostgreSQL database. It records which
 [migration facts](user-guide.md#migration-facts) the database has reached: which renames, type changes and drops its
