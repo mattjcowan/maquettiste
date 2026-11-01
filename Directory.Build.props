@@ -22,7 +22,8 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/mattjcowan/maquettiste</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <VersionPrefix>0.10.1</VersionPrefix>
+    <VersionPrefix>0.11.0</VersionPrefix>
+    <VersionSuffix>preview.2</VersionSuffix>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
