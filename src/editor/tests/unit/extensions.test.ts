@@ -68,7 +68,9 @@ describe("extension files", () => {
     const written = backend.extensions.write("rules/my-rule.js", ruleTemplate("rules/my-rule.js"), null);
     expect(written.body.outcome).toBe("saved");
     expect(written.body.diagnostics).toEqual([]);
-    expect(backend.extensions.list().files.find((f) => f.path === "rules/my-rule.js")?.rules).toEqual([{ id: "x/my-rule", severity: "warning", wholeModel: false }]);
+    expect(backend.extensions.list().files.find((f) => f.path === "rules/my-rule.js")?.rules).toEqual([
+      { id: "x/my-rule", severity: "warning", wholeModel: false },
+    ]);
     expect(backend.model.validate().diagnostics.filter((d) => d.rule === "x/my-rule")).toEqual([]);
   });
 

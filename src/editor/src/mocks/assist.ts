@@ -128,7 +128,19 @@ export function entityProposal(name: string): AssistProposal {
     state: "pending",
     createdUtc: new Date().toISOString(),
     operations: [{ op: "create", element }] as unknown as AssistProposal["operations"],
-    files: [{ path: `.maquettiste/model/entities/${kebab(name)}.json`, action: "created", id, kind: "entity", name, beforeHash: null, before: null, after, diff: null }],
+    files: [
+      {
+        path: `.maquettiste/model/entities/${kebab(name)}.json`,
+        action: "created",
+        id,
+        kind: "entity",
+        name,
+        beforeHash: null,
+        before: null,
+        after,
+        diff: null,
+      },
+    ],
   };
 }
 

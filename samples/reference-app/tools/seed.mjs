@@ -98,12 +98,19 @@ async function main() {
   if (index.status !== 200) fail("GET /api/model/index failed", index);
   if (Array.isArray(index.json) && index.json.length > 0) fail(`the target model is not empty (${index.json.length} elements); seed an empty project`);
 
-  if (!flag("--no-settings")) {
+  const saveSettings = async (body) => {
     const current = await request("GET", "/api/project/settings");
     if (current.status !== 200) fail("GET /api/project/settings failed", current);
-    const saved = await request("PUT", "/api/project/settings", settings, { "If-Match": `"${current.json.hash}"` });
+    const saved = await request("PUT", "/api/project/settings", body, { "If-Match": `"${current.json.hash}"` });
     if (saved.status !== 200) fail("saving maquettiste.json failed", saved);
-    console.log("seed: settings saved");
+  };
+
+  // The project has never been deployed, and the batches reshape its database as they go (the entities' tables, then the
+  // overlays and mappings that change them): none of that is a migration. Seed with migration facts off, then save the real
+  // settings.
+  if (!flag("--no-settings")) {
+    await saveSettings({ ...settings, migrations: { ...settings.migrations, record: "off" } });
+    console.log("seed: settings saved, migration facts off while seeding");
   }
 
   for (const b of plan) {
@@ -111,6 +118,11 @@ async function main() {
     const res = await request("POST", "/api/model/batch", body);
     if (res.status !== 200 || res.json?.outcome !== "saved") fail(`batch '${b.label}' was refused (${res.json?.outcome ?? "no outcome"})`, res);
     console.log(`seed: ${b.label}: ${b.docs.length} created`);
+  }
+
+  if (!flag("--no-settings")) {
+    await saveSettings(settings);
+    console.log("seed: settings saved");
   }
 
   const check = await request("POST", "/api/validate", {});

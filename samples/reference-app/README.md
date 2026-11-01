@@ -83,10 +83,11 @@ docker compose -f docker/compose.yaml --project-directory tmp/nw-seed down -v
 `empty-editor.sh` exports `MAQUETTISTE_UID` and `MAQUETTISTE_GID` (your own ids unless you set them) so the editor writes
 the copy as you, with no ACLs or `chmod` (docker/README.md explains the image's user rule).
 
-`seed.mjs` saves `maquettiste.json` through `PUT /api/project/settings`, then posts 31 batches to `POST /api/model/batch`
-(vocabularies, packages, types, database objects, entities per package, relations per package, table overlays, mappings,
-diagrams), checks `POST /api/validate` reports nothing and, with `--compare`, that every file equals `build-model.mjs`'s and that
-`.maquettiste/model` holds no other file.
+`seed.mjs` saves `maquettiste.json` through `PUT /api/project/settings` with `migrations.record` set to `off`, then posts 31
+batches to `POST /api/model/batch` (vocabularies, packages, types, database objects, entities per package, relations per package,
+table overlays, mappings, diagrams) and saves the real settings. The batches reshape a database that was never deployed, so
+they record no migration facts. It then checks `POST /api/validate` reports nothing and, with `--compare`, that every file equals
+`build-model.mjs`'s and that `.maquettiste/model` holds no other file.
 `--dry-run` lists the batches without sending anything.
 
 ## Gate 2 check
