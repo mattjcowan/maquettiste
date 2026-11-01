@@ -153,6 +153,21 @@
         "json"
       ]
     },
+    "columnType": {
+      "description": "A column's type keyword: a built-in scalar type, or range or multirange (PostgreSQL's built-in range types, with a subtype; multirange needs PostgreSQL 14 or later). Elsewhere a range column is stored as the dialect's text type (MQ4056).",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/builtinType"
+        },
+        {
+          "enum": ["range", "multirange"]
+        }
+      ]
+    },
+    "rangeSubtype": {
+      "description": "The type of a range or multirange column's bounds: one of the keywords PostgreSQL has a built-in range for (int4range, int8range, numrange, daterange, tsrange, tstzrange).",
+      "enum": ["int32", "int64", "decimal", "date", "datetime", "datetimeoffset"]
+    },
     "typeRef": {
       "description": "A built-in keyword, or a reference to an enum, value object, custom scalar type or reference type.",
       "oneOf": [

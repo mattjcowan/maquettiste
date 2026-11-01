@@ -42,7 +42,7 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Category">The id of the element's category-tree node, when it has one (E4: the explorer's category filter).</param>
 /// <param name="Stereotypes">The element's stereotype keys, in application order (E4: the explorer's stereotype filter).</param>
 /// <param name="DisplayName">The element's display name, when it has one (E5: search and the explorer's label).</param>
-/// <param name="Database">The owning database's id, on table, view, sequence and mapping rows (E5).</param>
+/// <param name="Database">The owning database's id, on table, view, sequence and mapping rows (E5), and on the rows of the other database objects and migration facts.</param>
 /// <param name="Entity">The entity a mapping maps or a table overlay applies to, when it has one (E5).</param>
 /// <param name="MemberCount">The number of members, on diagram rows (E5).</param>
 /// <param name="Ends">The relation's ends in document order, on relation rows (E5).</param>

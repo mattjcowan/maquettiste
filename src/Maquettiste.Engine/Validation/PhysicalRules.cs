@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Engine.Validation;
@@ -106,7 +107,7 @@ internal static class PhysicalRules
                     report.Add("MQ4003", string.Create(CultureInfo.InvariantCulture, $"Column key '{key}' is already overridden at index {overlayKeys[key]}."), pointer + "/attribute", column.Id);
             }
 
-            CheckColumnValues(column, pointer, report);
+            CheckColumnValues(context, database, column, pointer, report);
             if (column.Sequence is { } sequenceId && model.Get<Sequence>(sequenceId) is { } sequence && sequence.Database != table.Database)
                 report.Add("MQ2002", $"Column '{column.Name}' uses sequence '{sequence.Name}' of another database.", pointer + "/sequence", column.Id);
         }
@@ -141,11 +142,11 @@ internal static class PhysicalRules
         }
 
         if (database is not null)
-            CheckDialectFeatures(database, table, report);
+            CheckDialectFeatures(database, table, model.Settings, report);
     }
 
     /// <summary>MQ4056: the DDL features of a table file its database's dialect does not have (the sql-ddl pack leaves them out).</summary>
-    private static void CheckDialectFeatures(Database database, Table table, Report report)
+    private static void CheckDialectFeatures(Database database, Table table, ProjectSettings settings, Report report)
     {
         var d = database.Dialect;
         var dialect = DialectInfo.Name(d);
@@ -207,6 +208,14 @@ internal static class PhysicalRules
         {
             var column = table.Columns[i];
             var pointer = Ptr.At("/columns", i);
+            // Elsewhere a range column is stored as the dialect's text type, unless the column or the project's type map names another.
+            if (BuiltinTypes.IsRange(column.Type) && d != Dialect.PostgreSql && column.NativeType is null
+                && !Resolution.DialectTypeMaps.Effective(d, settings).ContainsKey(Resolution.DialectTypeMaps.RangeKey(column.Type!, column.Subtype)))
+            {
+                report.Add("MQ4056", $"Column '{column.Name}' is a {column.Type} column, which {dialect} (database '{database.Name}') does not have; the DDL stores it as the dialect's text type (its text form).",
+                    pointer + "/type", column.Id);
+            }
+
             if (column.Computed is not null && column.ComputedStored && d == Dialect.Oracle)
                 Add($"Column '{column.Name}' is a stored computed column (Oracle computes every virtual column on read)", pointer + "/computedStored", column.Id);
             if (column.Generated != ColumnGeneration.Identity || column.Identity is not { } identity)
@@ -232,6 +241,8 @@ internal static class PhysicalRules
                     Add($"Index '{name}' indexes an expression (index a computed column instead)", columnPointer + "/expression", index.Id, "the index");
                 if (ic.Length is not null && d != Dialect.MySql)
                     Add($"Index '{name}' sets a key prefix length", columnPointer + "/length", index.Id);
+                if (ic.Nulls is { } nulls && d != Dialect.PostgreSql)
+                    Add($"Index '{name}' sorts nulls {(nulls == IndexNulls.First ? "first" : "last")} (NULLS {(nulls == IndexNulls.First ? "FIRST" : "LAST")})", columnPointer + "/nulls", index.Id);
                 if (ic.Length is null && d == Dialect.MySql && ic.Column is { } key
                     && table.Columns.FirstOrDefault(c => c.Id == key) is { } indexed && NeedsKeyLength(indexed))
                     report.Add("MQ4056", $"Index '{name}' indexes the {indexed.Type ?? indexed.NativeType} column '{indexed.Name}' without a key prefix length, which {dialect} (database '{database.Name}') requires; set the index column's length, or the DDL leaves the index out.", columnPointer + "/length", index.Id);
@@ -333,7 +344,10 @@ internal static class PhysicalRules
 
     private static string ResolutionActionName(ReferentialAction action) => Resolution.ResolutionValues.Kebab(action);
 
-    /// <summary>Whether MySQL indexes a column only with a key prefix length: text and blob types (text, binary that is not fixed).</summary>
+    /// <summary>
+    /// Whether MySQL indexes a column only with a key prefix length: text and blob types (text, binary that is not fixed, and a range
+    /// column, which MySQL stores as text).
+    /// </summary>
     private static bool NeedsKeyLength(Column column)
     {
         if (column.NativeType is { } native)
@@ -342,7 +356,7 @@ internal static class PhysicalRules
             return lower.Contains("text", StringComparison.Ordinal) || lower.Contains("blob", StringComparison.Ordinal);
         }
 
-        return column.Type == "text" || (column.Type == "binary" && !column.FixedLength);
+        return column.Type == "text" || (column.Type == "binary" && !column.FixedLength) || BuiltinTypes.IsRange(column.Type);
     }
 
     /// <summary>
@@ -373,30 +387,77 @@ internal static class PhysicalRules
 
     private static string Count(int n, string noun) => string.Create(CultureInfo.InvariantCulture, $"{n} {noun}{(n == 1 ? "" : "s")}");
 
-    private static void CheckColumnValues(Column column, string pointer, Report report)
+    private static void CheckColumnValues(ValidationContext context, Database? database, Column column, string pointer, Report report)
     {
         if (column.Type is not { } keyword)
+        {
+            if (column.Subtype is not null)
+                report.Add("MQ4057", $"Column '{column.Name}' sets subtype, which only range and multirange columns have.", pointer + "/subtype", column.Id);
             return;
-        if (!BuiltinTypes.IsBuiltin(keyword))
+        }
+
+        if (!BuiltinTypes.IsColumnType(keyword))
         {
             report.Add("MQ3013", $"Column '{column.Name}' has the unknown type keyword '{keyword}'.", pointer + "/type", column.Id);
             return;
         }
 
+        // A range or multirange column needs the type of its bounds, and no other column takes one (section 3.4).
+        if (BuiltinTypes.IsRange(keyword) && column.Subtype is null)
+            report.Add("MQ4057", $"Column '{column.Name}' is a {keyword} column without a subtype; set subtype to the type of its bounds ({string.Join(", ", BuiltinTypes.RangeSubtypes)}).", pointer + "/type", column.Id);
+        else if (!BuiltinTypes.IsRange(keyword) && column.Subtype is not null)
+            report.Add("MQ4057", $"Column '{column.Name}' sets subtype, which only range and multirange columns have.", pointer + "/subtype", column.Id);
         if (column.Unicode is not null && keyword is not ("string" or "text"))
             report.Add("MQ4057", $"Column '{column.Name}' sets unicode, which only string and text columns have.", pointer + "/unicode", column.Id);
         if (column.FixedLength && keyword is not ("string" or "binary"))
             report.Add("MQ4057", $"Column '{column.Name}' sets fixedLength, which only string and binary columns have.", pointer + "/fixedLength", column.Id);
         var type = new EffectiveType(keyword, null, null, null);
         AttributeRules.CheckFacets(type, column.Length, column.Precision, column.Scale, null, "Column '" + column.Name + "'", pointer, column.Id, report);
-        if (column.Default is { } literal && literal.ValueKind != System.Text.Json.JsonValueKind.Null
-            && AttributeRules.Fits(keyword, literal, column.Length, column.Precision, column.Scale) is { } reason)
-        {
-            report.Add("MQ3019", $"The default of column '{column.Name}' does not fit {keyword}: {reason}.", pointer + "/default", column.Id);
-        }
+        if (column.Default is { } literal && literal.ValueKind != JsonValueKind.Null && DefaultMisfit(context, database, column, keyword, literal) is { } misfit)
+            report.Add("MQ3019", $"The default of column '{column.Name}' does not fit {misfit}.", pointer + "/default", column.Id);
 
         if (column.Default is { } value && Credentials.LooksLikeCredential(column.Name, value, null) is { } why)
             report.Add("MQ3017", $"The default of column '{column.Name}' looks like a credential ({why}); secrets never belong in the model.", pointer + "/default", column.Id);
+    }
+
+    /// <summary>
+    /// Why a column's literal default does not fit (MQ3019, next-phase-1-design.md section 3.5), as "&lt;type&gt;: &lt;reason&gt;", or
+    /// <see langword="null"/>. A column with a <c>nativeType</c> (a native type or a database type) is checked only for the kind of
+    /// value its keyword implies, since the native type, not the facets, sets the storage; a <c>json</c> column takes a string of
+    /// valid JSON text; a <c>string</c> column is checked against its resolved length, its own or the conventions'
+    /// <c>defaultStringLength</c> for its database. <c>defaultSql</c> is not checked.
+    /// </summary>
+    private static string? DefaultMisfit(ValidationContext context, Database? database, Column column, string keyword, JsonElement literal)
+    {
+        if (column.NativeType is { } native)
+            return AttributeRules.FitsKind(keyword, literal) is { } kind ? $"{keyword} with nativeType '{native}': {kind}" : null;
+        if (keyword == "json")
+            return JsonText(literal) is { } json ? "json: " + json : null;
+        if (keyword == "string" && column.Length is null)
+        {
+            var length = Resolution.EffectiveConventions.For(context.Model.Settings, database?.Name).DefaultStringLength;
+            return AttributeRules.Fits(keyword, literal, length, null, null) is { } reason
+                ? string.Create(CultureInfo.InvariantCulture, $"string: {reason}, the default string length (set the column's length)")
+                : null;
+        }
+
+        return AttributeRules.Fits(keyword, literal, column.Length, column.Precision, column.Scale) is { } why ? keyword + ": " + why : null;
+    }
+
+    /// <summary>Why a json column's literal default is not a string of valid JSON text, or <see langword="null"/>.</summary>
+    private static string? JsonText(JsonElement literal)
+    {
+        if (AttributeRules.FitsKind("json", literal) is { } kind)
+            return kind;
+        try
+        {
+            using var parsed = JsonDocument.Parse(literal.GetString()!);
+            return null;
+        }
+        catch (JsonException)
+        {
+            return "the string is not valid JSON text";
+        }
     }
 
     private static void CheckColumnList(IReadOnlyList<string?> columns, string pointer, string what, string elementId, Func<string, bool> resolves, Report report, string suffix = "")
@@ -825,7 +886,7 @@ internal static class PhysicalRules
         var dialect = DialectInfo.Name(database.Dialect);
         if (!view.Body.ContainsKey(dialect) && !view.Body.ContainsKey("*"))
             report.Add("MQ4010", $"View '{view.Name}' has no body for {dialect} (database '{database.Name}') and no \"*\" body.", "/body");
-        DatabaseObjectRules.CheckDependsOn(context, view.Database, view.DependsOn, report);
+        DatabaseObjectRules.CheckDependsOn(context, view.Database, view.DependsOn, [], report);
         DatabaseObjectRules.CheckCycle(context, view, "View", report);
         void Add(string what, string pointer) =>
             report.Add("MQ4056", $"View '{view.Name}' {what}, which {dialect} (database '{database.Name}') does not have; the DDL leaves it out.", pointer, view.Id);

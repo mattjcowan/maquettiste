@@ -324,6 +324,38 @@ public sealed class CanonicalJsonTests
     }
 
     [Fact]
+    public void A_migration_facts_after_and_values_sort_ordinally_and_the_check_agrees()
+    {
+        // next-phase-1-design.md section 3.2: "after" is x-sort "." (the ids themselves), "values" x-sort "from" (a string key).
+        const string path = ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000009.json";
+        const string fact = """
+            {
+              "kind": "migration", "id": "01JFCT00000000000000000009", "database": "01JAX3JZ0H6N2P5R8S1T4V7W9Y", "fact": "value-map",
+              "after": ["01JFCT00000000000000000003", "01JFCT00000000000000000001"],
+              "objects": [{ "kind": "column", "table": "01JAX3K9V2Q7M4T8W1Z5C6B0DE", "key": "01JAX3KA1B2C3D4E5F6G7H8J9K" }],
+              "values": [{ "from": "b", "to": "x" }, { "from": "a", "to": "y" }, { "from": "B", "to": "z" }]
+            }
+            """;
+
+        var written = Canonical.Write(JsonNode.Parse(fact)!, "migration.json", path);
+        var node = JsonNode.Parse(written)!;
+
+        Assert.Equal(["01JFCT00000000000000000001", "01JFCT00000000000000000003"], node["after"]!.AsArray().Select(a => a!.GetValue<string>()));
+        Assert.Equal(["B", "a", "b"], node["values"]!.AsArray().Select(v => v!["from"]!.GetValue<string>()));
+        Assert.True(Canonical.IsCanonical(written, "migration.json", path));
+
+        // The same layout with either array in its written order is not canonical.
+        var text = Encoding.UTF8.GetString(written);
+        var after = text.Replace("\"01JFCT00000000000000000001\",\n    \"01JFCT00000000000000000003\"",
+            "\"01JFCT00000000000000000003\",\n    \"01JFCT00000000000000000001\"", StringComparison.Ordinal);
+        Assert.NotEqual(text, after);
+        Assert.False(Canonical.IsCanonical(Encoding.UTF8.GetBytes(after), "migration.json", path));
+        var values = text.Replace("\"from\": \"B\",\n      \"to\": \"z\"", "\"from\": \"c\",\n      \"to\": \"z\"", StringComparison.Ordinal);
+        Assert.NotEqual(text, values);
+        Assert.False(Canonical.IsCanonical(Encoding.UTF8.GetBytes(values), "migration.json", path));
+    }
+
+    [Fact]
     public void Designed_columns_drop_nullable_true_but_overlay_columns_keep_it()
     {
         const string table = """

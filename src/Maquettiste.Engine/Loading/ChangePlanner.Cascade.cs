@@ -367,6 +367,8 @@ internal sealed partial class ChangePlanner
 
         if (node["databases"] is not JsonObject databases)
             return;
+        // The recording of migration facts chooses nothing more for this settings change: the entries belong to deleted databases,
+        // whose facts go with them, so no database is reshaped by it (next-phase-1-design.md section 3.2, "Write surfaces").
         foreach (var name in names)
             databases.Remove(name);
         if (databases.Count == 0)

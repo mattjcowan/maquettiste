@@ -21,6 +21,14 @@ Physical snapshots and the schema differ (engine-design.md section 14). Implemen
   MQ6018 and the revision moves) although `SchemaDiffResult` has no list to report it in; see the signature change requested.
   `Capture` throws `ArgumentException` for an empty or unknown `RDatabase.Dialect` instead of guessing `postgresql`
   (validation requires a dialect, so this is a broken invariant).
+- Migration facts (next-phase-1-design.md section 3.2): `Compare` takes the facts that render (`RenderedFacts`: the
+  database's complete and released facts the baseline lacks, in applied order) into `SchemaDiffResult.Facts`; a fact
+  alone makes the diff non-empty, and when there are facts their ids and content hashes reach `Hash` after every other
+  part (a diff without facts keeps its hash). `State` gives `FromState` and `ToState`: the first 12 hex digits of
+  SHA-256 over a capture in canonical form without revision, aliases and facts (empty for no capture), computed on first
+  read (`SchemaDiffResult.WithStates`). `SnapshotRekey.Apply` reads a baseline under today's keys (aliases, then `rekey`
+  facts): table, column, constraint, index, sequence and foreign key keys, and a reference column's bound table; a key
+  no longer in the snapshot is not moved again.
 - `SnapshotStore` (`ISnapshotStore`): `<ModelRoot>/snapshots/<kebab database name>.json`, canonical JSON through
   `ICanonicalJson` (`snapshot.json` layout). Saves check the target and the temp file with `CheckEngineWrite(WriteTarget.Model, …)`
   (refused: `UnauthorizedAccessException`, nothing written), write a temp file in the folder and move it into place, and skip

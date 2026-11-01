@@ -25,7 +25,9 @@ tools/empty-editor.sh    starts the editor image on an empty project for seed.mj
                          manifest/<pack>.json and snapshots/main.json are written by maquettiste generate
 tools/db-apply.sh        applies db/main to postgres:16 (schema, migrations, seed twice) and asserts the object counts
 tools/gate2.sh           the gate 2 check, step by step (also what .github/workflows/gate2.yml runs)
-db/main/                 committed sql-ddl output: schema.sql, tables/views/sequences, migrations/0001.sql, seed.sql
+db/main/                 committed sql-ddl output: schema.sql, tables/views/sequences, migrations/, seed.sql; the
+                         migrations 0001.sql to 0005.sql keep the names earlier versions gave them and stay owned;
+                         a new one is <revision>-<key>.sql, named by its content
 src/ReferenceApp.Data/   ReferenceApp.Data.csproj (net10.0, Dapper, Npgsql); Generated/ is generated and not committed:
                          .gitignore there carries the csharp-dapper pack's managed block that ignores it;
                          Custom/ holds hand-written partial halves of generated types

@@ -77,7 +77,8 @@ public sealed class ModelChangeTests
     [Fact]
     public async Task Deleting_an_element_deletes_its_outputs_and_keeps_its_owned_files()
     {
-        await using var repo = E2ERepo.Create(demo: false);
+        // Without migration facts: the delete drops a table, whose pending fact would stop generation.
+        await using var repo = E2ERepo.Create(demo: false, settings: E2ERepo.RecordOff);
         var created = await repo.CreateElementAsync("""
             {"kind": "entity", "name": "Refund", "package": "01J92P0V01KDRN8GX5PGYCNKSX",
              "key": {"attributes": ["01J92P0VZZ0000000000000010"]},
@@ -97,14 +98,18 @@ public sealed class ModelChangeTests
             Assert.Contains(result.Changes, c => c.Path == path && c.Kind == FileChangeKind.Deleted);
         }
 
-        foreach (var path in new[] { "db/e2e/scaffold/refund.txt", "db/e2e/pair/Refund.cs" })
+        // Owned files belong to the team (D29): the once file stays owned while it exists (kept, with its manifest entry), the
+        // companion leaves the manifest.
+        foreach (var (path, kind) in new[] { ("db/e2e/scaffold/refund.txt", FileChangeKind.Kept), ("db/e2e/pair/Refund.cs", FileChangeKind.OrphanedOwned) })
         {
-            Assert.True(repo.Repo.Exists(path), path); // owned files belong to the team (D29)
-            Assert.Contains(result.Changes, c => c.Path == path && c.Kind == FileChangeKind.OrphanedOwned);
+            Assert.True(repo.Repo.Exists(path), path);
+            Assert.Contains(result.Changes, c => c.Path == path && c.Kind == kind);
         }
 
         Assert.DoesNotContain("Refund", repo.Repo.ReadFile("db/e2e/index.txt"), StringComparison.Ordinal);
-        Assert.DoesNotContain("Refund", repo.Manifest("e2e"), StringComparison.Ordinal);
+        var manifest = repo.Manifest("e2e");
+        Assert.Contains("db/e2e/scaffold/refund.txt", manifest, StringComparison.Ordinal);
+        Assert.DoesNotContain("Refund", manifest, StringComparison.Ordinal);
         E2ERepo.AssertOutcome(RunOutcome.Succeeded, await repo.RunAsync(GenerationMode.Check));
     }
 
@@ -195,7 +200,7 @@ public sealed class ModelChangeTests
         Assert.Contains(result.Changes, c => c.Path == "db/e2e/entities/product.txt" && c.Kind == FileChangeKind.Deleted);
         Assert.Contains(result.Changes, c => c.Path == "db/e2e/entities/article.txt" && c.Kind == FileChangeKind.Added);
         Assert.Contains(result.Changes, c => c.Path == "db/e2e/tables/articles.sql" && c.Kind == FileChangeKind.Added);
-        Assert.Contains(result.Changes, c => c.Path == "db/e2e/scaffold/product.txt" && c.Kind == FileChangeKind.OrphanedOwned);
+        Assert.Contains(result.Changes, c => c.Path == "db/e2e/scaffold/product.txt" && c.Kind == FileChangeKind.Kept); // still the team's
         Assert.False(repo.Repo.Exists("db/e2e/tables/products.sql"));
         Assert.Contains("- Article", repo.Repo.ReadFile("db/e2e/index.txt"), StringComparison.Ordinal);
         await IncrementalTests.AssertIncrementalEqualsForcedAsync(repo);

@@ -367,6 +367,7 @@ internal sealed partial class DatabaseRun
                 Name = column.Name,
                 Table = t.Table,
                 Type = column.Type ?? "string",
+                Subtype = BuiltinTypes.IsRange(column.Type) ? column.Subtype : null,
                 Length = column.Length,
                 Precision = column.Precision,
                 Scale = column.Scale,
@@ -374,7 +375,7 @@ internal sealed partial class DatabaseRun
             };
             ApplyColumnFile(t, c, column);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale, null, c.FixedLength, c.Unicode));
+            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c));
             t.Columns.Add(c);
             t.ByKey[column.Id] = c;
             _run.Register(c);

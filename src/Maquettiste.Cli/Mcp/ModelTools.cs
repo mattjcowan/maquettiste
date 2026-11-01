@@ -30,8 +30,9 @@ namespace Maquettiste.Cli.Mcp;
 /// <param name="generation">The generation service over <paramref name="store"/>.</param>
 /// <param name="repoRoot">The repo root, for the project name when the settings have none.</param>
 /// <param name="log">Where an internal failure is reported, one line each (standard error, never the protocol stream).</param>
-/// <param name="workspace">The value of <c>MAQUETTISTE_WORKSPACE</c>, which names the workspace in <c>get_project</c>; blank means unset.</param>
-internal sealed partial class ModelTools(ModelStore store, GenerationService generation, string repoRoot, TextWriter log, string? workspace = null)
+/// <param name="workspace">What the checkout is called, which <c>get_project</c> reports (<see cref="Functions.WorkspaceDetection"/>);
+/// <see langword="null"/> means nothing is known.</param>
+internal sealed partial class ModelTools(ModelStore store, GenerationService generation, string repoRoot, TextWriter log, WorkspaceInfo? workspace = null)
 {
     private readonly TextWriter _log = log ?? throw new ArgumentNullException(nameof(log));
     private readonly ModelStore _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -44,8 +45,9 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     public AgentTools Catalog { get; } = new(store, generation, new AgentToolsOptions
     {
         RepoRoot = repoRoot ?? throw new ArgumentNullException(nameof(repoRoot)),
-        Workspace = workspace,
+        Workspace = workspace ?? WorkspaceInfo.None,
         Mode = "local",
+        AllowFolderBaselines = true,
         LogFailure = async (tool, failure, ct) =>
         {
             await log.WriteLineAsync($"maquettiste mcp: {tool} failed: {failure}".AsMemory(), ct).ConfigureAwait(false);
@@ -63,7 +65,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The save result.</returns>
     [McpServerTool(Name = "save_element", Title = "Save element", Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Replaces an element with a whole document if the file still has expectedHash. A conflict writes nothing and returns the disk version (current, hash) and the submitted document; an invalid document returns the diagnostics. A rename moves the file in the same save.")]
+    [Description("Replaces an element with a whole document if the file still has expectedHash. A conflict writes nothing and returns the disk version (current, hash) and the submitted document; an invalid document returns the diagnostics. A rename moves the file in the same save. facts lists the migration facts the save recorded in the same write (a renamed, retyped or dropped table, column or sequence, a column made not null): {id, database, fact, state, missing, summary, path}; a pending one's MQ4101 is in diagnostics: complete it with save_element (conversion, dataCheck, acknowledge or value) or hold it.")]
     public Task<CallToolResult> SaveElement(
         [Description("The element id; the id in the document must be the same; required.")] string? id = null,
         [Description("The whole element document (the json from get_element, edited); required.")] JsonElement? element = null,
@@ -86,7 +88,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The save result.</returns>
     [McpServerTool(Name = "create_element", Title = "Create element", Destructive = false, OpenWorld = false)]
-    [Description("Creates an element from a whole document; an id is assigned when the document has none. Returns the id, the hash and what changed, or the diagnostics.")]
+    [Description("Creates an element from a whole document; an id is assigned when the document has none. Returns the id, the hash, what changed and the migration facts the write recorded (facts, as save_element), or the diagnostics.")]
     public Task<CallToolResult> CreateElement(
         [Description("The element document, for example {\"kind\":\"entity\",\"name\":\"Coupon\",\"package\":\"<package id>\",\"attributes\":[...]}. Routines, database types, SQL objects and queries belong to a database: {\"kind\":\"routine\",\"name\":\"invoice_total\",\"database\":\"<database id>\",\"body\":{\"postgresql\":\"...\"}}; a query is a JSON tree, {\"kind\":\"query\",\"name\":\"OpenInvoices\",\"database\":\"<database id>\",\"entity\":\"<entity id>\",\"from\":{\"source\":\"<table id or key>\",\"alias\":\"i\"},\"select\":[{\"attribute\":\"<attribute id>\",\"expression\":{\"column\":\"i.id\"}}]}. Use get_schema for the fields of a kind; required.")] JsonElement? element = null,
         CancellationToken ct = default) => GuardAsync(async () =>
@@ -106,7 +108,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The delete result, or the plan.</returns>
     [McpServerTool(Name = "delete_element", Title = "Delete element", Destructive = true, OpenWorld = false)]
-    [Description("Deletes an element if its file still has expectedHash. While other elements reference it, the delete is refused (code referenced, with the referrers) unless resolution says otherwise: remove-references clears optional references (a required one makes the delete invalid, with an MQ2001 diagnostic naming it); delete-dependents also resolves required references in the same change, removing the part of the referrer that needs the element (an attribute whose type is deleted, a diagram member, a key) or deleting the referrer with its own dependents (the tables, views, sequences, routines, database types, SQL objects, queries and mappings of a database; the relations, mappings and overlays of an entity; a query that reads a deleted table, view or entity, deleted whole), and removes a deleted database's databases.<name> conventions. With dryRun true nothing is written and no expectedHash is needed: the result is the plan, {ids, resolution, outcome, deletes:[{id,kind,name,path,because}], clears:[{id,kind,name,pointer,field,target,because}], removes:[{id,kind,name,pointer,what,subId,subKind,because}], refused:[{id,kind,name,pointer,why,rule}], settings:[{pointer,what}], warnings:[{message,pack,unit}]}; read it before deleting with delete-dependents.")]
+    [Description("Deletes an element if its file still has expectedHash. While other elements reference it, the delete is refused (code referenced, with the referrers) unless resolution says otherwise: remove-references clears optional references (a required one makes the delete invalid, with an MQ2001 diagnostic naming it); delete-dependents also resolves required references in the same change, removing the part of the referrer that needs the element (an attribute whose type is deleted, a diagram member, a key) or deleting the referrer with its own dependents (the tables, views, sequences, routines, database types, SQL objects, queries and mappings of a database; the relations, mappings and overlays of an entity; a query that reads a deleted table, view or entity, deleted whole), and removes a deleted database's databases.<name> conventions. facts lists the migration facts the delete recorded (a dropped table, column or sequence; cascades included), as save_element. With dryRun true nothing is written and no expectedHash is needed: the result is the plan, {ids, resolution, outcome, deletes:[{id,kind,name,path,because}], clears:[{id,kind,name,pointer,field,target,because}], removes:[{id,kind,name,pointer,what,subId,subKind,because}], refused:[{id,kind,name,pointer,why,rule}], settings:[{pointer,what}], warnings:[{message,pack,unit}]}; read it before deleting with delete-dependents.")]
     public Task<CallToolResult> DeleteElement(
         [Description("The element id; required.")] string? id = null,
         [Description("The hash returned by get_element; required unless dryRun.")] string? expectedHash = null,
@@ -154,7 +156,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The batch result.</returns>
     [McpServerTool(Name = "apply_batch", Title = "Apply batch", Destructive = true, OpenWorld = false)]
-    [Description("Applies several operations all or nothing. Each operation is {\"op\":\"create\",\"element\":{...}}, {\"op\":\"update\",\"id\":...,\"expectedHash\":...,\"element\":{...}} or {\"op\":\"delete\",\"id\":...,\"expectedHash\":...,\"resolution\":\"refuse|remove-references|delete-dependents\"} (resolution as in delete_element; default refuse). Database schemas: {\"op\":\"add-schema\",\"id\":<database>,\"name\":...}, {\"op\":\"rename-schema\",\"id\":<database>,\"schema\":<schema id>,\"name\":...}, {\"op\":\"set-default-schema\",\"id\":<database>,\"schema\":...} and {\"op\":\"remove-schema\",\"id\":<database>,\"schema\":...,\"target\":<schema id to move its tables to>,\"default\":<new default when removing the default>}; a remove that would strand tables is refused with MQ4015 listing them. Materialize (entities own their bindings; preview with preview_materialize): {\"op\":\"materialize-tables\",\"database\":<database>,\"entities\":[...],\"schema\":<optional schema id>} writes a designed table per entity with its projection's shape and binds the entity to it, {\"op\":\"materialize-entities\",\"database\":<database>,\"tables\":[<tables or views>],\"package\":<package>} writes an entity per table bound to it, {\"op\":\"materialize-attributes\",\"database\":<database>,\"entities\":[...],\"columns\":[<optional, one entity: column keys or names>]} adds to each bound entity an attribute per column of its binding's source that nothing in the binding names (or per column named), mapped to it, {\"op\":\"materialize-columns\",\"database\":<database>,\"entities\":[...],\"attributes\":[<optional, one entity: attribute ids>]} adds to each bound entity's table a column per attribute its binding leaves unmapped, shaped as the projection would make it, mapped to it; an entity or table already bound is refused with MQ4055, as is materialize-attributes for an entity with no binding, a query source or a column already mapped, and materialize-columns for a source that is not a table file or an attribute already mapped. Processes: {\"op\":\"sync-enum\",\"id\":<lifecycle process>} makes the bound enum's members the process's root-level states in order (kept members keep their ids, codes and descriptions; removing a member a default, allowed values, a seed cell or a scenario value still uses is refused with MQ9019: change those uses first), {\"op\":\"set-lifecycle\",\"id\":<entity>,\"target\":<process>} binds the entity and the process to each other (omit target to clear the lifecycle), {\"op\":\"set-initial\",\"id\":<process or compound state>,\"target\":<direct child state>}, {\"op\":\"refresh-scenario\",\"id\":<scenario>} (rewrites its expectations and outcome from the engine's replay). Tags (see tag_usage): {\"op\":\"retag\",\"tags\":[...],\"name\":<new key, renames the one tag>,\"package\":<domain, else the global vocabulary>} removes the tags (or renames one) in that vocabulary and in every use it governs. An element may appear in one operation only. When one fails nothing is written and the result says which and why.")]
+    [Description("Applies several operations all or nothing. Each operation is {\"op\":\"create\",\"element\":{...}}, {\"op\":\"update\",\"id\":...,\"expectedHash\":...,\"element\":{...}} or {\"op\":\"delete\",\"id\":...,\"expectedHash\":...,\"resolution\":\"refuse|remove-references|delete-dependents\"} (resolution as in delete_element; default refuse). Database schemas: {\"op\":\"add-schema\",\"id\":<database>,\"name\":...}, {\"op\":\"rename-schema\",\"id\":<database>,\"schema\":<schema id>,\"name\":...}, {\"op\":\"set-default-schema\",\"id\":<database>,\"schema\":...} and {\"op\":\"remove-schema\",\"id\":<database>,\"schema\":...,\"target\":<schema id to move its tables to>,\"default\":<new default when removing the default>}; a remove that would strand tables is refused with MQ4015 listing them. Materialize (entities own their bindings; preview with preview_materialize): {\"op\":\"materialize-tables\",\"database\":<database>,\"entities\":[...],\"schema\":<optional schema id>} writes a designed table per entity with its projection's shape and binds the entity to it, {\"op\":\"materialize-entities\",\"database\":<database>,\"tables\":[<tables or views>],\"package\":<package>} writes an entity per table bound to it, {\"op\":\"materialize-attributes\",\"database\":<database>,\"entities\":[...],\"columns\":[<optional, one entity: column keys or names>]} adds to each bound entity an attribute per column of its binding's source that nothing in the binding names (or per column named), mapped to it, {\"op\":\"materialize-columns\",\"database\":<database>,\"entities\":[...],\"attributes\":[<optional, one entity: attribute ids>]} adds to each bound entity's table a column per attribute its binding leaves unmapped, shaped as the projection would make it, mapped to it; an entity or table already bound is refused with MQ4055, as is materialize-attributes for an entity with no binding, a query source or a column already mapped, and materialize-columns for a source that is not a table file or an attribute already mapped. Processes: {\"op\":\"sync-enum\",\"id\":<lifecycle process>} makes the bound enum's members the process's root-level states in order (kept members keep their ids, codes and descriptions; removing a member a default, allowed values, a seed cell or a scenario value still uses is refused with MQ9019: change those uses first), {\"op\":\"set-lifecycle\",\"id\":<entity>,\"target\":<process>} binds the entity and the process to each other (omit target to clear the lifecycle), {\"op\":\"set-initial\",\"id\":<process or compound state>,\"target\":<direct child state>}, {\"op\":\"refresh-scenario\",\"id\":<scenario>} (rewrites its expectations and outcome from the engine's replay). Tags (see tag_usage): {\"op\":\"retag\",\"tags\":[...],\"name\":<new key, renames the one tag>,\"package\":<domain, else the global vocabulary>} removes the tags (or renames one) in that vocabulary and in every use it governs. An element may appear in one operation only. When one fails nothing is written and the result says which and why. facts on the batch answer lists the migration facts the batch recorded (its items carry none), as save_element.")]
     public Task<CallToolResult> ApplyBatch(
         [Description("The operations, applied in order; required.")] JsonElement? operations = null,
         CancellationToken ct = default) => GuardAsync(async () =>
@@ -360,15 +362,17 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="force">Whether to ignore the unit cache.</param>
     /// <param name="handEdits">A hand-edit policy.</param>
     /// <param name="jobs">Parallelism.</param>
+    /// <param name="against">A baseline model to diff the schema from: a model snapshot id or a folder.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The plan result, without the per-unit list.</returns>
     [McpServerTool(Name = "plan", Title = "Plan generation", ReadOnly = false, Destructive = false, OpenWorld = false)]
-    [Description("Plans generation without touching the repository: renders what changed and stores the plan. Returns the outcome and the plan (id, packs, file changes with their actions, counts of every kind, units rendered and skipped by reason, diagnostics). Files identical to the disk (unchanged) or not rendered because their inputs did not change (not-rendered) are only counted; get_plan lists every file. Read diffs with get_plan_diff, then apply with apply_plan.")]
+    [Description("Plans generation without touching the repository: renders what changed and stores the plan. Returns the outcome and the plan (id, packs, file changes with their actions, counts of every kind, units rendered and skipped by reason, diagnostics). Files identical to the disk (unchanged) or not rendered because their inputs did not change (not-rendered) are only counted; get_plan lists every file. Read diffs with get_plan_diff, then apply with apply_plan. against diffs the schema (migrations) from a baseline model for this plan instead of the committed physical snapshots, which the apply then leaves as they are; apply_plan opens the same baseline again, and a baseline changed in between makes the plan stale.")]
     public Task<CallToolResult> Plan(
         [Description("Only these packs (default: every enabled pack).")] string[]? packs = null,
         [Description("Render every unit, ignoring the unit cache.")] bool force = false,
         [Description("fail, overwrite or skip: overrides the project's hand-edit policy.")] string? handEdits = null,
         [Description("Parallelism for this run (at least 1).")] int? jobs = null,
+        [Description("A baseline model to diff the schema from: a model snapshot id (list_snapshots) or a folder that holds another copy of the project (relative to the server's current directory).")] string? against = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (jobs is < 1)
@@ -402,9 +406,22 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
             IncludeDiffs = false,
             StageBarriers = false,
             Lock = LockMode.Wait,
+            // A relative folder is resolved against the server's current directory; the plan stores the full path (or the id).
+            Against = against is { Length: > 0 }
+                ? ModelBaseline.RequestText(Snapshots, against, Environment.CurrentDirectory)
+                : null,
         };
         await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var result = await _generation.PlanAsync(request, null, ct).ConfigureAwait(false);
+        PlanResult result;
+        try
+        {
+            result = await _generation.PlanAsync(request, null, ct).ConfigureAwait(false);
+        }
+        catch (BadBaselineException ex)
+        {
+            return BadRequest(ex.Message); // only the baseline's own errors: any other argument error is not relabelled
+        }
+
         // Files the apply leaves as they are because they are identical or were not rendered are only counted (counts), so the
         // answer stays small on a large model; get_plan lists every file.
         var summary = result with
@@ -430,10 +447,20 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     {
         if (!IsUlid(planId))
             return BadRequest("planId must be a plan id (an uppercase ULID).");
-        if (await _generation.GetPlanAsync(planId, ct).ConfigureAwait(false) is null)
+        if (await _generation.GetPlanAsync(planId, ct).ConfigureAwait(false) is not { } plan)
             return NotFound("plan", planId);
         await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var result = await _generation.ApplyAsync(planId, null, ct).ConfigureAwait(false);
+        ApplyResult result;
+        try
+        {
+            result = await _generation.ApplyAsync(planId, null, ct).ConfigureAwait(false);
+        }
+        catch (BadBaselineException ex)
+        {
+            // A plan made against a baseline opens it again; one that no longer opens (a deleted snapshot) is the caller's to fix.
+            return BadRequest("The plan's baseline no longer opens: " + ex.Message);
+        }
+
         return result.Outcome == RunOutcome.Succeeded ? Ok(result) : FromRun(result.Outcome, result, ct);
     }, ct);
 

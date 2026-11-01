@@ -26,12 +26,13 @@ into memory beyond what the store already holds.
 `IModelDocumentStore` (`src/Maquettiste.Engine/Loading/ModelDocumentStore.cs`) is the interface under `ModelStore` and
 `ModelLoader` that the model-service proposal (section 1) asks for, kept to what the loader and the store use: `Stat`,
 `FolderExists`, `List`, `ReadAsync` (model-relative paths), `ApplyAsync` (all-or-nothing writes and deletes), plus
-`IsReadOnly` and `UsesIndexCache`. Two providers:
+`IsReadOnly` and `UsesIndexCache`. Three providers:
 
 | Provider | Reads | Writes | Index cache |
 | --- | --- | --- | --- |
 | `FileDocumentStore` | the model folder | `AtomicFileSet`, through `CheckEngineWrite(Model)` | yes |
 | `Snapshots.ZipDocumentStore` | a snapshot archive, entry by entry, never extracted | refused (MQ6029) | no |
+| `ReadOnlyFolderDocumentStore` | another copy of a project, a baseline folder (`ModelBaseline`) | refused (MQ6029) | no |
 
 The file provider is a pure refactor: the loader's stat, enumeration and reads, and the store's settings read, stale-file
 check, batch preview and every `AtomicFileSet` call (saves, batches, settings, translations, default locale, format,

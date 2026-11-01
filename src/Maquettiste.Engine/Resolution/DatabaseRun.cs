@@ -13,6 +13,7 @@ internal sealed partial class DatabaseRun
     private const string Conventions = "s:conventions";
     private const string TypeMaps = "s:typeMaps";
     private const string InflectionKey = "s:inflection";
+    private const string MigrationsKey = "s:migrations";
 
     private readonly ResolveRun _run;
     private readonly Database _db;
@@ -106,6 +107,7 @@ internal sealed partial class DatabaseRun
         BuildEntityMappings();
         BuildJoins();
         CheckIdentifiers();
+        CheckNames();
         return Publish();
     }
 
@@ -211,6 +213,7 @@ internal sealed partial class DatabaseRun
                 Name = column.Name,
                 Table = r,
                 Type = column.Type ?? "string",
+                Subtype = BuiltinTypes.IsRange(column.Type) ? column.Subtype : null,
                 Length = column.Length,
                 Precision = column.Precision,
                 Scale = column.Scale,
@@ -218,7 +221,7 @@ internal sealed partial class DatabaseRun
             };
             ApplyColumnFile(t, c, column);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale, null, c.FixedLength, c.Unicode));
+            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c));
             t.Columns.Add(c);
             t.ByKey.TryAdd(column.Id, c);
             _run.Register(c);
@@ -274,14 +277,25 @@ internal sealed partial class DatabaseRun
         {
             // An expression without a text for the dialect leaves the index out, as a check without one is left out.
             var columns = index.Columns.Select(c => c.Column is null
-                ? new IndexColumnSpec(null, c.Descending, c.Expression is null ? null : ForDialect(c.Expression), c.Length, c.OperatorClass)
-                : new IndexColumnSpec(c.Column, c.Descending, null, c.Length, c.OperatorClass)).ToList();
+                ? new IndexColumnSpec(null, c.Descending, c.Expression is null ? null : ForDialect(c.Expression), c.Length, c.OperatorClass, NullsOrder(c))
+                : new IndexColumnSpec(c.Column, c.Descending, null, c.Length, c.OperatorClass, NullsOrder(c))).ToList();
             if (columns.Any(c => c.Column is null && c.Expression is null))
                 continue;
             t.Indexes.Add(new IndexSpec(columns, index.Include, index.Where, index.Unique,
                 ResolutionValues.Kebab(index.Method), index.Name, FromFile: true, Id: index.Id, Storage: Storage([index.Storage])));
         }
     }
+
+    /// <summary>
+    /// Where an index column's nulls sort as the DDL writes it: <c>first</c> or <c>last</c> on PostgreSQL, and only when it differs
+    /// from the direction's default (last ascending, first descending), so the DDL, the snapshot and the index key change only
+    /// when the order does. Other dialects have no such clause (validation's MQ4056 says so).
+    /// </summary>
+    private string? NullsOrder(IndexColumn column) =>
+        _db.Dialect != Dialect.PostgreSql || column.Nulls is not { } nulls ? null
+        : nulls == IndexNulls.First && !column.Descending ? "first"
+        : nulls == IndexNulls.Last && column.Descending ? "last"
+        : null;
 
     /// <summary>
     /// Applies the physical properties and the annotations a column file sets (designed column, extra column or overlay entry) to a
@@ -330,6 +344,10 @@ internal sealed partial class DatabaseRun
     /// <summary>The logical type that decides a column's native type: a reference column's code type, else the column's type.</summary>
     private static string PhysicalType(RColumn c) => c.Type == "reference" && c.CodeType is { } code ? code : c.Type;
 
+    /// <summary>
+    /// Fills a column's missing facets with the conventions' defaults; a range or multirange column takes no facets, so it gets none
+    /// (no length 255).
+    /// </summary>
     private void ApplyFacetDefaults(RColumn c)
     {
         switch (PhysicalType(c))
@@ -603,6 +621,16 @@ internal sealed partial class DatabaseRun
 
         return name;
     }
+
+    /// <summary>
+    /// The native type the type map gives a designed or extra column: a range or multirange column's comes from the map's
+    /// <c>&lt;keyword&gt;:&lt;subtype&gt;</c> entry (<see cref="DialectTypeMaps.RangeKey"/>), else its <c>text</c> entry, as a dialect
+    /// without range types stores the text form (MQ4056); any other column's from its keyword.
+    /// </summary>
+    private string ColumnNativeType(RColumn c) =>
+        !BuiltinTypes.IsRange(c.Type) ? NativeType(c.Type, c.Length, c.Precision, c.Scale, null, c.FixedLength, c.Unicode)
+        : _typeMap.TryGetValue(DialectTypeMaps.RangeKey(c.Type, c.Subtype), out var range) ? range
+        : NativeType("text", null, null, null);
 
     /// <summary>
     /// The native type of a logical type with its facets: the custom type's native type for the dialect when the value is of a custom

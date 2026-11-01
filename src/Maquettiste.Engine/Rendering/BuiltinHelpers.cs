@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Maquettiste.Engine.Ledger;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
@@ -118,7 +119,7 @@ internal static class BuiltinHelpers
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_tag", "in_category", "lookup",
         "banner", "file", "row", "row_uuid", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
         "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
-        "binding_sql", "binding_sql_parameters");
+        "binding_sql", "binding_sql_parameters", "ledger_ddl");
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
     public static readonly FrozenSet<string> Variables = FrozenSet.Create(StringComparer.Ordinal,
@@ -186,6 +187,7 @@ internal static class BuiltinHelpers
         Add(builtins, "query_sql_parameters", 1, 3, (c, a) => QuerySqlText(c, "query_sql_parameters", a));
         Add(builtins, "binding_sql", 2, 4, (c, a) => BindingSqlText(c, "binding_sql", a));
         Add(builtins, "binding_sql_parameters", 2, 4, (c, a) => BindingSqlText(c, "binding_sql_parameters", a));
+        Add(builtins, "ledger_ddl", 1, 1, (c, a) => LedgerDdl(c, a[0]));
         Add(builtins, "indent", 2, 2, (_, a) => Indent(AsText(a[0]), IndentPrefix(a[1])));
         Add(builtins, "dedent", 1, 1, (_, a) => Dedent(AsText(a[0])));
         Add(builtins, "escape_md", 1, 1, (_, a) => EscapeMarkdown(AsText(a[0])));
@@ -673,6 +675,20 @@ internal static class BuiltinHelpers
         if (result.Diagnostics.Count > 0)
             throw new RenderHelperException(result.Diagnostics[0].Rule, result.Diagnostics[0].Message);
         return name == "binding_sql_parameters" ? new ScriptArray(result.Parameters) : result.Sql;
+    }
+
+    /// <summary>
+    /// <c>ledger_ddl db</c> (next-phase-1-design.md section 3.3): the migration ledger's DDL for the database's ledger schema
+    /// (<see cref="LedgerContract.Ddl"/>), or <c>""</c> when its dialect has no ledger. It records <c>s:migrations</c>, the key of
+    /// <c>migrations.ledgerSchema</c>, so every script that writes ledger rows re-renders when the schema changes.
+    /// </summary>
+    private static string LedgerDdl(TrackingTemplateContext context, object? value)
+    {
+        if (value is not RDatabase database)
+            throw new RenderHelperException("MQ6006", $"`ledger_ddl` takes a database, not a {TemplateValues.TypeName(value)}.");
+        context.Recorder.RecordObject(database);
+        context.Recorder.Record("s:migrations");
+        return database.LedgerSchema is { } schema ? LedgerContract.Ddl(ParseDialect(database.Dialect), schema) : "";
     }
 
     /// <summary>Parses a dialect name or fails the render with MQ6006.</summary>

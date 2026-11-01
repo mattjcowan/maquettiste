@@ -459,6 +459,7 @@ internal static class ModelIndexer
                 SqlObject o => o.Database,
                 Query q => q.Database,
                 Mapping m => m.Database,
+                Migration f => f.Database,
                 _ => null,
             },
             Entity: element switch

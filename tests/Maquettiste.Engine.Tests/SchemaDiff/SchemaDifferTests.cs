@@ -271,6 +271,38 @@ public sealed class SchemaDifferTests
     }
 
     [Fact]
+    public void A_subtype_change_is_a_column_change()
+    {
+        static void Range(RTable customer, string subtype, string native)
+        {
+            var name = customer.Col("a-name");
+            (name.Type, name.Subtype, name.NativeType) = ("range", subtype, native);
+        }
+
+        var baseline = _differ.Capture(Model((customer, _, _, _) => Range(customer, "int32", "int4range")), 3);
+        var json = JsonSerializer.Serialize(baseline, EngineJson.Options);
+        Assert.Contains("\"subtype\":\"int32\"", json, StringComparison.Ordinal);
+        Assert.Empty(_differ.Diff(JsonSerializer.Deserialize<PhysicalSnapshot>(json, EngineJson.Options)!,
+            Model((customer, _, _, _) => Range(customer, "int32", "int4range"))).Tables);
+
+        // On PostgreSQL the native type moves with the subtype.
+        var name = Assert.Single(Assert.Single(_differ.Diff(baseline, Model((customer, _, _, _) => Range(customer, "int64", "int8range"))).Tables).Columns);
+        Assert.Equal((ChangeKind.Altered, "a-name"), (name.Kind, name.Key));
+        Assert.Equal([("subtype", "int32", "int64"), ("nativeType", "int4range", "int8range")], name.Changes.Select(c => (c.Property, c.Old, c.New)));
+
+        // Where a range is stored as text the subtype alone changes, and it is still a column change.
+        name = Assert.Single(Assert.Single(_differ.Diff(baseline, Model((customer, _, _, _) => Range(customer, "int64", "int4range"))).Tables).Columns);
+        Assert.Equal([("subtype", (object?)"int32", (object?)"int64")], name.Changes.Select(c => (c.Property, c.Old, c.New)));
+
+        // The old idiom (string with the native type tstzrange) moving to a range keyword keeps the native type; the differ reports the
+        // keyword, the length the string had and the subtype, and the template decides that no ALTER is needed.
+        var idiom = _differ.Capture(Model((customer, _, _, _) => (customer.Col("a-name").Length, customer.Col("a-name").NativeType) = (255, "tstzrange")), 3);
+        name = Assert.Single(Assert.Single(_differ.Diff(idiom, Model((customer, _, _, _) => Range(customer, "datetimeoffset", "tstzrange"))).Tables).Columns);
+        Assert.Equal([("type", "string", "range"), ("subtype", null, "datetimeoffset"), ("length", (object?)255, null)],
+            name.Changes.Select(c => (c.Property, c.Old, c.New)));
+    }
+
+    [Fact]
     public void Keys_constraints_and_indexes()
     {
         var diff = _differ.Diff(Baseline(), Model((customer, invoice, _, _) =>
@@ -539,4 +571,37 @@ public sealed class SchemaDifferTests
         Assert.True(_differ.Diff(before with { Schemas = null }, With(Model(), ("s1", "shop"))).IsEmpty);
         Assert.Empty(_differ.Diff(null, With(Model(), ("s1", "shop"))).Schemas);
     }
+
+    [Fact]
+    public void Rekey_moves_a_reference_columns_bound_table_and_never_moves_a_key_twice()
+    {
+        const string Synthesized = "01JB2Q0M8X4T5V6W7Y8Z9A0B1E@" + DatabaseId;
+        const string Stored = "01JB2Q0M8X4T5V6W7Y8Z9A0B1F";
+        var snapshot = new PhysicalSnapshot
+        {
+            Database = DatabaseId,
+            Name = "main",
+            Dialect = Dialect.PostgreSql,
+            Tables =
+            [
+                new SnapshotTable { Key = Synthesized, Name = "codes", Columns = [new SnapshotColumn { Key = "a-code", Name = "code", Type = "string" }] },
+                new SnapshotTable
+                {
+                    Key = InvoiceKey, Name = "invoice",
+                    Columns = [new SnapshotColumn { Key = "a-status", Name = "status", Type = "reference", ReferenceTable = Synthesized }],
+                },
+            ],
+        };
+        var rekey = new TableRekey(Synthesized, Stored, new Dictionary<string, string>(StringComparer.Ordinal) { ["a-code"] = "01JB2Q0M8X4T5V6W7Y8Z9A0B1G" });
+        var none = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        var moved = SnapshotRekey.Apply(snapshot, [rekey], none);
+
+        Assert.Equal([Stored, InvoiceKey], moved.Tables.Select(t => t.Key));
+        Assert.Equal("01JB2Q0M8X4T5V6W7Y8Z9A0B1G", moved.Tables[0].Columns[0].Key);
+        Assert.Equal(Stored, moved.Tables[1].Columns[0].ReferenceTable); // the bound table follows its table's key
+        // An alias and a fact that record the same move: the second finds nothing left to move.
+        Assert.Same(moved, SnapshotRekey.Apply(moved, [rekey], none));
+    }
+
 }

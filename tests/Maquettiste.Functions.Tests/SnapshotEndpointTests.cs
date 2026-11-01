@@ -110,6 +110,49 @@ public sealed class SnapshotEndpointTests
     }
 
     [Fact]
+    public async Task Validate_against_accepts_snapshot_ids_and_refuses_folders()
+    {
+        await using var host = EditorHost.Create();
+        var id = (await host.SendJsonAsync("POST", "/api/snapshots", new { name = "Before" })).Json["id"]!.GetValue<string>();
+        var clean = await host.SendJsonAsync("POST", "/api/validate?against=" + id, new { });
+        Assert.Equal(200, clean.Status);
+        Contract.AssertResponse(clean, "/api/validate");
+        Assert.DoesNotContain(clean.Json["diagnostics"]!.AsArray(), d => d!["rule"]!.GetValue<string>().StartsWith("MQ41", StringComparison.Ordinal));
+
+        // With recording off, renaming Customer writes no fact: the comparison finds its table renamed and nothing to explain it.
+        var settings = await host.Store.GetSettingsAsync(EditorHost.Ct);
+        var node = JsonNode.Parse(settings.Json.GetRawText())!.AsObject();
+        node["migrations"] = new JsonObject { ["record"] = "off" };
+        Assert.Equal(SaveOutcome.Saved, (await host.Store.SaveSettingsAsync(System.Text.Encoding.UTF8.GetBytes(node.ToJsonString()), settings.Hash,
+            ChangeSource.Editor, EditorHost.Ct)).Outcome);
+        var customer = await host.GetAsync("/api/model/elements/" + EditorHost.CustomerId);
+        var json = customer.Json["json"]!.AsObject();
+        json["name"] = "Client";
+        Assert.Equal(200, (await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.CustomerId, json, r => r.IfMatch(customer.Json["hash"]!.GetValue<string>()))).Status);
+
+        var report = await host.SendJsonAsync("POST", "/api/validate?against=" + id, new { });
+        Assert.Equal(200, report.Status);
+        Contract.AssertResponse(report, "/api/validate");
+        var renamed = report.Json["diagnostics"]!.AsArray().Where(d => d!["rule"]!.GetValue<string>() == "MQ4102").ToList();
+        Assert.NotEmpty(renamed);
+        Assert.Contains(renamed, d => d!["message"]!.GetValue<string>().Contains("rename table billing.customers to clients", StringComparison.Ordinal));
+        Assert.True(report.Json["errors"]!.GetValue<int>() > 0);
+        Assert.DoesNotContain((await host.SendJsonAsync("POST", "/api/validate", new { })).Json["diagnostics"]!.AsArray(),
+            d => d!["rule"]!.GetValue<string>() == "MQ4102");
+
+        // This host takes snapshot ids only: a folder (the project's own, even), a relative path or an unknown id is 400.
+        foreach (var against in new[] { host.RepoRoot, "./copy", "missing-20260101-000000" })
+        {
+            var refused = await host.SendJsonAsync("POST", "/api/validate?against=" + Uri.EscapeDataString(against), new { });
+            Assert.Equal((400, "bad-request"), (refused.Status, refused.ProblemCode));
+            Contract.AssertResponse(refused, "/api/validate");
+        }
+
+        var scoped = await host.SendJsonAsync("POST", "/api/validate?against=" + id, new { elementIds = new[] { EditorHost.CustomerId } });
+        Assert.Equal((400, "bad-request"), (scoped.Status, scoped.ProblemCode));
+    }
+
+    [Fact]
     public async Task Compare_lists_what_changed_and_the_fields_of_one_element()
     {
         await using var host = EditorHost.Create();
@@ -123,8 +166,11 @@ public sealed class SnapshotEndpointTests
         Assert.Equal(200, compare.Status);
         Contract.AssertResponse(compare, "/api/snapshots/compare");
         Assert.Equal("working", compare.Json["to"]!.GetValue<string>());
-        var row = Assert.Single(compare.Json["elements"]!.AsArray());
+        // The rename of the customers table is recorded as a migration fact, which the comparison lists as added.
+        var rows = compare.Json["elements"]!.AsArray();
+        var row = Assert.Single(rows, r => r!["kind"]!.GetValue<string>() != "migration");
         Assert.Equal(("changed", "Client", "Customer"), (row!["change"]!.GetValue<string>(), row["name"]!.GetValue<string>(), row["previousName"]!.GetValue<string>()));
+        Assert.Equal("added", Assert.Single(rows, r => r!["kind"]!.GetValue<string>() == "migration")!["change"]!.GetValue<string>());
 
         var detail = await host.GetAsync($"/api/snapshots/compare/element?from={id}&to=working&id={EditorHost.CustomerId}");
         Assert.Equal(200, detail.Status);

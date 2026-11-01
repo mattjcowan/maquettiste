@@ -96,6 +96,13 @@ are rebuilt from their prefixed columns, enums stored as text go through `ToCode
 keys are cast, and JSON columns are (de)serialized with `System.Text.Json`. A table-per-hierarchy discriminator is written on
 insert and filtered on read.
 
+Range and multirange columns (a column-only type: an overlay's extra column, so an entity property of its own) are held
+as their text form, a `string` such as `[1,10)` or `{[1,3),[5,8)}`, as JSON is. On PostgreSQL the repository reads
+`<column>::text` and writes `CAST(@<property> AS <native type>)`, such as `CAST(@Seats AS int4range)`; elsewhere the
+column is text already. A bound repository and a query class take their SQL from the engine (`binding_sql`,
+`query_sql`), which adds no casts: a binding or query over a range column needs them written by hand for now, until the
+engine's statements cast range columns (a follow-up, as typed C# ranges are).
+
 Not covered, by design of an example pack: navigations and junction tables (write queries for them in the companion or in your
 own repository class, which is `partial`), collections stored in child tables (their property is left empty), and table-per-type
 hierarchies, whose rows span tables (no repository is generated for them).
@@ -331,10 +338,11 @@ the sql-ddl schema). A failing test is fixed in the model or in a handler, never
 
 ## Type map
 
-`types/csharp.json` maps the model's built-in types to C# for `type_of attribute "csharp"`, with `nullable` (`{type}?`) and
-`collection` (`IReadOnlyList<{type}>`) patterns. Enums, value objects and scalar types map to their own names (a scalar type to
-its base type); add an entry named after one of them to map it elsewhere, for example `"EmailAddress": "MailAddress"`. `ulid`
-maps to `string`, so the pack needs no ULID library.
+`types/csharp.json` maps the model's built-in types to C# for `type_of attribute "csharp"`, with `nullable` (`{type}?`)
+and `collection` (`IReadOnlyList<{type}>`) patterns. Enums, value objects and scalar types map to their own names (a
+scalar type to its base type); add an entry named after one of them to map it elsewhere, for example `"EmailAddress":
+"MailAddress"`. `ulid` maps to `string`, so the pack needs no ULID library, and the column-only `range` and `multirange`
+map to `string`, their text form.
 
 ## Parameters
 

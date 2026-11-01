@@ -169,6 +169,8 @@ internal static class TableSeedRules
             return cell.ValueKind == JsonValueKind.String && Guid.TryParse(cell.GetString(), out _) ? null : "not a UUID";
         if (type is "date" or "datetime" or "datetimeoffset" or "time" or "duration" or "binary")
             return cell.ValueKind == JsonValueKind.String ? null : $"not a text value ({Kind(cell)})";
+        if (BuiltinTypes.IsRange(type))
+            return cell.ValueKind == JsonValueKind.String ? null : $"not a text value, the {type}'s text form ({Kind(cell)})";
         return null; // json and anything else take any value
     }
 

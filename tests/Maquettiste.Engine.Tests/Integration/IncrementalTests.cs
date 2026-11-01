@@ -72,7 +72,8 @@ public sealed class IncrementalTests
     [Fact]
     public async Task Creating_a_mapping_rerenders_the_units_that_read_the_entity()
     {
-        await using var repo = E2ERepo.Create();
+        // Without migration facts: the change drops or narrows columns, whose pending facts would stop generation.
+        await using var repo = E2ERepo.Create(settings: E2ERepo.RecordOff);
         await repo.ApplyAsync();
         var productsBefore = repo.Repo.ReadFile("db/e2e/tables/products.sql");
         Assert.Contains("list_price_amount", productsBefore, StringComparison.Ordinal);
@@ -94,7 +95,8 @@ public sealed class IncrementalTests
     [Fact]
     public async Task Creating_a_table_overlay_rerenders_the_table_units()
     {
-        await using var repo = E2ERepo.Create();
+        // Without migration facts: the change drops or narrows columns, whose pending facts would stop generation.
+        await using var repo = E2ERepo.Create(settings: E2ERepo.RecordOff);
         await repo.ApplyAsync();
 
         await repo.CreateElementAsync($$"""

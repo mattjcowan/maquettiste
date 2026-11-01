@@ -56,7 +56,8 @@ public sealed class ModelStoreDeleteTests
         Assert.Equal(["aggregate-root", "audited"], s.Store.Current!.Get<Entity>(invoice)!.Stereotypes);
         Assert.Empty(s.Store.Current.Get<Entity>(product)!.Stereotypes);
         Assert.Equal([softDelete.Element.Id], result.Changes!.Deleted);
-        Assert.Equal([invoice, product], result.Changes.Changed.Select(c => c.Id).Order(StringComparer.Ordinal));
+        // The stereotype's columns go with it: their drops are recorded as migration facts in the same change.
+        Assert.Equal([invoice, product], result.Changes.Changed.Where(c => c.Kind != "migration").Select(c => c.Id).Order(StringComparer.Ordinal));
         Assert.Equal(2, result.Referrers.Count);
         Assert.Single(s.Notifications);
 

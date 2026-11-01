@@ -77,4 +77,7 @@ public enum ElementKind
 
     /// <summary>A recorded event sequence of one process (<c>scenario</c>).</summary>
     [JsonStringEnumMemberName("scenario")] Scenario,
+
+    /// <summary>One migration fact of a database (<c>migration</c>).</summary>
+    [JsonStringEnumMemberName("migration")] Migration,
 }

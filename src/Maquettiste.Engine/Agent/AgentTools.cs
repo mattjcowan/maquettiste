@@ -23,14 +23,24 @@ public sealed record AgentToolResult(string Text, bool IsError);
 /// <summary>The settings of an <see cref="AgentTools"/> catalog that depend on its host.</summary>
 public sealed record AgentToolsOptions
 {
-    /// <summary>The repository root (the project name when the settings have none, and the workspace).</summary>
+    /// <summary>The repository root (the project name when the settings have none).</summary>
     public required string RepoRoot { get; init; }
 
-    /// <summary>The value of <c>MAQUETTISTE_WORKSPACE</c>, which names the workspace in <c>get_project</c>; blank means unset.</summary>
-    public string? Workspace { get; init; }
+    /// <summary>
+    /// What the host detected the checkout is called, which <c>get_project</c> reports (the engine reads no version control);
+    /// <see cref="WorkspaceInfo.None"/> when nothing is known.
+    /// </summary>
+    public WorkspaceInfo Workspace { get; init; } = WorkspaceInfo.None;
 
     /// <summary>The mode <c>get_project</c> reports: <c>local</c> (the CLI) or the editor's mode.</summary>
     public string Mode { get; init; } = "local";
+
+    /// <summary>
+    /// Whether <c>validate</c> (and the tools that take a baseline) may compare with a folder that holds another copy of the project,
+    /// resolved against the process's current directory, as well as with a model snapshot id. Only <c>maquettiste mcp</c> sets it: a
+    /// path sent to the editor's host would name a folder of the server, so its assistant answers <c>bad-request</c> for one.
+    /// </summary>
+    public bool AllowFolderBaselines { get; init; }
 
     /// <summary>
     /// Called with one line when a tool fails unexpectedly (the line names the tool, the exception type and its message); the CLI
@@ -73,6 +83,7 @@ public sealed partial class AgentTools
             ["get_database_view"] = GetDatabaseViewAsync,
             ["get_element"] = GetElementAsync,
             ["get_elements"] = GetElementsAsync,
+            ["get_ledger_ddl"] = GetLedgerDdlAsync,
             ["get_materialize_status"] = GetMaterializeStatusAsync,
             ["get_model_index"] = GetModelIndexAsync,
             ["get_model_kinds"] = GetModelKindsAsync,
@@ -83,6 +94,7 @@ public sealed partial class AgentTools
             ["get_resolved_model"] = GetResolvedModelAsync,
             ["get_schema"] = GetSchemaAsync,
             ["get_settings"] = GetSettingsAsync,
+            ["list_migrations"] = ListMigrationsAsync,
             ["list_packs"] = ListPacksAsync,
             ["list_snapshots"] = ListSnapshotsAsync,
             ["list_validation_rules"] = ListValidationRulesAsync,

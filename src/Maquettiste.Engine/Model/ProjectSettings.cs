@@ -68,6 +68,9 @@ public sealed record ProjectSettings
 
     /// <summary>The editor's assistant: house rules and budgets (erratum E44). It changes no generated output.</summary>
     public AssistantSettings Assistant { get; init; } = new();
+
+    /// <summary>Migration facts: whether writes record them (next-phase-1-design.md section 3.2).</summary>
+    public MigrationSettings Migrations { get; init; } = new();
 }
 
 /// <summary>

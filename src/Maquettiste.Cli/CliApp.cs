@@ -139,13 +139,26 @@ public sealed class CliApp(CliEnvironment environment)
                                   --runtime docker|podman (the container command for --docker, default docker),
                                   --name <project name> (default: package.json name, git remote, folder)
           validate              Validate the model and packs
+                                  --against <snapshot id | folder> (also compare with a baseline: changes
+                                  that need a migration fact and have none are MQ4102),
                                   --format text|json|sarif, --output <file>
           generate              Incremental generation
                                   --pack <name> (repeatable), --force,
                                   --hand-edits fail|overwrite|skip, --watch, --dry-run, --diff,
                                   --check (render every root in memory; exit 2 when a file would change),
+                                  --against <snapshot id | folder> (diff the schema from a baseline model
+                                  for this run; the committed snapshots stay as they are),
                                   --format text|json, --no-wait
           migrate               Upgrade the model format (format 1 is current)
+          migration list        The open migration facts in applied order: order, id, fact, state and the intent
+                                  it lacks, stale, summary; --database <name|id>, --format text|json
+          migration fold        Remove stale facts and join consecutive facts on one object into the last one:
+                                  --database <name|id>, --against <snapshot id | folder> (its facts stay; default:
+                                  the facts the committed snapshot rendered, else pending facts only), --dry-run,
+                                  --format text|json
+          migration ledger      Print the migration ledger's DDL for a PostgreSQL database (contract version 1):
+                                  --database <name|id> (default: the only PostgreSQL database), --grant-read <role>
+                                  (also print the read grant), --format text|json, --output <file>
           format                Rewrite every model file in canonical form and report the count
                                   --check (write nothing; exit 2 when a file would change)
           pack new <name>       Scaffold a template pack under .maquettiste/templates/<name>/
@@ -271,6 +284,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "validate" => await ValidateCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "generate" => await GenerateCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "migrate" => await MigrateCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "migration" => await MigrationCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "format" => await FormatCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "pack" => await PackNewCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "bench" => await BenchCommand.RunAsync(context, ct).ConfigureAwait(false),

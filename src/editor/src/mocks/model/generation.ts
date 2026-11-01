@@ -478,6 +478,7 @@ export class MockGeneration {
       includeDiffs: false,
       lock: "wait",
       stageBarriers: false,
+      against: input.against ?? null,
     };
   }
 

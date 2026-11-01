@@ -41,6 +41,7 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
         new(ElementKind.Process, "process", typeof(Process), "process.json", "model/processes", null),
         new(ElementKind.Actor, "actor", typeof(Actor), "actor.json", "model/actors", null),
         new(ElementKind.Scenario, "scenario", typeof(Scenario), "scenario.json", ScenariosFolder, null),
+        new(ElementKind.Migration, "migration", typeof(Migration), "migration.json", "model/databases/{db}/migrations/open", null),
     ];
 
     /// <summary>The folder of seeds; each target's seeds share a sub-folder named after the target.</summary>
@@ -70,8 +71,9 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
 
     /// <summary>
     /// The non-element document schemas: project settings, pack manifests, extension schemas, manifests, snapshots, batches
-    /// the <c>validate --format json</c> output and locale shards, plus the shared definitions.
+    /// the <c>validate --format json</c> output, locale shards and a migration ledger's rows (<c>ledger.json</c>), plus the shared
+    /// definitions.
     /// </summary>
     public static IReadOnlyList<string> DocumentSchemaFiles { get; } =
-        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json", "locale.json"];
+        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json", "locale.json", "ledger.json"];
 }

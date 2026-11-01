@@ -136,6 +136,7 @@ internal sealed record EngineServices
         var json = new CanonicalJson(schemas);
         var scripts = new ScriptSandboxFactory();
         var formatters = new FormatterRunner(options);
+        var resolver = new ModelResolver(options);
         var services = new EngineServices
         {
             Options = options,
@@ -143,8 +144,8 @@ internal sealed record EngineServices
             Schemas = schemas,
             Json = json,
             Loader = new ModelLoader(options, schemas, json, enginePaths, documents),
-            Validator = new ModelValidator(options, schemas, scripts),
-            Resolver = new ModelResolver(options),
+            Validator = new ModelValidator(options, schemas, scripts, resolver),
+            Resolver = resolver,
             Scripts = scripts,
             Packs = new PackLoader(options, schemas),
             Planner = new UnitPlanner(options),
@@ -176,9 +177,12 @@ internal sealed record EngineServices
     /// <param name="resolved">The resolved model.</param>
     /// <param name="packs">The packs.</param>
     /// <param name="schemaDiffs">Schema diffs by database name.</param>
+    /// <param name="baselineHash">The model hash of the baseline the diffs run from, or <see langword="null"/> for the committed
+    /// physical snapshots.</param>
     /// <returns>The hasher.</returns>
-    public IDependencyHasher CreateHasher(ModelSnapshot model, ResolvedModel resolved, PackSet packs, IReadOnlyDictionary<string, SchemaDiffResult> schemaDiffs) =>
-        new DependencyHasher(model, resolved, packs, schemaDiffs);
+    public IDependencyHasher CreateHasher(ModelSnapshot model, ResolvedModel resolved, PackSet packs, IReadOnlyDictionary<string, SchemaDiffResult> schemaDiffs,
+        string? baselineHash = null) =>
+        new DependencyHasher(model, resolved, packs, schemaDiffs, baselineHash);
 
     /// <summary>Builds the path policy of one run.</summary>
     /// <param name="settings">The project settings.</param>

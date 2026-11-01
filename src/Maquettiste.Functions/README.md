@@ -30,5 +30,15 @@ Conventions every handler follows:
   request bound (536,870,912 bytes in static-site-hosting 0.4.0) answers 413 with `tooLarge` and MQ1011, from `Content-Length` or
   from the reader's 413, instead of the 503 `model-unavailable` the reader's `IOException` would map to.
 
+- Workspace detection (`WorkspaceDetection.cs`): the name `GET /api/project` and the assistant's `get_project` report,
+  from `MAQUETTISTE_WORKSPACE` or the files a checkout keeps (`.git/HEAD`, a linked worktree's `.git` file), read
+  without running git. It is a host feature because the engine reads no version control (next-phase-1-design.md section
+  3.1): the hosts pass what they found to the engine as a `WorkspaceInfo`. `GET /api/project` detects it on each
+  request; the assistant (`AssistService`, a singleton) and `maquettiste mcp` detect it once, when they start, so they
+  report the old branch after a switch until restarted. The file uses the base class library only, and
+  `Maquettiste.Cli.csproj` compiles this same file through a linked `<Compile Include>` for `maquettiste mcp`, so one
+  copy exists and no project references both hosts; the image's CLI stage (`docker/Dockerfile`) copies the file for it.
+  The top bar's git status (`GitStatus.cs`) stays a host feature too.
+
 Test with `dotnet test tests/Maquettiste.Functions.Tests`; `EditorHost` runs requests through the gate and a reflection router
 the way the host does, including its `500 text/plain` for an escaped exception (`EditorHost.HostFailures`).

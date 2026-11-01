@@ -30,7 +30,7 @@ public sealed class ServerTests
         var folder = "db/" + database + "/";
         var seed = repo.Read(folder + "seed.sql");
         await server.RunAsync("schema", repo.Read(folder + "schema.sql"), seed, seed);
-        var first = repo.Read(folder + "migrations/0001.sql");
+        var first = File.ReadAllText(MigrationFiles.In(repo.PathOf(folder), 1));
 
         ModelChanges.ChangeCustomer(repo);
         ModelChanges.AddFeaturedInvoice(repo);
@@ -40,13 +40,13 @@ public sealed class ServerTests
         ModelChanges.RemovePriority(repo);
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         seed = repo.Read(folder + "seed.sql");
-        await server.RunAsync("chain", first, repo.Read(folder + "migrations/0002.sql"), repo.Read(folder + "migrations/0003.sql"), seed, seed);
+        await server.RunAsync("chain", first, File.ReadAllText(MigrationFiles.In(repo.PathOf(folder), 2)), File.ReadAllText(MigrationFiles.In(repo.PathOf(folder), 3)), seed, seed);
 
         using var cycle = PackRepo.BillingDialects();
         ModelChanges.AddFeaturedInvoice(cycle);
         await cycle.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         await server.RunAsync("cycle_schema", cycle.Read(folder + "schema.sql"));
-        await server.RunAsync("cycle_migration", cycle.Read(folder + "migrations/0001.sql"));
+        await server.RunAsync("cycle_migration", File.ReadAllText(MigrationFiles.In(cycle.PathOf(folder), 1)));
     }
 
     private sealed class Server

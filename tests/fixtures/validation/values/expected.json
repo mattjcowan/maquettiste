@@ -1,5 +1,85 @@
 [
   {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of column 'status' does not fit string: the string is longer than length 8, the default string length (set the column's length).",
+    "elementId": "01JCMN00000000000000000002",
+    "filePath": ".maquettiste/model/databases/main/tables/invoice-defaults.json",
+    "jsonPointer": "/columns/1/default",
+    "line": 18,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of column 'customer_email' does not fit string with nativeType 'citext': expected a string.",
+    "elementId": "01JCMN00000000000000000004",
+    "filePath": ".maquettiste/model/databases/main/tables/invoice-defaults.json",
+    "jsonPointer": "/columns/3/default",
+    "line": 32,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of column 'terms' does not fit json: a json column takes a string of JSON text; an object, array, number or boolean has no literal for it (write the JSON as a string, or use defaultSql).",
+    "elementId": "01JCMN00000000000000000006",
+    "filePath": ".maquettiste/model/databases/main/tables/invoice-defaults.json",
+    "jsonPointer": "/columns/5/default",
+    "line": 45,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of column 'reminders' does not fit json: a json column takes a string of JSON text; an object, array, number or boolean has no literal for it (write the JSON as a string, or use defaultSql).",
+    "elementId": "01JCMN00000000000000000007",
+    "filePath": ".maquettiste/model/databases/main/tables/invoice-defaults.json",
+    "jsonPointer": "/columns/6/default",
+    "line": 53,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of column 'late_fee' does not fit json: a json column takes a string of JSON text; an object, array, number or boolean has no literal for it (write the JSON as a string, or use defaultSql).",
+    "elementId": "01JCMN00000000000000000008",
+    "filePath": ".maquettiste/model/databases/main/tables/invoice-defaults.json",
+    "jsonPointer": "/columns/7/default",
+    "line": 62,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of column 'auto_pay' does not fit json: a json column takes a string of JSON text; an object, array, number or boolean has no literal for it (write the JSON as a string, or use defaultSql).",
+    "elementId": "01JCMN00000000000000000009",
+    "filePath": ".maquettiste/model/databases/main/tables/invoice-defaults.json",
+    "jsonPointer": "/columns/8/default",
+    "line": 68,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of column 'line_template' does not fit json: the string is not valid JSON text.",
+    "elementId": "01JCMN00000000000000000010",
+    "filePath": ".maquettiste/model/databases/main/tables/invoice-defaults.json",
+    "jsonPointer": "/columns/9/default",
+    "line": 74,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of column 'billing_period' does not fit range: expected a string (the range's text form).",
+    "elementId": "01JCMN00000000000000000012",
+    "filePath": ".maquettiste/model/databases/main/tables/invoice-defaults.json",
+    "jsonPointer": "/columns/11/default",
+    "line": 87,
+    "column": 18
+  },
+  {
     "rule": "MQ3013",
     "severity": "error",
     "message": "Attribute 'count': length is not valid for int32 (only string, text and binary).",

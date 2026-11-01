@@ -8,8 +8,8 @@ namespace Maquettiste.Engine.Resolution;
 
 /// <summary>
 /// One resolution of one snapshot (engine-design.md section 7). Holds the working state of a run; nothing survives it. The
-/// conceptual layer is resolved first (<c>ResolveRun.Conceptual.cs</c>), then each database (<c>DatabaseRun</c>), then the
-/// dependency keys and list memberships are frozen.
+/// conceptual layer is resolved first (<c>ResolveRun.Conceptual.cs</c>), then each database (<c>DatabaseRun</c>) with its migration
+/// facts (<c>ResolveRun.Migrations.cs</c>), then the dependency keys and list memberships are frozen.
 /// </summary>
 internal sealed partial class ResolveRun
 {
@@ -82,18 +82,40 @@ internal sealed partial class ResolveRun
     /// <returns>The resolved database, or <see langword="null"/> when no database has the id, and the sorted diagnostics.</returns>
     public (RDatabase? Database, IReadOnlyList<Diagnostic> Diagnostics) RunOneDatabase(string databaseId)
     {
+        var (databases, diagnostics) = RunDatabases([databaseId], freeze: false);
+        return (databases[0], diagnostics);
+    }
+
+    /// <summary>
+    /// Resolves the conceptual layer once and then each of the given databases, as <see cref="RunOneDatabase"/> does for one (the
+    /// recording of migration facts resolves the databases a write can reshape this way, next-phase-1-design.md section 3.2). With
+    /// <paramref name="freeze"/>, the dependency keys of every object resolved are frozen into <see cref="RObject.Dependencies"/>,
+    /// so a database's footprint (the element ids of its objects' <c>e:</c> keys) can be read; the keys are those of this partial run.
+    /// </summary>
+    /// <param name="databaseIds">The database element ids, in the order to resolve them.</param>
+    /// <param name="freeze">Whether to freeze the dependency keys.</param>
+    /// <returns>Per id, the resolved database or <see langword="null"/> when no database has it, and the sorted diagnostics.</returns>
+    public (IReadOnlyList<RDatabase?> Databases, IReadOnlyList<Diagnostic> Diagnostics) RunDatabases(IReadOnlyList<string> databaseIds, bool freeze)
+    {
+        ArgumentNullException.ThrowIfNull(databaseIds);
         try
         {
-            var database = Model.All<Database>().FirstOrDefault(d => string.Equals(d.Id, databaseId, StringComparison.Ordinal));
             ResolveConceptual();
-            RDatabase? result = null;
-            if (database is not null)
+            var results = new RDatabase?[databaseIds.Count];
+            for (var i = 0; i < databaseIds.Count; i++)
             {
+                var database = Model.Get<Database>(databaseIds[i]);
+                if (database is null)
+                    continue;
                 Ct.ThrowIfCancellationRequested();
-                result = new DatabaseRun(this, database).Run();
+                var resolved = new DatabaseRun(this, database).Run();
+                ResolveMigrations(resolved, database);
+                results[i] = resolved;
             }
 
-            return (result, [.. Diagnostics.Order(Diagnostic.Order)]);
+            if (freeze)
+                FreezeDependencies();
+            return (results, [.. Diagnostics.Order(Diagnostic.Order)]);
         }
         finally
         {
@@ -114,7 +136,9 @@ internal sealed partial class ResolveRun
         {
             Ct.ThrowIfCancellationRequested();
             var run = new DatabaseRun(this, database);
-            resolvedDatabases.Add(run.Run());
+            var resolved = run.Run();
+            ResolveMigrations(resolved, database);
+            resolvedDatabases.Add(resolved);
             Report();
         }
 
@@ -138,6 +162,7 @@ internal sealed partial class ResolveRun
             Actors = new RList<RActor>(_actorOrder, [ActorKind]),
             Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),
             Databases = new RList<RDatabase>(resolvedDatabases, ["k:database"]),
+            Migrations = new RList<RMigration>(_migrationOrder, MigrationMembership()),
             Locales = new RList<RLocale>(RLocale.Of(Settings.Localization), [RLocale.SettingsKey]),
             Diagnostics = [.. Diagnostics.Order(Diagnostic.Order)],
             ById = _byId, // lookups only, never enumerated; freezing a few hundred thousand ids costs more than it saves

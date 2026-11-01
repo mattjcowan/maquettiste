@@ -118,6 +118,9 @@ public sealed class ModelWriteTests
         Assert.Equal("saved", response.Json["outcome"]!.GetValue<string>());
         Assert.Equal("\"" + response.Json["hash"]!.GetValue<string>() + "\"", response.ETag);
         Assert.Equal("remarks", response.Json["current"]!["json"]!["attributes"]![5]!["name"]!.GetValue<string>());
+        // The column's rename is recorded as a migration fact in the same write.
+        var fact = Assert.Single(response.Json["facts"]!.AsArray())!;
+        Assert.Equal(("rename", "complete"), (fact["fact"]!.GetValue<string>(), fact["state"]!.GetValue<string>()));
     }
 
     [Fact]
@@ -291,7 +294,15 @@ public sealed class ModelWriteTests
 
         Assert.Equal(200, saved.Status);
         Contract.AssertResponse(saved, "/api/model/batch");
-        Assert.Equal(2, saved.Json["changes"]!["changed"]!.AsArray().Count);
+        // The renames of the invoices table and of the junction table named after it are recorded as migration facts: on the batch
+        // answer, in the same change, and on no item.
+        var facts = saved.Json["facts"]!.AsArray();
+        Assert.Equal(["rename table billing.invoices to bills", "rename table billing.payment_invoice to payment_bill"],
+            facts.Select(f => f!["summary"]!.GetValue<string>()).Order(StringComparer.Ordinal));
+        Assert.All(saved.Json["items"]!.AsArray(), i => Assert.Null(i!["facts"]));
+        var changed = saved.Json["changes"]!["changed"]!.AsArray().Select(c => c!["id"]!.GetValue<string>()).ToList();
+        Assert.Equal(4, changed.Count);
+        Assert.All(facts, f => Assert.Contains(f!["id"]!.GetValue<string>(), changed));
         Assert.Equal(409, conflict.Status);
         Contract.AssertResponse(conflict, "/api/model/batch");
         Assert.Equal(404, notFound.Status);

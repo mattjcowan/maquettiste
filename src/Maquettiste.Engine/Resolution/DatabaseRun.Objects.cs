@@ -160,6 +160,9 @@ internal sealed partial class DatabaseRun
                 Phase = ResolutionValues.Kebab(file.Phase),
                 Body = body ?? "",
                 HasBody = body is not null,
+                Environments = file.Environments,
+                Apply = ResolutionValues.Kebab(file.Apply),
+                ContentHash = Hashing.ContentHash.Of(body ?? ""),
             };
             _run.FillPhysicalAnnotations(r, file, deps);
             _objects.Add((r, file, deps));

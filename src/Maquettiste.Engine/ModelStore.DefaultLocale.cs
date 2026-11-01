@@ -22,9 +22,17 @@ public sealed record DefaultLocaleMove(string Id, string Field, string? Before, 
 /// <param name="Moves">The swapped texts, ordinal by id and field.</param>
 /// <param name="Skipped">Translations left where they are (<c>id/field: reason</c>): orphans and sidecar descriptions.</param>
 /// <param name="Applied">Whether the files were written.</param>
-/// <param name="Diagnostics">Why the write was refused.</param>
+/// <param name="Diagnostics">Why the write was refused; when applied, the pending facts' MQ4101 and MQ4110.</param>
 public sealed record DefaultLocaleResult(SaveOutcome Outcome, string From, string To, IReadOnlyList<DefaultLocaleMove> Moves, IReadOnlyList<string> Skipped,
-    bool Applied, IReadOnlyList<Diagnostic> Diagnostics);
+    bool Applied, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>
+    /// When applied, the migration facts the change recorded (next-phase-1-design.md section 3.2): a moved <c>pluralName</c> can rename a
+    /// table, so the elements whose texts moved are classified. <see langword="null"/> for a dry run (the change computes them) and when
+    /// nothing was written.
+    /// </summary>
+    public IReadOnlyList<RecordedFact>? Facts { get; init; }
+}
 
 public sealed partial class ModelStore
 {
@@ -198,6 +206,24 @@ public sealed partial class ModelStore
                 writes.Add((paths.FromRepoPath(repoPath), _services.Json.Write(json, info.SchemaFile, repoPath)));
         }
 
+        // Migration facts (next-phase-1-design.md section 3.2): the elements whose texts moved are classified, since a moved pluralName
+        // can rename a table. Their fact files join the same atomic set.
+        var moved = elements.Values.Select(e => (e.Document, e.Json)).ToList();
+        var recording = await RecordLocaleFactsAsync(snapshot, moved, ct).ConfigureAwait(false);
+
+        // A fact file the recording rewrites (a pending fact that follows its column) that changed on disk behind the index: index it
+        // and classify again from what is really there, as an element save does. The other files were checked above and are not
+        // reloaded, so the moved elements still plan against the hashes they were read with.
+        if (await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false) is { Count: > 0 } changedFacts)
+        {
+            await RefreshFactFilesAsync(changedFacts, notifications, ct).ConfigureAwait(false);
+            recording = await RecordLocaleFactsAsync(_current!, moved, ct).ConfigureAwait(false);
+            if ((await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false)).Count > 0)
+                return new DefaultLocaleResult(SaveOutcome.Conflict, old, locale, moves, skipped, false, []);
+        }
+
+        writes.AddRange(recording.Writes);
+
         foreach (var (modelPath, json) in shards)
         {
             if (json["entries"] is JsonObject { Count: > 0 })
@@ -214,10 +240,34 @@ public sealed partial class ModelStore
         if (failure is not null)
             throw new IOException($"The default locale could not be changed ({failure.Path}); nothing was changed. {failure.Reason}");
 
+        // A new default locale changes which shards load, so the whole model is reloaded; that may index other edits made on disk, which
+        // record nothing, so no capture is handed on (next-phase-1-design.md section 3.2, decision 30).
         var changes = await ReloadAsync(null, false, source, CancellationToken.None).ConfigureAwait(false);
         if (!changes.IsEmpty)
             notifications.Add(changes);
-        return new DefaultLocaleResult(SaveOutcome.Saved, old, locale, moves, skipped, true, []);
+        HandOffCaptures(snapshot, _current!, CacheHandoff.Clear);
+        return new DefaultLocaleResult(SaveOutcome.Saved, old, locale, moves, skipped, true, [.. recording.Diagnostics.Select(d => d.Diagnostic)])
+        {
+            Facts = recording.Facts ?? [],
+        };
+    }
+
+    /// <summary>
+    /// Classifies the element files a default-locale change rewrites: they are planned as updates (with the hashes they were read with)
+    /// only to build the model after the change, which the recording compares with the one before; the plan writes nothing.
+    /// </summary>
+    private async Task<FactRecording> RecordLocaleFactsAsync(ModelSnapshot snapshot, IReadOnlyList<(ElementDocument Document, JsonObject Json)> elements,
+        CancellationToken ct)
+    {
+        if (elements.Count == 0 || snapshot.Settings.Migrations.Record == MigrationRecording.Off)
+            return FactRecording.Nothing(CacheHandoff.Clear);
+        var changes = elements
+            .Select(e => new PlannedChange(BatchOp.Update, e.Document.Element.Id, e.Document.Hash, e.Json.DeepClone(), DeleteResolution.Refuse))
+            .ToList();
+        var plan = Plan(snapshot, changes, ct);
+        if (plan.Failed || plan.Candidate is null)
+            return FactRecording.Nothing(CacheHandoff.Clear);
+        return await RecordFactsAsync(new RecordingRequest(snapshot, plan.Candidate, plan.ChangeByElement, false, [], false, []), ct).ConfigureAwait(false);
     }
 
     /// <summary>Sets a node's default text in its owner's file: a property of the element or sub-element, or a seed row's cell.</summary>

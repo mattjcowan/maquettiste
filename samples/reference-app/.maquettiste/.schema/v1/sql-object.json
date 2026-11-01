@@ -18,6 +18,8 @@
     "category",
     "objectKind",
     "phase",
+    "environments",
+    "apply",
     "dependsOn",
     "body",
     "properties",
@@ -73,6 +75,20 @@
       "description": "Whether the statements run before the database types and tables (an extension) or after the routines and views (a trigger, a grant).",
       "enum": ["before", "after"],
       "default": "after"
+    },
+    "environments": {
+      "description": "The environments the object runs in (free names such as dev, test, staging); empty means every environment. Otherwise only the environment scripts (objects.<env>.sql) run it, on every deploy, so a converge body must be safe to run again.",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/tagLabel"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "apply": {
+      "description": "How the statements are applied: converge runs them wherever the scripts run the object, again when it changes; once runs them one time per database and records the object in the migration ledger (PostgreSQL only).",
+      "enum": ["converge", "once"],
+      "default": "converge"
     },
     "dependsOn": {
       "description": "Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.",

@@ -197,7 +197,7 @@ public sealed class ReferenceDataTests
         using var repo = PackRepo.ReferenceData(strategy);
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         var folder = "db/" + database + "/";
-        var (schema, migration, seed) = (repo.Read(folder + "schema.sql"), repo.Read(folder + "migrations/0001.sql"), repo.Read(folder + "seed.sql"));
+        var (schema, migration, seed) = (repo.Read(folder + "schema.sql"), MigrationFiles.Read(repo, database, 1), repo.Read(folder + "seed.sql"));
         repo.EditJson(UnitSeed, s => s["rows"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01JRDX00000000000000000001", "values": ["cup", "Cup", 240] }""")));
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         var added = repo.Read(folder + "seed.sql");

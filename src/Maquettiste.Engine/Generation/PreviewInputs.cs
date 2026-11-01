@@ -7,7 +7,7 @@ namespace Maquettiste.Engine.Generation;
 
 /// <summary>
 /// A preview's schema diffs (generation-ui.md section 5.2, "Bounds"): one entry per database of the resolved model, each diffed against
-/// its committed snapshot on first read and kept. A template that never reads <c>schema_diff</c> (a table's DDL) costs no diff; one
+/// its committed snapshot on first read and kept, read under today's keys and with the facts that render, as a run diffs it. A template that never reads <c>schema_diff</c> (a table's DDL) costs no diff; one
 /// that reads one database's diff costs that database's only. A generation run diffs every database up front instead
 /// (<see cref="GenerationRun"/>), since it renders every unit.
 /// </summary>
@@ -33,11 +33,13 @@ internal sealed class LazySchemaDiffs : IReadOnlyDictionary<string, SchemaDiffRe
 
     private static SchemaDiffResult Diff(RDatabase database, EngineServices services)
     {
-        // The diff a run computes (GenerationRun.SchemaDiffsAsync), without the capture a run keeps for saving; the read is synchronous
-        // because a template asks for the value synchronously, on the render's own thread.
+        // The diff a run computes (GenerationRun.SchemaDiffsAsync: the committed snapshot under today's keys, its aliases then the open
+        // rekey facts it lacks, and the facts that render), without the capture a run keeps for saving; the read is synchronous because
+        // a template asks for the value synchronously, on the render's own thread.
         var previous = services.Snapshots.LoadAsync(database.Name, CancellationToken.None).GetAwaiter().GetResult();
-        previous = SnapshotAliases.Normalize(previous, database);
-        return services.SchemaDiffer.Diff(previous, database);
+        if (services.SchemaDiffer is SchemaDiffer)
+            return GenerationRun.DiffFromCommitted(previous, database, services.Json, 1, CancellationToken.None).Diff;
+        return services.SchemaDiffer.Diff(SnapshotAliases.Normalize(previous, database), database);
     }
 
     /// <inheritdoc/>

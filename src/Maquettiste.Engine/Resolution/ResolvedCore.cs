@@ -235,6 +235,12 @@ public sealed class ResolvedModel
     /// <summary>Databases, by name.</summary>
     public RList<RDatabase> Databases { get; internal init; } = RList<RDatabase>.Empty;
 
+    /// <summary>
+    /// Every open migration fact (next-phase-1-design.md section 3.2), by (database name, applied order): each database's
+    /// <see cref="RDatabase.Migrations"/> in turn.
+    /// </summary>
+    public RList<RMigration> Migrations { get; internal init; } = RList<RMigration>.Empty;
+
     /// <summary>Resolution diagnostics.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics { get; internal init; } = [];
 

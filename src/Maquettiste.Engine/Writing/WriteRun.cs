@@ -733,7 +733,15 @@ internal sealed class WriteRun
         var unitKey = pack + "/" + StripCompanion(entry.Unit);
         if (ManifestHashes.IsOwned(entry.Hash))
         {
-            // Owned files belong to the team: kept on disk, dropped from the manifest (D29).
+            // Owned files belong to the team and are never deleted (D29). A once file of a pack that still exists stays owned while it is
+            // on disk, whether or not a run produces it (an earlier migration, say), so it keeps its entry and is reported kept; a
+            // companion, a file of a removed pack and a file gone from disk are dropped from the manifest.
+            if (_context.UnitCountByPack.ContainsKey(pack) && !IsCompanion(entry.Unit) && File.Exists(FullPath(entry.Path)))
+            {
+                _changes.Enqueue(new FileChange(entry.Path, FileChangeKind.Kept, pack, unitKey, entry.Hash, entry.Hash, null));
+                return true;
+            }
+
             _changes.Enqueue(new FileChange(entry.Path, FileChangeKind.OrphanedOwned, pack, unitKey, entry.Hash, null, null));
             return false;
         }
@@ -948,7 +956,10 @@ internal sealed class WriteRun
     private static bool SameUnit(string a, string b) => string.Equals(UnitIdOf(a), UnitIdOf(b), StringComparison.Ordinal);
 
     private static string StripCompanion(string unit) =>
-        unit.EndsWith("#companion", StringComparison.Ordinal) ? unit[..^"#companion".Length] : unit;
+        IsCompanion(unit) ? unit[..^"#companion".Length] : unit;
+
+    /// <summary>Whether a manifest entry's unit names a pair's companion file (<c>&lt;unit&gt;#companion</c>).</summary>
+    private static bool IsCompanion(string unit) => unit.EndsWith("#companion", StringComparison.Ordinal);
 
     private sealed class PackRun(string name)
     {

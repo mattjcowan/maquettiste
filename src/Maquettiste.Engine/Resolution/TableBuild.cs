@@ -92,9 +92,11 @@ internal sealed record IndexSpec(IReadOnlyList<IndexColumnSpec> Columns, IReadOn
 
 /// <summary>
 /// A column of an index to resolve: a column key, or an expression for the dialect (<paramref name="Column"/> is then
-/// <see langword="null"/>).
+/// <see langword="null"/>). <paramref name="Nulls"/> is <c>first</c> or <c>last</c> on PostgreSQL when it differs from the
+/// direction's default, else <see langword="null"/>.
 /// </summary>
-internal sealed record IndexColumnSpec(string? Column, bool Descending, string? Expression = null, int? Length = null, string? OperatorClass = null);
+internal sealed record IndexColumnSpec(string? Column, bool Descending, string? Expression = null, int? Length = null, string? OperatorClass = null,
+    string? Nulls = null);
 
 /// <summary>A check constraint to resolve.</summary>
 internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, string? Id = null, string? Column = null);

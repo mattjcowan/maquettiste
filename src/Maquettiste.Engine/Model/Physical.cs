@@ -310,8 +310,16 @@ public sealed record Column : ElementBase
     [ElementRef(Keyed = true)]
     public string? Attribute { get; init; }
 
-    /// <summary>The built-in type keyword; required on designed and extra columns.</summary>
+    /// <summary>
+    /// The column type keyword: a built-in keyword, or <c>range</c> or <c>multirange</c> (<see cref="BuiltinTypes.ColumnOnly"/>);
+    /// required on designed and extra columns.
+    /// </summary>
     public string? Type { get; init; }
+
+    /// <summary>
+    /// The bound type of a range or multirange column (<see cref="BuiltinTypes.RangeSubtypes"/>), and only of one (MQ4057).
+    /// </summary>
+    public string? Subtype { get; init; }
 
     /// <summary>The length facet.</summary>
     public int? Length { get; init; }
@@ -632,8 +640,22 @@ public sealed record IndexColumn
     /// <summary>Whether the column sorts descending.</summary>
     public bool Descending { get; init; }
 
+    /// <summary>Where nulls sort (PostgreSQL), or <see langword="null"/> for the database's default.</summary>
+    public IndexNulls? Nulls { get; init; }
+
     /// <summary>A key prefix length: only the first characters or bytes are indexed (MySQL; a text or blob column needs one).</summary>
     public int? Length { get; init; }
+}
+
+/// <summary>Where an index column's nulls sort.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<IndexNulls>))]
+public enum IndexNulls
+{
+    /// <summary><c>first</c>.</summary>
+    [JsonStringEnumMemberName("first")] First,
+
+    /// <summary><c>last</c>.</summary>
+    [JsonStringEnumMemberName("last")] Last,
 }
 
 /// <summary>An index method.</summary>
@@ -1056,6 +1078,15 @@ public sealed record SqlObject : Element
     /// <summary>Whether the statements run before the types and tables or after the routines and views.</summary>
     public SqlObjectPhase Phase { get; init; } = SqlObjectPhase.After;
 
+    /// <summary>
+    /// The environments the object runs in; empty (the default) means every environment. Otherwise only the environment
+    /// scripts run it, on every deploy, so a <see cref="SqlObjectApply.Converge"/> body must be safe to run again.
+    /// </summary>
+    public IReadOnlyList<string> Environments { get; init; } = [];
+
+    /// <summary>How the statements are applied: <see cref="SqlObjectApply.Converge"/> (the default) or <see cref="SqlObjectApply.Once"/>.</summary>
+    public SqlObjectApply Apply { get; init; } = SqlObjectApply.Converge;
+
     /// <summary>Ids of the tables, views, sequences, routines, database types and SQL objects that must exist first.</summary>
     [ElementRef(ElementKind.Table, ElementKind.View, ElementKind.Sequence, ElementKind.Routine, ElementKind.DatabaseType, ElementKind.SqlObject)]
     public IReadOnlyList<string> DependsOn { get; init; } = [];
@@ -1073,4 +1104,15 @@ public enum SqlObjectPhase
 
     /// <summary>After the routines and views: <c>after</c>.</summary>
     [JsonStringEnumMemberName("after")] After,
+}
+
+/// <summary>How a SQL object's statements are applied to a database.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<SqlObjectApply>))]
+public enum SqlObjectApply
+{
+    /// <summary>Run wherever the scripts run it, again when it changes: <c>converge</c>.</summary>
+    [JsonStringEnumMemberName("converge")] Converge,
+
+    /// <summary>Run one time per database, inside a ledger guard that records it (PostgreSQL): <c>once</c>.</summary>
+    [JsonStringEnumMemberName("once")] Once,
 }

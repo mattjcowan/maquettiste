@@ -202,8 +202,15 @@ internal static class ModelCommand
             return outcome == SaveOutcome.Saved ? Program.ExitCodes.Success : Program.ExitCodes.Invalid;
         if (outcome == SaveOutcome.Saved)
         {
+            // The migration facts the delete recorded are new files of the same change: counted apart from the elements it changed.
+            var facts = result.Facts ?? [];
+            var recorded = facts.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+            var changed = result.Changes?.Changed.Count(c => !recorded.Contains(c.Id)) ?? 0;
+            var pending = facts.Count(f => f.State == "pending");
+            var factText = facts.Count == 0 ? "" : string.Create(CultureInfo.InvariantCulture,
+                $"; recorded {facts.Count} migration {(facts.Count == 1 ? "fact" : "facts")}{(pending > 0 ? " (" + pending.ToString(CultureInfo.InvariantCulture) + " pending: maquettiste validate names what each needs)" : "")}");
             context.Info(string.Create(CultureInfo.InvariantCulture,
-                $"Deleted {result.Changes?.Deleted.Count ?? 0} {(result.Changes?.Deleted.Count == 1 ? "element" : "elements")} and changed {result.Changes?.Changed.Count ?? 0}."));
+                $"Deleted {result.Changes?.Deleted.Count ?? 0} {(result.Changes?.Deleted.Count == 1 ? "element" : "elements")} and changed {changed}{factText}."));
             return Program.ExitCodes.Success;
         }
 

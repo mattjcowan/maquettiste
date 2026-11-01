@@ -96,6 +96,15 @@ public sealed class ResolvedCoverageTests
         new("tag vocabulary", "tag-vocabulary.json", "", null),
         new("mapping", "mapping.json", "", null),
         new("diagram", "diagram.json", "", null),
+
+        // Migration facts (next-phase-1-design.md section 3.2): each database's open facts in applied order.
+        new("migration", "migration.json", "", typeof(RMigration)),
+        new("migration object", "migration.json", "$defs/migrationObject", typeof(RMigrationObject)),
+        new("migration state", "migration.json", "$defs/migrationState", typeof(RMigrationState)),
+        new("migration key", "migration.json", "keys/[]", typeof(RMigrationRekey)),
+        new("migration value", "migration.json", "values/[]", typeof(RMigrationValue)),
+        new("migration conversion", "migration.json", "conversion", typeof(RConversion)),
+        new("migration data check", "migration.json", "dataCheck", typeof(RMigrationDataCheck)),
     ];
 
     /// <summary>Properties no resolved object carries, anywhere, and why.</summary>

@@ -298,7 +298,7 @@
   {
     "id": "MQ3019",
     "defaultSeverity": "error",
-    "description": "Literal default does not match the attribute's type (use defaultExpression for now, today, new-uuid or new-ulid).",
+    "description": "Literal default does not match its type: an attribute's (use defaultExpression for now, today, new-uuid or new-ulid) or a column's, checked against its resolved length; a json column takes a string of JSON text, and a column with a nativeType is checked for the kind of value only (use defaultSql otherwise).",
     "family": "MQ30xx",
     "familyLabel": "Model structure",
     "canBeOff": true
@@ -770,7 +770,7 @@
   {
     "id": "MQ4056",
     "defaultSeverity": "warning",
-    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a routine's volatility or settings on SQL Server, a temporal key (withoutOverlaps, a foreign key's period) an exclusion constraint or partitioning outside PostgreSQL, an index operator class outside PostgreSQL, index storage parameters on MySQL, SQLite and Oracle, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL.",
+    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a routine's volatility or settings on SQL Server, a temporal key (withoutOverlaps, a foreign key's period) an exclusion constraint or partitioning outside PostgreSQL, an index operator class outside PostgreSQL, index storage parameters on MySQL, SQLite and Oracle, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL; also migration facts outside PostgreSQL (a fact's migration keeps TODO comments where its steps would go, a rekey writes no DDL on any dialect, and no ledger rows are written), index column nulls outside PostgreSQL, a range or multirange column outside PostgreSQL (stored as the dialect's text type), and a run-once SQL object outside PostgreSQL (the scripts leave it out: its guard needs the migration ledger).",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -778,7 +778,7 @@
   {
     "id": "MQ4057",
     "defaultSeverity": "error",
-    "description": "A column facet does not fit its type: unicode on a column that is not string or text, or fixedLength on a column that is not string or binary.",
+    "description": "A column facet does not fit its type: unicode on a column that is not string or text, fixedLength on a column that is not string or binary, a subtype on a column that is not range or multirange, or a range or multirange column without one.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -845,6 +845,126 @@
     "description": "Partitioning that PostgreSQL refuses: partitions without partitionBy, a partition with neither bounds nor default (or both), a primary or unique key without every partition column, more than one default partition, a default partition of a hash-partitioned table, or a partition name used twice.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4067",
+    "defaultSeverity": "warning",
+    "description": "The migration ledger's schema (migrations.ledgerSchema) is also a schema of a PostgreSQL database in the model, declared or named by one of its objects: the bookkeeping tables would share it with modeled objects.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4068",
+    "defaultSeverity": "error",
+    "description": "Two index or constraint names collide in a namespace the dialect keeps (index and key names in a PostgreSQL schema with its tables, views and sequences; constraint names in a table; the other dialects' namespaces), compared case-insensitively after cutting each name to the identifier limit.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4069",
+    "defaultSeverity": "error",
+    "description": "A view, routine or SQL object depends on a SQL object that does not run in every environment it runs in: the dependency's environments must cover the dependent's, and empty means every environment.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4070",
+    "defaultSeverity": "warning",
+    "description": "A SQL object with environments has phase before: environment scripts run after the schema script and the migrations, so its phase orders it only within its script.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4101",
+    "defaultSeverity": "error",
+    "description": "A migration fact lacks the intent its change needs: a conversion, a data check for a narrowing, a drop's acknowledgement, a backfill's value or data check, a raw step's skipWhen guard; complete it or hold it.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4102",
+    "defaultSeverity": "error",
+    "description": "A change since the baseline needs a migration fact and has none: a rename or moved key, a type change that is not a widening, a dropped table, column or sequence, or a column made not null.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4103",
+    "defaultSeverity": "warning",
+    "description": "An open fact the baseline lacks is stale: the model no longer shows its combined effect (a change made and undone, a pending change reverted or widened back); migration fold removes it.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4104",
+    "defaultSeverity": "error",
+    "description": "The after links of a database's open facts form a cycle.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4105",
+    "defaultSeverity": "error",
+    "description": "A fact's after link names a fact of another database.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4106",
+    "defaultSeverity": "error",
+    "description": "A fact's fields do not fit its type: from equal to to, a conversion or data check with both forms or neither, released without held, a key or object listed twice, a values code listed twice or mapped to itself, an object kind the type does not take.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4107",
+    "defaultSeverity": "error",
+    "description": "Two open facts change the same object and neither comes after the other (merged copies changed one object); order them with after or fold them. The object is the fact's object key: a column for a column fact, a table for a table fact; a table drop also changes each of its members.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4108",
+    "defaultSeverity": "warning",
+    "description": "A fact's SQL text has no entry for the database's dialect and no \"*\" entry.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4109",
+    "defaultSeverity": "warning",
+    "description": "The baseline has errors that leave objects unresolved, so changes to them were not checked.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4110",
+    "defaultSeverity": "info",
+    "description": "A write changed objects whose elements have errors, so no facts were recorded for them; validate --against checks them.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4111",
+    "defaultSeverity": "warning",
+    "description": "A fact's after link names a fact that does not exist (folded or removed in another copy); the link is ignored for ordering.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
     "canBeOff": true
   },
   {

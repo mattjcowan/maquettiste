@@ -159,3 +159,7 @@ golden tree).
   constants are literals, parameters are named after the fields (numbered after a query source's own with `$`), a query source
   is a derived table without its order (`RQuery.ForDerivedTable`), and a statement the binding does not have is empty. The
   helpers `binding_sql` and `binding_sql_parameters` record the binding's dependency keys like `query_sql` does.
+- **Ledger DDL (next-phase-1-design.md section 3.3).** `ledger_ddl db` returns `LedgerContract.Ddl` for the database's
+  `LedgerSchema` (PostgreSQL only), else `""`. It records the database and `s:migrations` (the hash of
+  `migrations.ledgerSchema`), as `type_of` records `s:typeMaps`, so a changed schema re-renders every script that writes
+  ledger rows.

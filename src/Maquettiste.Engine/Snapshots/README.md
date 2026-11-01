@@ -11,6 +11,7 @@ read-only document store that serves one without extracting it.
 | `SnapshotArchive.cs` | The layout (`SnapshotLayout`: content paths, safe paths, entry time and compression), the index rows (path, SHA-256, element id, kind and name from a top-level scan), the metadata (`snapshot.json`) and the deterministic writer. |
 | `ZipDocumentStore.cs` | `IModelDocumentStore` over an archive: stat and list from the entry table, reads under a lock from an archive opened on demand (`Close` after a load), every write refused; `ReadOnlyPathPolicy`, the guard of a snapshot opened read-only (MQ6029). |
 | `SnapshotRecords.cs` | The public records the API, the CLI and the MCP tools serialize. |
+| `ModelBaseline.cs` | `ModelBaseline` and `BaselineKind` (next-phase-1-design.md section 3.1): another model to compare with, opened read-only from a snapshot id (through the host's library, so a long-lived host loads one archive once) or, where the host allows it, a folder holding another copy of the project (`Loading/ReadOnlyFolderDocumentStore`, with that folder's own settings and the working model's cache folder, which it never writes). `ModelHash` is computed as a snapshot's metadata computes it, so a folder and a snapshot of the same documents hash alike. |
 
 ## Behavior worth knowing
 

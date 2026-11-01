@@ -61,12 +61,14 @@ nav:
       - Reference data and seeds: guides/reference-data-and-seeds.md
       - Processes: guides/processes.md
       - Generate code: guides/generate-code.md
+      - Schema changes: guides/schema-changes.md
       - Work with an agent: guides/work-with-an-agent.md
       - A demo in an existing repository: demo.md
   - Reference:
       - The user guide: user-guide.md
       - Agents and MCP: mcp.md
       - HTTP API: api.md
+      - The migration ledger: ledger.md
   - Packs:
       - Writing a pack: packs/index.md
       - sql-ddl: packs/sql-ddl.md

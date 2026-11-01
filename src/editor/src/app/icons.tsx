@@ -8,6 +8,7 @@ import {
   Gem,
   GitBranch,
   Hash,
+  History,
   Library,
   Link2,
   ListChecks,
@@ -52,6 +53,7 @@ export const KIND_ICONS: Record<ElementKind, LucideIcon> = {
   process: GitBranch,
   actor: UserRound,
   scenario: ListChecks,
+  migration: History,
 };
 
 export function KindIcon({ kind, className }: { kind: ElementKind; className?: string }) {

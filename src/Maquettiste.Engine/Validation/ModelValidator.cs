@@ -22,7 +22,10 @@ namespace Maquettiste.Engine.Validation;
 /// <param name="options">The engine options.</param>
 /// <param name="schemas">The schema registry (kept for the design's constructor; extension schemas are compiled here, see README).</param>
 /// <param name="scripts">The sandbox factory (JavaScript rules).</param>
-internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry schemas, IScriptSandboxFactory scripts) : IModelValidator
+/// <param name="resolver">The resolver that judges pending migration facts stale (MQ4103, next-phase-1-design.md section 3.2); without
+/// one every pending fact is MQ4101.</param>
+internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry schemas, IScriptSandboxFactory scripts, IModelResolver? resolver = null)
+    : IModelValidator
 {
     private static readonly IReadOnlyDictionary<string, object?> NoParameters = FrozenDictionary<string, object?>.Empty;
 
@@ -117,6 +120,20 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         }
 
         var runtime = targets.Any(d => d.Element is Scenario) ? new ProcessRuntime(model, parallelism, ct) : null;
+        var facts = targets.Any(d => d.Element is Migration) ? MigrationRules.Analyze(model) : null;
+        if (facts is not null && resolver is not null)
+        {
+            // Pending facts whose change the model no longer shows are stale (MQ4103), never pending: with a resolver, the databases
+            // that hold pending facts are resolved to judge them; without one (the fixture harness), every pending fact is MQ4101.
+            var pending = targets.Select(d => d.Element).OfType<Migration>()
+                .Where(f => model.Get<Database>(f.Database) is { } database && MigrationRules.IntentFindings(f, database.Dialect).Any()).ToList();
+            if (pending.Count > 0)
+            {
+                foreach (var (id, message) in await Migrations.StaleFacts.PendingAsync(model, pending, resolver, parallelism, ct).ConfigureAwait(false))
+                    facts.MarkStale(id, message);
+            }
+        }
+
         try
         {
             var context = shared.WithRuleNames(ruleNames);
@@ -132,6 +149,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     BuiltinRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
                     ScenarioRules.Validate(context, report, runtime);
+                    if (facts is not null)
+                        MigrationRules.Validate(context, report, facts);
                     extensions.Check(context, report);
                     if (runScripts)
                         RunScripts(pool!, rules, model, report, token);
@@ -330,7 +349,10 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// the relations whose navigations land in the same inheritance hierarchy (MQ3009), an entity's descendants (MQ3007), and for a
     /// mapping the relations and relation mappings whose foreign key binding depends on it (MQ4009, MQ4011); for a tag vocabulary or category tree every vocabulary and
     /// every element whose chain sees its scope (MQ2005, MQ2006, MQ2008, MQ3021), and for a package, when a domain vocabulary exists,
-    /// every element under it (a move changes their chains).
+    /// every element under it (a move changes their chains); for a migration fact the facts of its database and the facts whose
+    /// <c>after</c> links name it, in any database (MQ4104, MQ4105, MQ4107, MQ4111). Peers come from the document in scope: a deleted
+    /// fact has none, so the store adds the facts whose links named it (their MQ4111); the facts of a moved fact's former database
+    /// are not revisited, since leaving a database only removes findings there.
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="document">The document in scope.</param>
@@ -422,6 +444,18 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         foreach (var peer in ProcessPeers(model, element))
             yield return peer;
+
+        // MQ4104, MQ4105, MQ4107 and MQ4111 on a migration fact depend on the other facts of its database and on the facts that
+        // name it in their after links (which are not references); the store adds the facts that named a deleted fact.
+        if (element is Migration fact)
+        {
+            foreach (var other in model.All<Migration>())
+            {
+                if ((string.Equals(other.Database, fact.Database, StringComparison.Ordinal) || other.After.Contains(fact.Id, StringComparer.Ordinal))
+                    && model.GetDocument(other.Id) is { } peer)
+                    yield return peer;
+            }
+        }
 
         switch (element)
         {

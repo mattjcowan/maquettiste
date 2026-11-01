@@ -9,8 +9,8 @@ namespace Maquettiste.Engine;
 /// <param name="Scope">One of <see cref="ResolvedRecords.Scopes"/>: <c>all</c> (every kind but <c>tables</c>, <c>routines</c>,
 /// <c>database-types</c>, <c>sql-objects</c> and <c>queries</c>, which <c>databases</c> already holds), or one kind's plural, such as <c>entities</c> or
 /// <c>databases</c>.</param>
-/// <param name="Database">A database id: entities and relations mapped (not ignored) in it, that database, and its tables only; the
-/// other kinds are not narrowed.</param>
+/// <param name="Database">A database id: entities and relations mapped (not ignored) in it, that database, its tables and its migration
+/// facts only; the other kinds are not narrowed.</param>
 /// <param name="Cursor">The previous page's <see cref="ResolvedPage.Next"/>, or <see langword="null"/> for the first page.</param>
 /// <param name="Limit">The page size, 1 to <see cref="ModelPages.MaxLimit"/>.</param>
 public sealed record ResolvedQuery(string Scope = "all", string? Database = null, string? Cursor = null, int Limit = ModelPages.DefaultLimit);
@@ -20,7 +20,8 @@ public sealed record ResolvedQuery(string Scope = "all", string? Database = null
 /// <see cref="EnumRecord"/>, <see cref="ValueObjectRecord"/>, <see cref="ScalarTypeRecord"/>, <see cref="ReferenceTypeRecord"/>,
 /// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>,
 /// <see cref="DatabaseRecord"/>, <see cref="TableRecord"/>, <see cref="RoutineRecord"/>, <see cref="DatabaseTypeRecord"/> or
-/// <see cref="SqlObjectRecord"/> or <see cref="QueryRecord"/>; each has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
+/// <see cref="SqlObjectRecord"/>, <see cref="QueryRecord"/> or <see cref="MigrationRecord"/> (by database name, then applied order); each
+/// has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
 /// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one.</param>
 /// <param name="Diagnostics">When the model has errors, the errors that prevented resolution (and <paramref name="Items"/> is empty);
 /// otherwise empty (validate reports the warnings).</param>
@@ -729,6 +730,27 @@ public sealed record SqlObjectRecord(string Id, string Kind, string Name, string
 /// <param name="Query">The query.</param>
 public sealed record QueryRecord(string Id, string Kind, string Name, string Database, QueryView Query);
 
+/// <summary>
+/// One open migration fact (scope <c>migrations</c>, next-phase-1-design.md section 3.2), sorted by database name, then applied order.
+/// </summary>
+/// <param name="Id">The fact's id.</param>
+/// <param name="Kind"><c>migration</c>.</param>
+/// <param name="Name">The fact's name: the empty string for a recorded fact.</param>
+/// <param name="Database">The database's id.</param>
+/// <param name="Order">The 1-based place of the fact in its database's applied order.</param>
+/// <param name="Fact">What the fact records: <c>rename</c>, <c>rekey</c>, <c>change-type</c>, <c>drop</c>, ...</param>
+/// <param name="State"><c>pending</c>, <c>complete</c>, <c>held</c> or <c>released</c>.</param>
+/// <param name="Missing">The intent fields MQ4101 names; empty unless pending.</param>
+/// <param name="After">The ids of the facts it follows that exist in its database.</param>
+/// <param name="Object">Its object as recorded, or <see langword="null"/>.</param>
+/// <param name="CurrentKey">The object's key moved through the <c>rekey</c> facts after it, or <see langword="null"/> without an object.</param>
+/// <param name="From">The state before, as recorded.</param>
+/// <param name="To">The state after, as recorded.</param>
+/// <param name="Hash">The fact content hash.</param>
+public sealed record MigrationRecord(string Id, string Kind, string Name, string Database, int Order, string Fact, string State,
+    IReadOnlyList<string> Missing, IReadOnlyList<string> After, MigrationObject? Object, string? CurrentKey, MigrationState? From,
+    MigrationState? To, string Hash);
+
 /// <summary>Projects the resolved model into flat records (resolved objects reference each other, so R-types are never serialized).</summary>
 public static class ResolvedRecords
 {
@@ -752,6 +774,7 @@ public static class ResolvedRecords
         ["database-types"] = "database-type",
         ["sql-objects"] = "sql-object",
         ["queries"] = "query",
+        ["migrations"] = "migration",
     };
 
     /// <summary>Every scope name, <c>all</c> first, then the others in <see cref="Scopes"/> order.</summary>
@@ -842,6 +865,19 @@ public static class ResolvedRecords
                 yield return new Entry("database", d.Name, d.Id, () => Database(d));
         }
 
+        if (all || scope == "migrations")
+        {
+            // Sorted by database name, then applied order: the name the page sorts by joins both (no name holds U+0001).
+            foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
+            {
+                foreach (var m in d.Migrations)
+                {
+                    yield return new Entry("migration", d.Name + "\u0001" + m.Order.ToString("D10", System.Globalization.CultureInfo.InvariantCulture), m.Id,
+                        () => Migration(m));
+                }
+            }
+        }
+
         if (scope == "tables")
         {
             foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
@@ -882,6 +918,9 @@ public static class ResolvedRecords
             }
         }
     }
+
+    private static MigrationRecord Migration(RMigration m) => new(m.Id, "migration", m.Name, m.Database.Id, m.Order, m.Fact, m.State, m.Missing,
+        [.. m.After.Select(a => a.Id)], m.Source.Object, m.Object?.CurrentKey, m.Source.From, m.Source.To, m.Hash);
 
     private static DatabaseRecord Database(RDatabase database)
     {

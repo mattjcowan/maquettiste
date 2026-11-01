@@ -242,6 +242,28 @@ public sealed class GenerateTests
     }
 
     [Fact]
+    public async Task Generate_against_an_unknown_value_exits_4()
+    {
+        using var repo = CliRepo.Billing();
+        var unknown = await repo.RunAsync("generate", "--against", "no-such-snapshot");
+        Assert.Equal(4, unknown.ExitCode);
+        Assert.Contains("no-such-snapshot", unknown.Error, StringComparison.Ordinal);
+        var missing = await repo.RunAsync("generate", "--dry-run", "--against", "./no-such-folder");
+        Assert.Equal(4, missing.ExitCode);
+        Assert.Contains("no-such-folder", missing.Error, StringComparison.Ordinal);
+        Assert.Equal(4, (await repo.RunAsync("generate", "--against", "")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("generate", "--watch", "--against", "no-such-snapshot")).ExitCode);
+        Assert.False(Directory.Exists(repo.PathOf("db")), "nothing was generated");
+
+        // A snapshot that exists: the run diffs from it and leaves the committed physical snapshot alone (there is none yet).
+        var id = (string)System.Text.Json.Nodes.JsonNode.Parse((await repo.RunAsync("snapshot", "create", "Base", "--format", "json")).Out)!["id"]!;
+        var against = await repo.RunAsync("generate", "--against", id);
+        Assert.True(against.ExitCode == 0, against.ToString());
+        Assert.True(File.Exists(repo.PathOf(CustomersSql)));
+        Assert.False(File.Exists(repo.PathOf(".maquettiste/snapshots/main.json")), "a run against a baseline writes no committed snapshot");
+    }
+
+    [Fact]
     public async Task Output_is_byte_identical_with_one_job_and_eight()
     {
         using var one = CliRepo.Billing();

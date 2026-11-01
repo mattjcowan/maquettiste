@@ -97,6 +97,8 @@ internal static class CanonicalCheck
                 writer.WriteStartArray();
                 if (layout.SortKey is { } sortKey)
                 {
+                    if (sortKey == CanonicalJson.SelfSortKey)
+                        return false; // items sorted by themselves: the node-based writer decides
                     var items = new List<(long Key, int Index, JsonElement Item)>(value.GetArrayLength());
                     var index = 0;
                     foreach (var item in value.EnumerateArray())
@@ -240,7 +242,11 @@ internal static class CanonicalCheck
     /// <summary>An array item's sort value as the node-based writer computes it on the normalized item; <see langword="null"/> when undecided.</summary>
     private static long? SortValue(JsonElement item, ObjectLayout itemLayout, string sortKey)
     {
-        if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty(sortKey, out var value) || value.ValueKind != JsonValueKind.Number)
+        if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty(sortKey, out var value))
+            return 0;
+        if (value.ValueKind == JsonValueKind.String)
+            return null; // a string key: the node-based writer sorts it
+        if (value.ValueKind != JsonValueKind.Number)
             return 0;
         if (itemLayout.HasKeys && itemLayout.Properties.TryGetValue(sortKey, out var property))
         {

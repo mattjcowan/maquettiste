@@ -1,0 +1,105 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000001",
+  "name": "invoice_defaults",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01JCMN00000000000000000001",
+      "name": "id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01JCMN00000000000000000002",
+      "name": "status",
+      "type": "string",
+      "default": "awaiting payment"
+    },
+    {
+      "id": "01JCMN00000000000000000003",
+      "name": "currency",
+      "type": "string",
+      "length": 3,
+      "default": "EUR"
+    },
+    {
+      "id": "01JCMN00000000000000000004",
+      "name": "customer_email",
+      "type": "string",
+      "nativeType": "citext",
+      "default": 42
+    },
+    {
+      "id": "01JCMN00000000000000000005",
+      "name": "billing_note",
+      "type": "string",
+      "nativeType": "citext",
+      "default": "longer than the default string length"
+    },
+    {
+      "id": "01JCMN00000000000000000006",
+      "name": "terms",
+      "type": "json",
+      "default": {
+        "days": 30
+      }
+    },
+    {
+      "id": "01JCMN00000000000000000007",
+      "name": "reminders",
+      "type": "json",
+      "default": [
+        7,
+        14
+      ]
+    },
+    {
+      "id": "01JCMN00000000000000000008",
+      "name": "late_fee",
+      "type": "json",
+      "default": 5
+    },
+    {
+      "id": "01JCMN00000000000000000009",
+      "name": "auto_pay",
+      "type": "json",
+      "default": true
+    },
+    {
+      "id": "01JCMN00000000000000000010",
+      "name": "line_template",
+      "type": "json",
+      "default": "{\"quantity\": 1"
+    },
+    {
+      "id": "01JCMN00000000000000000011",
+      "name": "metadata",
+      "type": "json",
+      "default": "{\"source\": \"import\"}"
+    },
+    {
+      "id": "01JCMN00000000000000000012",
+      "name": "billing_period",
+      "type": "range",
+      "subtype": "date",
+      "default": [
+        "2026-01-01",
+        "2026-02-01"
+      ]
+    },
+    {
+      "id": "01JCMN00000000000000000013",
+      "name": "service_period",
+      "type": "range",
+      "subtype": "date",
+      "default": "[2026-01-01,2026-02-01)"
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01JCMN00000000000000000001"
+    ]
+  }
+}

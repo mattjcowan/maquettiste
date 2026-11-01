@@ -125,7 +125,7 @@ public sealed partial class AgentTools
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var packs = await _generation.GetPacksAsync(ct).ConfigureAwait(false);
         var name = snapshot.Settings.Name is { Length: > 0 } n ? n : Path.GetFileName(_options.RepoRoot);
-        var where = WorkspaceInfo.Detect(_options.RepoRoot, _options.Workspace);
+        var where = _options.Workspace ?? WorkspaceInfo.None;
         return Ok(new AgentProjectInfo(name, snapshot.Settings.FormatVersion, EngineVersion.Value, EngineVersion.Product, EngineVersion.Build, where.Workspace,
             where.Branch, where.Worktree, where.Repository, _options.Mode, snapshot.Settings, snapshot.SettingsHash,
             [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics, [.. snapshot.Extensions.Select(e => e.Schema)], null));
@@ -362,6 +362,25 @@ public sealed partial class AgentTools
         if (elementIds is not null && elementIds.Any(id => !IsUlid(id)))
             return BadRequest("elementIds must be element ids (uppercase ULIDs).");
         await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        if (args.String("against") is { Length: > 0 } against)
+        {
+            if (elementIds is not null)
+                return BadRequest("against compares the whole model with a baseline; leave elementIds out.");
+            ModelBaseline baseline;
+            try
+            {
+                baseline = await ModelBaseline.OpenAsync(_store, against, Environment.CurrentDirectory, _options.AllowFolderBaselines, Snapshots, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+
+            using (baseline)
+                return Ok(await _store.ValidateAgainstAsync(baseline, ct).ConfigureAwait(false));
+        }
+
         var scope = new ValidationScope(elementIds, args.Bool("includeReferrers") ?? true, args.Bool("includeScriptRules") ?? true);
         return Ok(await _store.ValidateAsync(scope, ct).ConfigureAwait(false));
     }

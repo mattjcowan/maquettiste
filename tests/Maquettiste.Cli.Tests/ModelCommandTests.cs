@@ -163,7 +163,9 @@ public sealed class ModelCommandTests
 
         var deleted = await repo.RunAsync("model", "delete", "01J92P0V0JR8BE8253SKT29ZG7", "--resolution", "delete-dependents");
         Assert.True(deleted.ExitCode == 0, deleted.Error);
-        Assert.Contains("Deleted 2 elements and changed 1.", deleted.Error, StringComparison.Ordinal);
+        // The products table and the lines' product column go: two drops, recorded as pending migration facts.
+        Assert.Contains("Deleted 2 elements and changed 1; recorded 2 migration facts (2 pending: maquettiste validate names what each needs).",
+            deleted.Error, StringComparison.Ordinal);
         Assert.False(File.Exists(repo.PathOf(product)));
         Assert.False(File.Exists(repo.PathOf(relation)));
 

@@ -221,7 +221,7 @@ internal sealed class ModelPaths
     /// <summary>
     /// The conventional folder of an element (engine-design.md section 2.2). A database's folder is <c>model/databases/&lt;stem&gt;</c>
     /// (a collision adds the id suffix, see <see cref="DatabaseFolder"/>); tables, views, sequences, routines, database types, SQL objects and queries live in their database's
-    /// actual folder, found through <paramref name="databaseFolder"/>; a seed lives in <c>model/seeds/&lt;target stem&gt;</c> and a scenario in <c>model/scenarios/&lt;process stem&gt;</c>.
+    /// actual folder, found through <paramref name="databaseFolder"/>, and migration facts in its <c>migrations/open</c> folder; a seed lives in <c>model/seeds/&lt;target stem&gt;</c> and a scenario in <c>model/scenarios/&lt;process stem&gt;</c>.
     /// </summary>
     /// <param name="element">The element.</param>
     /// <param name="databaseFolder">Returns the model-relative folder of a database id, or <see langword="null"/> when unknown.</param>
@@ -242,6 +242,7 @@ internal sealed class ModelPaths
             DatabaseType t => Under(t.Database, "types"),
             SqlObject o => Under(o.Database, "objects"),
             Query q => Under(q.Database, "queries"),
+            Migration m => Under(m.Database, "migrations/open"),
             Seed seed => KindInfo.SeedsFolder + "/" + (targetStem?.Invoke(seed.Target) ?? seed.Target.ToLowerInvariant()),
             Scenario scenario => KindInfo.ScenariosFolder + "/" + (targetStem?.Invoke(scenario.Process) ?? scenario.Process.ToLowerInvariant()),
             _ => KindInfo.Get(element.Kind).Folder,

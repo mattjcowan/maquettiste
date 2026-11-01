@@ -139,7 +139,7 @@ public sealed class ReferenceBindingSqlTests
         Assert.DoesNotContain("unit_of_measure_t", schema, StringComparison.Ordinal);
         Assert.Contains("default_unit varchar(8)", schema, StringComparison.Ordinal);
         Assert.DoesNotContain("unit_of_measure_t", repo.Read("db/main/seed.sql"), StringComparison.Ordinal);
-        var migration = repo.Read("db/main/migrations/0002.sql");
+        var migration = MigrationFiles.Read(repo, "main", 2);
         Assert.Contains("ALTER COLUMN default_unit TYPE varchar(8) USING default_unit::varchar(8);", migration, StringComparison.Ordinal);
 
         // On PostgreSQL: the database as the native scripts left it, then the migration and the bound seed, twice.
@@ -162,7 +162,7 @@ public sealed class ReferenceBindingSqlTests
         Bind(repo);
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         var folder = "db/" + database + "/";
-        return (repo.Read(folder + "schema.sql"), repo.Read(folder + "migrations/0001.sql"), repo.Read(folder + "seed.sql"));
+        return (repo.Read(folder + "schema.sql"), MigrationFiles.Read(repo, database, 1), repo.Read(folder + "seed.sql"));
     }
 
     [Fact]

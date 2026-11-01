@@ -157,7 +157,8 @@ public sealed class ModelStoreTests
     [Fact]
     public async Task A_failing_batch_leaves_the_repo_unchanged_and_a_passing_one_is_generated()
     {
-        await using var repo = E2ERepo.Create(demo: false);
+        // Without migration facts: the batch narrows a column, whose pending fact would stop generation (FactRecordingTests covers that).
+        await using var repo = E2ERepo.Create(demo: false, settings: E2ERepo.RecordOff);
         await repo.ApplyAsync();
         var customer = (await repo.Store.GetElementAsync(E2ERepo.CustomerId, Ct))!;
         var product = (await repo.Store.GetElementAsync(E2ERepo.ProductId, Ct))!;

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../../../.schema/v1/migration.json",
+  "kind": "migration",
+  "id": "01JFCT00000000000000000009",
+  "database": "01JDBS00000000000000000001",
+  "fact": "rename",
+  "after": [
+    "01JFCT00000000000000000008"
+  ],
+  "object": {
+    "kind": "column",
+    "table": "01JENT00000000000000000001@01JDBS00000000000000000001",
+    "key": "01JATT00000000000000000007",
+    "schema": "billing",
+    "tableName": "invoices",
+    "name": "paid_on"
+  },
+  "from": {
+    "name": "paid"
+  },
+  "to": {
+    "name": "paid_on"
+  }
+}

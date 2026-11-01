@@ -108,9 +108,12 @@ public sealed class AssistService
     /// <param name="settings">The editor settings (the cache folder).</param>
     /// <param name="time">The clock.</param>
     /// <param name="loggers">The loggers.</param>
-    public AssistService(ModelStore store, GenerationService generation, EditorSettings settings, TimeProvider time, ILoggerFactory loggers)
+    /// <param name="variables">The site variables (the workspace name <c>get_project</c> reports, as <c>GET /api/project</c> does).</param>
+    public AssistService(ModelStore store, GenerationService generation, EditorSettings settings, TimeProvider time, ILoggerFactory loggers,
+        ISiteVariables variables)
     {
         ArgumentNullException.ThrowIfNull(loggers);
+        ArgumentNullException.ThrowIfNull(variables);
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _time = time ?? throw new ArgumentNullException(nameof(time));
@@ -119,6 +122,7 @@ public sealed class AssistService
         Catalog = new AgentTools(store, generation ?? throw new ArgumentNullException(nameof(generation)), new AgentToolsOptions
         {
             RepoRoot = settings.Engine.RepoRoot,
+            Workspace = WorkspaceDetection.Detect(settings.Engine.RepoRoot, variables.Get(EditorSettings.WorkspaceVariable)),
             Mode = "local",
             LogFailure = (tool, failure, _) =>
             {

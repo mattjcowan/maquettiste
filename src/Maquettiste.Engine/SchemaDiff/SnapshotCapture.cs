@@ -168,7 +168,8 @@ internal static class SnapshotCapture
                 Name = i.Name,
                 Columns = [.. i.Columns.Select(c => new SnapshotIndexColumn
                 {
-                    Column = c.Column?.Key, Expression = c.Column is null ? c.Expression : null, OperatorClass = c.OperatorClass, Descending = c.Descending, Length = c.Length,
+                    Column = c.Column?.Key, Expression = c.Column is null ? c.Expression : null, OperatorClass = c.OperatorClass, Descending = c.Descending,
+                    Nulls = c.Nulls, Length = c.Length,
                 })],
                 Include = Keys(i.Include),
                 Where = i.Where,
@@ -200,6 +201,7 @@ internal static class SnapshotCapture
         Key = column.Key,
         Name = column.Name,
         Type = column.Type,
+        Subtype = column.Subtype,
         Length = column.Length,
         Precision = column.Precision,
         Scale = column.Scale,
@@ -295,15 +297,21 @@ internal static class SnapshotCapture
         return new SnapshotDefinition { Key = routine.Id, Name = routine.Name, Schema = routine.Schema, Kind = routine.RoutineKind, Definition = text.ToString() };
     }
 
-    /// <summary>A SQL object's definition text: its phase and its statements for the dialect.</summary>
-    private static SnapshotDefinition CaptureObject(RSqlObject obj) => new()
+    /// <summary>
+    /// A SQL object's definition text: its phase, its environments (sorted ordinal, so listing them in another order changes
+    /// nothing) and apply mode when not the defaults (so a snapshot taken before they existed stays byte-identical), and its
+    /// statements for the dialect.
+    /// </summary>
+    private static SnapshotDefinition CaptureObject(RSqlObject obj)
     {
-        Key = obj.Id,
-        Name = obj.Name,
-        Schema = obj.Schema,
-        Kind = obj.ObjectKind,
-        Definition = "phase: " + obj.Phase + "\nbody: " + obj.Body,
-    };
+        var text = new System.Text.StringBuilder("phase: ").Append(obj.Phase);
+        if (obj.Environments.Count > 0)
+            text.Append("\nenvironments: ").AppendJoin(',', obj.Environments.Order(StringComparer.Ordinal));
+        if (obj.Apply != "converge")
+            text.Append("\napply: ").Append(obj.Apply);
+        text.Append("\nbody: ").Append(obj.Body);
+        return new SnapshotDefinition { Key = obj.Id, Name = obj.Name, Schema = obj.Schema, Kind = obj.ObjectKind, Definition = text.ToString() };
+    }
 
     /// <summary>What sets an exclusion constraint apart (its key's source): method, each element and operator, predicate.</summary>
     private static string ExclusionDefinition(RExclusion x) =>
@@ -326,7 +334,7 @@ internal static class SnapshotCapture
     {
         var key = new System.Text.StringBuilder("ix:");
         key.Append(string.Join(',', index.Columns.Select(c => IndexColumnKey(c.Column?.Key, c.Expression)
-            + (c.OperatorClass is { } opclass ? " " + opclass : "") + (c.Descending ? " desc" : ""))));
+            + (c.OperatorClass is { } opclass ? " " + opclass : "") + (c.Descending ? " desc" : "") + (c.Nulls is { } nulls ? " nulls " + nulls : ""))));
         if (index.Unique)
             key.Append(";unique");
         var method = PlainValues.Parse(index.Method, IndexMethod.Default);

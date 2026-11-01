@@ -68,6 +68,12 @@
     <EmbeddedResource Include="../../skills/maquettiste-modeling/SKILL.md" LogicalName="Maquettiste.Cli.Skills/maquettiste-modeling/SKILL.md" Link="Skills/maquettiste-modeling/SKILL.md" WithCulture="false" />
   </ItemGroup>
 
+  <!-- Workspace detection is a host feature (the engine reads no version control): the CLI compiles the editor host's one copy of it,
+       so no project references both hosts (next-phase-1-design.md section 3.1). -->
+  <ItemGroup>
+    <Compile Include="../Maquettiste.Functions/_functions/WorkspaceDetection.cs" Link="Hosting/WorkspaceDetection.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Maquettiste.Cli.Tests" />
   </ItemGroup>

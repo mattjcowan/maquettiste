@@ -40,7 +40,9 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   columns, PK name, uniques, foreign keys, checks, indexes) merged over entity, child, junction, promoted and lookup tables;
   designed and imported tables, views (body for the dialect, else `*`) and sequences passed through; constraint names from the
   patterns; entity mappings (column mappings across TPT tables and child tables) and join paths per navigation; MQ4001 for every
-  identifier over `MaxIdentifierLength` (dialect default: pg 63, sqlserver 128, mysql 64, oracle 128, sqlite none), honouring
+  identifier over `MaxIdentifierLength` (dialect default: pg 63, sqlserver 128, mysql 64, oracle 128, sqlite none),
+  measured as `DialectInfo.IdentifierLength` does (UTF-8 bytes on pg and oracle, characters elsewhere), and MQ4068 for
+  index and constraint names that collide in a namespace of `DialectInfo.NameSpaces` (`CheckNames`), honouring
   `validation.rules`.
 - Dialect maps for PostgreSQL, SQL Server, MySQL/MariaDB (`mysql`), SQLite and Oracle; `typeMaps.<dialect>` overrides single
   entries; a custom type's `nativeTypes.<dialect>` wins over both for the columns that store it (applied once, in
@@ -79,7 +81,8 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
 - `RRelationMapping.ForeignKey` is chosen after foreign keys resolve: the resolved key in the dependent's table, else another
   resolved key of the relation, else `null` (never a half-filled key).
 - `DefaultExpression` is not translated into `DefaultSql`; templates read it from the attribute.
-- Diagnostics the resolver adds (validation rules otherwise stay with W2): MQ4001 (identifier limits); MQ4008 for every foreign
+- Diagnostics the resolver adds (validation rules otherwise stay with W2): MQ4001 (identifier limits); MQ4068 (name
+  namespaces); MQ4008 for every foreign
   key that cannot be resolved (synthesized, designed or overlay: missing referenced table or columns, a referenced table without
   a primary key, a column count mismatch), which is left out of its table (a designed or overlay key may also be reported by W2's
   MQ4008 when that rule runs as a warning); MQ4011 when a relation's dependent end is bound to a designed table and either the
@@ -206,6 +209,12 @@ own files; what earlier database runs add (relation dependency keys in `FinishRe
 tables are those of `Run` (tests compare every `TableView` on the fixture model and the bench's synthetic model). Generation always
 uses the whole-model `Run`. Numbers: explorer-redesign.md section 4.5 (`bench time-tables`).
 
+`ResolveRun.RunDatabases` (`ModelResolver.ResolveDatabasesAsync`) resolves several databases after one conceptual run,
+and with `freeze` keeps the dependency keys of what it resolved: the store records migration facts this way
+(next-phase-1-design.md section 3.2), resolving only the databases a write can reshape and reading each one's footprint
+(the element ids of its objects' `e:` keys) from the frozen keys. The keys are those of the partial run, a subset of
+what `Run` would give.
+
 ## Processes (P5a: phase-3-design.md sections 4.3 and 7.1)
 
 - `ResolveRun.Processes.cs` resolves actors, then process shells (an invoke names another process), then each process, then
@@ -263,3 +272,24 @@ fixture, ordering, keys, the interpreter's chart, the duration rules), `Planning
   run). A seed whose columns name no other row (no end, no reference type) keeps file order without reading its cells, which is
   what the Kahn pass gave it. A reference type's rows stay eager: its codes, `RowsByCode` and every usage need them. Generation
   output is unchanged (the golden and determinism tests); a 100,000-row seed that no template reads is never converted.
+
+## Migration facts (next-phase-1-design.md section 3.2, task A8)
+
+- `ResolveRun.Migrations.cs` runs after each database run (`Run` and `RunOneDatabase`): the database's open facts in
+  applied order (`Migrations/FactKeys.Order`: a topological order over `after` that takes the ready fact with the
+  smallest id; links to facts outside the database are ignored, and a cycle, MQ4104, is broken by the smallest unplaced
+  id), their object keys moved through the `rekey` facts after them (`FactKeys.Moves`), then the projection: by current
+  key, a table, view, sequence or column takes the `from` and `via` names of its renames as `FormerNames` (oldest first,
+  distinct, without its current name) and the first fact that names it (as `object` or in `objects`) as `Since`; a
+  column takes the conversion of its last `change-type`. Facts never change a capture.
+- Dependency keys: a fact carries its own `e:` key, its database's and those of the `rekey` facts after it (its keys
+  today depend on them), plus its annotations' keys. `RDatabase.Migrations` and `ResolvedModel.Migrations` carry
+  `k:migration` and every fact's `e:` key (one fact's `after` moves the others in the order; the model's list also
+  `k:database`). A projected table adds the
+  `e:` key of each fact projected onto it or its columns to the dependency list it shares with its columns (and to its
+  column list's membership); a projected view or sequence adds its own facts' keys.
+- `RMigration.Hash` (`Migrations/FactHash.cs`) is computed on first read, from the fact's document.
+
+Tests: `Resolution/MigrationResolutionTests.cs`, `Editor/ResolvedRecordsTests.cs` (the `migrations` scope),
+`Migrations/FactHashTests.cs`, the `migration` targets of `ResolvedCoverageTests`; the resolved goldens print every
+table's, column's, view's and sequence's `former_names` and `since`.

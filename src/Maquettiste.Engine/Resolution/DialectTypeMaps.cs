@@ -67,6 +67,15 @@ internal static class DialectTypeMaps
         return charset.Length > 0 && map.ContainsKey(keyword + charset) ? keyword + charset : keyword;
     }
 
+    /// <summary>
+    /// The map entry a range or multirange column's native type comes from: <c>&lt;keyword&gt;:&lt;subtype&gt;</c>, such as
+    /// <c>range:datetimeoffset</c> (PostgreSQL's <c>tstzrange</c>). A map without it stores the column as its <c>text</c> entry.
+    /// </summary>
+    /// <param name="keyword"><c>range</c> or <c>multirange</c>.</param>
+    /// <param name="subtype">The column's subtype, or <see langword="null"/>.</param>
+    /// <returns>The map key.</returns>
+    public static string RangeKey(string keyword, string? subtype) => keyword + ":" + subtype;
+
     /// <summary>Renders a native type from a pattern; missing facets take the given defaults.</summary>
     /// <param name="map">The effective map.</param>
     /// <param name="keyword">The built-in keyword.</param>

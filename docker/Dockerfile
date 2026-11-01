@@ -49,6 +49,8 @@ COPY packs/sql-ddl packs/sql-ddl
 COPY packs/csharp-dapper packs/csharp-dapper
 COPY skills/maquettiste-modeling skills/maquettiste-modeling
 COPY src/Maquettiste.Cli src/Maquettiste.Cli
+# The CLI compiles the editor host's workspace detection through a linked Compile item (one copy of it, next-phase-1-design.md 3.1).
+COPY src/Maquettiste.Functions/_functions/WorkspaceDetection.cs src/Maquettiste.Functions/_functions/WorkspaceDetection.cs
 # The image's engine version (PD24), so `maquettiste --version` and the MCP server's get_project name the same build as the editor.
 RUN dotnet publish src/Maquettiste.Cli -c Release -o /cli -p:UseAppHost=false -p:Version="$(cat /engine.version)" \
  && rm -f /cli/*.pdb \

@@ -299,5 +299,6 @@
   },
   "diagnostics": [],
   "referrers": [],
-  "changes": null
+  "changes": null,
+  "facts": null
 }

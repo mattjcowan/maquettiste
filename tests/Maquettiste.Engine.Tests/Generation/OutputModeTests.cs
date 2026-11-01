@@ -47,11 +47,14 @@ public sealed class OutputModeTests
         File.Delete(Path.Combine(f.Repo.ModelRoot, "model", "entities", "product.json"));
         var result = await f.RunAsync();
         Assert.Equal(RunOutcome.Succeeded, result.Outcome);
-        Assert.Contains(result.Changes, c => c.Path == "out/scaffold/Product.txt" && c.Kind == FileChangeKind.OrphanedOwned);
+        // The once file stays owned while it exists (kept, with its manifest entry); the companion leaves the manifest.
+        Assert.Contains(result.Changes, c => c.Path == "out/scaffold/Product.txt" && c.Kind == FileChangeKind.Kept);
+        Assert.Contains(result.Changes, c => c.Path == "gen/pair/Product.txt" && c.Kind == FileChangeKind.OrphanedOwned);
         Assert.True(f.Repo.Exists("out/scaffold/Product.txt"));
         Assert.False(f.Repo.Exists("out/regions/Product.txt"));
         Assert.False(f.Repo.Exists("gen/pair/Product.g.txt"));
         Assert.True(f.Repo.Exists("gen/pair/Product.txt"));
+        Assert.Equal(RunOutcome.Succeeded, (await f.RunAsync(GenerationMode.Check)).Outcome);
     }
 
     [Fact]

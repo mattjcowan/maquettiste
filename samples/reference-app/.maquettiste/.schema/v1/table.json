@@ -103,6 +103,7 @@
           "pluralName",
           "attribute",
           "type",
+          "subtype",
           "length",
           "precision",
           "scale",
@@ -148,7 +149,11 @@
             "description": "Overlay: the synthesized column key this column overrides."
           },
           "type": {
-            "$ref": "common.json#/$defs/builtinType"
+            "$ref": "common.json#/$defs/columnType"
+          },
+          "subtype": {
+            "description": "The bound type of a range or multirange column, and only of one (MQ4057). A range column takes no length, precision or scale (MQ3013).",
+            "$ref": "common.json#/$defs/rangeSubtype"
           },
           "length": {
             "$ref": "common.json#/$defs/length"
@@ -516,7 +521,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "x-order": ["column", "expression", "operatorClass", "descending", "length"],
+              "x-order": ["column", "expression", "operatorClass", "descending", "nulls", "length"],
               "properties": {
                 "column": {
                   "type": "string",
@@ -535,6 +540,10 @@
                 "descending": {
                   "type": "boolean",
                   "default": false
+                },
+                "nulls": {
+                  "description": "Where nulls sort: PostgreSQL's NULLS FIRST or NULLS LAST. Unset keeps the direction's default (last ascending, first descending), and a value equal to it changes nothing. MQ4056 elsewhere.",
+                  "enum": ["first", "last"]
                 },
                 "length": {
                   "description": "A key prefix length: only the first characters or bytes of the column are indexed (MySQL, which needs one for a text or blob column; the other dialects leave it out, MQ4056).",

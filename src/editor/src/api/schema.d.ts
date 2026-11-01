@@ -260,15 +260,18 @@ export interface paths {
          *       indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
          *       for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
          *       `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.
+         *     - `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its
+         *       state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.
          *     - `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which
          *       `databases` holds.
          *
-         *     `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to
-         *     it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
+         *     `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and
+         *     migration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
          *     is null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change
          *     between pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors
-         *     returns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export
-         *     --resolved` answer the same.
+         *     returns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent
+         *     (MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer
+         *     the same.
          */
         get: operations["getResolvedModel"];
         put?: never;
@@ -492,7 +495,7 @@ export interface paths {
         put?: never;
         /**
          * Validate the whole model or a scope
-         * @description An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a validation reports what generation would.
+         * @description An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a validation reports what generation would. With `against`, the whole model is also compared with a model snapshot.
          */
         post: operations["validate"];
         delete?: never;
@@ -1176,7 +1179,9 @@ export interface paths {
          * @description Queues a plan job and returns it at once. Join the realtime group `job:{id}` for `job.progress` and
          *     `job.completed`, then read `GET /api/jobs/{id}` once, so an event sent before the join is not missed. The
          *     functions force `includeDiffs: false`, `stageBarriers: false` and `lock: wait`; `mode` is ignored (a plan is
-         *     always a dry run).
+         *     always a dry run). `against` diffs the schema from a model snapshot for this plan instead of the committed
+         *     physical snapshots, which its apply leaves alone; the functions take snapshot ids only, so a folder, or an id
+         *     that names no snapshot, is 400 `bad-request`.
          */
         post: operations["startPlan"];
         delete?: never;
@@ -1220,7 +1225,7 @@ export interface paths {
         };
         /**
          * Unified diff for one file in a plan
-         * @description From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders, such as a migration's placeholder); a deleted file diffs to nothing.
+         * @description From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders); a deleted file diffs to nothing.
          */
         get: operations["getPlanDiff"];
         put?: never;
@@ -2326,6 +2331,8 @@ export interface components {
             hash: components["schemas"]["Hash"] | null;
             current: components["schemas"]["SettingsDocument"] | null;
             diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description When saved, the migration facts the save recorded: a change of `conventions`, `databases`, `typeMaps` or `inflection` classifies every database; other settings record none. `null` when nothing was written. */
+            facts?: components["schemas"]["RecordedFact"][] | null;
         };
         ProjectSettings: {
             $schema: string | null;
@@ -2401,6 +2408,12 @@ export interface components {
                 maxTurns: number;
                 tokenBudgetPerRequest: number;
                 tokenBudgetPerDayPerUser: number;
+            };
+            /** @description Migration facts (next-phase-1-design.md section 3.2); an older server leaves it out. `record` `off` makes no write record facts; `ledgerSchema` is the schema of the migration ledger tables in each PostgreSQL database (section 3.3). */
+            migrations?: {
+                /** @enum {string} */
+                record: "automatic" | "off";
+                ledgerSchema: string;
             };
         };
         /** @description The project's icon and primary color per theme in the editor (MQ8001 to MQ8003). An older server leaves it out. */
@@ -2725,7 +2738,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -2748,7 +2761,7 @@ export interface components {
             path: components["schemas"]["RepoPath"];
             /** @description The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label. */
             displayName?: string;
-            /** @description The owning database's id, on table, view, sequence, routine, database-type, sql-object, query and mapping rows (E5). */
+            /** @description The owning database's id, on table, view, sequence, routine, database-type, sql-object, query, mapping and migration rows (E5). */
             database?: components["schemas"]["Ulid"];
             /** @description The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5). */
             entity?: components["schemas"]["Ulid"];
@@ -2798,7 +2811,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -2993,6 +3006,27 @@ export interface components {
             /** @description The references that blocked a delete. */
             referrers: components["schemas"]["ReferenceInfo"][];
             changes: components["schemas"]["ChangeSet"] | null;
+            /** @description The migration facts the write created or updated (next-phase-1-design.md section 3.2): a single-element create, save or delete lists every fact its write recorded, cascades included; `null` on an item of a batch (the batch carries them) and when nothing was written. A pending fact's MQ4101 is among `diagnostics`. */
+            facts?: components["schemas"]["RecordedFact"][] | null;
+        };
+        /** @description A migration fact a write created or updated, in `model/databases/<db>/migrations/open/`. */
+        RecordedFact: {
+            id: string;
+            /** @description The id of the fact's database. */
+            database: string;
+            /** @enum {string} */
+            fact: "rename" | "rekey" | "change-type" | "drop" | "adopt" | "baseline" | "backfill" | "raw" | "value-map" | "state-map";
+            /**
+             * @description `pending` while the fact lacks the intent its change needs (MQ4101), else `complete`.
+             * @enum {string}
+             */
+            state: "complete" | "pending";
+            /** @description The intent fields MQ4101 names; empty unless pending. */
+            missing: string[];
+            /** @description One line by the names the fact records, such as `rename column billing.notes.text to body`. */
+            summary: string;
+            /** @description The repo-relative path of the fact's file. */
+            path: string;
         };
         /**
          * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`.
@@ -3054,6 +3088,8 @@ export interface components {
             outcome: components["schemas"]["SaveOutcome"];
             items: components["schemas"]["SaveResult"][];
             changes: components["schemas"]["ChangeSet"] | null;
+            /** @description The migration facts the batch created or updated (its items carry none); `null` when nothing was written. */
+            facts?: components["schemas"]["RecordedFact"][] | null;
         };
         /** @enum {string} */
         DiagnosticSeverity: "error" | "warning" | "info";
@@ -3147,7 +3183,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty. */
@@ -3745,6 +3781,60 @@ export interface components {
             name: string;
             database: components["schemas"]["Ulid"];
             query: components["schemas"]["QueryView"];
+        };
+        /** @description One open migration fact (scope `migrations`, next-phase-1-design.md section 3.2), sorted by database name, then applied order. */
+        MigrationRecord: {
+            id: components["schemas"]["Ulid"];
+            /** @constant */
+            kind: "migration";
+            /** @description The fact's name; the empty string for a recorded fact. */
+            name: string;
+            database: components["schemas"]["Ulid"];
+            /** @description The fact's place in its database's applied order, from 1. */
+            order: number;
+            /** @enum {string} */
+            fact: "rename" | "rekey" | "change-type" | "drop" | "adopt" | "baseline" | "backfill" | "raw" | "value-map" | "state-map";
+            /** @enum {string} */
+            state: "pending" | "complete" | "held" | "released";
+            /** @description The intent fields MQ4101 names; empty unless the fact is pending. */
+            missing: string[];
+            /** @description The ids of the facts it follows that exist in its database. */
+            after: components["schemas"]["Ulid"][];
+            /** @description Its object as recorded, or null. */
+            object: components["schemas"]["MigrationRecordObject"] | null;
+            /** @description The object's key moved through the rekey facts after it; null without an object. */
+            currentKey: string | null;
+            /** @description The state before, as recorded, or null. */
+            from: components["schemas"]["MigrationRecordState"] | null;
+            /** @description The state after, as recorded, or null. */
+            to: components["schemas"]["MigrationRecordState"] | null;
+            /** @description The fact content hash (what a migration ledger row records). */
+            hash: string;
+        };
+        /** @description A migration fact's object by physical key and by its physical names at the time (`migrationObject` of `schemas/v1/migration.json`, with null for what is not recorded). */
+        MigrationRecordObject: {
+            /** @enum {string} */
+            kind: "table" | "column" | "view" | "sequence" | "index" | "unique" | "foreign-key" | "check" | "routine" | "database-type" | "sql-object" | "schema";
+            /** @description The key of the table a member (a column, index or constraint) belongs to. */
+            table: string | null;
+            key: string;
+            schema: string | null;
+            tableName: string | null;
+            name: string | null;
+            formerNames: string[];
+        };
+        /** @description A side of a migration fact (`migrationState` of `schemas/v1/migration.json`, with null for what is not recorded). */
+        MigrationRecordState: {
+            name: string | null;
+            schema: string | null;
+            type: string | null;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            nativeType: string | null;
+            strategy: string | null;
+            referenceTable: string | null;
+            nullable: boolean | null;
         };
         DatabaseViewResult: {
             view: components["schemas"]["DatabaseView"] | null;
@@ -4709,6 +4799,11 @@ export interface components {
             lock?: components["schemas"]["LockMode"];
             /** @default false */
             stageBarriers?: boolean;
+            /**
+             * @description The baseline the schema diff runs from for this run: a model snapshot id (the CLI and its MCP server also take a folder, stored as its full path). `null`: the committed physical snapshots. A run against a baseline never writes those; applying its plan opens the baseline again, and a baseline changed in between makes the plan stale.
+             * @default null
+             */
+            against?: string | null;
         };
         ApplyRequest: {
             planId: components["schemas"]["Ulid"];
@@ -6218,6 +6313,23 @@ export interface components {
                  */
                 tokenBudgetPerDayPerUser?: number;
             };
+            /**
+             * @description Migration facts (model/databases/<db>/migrations/open/): whether writes record them, and where each PostgreSQL database keeps its migration ledger.
+             * @default {}
+             */
+            migrations?: {
+                /**
+                 * @description automatic: every write that reshapes a database records its facts. off: no write records facts; validate --against still checks.
+                 * @default automatic
+                 * @enum {unknown}
+                 */
+                record?: "automatic" | "off";
+                /**
+                 * @description Schema of the migration ledger tables (contract, applied_fact, applied_object) in each PostgreSQL database; quoted where it is a reserved word. MQ4067 when a database's modeled objects use it too.
+                 * @default migration_ledger
+                 */
+                ledgerSchema?: string;
+            };
             $defs: {
                 strategyDeclaration: {
                     description?: string;
@@ -6777,6 +6889,13 @@ export interface components {
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
         };
+        /** @description A column's type keyword: a built-in scalar type, or range or multirange (PostgreSQL's built-in range types, with a subtype; multirange needs PostgreSQL 14 or later). Elsewhere a range column is stored as the dialect's text type (MQ4056). */
+        columnType: components["schemas"]["builtinType"] | ("range" | "multirange");
+        /**
+         * @description The type of a range or multirange column's bounds: one of the keywords PostgreSQL has a built-in range for (int4range, int8range, numrange, daterange, tsrange, tstzrange).
+         * @enum {unknown}
+         */
+        rangeSubtype: "int32" | "int64" | "decimal" | "date" | "datetime" | "datetimeoffset";
         /** @description Dialect name (postgresql, sqlserver, mysql, sqlite, oracle) or "*" to SQL text. */
         dialectMap: {
             [key: string]: string;
@@ -6831,7 +6950,9 @@ export interface components {
                 pluralName?: string;
                 /** @description Overlay: the synthesized column key this column overrides. */
                 attribute?: string;
-                type?: components["schemas"]["builtinType"];
+                type?: components["schemas"]["columnType"];
+                /** @description The bound type of a range or multirange column, and only of one (MQ4057). A range column takes no length, precision or scale (MQ3013). */
+                subtype?: components["schemas"]["rangeSubtype"];
                 length?: components["schemas"]["length"];
                 precision?: components["schemas"]["precision"];
                 scale?: components["schemas"]["scale"];
@@ -6992,6 +7113,11 @@ export interface components {
                     operatorClass?: string;
                     /** @default false */
                     descending?: boolean;
+                    /**
+                     * @description Where nulls sort: PostgreSQL's NULLS FIRST or NULLS LAST. Unset keeps the direction's default (last ascending, first descending), and a value equal to it changes nothing. MQ4056 elsewhere.
+                     * @enum {unknown}
+                     */
+                    nulls?: "first" | "last";
                     /** @description A key prefix length: only the first characters or bytes of the column are indexed (MySQL, which needs one for a text or blob column; the other dialects leave it out, MQ4056). */
                     length?: number;
                 } & (unknown | unknown))[];
@@ -7349,6 +7475,17 @@ export interface components {
              * @enum {unknown}
              */
             phase?: "before" | "after";
+            /**
+             * @description The environments the object runs in (free names such as dev, test, staging); empty means every environment. Otherwise only the environment scripts (objects.<env>.sql) run it, on every deploy, so a converge body must be safe to run again.
+             * @default []
+             */
+            environments?: components["schemas"]["tagLabel"][];
+            /**
+             * @description How the statements are applied: converge runs them wherever the scripts run the object, again when it changes; once runs them one time per database and records the object in the migration ledger (PostgreSQL only).
+             * @default converge
+             * @enum {unknown}
+             */
+            apply?: "converge" | "once";
             /**
              * @description Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.
              * @default []
@@ -8760,6 +8897,251 @@ export interface components {
                 };
             };
         };
+        /** @enum {unknown} */
+        objectKind: "table" | "column" | "view" | "sequence" | "index" | "unique" | "foreign-key" | "check" | "routine" | "database-type" | "sql-object" | "schema";
+        /** @description A historical physical key, as the schema diff matches objects: plain text that is not walked, never a name (it does not start with @ or $). */
+        factKey: string;
+        /** @description An object by physical key and by its physical names at the time. */
+        migrationObject: {
+            kind: components["schemas"]["objectKind"];
+            /** @description The key of the table a member (a column, index or constraint) belongs to. */
+            table?: components["schemas"]["factKey"];
+            /** @description The object's physical key. */
+            key: components["schemas"]["factKey"];
+            /** @description The database schema name at the time. */
+            schema?: string;
+            /** @description A member's table name at the time. */
+            tableName?: string;
+            /** @description The object's name at the time. */
+            name?: string;
+            /**
+             * @description The names the object had before: a baseline's objects, and a drop that migration fold joined with the renames before it.
+             * @default []
+             */
+            formerNames?: string[];
+        };
+        /** @description A side of a fact: names, or a column's type facets and, for a reference column, how its codes are stored. */
+        migrationState: {
+            name?: string;
+            schema?: string;
+            /** @description The built-in type keyword. */
+            type?: string;
+            length?: number;
+            precision?: number;
+            scale?: number;
+            /** @description The effective native type. */
+            nativeType?: string;
+            /** @description A reference column's effective storage strategy. */
+            strategy?: string;
+            /** @description The key of the table a reference column's reference type is bound to, at the time. */
+            referenceTable?: components["schemas"]["factKey"];
+            nullable?: boolean;
+        };
+        /** @description One key a rekey moved. */
+        rekey: {
+            kind: components["schemas"]["objectKind"];
+            /** @description A column entry's table key before the fact. */
+            table?: components["schemas"]["factKey"];
+            from: components["schemas"]["factKey"];
+            to: components["schemas"]["factKey"];
+            /** @description The object's name at the time. */
+            name?: string;
+        };
+        /** @description A stored value and its replacement. */
+        value: {
+            from: string;
+            to: string;
+        };
+        /**
+         * Migration fact
+         * @description One change of a database's physical shape that its data must follow, with the intent a migration needs to apply it (model/databases/<db>/migrations/open/). A recorded fact has no name, so its file is <lowercase id>.json. Object keys are historical physical keys, not references; a later rekey fact moves them forward. The fact belongs to its database.
+         */
+        migration: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "migration";
+            id: components["schemas"]["id"];
+            /**
+             * @description An optional label; a recorded fact has none.
+             * @default
+             */
+            name?: components["schemas"]["label"];
+            displayName?: string;
+            pluralName?: string;
+            /** @description The database whose shape the fact changes; the fact belongs to it. */
+            database: components["schemas"]["id"];
+            /**
+             * @description What the fact records.
+             * @enum {unknown}
+             */
+            fact: "rename" | "rekey" | "change-type" | "drop" | "adopt" | "baseline" | "backfill" | "raw" | "value-map" | "state-map";
+            /**
+             * @description Ids of the facts this one follows, set by the write path: an ordering hint, not a reference. A link to a fact that no longer exists is a warning (MQ4111).
+             * @default []
+             */
+            after?: components["schemas"]["idList"];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @description The object of a rename, change-type, drop or backfill. */
+            object?: components["schemas"]["migrationObject"];
+            /**
+             * @description The objects of an adopt, baseline, value-map or state-map; context for raw.
+             * @default []
+             */
+            objects?: components["schemas"]["migrationObject"][];
+            /** @description The state before: a rename's name and schema, a change-type's type facets. */
+            from?: components["schemas"]["migrationState"];
+            /** @description The state after. */
+            to?: components["schemas"]["migrationState"];
+            /**
+             * @description The intermediate names of a folded rename, oldest first.
+             * @default []
+             */
+            via?: string[];
+            /**
+             * @description Every key a rekey moved; a column entry's table is its table's key before the fact.
+             * @default []
+             */
+            keys?: components["schemas"]["rekey"][];
+            /** @description How a change-type converts stored values: a cast, or an expression per dialect where {table} and {column} expand to quoted names. */
+            conversion?: {
+                /**
+                 * @description A plain cast converts the values.
+                 * @default false
+                 */
+                cast?: boolean;
+                /**
+                 * @description The conversion per dialect.
+                 * @default {}
+                 */
+                expression?: components["schemas"]["dialectMap"];
+            };
+            /** @description The rows the step must not find (a query per dialect; a row stops the step), or why no check is needed. */
+            dataCheck?: {
+                /**
+                 * @description The query per dialect; {table} and {column} expand to quoted names.
+                 * @default {}
+                 */
+                query?: components["schemas"]["dialectMap"];
+                /** @description Why no check is needed. */
+                accept?: string;
+            };
+            /** @description A drop's reason why the data may go. */
+            acknowledge?: string;
+            /**
+             * @description A backfill's value per dialect.
+             * @default {}
+             */
+            value?: components["schemas"]["dialectMap"];
+            /**
+             * @description A backfill's rows per dialect; without one, the rows where {column} IS NULL.
+             * @default {}
+             */
+            where?: components["schemas"]["dialectMap"];
+            /**
+             * @description A raw fact's statements per dialect.
+             * @default {}
+             */
+            sql?: components["schemas"]["dialectMap"];
+            /**
+             * @description A raw fact's guard per dialect: a query whose row means the end state already holds.
+             * @default {}
+             */
+            skipWhen?: components["schemas"]["dialectMap"];
+            /**
+             * @description Whether a raw fact runs before or after the schema statements.
+             * @default after
+             * @enum {unknown}
+             */
+            phase?: "before" | "after";
+            /** @description An adopt's environment. */
+            environment?: components["schemas"]["tagLabel"];
+            /** @description A value-map's reference type: a historical id, not a reference. */
+            referenceType?: components["schemas"]["id"];
+            /** @description A state-map's process: a historical id, not a reference. */
+            process?: components["schemas"]["id"];
+            /**
+             * @description Stored codes (or state codes) and their replacements.
+             * @default []
+             */
+            values?: components["schemas"]["value"][];
+            /**
+             * @description The fact waits: migrators skip it until it is released.
+             * @default false
+             */
+            held?: boolean;
+            /**
+             * @description A held fact may now run.
+             * @default false
+             */
+            released?: boolean;
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+            $defs: {
+                /** @description A historical physical key, as the schema diff matches objects: plain text that is not walked, never a name (it does not start with @ or $). */
+                factKey: string;
+                /** @enum {unknown} */
+                objectKind: "table" | "column" | "view" | "sequence" | "index" | "unique" | "foreign-key" | "check" | "routine" | "database-type" | "sql-object" | "schema";
+                /** @description An object by physical key and by its physical names at the time. */
+                migrationObject: {
+                    kind: components["schemas"]["objectKind"];
+                    /** @description The key of the table a member (a column, index or constraint) belongs to. */
+                    table?: components["schemas"]["factKey"];
+                    /** @description The object's physical key. */
+                    key: components["schemas"]["factKey"];
+                    /** @description The database schema name at the time. */
+                    schema?: string;
+                    /** @description A member's table name at the time. */
+                    tableName?: string;
+                    /** @description The object's name at the time. */
+                    name?: string;
+                    /**
+                     * @description The names the object had before: a baseline's objects, and a drop that migration fold joined with the renames before it.
+                     * @default []
+                     */
+                    formerNames?: string[];
+                };
+                /** @description A side of a fact: names, or a column's type facets and, for a reference column, how its codes are stored. */
+                migrationState: {
+                    name?: string;
+                    schema?: string;
+                    /** @description The built-in type keyword. */
+                    type?: string;
+                    length?: number;
+                    precision?: number;
+                    scale?: number;
+                    /** @description The effective native type. */
+                    nativeType?: string;
+                    /** @description A reference column's effective storage strategy. */
+                    strategy?: string;
+                    /** @description The key of the table a reference column's reference type is bound to, at the time. */
+                    referenceTable?: components["schemas"]["factKey"];
+                    nullable?: boolean;
+                };
+                /** @description One key a rekey moved. */
+                rekey: {
+                    kind: components["schemas"]["objectKind"];
+                    /** @description A column entry's table key before the fact. */
+                    table?: components["schemas"]["factKey"];
+                    from: components["schemas"]["factKey"];
+                    to: components["schemas"]["factKey"];
+                    /** @description The object's name at the time. */
+                    name?: string;
+                };
+                /** @description A stored value and its replacement. */
+                value: {
+                    from: string;
+                    to: string;
+                };
+            };
+        } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown);
         /**
          * Model batch
          * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations and process operations, from the editor, a refactoring or an AI proposal.
@@ -9634,7 +10016,7 @@ export interface operations {
                  */
                 snapshot?: components["parameters"]["SnapshotQuery"];
                 /** @description What to read. */
-                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries";
+                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries" | "migrations";
                 /** @description A database id; only what is mapped to it. */
                 database?: components["schemas"]["Ulid"];
                 /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
@@ -10153,6 +10535,8 @@ export interface operations {
                  *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
                  */
                 snapshot?: components["parameters"]["SnapshotQuery"];
+                /** @description A model snapshot id to compare the whole model with (`ModelStore.ValidateAgainstAsync`): a change since the snapshot that a migration must follow (a rename or moved key, a type change that is not a widening, a dropped table, column or sequence, a column made not null) and that no migration fact the snapshot lacks explains is MQ4102; a fact whose combined effect the model no longer shows is MQ4103; snapshot objects whose owners have errors are skipped with MQ4109. This host compares with snapshots only: a folder, an id that names no snapshot, or a body with `elementIds` is 400 `bad-request`. */
+                against?: string;
             };
             header?: never;
             path?: never;

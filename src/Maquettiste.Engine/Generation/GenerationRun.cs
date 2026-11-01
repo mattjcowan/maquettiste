@@ -1,13 +1,17 @@
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Loading;
+using Maquettiste.Engine.Migrations;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.SchemaDiff;
+using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Generation;
 
@@ -43,6 +47,12 @@ internal sealed record PreparedRun(
     /// capture while the run renders (<see cref="GenerationRun.SaveSnapshotsAsync"/> only writes the bytes); by database name.
     /// </summary>
     public IReadOnlyDictionary<string, Task<PreparedSnapshot>>? PendingSnapshots { get; init; }
+
+    /// <summary>
+    /// Whether the schema diffs run from a baseline model (<see cref="GenerationRequest.Against"/>): the committed physical snapshots
+    /// are neither read nor written (<see cref="GenerationRun.SaveSnapshotsAsync"/> writes nothing).
+    /// </summary>
+    public bool FromBaseline { get; init; }
 }
 
 /// <summary>What stages 6 to 8 produced.</summary>
@@ -118,9 +128,11 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     /// <param name="locked">Whether the caller holds the run lock; a preview does not, so it neither reads the journal (another run
     /// may have it open) nor overlays it.</param>
     /// <param name="barriers">Whether stages run one after another (<see cref="GenerationRequest.StageBarriers"/>).</param>
+    /// <param name="baseline">The baseline model the schema diffs run from (<see cref="GenerationRequest.Against"/>), opened by the
+    /// caller for this run; <see langword="null"/> diffs from the committed physical snapshots.</param>
     /// <returns>The prepared run, or <see langword="null"/>.</returns>
     public async Task<PreparedRun?> PrepareAsync(IReadOnlyList<string>? packNames, GenerationMode mode, CancellationToken ct, bool locked = true,
-        bool barriers = true)
+        bool barriers = true, ModelBaseline? baseline = null)
     {
         var journal = locked ? await services.Journal.ReadUnfinishedAsync(ct).ConfigureAwait(false) : null;
         var snapshot = await Clock.TimeAsync(PipelineStage.Load, progress, () => store.GetSnapshotAsync(ct), s => s.Documents.Count).ConfigureAwait(false);
@@ -186,7 +198,9 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
                 return null;
 
-            var (diffs, pendingSnapshots) = await SchemaDiffsAsync(resolved, packs, mode, ct).ConfigureAwait(false);
+            var (diffs, pendingSnapshots) = baseline is null
+                ? await SchemaDiffsAsync(resolved, packs, mode, ct).ConfigureAwait(false)
+                : (await BaselineDiffsAsync(snapshot, resolved, packs, baseline, ct).ConfigureAwait(false), null);
             if (diffs is null)
                 return null;
 
@@ -201,12 +215,13 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             var manifests = await manifestsTask.ConfigureAwait(false);
             if (journal is not null)
                 manifests = manifests.WithJournalOverlay(journal);
-            var hasher = services.CreateHasher(snapshot, resolved, packs, diffs);
+            var hasher = services.CreateHasher(snapshot, resolved, packs, diffs, baseline?.ModelHash);
             return new PreparedRun(snapshot, resolved, packs, diffs, plan, manifests, journal, hasher, services.CreatePathPolicy(snapshot.Settings),
                 statesLoaded)
             {
                 OutputStats = outputStats,
                 PendingSnapshots = pendingSnapshots,
+                FromBaseline = baseline is not null,
             };
         }
         finally
@@ -432,12 +447,19 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
         return summary;
     }
 
-    /// <summary>Saves the schema snapshot of every database whose diff is not empty (after a successful apply of every root).</summary>
+    /// <summary>
+    /// Saves the schema snapshot of every database whose diff is not empty (after a successful apply of every root): the current
+    /// capture at <see cref="SchemaDiffResult.ToRevision"/>, with the aliases of the snapshot it replaces and its <c>facts</c>
+    /// extended by the diff's (<see cref="ToSave"/>).
+    /// </summary>
     /// <param name="run">The prepared run.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
     public async Task SaveSnapshotsAsync(PreparedRun run, CancellationToken ct)
     {
+        // A run against a baseline model never writes the committed snapshot (next-phase-1-design.md section 3.1, decision 6).
+        if (run.FromBaseline)
+            return;
         foreach (var database in run.Resolved.Databases)
         {
             if (!run.SchemaDiffs.TryGetValue(database.Name, out var diff) || diff.IsEmpty)
@@ -447,9 +469,61 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             else
             {
                 var previous = await services.Snapshots.LoadAsync(database.Name, ct).ConfigureAwait(false);
-                await services.Snapshots.SaveAsync(SnapshotAliases.Carry(services.SchemaDiffer.Capture(database, diff.ToRevision), previous), ct).ConfigureAwait(false);
+                await services.Snapshots.SaveAsync(ToSave(services.SchemaDiffer.Capture(database, diff.ToRevision), previous, diff, database), ct).ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>
+    /// One database's diff from its committed snapshot (next-phase-1-design.md section 3.2, "Facts in the schema diff"), for runs and
+    /// previews alike: the snapshot is read under today's keys (its aliases, <see cref="SnapshotAliases.Normalize"/>, then the open
+    /// <c>rekey</c> facts it does not list as rendered, in applied order, <see cref="BaselineCheck.ToTodayKeys"/>), and the facts that
+    /// render are the complete and released ones it does not list (<see cref="SchemaDiffer.RenderedFacts"/>). The diff's
+    /// <see cref="SchemaDiffResult.FromState"/> hashes the snapshot as stored, so it is the <see cref="SchemaDiffResult.ToState"/> of
+    /// the run that saved it.
+    /// </summary>
+    /// <param name="loaded">The committed snapshot as loaded, or <see langword="null"/>.</param>
+    /// <param name="database">The resolved database.</param>
+    /// <param name="json">The canonical writer (the two states).</param>
+    /// <param name="parallelism">Threads for the capture and the compare.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The diff and the current capture it compared (stamped with the snapshot's revision).</returns>
+    internal static (SchemaDiffResult Diff, PhysicalSnapshot Current) DiffFromCommitted(PhysicalSnapshot? loaded, RDatabase database, ICanonicalJson json,
+        int parallelism, CancellationToken ct)
+    {
+        var before = SnapshotAliases.Normalize(loaded, database);
+        var rendered = loaded?.Facts is { Count: > 0 } listed ? listed.ToFrozenSet(StringComparer.Ordinal) : FrozenSet<string>.Empty;
+        if (before is not null && database.Migrations.Count > 0)
+            before = BaselineCheck.ToTodayKeys(before, [.. database.Migrations.Select(f => f.Source)], f => !rendered.Contains(f.Id));
+        var facts = SchemaDiffer.RenderedFacts(database, f => !rendered.Contains(f.Id));
+        var current = SnapshotCapture.Capture(database, before?.Revision ?? 0, parallelism, ct);
+        ct.ThrowIfCancellationRequested();
+        var stored = before is null ? null : loaded;
+        var diff = SchemaDiffer.Compare(before, current, database, parallelism, ct, facts)
+            .WithStates(() => SchemaDiffer.State(stored, json), () => SchemaDiffer.State(current, json));
+        return (diff, current);
+    }
+
+    /// <summary>
+    /// The committed snapshot an apply saves for a non-empty diff: the capture (already at the new revision) with the aliases of the
+    /// snapshot it replaces, and <c>facts</c> listing that snapshot's and the diff's facts, pruned to the database's facts (ordinal).
+    /// </summary>
+    /// <param name="captured">The current capture at <see cref="SchemaDiffResult.ToRevision"/>.</param>
+    /// <param name="previous">The snapshot it replaces, as loaded, or <see langword="null"/>.</param>
+    /// <param name="diff">The applied diff.</param>
+    /// <param name="database">The resolved database.</param>
+    /// <returns>The snapshot to save.</returns>
+    private static PhysicalSnapshot ToSave(PhysicalSnapshot captured, PhysicalSnapshot? previous, SchemaDiffResult diff, RDatabase database)
+    {
+        var listed = previous?.Facts ?? [];
+        IReadOnlyList<string> facts = [];
+        if (listed.Count > 0 || diff.Facts.Count > 0)
+        {
+            var model = database.Migrations.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+            facts = [.. listed.Concat(diff.Facts.Select(f => f.Id)).Where(model.Contains).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        }
+
+        return SnapshotAliases.Carry(captured with { Facts = facts }, previous);
     }
 
     /// <summary>
@@ -495,22 +569,22 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             }
 
             // The snapshot under the keys the model gives its tables now (a table stored as a file, or put back by an undo, is the
-            // same table); the snapshot saved keeps the aliases.
+            // same table: its aliases, then the open rekey facts it lacks), and the facts that render; the snapshot saved keeps the
+            // aliases and lists the facts.
             var loaded = previous;
-            previous = SnapshotAliases.Normalize(previous, database);
             SchemaDiffResult diff;
             if (differ is not null)
             {
-                (diff, var current) = differ.DiffAndCapture(previous, database, services.Options.EffectiveParallelism, ct);
+                (diff, var current) = DiffFromCommitted(loaded, database, services.Json, services.Options.EffectiveParallelism, ct);
                 if (store is not null && !diff.IsEmpty)
                 {
-                    var toSave = SnapshotAliases.Carry(current with { Revision = diff.ToRevision }, loaded);
+                    var toSave = ToSave(current with { Revision = diff.ToRevision }, loaded, diff, database);
                     (pending ??= new(StringComparer.Ordinal))[database.Name] = Observed(Task.Run(() => store.Prepare(toSave, parse: true, ct), ct));
                 }
             }
             else
             {
-                diff = services.SchemaDiffer.Diff(previous, database);
+                diff = services.SchemaDiffer.Diff(SnapshotAliases.Normalize(previous, database), database);
             }
 
             diffs[database.Name] = diff;
@@ -525,6 +599,110 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
         // Keep only this run's databases' parsed snapshots (a renamed or removed database's file is not held for the host's life).
         (services.Snapshots as SnapshotStore)?.Retain(resolved.Databases.Select(d => d.Name));
         return (diffs, pending);
+    }
+
+    /// <summary>
+    /// The schema diffs of a run against a baseline model (<c>generate --against</c>, next-phase-1-design.md section 3.1): each working
+    /// database's baseline (the same id) is captured as <c>validate --against</c> captures it (<see cref="BaselineCheck.CapturesAsync"/>:
+    /// under today's keys, the open <c>rekey</c> facts the baseline lacks applied first) and diffed with
+    /// <see cref="SchemaDiffer.Compare"/>. A database the baseline lacks diffs from nothing. The facts that render are the complete and
+    /// released ones the baseline model lacks, or holds as held and not released (section 3.2). No committed snapshot is read or
+    /// prepared for saving, and check mode reports no stale snapshot (MQ6018).
+    /// </summary>
+    /// <remarks>
+    /// The baseline's errors are handled as <c>validate --against</c> handles them, with MQ4109: the objects of baseline owners with
+    /// errors are left out of both captures, so they read neither as dropped nor as added; a database that the baseline holds but
+    /// that does not resolve there, or whose folder holds baseline files that did not load while the baseline lacks the database, is
+    /// not diffed (its diff is empty), since a diff from nothing would create objects that may exist.
+    /// </remarks>
+    /// <returns>The diffs by database name.</returns>
+    private async Task<IReadOnlyDictionary<string, SchemaDiffResult>> BaselineDiffsAsync(ModelSnapshot snapshot, ResolvedModel resolved, PackSet packs,
+        ModelBaseline baseline, CancellationToken ct)
+    {
+        var diffs = new SortedDictionary<string, SchemaDiffResult>(StringComparer.Ordinal);
+        if (!packs.Packs.Any(p => p.Manifest.UsesSchemaDiff))
+            return diffs;
+
+        var parallelism = services.Options.EffectiveParallelism;
+        var baseModel = await baseline.Store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var based = await BaselineCheck.CapturesAsync(baseline, snapshot, [.. resolved.Databases.Select(d => d.Id)], ct).ConfigureAwait(false);
+        var notLoaded = BaselineCheck.NotLoaded(baseModel);
+        var gaps = new List<Diagnostic>();
+        var json = services.Json;
+        // A fact renders when the baseline lacks it, or holds it as held and not released while the working model releases it.
+        bool Lacking(RMigration fact) => baseModel.Get<Migration>(fact.Id) is not { } held || (held.Held && !held.Released && fact.Held && fact.Released);
+        foreach (var database in resolved.Databases)
+        {
+            ct.ThrowIfCancellationRequested();
+            var path = snapshot.GetDocument(database.Id)?.Path;
+            var current = SnapshotCapture.Capture(database, 0, parallelism, ct);
+            var full = current;
+            var diffed = true;
+            PhysicalSnapshot? before;
+            if (baseModel.Get<Database>(database.Id) is null)
+            {
+                // A database the baseline lacks diffs from nothing, unless its folder holds baseline files that did not load.
+                before = null;
+                if (BaselineCheck.NotLoadedFor(notLoaded, path, withShared: false) is { Count: > 0 } files)
+                {
+                    before = current;
+                    diffed = false;
+                    gaps.Add(RuleCatalog.Create("MQ4109",
+                        $"The baseline ({baseline.Label}) has files in the folder of database '{database.Name}' that did not load ({Shown(files)}), so this run did not diff the database from the baseline and its schema diff is empty; fix them in the baseline, or generate against another one.",
+                        database.Id, path));
+                }
+            }
+            else
+            {
+                var files = BaselineCheck.NotLoadedFor(notLoaded, baseModel.GetDocument(database.Id)?.Path ?? path, withShared: true);
+                var unloaded = files.Count > 0 ? $"files that did not load ({Shown(files)})" : null;
+                if (!based.Captures.TryGetValue(database.Id, out before))
+                {
+                    before = current;
+                    diffed = false;
+                    gaps.Add(RuleCatalog.Create("MQ4109",
+                        $"The baseline ({baseline.Label}) has errors that keep database '{database.Name}' from resolving{(unloaded is null ? "" : " and " + unloaded)}, so this run did not diff the database from the baseline and its schema diff is empty; fix them in the baseline, or generate against another one.",
+                        database.Id, path));
+                }
+                else
+                {
+                    var reasons = new List<string>(2);
+                    if (based.LeftOut.TryGetValue(database.Id, out var owners) && owners.Count > 0)
+                    {
+                        reasons.Add("errors in " + Shown([.. owners.Select(o => baseModel.GetDocument(o)?.Element is { } e
+                            ? e.KindName + " " + (e.Name.Length > 0 ? e.Name : e.Id) : o)]));
+                        current = ModelStore.Without(current, based.FailedOwners, []);
+                    }
+
+                    if (unloaded is not null)
+                        reasons.Add(unloaded);
+                    if (reasons.Count > 0)
+                    {
+                        gaps.Add(RuleCatalog.Create("MQ4109",
+                            $"The baseline ({baseline.Label}) has {string.Join(" and ", reasons)}, so the objects of database '{database.Name}' they hold were left out of its schema diff; fix them in the baseline, or generate against another one.",
+                            database.Id, path));
+                    }
+                }
+            }
+
+            if (!diffed)
+            {
+                // Not diffed from the baseline: the diff is empty, and no fact renders.
+                diffs[database.Name] = SchemaDiffer.Compare(before, current, database, parallelism, ct) with { FromBaseline = true };
+                continue;
+            }
+
+            // The diff starts from the baseline's capture under its own keys and ends at the working model's whole capture.
+            var stored = before is null ? null : based.Stored.GetValueOrDefault(database.Id) ?? before;
+            diffs[database.Name] = (SchemaDiffer.Compare(before, current, database, parallelism, ct, SchemaDiffer.RenderedFacts(database, Lacking))
+                with { FromBaseline = true }).WithStates(() => SchemaDiffer.State(stored, json), () => SchemaDiffer.State(full, json));
+        }
+
+        Add(ModelValidator.ApplySettings(snapshot.Settings, gaps));
+        return diffs;
+
+        static string Shown(IReadOnlyList<string> names) =>
+            string.Join(", ", names.Take(5)) + (names.Count > 5 ? $" and {(names.Count - 5).ToString(CultureInfo.InvariantCulture)} more" : "");
     }
 
     /// <summary>

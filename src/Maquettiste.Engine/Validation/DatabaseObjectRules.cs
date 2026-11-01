@@ -6,6 +6,8 @@ namespace Maquettiste.Engine.Validation;
 /// Rules on routine, database type and SQL object files (added 2026-10-01): MQ4017 (nothing to create for the database's dialect),
 /// MQ4018 (a type that is neither built-in nor a database type of the same database), MQ4019 (a database object of another database)
 /// and MQ4020 (a dependency cycle), plus the schema check (MQ2002) and identifier lengths (MQ4001) the other physical files have.
+/// SQL object environments and run-once (next-phase-1-design.md section 3.4): MQ4069 (a dependency that does not run in every
+/// environment its dependent runs in), MQ4070 (environments with phase before) and MQ4056 (run-once outside PostgreSQL).
 /// </summary>
 internal static class DatabaseObjectRules
 {
@@ -45,7 +47,7 @@ internal static class DatabaseObjectRules
                 CheckType(context, routine.Database, returns.Table![i].Type, Ptr.At("/returns/table", i) + "/type", $"Result column '{returns.Table[i].Name}'", report);
         }
 
-        CheckDependsOn(context, routine.Database, routine.DependsOn, report);
+        CheckDependsOn(context, routine.Database, routine.DependsOn, [], report);
         CheckCycle(context, routine, "Routine", report);
     }
 
@@ -127,9 +129,17 @@ internal static class DatabaseObjectRules
             var dialect = DialectInfo.Name(database.Dialect);
             if (!obj.Body.ContainsKey(dialect) && !obj.Body.ContainsKey("*"))
                 report.Add("MQ4017", $"SQL object '{obj.Name}' has no statements for {dialect} (database '{database.Name}') and no \"*\" ones, so it is not created there.", "/body");
+            if (obj.Apply == SqlObjectApply.Once && database.Dialect != Dialect.PostgreSql)
+                report.Add("MQ4056", $"SQL object '{obj.Name}' runs once, which needs the migration ledger; {dialect} (database '{database.Name}') has none, so the scripts leave it out.", "/apply", obj.Id);
         }
 
-        CheckDependsOn(context, obj.Database, obj.DependsOn, report);
+        if (obj.Environments.Count > 0 && obj.Phase == SqlObjectPhase.Before)
+        {
+            report.Add("MQ4070", $"SQL object '{obj.Name}' has environments and phase before: its environment scripts run after the schema script and the migrations, so the phase orders it only within those scripts.",
+                "/phase", obj.Id);
+        }
+
+        CheckDependsOn(context, obj.Database, obj.DependsOn, obj.Environments, report);
         CheckCycle(context, obj, "SQL object", report);
     }
 
@@ -175,8 +185,12 @@ internal static class DatabaseObjectRules
         }
     }
 
-    /// <summary>MQ4019: every <c>dependsOn</c> entry names an object of the same database (a missing id or a wrong kind is MQ2001 or MQ2002).</summary>
-    internal static void CheckDependsOn(ValidationContext context, string databaseId, IReadOnlyList<string> dependsOn, Report report)
+    /// <summary>
+    /// MQ4019: every <c>dependsOn</c> entry names an object of the same database (a missing id or a wrong kind is MQ2001 or MQ2002).
+    /// MQ4069: a SQL object it names runs in every environment the dependent runs in (<paramref name="environments"/>: empty means
+    /// every environment, as for views and routines), the inclusion test of MQ7111's coverage.
+    /// </summary>
+    internal static void CheckDependsOn(ValidationContext context, string databaseId, IReadOnlyList<string> dependsOn, IReadOnlyList<string> environments, Report report)
     {
         for (var i = 0; i < dependsOn.Count; i++)
         {
@@ -197,8 +211,26 @@ internal static class DatabaseObjectRules
                 report.Add("MQ4019", $"'dependsOn' names {target!.KindName} '{target.Name}' of database '{other}'; an object can only depend on objects of its own database.",
                     Ptr.At("/dependsOn", i));
             }
+
+            if (target is SqlObject { Environments.Count: > 0 } dependency)
+            {
+                var only = Listed(dependency.Environments);
+                if (environments.Count == 0)
+                {
+                    report.Add("MQ4069", $"'dependsOn' names SQL object '{dependency.Name}', which runs only in {only}, while this object runs in every environment; the dependency's environments must cover this object's.",
+                        Ptr.At("/dependsOn", i));
+                }
+                else if (environments.Where(e => !dependency.Environments.Contains(e, StringComparer.Ordinal)).ToList() is { Count: > 0 } missing)
+                {
+                    report.Add("MQ4069", $"'dependsOn' names SQL object '{dependency.Name}', which runs only in {only}, while this object also runs in {Listed(missing)}; the dependency's environments must cover this object's.",
+                        Ptr.At("/dependsOn", i));
+                }
+            }
         }
     }
+
+    /// <summary>Environment names in words: <c>'dev'</c>, or <c>'dev', 'test'</c>.</summary>
+    private static string Listed(IReadOnlyList<string> environments) => "'" + string.Join("', '", environments) + "'";
 
     /// <summary>MQ4020: the element is part of a dependency cycle.</summary>
     internal static void CheckCycle(ValidationContext context, Element element, string what, Report report)

@@ -26,6 +26,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | databases/<db>/types/ | database type (`kind: "database-type"`): a domain, composite, enum or range the database owns | a column uses it by naming its id or name in `nativeType` |
 | databases/<db>/objects/ | SQL object (`kind: "sql-object"`): a trigger, grant, extension or anything else, statements per dialect | `phase` before or after the tables; `dependsOn` orders it |
 | databases/<db>/queries/ | query (`kind: "query"`): `from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`, `collections` as JSON trees over the database's tables and views, with an `entity` as the row shape or, without one, the select list | column refs are `alias.<column key>` (the key `get_database_view` lists: an attribute id, a designed column's id), names accepted; never SQL text but an `sql` expression per dialect |
+| databases/<db>/migrations/open/ | migration fact (`kind: "migration"`): what a change of the database's shape means for its stored rows (`rename`, `change-type`, `drop`, `backfill`, `raw`, ...) | recorded by the saves themselves; complete a pending one, never delete one by hand |
 | mappings/ | projection overrides of older models, and relation mappings (`foreignKey`, junctions) | new work binds entities in their own file instead |
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
 | actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; not in a domain |
@@ -60,7 +61,15 @@ clobber a concurrent edit or leave a dangling id.
      what cannot exist without the element (call `delete_element` with `dryRun: true` first and read the plan).
    - Renaming an attribute or element is a plain save of the new `name`: references are ids, so nothing else changes
      (an element rename also moves its file).
+   - A save that renames, retypes or drops a table, column or sequence, or makes a column not null, records migration
+     facts in the same write and lists them in `facts`. A pending one (MQ4101 in the answer's diagnostics; the save went
+     through) lacks its intent: read it with `get_element` and complete it with `save_element` (a `conversion`, a
+     `dataCheck` for a narrowing, an `acknowledge` for a drop, a `value` for a backfill), or set `held: true`. Never
+     delete a fact file by hand: `fold_migrations` (CLI `maquettiste migration fold`) removes stale facts and joins
+     consecutive ones; `list_migrations` lists them in applied order.
 4. Check: a successful save already returns `diagnostics`; `validate` (optionally scoped by `elementIds`) checks the model.
+   With `against` (a model snapshot id, or a folder holding another copy of the project) it also checks that migration
+   facts explain every change since that baseline (MQ4102); `plan` takes the same `against` to diff migrations from it.
    For a query, `preview_query_sql` returns the SQL it renders (for its database's dialect or another) with the diagnostics
    (MQ4021 to MQ4043) that point at the node to fix. For an entity's binding, `preview_binding_sql` returns its select,
    insert, update and delete statements; `validate` reports MQ4044 to MQ4054 for bindings.
@@ -167,14 +176,34 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   storage strategy the project declares. When a table file already holds a reference type's rows, the type's optional
   `bindings` say so per database (`database`, `table`, `fields` mapping `code`, `label`, `description` or a field id to a
   column, `constants` for a table several types share); its rows then count as the table's rows in validation and seed data. Stereotypes and their meaning are the project's own, not built in.
-- Tag, stereotype or typed field: a tag is a label for grouping and search that no generation depends on (`domain:billing`);
-  a stereotype is a named, reusable meaning that changes what is generated or validated (`audited`, `tenant-scoped`, a
-  `high-churn` table storage profile); the values a feature needs are typed fields (a table's or index's `storage`, a
-  foreign key's `onDeleteColumns`), never strings packed into a tag (`storage:fillfactor=90` would be parsed and never
-  validated). A database feature the model has a field for (temporal keys, exclusion constraints, partitioning, storage
-  parameters, view security options, routine volatility and settings) goes in that field; what it has none for (grants,
-  extensions, policies, triggers) goes in a SQL object with `dependsOn`, which a migration runs again when it creates what
-  it depends on again.
+- Tag, stereotype or typed field: a tag is a label for grouping and search that no generation depends on
+  (`domain:billing`); a stereotype is a named, reusable meaning that changes what is generated or validated (`audited`,
+  `tenant-scoped`, a `high-churn` table storage profile); the values a feature needs are typed fields (a table's or
+  index's `storage`, a foreign key's `onDeleteColumns`), never strings packed into a tag (`storage:fillfactor=90` would
+  be parsed and never validated). A database feature the model has a field for (temporal keys, exclusion constraints,
+  partitioning, storage parameters, view security options, routine volatility and settings, an index column's `nulls`,
+  range columns) goes in that field; what it has none for (grants, extensions, policies, triggers) goes in a SQL object
+  with `dependsOn`, which a migration runs again when it creates what it depends on again.
+- A range column is `type: "range"` or `"multirange"` with a `subtype` (`int32`, `int64`, `decimal`, `date`,
+  `datetime`, `datetimeoffset`), not `string` with `nativeType: "tstzrange"`; values are its text form (`"[1,10)"`), and
+  only columns take it, never attributes. An index column's `nulls` (`first` or `last`, PostgreSQL) changes the index
+  only when it differs from the direction's default.
+- Name indexes that share columns: two indexes on the same columns (a btree and a gin) both get the conventional
+  `ix_<table>_<columns>`, and that is MQ4068, as is an index or key named like another index, key or table where the
+  dialect keeps one namespace for them (a PostgreSQL schema holds index and key names with its tables). Names compare
+  without case after cutting to the identifier limit (63 bytes on PostgreSQL), so two long names that start alike
+  collide too.
+- The migration ledger is bookkeeping, not part of the model: on PostgreSQL the sql-ddl scripts record the migration
+  facts they reach in three tables (`contract`, `applied_fact`, `applied_object`) in the schema
+  `migrations.ledgerSchema` names (default `migration_ledger`). Never model those tables, and keep the ledger schema
+  apart from every modeled schema (MQ4067). For a team's own migrator, `get_ledger_ddl` (`grantRead` for the read grant)
+  or `maquettiste migration ledger --grant-read <role>` prints the DDL; the engine never reads the ledger.
+- A SQL object that belongs to some environments only (a dev view, test data) lists them in `environments`; sql-ddl then
+  runs it only in `objects.<env>.sql` on every deploy, so its statements must be safe to run again (`CREATE OR REPLACE`,
+  `IF NOT EXISTS`). A view, routine or SQL object may depend only on a SQL object that runs in every environment it runs
+  in (MQ4069). `apply: "once"` runs a SQL object one time per database behind a ledger guard (PostgreSQL only; no
+  transaction control or `CONCURRENTLY` in it), and a change to it never runs again. Switching an existing object from
+  `converge` to `once` runs it one more time everywhere (the ledger has no row for it yet; the migration says so).
 - Localization settings are `localization` in `maquettiste.json` (`defaultLocale`, `locales`, `fallbacks`, `require`);
   default texts stay in the element files. Locale tags are BCP 47 with a hyphen and canonical case (`zh-CN`,
   `zh-Hant-TW`, `fr`), never `zh_CN` (MQ7201).

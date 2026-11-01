@@ -18,7 +18,7 @@ public sealed partial class SqliteTests
         var tables = Directory.GetFiles(Path.Combine(folder, "tables"), "*.sql").Order(StringComparer.Ordinal).ToList();
         var schema = File.ReadAllText(Path.Combine(folder, "schema.sql"));
         var seed = File.ReadAllText(Path.Combine(folder, "seed.sql"));
-        var migration = File.ReadAllText(Path.Combine(folder, "migrations", "0001.sql"));
+        var migration = File.ReadAllText(MigrationFiles.In(folder, 1));
 
         AssertShape(schema, tables.Count);
         AssertShape(migration, tables.Count);

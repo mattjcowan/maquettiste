@@ -1,5 +1,7 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Maquettiste.Engine.Hashing;
+using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
@@ -30,13 +32,49 @@ internal sealed class SchemaDiffer : ISchemaDiffer
     /// <returns>The diff and the captured snapshot.</returns>
     /// <param name="parallelism">Threads for capturing and for finding the unchanged tables (the result does not depend on it).</param>
     /// <param name="ct">Cancellation, observed between tables of the parallel capture and compare and between the two.</param>
+    /// <param name="facts">The migration facts that render with the diff (<see cref="SchemaDiffResult.Facts"/>), in applied order.</param>
     internal (SchemaDiffResult Diff, PhysicalSnapshot Current) DiffAndCapture(PhysicalSnapshot? previous, RDatabase current, int parallelism,
-        CancellationToken ct)
+        CancellationToken ct, IReadOnlyList<RMigration>? facts = null)
     {
         ArgumentNullException.ThrowIfNull(current);
         var after = SnapshotCapture.Capture(current, previous?.Revision ?? 0, parallelism, ct);
         ct.ThrowIfCancellationRequested();
-        return (Compare(previous, after, current, parallelism, ct), after);
+        return (Compare(previous, after, current, parallelism, ct, facts), after);
+    }
+
+    /// <summary>
+    /// The migration facts that render with a diff (next-phase-1-design.md section 3.2, "Facts in the schema diff"): the database's
+    /// complete and released facts that the baseline lacks, in applied order. Pending facts and held facts that are not released are
+    /// never listed.
+    /// </summary>
+    /// <param name="database">The resolved database (its facts are in applied order).</param>
+    /// <param name="lacking">Whether the baseline lacks a fact.</param>
+    /// <returns>The facts.</returns>
+    internal static IReadOnlyList<RMigration> RenderedFacts(RDatabase database, Func<RMigration, bool> lacking)
+    {
+        ArgumentNullException.ThrowIfNull(database);
+        ArgumentNullException.ThrowIfNull(lacking);
+        if (database.Migrations.Count == 0)
+            return [];
+        return [.. database.Migrations.Where(f => f.State is "complete" or "released" && lacking(f))];
+    }
+
+    /// <summary>
+    /// The state hash of one side of a diff (<see cref="SchemaDiffResult.FromState"/>, <see cref="SchemaDiffResult.ToState"/>): the
+    /// first 12 lowercase hex digits of SHA-256 over the capture in canonical form (as the committed snapshot file holds it) without
+    /// its revision, aliases and facts; empty for no capture. A capture saved as the committed snapshot and read back hashes alike.
+    /// </summary>
+    /// <param name="capture">The capture, or <see langword="null"/>.</param>
+    /// <param name="json">The canonical writer.</param>
+    /// <returns>The state.</returns>
+    internal static string State(PhysicalSnapshot? capture, ICanonicalJson json)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        if (capture is null)
+            return "";
+        var bare = SnapshotCapture.Sorted(capture with { SchemaPath = null, Revision = 0, Aliases = null, Facts = [] });
+        var bytes = json.Serialize(bare, SnapshotStore.SchemaFile, SnapshotStore.Folder + "/state.json");
+        return Convert.ToHexStringLower(SHA256.HashData(bytes))[..12];
     }
 
     /// <summary>Diffs two snapshots. <paramref name="current"/>, when given, supplies the <see cref="RTable"/> and <see cref="RColumn"/> of each change.</summary>
@@ -45,11 +83,14 @@ internal sealed class SchemaDiffer : ISchemaDiffer
     /// <param name="current">The current resolved database, or <see langword="null"/>.</param>
     /// <param name="parallelism">Threads for finding the unchanged tables (the result does not depend on it).</param>
     /// <param name="ct">Cancellation, observed by the parallel unchanged-table check.</param>
+    /// <param name="facts">The migration facts that render with the diff (<see cref="RenderedFacts"/>), in applied order: a fact alone
+    /// makes the diff non-empty, and their ids and content hashes reach its hash.</param>
     /// <returns>The diff; <see cref="SchemaDiffResult.FromRevision"/> is <paramref name="before"/>'s revision (0 without one).</returns>
     internal static SchemaDiffResult Compare(PhysicalSnapshot? before, PhysicalSnapshot after, RDatabase? current, int parallelism = 1,
-        CancellationToken ct = default)
+        CancellationToken ct = default, IReadOnlyList<RMigration>? facts = null)
     {
         ArgumentNullException.ThrowIfNull(after);
+        facts ??= [];
         var tablesByKey = new Dictionary<string, RTable>(StringComparer.Ordinal);
         if (current is not null)
         {
@@ -127,16 +168,17 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         var routines = CompareDefinitions(before?.Routines ?? [], after.Routines);
         var objects = CompareDefinitions(before?.Objects ?? [], after.Objects);
         var isEmpty = !databaseChanged && tables.Count == 0 && views.Count == 0 && sequences.Count == 0 && types.Count == 0 && routines.Count == 0
-            && objects.Count == 0 && schemas.Count == 0;
+            && objects.Count == 0 && schemas.Count == 0 && facts.Count == 0;
         var from = before?.Revision ?? 0;
         var to = isEmpty ? from : from + 1;
-        var hash = Hash(before, after, from, to, tables, oldTables, newTables, views, sequences, types, routines, objects, schemas);
+        var hash = Hash(before, after, from, to, tables, oldTables, newTables, views, sequences, types, routines, objects, schemas, facts);
         return new SchemaDiffResult(current?.Name ?? after.Name, from, to, isEmpty, hash, tables, views, sequences)
         {
             Schemas = schemas,
             Types = types,
             Routines = routines,
             Objects = objects,
+            Facts = facts,
         };
     }
 
@@ -431,6 +473,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
     {
         var list = new List<PropertyChange>();
         Property(list, "type", a.Type, b.Type);
+        Property(list, "subtype", a.Subtype, b.Subtype);
         Property(list, "length", a.Length, b.Length);
         Property(list, "precision", a.Precision, b.Precision);
         Property(list, "scale", a.Scale, b.Scale);
@@ -564,13 +607,14 @@ internal sealed class SchemaDiffer : ISchemaDiffer
 
     /// <summary>
     /// Index columns as plain strings: the column key (an expression in parentheses), its prefix length in parentheses, then
-    /// <c> desc</c> when descending.
+    /// <c> desc</c> when descending and <c> nulls first|last</c> when the nulls order is not the direction's default.
     /// </summary>
     internal static IReadOnlyList<string> IndexColumns(IReadOnlyList<SnapshotIndexColumn> columns) =>
         [.. columns.Select(c => (c.Column ?? "(" + c.Expression + ")")
             + (c.OperatorClass is { } opclass ? " " + opclass : "")
             + (c.Length is { } length ? "(" + length.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")" : "")
-            + (c.Descending ? " desc" : ""))];
+            + (c.Descending ? " desc" : "")
+            + (c.Nulls is { } nulls ? " nulls " + nulls : ""))];
 
     private static void Property<T>(List<PropertyChange> list, string name, T a, T b)
     {
@@ -593,7 +637,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
     private static string Hash(PhysicalSnapshot? before, PhysicalSnapshot after, int from, int to, List<TableChange> tables,
         SortedDictionary<string, SnapshotTable> oldTables, SortedDictionary<string, SnapshotTable> newTables, List<ObjectChange> views,
         List<ObjectChange> sequences, List<DefinitionChange> types, List<DefinitionChange> routines, List<DefinitionChange> objects,
-        List<ObjectChange> schemas)
+        List<ObjectChange> schemas, IReadOnlyList<RMigration> facts)
     {
         using var h = new HashBuilder();
         h.Add("mq-schema-diff-2").Add(after.Database).Add(after.Name).Add(PlainValues.Kebab(after.Dialect)).Add(from).Add(to);
@@ -661,6 +705,14 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         {
             h.Add("schemas");
             AddObjects(h, schemas);
+        }
+
+        // The facts that render, by id and content hash, likewise only when there are some.
+        if (facts.Count > 0)
+        {
+            h.Add("facts").Add(facts.Count);
+            foreach (var fact in facts)
+                h.Add(fact.Id).Add(fact.Hash);
         }
 
         return h.Finish();

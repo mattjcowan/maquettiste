@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using Maquettiste.Engine.Ledger;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Resolution;
 
@@ -94,14 +96,14 @@ internal sealed partial class DatabaseRun
                     NullsNotDistinct = x.Spec.NullsNotDistinct,
                     WithoutOverlaps = x.Spec.WithoutOverlaps,
                 })];
-            var indexes = t.Indexes.Select(i => (Spec: i, Columns: i.Columns.Select(c => (Column: c.Column is null ? null : t.Resolve(c.Column), c.Descending, c.Expression, c.Length, c.OperatorClass)).ToList(),
+            var indexes = t.Indexes.Select(i => (Spec: i, Columns: i.Columns.Select(c => (Column: c.Column is null ? null : t.Resolve(c.Column), c.Descending, c.Expression, c.Length, c.OperatorClass, c.Nulls)).ToList(),
                     Include: i.Include.Select(t.Resolve).ToList()))
                 .Where(x => x.Columns.Count > 0 && x.Columns.All(c => c.Column is not null || c.Expression is not null) && x.Include.All(c => c is not null))
                 .ToList();
             // An index a table file declares (overlay or designed table) overrides the index an attribute's `indexed` flag synthesizes on the
             // same columns, so a file can change its sort order, method or name without producing a second index of the same name. An
             // expression is named "expr" in a conventional index name.
-            static string IndexColumnNames(IEnumerable<(RColumn? Column, bool Descending, string? Expression, int? Length, string? OperatorClass)> columns) =>
+            static string IndexColumnNames(IEnumerable<(RColumn? Column, bool Descending, string? Expression, int? Length, string? OperatorClass, string? Nulls)> columns) =>
                 string.Join('_', columns.Select(c => c.Column?.Name ?? "expr"));
             var fileColumnSets = indexes.Where(x => x.Spec.FromFile && x.Columns.All(c => c.Column is not null)).Select(x => Joined(x.Columns.Select(c => c.Column!))).ToHashSet(StringComparer.Ordinal);
             indexes.RemoveAll(x => !x.Spec.FromFile && fileColumnSets.Contains(Joined(x.Columns.Select(c => c.Column!))));
@@ -113,6 +115,7 @@ internal sealed partial class DatabaseRun
                     Columns = [.. x.Columns.Select(c => new RIndexColumn
                     {
                         Column = c.Column, Expression = c.Column is null ? c.Expression : null, Descending = c.Descending, Length = c.Length, OperatorClass = c.OperatorClass,
+                        Nulls = c.Nulls,
                     })],
                     Include = [.. x.Include!],
                     Where = x.Spec.Where,
@@ -605,12 +608,166 @@ internal sealed partial class DatabaseRun
 
         void Check(string what, string name, string elementId)
         {
-            if (name.Length <= limit || !seen.Add((what, name, elementId)))
+            var length = DialectInfo.IdentifierLength(_db.Dialect, name);
+            if (length <= limit || !seen.Add((what, name, elementId)))
                 return;
             _run.AddDiagnostic("MQ4001",
                 string.Create(CultureInfo.InvariantCulture,
-                    $"{what} name '{name}' in database '{_db.Name}' is {name.Length} characters long; the {_dialect} limit is {limit}."),
+                    $"{what} name '{name}' in database '{_db.Name}' is {length} {DialectInfo.IdentifierUnit(_db.Dialect)} long; the {_dialect} limit is {limit}."),
                 elementId);
+        }
+    }
+
+    /// <summary>An index, constraint or schema object that holds a name in a namespace MQ4068 checks.</summary>
+    /// <param name="Holder">What kind of index or constraint it is; <see cref="NameHolders.None"/> for a table, view, sequence or routine.</param>
+    /// <param name="What">What it is, for messages ("unique key", "table").</param>
+    /// <param name="Name">Its name.</param>
+    /// <param name="Table">The table it belongs to, or <see langword="null"/> for a schema object.</param>
+    /// <param name="ElementId">The element the diagnostic is reported on.</param>
+    /// <param name="Pointer">The pointer in that element's file, or <see langword="null"/>.</param>
+    /// <param name="Schema">A schema object's schema, for messages.</param>
+    private sealed record NameHolder(NameHolders Holder, string What, string Name, RTable? Table, string ElementId, string? Pointer, string? Schema = null);
+
+    /// <summary>
+    /// MQ4068 (next-phase-1-design.md section 3.5): two index or constraint names collide in a namespace the dialect keeps
+    /// (<see cref="DialectInfo.NameSpaces"/>). Names compare as the database keeps them: cut to the identifier limit in the dialect's
+    /// unit, then upper-cased invariantly. The schema namespaces that share object names first take every table, view and sequence
+    /// (and, on SQL Server, routine) of the database, which only bar names (MQ4002 checks them against each other). Tables are then
+    /// visited in published order (schema, name); within a table the primary key, uniques, foreign keys, checks, exclusions, default
+    /// constraints (their <c>defaultName</c>) and indexes, in file order. The first holder keeps a name; each later one reports once,
+    /// on its table file at its pointer, or on the table's source element without a pointer when no file declares it.
+    /// </summary>
+    private void CheckNames()
+    {
+        var spaces = DialectInfo.NameSpaces(_db.Dialect);
+        var limit = _rdb.MaxIdentifierLength;
+        var taken = new Dictionary<(int Space, string Instance, string Key), NameHolder>();
+        var tables = _tableOrder
+            .OrderBy(t => t.Table.Schema ?? "", StringComparer.Ordinal).ThenBy(t => t.Table.Name, StringComparer.Ordinal)
+            .ThenBy(t => t.Table.Key, StringComparer.Ordinal).ToList();
+
+        var objects = new List<(SchemaObjects Kind, string? Schema, NameHolder Holder)>();
+        foreach (var t in tables)
+            objects.Add((SchemaObjects.Tables, t.Table.Schema, new NameHolder(NameHolders.None, "table", t.Table.Name, null, t.SourceElementId, null, t.Table.Schema)));
+        foreach (var (view, sourceId) in _views)
+            objects.Add((SchemaObjects.Views, view.Schema, new NameHolder(NameHolders.None, "view", view.Name, null, sourceId, null, view.Schema)));
+        foreach (var (sequence, sourceId, _) in _sequenceOrder)
+            objects.Add((SchemaObjects.Sequences, sequence.Schema, new NameHolder(NameHolders.None, "sequence", sequence.Name, null, sourceId, null, sequence.Schema)));
+        foreach (var (routine, file, _) in _routines)
+            objects.Add((SchemaObjects.Routines, routine.Schema, new NameHolder(NameHolders.None, "routine", routine.Name, null, file.Id, null, routine.Schema)));
+        for (var i = 0; i < spaces.Length; i++)
+        {
+            foreach (var (kind, schema, holder) in objects)
+            {
+                if ((spaces[i].Objects & kind) != 0)
+                    taken.TryAdd((i, schema ?? "", Key(holder.Name)), holder);
+            }
+        }
+
+        foreach (var t in tables)
+        {
+            foreach (var holder in HoldersOf(t))
+            {
+                NameHolder? first = null;
+                var at = -1;
+                for (var i = 0; i < spaces.Length; i++)
+                {
+                    if ((spaces[i].Holders & holder.Holder) == 0)
+                        continue;
+                    var instance = spaces[i].Scope == NameScope.Table ? t.Table.Key : t.Table.Schema ?? "";
+                    var key = (i, spaces[i].Scope == NameScope.Table ? "t:" + instance : instance, Key(holder.Name));
+                    if (taken.TryAdd(key, holder) || first is not null)
+                        continue;
+                    first = taken[key];
+                    at = i;
+                }
+
+                if (first is not null)
+                    ReportName(holder, first, spaces[at], limit);
+            }
+        }
+
+        string Key(string name) => DialectInfo.CutIdentifier(_db.Dialect, name, limit).ToUpperInvariant();
+    }
+
+    private void ReportName(NameHolder holder, NameHolder first, NameSpace space, int? limit)
+    {
+        var cut = !string.Equals(holder.Name.ToUpperInvariant(), first.Name.ToUpperInvariant(), StringComparison.Ordinal)
+            ? string.Create(CultureInfo.InvariantCulture,
+                $"; it keeps only the first {limit} {DialectInfo.IdentifierUnit(_db.Dialect)} of a name, and both names start with '{DialectInfo.CutIdentifier(_db.Dialect, holder.Name, limit)}'")
+            : "";
+        var described = Describe(holder);
+        _run.AddDiagnostic("MQ4068",
+            $"{char.ToUpperInvariant(described[0])}{described[1..]} in database '{_db.Name}' has the name of {Describe(first)}: {_dialect} keeps {space.Text}{cut}; rename one of them.",
+            holder.ElementId, holder.Pointer);
+
+        static string Describe(NameHolder h) => h.Table is { } table
+            ? $"{h.What} '{h.Name}' of table '{Qualified(table.Schema, table.Name)}'"
+            : $"{h.What} '{Qualified(h.Schema, h.Name)}'";
+    }
+
+    /// <summary>
+    /// A table's index and constraint names in the order MQ4068 visits them, each with where to report it: the table file (designed
+    /// table or overlay) that declares it, at <c>/&lt;list&gt;/&lt;i&gt;/name</c> when the file names it, else at
+    /// <c>/&lt;list&gt;/&lt;i&gt;</c>; a key or index no file declares (a synthesized key, an index an attribute's <c>indexed</c> flag
+    /// made) is reported on the table's source element without a pointer.
+    /// </summary>
+    private IEnumerable<NameHolder> HoldersOf(TableBuild t)
+    {
+        var file = t.Source ?? t.Overlay;
+        var table = t.Table;
+        if (table.PrimaryKey is { } pk)
+        {
+            yield return file?.PrimaryKey is { } filePk
+                ? new NameHolder(NameHolders.PrimaryKey, "primary key", pk.Name, table, file.Id, filePk.Name is null ? "/primaryKey" : "/primaryKey/name")
+                : new NameHolder(NameHolders.PrimaryKey, "primary key", pk.Name, table, t.SourceElementId, null);
+        }
+
+        foreach (var unique in table.Uniques)
+            yield return Holder(NameHolders.UniqueKey, "unique key", unique.Name, unique.Id, "uniques", file?.Uniques.Select(u => (u.Id, u.Name)));
+        foreach (var fk in table.ForeignKeys)
+            yield return Holder(NameHolders.ForeignKey, "foreign key", fk.Name, fk.Id, "foreignKeys", file?.ForeignKeys.Select(f => (f.Id, f.Name)));
+        foreach (var check in table.Checks)
+            yield return Holder(NameHolders.Check, "check constraint", check.Name, check.Id, "checks", file?.Checks.Select(c => (c.Id, c.Name)));
+        foreach (var exclusion in table.Exclusions)
+            yield return Holder(NameHolders.Exclusion, "exclusion constraint", exclusion.Name, exclusion.Id, "exclusions", file?.Exclusions.Select(e => (e.Id, e.Name)));
+        if (_db.Dialect == Dialect.SqlServer)
+        {
+            foreach (var column in t.Columns)
+            {
+                if (column.DefaultName is not { } name)
+                    continue;
+                var at = file is null ? -1 : IndexOf(file.Columns.Select(c => (c.Id, c.DefaultName)), column.Id);
+                yield return new NameHolder(NameHolders.DefaultConstraint, $"default constraint of column '{column.Name}'", name, table,
+                    at < 0 ? t.SourceElementId : file!.Id,
+                    at < 0 ? null : "/columns/" + at.ToString(CultureInfo.InvariantCulture) + "/defaultName");
+            }
+        }
+
+        foreach (var index in table.Indexes)
+            yield return Holder(NameHolders.Index, "index", index.Name, index.Id, "indexes", file?.Indexes.Select(i => (i.Id, i.Name)));
+
+        NameHolder Holder(NameHolders kind, string what, string name, string? id, string list, IEnumerable<(string Id, string? Name)>? entries)
+        {
+            var items = entries?.ToList();
+            var at = id is null || items is null ? -1 : IndexOf(items, id);
+            if (at < 0)
+                return new NameHolder(kind, what, name, table, t.SourceElementId, null);
+            var pointer = "/" + list + "/" + at.ToString(CultureInfo.InvariantCulture);
+            return new NameHolder(kind, what, name, table, file!.Id, items![at].Name is null ? pointer : pointer + "/name");
+        }
+
+        static int IndexOf(IEnumerable<(string Id, string? Name)> entries, string? id)
+        {
+            var i = 0;
+            foreach (var (entryId, _) in entries)
+            {
+                if (string.Equals(entryId, id, StringComparison.Ordinal))
+                    return i;
+                i++;
+            }
+
+            return -1;
         }
     }
 
@@ -640,6 +797,13 @@ internal sealed partial class DatabaseRun
             .Add("k:sequence").Add("k:view").Add("k:package").Add(Conventions).Add(InflectionKey).Add(TypeMaps)
             .Element(_db.Id).Referrers(_db.Id)
             .AddRange(_run.ConceptualElementKeys);
+        if (LedgerContract.Supports(_db.Dialect))
+        {
+            // The ledger's schema reaches the scripts that write ledger rows (next-phase-1-design.md section 3.3).
+            _rdb.LedgerSchema = _run.Settings.Migrations.LedgerSchema;
+            membership.Add(MigrationsKey);
+        }
+
         foreach (var t in _tableOrder)
             membership.AddRange(t.Deps.ToList());
         foreach (var (_, _, deps) in _sequenceOrder)
@@ -668,6 +832,8 @@ internal sealed partial class DatabaseRun
             if (name is not null)
                 schemaNames.Add(name);
         }
+
+        CheckLedgerSchema(schemaNames, tables, views, sequences, types, routines, objects);
 
         var schemas = new List<RSchema>();
         foreach (var name in schemaNames)
@@ -703,5 +869,47 @@ internal sealed partial class DatabaseRun
         _rdb.Queries = new RList<RQuery>(queries, keys);
         _run.Register(_rdb);
         return _rdb;
+    }
+
+    /// <summary>
+    /// MQ4067 (next-phase-1-design.md section 3.3): the ledger's schema is also a schema of this database's modeled objects, declared
+    /// (reported at <c>/schemas/&lt;i&gt;/name</c> of the database file) or named by an object (reported on the database file, naming
+    /// the first object in published order that uses it; an object without a schema is in the default schema). Unquoted names fold
+    /// to lower case on PostgreSQL, so the names compare without case unless the database quotes every identifier.
+    /// </summary>
+    private void CheckLedgerSchema(SortedSet<string> schemaNames, List<RTable> tables, List<RView> views, List<RSequence> sequences,
+        List<RDatabaseType> types, List<RRoutine> routines, List<RSqlObject> objects)
+    {
+        if (_rdb.LedgerSchema is not { } ledger)
+            return;
+        var comparison = _db.Quoting == Quoting.Always ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        bool Same(string? schema) => (schema ?? _rdb.DefaultSchema) is { } name && string.Equals(name, ledger, comparison);
+
+        for (var i = 0; i < _db.Schemas.Count; i++)
+        {
+            if (!Same(_db.Schemas[i].Name))
+                continue;
+            _run.AddDiagnostic("MQ4067",
+                $"Schema '{_db.Schemas[i].Name}' of database '{_db.Name}' is also the migration ledger's schema (migrations.ledgerSchema '{ledger}'): the bookkeeping tables would share it with modeled objects; choose another ledger schema.",
+                _db.Id, "/schemas/" + i.ToString(CultureInfo.InvariantCulture) + "/name");
+            return;
+        }
+
+        if (!schemaNames.Any(n => Same(n)) && !(_rdb.DefaultSchema is { } fallback && Same(fallback)))
+            return;
+        var user = tables.Where(t => Same(t.Schema)).Select(t => ("table", t.Schema, t.Name))
+            .Concat(views.Where(v => Same(v.Schema)).Select(v => ("view", v.Schema, v.Name)))
+            .Concat(sequences.Where(q => Same(q.Schema)).Select(q => ("sequence", q.Schema, q.Name)))
+            .Concat(types.Where(t => Same(t.Schema)).Select(t => ("database type", t.Schema, t.Name)))
+            .Concat(routines.Where(r => Same(r.Schema)).Select(r => ("routine", r.Schema, r.Name)))
+            .Concat(objects.Where(o => Same(o.Schema)).Select(o => ("SQL object", o.Schema, o.Name)))
+            .Select(x => ((string What, string? Schema, string Name)?)x)
+            .FirstOrDefault();
+        if (user is not { } first)
+            return;
+        var schema = first.Schema ?? _rdb.DefaultSchema;
+        _run.AddDiagnostic("MQ4067",
+            $"Schema '{schema}' of database '{_db.Name}', which {first.What} '{schema}.{first.Name}' uses, is also the migration ledger's schema (migrations.ledgerSchema '{ledger}'): the bookkeeping tables would share it with modeled objects; choose another ledger schema.",
+            _db.Id);
     }
 }

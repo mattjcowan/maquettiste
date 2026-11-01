@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../../.schema/v1/migration.json",
+  "kind": "migration",
+  "id": "01JFCT0000000000000000000E",
+  "database": "01JDBS00000000000000000001",
+  "fact": "backfill",
+  "object": {
+    "kind": "column",
+    "table": "01JENT00000000000000000001@01JDBS00000000000000000001",
+    "key": "01JATT0000000000000000000B",
+    "schema": "billing",
+    "tableName": "invoices",
+    "name": "currency"
+  },
+  "value": {
+    "sqlserver": "'EUR'"
+  }
+}

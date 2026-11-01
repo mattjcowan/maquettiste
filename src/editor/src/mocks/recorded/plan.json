@@ -1,5 +1,5 @@
 {
-  "id": "01M40H3B7NCBAJ3SBVZW3J5FPF",
+  "id": "01M68TVC0SVXATWASJ3ENN88M0",
   "request": {
     "mode": "apply",
     "packs": null,
@@ -8,7 +8,8 @@
     "handEdits": null,
     "includeDiffs": false,
     "lock": "wait",
-    "stageBarriers": false
+    "stageBarriers": false,
+    "against": null
   },
   "modelVersion": 1,
   "packs": [
@@ -23,7 +24,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/table:01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "e1bd550d2adb018663949fb752236d61190cc0aa9a199e92fbe171ccac001d6f",
+      "newHash": "4b51673fbedbff7007c0eb6594f9240421ddaf7adab78d6760308b841135655e",
       "diff": null
     },
     {
@@ -32,7 +33,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/table:01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "bf51a9563a1d9e200831cc6a0a3be9d840a8402cece8516a41c7000769fb6e17",
+      "newHash": "1cba8665b02efc3c26945de5dc96dcec101f1d4118986e5093bf4d2ea8ffab3f",
       "diff": null
     },
     {
@@ -41,7 +42,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/table:01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "1403b0912fffe89bd8728d627036a87313957eb3ff1e8fb25d8d4eaac69c9b95",
+      "newHash": "2576e47fc774856d7c4fa1e344922f60ab0bc55aff0e568e0b343cb2000107c2",
       "diff": null
     },
     {
@@ -59,7 +60,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/table:01J92P0V1DKHD5Q02DV6S5M53D@01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "109c2afdd0f4c0392118c6ccce9ac9571297e230a95acf134b58ad86746fde7e",
+      "newHash": "5f97992776c4093556d9eb20279f7831538592e6a6e1daa97d2e726983ee4489",
       "diff": null
     },
     {
@@ -68,7 +69,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/table:01J92P0V0HEGSC6MW92CST5KA6@01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "cd6116859f5ddd7e894af03dc8d8863fdb3943ac11b385c7287f584c9bfb50aa",
+      "newHash": "cc4b0c82025af4f2cce903ee800a4cd9bfb0728c6acfca3462d9af22fa46bfba",
       "diff": null
     },
     {
@@ -77,16 +78,16 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/table:01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "e979fc8be304da2485b6f838fbf4d146ca56b37e632313a794bbd592a131b5bb",
+      "newHash": "3e6b3b1ca8d66027439ada1be8b6defcc809d2ad0d18c998e6bc58aa77882397",
       "diff": null
     },
     {
-      "path": "db/main/migrations/0001.sql",
+      "path": "db/main/migrations/0001-39bb8acbe14f.sql",
       "kind": "added",
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/migration:01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "o:c52987a4236ddd0eadebb6bfea68de3299d70c89506408b20c54c7c9cef589e2",
+      "newHash": "o:cef36ce41d243db2fd2a2b58d008ad979c96bca24c8b6c15cb35e03b0afca98b",
       "diff": null
     },
     {
@@ -418,7 +419,7 @@
     "unchanged": 0
   },
   "unitsRendered": {
-    "new": 43
+    "new": 45
   },
   "unitsSkipped": {}
 }

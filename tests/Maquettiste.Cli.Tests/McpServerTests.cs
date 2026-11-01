@@ -11,9 +11,9 @@ public sealed class McpSurfaceTests
     private static readonly string[] Tools =
     [
         "apply_batch", "apply_plan", "compare_snapshots", "create_element", "create_seed", "create_snapshot", "delete_element", "delete_extension_file", "delete_pack", "delete_pack_file", "explain_unit",
-        "export_process", "export_seed_csv", "format_model", "get_database_view", "get_element", "get_elements", "get_materialize_status", "get_model_index", "get_model_kinds", "get_pack",
+        "export_process", "export_seed_csv", "fold_migrations", "format_model", "get_database_view", "get_element", "get_elements", "get_ledger_ddl", "get_materialize_status", "get_model_index", "get_model_kinds", "get_pack",
         "get_pack_outputs", "get_plan", "get_plan_diff", "get_project", "get_references", "get_resolved_model", "get_schema", "get_settings", "get_template_context",
-        "get_translations", "import_process", "import_seed_csv", "list_extension_files", "list_pack_files", "list_packs", "list_snapshots", "list_validation_rules",
+        "get_translations", "import_process", "import_seed_csv", "list_extension_files", "list_migrations", "list_pack_files", "list_packs", "list_snapshots", "list_validation_rules",
         "localization_status", "move_extension_file", "move_pack_file", "new_pack", "plan", "preview_binding_sql", "preview_materialize", "preview_query_sql", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
         "reference_type_usage", "rename_pack", "restore_snapshot", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
         "sync_enum_from_process", "tag_usage", "unit_paths", "validate", "verify_scenarios", "write_extension_file", "write_pack_file",
@@ -55,7 +55,7 @@ public sealed class McpSurfaceTests
         var ct = TestContext.Current.CancellationToken;
         await using var session = await McpSession.StartAsync(ct: ct);
         var tools = await session.Client.ListToolsAsync(cancellationToken: ct);
-        Assert.Equal(25, Engine.AgentTools.All.Count);
+        Assert.Equal(27, Engine.AgentTools.All.Count);
         foreach (var tool in Engine.AgentTools.All)
         {
             var listed = tools.Single(t => t.Name == tool.Name).ProtocolTool;
@@ -235,6 +235,53 @@ public sealed class McpEndOfInputTests
 public sealed class McpReadTests
 {
     [Fact]
+    public async Task Validate_against_a_folder_or_a_snapshot_compares_the_model_with_it()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        using var copy = new Maquettiste.Testing.TempRepo();
+        CliRepo.CopyTree(repo.ModelRoot, copy.ModelRoot);
+        await using var session = await McpSession.StartAsync(repo, ct);
+        var snapshot = (string)(await session.OkAsync("create_snapshot", new { name = "Base" }))["id"]!;
+
+        // Renamed by hand, behind the server: no write recorded a fact.
+        const string notes = ".maquettiste/model/databases/main/tables/notes.json";
+        repo.Replace(notes, "\"name\": \"body\"", "\"name\": \"text\"");
+        foreach (var against in new[] { snapshot, copy.RepoRoot })
+        {
+            var report = await session.OkAsync("validate", new { against });
+            var unexplained = report["diagnostics"]!.AsArray().Single(d => (string)d!["rule"]! == "MQ4102")!;
+            Assert.Equal((notes, "/columns/3"), ((string)unexplained["filePath"]!, (string)unexplained["jsonPointer"]!));
+            Assert.Contains("rename column billing.notes.body to text", (string)unexplained["message"]!, StringComparison.Ordinal);
+        }
+
+        Assert.Equal("bad-request", (await session.ErrorAsync("validate", new { against = "no-such-baseline" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("validate", new { against = snapshot, elementIds = new[] { McpSession.Customer } })).Code);
+    }
+
+    [Fact]
+    public async Task Get_ledger_ddl_returns_the_contract_version_schema_and_ddl()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        // The only PostgreSQL database and the default schema; grant is null unless a role is asked for.
+        var answer = (await session.OkAsync("get_ledger_ddl")).AsObject();
+        Assert.Equal(1, (int)answer["contractVersion"]!);
+        Assert.Equal(("main", "postgresql", "migration_ledger"), ((string)answer["database"]!, (string)answer["dialect"]!, (string)answer["schema"]!));
+        Assert.Equal(Engine.Ledger.LedgerContract.Ddl(Engine.Model.Dialect.PostgreSql, "migration_ledger"), (string)answer["ddl"]!);
+        Assert.True(answer.ContainsKey("grant"));
+        Assert.Null(answer["grant"]);
+
+        var granted = await session.OkAsync("get_ledger_ddl", new { database = "01J92P0V1QRN2181XM2ZWE02W4", grantRead = "reporting" });
+        Assert.Equal(Engine.Ledger.LedgerContract.ReadGrant(Engine.Model.Dialect.PostgreSql, "migration_ledger", "reporting"), (string)granted["grant"]!);
+
+        Assert.Equal("bad-request", (await session.ErrorAsync("get_ledger_ddl", new { database = "nowhere" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("get_ledger_ddl", new { grantRead = "" })).Code);
+    }
+
+    [Fact]
     public async Task Project_names_the_release_and_the_workspace_from_the_variable_else_from_git()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -339,6 +386,71 @@ public sealed class McpReadTests
 /// <summary>Saves, conflicts, creates, deletes and batches.</summary>
 public sealed class McpWriteTests
 {
+    [Fact]
+    public async Task A_rename_through_save_element_writes_one_fact_file_with_no_prompt()
+    {
+        await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
+        var loaded = await session.OkAsync("get_element", new { id = McpSession.Customer });
+        var renamed = loaded["json"]!.DeepClone();
+        renamed["attributes"]![3]!["name"] = "memberSince";
+
+        // The save goes through as any save: the answer lists the fact its write recorded, in the same atomic set.
+        var saved = await session.OkAsync("save_element", new { id = McpSession.Customer, element = renamed, expectedHash = (string)loaded["hash"]! });
+
+        Assert.Equal("saved", (string)saved["outcome"]!);
+        Assert.Empty(saved["diagnostics"]!.AsArray());
+        var fact = Assert.Single(saved["facts"]!.AsArray())!;
+        Assert.Equal(("rename", "complete", "rename column billing.customers.customer_since to member_since"),
+            ((string)fact["fact"]!, (string)fact["state"]!, (string)fact["summary"]!));
+        Assert.Empty(fact["missing"]!.AsArray());
+        var path = (string)fact["path"]!;
+        Assert.StartsWith(".maquettiste/model/databases/main/migrations/open/", path, StringComparison.Ordinal);
+        Assert.Equal([Path.GetFileName(path)], Directory.EnumerateFiles(Path.GetDirectoryName(session.Repo.PathOf(path))!).Select(Path.GetFileName));
+        Assert.Contains(saved["changes"]!["changed"]!.AsArray(), c => (string)c!["id"]! == (string)fact["id"]!);
+
+        // The fact reads back like any element.
+        var read = await session.OkAsync("get_element", new { id = (string)fact["id"]! });
+        Assert.Equal(("migration", "rename"), ((string)read["json"]!["kind"]!, (string)read["json"]!["fact"]!));
+    }
+
+    [Fact]
+    public async Task Two_renames_fold_into_one_fact_that_list_migrations_shows()
+    {
+        await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
+        var baseline = (string)(await session.OkAsync("create_snapshot", new { name = "Base" }))["id"]!;
+        var facts = new List<string>();
+        foreach (var name in new[] { "memberSince", "joinedOn" })
+        {
+            var loaded = await session.OkAsync("get_element", new { id = McpSession.Customer });
+            var renamed = loaded["json"]!.DeepClone();
+            renamed["attributes"]![3]!["name"] = name;
+            var saved = await session.OkAsync("save_element", new { id = McpSession.Customer, element = renamed, expectedHash = (string)loaded["hash"]! });
+            facts.Add((string)Assert.Single(saved["facts"]!.AsArray())!["id"]!);
+        }
+
+        // list_migrations pages the facts in applied order.
+        var page = await session.OkAsync("list_migrations", new { limit = 1 });
+        Assert.Equal(2, (int)page["total"]!);
+        Assert.Equal(facts[0], (string)page["facts"]![0]!["id"]!);
+        var rest = await session.OkAsync("list_migrations", new { cursor = (string)page["next"]! });
+        Assert.Equal(facts[1], (string)Assert.Single(rest["facts"]!.AsArray())!["id"]!);
+        Assert.Null(rest["next"]);
+        Assert.Equal("bad-request", (await session.ErrorAsync("list_migrations", new { database = "nowhere" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("list_migrations", new { cursor = "nope" })).Code);
+
+        // fold_migrations against the snapshot: a dry run lists the files, then the fold keeps the last fact.
+        var dry = await session.OkAsync("fold_migrations", new { against = baseline, dryRun = true });
+        Assert.Equal(2, dry["files"]!.AsArray().Count);
+        Assert.Equal(2, (int)(await session.OkAsync("list_migrations"))["total"]!);
+        var folded = await session.OkAsync("fold_migrations", new { against = baseline });
+        var join = Assert.Single(folded["joined"]!.AsArray())!;
+        Assert.Equal((facts[1], facts[0]), ((string)join["kept"]!, (string)Assert.Single(join["removed"]!.AsArray())!));
+        var after = await session.OkAsync("list_migrations");
+        Assert.Equal("rename column billing.customers.customer_since to joined_on", (string)Assert.Single(after["facts"]!.AsArray())!["summary"]!);
+        Assert.Equal("bad-request", (await session.ErrorAsync("fold_migrations", new { against = "no-such-snapshot" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("fold_migrations", new { database = "nowhere" })).Code);
+    }
+
     [Fact]
     public async Task A_save_needs_the_hash_and_a_conflict_returns_both_versions_and_never_overwrites()
     {
@@ -582,6 +694,24 @@ public sealed class McpGenerationTests
         var third = await session.OkAsync("plan");
         await session.OkAsync("apply_plan", new { planId = (string)third["plan"]!["id"]! });
         Assert.Contains("200", session.Repo.Read("db/main/customers.sql"), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A plan against a model snapshot stores the snapshot id, and its apply opens it again; a value that names neither a snapshot nor
+    /// a folder is a bad request.
+    /// </summary>
+    [Fact]
+    public async Task Plan_against_a_snapshot_stores_it_and_a_value_that_names_nothing_is_a_bad_request()
+    {
+        await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
+        var baseline = (string)(await session.OkAsync("create_snapshot", new { name = "Base" }))["id"]!;
+        var planned = await session.OkAsync("plan", new { against = baseline });
+        Assert.Equal(baseline, (string)planned["plan"]!["request"]!["against"]!);
+        var applied = await session.OkAsync("apply_plan", new { planId = (string)planned["plan"]!["id"]! });
+        Assert.Equal("succeeded", (string)applied["outcome"]!);
+        Assert.False(File.Exists(session.Repo.PathOf(".maquettiste/snapshots/main.json")));
+        Assert.Equal("bad-request", (await session.ErrorAsync("plan", new { against = "no-such-snapshot" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("plan", new { against = "./no-such-folder" })).Code);
     }
 
     /// <summary>

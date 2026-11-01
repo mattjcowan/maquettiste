@@ -11,7 +11,8 @@ namespace Maquettiste.Engine.Json;
 /// <summary>
 /// The canonical JSON writer (SPEC section 11): UTF-8 without BOM, LF, two-space indent, one space after <c>:</c>, trailing
 /// newline, minimal escaping; keys in the schema's <c>x-order</c>, free-form maps ordinal, arrays in their order except those
-/// whose schema declares <c>x-sort</c> (stable-sorted by that integer key, missing = 0); values equal to their schema default
+/// whose schema declares <c>x-sort</c> (stable-sorted by that integer key, missing = 0, string keys ordinally after the integer ones,
+/// <c>"."</c> by the items themselves); values equal to their schema default
 /// (unless an <c>x-default-unless</c> sibling is present) and nulls omitted; an object whose schema declares <c>x-collapse</c> written as that key's value when it is the only key; <c>$schema</c> first and computed from the document path. Numbers read from text
 /// keep their text; numbers from CLR values are written by <see cref="Utf8JsonWriter"/>.
 /// </summary>
@@ -199,7 +200,7 @@ internal sealed class CanonicalJson(ISchemaRegistry schemas) : ICanonicalJson
                 var itemLayout = layout.Items ?? ObjectLayout.FreeForm;
                 var items = array.Select(item => Normalize(item, itemLayout));
                 if (layout.SortKey is { } sortKey)
-                    items = items.OrderBy(item => SortValue(item, sortKey)); // OrderBy is stable: equal positions keep array order
+                    items = items.OrderBy(item => SortValue(item, sortKey), SortOrder.Instance); // OrderBy is stable: equal positions keep array order
                 var list = items.ToList();
                 if (layout.TrimTrailingNulls)
                 {
@@ -370,6 +371,33 @@ internal sealed class CanonicalJson(ISchemaRegistry schemas) : ICanonicalJson
         return (negative ? "-" : "") + whole + (fraction.Length > 0 ? "." + fraction : "");
     }
 
-    private static long SortValue(JsonNode? item, string key) =>
-        item is JsonObject obj && obj.TryGetPropertyValue(key, out var value) && value is JsonValue v && v.TryGetValue<long>(out var n) ? n : 0;
+    /// <summary>The <c>x-sort</c> value that sorts an array of scalars by the items themselves (a migration fact's <c>after</c>).</summary>
+    internal const string SelfSortKey = ".";
+
+    /// <summary>
+    /// An array item's <c>x-sort</c> position: the integer item key (a missing or non-integer value counting as 0), or a string key,
+    /// which sorts ordinally after every integer one; <see cref="SelfSortKey"/> reads the item itself.
+    /// </summary>
+    private static (bool Text, long Number, string String) SortValue(JsonNode? item, string key)
+    {
+        var value = key == SelfSortKey ? item : item is JsonObject obj && obj.TryGetPropertyValue(key, out var found) ? found : null;
+        if (value is JsonValue scalar)
+        {
+            if (scalar.TryGetValue<long>(out var number))
+                return (false, number, "");
+            if (scalar.GetValueKind() == JsonValueKind.String)
+                return (true, 0, scalar.GetValue<string>());
+        }
+
+        return (false, 0, "");
+    }
+
+    /// <summary>Integer positions in numeric order, then string positions in ordinal order.</summary>
+    private sealed class SortOrder : IComparer<(bool Text, long Number, string String)>
+    {
+        public static SortOrder Instance { get; } = new();
+
+        public int Compare((bool Text, long Number, string String) x, (bool Text, long Number, string String) y) =>
+            x.Text != y.Text ? x.Text.CompareTo(y.Text) : x.Text ? string.CompareOrdinal(x.String, y.String) : x.Number.CompareTo(y.Number);
+    }
 }

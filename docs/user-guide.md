@@ -734,6 +734,26 @@ database shows on the Database screen at once. The explorers remember which rows
     a variant entry of the type map (`string:unicode`, `string:ansi`, `string:fixed`, `string:fixed:ansi`, `text:ansi`,
     `binary:fixed`, ...), so `typeMaps` can change them like any other entry. Either one on a type that has no such facet
     (an integer, a decimal) is MQ4057 (error).
+  - **Range columns.** A column's `type` may be `range` or `multirange`, with a `subtype` for its bounds: `int32`,
+    `int64`, `decimal`, `date`, `datetime` or `datetimeoffset`, PostgreSQL's built-in `int4range`, `int8range`,
+    `numrange`, `daterange`, `tsrange` and `tstzrange` and their multiranges (PostgreSQL 14 and later). Only a column
+    takes them; an attribute does not. A range column without a subtype, or a subtype on another column, is MQ4057
+    (error), and a length, precision or scale on one is MQ3013 (error). A default or a seed cell is the range's text
+    form, a string such as `"[1,10)"`. Elsewhere a range column is stored as the dialect's text type (MQ4056, warning),
+    unless `typeMaps.<dialect>` maps `range:<subtype>` or the column names its `nativeType`. Custom range types stay
+    database types (`typeKind: range`). A migration converts between range types with the cast PostgreSQL has (a range
+    of another subtype through its text form, a range to the multirange of its subtype directly); where none exists (a
+    multirange to a range) it writes a TODO and no ALTER. Moving a column between `string` with `nativeType: tstzrange`
+    and a range keyword of the same native type changes nothing in the database, and the migration writes nothing for
+    it.
+  - **Literal defaults.** A column's `default` is a literal, checked against the column (MQ3019, error): a string
+    column's against its length, its own or else the conventions' `defaultStringLength` (255 unless set, per database
+    too); a number, boolean, date, UUID or binary value against its type, as an attribute's default is. A `json` column
+    takes a string of JSON text (`"{\"days\": 30}"`): an object, array, number or boolean has no literal the DDL can
+    write for it, so write it as a string or use `defaultSql`. A column with a `nativeType` (a native type or a
+    database type) is checked only for the kind of value its type keyword implies (a string, a number, true or false),
+    since the native type, not the facets, sets the storage. A range column's default is a string. `defaultSql`, SQL
+    text per dialect, is not checked.
   - **Named defaults.** `defaultName` names a column's default constraint where the dialect names defaults (SQL Server);
     without it the DDL names it `df_<table>_<column>`. Migrations rename it with the column, the table or the name, and drop
     and add it on its own when only the default changes.
@@ -769,10 +789,12 @@ database shows on the Database screen at once. The explorers remember which rows
     predicate and a `method` (`btree`, `hash`, `gin`, `gist`, `spgist`, `brin`, `hnsw`, `ivfflat`, `clustered`; hnsw and
     ivfflat are the vector extension's). An index column may be an `expression` instead of a column, per dialect like a
     check (`{ "*": "lower(email)" }`: a functional index), may name an `operatorClass` (PostgreSQL: `gin_trgm_ops` for a
-    trigram index, `vector_cosine_ops` for a vector index, written as it is, so it may carry its parameters), and may index
+    trigram index, `vector_cosine_ops` for a vector index, written as it is, so it may carry its parameters), may say
+    where its nulls sort (`nulls`: `first` or `last`, PostgreSQL's `NULLS FIRST` or `NULLS LAST`; unset keeps the
+    direction's default, last ascending and first descending, and a value equal to it changes nothing), and may index
     only the first characters of its column (`length`, MySQL, which needs one for a text or blob column). An index's
-    `storage` holds its parameters per dialect (PostgreSQL and SQL Server `WITH (...)`: `fillfactor`, `pages_per_range` for
-    brin, `m` and `ef_construction` for hnsw, `lists` for ivfflat).
+    `storage` holds its parameters per dialect (PostgreSQL and SQL Server `WITH (...)`: `fillfactor`, `pages_per_range`
+    for brin, `m` and `ef_construction` for hnsw, `lists` for ivfflat).
   - **Storage parameters.** A table's `storage` holds its parameters per dialect, written only in the DDL of a database of
     that dialect: `{ "postgresql": { "fillfactor": 90, "autovacuum_vacuum_scale_factor": 0.03 } }` is PostgreSQL's
     `WITH (...)`; SQL Server's `WITH (DATA_COMPRESSION = PAGE)`, MySQL's table options and Oracle's physical attributes are
@@ -805,13 +827,33 @@ database shows on the Database screen at once. The explorers remember which rows
     volatility on a procedure, is MQ4062 (error).
   - **Grants and roles** are not part of the model: roles differ from one environment to the next, and grants are written
     as SQL objects (`objectKind` grant, `dependsOn` the objects they grant on). A migration that drops and creates a view or
-    routine again runs the SQL objects that depend on it again, so the grants come back; one statement per schema,
-    `ALTER DEFAULT PRIVILEGES`, in a SQL object, grants what is created later too.
+    routine again runs the SQL objects that depend on it again, so the grants come back (a run-once one gets a TODO
+    instead); one statement per schema, `ALTER DEFAULT PRIVILEGES`, in a SQL object, grants what is created later too.
   - **What a foreign key references** is the referenced table's primary key or one of its unique keys (a unique
     constraint, or a unique index without a `where` filter; Oracle takes a constraint only), its columns in any order, each
     named once. On MySQL (and MariaDB) the referenced table also needs a primary key, unique constraint or index whose first
     columns are the referenced ones in the order the foreign key names them. Anything else is MQ4059 (error), as the
     database would refuse it.
+  - **Name rules.** Two indexes or constraints that would take one name where the database keeps one namespace for
+    them is MQ4068 (error), found while the tables are resolved, on given and conventional names alike: two indexes on
+    the same columns (a btree and a gin) both get `ix_<table>_<columns>` unless one is named, and an index named like a
+    unique key or a table collides on PostgreSQL. Names compare as the database keeps them: ignoring case, and cut to
+    the identifier limit first (PostgreSQL keeps the first 63 bytes of a longer name and only raises a notice, so two
+    long names that start alike collide even with MQ4001 turned off). The limit counts UTF-8 bytes on PostgreSQL and
+    Oracle and characters elsewhere, and MQ4001 counts the same way. The namespaces per dialect:
+
+    | Dialect | Shared with the schema's objects | Unique per schema on their own | Unique per table |
+    | --- | --- | --- | --- |
+    | PostgreSQL | indexes, and primary, unique and exclusion keys (each creates an index), with tables, views and sequences | | primary, unique, foreign, check and exclusion constraints |
+    | SQL Server | primary, unique, foreign, check and default constraints, with tables, views, sequences and routines | | indexes, with the primary and unique keys' indexes |
+    | MySQL | | foreign keys; checks (two namespaces) | indexes and unique keys (the primary key is always PRIMARY) |
+    | Oracle | | indexes, with the keys' indexes; all constraints (two namespaces, so a key and its index share a name) | |
+    | SQLite | indexes, with tables and views | | |
+
+    The finding sits on the later of the two, in published order (schema, then table name; within a table the primary
+    key, unique keys, foreign keys, checks, exclusions, default constraints and indexes), and names both. SQL objects
+    are text the model does not read, so their names join no namespace; MQ4002 checks tables, views and sequences
+    against each other.
   - A feature the database's dialect does not have is MQ4056 (warning) and the DDL leaves it out: a deferrable foreign key on
     SQL Server or MySQL, `ON UPDATE` or a `restrict` or `set-default` action on Oracle, `set-default` on MySQL, include
     columns outside PostgreSQL and SQL Server, a partial index on MySQL or Oracle, an index method the dialect lacks, an
@@ -819,9 +861,13 @@ database shows on the Database screen at once. The explorers remember which rows
     without one (the index is left out), `nullsNotDistinct` outside PostgreSQL, a stored computed column on Oracle, identity
     options (any on SQLite, the increment or `always` on MySQL), a clustered primary key outside SQL Server, a foreign key's
     `onDeleteColumns` outside PostgreSQL (the action then sets every column of the key), a temporal key, an exclusion
-    constraint, partitioning, an index operator class or a view's security options outside PostgreSQL, index storage on
-    MySQL, SQLite and Oracle, a routine's volatility or settings on SQL Server, a materialized view outside PostgreSQL and Oracle,
-    `withCheckOption` on SQLite or a materialized view, a sequence on SQLite or MySQL.
+    constraint, partitioning, an index operator class, index column `nulls` or a view's security options outside
+    PostgreSQL, index storage on MySQL, SQLite and Oracle, a routine's volatility or settings on SQL Server, a
+    materialized view outside PostgreSQL and Oracle, `withCheckOption` on SQLite or a materialized view, a sequence on
+    SQLite or MySQL. A `range` or `multirange` column outside PostgreSQL is MQ4056 too and is stored as the dialect's
+    text type. Migration facts outside PostgreSQL are MQ4056 too: a fact's migration keeps TODO comments where its steps
+    would go (a rekey writes no DDL on any dialect) and no ledger rows are written (see "Migration facts"). So is a
+    run-once SQL object outside PostgreSQL, which every script leaves out.
 
   The sql-ddl pack writes all of it for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle, and migrates every
   change: its README has the coverage table per dialect, and how each dialect's limits are handled (SQLite tables are rebuilt
@@ -885,6 +931,24 @@ database shows on the Database screen at once. The explorers remember which rows
     says what it is in your words, `body` holds its statements per dialect, run as written, `phase` says whether they
     run `before` the database types and tables (an extension) or `after` the routines and views (the default: a
     trigger, a grant), and `dependsOn` orders it among the others.
+  - **Where a SQL object runs.** `environments` lists the environments it runs in (free names such as `dev` or `test`;
+    empty, the default, means every environment). An object without environments runs in the schema script, the
+    migrations and its object script, as before. An object with environments runs only in the sql-ddl pack's
+    `objects.<environment>.sql`, one script per name in the pack's `environments` parameter (the one that writes
+    `seed.<environment>.sql`), run on every deploy after the schema script or the migrations and before the seed
+    scripts. That script can run again, so every statement in it must be safe to run again: `CREATE OR REPLACE`, `IF NOT
+    EXISTS`, or `DROP ... IF EXISTS` first; nothing parses the SQL to check. A changed environment object takes effect
+    at the next run of its script; a removed one stays in the database until you drop it.
+  - **Run once.** `apply` is `converge` (the default: the statements run wherever the scripts run the object, again when
+    it changes) or `once`: the statements run one time per database, inside a guard that records the object in the
+    migration ledger (see "The migration ledger"), so every script that holds it can run it and only the first does. A
+    changed run-once object does not run again where it ran, as a seed row applied once is never updated. An object
+    switched from `converge` to `once` has no ledger row yet, so it runs one more time in every database, also where it
+    exists already: drop it by hand first, or make its statements safe to run again. Statements that cannot run inside
+    a function (transaction control, `CREATE INDEX CONCURRENTLY`) cannot run once. Run-once needs
+    the ledger, so it is PostgreSQL only: elsewhere the object is left out of every script (MQ4056, warning). A `rekey`
+    migration fact may list a SQL object whose id changed (`kind` `sql-object`), so its ledger row follows the new id
+    and the object does not run again.
   - **A column typed by a database type.** A column's native type (the Columns panel, or the `nativeType` of the table
     file) may name a database type of the same database, by its id or by its name. The column then writes the type's
     native name: the type's schema-qualified name where the dialect creates the type (PostgreSQL, and SQL Server for a
@@ -900,14 +964,20 @@ database shows on the Database screen at once. The explorers remember which rows
     new database type is created before the tables and a renamed one renamed; a changed one gets a TODO line with its new
     definition, since a type in use cannot simply be replaced; a removed one is dropped last. A SQL object's statements
     are opaque: a new or changed one runs again, and a changed or removed one gets a TODO asking you to drop the old one
-    by hand.
+    by hand. A changed object with environments runs only in its environment scripts, and its TODO names them; a changed
+    run-once object runs inside its guard, so it does not run again where the ledger records it, and a comment says so;
+    an object switched to run once gets a TODO, since it runs one more time.
   - **Problems.** A routine or SQL object without a body for the database's dialect (and no `*` one), or a database type
-    with neither its structured form nor a definition for the dialect, is MQ4017 (warning): nothing is created there.
-    A parameter, result column or composite field whose type is neither a built-in type nor a database type of the same
-    database is MQ4018 (error). A column's native type or a `dependsOn` entry that names an object of another database is
-    MQ4019 (error). Views, routines, database types and SQL objects that depend on each other in a circle are MQ4020 (error):
-    there is no order to create them in. Two routines, two database types or two SQL objects with one name in a schema
-    are MQ3001.
+    with neither its structured form nor a definition for the dialect, is MQ4017 (warning): nothing is created there. A
+    parameter, result column or composite field whose type is neither a built-in type nor a database type of the same
+    database is MQ4018 (error). A column's native type or a `dependsOn` entry that names an object of another database
+    is MQ4019 (error). Views, routines, database types and SQL objects that depend on each other in a circle are MQ4020
+    (error): there is no order to create them in. Two routines, two database types or two SQL objects with one name in a
+    schema are MQ3001. A view, routine or SQL object that depends on a SQL object that does not run in every environment
+    it runs in is MQ4069 (error): the dependency's environments must cover the dependent's, and empty means every
+    environment (a view or routine runs everywhere). A SQL object with environments and phase `before` is MQ4070
+    (warning): its environment scripts run after the schema script and the migrations, so the phase orders it only
+    within its script.
 
   **Queries.** Tables, views and routines are the physical model: they are what the database holds, and they generate the
   repository layer. A **query** reads the tables and views of a database, with joins, filters, grouping, ordering, paging
@@ -1274,8 +1344,8 @@ database shows on the Database screen at once. The explorers remember which rows
     `branding/`, MQ8003 for an icon that is not a safe SVG or a PNG of at most 512 KB. A save that breaks one is refused
     with the message; a hand edit shows it in Problems.
 - **Settings › Validation** <a id="settings-validation"></a> lists every built-in rule, grouped by family (Model files,
-  References and vocabularies, Model structure, Databases and mappings, Extensions and script rules, Packs and
-  generation, Reference types, Seeds, Localization, Branding, Processes, Actors and gates, Lifecycles, Scenarios,
+  References and vocabularies, Model structure, Databases and mappings, Migrations, Extensions and script rules, Packs
+  and generation, Reference types, Seeds, Localization, Branding, Processes, Actors and gates, Lifecycles, Scenarios,
   Process import and export, Process expressions and simulation), with its id, description and default severity. Each row's
   picker is **Default** (the engine's severity), `error`, `warning`, `info` or `off`; the model file rules (MQ1xxx) have
   no `off`. The filter box matches an id or a word of the description; a changed row shows a dot until you save, the
@@ -1925,6 +1995,69 @@ through the gate 3 fixture's solution); for TypeScript, `npx tsc --noEmit` then 
 (samples/typescript-pack/README.md). `maquettiste process verify` replays the same scenarios in the engine, without
 generated code, and is the faster check while you model.
 
+## Migration facts
+
+A change to a database's shape that its stored rows must follow (a renamed column, a narrower type, a dropped table) is
+a **migration fact**: one file per fact under `.maquettiste/model/databases/<database>/migrations/open/`, of kind
+`migration`. A recorded fact has no name, so its file is named by its id and the folder lists facts in the order they
+were recorded. A fact names its object by its physical key and by the names it had at the time; those are history, not
+references, so deleting or renaming an element never edits a fact. `after` lists the facts it follows: an ordering hint,
+not a reference. Deleting a database deletes its facts. `migrations.record` in `maquettiste.json` is `automatic` (the
+default) or `off`. What each fact type records and needs, and the widening table that decides when a change of type
+needs a fact, are in the [schema changes guide](guides/schema-changes.md).
+
+Facts are recorded by the writes themselves: a save, create, delete or batch (in the editor, the command line, MCP or
+the HTTP API) that renames, retypes or drops a table, column or sequence, or makes a column not null, writes its facts
+in the same atomic save and lists them in its answer (`facts`). A settings change of `conventions`, `databases`,
+`typeMaps` or `inflection` and a default-locale change record theirs too. Edits of descriptions, display names, tags or
+categories record nothing, and neither do hand edits or a snapshot restore. The guide explains what each change records.
+
+A fact that lacks the intent its change needs is **pending** (MQ4101, an error): generation stops until it is completed
+or held, while template previews, path listings and the resolved model keep working. A **held** fact (`held: true`)
+counts as complete for validation and waits until it is `released`. A fact in a database that is not PostgreSQL is
+MQ4056 (a warning): its migration keeps TODO comments where its steps would go (a rekey writes no DDL on any dialect),
+and no ledger rows are written.
+
+`maquettiste validate --against <baseline>` compares the model with another model: a model snapshot id, or a folder that
+holds another copy of the project (a checkout of the main line in CI, for one). Every change since the baseline that the
+stored rows must follow (a rename, a type change that is not a widening, a dropped table, column or sequence, a column
+made not null) must be explained by facts the baseline does not have; otherwise it is MQ4102, reported on the column
+entry, attribute, table or database it concerns. The check reads no database and no version control, and runs even when
+`migrations.record` is `off`. MCP `validate` takes the same `against`, and `POST /api/validate?against=<snapshot id>`
+takes a snapshot id. A fact whose change the model no longer shows (a rename made and undone, a pending narrowing
+reverted) is **stale** (MQ4103, a warning); `migration fold` removes it. The schema changes guide says more.
+
+### The migration ledger
+
+On PostgreSQL, each database records which facts it has reached in the **migration ledger**: three bookkeeping tables
+(`contract`, `applied_fact`, `applied_object`) in the schema `migrations.ledgerSchema` names in `maquettiste.json`
+(default `migration_ledger`; a lower-case name, quoted where it is a reserved word such as `order`). The sql-ddl scripts
+write one row per fact they reach, in the same transaction as the statements that reach it: `schema.sql` for every fact
+a build reaches, a migration for the facts it completes or releases. A run-once SQL object writes its own row
+(`applied_object`) when it runs, which is how its guard knows not to run it again. A team's own migrator writes fact
+rows the same way. The template helper `ledger_ddl <database>` writes the ledger's DDL (idempotent, without transaction
+control), or nothing for a database without a ledger; a changed `ledgerSchema` renders the scripts that call it again. A
+ledger schema that is also a schema of the database's modeled objects is MQ4067 (a warning). `maquettiste migration
+ledger --grant-read <role>` and MCP `get_ledger_ddl` print the DDL and the read grant for a migrator you run yourself.
+Maquettiste never reads the ledger: `validate --against` compares two models, never a database. The contract, its rules
+and its status are in [The migration ledger](ledger.md).
+
+### The rules for migration facts (MQ41xx)
+
+| Rule | Severity | What it reports |
+| --- | --- | --- |
+| MQ4101 | error | A fact lacks the intent its change needs, one finding per missing field: a `conversion` for a `change-type`, and a `dataCheck` too when it narrows; an `acknowledge` for a `drop`; a `value` (or a `dataCheck`) for a `backfill`; a `skipWhen` guard for a `raw` step. Complete it, or hold it |
+| MQ4102 | error | `validate --against`: a change since the baseline needs a migration fact and none the baseline lacks explains it (a rename or a moved key, a type change that is not a widening, a dropped table, column or sequence, a column made not null). Reported on the column entry of a table file or overlay, the attribute of a derived column, the table or its entity, or the database file for a dropped object |
+| MQ4103 | warning | A fact the baseline lacks is stale: the model no longer shows what it, alone or with the facts on the same object, changed (a rename made and undone, a type changed back or widened back, a dropped object that is back, a column nullable again). A pending fact that is stale is MQ4103, never MQ4101. Plain `validate` judges complete facts only for a database that has a committed physical snapshot; `--against` judges them against its baseline |
+| MQ4104 | error | The `after` links of a database's facts form a cycle, so no order applies them; reported on each fact of the cycle |
+| MQ4105 | error | An `after` link names a fact of another database |
+| MQ4106 | error | A fact's fields do not fit its type: `from` equal to `to`, a `conversion` or `dataCheck` with both forms or neither, `released` without `held`, a key or object listed twice, a `values` code listed twice or mapped to itself, an object kind the type does not take (a `drop` takes a table, column or sequence; a `change-type` or `backfill` a column), a member without its table |
+| MQ4107 | error | Two facts change one object and neither comes after the other (merged copies changed one column): order them with `after`, or fold them. Reported on the later fact; a table drop also changes each of its members |
+| MQ4108 | warning | A fact's SQL text (`sql`, `skipWhen`, `value`, `where`, a conversion's expression, a data check's query) has no entry for the database's dialect and no `*` entry |
+| MQ4109 | warning | `validate --against`: the baseline has errors, so the objects their elements own, or the objects in baseline files that did not load, were left out (or the database did not resolve) and their changes were not checked; one finding per database, on the database file. `generate --against` reports it the same way: those objects are left out of both sides of the schema diff, and a database that does not resolve in the baseline is not diffed |
+| MQ4110 | info | A write changed objects whose elements have errors, so no facts were recorded for them; on the save's answer. Fix the errors; validate against a baseline checks the change |
+| MQ4111 | warning | An `after` link names a fact that does not exist (folded or removed in another copy); the link is ignored for ordering |
+
 ## Generation: how the model becomes files
 
 This chapter is for someone who has never written a template. Generation reads the model (the entities, tables,
@@ -1961,7 +2094,7 @@ the same way. A pack also has an **output base** (`packs.<pack>.output` in `maqu
 the folder its paths start from, and can be switched off there (`enabled: false`).
 
 **A unit** is one line of a pack's work list. It names a template, which elements the template runs for (the scope),
-and where the result goes (the output pattern). `sql-ddl` has ten units: `table`, `schema`, `migration`, `seed`, `process-tables` (off unless its `processTables` parameter is set), and `view`, `sequence`, `routine`, `database-type` and `sql-object` (one script per object, off unless its `objectScripts` parameter is set).
+and where the result goes (the output pattern). `sql-ddl` has twelve units: `table`, `schema`, `migration`, `seed`, `seed-environments` and `object-environments` (one script per environment its `environments` parameter names), `process-tables` (off unless its `processTables` parameter is set), and `view`, `sequence`, `routine`, `database-type` and `sql-object` (one script per object, off unless its `objectScripts` parameter is set).
 
 **The scope** (`for` in `pack.json`) decides how many times a unit runs:
 
@@ -2071,12 +2204,12 @@ apply it. It lists **every file** its packs produce, each with what Apply will d
 | added, modified, deleted | a new file, new content, or an orphan (a file generation wrote earlier that no unit produces any more) | writes or removes it |
 | identical | rendered again, and the same as the file on disk | nothing to write |
 | not re-rendered | its unit was skipped: nothing the unit reads changed since the last run (Re-render every file renders it again) | nothing to write |
-| yours | a file written once (a `once` file such as a migration, or a pair's companion) that exists: it is yours to edit | never overwrites it |
+| yours | a file written once (a `once` file such as a migration, or a pair's companion) that exists: it is yours to edit; a `once` file no unit produces any more stays yours, and tracked, while it exists | never overwrites it |
 | hand-edited, conflict | a generated file edited by hand since; the hand-edit choice decides | as that choice says |
-| orphaned-owned | a file of yours that no unit produces any more | leaves it on disk and stops tracking it |
+| orphaned-owned | a pair's companion no unit produces any more, a file of yours from a pack that was removed, or a file of yours that was deleted | leaves whatever is on disk and stops tracking it |
 
-A migration unit renders a short placeholder for every earlier revision so it keeps owning those files; the real
-migration on disk is **yours**, so the plan never shows the placeholder against it. Selecting a file Apply leaves alone
+A migration written earlier stays owned while it is on disk, even when no run produces it any more, so the plan shows it
+neither as an orphan nor as drift and Apply never deletes it. Selecting a file Apply leaves alone
 (identical, not re-rendered, yours) shows what it is instead of a diff: "Written once; yours to edit. Generation never
 overwrites it."
 
@@ -2494,8 +2627,11 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | Command | What it does |
 | --- | --- |
 | `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) with the output entries `db` and `src/Generated`. It never reads or writes the repository's ignore file (the `--gitignore` option of earlier releases is gone; a pack's managed block can keep lines there, see "Managed blocks"). A block an earlier version wrote stays as it is: it is yours to keep, edit or remove. `--hooks` installs git hooks that run `generate` after a checkout or merge. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers it as a `docker run` of the image (`--runtime podman` for `podman run`; docs/mcp.md). `--skill` writes the modeling skill, `.claude/skills/maquettiste-modeling/SKILL.md`, which belongs to Maquettiste: put your own modeling conventions in `CONVENTIONS.md` in the same folder, which `init` never touches and which agents read after the skill (the MCP conventions resource and prompt end with it). A skill nobody changed is refreshed to the installed version; one edited by hand is left alone, the new version goes to `SKILL.md.new` beside it with a one-line message, and `--force` overwrites it. `init --skill --check` writes nothing and exits 2 when the skill is missing, stale or edited, for CI. The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
-| `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. |
-| `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. |
+| `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. `--against <snapshot id or folder>` also compares the model with a baseline (a model snapshot, or a folder holding another copy of the project): a change since it that a migration must follow and no migration fact explains is MQ4102 (see "Migration facts"); a value that names nothing exits 4. |
+| `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. `--against <snapshot id or folder>` diffs the schema (migrations) from a baseline model for this run instead of the committed physical snapshots, and leaves those alone; a value that names nothing exits 4. |
+| `maquettiste migration list` | The open migration facts in applied order, one line each (database, order, id, fact, state and the intent a pending fact lacks, `stale`, summary); `--database <name or id>`, `--format json` for scripts. An unknown database exits 1. |
+| `maquettiste migration fold` | Removes stale facts and joins consecutive facts on one object into the last one (see the schema changes guide); `--against <snapshot id or folder>` (its facts stay; default: the facts the committed snapshot lists as rendered, else pending facts only), `--database`, `--dry-run`, `--format json`. Exit 3 when a fact file changed meanwhile, 1 when the model has errors outside the migration rules or for an unknown database, 4 when `--against` names nothing. |
+| `maquettiste migration ledger` | Prints the migration ledger's DDL (see "The migration ledger" under Migration facts) for a PostgreSQL database: `--database <name or id>` (needed when the model has several), `--grant-read <role>` also prints the read grant, `--format json` prints `{ contractVersion, database, dialect, schema, ddl, grant }`, `--output <file>` writes it under an allowed output root. Exit 1 when the model has no PostgreSQL database, when the database named is missing or not PostgreSQL, or when several exist and none is named. |
 | `maquettiste generate --check` | Renders every output without writing and exits 2 when any file would be added, changed or deleted: the CI gate when the outputs it guards are committed (otherwise run `generate`, then compare the working tree). `--roots` of earlier releases is gone. |
 | `maquettiste generate --watch` | Regenerates on every change under `.maquettiste/` (a save in the editor, a template edit) until Ctrl+C. |
 | `maquettiste format` | Rewrites every model file (`maquettiste.json`, `model/**`) in canonical form, the form the editor writes, and prints the count; hand-written files then stop reporting MQ1003. A file that does not pass its schema is left as it is and named. `--check` writes nothing and exits 2 (drift, as `generate --check` does) when a file would change. |
@@ -2513,7 +2649,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste process export <process>` | The process as an XState machine config (`--format xstate`, the only format), on stdout or into `--out <file>`. What has no XState home travels under `meta.maquettiste`, so importing the file back over the process gives the same file. |
 | `maquettiste process import <file>` | Previews importing an XState config: `--domain <package>` (with `--name`, `--use lifecycle\|orchestration`, `--subject <entity>`) for a new process, or `--into <process>` to re-import over one, keeping the ids of what matches. Prints the diagnostics and how many ids are created and removed; `--apply` writes it as one change, refused (exit 3) when the process changed while the command ran and exit 1 when the import has errors. `--format json` prints the document. |
 | `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. |
-| `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
+| `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations` (open migration facts by database, in applied order), `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
 | `maquettiste snapshot create <name>` | Takes a snapshot of the whole model: a zip under `.maquettiste/model-snapshots/` named `<name in kebab case>-<yyyymmdd-hhmmss>.zip` (the snapshot's id) holding `maquettiste.json`, `model/`, `extensions/` and `branding/`; `--packs` holds the template packs too, `--description <text>`, `--format json`. |

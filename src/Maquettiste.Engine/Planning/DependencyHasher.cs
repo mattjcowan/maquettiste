@@ -15,7 +15,11 @@ namespace Maquettiste.Engine.Planning;
 /// <param name="resolved">The resolved model.</param>
 /// <param name="packs">The packs (template hashes).</param>
 /// <param name="schemaDiffs">Schema diffs by database name.</param>
-internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolved, PackSet packs, IReadOnlyDictionary<string, SchemaDiffResult> schemaDiffs)
+/// <param name="baselineHash">The model hash of the baseline the run diffs from (<see cref="GenerationRequest.Against"/>), folded into
+/// every <c>d:</c> key, so a plan made against a baseline is stale once the baseline changes; <see langword="null"/> for the committed
+/// physical snapshots.</param>
+internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolved, PackSet packs, IReadOnlyDictionary<string, SchemaDiffResult> schemaDiffs,
+    string? baselineHash = null)
     : IDependencyHasher
 {
     /// <summary>The hash of a key that no longer resolves.</summary>
@@ -203,9 +207,18 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "s" => SettingsHash(rest),
             "l" => LocaleHash(rest),
             "t" => TemplateHash(rest),
-            "d" => resolved.Find(rest) is RDatabase database && schemaDiffs.TryGetValue(database.Name, out var diff) ? diff.Hash : Absent,
+            "d" => resolved.Find(rest) is RDatabase database && schemaDiffs.TryGetValue(database.Name, out var diff) ? DiffHash(diff) : Absent,
             _ => Absent,
         };
+    }
+
+    /// <summary>A schema diff's hash, with the baseline's model hash when the run diffs from a baseline model.</summary>
+    private string DiffHash(SchemaDiffResult diff)
+    {
+        if (baselineHash is null)
+            return diff.Hash;
+        using var hash = new HashBuilder();
+        return hash.Add("mq-baseline-diff-1").Add(diff.Hash).Add(baselineHash).Finish();
     }
 
     private string SettingsHash(string section)
@@ -218,6 +231,8 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "typeMaps" => CanonicalForm.Hash("s:typeMaps", settings.TypeMaps),
             "inflection" => CanonicalForm.Hash("s:inflection", settings.Inflection),
             "localization" => CanonicalForm.Hash("s:localization", settings.Localization),
+            // The migration ledger's schema only (next-phase-1-design.md section 3.3): migrations.record changes no rendered byte.
+            "migrations" => CanonicalForm.Hash("s:migrations", settings.Migrations.LedgerSchema),
             // The project variable of templates: the name and the properties, keys in ordinal order.
             "project" => CanonicalForm.Hash("s:project", new
             {

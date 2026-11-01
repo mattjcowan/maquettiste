@@ -106,8 +106,13 @@ public sealed class EventTests
         Assert.Equal("all", changed.Target);
         Contract.AssertEvent("model.changed", changed.Payload);
         Assert.Equal("editor", changed.Payload["source"]!.GetValue<string>());
-        Assert.Equal(saved.Json["hash"]!.GetValue<string>(), changed.Payload["changed"]![0]!["hash"]!.GetValue<string>());
-        var summary = changed.Payload["changed"]![0]!["summary"]!; // E5d: the new index row rides along
+        // The column's rename is recorded as a migration fact in the same change: the invoice is one of the two entries.
+        var entries = changed.Payload["changed"]!.AsArray();
+        Assert.Equal(2, entries.Count);
+        var invoice = Assert.Single(entries, e => e!["id"]!.GetValue<string>() == EditorHost.InvoiceId)!;
+        Assert.Equal(saved.Json["facts"]![0]!["id"]!.GetValue<string>(), Assert.Single(entries, e => e != invoice)!["id"]!.GetValue<string>());
+        Assert.Equal(saved.Json["hash"]!.GetValue<string>(), invoice["hash"]!.GetValue<string>());
+        var summary = invoice["summary"]!; // E5d: the new index row rides along
         Assert.Equal(EditorHost.InvoiceId, summary["id"]!.GetValue<string>());
         Assert.Equal(saved.Json["hash"]!.GetValue<string>(), summary["hash"]!.GetValue<string>());
         var validated = Assert.Single(host.Published("validation.completed"));

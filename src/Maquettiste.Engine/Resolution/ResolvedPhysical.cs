@@ -77,6 +77,20 @@ public sealed class RDatabase : RAnnotated
     /// <summary>Every query, by (name, id).</summary>
     public RList<RQuery> Queries { get; internal set; } = RList<RQuery>.Empty;
 
+    /// <summary>
+    /// The database's open migration facts in applied order (next-phase-1-design.md section 3.2): a topological order over their
+    /// <c>after</c> links that takes the ready fact with the ordinally smallest id. Its membership key is <c>k:migration</c>, with
+    /// the <c>e:</c> key of every fact, since one fact's <c>after</c> links move the others in the order.
+    /// </summary>
+    public RList<RMigration> Migrations { get; internal set; } = RList<RMigration>.Empty;
+
+    /// <summary>
+    /// The schema of the migration ledger tables in this database (<c>migrations.ledgerSchema</c>, next-phase-1-design.md section
+    /// 3.3), or <see langword="null"/> when the dialect has no ledger (every dialect but PostgreSQL in contract version 1). The
+    /// <c>ledger_ddl</c> helper writes the DDL with it.
+    /// </summary>
+    public string? LedgerSchema { get; internal set; }
+
     /// <summary><c>always</c>, <c>reserved</c> or <c>never</c>.</summary>
     public string Quoting { get; internal set; } = "reserved";
 
@@ -222,6 +236,15 @@ public sealed class RTable : RAnnotated
     /// it, several when constants (an entity type column) tell them apart. The table itself knows nothing about them.
     /// </summary>
     public IReadOnlyList<REntityBinding> BoundBy { get; internal set; } = [];
+
+    /// <summary>
+    /// The names the table had before, from its open <c>rename</c> facts (their <c>from</c> and <c>via</c> names), oldest first,
+    /// distinct, without the current name; empty when no fact renamed it.
+    /// </summary>
+    public IReadOnlyList<string> FormerNames { get; internal set; } = [];
+
+    /// <summary>The id of the table's first open migration fact in applied order, or <see langword="null"/> when none names it.</summary>
+    public string? Since { get; internal set; }
 }
 
 /// <summary>A resolved primary key.</summary>
@@ -439,6 +462,12 @@ public sealed class RIndexColumn
     /// <summary>Whether the column sorts descending.</summary>
     public bool Descending { get; internal set; }
 
+    /// <summary>
+    /// Where nulls sort, <c>first</c> or <c>last</c>: set on PostgreSQL only, and only when it differs from the direction's default
+    /// (last ascending, first descending).
+    /// </summary>
+    public string? Nulls { get; internal set; }
+
     /// <summary>A key prefix length (MySQL), or <see langword="null"/>.</summary>
     public int? Length { get; internal set; }
 }
@@ -462,8 +491,14 @@ public sealed class RColumn : RAnnotated
     /// <summary>The table.</summary>
     public RTable Table { get; internal set; } = null!;
 
-    /// <summary>The built-in type keyword.</summary>
+    /// <summary>
+    /// The column type keyword: a built-in keyword, <c>range</c> or <c>multirange</c> (a designed or extra column only), or
+    /// <c>reference</c>.
+    /// </summary>
     public string Type { get; internal set; } = "";
+
+    /// <summary>The bound type of a range or multirange column (<c>int32</c>, ..., <c>datetimeoffset</c>); otherwise <see langword="null"/>.</summary>
+    public string? Subtype { get; internal set; }
 
     /// <summary>The effective length.</summary>
     public int? Length { get; internal set; }
@@ -566,6 +601,21 @@ public sealed class RColumn : RAnnotated
 
     /// <summary>For a reference column: the effective storage strategy in the column's database, or <see langword="null"/> for template-defined.</summary>
     public string? Strategy { get; internal set; }
+
+    /// <summary>
+    /// The names the column had before, from its open <c>rename</c> facts (their <c>from</c> and <c>via</c> names), oldest first,
+    /// distinct, without the current name; empty when no fact renamed it.
+    /// </summary>
+    public IReadOnlyList<string> FormerNames { get; internal set; } = [];
+
+    /// <summary>
+    /// How the column's last open <c>change-type</c> fact converts stored values, or <see langword="null"/> when it has none or no
+    /// such fact names the column.
+    /// </summary>
+    public RConversion? Conversion { get; internal set; }
+
+    /// <summary>The id of the column's first open migration fact in applied order, or <see langword="null"/> when none names it.</summary>
+    public string? Since { get; internal set; }
 }
 
 /// <summary>A resolved view, with the annotations (<see cref="RAnnotated"/>) of its file.</summary>
@@ -615,6 +665,12 @@ public sealed class RView : RAnnotated
 
     /// <summary>The entity bindings that read the view (erratum E43), by (entity name, entity id).</summary>
     public IReadOnlyList<REntityBinding> BoundBy { get; internal set; } = [];
+
+    /// <summary>The names the view had before, from its open <c>rename</c> facts, oldest first, distinct, without the current name.</summary>
+    public IReadOnlyList<string> FormerNames { get; internal set; } = [];
+
+    /// <summary>The id of the view's first open migration fact in applied order, or <see langword="null"/> when none names it.</summary>
+    public string? Since { get; internal set; }
 }
 
 /// <summary>A column of a resolved view.</summary>
@@ -672,6 +728,12 @@ public sealed class RSequence : RAnnotated
 
     /// <summary>How many values the server caches.</summary>
     public int? Cache { get; internal set; }
+
+    /// <summary>The names the sequence had before, from its open <c>rename</c> facts, oldest first, distinct, without the current name.</summary>
+    public IReadOnlyList<string> FormerNames { get; internal set; } = [];
+
+    /// <summary>The id of the sequence's first open migration fact in applied order, or <see langword="null"/> when none names it.</summary>
+    public string? Since { get; internal set; }
 }
 
 /// <summary>
@@ -951,6 +1013,15 @@ public sealed class RSqlObject : RAnnotated
 
     /// <summary>Whether the file has statements for the database's dialect or for every dialect.</summary>
     public bool HasBody { get; internal set; }
+
+    /// <summary>The environments the object runs in, as the file lists them; empty means every environment.</summary>
+    public IReadOnlyList<string> Environments { get; internal set; } = [];
+
+    /// <summary><c>converge</c> (the default) or <c>once</c> (one time per database, recorded in the ledger).</summary>
+    public string Apply { get; internal set; } = "converge";
+
+    /// <summary>The content hash of <see cref="Body"/> (<c>ContentHash.Of(Body)</c>), which a run-once object's ledger row records.</summary>
+    public string ContentHash { get; internal set; } = "";
 }
 
 /// <summary>The rows the model seeds into one table of a database (<see cref="RDatabase.SeedTables"/>).</summary>
@@ -1010,4 +1081,239 @@ public sealed class RDataRow : RObject
 
     /// <summary>The seed's delete flag (with converge).</summary>
     public bool Delete => Seed.Delete;
+}
+
+/// <summary>
+/// A resolved migration fact (next-phase-1-design.md section 3.2): one open fact of <see cref="Database"/>, with its place in the
+/// applied order, its state and the intent it still lacks, and its object keys moved through the <c>rekey</c> facts after it. Its
+/// annotations (<see cref="RAnnotated"/>) are its file's, with no fallbacks. Text fields that hold one value per dialect resolve to
+/// the database dialect's entry, else the <c>"*"</c> entry, else <see langword="null"/>.
+/// </summary>
+public sealed class RMigration : RAnnotated
+{
+    private string? _hash;
+
+    /// <inheritdoc/>
+    public override string Kind => "migration";
+
+    /// <summary>The fact's name: the empty string for a recorded fact.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The database whose shape the fact changes.</summary>
+    public RDatabase Database { get; internal set; } = null!;
+
+    /// <summary>What the fact records, as its file writes it: <c>rename</c>, <c>rekey</c>, <c>change-type</c>, <c>drop</c>, ...</summary>
+    public string Fact { get; internal set; } = "";
+
+    /// <summary>The 1-based place of the fact in its database's applied order.</summary>
+    public int Order { get; internal set; }
+
+    /// <summary>The facts this one follows that exist in its database, in its file's order; dangling links are left out (MQ4111).</summary>
+    public IReadOnlyList<RMigration> After { get; internal set; } = [];
+
+    /// <summary><c>pending</c> (intent missing), <c>complete</c>, <c>held</c> (held, not released) or <c>released</c>.</summary>
+    public string State { get; internal set; } = "complete";
+
+    /// <summary>The intent fields MQ4101 names (<c>conversion</c>, <c>dataCheck</c>, <c>acknowledge</c>, <c>value</c>, <c>skipWhen</c>); empty unless pending.</summary>
+    public IReadOnlyList<string> Missing { get; internal set; } = [];
+
+    /// <summary>The object of a <c>rename</c>, <c>change-type</c>, <c>drop</c> or <c>backfill</c>.</summary>
+    public RMigrationObject? Object { get; internal set; }
+
+    /// <summary>The objects of an <c>adopt</c>, <c>baseline</c>, <c>value-map</c> or <c>state-map</c>; context for <c>raw</c>.</summary>
+    public IReadOnlyList<RMigrationObject> Objects { get; internal set; } = [];
+
+    /// <summary>The state before: a rename's name and schema, a change-type's type facets.</summary>
+    public RMigrationState? From { get; internal set; }
+
+    /// <summary>The state after.</summary>
+    public RMigrationState? To { get; internal set; }
+
+    /// <summary>The intermediate names of a folded rename, oldest first.</summary>
+    public IReadOnlyList<string> Via { get; internal set; } = [];
+
+    /// <summary>The keys a <c>rekey</c> moved, as recorded.</summary>
+    public IReadOnlyList<RMigrationRekey> Keys { get; internal set; } = [];
+
+    /// <summary>How a <c>change-type</c> converts stored values.</summary>
+    public RConversion? Conversion { get; internal set; }
+
+    /// <summary>The rows a step must not find, or why no check is needed.</summary>
+    public RMigrationDataCheck? DataCheck { get; internal set; }
+
+    /// <summary>Why a <c>drop</c>'s data may go.</summary>
+    public string? Acknowledge { get; internal set; }
+
+    /// <summary>A <c>backfill</c>'s value for the database's dialect.</summary>
+    public string? Value { get; internal set; }
+
+    /// <summary>A <c>backfill</c>'s rows for the database's dialect (<see langword="null"/>: <c>{column} IS NULL</c>).</summary>
+    public string? Where { get; internal set; }
+
+    /// <summary>A <c>raw</c> fact's statements for the database's dialect.</summary>
+    public string? Sql { get; internal set; }
+
+    /// <summary>A <c>raw</c> fact's guard for the database's dialect: a query whose row means the end state holds.</summary>
+    public string? SkipWhen { get; internal set; }
+
+    /// <summary><c>before</c> or <c>after</c> the schema statements (a <c>raw</c> fact's phase).</summary>
+    public string Phase { get; internal set; } = "after";
+
+    /// <summary>The environment of an <c>adopt</c>.</summary>
+    public string? Environment { get; internal set; }
+
+    /// <summary>The historical id of a <c>value-map</c>'s reference type; not a reference.</summary>
+    public string? ReferenceType { get; internal set; }
+
+    /// <summary>The historical id of a <c>state-map</c>'s process; not a reference.</summary>
+    public string? Process { get; internal set; }
+
+    /// <summary>Stored codes (or state codes) and their replacements.</summary>
+    public IReadOnlyList<RMigrationValue> Values { get; internal set; } = [];
+
+    /// <summary>Whether the fact waits until it is released.</summary>
+    public bool Held { get; internal set; }
+
+    /// <summary>Whether a held fact may now run.</summary>
+    public bool Released { get; internal set; }
+
+    /// <summary>
+    /// The fact content hash: 64 lowercase hex digits of SHA-256 over the fact as the canonical writer writes it without its
+    /// annotations, <c>after</c>, <c>held</c> and <c>released</c> (what a ledger row records). Computed on first read.
+    /// </summary>
+    public string Hash
+    {
+        get
+        {
+            if (Volatile.Read(ref _hash) is { } hash)
+                return hash;
+            var built = HashFactory?.Invoke() ?? "";
+            return Interlocked.CompareExchange(ref _hash, built, null) ?? built;
+        }
+    }
+
+    internal Func<string>? HashFactory { get; set; }
+
+    /// <summary>The fact as its file holds it (the records of <c>get_resolved_model</c> read its object and states).</summary>
+    internal Maquettiste.Engine.Model.Migration Source { get; set; } = null!;
+}
+
+/// <summary>An object a migration fact names, with its keys as recorded and as they read today.</summary>
+public sealed class RMigrationObject
+{
+    /// <summary><c>table</c>, <c>column</c>, <c>view</c>, <c>sequence</c>, <c>index</c>, <c>unique</c>, <c>foreign-key</c>, <c>check</c>, <c>routine</c>, <c>database-type</c>, <c>sql-object</c> or <c>schema</c>.</summary>
+    public string Kind { get; internal set; } = "";
+
+    /// <summary>The key of a member's table, as recorded.</summary>
+    public string? Table { get; internal set; }
+
+    /// <summary>The object's physical key, as recorded.</summary>
+    public string Key { get; internal set; } = "";
+
+    /// <summary>The object's database schema name at the time.</summary>
+    public string? Schema { get; internal set; }
+
+    /// <summary>A member's table name at the time.</summary>
+    public string? TableName { get; internal set; }
+
+    /// <summary>The object's name at the time.</summary>
+    public string? Name { get; internal set; }
+
+    /// <summary>The names the object had before (<c>baseline</c> only).</summary>
+    public IReadOnlyList<string> FormerNames { get; internal set; } = [];
+
+    /// <summary><see cref="Key"/> moved through the <c>rekey</c> facts after the fact in applied order: the key the object has today.</summary>
+    public string CurrentKey { get; internal set; } = "";
+
+    /// <summary><see cref="Table"/> moved the same way.</summary>
+    public string? CurrentTable { get; internal set; }
+}
+
+/// <summary>
+/// A side of a migration fact: names for a <c>rename</c>; type facets for a <c>change-type</c>, with a reference column's strategy and
+/// bound table.
+/// </summary>
+public sealed class RMigrationState
+{
+    /// <summary>The object's name.</summary>
+    public string? Name { get; internal set; }
+
+    /// <summary>The object's database schema name.</summary>
+    public string? Schema { get; internal set; }
+
+    /// <summary>The column's built-in type keyword.</summary>
+    public string? Type { get; internal set; }
+
+    /// <summary>The column's length.</summary>
+    public int? Length { get; internal set; }
+
+    /// <summary>The column's precision.</summary>
+    public int? Precision { get; internal set; }
+
+    /// <summary>The column's scale.</summary>
+    public int? Scale { get; internal set; }
+
+    /// <summary>The column's effective native type.</summary>
+    public string? NativeType { get; internal set; }
+
+    /// <summary>A reference column's effective storage strategy.</summary>
+    public string? Strategy { get; internal set; }
+
+    /// <summary>The key of the table a reference column's reference type is bound to, as the fact records it (a historical key).</summary>
+    public string? ReferenceTable { get; internal set; }
+
+    /// <summary>Whether the column takes NULL.</summary>
+    public bool? Nullable { get; internal set; }
+}
+
+/// <summary>One key a <c>rekey</c> fact moved.</summary>
+public sealed class RMigrationRekey
+{
+    /// <summary><c>table</c>, <c>column</c>, <c>sequence</c> or <c>sql-object</c>.</summary>
+    public string Kind { get; internal set; } = "";
+
+    /// <summary>A column entry's table key before the fact.</summary>
+    public string? Table { get; internal set; }
+
+    /// <summary>The key before.</summary>
+    public string From { get; internal set; } = "";
+
+    /// <summary>The key after.</summary>
+    public string To { get; internal set; } = "";
+
+    /// <summary>The object's name at the time.</summary>
+    public string? Name { get; internal set; }
+}
+
+/// <summary>How a <c>change-type</c> fact converts stored values, for the database's dialect.</summary>
+public sealed class RConversion
+{
+    /// <summary>The id of the fact that carries the conversion.</summary>
+    public string FactId { get; internal set; } = "";
+
+    /// <summary>Whether a plain cast converts the values.</summary>
+    public bool Cast { get; internal set; }
+
+    /// <summary>The conversion expression for the dialect (else the <c>"*"</c> entry), or <see langword="null"/>; <c>{table}</c> and <c>{column}</c> expand to quoted names.</summary>
+    public string? Expression { get; internal set; }
+}
+
+/// <summary>A step's data check, for the database's dialect.</summary>
+public sealed class RMigrationDataCheck
+{
+    /// <summary>The query for the dialect (else the <c>"*"</c> entry), or <see langword="null"/>: a row it returns stops the step.</summary>
+    public string? Query { get; internal set; }
+
+    /// <summary>Why no check is needed.</summary>
+    public string? Accept { get; internal set; }
+}
+
+/// <summary>A stored code (or state code) and its replacement.</summary>
+public sealed class RMigrationValue
+{
+    /// <summary>The stored value.</summary>
+    public string From { get; internal set; } = "";
+
+    /// <summary>Its replacement.</summary>
+    public string To { get; internal set; } = "";
 }

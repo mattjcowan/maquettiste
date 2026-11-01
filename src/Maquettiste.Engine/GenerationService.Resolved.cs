@@ -10,7 +10,8 @@ public sealed partial class GenerationService
     /// <summary>
     /// One page of the resolved model as flat records (<see cref="ResolvedRecords"/>), by (kind, name, id): what templates read, as data
     /// for external systems. The model is validated and resolved once per snapshot (the store keeps the last snapshot's resolved model, so paging
-    /// through it resolves once); a model with errors returns no records and the errors. Takes no run lock and writes nothing.
+    /// through it resolves once); a model with errors returns no records and the errors, unless its only errors are pending migration facts
+    /// (MQ4101), which return records. Takes no run lock and writes nothing.
     /// </summary>
     /// <param name="query">The scope, the database, the cursor and the page size.</param>
     /// <param name="ct">Cancellation.</param>
@@ -43,7 +44,7 @@ public sealed partial class GenerationService
     {
         var shared = await _store.ResolvedAsync(snapshot, ct).ConfigureAwait(false);
         if (shared.Model is not { } resolved)
-            return new ResolvedState(null, Outcomes.Sort(shared.Report.Diagnostics.Where(Outcomes.IsInvalid)));
+            return new ResolvedState(null, Outcomes.Sort(shared.Report.Diagnostics.Where(Outcomes.BlocksResolution)));
         if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
             return new ResolvedState(null, Outcomes.Sort(resolved.Diagnostics.Where(Outcomes.IsInvalid)));
         return new ResolvedState(resolved, []);

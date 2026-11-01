@@ -313,6 +313,8 @@ internal static partial class BuiltinRules
                 break;
             case Table { Origin: TableOrigin.Synthesized, Name.Length: 0 }:
                 break; // an overlay keeps the conventional name
+            case Migration { Name.Length: 0 }:
+                break; // a recorded fact has no name (next-phase-1-design.md section 3.2)
             case Stereotype stereotype:
                 CheckLabel(stereotype.Name, "stereotype", "/name", element.Id, report);
                 if (!KebabKey().IsMatch(stereotype.Key))

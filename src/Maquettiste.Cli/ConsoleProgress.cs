@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
@@ -37,6 +38,9 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
     private int _lineLength;
     private int _filesCompared;
 
+    /// <summary>The paths the writer reported since the last <see cref="TakeCompared"/>: the files rendered and compared this run.</summary>
+    private ConcurrentDictionary<string, byte> _compared = new(StringComparer.Ordinal);
+
     /// <summary>Creates the reporter.</summary>
     /// <param name="style">The style.</param>
     /// <param name="error">stderr.</param>
@@ -56,6 +60,13 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
     /// <returns>The files compared since the last call.</returns>
     public int TakeFilesCompared() => Interlocked.Exchange(ref _filesCompared, 0);
 
+    /// <summary>Whether the writer reported a path this run (the file was rendered and compared with disk), for the summary.</summary>
+    public Func<string, bool> Compared => Volatile.Read(ref _compared).ContainsKey;
+
+    /// <summary>Returns <see cref="Compared"/> and starts an empty set, so each run of a watch session sees only its own files.</summary>
+    /// <returns>Whether the writer reported a path since the last call.</returns>
+    public Func<string, bool> TakeCompared() => Interlocked.Exchange(ref _compared, new ConcurrentDictionary<string, byte>(StringComparer.Ordinal)).ContainsKey;
+
     /// <inheritdoc/>
     /// <remarks>
     /// Stages report from several threads, often once per file. An update that changes nothing on screen (the stage already
@@ -66,7 +77,11 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
     {
         ArgumentNullException.ThrowIfNull(value);
         if (value.Stage == PipelineStage.Write)
+        {
             Max(ref _filesCompared, value.Done);
+            if (value.CurrentPath is { } path)
+                Volatile.Read(ref _compared).TryAdd(path, 0);
+        }
         if (_style == ProgressStyle.None || (_hideWrite && value.Stage == PipelineStage.Write))
             return;
 

@@ -198,6 +198,32 @@
       }
     },
     {
+      "name": "get_ledger_ddl",
+      "title": "Migration ledger DDL",
+      "description": "The DDL of the migration ledger (contract version 1) of one PostgreSQL database: three tables in the schema migrations.ledgerSchema names (default migration_ledger), contract (one version row), applied_fact (one row per applied migration fact) and applied_object (one row per object whose identity the writer owns). The DDL is idempotent and holds no transaction control: a migrator runs it inside its own transaction before it writes its rows. The answer is {contractVersion, database (its name), dialect, schema, ddl, grant}: grant is the read grant for the grantRead role (usage on the schema, SELECT on the three tables), else null. Roles belong to environments, so the grant is printed, never generated. The engine never reads a ledger. No PostgreSQL database, an unknown or non-PostgreSQL database, several PostgreSQL databases and none named, or an empty grantRead is bad-request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "description": "The PostgreSQL database, by name or id; optional when the model has only one.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "grantRead": {
+            "description": "A role to print the read grant for; quoted unless it is a plain lower-case name.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      }
+    },
+    {
       "name": "get_materialize_status",
       "title": "Materialize status",
       "description": "What can be materialized in one database: {database, databaseName, entities: [{id, name, package, projected, table}] (the entities with no binding to the database; projected says the database still projects a table for it by convention or a mapping element), sources: [{id, kind (table or view), name, schema, origin, boundBy: [{entity, entityName, binding, constants}]}] (its designed and imported tables and its views; boundBy empty means no entity is bound to it, several entries mean constant columns tell the entities apart)}. Then preview_materialize, and apply_batch with a materialize-tables, materialize-entities, materialize-attributes or materialize-columns operation.",
@@ -399,12 +425,12 @@
     {
       "name": "get_resolved_model",
       "title": "Resolved model",
-      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id. databases: the database view (tables with columns, keys, foreign keys and indexes, views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. A model with errors returns no items and the errors in diagnostics.",
+      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id. databases: the database view (tables with columns, keys, foreign keys and indexes, views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. migrations: one open migration fact per record, by database name then applied order, with its state, missing intent, after links, object, current key, from, to and content hash. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. A model with errors returns no items and the errors in diagnostics, unless its only errors are pending migration facts (MQ4101): those still return items.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "scope": {
-            "description": "all (default), packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects or queries.",
+            "description": "all (default), packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects, queries or migrations.",
             "type": [
               "string",
               "null"
@@ -412,7 +438,7 @@
             "default": null
           },
           "database": {
-            "description": "A database id: only the entities and relations mapped to it, that database and its tables.",
+            "description": "A database id: only the entities and relations mapped to it, that database, its tables and its migration facts.",
             "type": [
               "string",
               "null"
@@ -466,6 +492,40 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      }
+    },
+    {
+      "name": "list_migrations",
+      "title": "Migration facts",
+      "description": "The open migration facts (kind migration: one change stored rows must follow per file, recorded by writes), in applied order: by database name, then the order their after links give (ties by id). Each is {id, database, databaseName, order, fact (rename, rekey, change-type, drop, backfill, raw, adopt, baseline, value-map, state-map), state (pending, complete, held, released), stale, missing (the intent a pending fact lacks: conversion, dataCheck, acknowledge, value, skipWhen), summary, object (as recorded), after, path, hash}. stale marks a fact whose effect the model no longer shows (MQ4103): fold_migrations removes it. Complete a pending fact with save_element. The answer is one page, {facts, total, next}: pass next as cursor until it is null. An unknown database or cursor is bad-request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "description": "Only this database's facts, by name or id.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "cursor": {
+            "description": "The next value of the previous page.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 1000 (default 100).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          }
+        }
       }
     },
     {
@@ -1033,10 +1093,18 @@
     {
       "name": "validate",
       "title": "Validate",
-      "description": "Validates the whole model, or only some elements, with the built-in rules and, by default, the project's script rules (extensions/rules/*.js, findings x/<id>; a rule file that does not load is MQ5002 on that file). Returns the diagnostics (rule id such as MQ3001, severity, message, element id, file path, JSON pointer, line and column) and the error, warning and info counts.",
+      "description": "Validates the whole model, or only some elements, with the built-in rules and, by default, the project's script rules (extensions/rules/*.js, findings x/<id>; a rule file that does not load is MQ5002 on that file). Returns the diagnostics (rule id such as MQ3001, severity, message, element id, file path, JSON pointer, line and column) and the error, warning and info counts. With against (a model snapshot id; a folder holding another copy of the project too, from the command-line server), the whole model is also compared with that baseline: a change since it that a migration must follow and no migration fact the baseline lacks explains is MQ4102, a fact whose combined effect the model no longer shows is MQ4103, baseline objects whose owners have errors are skipped with MQ4109. A value that names nothing is bad-request.",
       "inputSchema": {
         "type": "object",
         "properties": {
+          "against": {
+            "description": "A model snapshot id (list_snapshots), or, where the server allows folders, a folder holding another copy of the project (relative to the server's current directory): compare the whole model with it. Leave elementIds out.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
           "elementIds": {
             "description": "Only these element ids (and, by default, the elements that reference them); omit for the whole model.",
             "type": [

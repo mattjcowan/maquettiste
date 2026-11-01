@@ -57,12 +57,32 @@ internal sealed class ModelResolver(EngineOptions options) : IModelResolver
     /// <param name="model">The snapshot.</param>
     /// <param name="databaseId">The database element's id.</param>
     /// <param name="ct">Cancellation.</param>
+    /// <param name="freeze">Whether to keep the dependency keys of the resolved objects (<see cref="ResolveRun.RunDatabases"/>).</param>
     /// <returns>The resolved database (null when no database has the id) and the diagnostics of that partial run.</returns>
-    internal Task<(RDatabase? Database, IReadOnlyList<Diagnostic> Diagnostics)> ResolveDatabaseAsync(ModelSnapshot model, string databaseId, CancellationToken ct)
+    internal async Task<(RDatabase? Database, IReadOnlyList<Diagnostic> Diagnostics)> ResolveDatabaseAsync(ModelSnapshot model, string databaseId, CancellationToken ct,
+        bool freeze = false)
+    {
+        ArgumentNullException.ThrowIfNull(databaseId);
+        var (databases, diagnostics) = await ResolveDatabasesAsync(model, [databaseId], freeze, ct).ConfigureAwait(false);
+        return (databases[0], diagnostics);
+    }
+
+    /// <summary>
+    /// Resolves the conceptual layer once and then each database of <paramref name="databaseIds"/> (<see cref="ResolveRun.RunDatabases"/>):
+    /// the databases a write can reshape share one conceptual run when migration facts are recorded.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="databaseIds">The database element ids.</param>
+    /// <param name="freeze">Whether to keep the dependency keys of the resolved objects.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>Per id, the resolved database (null when no database has it), and the diagnostics of that partial run.</returns>
+    internal Task<(IReadOnlyList<RDatabase?> Databases, IReadOnlyList<Diagnostic> Diagnostics)> ResolveDatabasesAsync(ModelSnapshot model, IReadOnlyList<string> databaseIds,
+        bool freeze, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(model);
-        ArgumentNullException.ThrowIfNull(databaseId);
+        ArgumentNullException.ThrowIfNull(databaseIds);
         ct.ThrowIfCancellationRequested();
-        return Task.Run(() => new ResolveRun(model, null, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count)).RunOneDatabase(databaseId), ct);
+        return Task.Run(() => new ResolveRun(model, null, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count))
+            .RunDatabases(databaseIds, freeze), ct);
     }
 }

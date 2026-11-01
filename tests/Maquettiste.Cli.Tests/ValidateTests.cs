@@ -217,4 +217,105 @@ public sealed class ValidateTests
         Assert.Contains($", and {TestServices.Schemas.FileNames.Count - 5} more.", warning.GetProperty("message").GetString(), StringComparison.Ordinal);
         Assert.False(Directory.Exists(repo.PathOf(SchemaFolder)));
     }
+
+    private const string OverlayFile = ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json";
+    private const string FactFile = ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000001.json";
+
+    /// <summary>A change-type fact of the invoice number from text to varchar(20), with <paramref name="intent"/> after its sides.</summary>
+    private static string NarrowingFact(string intent) => $$"""
+        {
+          "$schema": "../../../../../.schema/v1/migration.json",
+          "kind": "migration",
+          "id": "01JFCT00000000000000000001",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "fact": "change-type",
+          "object": {
+            "kind": "column",
+            "table": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+            "key": "01J92P0V0R3VSP7D5238DTNZX1",
+            "schema": "billing",
+            "tableName": "invoices",
+            "name": "number"
+          },
+          "from": {
+            "type": "string",
+            "length": 32,
+            "nativeType": "text"
+          },
+          "to": {
+            "type": "string",
+            "length": 32,
+            "nativeType": "varchar(20)"
+          }{{intent}}
+        }
+
+        """.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    [Fact]
+    public async Task Validate_against_a_snapshot_and_a_folder_exits_1_until_the_fact_is_complete()
+    {
+        using var repo = CliRepo.Billing();
+        using var copy = new TempRepo();
+        // The baseline pins the invoice number to text: a snapshot of it, and a copy of the project in a folder.
+        repo.Replace(OverlayFile, "\"nativeType\": \"varchar(32)\"", "\"nativeType\": \"text\"");
+        var created = await repo.RunAsync("snapshot", "create", "Base", "--format", "json");
+        Assert.True(created.ExitCode == 0, created.ToString());
+        using var info = JsonDocument.Parse(created.Out);
+        var snapshot = info.RootElement.GetProperty("id").GetString()!;
+        CliRepo.CopyTree(repo.ModelRoot, copy.ModelRoot);
+
+        // Narrowed by hand (no write records a fact): nothing explains it.
+        repo.Replace(OverlayFile, "\"nativeType\": \"text\"", "\"nativeType\": \"varchar(20)\"");
+        Assert.Equal(0, (await repo.RunAsync("validate")).ExitCode);
+        foreach (var against in new[] { snapshot, copy.RepoRoot })
+        {
+            var unexplained = await repo.RunAsync("validate", "--against", against);
+            Assert.True(unexplained.ExitCode == 1, unexplained.ToString());
+            var line = Assert.Single(Text.Lines(unexplained.Out), l => l.Contains(" error ", StringComparison.Ordinal));
+            Assert.StartsWith(OverlayFile + "(", line, StringComparison.Ordinal);
+            Assert.Contains("error MQ4102: ", line, StringComparison.Ordinal);
+        }
+
+        // A pending fact explains the change but lacks its intent.
+        repo.Write(FactFile, NarrowingFact(""));
+        foreach (var against in new[] { snapshot, copy.RepoRoot })
+        {
+            var pending = await repo.RunAsync("validate", "--against", against, "--format", "json");
+            Assert.True(pending.ExitCode == 1, pending.ToString());
+            using var report = JsonDocument.Parse(pending.Out);
+            Assert.Equal(["MQ4101", "MQ4101"], report.RootElement.GetProperty("diagnostics").EnumerateArray()
+                .Where(d => d.GetProperty("severity").GetString() == "error").Select(d => d.GetProperty("rule").GetString()));
+        }
+
+        // Complete: a conversion and a data check.
+        repo.Write(FactFile, NarrowingFact("""
+            ,
+              "conversion": {
+                "cast": true
+              },
+              "dataCheck": {
+                "query": {
+                  "postgresql": "select 1 from {table} where length({column}) > 20"
+                }
+              }
+            """.Replace("\r\n", "\n", StringComparison.Ordinal)));
+        foreach (var against in new[] { snapshot, copy.RepoRoot })
+        {
+            var complete = await repo.RunAsync("validate", "--against", against);
+            Assert.True(complete.ExitCode == 0, complete.ToString());
+            Assert.DoesNotContain(" MQ41", complete.Out, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task Validate_against_a_value_that_names_nothing_exits_4()
+    {
+        using var repo = CliRepo.Billing();
+        var unknown = await repo.RunAsync("validate", "--against", "no-such-snapshot");
+        Assert.Equal(4, unknown.ExitCode);
+        Assert.Contains("no-such-snapshot", unknown.Error, StringComparison.Ordinal);
+        var missing = await repo.RunAsync("validate", "--against", "./no-such-folder");
+        Assert.Equal(4, missing.ExitCode);
+        Assert.Contains("no-such-folder", missing.Error, StringComparison.Ordinal);
+    }
 }

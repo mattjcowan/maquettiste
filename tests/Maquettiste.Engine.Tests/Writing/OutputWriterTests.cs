@@ -149,13 +149,50 @@ public sealed class OutputWriterTests
         f.Repo.WriteFile("db/seed.sql", "team owns this\n");
 
         var second = await f.RunAsync([Unit("p/scaffold", Out("db/seed.sql", "v2\n", OutputMode.Once))]);
+        var manifest = f.ManifestText("p");
         var third = await f.RunAsync([]);
 
         Assert.Equal(FileChangeKind.Kept, Assert.Single(second.Changes).Kind);
         Assert.Empty(second.Diagnostics);
-        Assert.Equal(FileChangeKind.OrphanedOwned, Assert.Single(third.Changes).Kind);
+        // No unit produces it any more, yet the file is on disk and its pack still exists: it stays owned, with its entry.
+        var kept = Assert.Single(third.Changes);
+        Assert.Equal(("db/seed.sql", FileChangeKind.Kept), (kept.Path, kept.Kind));
+        Assert.Empty(third.Diagnostics);
+        Assert.Equal(0, third.Written + third.Deleted);
         Assert.Equal("team owns this\n", f.Repo.ReadFile("db/seed.sql"));
+        Assert.Equal(manifest, f.ManifestText("p"));
+        Assert.Contains("\"db/seed.sql\"", manifest, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_deleted_once_file_is_an_owned_orphan()
+    {
+        using var f = new WritingFixture();
+        await f.RunAsync([Unit("p/scaffold", Out("db/seed.sql", "v1\n", OutputMode.Once))]);
+        await f.RunAsync([]);
+        Assert.Contains("\"db/seed.sql\"", f.ManifestText("p"), StringComparison.Ordinal);
+
+        // Once the team deletes the file, nothing is left to own: the entry goes, and nothing is written.
+        System.IO.File.Delete(f.Repo.PathOf("db/seed.sql"));
+        var gone = await f.RunAsync([]);
+
+        Assert.Equal(("db/seed.sql", FileChangeKind.OrphanedOwned), gone.Changes.Select(c => (c.Path, c.Kind)).Single());
+        Assert.Equal(0, gone.Written + gone.Deleted);
+        Assert.False(f.Repo.Exists("db/seed.sql"));
         Assert.Equal("", f.ManifestText("p"));
+
+        // A companion no unit produces any more is dropped from the manifest even while its file exists, as is an owned file of a
+        // pack that no longer exists (a run over every pack orphans its manifest in full).
+        await f.RunAsync([Unit("p/entity:01E", Out("src/Generated/E.g.cs", "g\n", OutputMode.Pair), Out("src/Generated/E.cs", "c\n", OutputMode.Pair, FileRole.Companion))]);
+        await f.RunAsync([Unit("q/scaffold", Out("db/q.sql", "q\n", OutputMode.Once))], counts: new Dictionary<string, int> { ["q"] = 1 });
+        var orphaned = await f.RunAsync([], allPacks: true);
+        Assert.Contains(orphaned.Changes, c => c.Path == "src/Generated/E.cs" && c.Kind == FileChangeKind.OrphanedOwned);
+        Assert.Contains(orphaned.Changes, c => c.Path == "src/Generated/E.g.cs" && c.Kind == FileChangeKind.Deleted);
+        Assert.Contains(orphaned.Changes, c => c.Path == "db/q.sql" && c.Kind == FileChangeKind.OrphanedOwned);
+        Assert.True(f.Repo.Exists("src/Generated/E.cs"));
+        Assert.True(f.Repo.Exists("db/q.sql"));
+        Assert.Equal("", f.ManifestText("p"));
+        Assert.Equal("", f.ManifestText("q"));
     }
 
     [Fact]

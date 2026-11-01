@@ -158,7 +158,7 @@ public sealed class ModelStoreTests
         Assert.Equal(".maquettiste/model/entities/line-item.json", renamed.Current!.Path);
         Assert.False(s.Harness.Exists("model/entities/invoice-line.json"));
         Assert.True(s.Harness.Exists("model/entities/line-item.json"));
-        Assert.Equal(".maquettiste/model/entities/line-item.json", Assert.Single(renamed.Changes!.Changed).Path);
+        Assert.Equal(".maquettiste/model/entities/line-item.json", Assert.Single(renamed.Changes!.Changed, c => c.Kind == "entity").Path);
 
         var payment = s.Doc("entity", "Payment");
         var collided = await s.Store.SaveAsync(payment.Element.Id, BillingStore.Edit(payment, n => n["name"] = "Product"), payment.Hash, ChangeSource.Editor, Ct);

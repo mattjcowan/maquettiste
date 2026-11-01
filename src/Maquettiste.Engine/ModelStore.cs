@@ -153,7 +153,7 @@ public sealed partial class ModelStore : IAsyncDisposable
             return invalid;
         await DefaultSeedColumnsAsync(node, ct).ConfigureAwait(false);
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Create, null, null, node, DeleteResolution.Refuse)], source, ct).ConfigureAwait(false);
-        return result.Items[0];
+        return Single(result);
     }
 
     /// <summary>Saves an element if its file still has the expected hash (host-contracts requirement 12).</summary>
@@ -169,7 +169,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         if (!TryParseRequest(json, id, out var node, out var invalid))
             return invalid;
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Update, id, expectedHash, node, DeleteResolution.Refuse)], source, ct).ConfigureAwait(false);
-        return result.Items[0];
+        return Single(result);
     }
 
     /// <summary>Deletes an element (host-contracts requirement 13).</summary>
@@ -183,8 +183,12 @@ public sealed partial class ModelStore : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(id);
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Delete, id, expectedHash, null, resolution)], source, ct).ConfigureAwait(false);
-        return result.Items[0];
+        return Single(result);
     }
+
+    /// <summary>A single-element call's result: its one item, carrying every fact the write recorded (cascades included).</summary>
+    private static SaveResult Single(BatchResult result) =>
+        result.Facts is { } facts && result.Items[0].Outcome == SaveOutcome.Saved ? result.Items[0] with { Facts = facts } : result.Items[0];
 
     /// <summary>Parses an untrusted batch, validated against <c>batch.json</c>, with no disk access (host-contracts requirement 16).</summary>
     /// <param name="json">The batch JSON.</param>
@@ -217,7 +221,10 @@ public sealed partial class ModelStore : IAsyncDisposable
     {
         var files = new List<BatchPreviewFile>();
         var result = await ApplyBatchCoreAsync(batch, ChangeSource.Editor, files, ct).ConfigureAwait(false);
-        return new BatchPreview(result.Outcome, result.Items, result.Outcome == SaveOutcome.Saved ? files : []);
+        return new BatchPreview(result.Outcome, result.Items, result.Outcome == SaveOutcome.Saved ? files : [])
+        {
+            Facts = result.Outcome == SaveOutcome.Saved ? result.Facts : null,
+        };
     }
 
     private Task<BatchResult> ApplyBatchCoreAsync(ModelBatch batch, ChangeSource source, List<BatchPreviewFile>? preview, CancellationToken ct)
@@ -261,7 +268,7 @@ public sealed partial class ModelStore : IAsyncDisposable
             return ApplyWithSchemasAsync(batch, changes, invalid, source, preview, ct);
 
         if (changes.Count == 0)
-            return Task.FromResult(new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source)));
+            return Task.FromResult(new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source)) { Facts = [] });
         return ExecuteAsync(changes, source, ct, preview);
     }
 
@@ -329,17 +336,32 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// The validator's report, plus the snapshot's load diagnostics (MQ1xxx) for the scope that it did not already carry, so a
     /// file that failed to load is never silently missing from a report, plus what the resolver finds once the whole model
     /// validates without error (MQ4005 over the resolved columns and the other resolution findings; once per snapshot, see
-    /// <see cref="ResolverFindingsAsync"/>), so validate reports what generation would.
+    /// <see cref="ResolverFindingsAsync"/>), so validate reports what generation would. It also adds the stale chains of complete
+    /// migration facts (MQ4103), judged against each database's committed physical snapshot: those are not part of the resolver's
+    /// once-per-snapshot findings, since generation rewrites a committed snapshot with no model change, so each call reads the
+    /// committed snapshots again; the captures they are judged against are cached per snapshot, and so are the findings while the
+    /// committed snapshots list the same rendered facts.
     /// </remarks>
     public async Task<ValidationReport> ValidateAsync(ValidationScope scope, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
+        return await ValidateCoreAsync(snapshot, scope, committedStale: true, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// <see cref="ValidateAsync(ValidationScope, CancellationToken)"/> over a snapshot; <paramref name="committedStale"/> adds the stale chains judged against the
+    /// committed physical snapshots, which <see cref="ValidateAgainstAsync"/> judges against its baseline instead.
+    /// </summary>
+    private async Task<ValidationReport> ValidateCoreAsync(ModelSnapshot snapshot, ValidationScope scope, bool committedStale, CancellationToken ct)
+    {
         // The whole model's report is the one the snapshot's shared resolution validated with (once per snapshot).
         var whole = scope.ElementIds is null && scope.IncludeReferrers && scope.IncludeScriptRules;
         var report = whole ? (await ResolvedAsync(snapshot, ct).ConfigureAwait(false)).Report
             : await _services.Validator.ValidateAsync(snapshot, scope, null, ct).ConfigureAwait(false);
-        var found = await ResolverFindingsAsync(snapshot, ct).ConfigureAwait(false);
+        IReadOnlyList<Diagnostic> found = await ResolverFindingsAsync(snapshot, ct).ConfigureAwait(false);
+        if (committedStale && await CommittedStaleFindingsAsync(snapshot, ct).ConfigureAwait(false) is { Count: > 0 } stale)
+            found = [.. found, .. stale];
         var seen = report.Diagnostics.Select(LoadKey).ToHashSet(StringComparer.Ordinal);
         IEnumerable<Diagnostic> load = snapshot.LoadDiagnostics;
         IEnumerable<Diagnostic> resolved = found;
@@ -451,11 +473,58 @@ public sealed partial class ModelStore : IAsyncDisposable
         if (!string.Equals(expectedHash, diskHash, StringComparison.Ordinal))
             return new SettingsSaveResult(SaveOutcome.Conflict, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []);
         if (disk is not null && disk.AsSpan().SequenceEqual(bytes))
-            return new SettingsSaveResult(SaveOutcome.Saved, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []);
+            return new SettingsSaveResult(SaveOutcome.Saved, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []) { Facts = [] };
 
-        // Validate the candidate model with the new settings; only diagnostics the change introduces come back, and only errors it
-        // introduces refuse it (the element-save rule), so pre-existing errors never block an unrelated settings save.
         var newHash = ContentHash.Of(bytes);
+        var (introduced, recording) = await CheckSettingsAsync(before, settings, newHash, repoPath, ct).ConfigureAwait(false);
+
+        // A fact file the recording rewrites (a pending fact that follows its column) that changed on disk behind the index: index it
+        // and check again from what is really there, as an element save does.
+        if (await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false) is { Count: > 0 } changedFacts)
+        {
+            await RefreshFactFilesAsync(changedFacts, notifications, ct).ConfigureAwait(false);
+            before = _current!;
+            (introduced, recording) = await CheckSettingsAsync(before, settings, newHash, repoPath, ct).ConfigureAwait(false);
+            if ((await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false)).Count > 0)
+                return new SettingsSaveResult(SaveOutcome.Conflict, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []);
+        }
+
+        if (introduced.Any(d => d.Severity == DiagnosticSeverity.Error))
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null, Sorted(introduced));
+        introduced.AddRange(recording.Diagnostics.Select(d => d.Diagnostic));
+
+        var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
+        var failure = await Documents.ApplyAsync([(ModelPaths.SettingsFile, bytes), .. recording.Writes], [], batchId, ct).ConfigureAwait(false);
+        if (failure is { Refused: true })
+        {
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null,
+                [RuleCatalog.Create("MQ6004", $"The model write to {failure.Path} was refused: {failure.Reason}", null, repoPath, null)]);
+        }
+
+        if (failure is not null)
+            throw new IOException($"The settings could not be written ({failure.Path}); nothing was changed. {failure.Reason}");
+
+        // The files are on disk: index them even if the caller has given up.
+        var changes = await ReloadAsync([repoPath, .. recording.Writes.Select(w => paths.ToRepoPath(w.Path))], false, source, CancellationToken.None).ConfigureAwait(false);
+        if (!changes.IsEmpty)
+            notifications.Add(changes);
+        var saved = _current!;
+        HandOffCaptures(before, saved, recording.Handoff);
+        RemoveUnnamedUploads(before.Settings.Branding.Icon, saved.Settings.Branding.Icon);
+        return new SettingsSaveResult(SaveOutcome.Saved, saved.SettingsHash, SettingsDocumentOf(saved.Settings, repoPath, saved.SettingsHash, bytes), Sorted(introduced))
+        {
+            Facts = recording.Facts ?? [],
+        };
+    }
+
+    /// <summary>
+    /// Validates the model with new settings and classifies the change. Only diagnostics the change introduces come back, and only
+    /// errors it introduces refuse it (the element-save rule), so pre-existing errors never block an unrelated settings save; a change
+    /// with such an error records nothing.
+    /// </summary>
+    private async Task<(List<Diagnostic> Introduced, FactRecording Recording)> CheckSettingsAsync(ModelSnapshot before, ProjectSettings settings,
+        string newHash, string repoPath, CancellationToken ct)
+    {
         var loadDiagnostics = before.LoadDiagnostics.Where(d => !string.Equals(d.FilePath, repoPath, StringComparison.Ordinal)).ToList();
         var candidate = ModelSnapshot.CreateAfter(before, before.Documents, settings, newHash, before.Extensions, before.RuleScripts, before.Version,
             loadDiagnostics, _options.EffectiveParallelism, ct);
@@ -473,26 +542,15 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
 
         if (introduced.Any(d => d.Severity == DiagnosticSeverity.Error))
-            return new SettingsSaveResult(SaveOutcome.Invalid, null, null, Sorted(introduced));
+            return (introduced, FactRecording.Nothing(CacheHandoff.Clear));
 
-        var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
-        var failure = await Documents.ApplyAsync([(ModelPaths.SettingsFile, bytes)], [], batchId, ct).ConfigureAwait(false);
-        if (failure is { Refused: true })
-        {
-            return new SettingsSaveResult(SaveOutcome.Invalid, null, null,
-                [RuleCatalog.Create("MQ6004", $"The model write to {failure.Path} was refused: {failure.Reason}", null, repoPath, null)]);
-        }
-
-        if (failure is not null)
-            throw new IOException($"The settings could not be written ({failure.Path}); nothing was changed. {failure.Reason}");
-
-        // The file is on disk: index it even if the caller has given up.
-        var changes = await ReloadAsync([repoPath], false, source, CancellationToken.None).ConfigureAwait(false);
-        if (!changes.IsEmpty)
-            notifications.Add(changes);
-        var saved = _current!;
-        RemoveUnnamedUploads(before.Settings.Branding.Icon, saved.Settings.Branding.Icon);
-        return new SettingsSaveResult(SaveOutcome.Saved, saved.SettingsHash, SettingsDocumentOf(saved.Settings, repoPath, saved.SettingsHash, bytes), Sorted(introduced));
+        // Migration facts (next-phase-1-design.md section 3.2): a change of conventions, per-database conventions, type maps or
+        // inflection can rename or retype objects of every database, so every database is classified; other settings shape no table.
+        var recording = ReshapesEveryDatabase(before.Settings, settings)
+            ? await RecordFactsAsync(new RecordingRequest(before, candidate, new Dictionary<string, int>(), true, [], false,
+                [.. baseline.Diagnostics.Concat(report.Diagnostics).Where(d => d.Severity == DiagnosticSeverity.Error)]), ct).ConfigureAwait(false)
+            : FactRecording.Nothing(CacheHandoff.Clear);
+        return (introduced, recording);
     }
 
     private static string SettingsKey(Diagnostic d) =>
@@ -565,7 +623,8 @@ public sealed partial class ModelStore : IAsyncDisposable
         return result.Changes with { Source = source };
     }
 
-    private async Task<BatchResult> ExecuteAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, CancellationToken ct, List<BatchPreviewFile>? preview = null)
+    private async Task<BatchResult> ExecuteAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, CancellationToken ct, List<BatchPreviewFile>? preview = null,
+        IReadOnlyList<MaterializeResult>? materialized = null)
     {
         await LoadedAsync(ct).ConfigureAwait(false);
         var notifications = new List<ChangeSet>();
@@ -575,7 +634,7 @@ public sealed partial class ModelStore : IAsyncDisposable
             await _gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                result = await ExecuteCoreAsync(changes, source, notifications, preview, ct).ConfigureAwait(false);
+                result = await ExecuteCoreAsync(changes, source, notifications, preview, materialized ?? [], ct).ConfigureAwait(false);
             }
             finally
             {
@@ -597,7 +656,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     }
 
     private async Task<BatchResult> ExecuteCoreAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, List<ChangeSet> notifications,
-        List<BatchPreviewFile>? preview, CancellationToken ct)
+        List<BatchPreviewFile>? preview, IReadOnlyList<MaterializeResult> materialized, CancellationToken ct)
     {
         if (IsReadOnly && preview is null)
         {
@@ -628,15 +687,46 @@ public sealed partial class ModelStore : IAsyncDisposable
         if (plan.Failed)
             return Failed(plan);
 
-        await ValidateAsync(plan, snapshot, ct).ConfigureAwait(false);
+        var errors = await ValidateAsync(plan, snapshot, ct).ConfigureAwait(false);
         if (plan.Failed)
             return Failed(plan);
 
+        // Migration facts (next-phase-1-design.md section 3.2): classified after validation and before the preview branch, so a dry
+        // run lists the facts it would record; their files join the write's own in the same atomic set.
+        var recording = await RecordAsync().ConfigureAwait(false);
+
+        // A fact file the recording rewrites (a pending fact that follows its column) that changed on disk behind the index: index it
+        // and plan, validate and classify again from what is really there, as for the plan's own files.
+        if (await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false) is { Count: > 0 } changedFacts)
+        {
+            await RefreshFactFilesAsync(changedFacts, notifications, ct).ConfigureAwait(false);
+            snapshot = _current!;
+            plan = Plan(snapshot, changes, ct);
+            if (!plan.Failed)
+                errors = await ValidateAsync(plan, snapshot, ct).ConfigureAwait(false);
+            if (plan.Failed)
+                return Failed(plan);
+            recording = await RecordAsync().ConfigureAwait(false);
+            if ((await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false)).Count > 0)
+            {
+                foreach (var outcome in plan.Outcomes)
+                    outcome.Fail(SaveOutcome.Conflict); // still changing under us: let the caller reload and retry
+                return Failed(plan);
+            }
+        }
+
+        foreach (var (change, diagnostic) in recording.Diagnostics)
+            plan.Outcomes[Math.Clamp(change, 0, plan.Outcomes.Count - 1)].Diagnostics.Add(diagnostic);
+        var factWrites = recording.Writes.ToDictionary(w => w.Path, w => w.Bytes, StringComparer.Ordinal);
+
         if (preview is not null)
         {
-            preview.AddRange(await PreviewFilesAsync(plan, ct).ConfigureAwait(false));
+            preview.AddRange(await PreviewFilesAsync(plan, factWrites, ct).ConfigureAwait(false));
             return new BatchResult(SaveOutcome.Saved,
-                [.. plan.Outcomes.Select(o => new SaveResult(SaveOutcome.Saved, o.Id, null, null, Sorted(o.Diagnostics), [.. o.Referrers], null))], null);
+                [.. plan.Outcomes.Select(o => new SaveResult(SaveOutcome.Saved, o.Id, null, null, Sorted(o.Diagnostics), [.. o.Referrers], null))], null)
+            {
+                Facts = recording.Facts,
+            };
         }
 
         ChangeSet changeSet;
@@ -646,7 +736,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
         else
         {
-            var writes = plan.Writes.Select(kv => (kv.Key, kv.Value)).ToList();
+            var writes =plan.Writes.Where(kv => !factWrites.ContainsKey(kv.Key)).Select(kv => (kv.Key, kv.Value)).Concat(factWrites.Select(kv => (kv.Key, kv.Value))).ToList();
             var deletes = plan.Deletes.ToList();
             var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
             var failure = await Documents.ApplyAsync(writes, deletes, batchId, ct).ConfigureAwait(false);
@@ -662,10 +752,11 @@ public sealed partial class ModelStore : IAsyncDisposable
                 throw new IOException($"The model change could not be written ({failure.Path}); nothing was changed. {failure.Reason}");
 
             // The files are on disk: index them even if the caller has given up.
-            var written = plan.Writes.Keys.Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Select(paths.ToRepoPath).ToList();
+            var written = plan.Writes.Keys.Concat(factWrites.Keys).Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Select(paths.ToRepoPath).ToList();
             changeSet = await ReloadAsync(written, false, source, CancellationToken.None).ConfigureAwait(false);
             if (!changeSet.IsEmpty)
                 notifications.Add(changeSet);
+            HandOffCaptures(snapshot, _current!, recording.Handoff);
         }
 
         var current = _current!;
@@ -674,15 +765,19 @@ public sealed partial class ModelStore : IAsyncDisposable
             var document = changes[i].Op == BatchOp.Delete || o.Id is null ? null : current.GetDocument(o.Id);
             return new SaveResult(SaveOutcome.Saved, o.Id, document?.Hash, document, Sorted(o.Diagnostics), [.. o.Referrers], changeSet);
         }).ToList();
-        return new BatchResult(SaveOutcome.Saved, items, changeSet);
+        return new BatchResult(SaveOutcome.Saved, items, changeSet) { Facts = recording.Facts ?? [] };
+
+        Task<FactRecording> RecordAsync() => plan.IsNoOp || plan.Candidate is null
+            ? Task.FromResult(FactRecording.Nothing(CacheHandoff.Carry))
+            : RecordFactsAsync(new RecordingRequest(snapshot, plan.Candidate, plan.ChangeByElement, false, materialized, preview is not null, errors), ct);
     }
 
-    /// <summary>The files a plan would write and delete, ordered by path, with their text before and after.</summary>
-    private async Task<List<BatchPreviewFile>> PreviewFilesAsync(ChangePlan plan, CancellationToken ct)
+    /// <summary>The files a plan would write and delete (with the fact files it would record), ordered by path, with their text before and after.</summary>
+    private async Task<List<BatchPreviewFile>> PreviewFilesAsync(ChangePlan plan, IReadOnlyDictionary<string, byte[]> factWrites, CancellationToken ct)
     {
         var paths = _paths.Value;
         var files = new List<BatchPreviewFile>();
-        foreach (var modelPath in plan.Writes.Keys.Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        foreach (var modelPath in plan.Writes.Keys.Concat(factWrites.Keys).Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
             byte[]? before = null;
             try
@@ -694,7 +789,7 @@ public sealed partial class ModelStore : IAsyncDisposable
                 before = null;
             }
 
-            var after = plan.Writes.TryGetValue(modelPath, out var bytes) ? bytes : null;
+            var after = factWrites.TryGetValue(modelPath, out var bytes) || plan.Writes.TryGetValue(modelPath, out bytes) ? bytes : null;
             if (after is not null && before is not null && before.AsSpan().SequenceEqual(after))
                 continue;
             var action = after is null ? "deleted" : before is null ? "created" : "changed";
@@ -757,22 +852,25 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// concerns; an error that the same scope did not already have before the change (compared by rule, element and pointer)
     /// makes that change invalid, so pre-existing errors never block an unrelated save.
     /// </summary>
-    private async Task ValidateAsync(ChangePlan plan, ModelSnapshot before, CancellationToken ct)
+    /// <returns>The errors of the validation, before the change and after it (the recording of migration facts leaves out the
+    /// objects their elements own).</returns>
+    private async Task<IReadOnlyList<Diagnostic>> ValidateAsync(ChangePlan plan, ModelSnapshot before, CancellationToken ct)
     {
         if (plan.Candidate is not { } candidate)
-            return;
+            return [];
         // A deleted database or mapping is not among the changed ids, but the entities it placed are revisited (7.2a); they are in the
         // baseline too, so their pre-existing errors never block the delete.
         var changed = plan.ChangeByElement.Keys.Order(StringComparer.Ordinal).ToList();
         var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
-        if (plan.ChangedIds.Count == 0 && placements.Count == 0)
-            return;
+        var followers = FormerFactFollowers(changed, before, candidate).ToList();
+        if (plan.ChangedIds.Count == 0 && placements.Count == 0 && followers.Count == 0)
+            return [];
         // Files that referenced a changed element or sub-element before the change are validated too: a reference the change broke
         // (a seed row or code gone) no longer shows in the candidate's index.
-        var scope = plan.ChangedIds.Concat(FormerReferrers(plan.ChangedIds, before, candidate)).Concat(placements)
+        var scope = plan.ChangedIds.Concat(FormerReferrers(plan.ChangedIds, before, candidate)).Concat(placements).Concat(followers)
             .Distinct(StringComparer.Ordinal).ToList();
         var report = await _services.Validator.ValidateAsync(candidate, new ValidationScope(scope, IncludeReferrers: true), null, ct).ConfigureAwait(false);
-        var existing = plan.ChangedIds.Concat(placements).Distinct(StringComparer.Ordinal).Where(id => before.TryGetEntry(id, out _)).ToList();
+        var existing = plan.ChangedIds.Concat(placements).Concat(followers).Distinct(StringComparer.Ordinal).Where(id => before.TryGetEntry(id, out _)).ToList();
         var baseline = existing.Count > 0
             ? await _services.Validator.ValidateAsync(before, new ValidationScope(existing, IncludeReferrers: true), null, ct).ConfigureAwait(false)
             : ValidationReport.From([]);
@@ -793,6 +891,8 @@ public sealed partial class ModelStore : IAsyncDisposable
             else
                 outcome.Fail(SaveOutcome.Invalid);
         }
+
+        return [.. baseline.Diagnostics.Concat(report.Diagnostics).Where(d => d.Severity == DiagnosticSeverity.Error)];
     }
 
     /// <summary>
@@ -844,6 +944,30 @@ public sealed partial class ModelStore : IAsyncDisposable
                 if (candidate.GetDocument(table) is { Element: Table })
                     yield return table;
             }
+        }
+    }
+
+    /// <summary>
+    /// The migration facts whose <c>after</c> links name a fact the change deleted (MQ4111 now): links are not references, and the
+    /// validator's peers of a fact (<see cref="Validation.ModelValidator.ConflictPeers"/>) come from its document, which a deleted fact no longer
+    /// has. A fact moved to another database keeps its document, so its peers still bring in the facts that name it. One pass over
+    /// the candidate's facts, only when the change deleted a fact.
+    /// </summary>
+    private static IEnumerable<string> FormerFactFollowers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        HashSet<string>? deleted = null;
+        foreach (var id in changedIds)
+        {
+            if (before.GetDocument(id)?.Element is Migration && candidate.GetDocument(id) is null)
+                (deleted ??= new HashSet<string>(StringComparer.Ordinal)).Add(id);
+        }
+
+        if (deleted is null)
+            yield break;
+        foreach (var fact in candidate.All<Migration>())
+        {
+            if (fact.After.Any(deleted.Contains))
+                yield return fact.Id;
         }
     }
 
@@ -1020,7 +1144,15 @@ public sealed record SaveResult(
     ElementDocument? Current,
     IReadOnlyList<Diagnostic> Diagnostics,
     IReadOnlyList<ReferenceInfo> Referrers,
-    ChangeSet? Changes);
+    ChangeSet? Changes)
+{
+    /// <summary>
+    /// The migration facts the write created or updated (next-phase-1-design.md section 3.2): every fact a single-element call (create,
+    /// save, delete) recorded, cascades included; <see langword="null"/> on an item of a batch, whose facts are on the batch, and when the
+    /// change was not saved. The pending ones' MQ4101 is in <see cref="Diagnostics"/>.
+    /// </summary>
+    public IReadOnlyList<RecordedFact>? Facts { get; init; }
+}
 
 /// <summary>What a delete does with references to the deleted element.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<DeleteResolution>))]
@@ -1179,7 +1311,14 @@ public sealed record BatchParseResult(ModelBatch? Batch, IReadOnlyList<Diagnosti
 /// <param name="Outcome">Saved when every operation would succeed; otherwise the first failure's outcome.</param>
 /// <param name="Items">The result per operation, as an apply would report it, with no hashes or documents.</param>
 /// <param name="Files">When saved, every file the batch would write or delete, ordered by path; empty otherwise.</param>
-public sealed record BatchPreview(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, IReadOnlyList<BatchPreviewFile> Files);
+public sealed record BatchPreview(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, IReadOnlyList<BatchPreviewFile> Files)
+{
+    /// <summary>
+    /// When saved, the migration facts the batch would record (their files are among <see cref="Files"/>); <see langword="null"/> when
+    /// the change reaches every database, whose facts are computed on save (a dry run never resolves every database), or when not saved.
+    /// </summary>
+    public IReadOnlyList<RecordedFact>? Facts { get; init; }
+}
 
 /// <summary>A file a batch would write or delete.</summary>
 /// <param name="Path">The repo-relative path.</param>
@@ -1196,4 +1335,8 @@ public sealed record BatchPreviewFile(string Path, string Action, string? Id, st
 /// <param name="Outcome">Saved when every operation succeeded; otherwise the first failure's outcome, and nothing was written.</param>
 /// <param name="Items">The result per operation.</param>
 /// <param name="Changes">What changed when saved.</param>
-public sealed record BatchResult(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, ChangeSet? Changes);
+public sealed record BatchResult(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, ChangeSet? Changes)
+{
+    /// <summary>The migration facts the batch created or updated (its items carry none); <see langword="null"/> when nothing was written.</summary>
+    public IReadOnlyList<RecordedFact>? Facts { get; init; }
+}

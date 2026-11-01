@@ -33,7 +33,11 @@ public static class EditorSetup
         services.AddSingleton(settings);
         services.AddSingleton(settings.Engine);
         services.AddSingleton(sp => new ModelStore(sp.GetRequiredService<EngineOptions>()));
-        services.AddSingleton(sp => new GenerationService(sp.GetRequiredService<ModelStore>(), sp.GetRequiredService<EngineOptions>()));
+        // A plan's against takes snapshot ids only (AllowFolderBaselines stays false): a path would name a folder of the server.
+        services.AddSingleton(sp => new GenerationService(sp.GetRequiredService<ModelStore>(), sp.GetRequiredService<EngineOptions>())
+        {
+            Baselines = sp.GetRequiredService<SnapshotLibrary>(),
+        });
         services.AddSingleton(sp => new DatabaseTables(sp.GetRequiredService<GenerationService>()));
         services.AddSingleton(sp => new SnapshotLibrary(sp.GetRequiredService<ModelStore>()));
         services.AddSingleton(sp => new JobQueue(sp.GetRequiredService<GenerationService>(), sp.GetRequiredService<EngineOptions>(), capacity: 16));

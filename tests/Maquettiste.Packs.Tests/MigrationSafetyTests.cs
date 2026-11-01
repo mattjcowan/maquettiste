@@ -20,14 +20,10 @@ public sealed class MigrationSafetyTests
         await repo.GenerateCleanlyAsync();
         DdlCoverage.Write(repo, 1, second);
         await repo.GenerateCleanlyAsync();
-        return DdlCoverage.Databases.ToDictionary(d => d.Name, d => new[] { repo.Read($"db/{d.Name}/migrations/0001.sql"), Second(repo, d.Name) },
+        return DdlCoverage.Databases.ToDictionary(d => d.Name, d => new[] { MigrationFiles.Read(repo, d.Name, 1), Second(repo, d.Name) },
             StringComparer.Ordinal);
 
-        static string Second(PackRepo repo, string name)
-        {
-            var path = repo.PathOf($"db/{name}/migrations/0002.sql");
-            return File.Exists(path) ? File.ReadAllText(path) : "";
-        }
+        static string Second(PackRepo repo, string name) => MigrationFiles.Exists(repo, name, 2) ? MigrationFiles.Read(repo, name, 2) : "";
     }
 
     /// <summary>Runs the first migration, a customer row, and the second migration (twice when idempotent) wherever it can.</summary>
@@ -210,13 +206,13 @@ public sealed class MigrationSafetyTests
         await repo.GenerateCleanlyAsync();
 
         Assert.Equal(2, stripped);
-        var pg = repo.Read("db/postgres/migrations/0002.sql");
+        var pg = MigrationFiles.Read(repo, "postgres", 2);
         var read = pg.IndexOf("DROP VIEW sales.customer_orders;", StringComparison.Ordinal);
         Assert.True(read > pg.IndexOf("DROP VIEW sales.customer_order_totals;", StringComparison.Ordinal) && read > pg.IndexOf("DROP VIEW sales.early_orders;", StringComparison.Ordinal)
             && pg.IndexOf("DROP VIEW sales.early_orders;", StringComparison.Ordinal) >= 0, pg);
         var db = DbServer.Postgres();
         if (db is not null)
-            await db.RunAsync("olddeps", repo.Read("db/postgres/migrations/0001.sql"), Customer("sales."), pg);
+            await db.RunAsync("olddeps", MigrationFiles.Read(repo, "postgres", 1), Customer("sales."), pg);
     }
 
     /// <summary>SQL Server: a migration with GO batches ends by rolling back what a compile error in its last batch left open.</summary>

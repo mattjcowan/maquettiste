@@ -154,7 +154,8 @@ public static class ModelEndpoints
 
     /// <summary>
     /// The resolved model as flat records, in pages: entities with their attributes resolved, relations, processes, databases (their
-    /// views) and the other kinds, what templates read. A model with errors returns no records and the errors.
+    /// views) and the other kinds, what templates read. A model with errors returns no records and the errors, unless its only errors
+    /// are pending migration facts (MQ4101), which return records.
     /// </summary>
     /// <param name="scope"><c>all</c> (the default), or one kind's plural (<c>entities</c>, <c>databases</c>, <c>tables</c>, ...).</param>
     /// <param name="database">A database id: only what is mapped to it, that database and its tables.</param>

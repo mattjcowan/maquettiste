@@ -174,6 +174,23 @@ public sealed class AssistTests
     }
 
     [Fact]
+    public async Task Validate_against_a_folder_through_the_assistant_answers_bad_request()
+    {
+        await using var host = EditorHost.Create();
+        host.Site.Ai.ReplyToolCall("validate", new { against = host.RepoRoot }).Reply("That is a folder of the server.");
+        var events = Events(await ChatAsync(host, "Validate against my other copy"));
+
+        var finished = events.Single(e => (string?)e["type"] == "tool-finished");
+        Assert.True(finished["isError"]!.GetValue<bool>());
+        var result = host.Site.Ai.Requests[1].Messages[^1];
+        Assert.Equal(AiMessage.ToolRole, result.Role);
+        Assert.True(result.IsError);
+        Assert.Contains("\"bad-request\"", result.Content, StringComparison.Ordinal);
+        Assert.Contains("model snapshots only", result.Content, StringComparison.Ordinal);
+        Assert.Equal("final", (string?)events[^1]["type"]);
+    }
+
+    [Fact]
     public async Task Arguments_that_are_not_json_get_an_error_result_and_the_loop_goes_on()
     {
         await using var host = EditorHost.Create();

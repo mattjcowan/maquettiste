@@ -59,6 +59,7 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
 | `Mcp/McpServerSetup.cs` | `maquettiste mcp`: the server options (tools, the `maquettiste://conventions` resource and `modeling-conventions` prompt from the embedded `skills/maquettiste-modeling/SKILL.md` followed by the repository's `CONVENTIONS.md`, instructions) |
 | `Mcp/ModelTools.cs` | the MCP tools: thin wrappers over `ModelStore` and `GenerationService` with the editor API's bodies and problem codes (docs/mcp.md) |
 | `Mcp/ModelTools.Bulk.cs` | the bulk read tools `get_model_kinds`, `get_elements` and `get_resolved_model` (docs/mcp.md, "Reading a large model") |
+| `Mcp/ModelTools.Migrations.cs` | `fold_migrations` (`list_migrations` is a catalog tool of the engine's `AgentTools`) |
 
 ## Behavior
 
@@ -127,6 +128,14 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   by id or name), and writes one JSON array (`--format json`) or one value per line (`ndjson`) to stdout or `--out` (as the
   exchange verbs, never inside `.maquettiste/`); an id that names nothing, or a model with errors under `--resolved`, exits 1.
   `stats` prints `ModelPages.Kinds` (`--by package`, `--format text|json`).
+- **migration** (`Commands/MigrationCommand.cs`; next-phase-1-design.md sections 3.2 and 3.3), distinct from `migrate`:
+  `list [--database <name|id>]` prints every page of `ModelStore.ListMigrationsAsync` (one line per open fact, or the
+  list as JSON; an unknown database exits 1); `fold [--database] [--against <snapshot id | folder>] [--dry-run]` runs
+  `ModelStore.FoldMigrationsAsync` and prints its joins, removals, refusals and (dry run) files: exit 3 on a conflict, 1
+  when invalid or for an unknown database, 4 when `--against` names nothing; `ledger [--database] [--grant-read <role>]
+  [--output <file>]` prints `ModelStore.GetLedgerDdlAsync` (the ledger DDL, then the grant; or the answer as JSON),
+  writing `--output` through `GuardedFiles` as an output file: exit 1 without a PostgreSQL database, for a missing or
+  other one, or when several exist and none is named.
 - **snapshot** (`Commands/SnapshotCommand.cs`; docs/engineering/snapshots.md): `create <name> [--description] [--packs]`, `list`,
   `show <id>`, `delete <id>`, `compare <from> [<to>] [--element <id>]` (every page fetched), `restore <id> [--packs]` (a preview,
   the comparison of the working model with the snapshot; `--apply` restores; the run lock held by a generation run exits 4),
@@ -139,14 +148,19 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   when `.schema/v1/` differs from the embedded schemas (reported, never refreshed; `generate` adds it to every run's result too), sorted;
   `--format text` (one `path(line,col): severity rule: message` line per diagnostic), `json` (`schemas/v1/diagnostics.json`) or
   `sarif` (`SarifWriter`). `--output <file>` writes through the project's output path policy, so the file must lie under an
-  `outputs.allow` root (redirect stdout otherwise).
+  `outputs.allow` root (redirect stdout otherwise). `--against <snapshot id | folder>` opens a baseline
+  (`ModelBaseline`, a relative folder resolved against the current directory) and runs
+  `ModelStore.ValidateAgainstAsync` instead (MQ4102, MQ4103, MQ4109); a value that names nothing is a usage error (4).
 - **generate:** `--pack` (repeatable), `--force`, `--hand-edits`, `--dry-run` (the plan as `A`/`M`/`D`/`H`/`K`/`O`/`C`
   lines, `C` being a conflict), `--diff` (with `--dry-run` or `--check`), `--check` (every root, in memory; exit 2 when a file would be added, changed or
   deleted; `--roots` was removed in 0.5.5 and is a usage error), `--format
   text|json` and `--no-wait` (`LockMode.Fail`: exit 4 when another run holds the lock; the default waits). An apply also lists its
   changes on stdout unless quiet. The summary counts added, modified, deleted, unchanged (files the writer compared and left alone),
   units skipped and hand edits; `--verbosity detailed` adds stage timings. The JSON result leaves out the run id and timings so
-  it is deterministic.
+  it is deterministic. `--against <snapshot id | folder>` diffs the schema from a baseline model for this run
+  (`GenerationRequest.Against`, a relative folder resolved against the current directory and passed as its full path by
+  `ModelBaseline.RequestText`); the run never writes the committed snapshots nor uses the last-run record; a value that names
+  nothing exits 4, and `--watch` refuses it.
 - **generate (one-shot):** a `generate` that applies (no `--dry-run`, `--check` or `--watch`) sets the engine's
   `GenerationService.ReuseLastRun`, so it keeps `<cache-dir>/last-run.v1.bin` and, when the model, templates, engine files and
   outputs are all as the last apply left them and the tool is the same build (an updated or rebuilt tool runs in full once), is

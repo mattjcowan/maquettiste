@@ -127,99 +127,99 @@ relation has parent one-to-many association ends=child:Category[0..*],parent:Cat
 relation is classified in many-to-many association ends=product:Product[0..*],category:Category[0..*]
   mapping main junction junction=product_category
 database main postgresql default-schema=public limit=63 schemas=public
-  table public.categories key=<Category>@<main> synthesized entity=Category
-    0 id int32 native=integer not-null pk seq=categories_seq key=<Category:id>
-    1 name string(80) native=varchar(80) not-null key=<Category:name>
-    2 parent_id int32 native=integer null fk key=<end:parent>.<Category:id>
+  table public.categories key=<Category>@<main> synthesized entity=Category former_names=[] since=-
+    0 id int32 native=integer not-null pk seq=categories_seq key=<Category:id> former_names=[] since=-
+    1 name string(80) native=varchar(80) not-null key=<Category:name> former_names=[] since=-
+    2 parent_id int32 native=integer null fk key=<end:parent>.<Category:id> former_names=[] since=-
     pk pk_categories (id)
     fk fk_categories_parent_id (parent_id) -> categories (id) on-delete=no-action relation=has parent end=child
-  table public.customers key=<Customer>@<main> synthesized entity=Customer
-    0 id uuid native=uuid not-null pk key=<Customer:id>
-    1 name string(120) native=varchar(120) not-null key=<Customer:name>
-    2 email string(254) native=varchar(254) null key=<Customer:email>
-    3 billing_address_street string(200) native=varchar(200) null key=<Customer:billingAddress>.<Address:street>
-    4 billing_address_city string(100) native=varchar(100) null key=<Customer:billingAddress>.<Address:city>
-    5 billing_address_postal_code string(20) native=varchar(20) null key=<Customer:billingAddress>.<Address:postalCode>
-    6 created_at datetimeoffset[6,-] native=timestamptz(6) not-null key=<audited:createdAt>
-    7 updated_at datetimeoffset[6,-] native=timestamptz(6) null key=<audited:updatedAt>
+  table public.customers key=<Customer>@<main> synthesized entity=Customer former_names=[] since=-
+    0 id uuid native=uuid not-null pk key=<Customer:id> former_names=[] since=-
+    1 name string(120) native=varchar(120) not-null key=<Customer:name> former_names=[] since=-
+    2 email string(254) native=varchar(254) null key=<Customer:email> former_names=[] since=-
+    3 billing_address_street string(200) native=varchar(200) null key=<Customer:billingAddress>.<Address:street> former_names=[] since=-
+    4 billing_address_city string(100) native=varchar(100) null key=<Customer:billingAddress>.<Address:city> former_names=[] since=-
+    5 billing_address_postal_code string(20) native=varchar(20) null key=<Customer:billingAddress>.<Address:postalCode> former_names=[] since=-
+    6 created_at datetimeoffset[6,-] native=timestamptz(6) not-null key=<audited:createdAt> former_names=[] since=-
+    7 updated_at datetimeoffset[6,-] native=timestamptz(6) null key=<audited:updatedAt> former_names=[] since=-
     pk pk_customers (id)
     unique uq_customers_email (email)
-  table public.invoice_lines key=<InvoiceLine>@<main> synthesized entity=InvoiceLine
-    0 id int64 native=bigint not-null pk identity key=<InvoiceLine:id>
-    1 description string(255) native=varchar(255) null key=<InvoiceLine:description>
-    2 quantity int32 native=integer not-null key=<InvoiceLine:quantity>
-    3 unit_price_amount decimal[18,4] native=numeric(18,4) null key=<InvoiceLine:unitPrice>.<Money:amount>
-    4 unit_price_currency string(3) native=varchar(3) null key=<InvoiceLine:unitPrice>.<Money:currency>
-    5 invoice_id uuid native=uuid not-null fk key=<end:invoice>.<Invoice:id>
-    6 product_id uuid native=uuid not-null fk key=<end:product>.<Product:id>
+  table public.invoice_lines key=<InvoiceLine>@<main> synthesized entity=InvoiceLine former_names=[] since=-
+    0 id int64 native=bigint not-null pk identity key=<InvoiceLine:id> former_names=[] since=-
+    1 description string(255) native=varchar(255) null key=<InvoiceLine:description> former_names=[] since=-
+    2 quantity int32 native=integer not-null key=<InvoiceLine:quantity> former_names=[] since=-
+    3 unit_price_amount decimal[18,4] native=numeric(18,4) null key=<InvoiceLine:unitPrice>.<Money:amount> former_names=[] since=-
+    4 unit_price_currency string(3) native=varchar(3) null key=<InvoiceLine:unitPrice>.<Money:currency> former_names=[] since=-
+    5 invoice_id uuid native=uuid not-null fk key=<end:invoice>.<Invoice:id> former_names=[] since=-
+    6 product_id uuid native=uuid not-null fk key=<end:product>.<Product:id> former_names=[] since=-
     pk pk_invoice_lines (id)
     fk fk_invoice_lines_invoice_id (invoice_id) -> invoices (id) on-delete=cascade relation=contains end=line
     fk fk_invoice_lines_product_id (product_id) -> products (id) on-delete=no-action relation=refers to end=line
-  table public.invoices key=<Invoice>@<main> synthesized entity=Invoice display='Invoice register' description='One row per issued invoice.' stereotypes=audited tags=billing category=Receivables properties={retentionDays=2555,tablespace='billing_data'}
-    0 id uuid native=uuid not-null pk key=<Invoice:id>
-    1 number string(32) native=varchar(32) not-null key=<Invoice:number> description='The number printed on the invoice.' stereotypes=audited properties={classification='internal',retentionDays=2555}
-    2 total_amount decimal[18,4] native=numeric(18,4) null key=<Invoice:total>.<Money:amount>
-    3 total_currency string(3) native=varchar(3) null key=<Invoice:total>.<Money:currency>
-    4 status int32 native=integer not-null default=1 key=<Invoice:status>
-    5 issued_on date native=date not-null key=<Invoice:issuedOn>
-    6 created_at datetimeoffset[6,-] native=timestamptz(6) not-null key=<audited:createdAt>
-    7 updated_at datetimeoffset[6,-] native=timestamptz(6) null key=<audited:updatedAt>
-    8 deleted_at datetimeoffset[6,-] native=timestamptz(6) null key=<soft-delete:deletedAt>
-    9 customer_id uuid native=uuid not-null fk key=<end:customer>.<Customer:id>
+  table public.invoices key=<Invoice>@<main> synthesized entity=Invoice display='Invoice register' description='One row per issued invoice.' stereotypes=audited tags=billing category=Receivables properties={retentionDays=2555,tablespace='billing_data'} former_names=[] since=-
+    0 id uuid native=uuid not-null pk key=<Invoice:id> former_names=[] since=-
+    1 number string(32) native=varchar(32) not-null key=<Invoice:number> description='The number printed on the invoice.' stereotypes=audited properties={classification='internal',retentionDays=2555} former_names=[] since=-
+    2 total_amount decimal[18,4] native=numeric(18,4) null key=<Invoice:total>.<Money:amount> former_names=[] since=-
+    3 total_currency string(3) native=varchar(3) null key=<Invoice:total>.<Money:currency> former_names=[] since=-
+    4 status int32 native=integer not-null default=1 key=<Invoice:status> former_names=[] since=-
+    5 issued_on date native=date not-null key=<Invoice:issuedOn> former_names=[] since=-
+    6 created_at datetimeoffset[6,-] native=timestamptz(6) not-null key=<audited:createdAt> former_names=[] since=-
+    7 updated_at datetimeoffset[6,-] native=timestamptz(6) null key=<audited:updatedAt> former_names=[] since=-
+    8 deleted_at datetimeoffset[6,-] native=timestamptz(6) null key=<soft-delete:deletedAt> former_names=[] since=-
+    9 customer_id uuid native=uuid not-null fk key=<end:customer>.<Customer:id> former_names=[] since=-
     pk pk_invoices (id)
     fk fk_invoices_customer_id (customer_id) -> customers (id) on-delete=no-action relation=places end=invoice
     unique uq_invoices_number (number)
     index ix_invoices_issued_on (issued_on)
-  table public.product_category key=<is_classified_in>@<main> synthesized relation=is classified in junction
-    0 product_id uuid native=uuid not-null pk fk key=<end:product>.<Product:id>
-    1 category_id int32 native=integer not-null pk fk key=<end:category>.<Category:id>
+  table public.product_category key=<is_classified_in>@<main> synthesized relation=is classified in junction former_names=[] since=-
+    0 product_id uuid native=uuid not-null pk fk key=<end:product>.<Product:id> former_names=[] since=-
+    1 category_id int32 native=integer not-null pk fk key=<end:category>.<Category:id> former_names=[] since=-
     pk pk_product_category (product_id,category_id)
     fk fk_product_category_product_id (product_id) -> products (id) on-delete=cascade relation=is classified in end=product
     fk fk_product_category_category_id (category_id) -> categories (id) on-delete=cascade relation=is classified in end=category
-  table public.products key=<Product>@<main> synthesized entity=Product
-    0 id uuid native=uuid not-null pk key=<Product:id>
-    1 sku string(40) native=varchar(40) not-null key=<Product:sku>
-    2 name string(200) native=varchar(200) not-null key=<Product:name>
+  table public.products key=<Product>@<main> synthesized entity=Product former_names=[] since=-
+    0 id uuid native=uuid not-null pk key=<Product:id> former_names=[] since=-
+    1 sku string(40) native=varchar(40) not-null key=<Product:sku> former_names=[] since=-
+    2 name string(200) native=varchar(200) not-null key=<Product:name> former_names=[] since=-
     pk pk_products (id)
     unique uq_products_sku (sku)
-  table public.products_tags key=<Product>.<Product:tags>@<main> synthesized entity=Product
-    0 product_id uuid native=uuid not-null pk fk key=<Product:id>
-    1 position int32 native=integer not-null pk key=position
-    2 tag string(30) native=varchar(30) not-null key=<Product:tags>
+  table public.products_tags key=<Product>.<Product:tags>@<main> synthesized entity=Product former_names=[] since=-
+    0 product_id uuid native=uuid not-null pk fk key=<Product:id> former_names=[] since=-
+    1 position int32 native=integer not-null pk key=position former_names=[] since=-
+    2 tag string(30) native=varchar(30) not-null key=<Product:tags> former_names=[] since=-
     pk pk_products_tags (product_id,position)
     fk fk_products_tags_product_id (product_id) -> products (id) on-delete=cascade
-  sequence categories_seq int32 native=integer key=<Category>.sequence@<main>
+  sequence categories_seq int32 native=integer key=<Category>.sequence@<main> former_names=[] since=-
 database reporting sqlserver default-schema=dbo limit=128 schemas=dbo
-  table dbo.customers key=<Customer>@<reporting> synthesized entity=Customer
-    0 id uuid native=uniqueidentifier not-null pk key=<Customer:id>
-    1 name string(120) native=nvarchar(120) not-null key=<Customer:name>
-    2 email string(254) native=nvarchar(254) null key=<Customer:email>
-    3 billing_address_street string(200) native=nvarchar(200) null key=<Customer:billingAddress>.<Address:street>
-    4 billing_address_city string(100) native=nvarchar(100) null key=<Customer:billingAddress>.<Address:city>
-    5 billing_address_postal_code string(20) native=nvarchar(20) null key=<Customer:billingAddress>.<Address:postalCode>
-    6 created_at datetimeoffset[6,-] native=datetimeoffset(6) not-null key=<audited:createdAt>
-    7 updated_at datetimeoffset[6,-] native=datetimeoffset(6) null key=<audited:updatedAt>
+  table dbo.customers key=<Customer>@<reporting> synthesized entity=Customer former_names=[] since=-
+    0 id uuid native=uniqueidentifier not-null pk key=<Customer:id> former_names=[] since=-
+    1 name string(120) native=nvarchar(120) not-null key=<Customer:name> former_names=[] since=-
+    2 email string(254) native=nvarchar(254) null key=<Customer:email> former_names=[] since=-
+    3 billing_address_street string(200) native=nvarchar(200) null key=<Customer:billingAddress>.<Address:street> former_names=[] since=-
+    4 billing_address_city string(100) native=nvarchar(100) null key=<Customer:billingAddress>.<Address:city> former_names=[] since=-
+    5 billing_address_postal_code string(20) native=nvarchar(20) null key=<Customer:billingAddress>.<Address:postalCode> former_names=[] since=-
+    6 created_at datetimeoffset[6,-] native=datetimeoffset(6) not-null key=<audited:createdAt> former_names=[] since=-
+    7 updated_at datetimeoffset[6,-] native=datetimeoffset(6) null key=<audited:updatedAt> former_names=[] since=-
     pk pk_customers (id)
     unique uq_customers_email (email)
-  table dbo.invoice_lines key=<InvoiceLine>@<reporting> synthesized entity=InvoiceLine
-    0 id int64 native=bigint not-null pk identity key=<InvoiceLine:id>
-    1 description string(255) native=nvarchar(255) null key=<InvoiceLine:description>
-    2 quantity int32 native=int not-null key=<InvoiceLine:quantity>
-    3 unit_price_amount decimal[18,4] native=decimal(18,4) null key=<InvoiceLine:unitPrice>.<Money:amount>
-    4 unit_price_currency string(3) native=nvarchar(3) null key=<InvoiceLine:unitPrice>.<Money:currency>
-    5 invoice_id uuid native=uniqueidentifier not-null fk key=<end:invoice>.<Invoice:id>
+  table dbo.invoice_lines key=<InvoiceLine>@<reporting> synthesized entity=InvoiceLine former_names=[] since=-
+    0 id int64 native=bigint not-null pk identity key=<InvoiceLine:id> former_names=[] since=-
+    1 description string(255) native=nvarchar(255) null key=<InvoiceLine:description> former_names=[] since=-
+    2 quantity int32 native=int not-null key=<InvoiceLine:quantity> former_names=[] since=-
+    3 unit_price_amount decimal[18,4] native=decimal(18,4) null key=<InvoiceLine:unitPrice>.<Money:amount> former_names=[] since=-
+    4 unit_price_currency string(3) native=nvarchar(3) null key=<InvoiceLine:unitPrice>.<Money:currency> former_names=[] since=-
+    5 invoice_id uuid native=uniqueidentifier not-null fk key=<end:invoice>.<Invoice:id> former_names=[] since=-
     pk pk_invoice_lines (id)
     fk fk_invoice_lines_invoice_id (invoice_id) -> invoices (id) on-delete=cascade relation=contains end=line
-  table dbo.invoices key=<Invoice>@<reporting> synthesized entity=Invoice
-    0 id uuid native=uniqueidentifier not-null pk key=<Invoice:id>
-    1 number string(32) native=nvarchar(32) not-null key=<Invoice:number>
-    2 total json native=nvarchar(max) null key=<Invoice:total>
-    3 status string(1) native=nvarchar(1) not-null default='D' key=<Invoice:status>
-    4 issued_on date native=date not-null key=<Invoice:issuedOn>
-    5 created_at datetimeoffset[6,-] native=datetimeoffset(6) not-null key=<audited:createdAt>
-    6 updated_at datetimeoffset[6,-] native=datetimeoffset(6) null key=<audited:updatedAt>
-    7 deleted_at datetimeoffset[6,-] native=datetimeoffset(6) null key=<soft-delete:deletedAt>
-    8 customer_id uuid native=uniqueidentifier not-null fk key=<end:customer>.<Customer:id>
+  table dbo.invoices key=<Invoice>@<reporting> synthesized entity=Invoice former_names=[] since=-
+    0 id uuid native=uniqueidentifier not-null pk key=<Invoice:id> former_names=[] since=-
+    1 number string(32) native=nvarchar(32) not-null key=<Invoice:number> former_names=[] since=-
+    2 total json native=nvarchar(max) null key=<Invoice:total> former_names=[] since=-
+    3 status string(1) native=nvarchar(1) not-null default='D' key=<Invoice:status> former_names=[] since=-
+    4 issued_on date native=date not-null key=<Invoice:issuedOn> former_names=[] since=-
+    5 created_at datetimeoffset[6,-] native=datetimeoffset(6) not-null key=<audited:createdAt> former_names=[] since=-
+    6 updated_at datetimeoffset[6,-] native=datetimeoffset(6) null key=<audited:updatedAt> former_names=[] since=-
+    7 deleted_at datetimeoffset[6,-] native=datetimeoffset(6) null key=<soft-delete:deletedAt> former_names=[] since=-
+    8 customer_id uuid native=uniqueidentifier not-null fk key=<end:customer>.<Customer:id> former_names=[] since=-
     pk pk_invoices (id)
     fk fk_invoices_customer_id (customer_id) -> customers (id) on-delete=no-action relation=places end=invoice
     unique uq_invoices_number (number)

@@ -56,6 +56,13 @@ public sealed record PhysicalSnapshot
     /// model gives it now (stored, or put back by an undo). <see langword="null"/> or empty: none.
     /// </summary>
     public IReadOnlyList<SnapshotAlias>? Aliases { get; init; }
+
+    /// <summary>
+    /// The migration facts already rendered into a migration from this snapshot's history, by id (ordinal, distinct): the facts of
+    /// each applied diff (<see cref="SchemaDiff.SchemaDiffResult.Facts"/>, next-phase-1-design.md sections 3.1 and 3.2). Held and
+    /// pending facts never enter; ids gone from the database's facts are dropped on write.
+    /// </summary>
+    public IReadOnlyList<string> Facts { get; init; } = [];
 }
 
 /// <summary>Two keys of one table or sequence of a <see cref="PhysicalSnapshot"/> (<see cref="PhysicalSnapshot.Aliases"/>).</summary>
@@ -139,8 +146,11 @@ public sealed record SnapshotColumn
     /// <summary>The physical name.</summary>
     public required string Name { get; init; }
 
-    /// <summary>The built-in type keyword.</summary>
+    /// <summary>The column type keyword: a built-in keyword, <c>range</c>, <c>multirange</c> or <c>reference</c>.</summary>
     public required string Type { get; init; }
+
+    /// <summary>The bound type of a range or multirange column; otherwise <see langword="null"/>.</summary>
+    public string? Subtype { get; init; }
 
     /// <summary>The length facet.</summary>
     public int? Length { get; init; }
@@ -391,6 +401,12 @@ public sealed record SnapshotIndexColumn
 
     /// <summary>Whether the column sorts descending.</summary>
     public bool Descending { get; init; }
+
+    /// <summary>
+    /// Where nulls sort, <c>first</c> or <c>last</c>, when it differs from the direction's default (PostgreSQL); otherwise
+    /// <see langword="null"/>.
+    /// </summary>
+    public string? Nulls { get; init; }
 
     /// <summary>The key prefix length, or <see langword="null"/>.</summary>
     public int? Length { get; init; }

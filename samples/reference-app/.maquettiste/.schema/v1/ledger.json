@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Migration ledger",
+  "description": "One database's migration ledger as a document (not a model kind): the rows of its contract, applied_fact and applied_object tables, in the schema migrations.ledgerSchema names. Property names are the column names and each row's x-order is the column order, so a writer in any language maps them one to one. Contract version 1, a draft until it is frozen; see docs/ledger.md.",
+  "type": "object",
+  "x-order": ["contract", "facts", "objects"],
+  "properties": {
+    "contract": {
+      "$ref": "#/$defs/contractRow"
+    },
+    "facts": {
+      "description": "The applied_fact rows: one per migration fact whose end state the database reached. Rows are never updated or deleted.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/factRow"
+      },
+      "default": []
+    },
+    "objects": {
+      "description": "The applied_object rows: one per object whose identity the writer owns, keyed by element_id. Readers ignore unknown kinds and read a missing row as unknown.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/objectRow"
+      },
+      "default": []
+    }
+  },
+  "required": ["contract"],
+  "additionalProperties": false,
+  "$defs": {
+    "contractRow": {
+      "description": "The contract table's one row.",
+      "type": "object",
+      "x-order": ["id", "version"],
+      "properties": {
+        "id": {
+          "description": "Always 1: the table holds one row.",
+          "type": "integer",
+          "const": 1
+        },
+        "version": {
+          "description": "The contract version the tables follow. A writer that finds a newer version stops.",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["id", "version"],
+      "additionalProperties": false
+    },
+    "factRow": {
+      "description": "One applied fact.",
+      "type": "object",
+      "x-order": ["fact_id", "content_hash", "applied_at", "applied_by"],
+      "properties": {
+        "fact_id": {
+          "description": "The migration fact's id (its model id).",
+          "$ref": "common.json#/$defs/id"
+        },
+        "content_hash": {
+          "description": "The fact content hash: SHA-256 over the fact's canonical document without its annotations, after, held and released, in 64 lowercase hex digits.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "applied_at": {
+          "description": "The database's transaction time when the row was written.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "applied_by": {
+          "description": "Free text naming the writer, or null.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["fact_id", "content_hash", "applied_at", "applied_by"],
+      "additionalProperties": false
+    },
+    "objectRow": {
+      "description": "One applied object whose identity the writer owns.",
+      "type": "object",
+      "x-order": ["element_id", "kind", "schema_name", "name", "content_hash", "revert_text", "applied_at"],
+      "properties": {
+        "element_id": {
+          "description": "The object's model id.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "kind": {
+          "description": "The model kind, such as sql-object; an open vocabulary.",
+          "type": "string",
+          "minLength": 1
+        },
+        "schema_name": {
+          "description": "The object's schema, or null.",
+          "type": ["string", "null"]
+        },
+        "name": {
+          "description": "The object's current name.",
+          "type": "string",
+          "minLength": 1
+        },
+        "content_hash": {
+          "description": "The hash of the version of the object that was applied.",
+          "type": "string",
+          "minLength": 1
+        },
+        "revert_text": {
+          "description": "SQL that reverts the object and succeeds when it is already gone, or null. Contract version 1 writers write none.",
+          "type": ["string", "null"]
+        },
+        "applied_at": {
+          "description": "The database's transaction time when the row was written or last updated.",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["element_id", "kind", "schema_name", "name", "content_hash", "revert_text", "applied_at"],
+      "additionalProperties": false
+    }
+  }
+}

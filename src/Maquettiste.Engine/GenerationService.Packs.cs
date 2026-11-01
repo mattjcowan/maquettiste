@@ -321,8 +321,8 @@ public sealed partial class GenerationService
             new Dictionary<string, SchemaDiffResult>(StringComparer.Ordinal), null);
 
         var shared = await _store.ResolvedAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
-        if (shared.Report.HasErrors)
-            return Failed(shared.Report.Diagnostics);
+        if (shared.Model is null)
+            return Failed(shared.Report.Diagnostics.Where(Outcomes.BlocksResolution)); // a pending migration fact (MQ4101) does not stop a preview
         var (loaded, packDiagnostics) = await new PackLoader(_options, _services.Schemas).LoadNamedAsync(snapshot, pack, CancellationToken.None).ConfigureAwait(false);
         if (loaded is null)
             return Failed(packDiagnostics);

@@ -69,8 +69,10 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
 ## Hashing, state, skip
 
 - `DependencyHasher.CurrentHash`: `e:` → the owning document's `DependencyHash`; `k:<kind name>` → `KindSetHash`; `r:` →
-  `ReferrersHash`; `s:conventions` (conventions and `databases`), `s:typeMaps`, `s:inflection` → `H(key, canonical JSON of the
-  section)`; `t:<pack>/<path>` → content hash of the pack file (confined to the pack folder); `d:<databaseId>` → that
+  `ReferrersHash`; `s:conventions` (conventions and `databases`), `s:typeMaps`, `s:inflection` → `H(key, canonical JSON
+  of the section)`; `s:migrations` → `H(key, migrations.ledgerSchema)` only (`migrations.record` changes no rendered
+  byte; a PostgreSQL database's membership keys and the `ledger_ddl` helper read it, next-phase-1-design.md section
+  3.3); `t:<pack>/<path>` → content hash of the pack file (confined to the pack folder); `d:<databaseId>` → that
   database's `SchemaDiffResult.Hash`; anything else, or anything that no longer resolves → `"absent"`. Cached per run
   (thread-safe). `InputHash = H(StaticHash, key₁, hash₁, …)`; keys that are not sorted and distinct are sorted first.
 - `UnitStateStore`: one binary file per pack (`MQUS`, format 2, engine version, a table of the distinct read keys, then the states

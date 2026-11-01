@@ -114,7 +114,7 @@ public sealed class DeleteCascadeTests
     [Fact]
     public async Task Delete_dependents_takes_an_entity_with_its_relations_overlay_and_mappings_in_one_change_that_a_batch_undoes()
     {
-        await using var r = EditorRepo.Create();
+        await using var r = WithoutFacts();
         var invoice = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
         var plan = await r.Store.GetDeletePlanAsync([EditorRepo.InvoiceId], DeleteResolution.DeleteDependents, Ct);
         var affected = plan.Deletes.Select(d => d.Id).Prepend(EditorRepo.InvoiceId).ToList();
@@ -171,7 +171,7 @@ public sealed class DeleteCascadeTests
     [Fact]
     public async Task Delete_dependents_removes_the_attributes_a_deleted_type_typed_and_what_named_them()
     {
-        await using var r = EditorRepo.Create();
+        await using var r = WithoutFacts();
         var money = (await r.Store.GetElementAsync(MoneyId, Ct))!;
 
         var plan = await r.Store.GetDeletePlanAsync([MoneyId], DeleteResolution.DeleteDependents, Ct);
@@ -217,7 +217,7 @@ public sealed class DeleteCascadeTests
     [Fact]
     public async Task A_batch_delete_takes_the_resolution_and_shares_one_cascade()
     {
-        await using var r = EditorRepo.Create();
+        await using var r = WithoutFacts();
         var product = (await r.Store.GetElementAsync(ProductId, Ct))!;
         var invoice = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
         var plan = await r.Store.GetDeletePlanAsync([ProductId, EditorRepo.InvoiceId], DeleteResolution.DeleteDependents, Ct);
@@ -254,5 +254,16 @@ public sealed class DeleteCascadeTests
         Assert.Equal(files, r.Files());
         Assert.Equal(SaveOutcome.NotFound, plan.Outcome);
         Assert.Equal("not-found", Assert.Single(plan.Refused).Rule);
+    }
+
+    /// <summary>
+    /// The billing repo without the recording of migration facts: these tests check what a cascade deletes and changes, and the drops
+    /// it causes would add fact files (pending until acknowledged) to every change set and to validation.
+    /// </summary>
+    private static EditorRepo WithoutFacts()
+    {
+        var r = EditorRepo.Create();
+        r.EditSettingsOnDisk(s => s["migrations"] = new JsonObject { ["record"] = "off" });
+        return r;
     }
 }

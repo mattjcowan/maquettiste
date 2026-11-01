@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../../.schema/v1/migration.json",
+  "kind": "migration",
+  "id": "01JFCT0000000000000000000G",
+  "database": "01JDBS00000000000000000002",
+  "fact": "rename",
+  "object": {
+    "kind": "column",
+    "table": "01JENT00000000000000000002@01JDBS00000000000000000002",
+    "key": "01JATT00000000000000000020",
+    "schema": "dbo",
+    "tableName": "customers",
+    "name": "name"
+  },
+  "from": {
+    "name": "full_name"
+  },
+  "to": {
+    "name": "name"
+  }
+}

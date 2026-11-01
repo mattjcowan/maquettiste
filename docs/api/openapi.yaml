@@ -867,15 +867,18 @@ paths:
           indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
           for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
           `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.
+        - `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its
+          state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.
         - `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which
           `databases` holds.
 
-        `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to
-        it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
+        `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and
+        migration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
         is null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change
         between pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors
-        returns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export
-        --resolved` answer the same.
+        returns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent
+        (MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer
+        the same.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetResolvedAsync(query)
       parameters:
@@ -885,7 +888,7 @@ paths:
           description: What to read.
           schema:
             type: string
-            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects, queries]
+            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects, queries, migrations]
             default: all
         - name: database
           in: query
@@ -2523,11 +2526,23 @@ paths:
         An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the
         resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type
         an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a
-        validation reports what generation would.
+        validation reports what generation would. With `against`, the whole model is also compared with a model snapshot.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.ValidateAsync(scope)
       parameters:
         - $ref: '#/components/parameters/SnapshotQuery'
+        - name: against
+          in: query
+          required: false
+          description: >-
+            A model snapshot id to compare the whole model with (`ModelStore.ValidateAgainstAsync`): a change since the snapshot
+            that a migration must follow (a rename or moved key, a type change that is not a widening, a dropped table, column or
+            sequence, a column made not null) and that no migration fact the snapshot lacks explains is MQ4102; a fact whose
+            combined effect the model no longer shows is MQ4103; snapshot objects whose owners have errors are skipped with
+            MQ4109. This host compares with snapshots only: a folder, an id that names no snapshot, or a body with `elementIds`
+            is 400 `bad-request`.
+          schema:
+            type: string
       requestBody:
         required: false
         content:
@@ -3983,7 +3998,9 @@ paths:
         Queues a plan job and returns it at once. Join the realtime group `job:{id}` for `job.progress` and
         `job.completed`, then read `GET /api/jobs/{id}` once, so an event sent before the join is not missed. The
         functions force `includeDiffs: false`, `stageBarriers: false` and `lock: wait`; `mode` is ignored (a plan is
-        always a dry run).
+        always a dry run). `against` diffs the schema from a model snapshot for this plan instead of the committed
+        physical snapshots, which its apply leaves alone; the functions take snapshot ids only, so a folder, or an id
+        that names no snapshot, is 400 `bad-request`.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: JobQueue.TryEnqueue(new JobRequest(JobKind.Plan, request, null))
       requestBody:
@@ -4165,7 +4182,7 @@ paths:
       tags: [generation]
       operationId: getPlanDiff
       summary: Unified diff for one file in a plan
-      description: From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders, such as a migration's placeholder); a deleted file diffs to nothing.
+      description: From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders); a deleted file diffs to nothing.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetPlanDiffAsync(planId, path)
       parameters:
@@ -6657,6 +6674,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Diagnostic'
+        facts:
+          description: >-
+            When saved, the migration facts the save recorded: a change of `conventions`, `databases`, `typeMaps` or `inflection`
+            classifies every database; other settings record none. `null` when nothing was written.
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/RecordedFact'
+            - type: 'null'
     ProjectSettings:
       x-engine-record: Maquettiste.Engine.Model.ProjectSettings
       type: object
@@ -6809,6 +6835,19 @@ components:
               type: integer
             tokenBudgetPerDayPerUser:
               type: integer
+        migrations:
+          description: Migration facts (next-phase-1-design.md section 3.2); an older server leaves it out. `record` `off` makes no write record facts; `ledgerSchema` is the schema of the migration ledger tables in each PostgreSQL database (section 3.3).
+          x-engine-record: Maquettiste.Engine.Model.MigrationSettings
+          type: object
+          required: [record, ledgerSchema]
+          properties:
+            record:
+              type: string
+              enum: [automatic, 'off']
+            ledgerSchema:
+              type: string
+              pattern: '^[a-z_][a-z0-9_]*$'
+              maxLength: 63
     BrandingSettings:
       x-engine-record: Maquettiste.Engine.Model.BrandingSettings
       description: The project's icon and primary color per theme in the editor (MQ8001 to MQ8003). An older server leaves it out.
@@ -7446,7 +7485,7 @@ components:
                   $ref: '#/components/schemas/StorageChoice'
     ElementKind:
       type: string
-      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario]
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario, migration]
     ChangeSource:
       type: string
       enum: [editor, disk, cli, engine]
@@ -7493,7 +7532,7 @@ components:
           type: string
           description: The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label.
         database:
-          description: The owning database's id, on table, view, sequence, routine, database-type, sql-object, query and mapping rows (E5).
+          description: The owning database's id, on table, view, sequence, routine, database-type, sql-object, query, mapping and migration rows (E5).
           $ref: '#/components/schemas/Ulid'
         entity:
           description: The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5).
@@ -7608,6 +7647,7 @@ components:
         - $ref: '../../schemas/v1/process.json'
         - $ref: '../../schemas/v1/actor.json'
         - $ref: '../../schemas/v1/scenario.json'
+        - $ref: '../../schemas/v1/migration.json'
     NewModelDocument:
       description: 'A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other.'
       type: object
@@ -7990,6 +8030,45 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ChangeSet'
             - type: 'null'
+        facts:
+          description: >-
+            The migration facts the write created or updated (next-phase-1-design.md section 3.2): a single-element create, save or
+            delete lists every fact its write recorded, cascades included; `null` on an item of a batch (the batch carries them) and
+            when nothing was written. A pending fact's MQ4101 is among `diagnostics`.
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/RecordedFact'
+            - type: 'null'
+    RecordedFact:
+      x-engine-record: Maquettiste.Engine.RecordedFact
+      description: A migration fact a write created or updated, in `model/databases/<db>/migrations/open/`.
+      type: object
+      required: [id, database, fact, state, missing, summary, path]
+      properties:
+        id:
+          type: string
+        database:
+          description: The id of the fact's database.
+          type: string
+        fact:
+          type: string
+          enum: [rename, rekey, change-type, drop, adopt, baseline, backfill, raw, value-map, state-map]
+        state:
+          description: '`pending` while the fact lacks the intent its change needs (MQ4101), else `complete`.'
+          type: string
+          enum: [complete, pending]
+        missing:
+          description: The intent fields MQ4101 names; empty unless pending.
+          type: array
+          items:
+            type: string
+        summary:
+          description: One line by the names the fact records, such as `rename column billing.notes.text to body`.
+          type: string
+        path:
+          description: The repo-relative path of the fact's file.
+          type: string
     BatchOp:
       type: string
       description: >-
@@ -8139,6 +8218,13 @@ components:
         changes:
           oneOf:
             - $ref: '#/components/schemas/ChangeSet'
+            - type: 'null'
+        facts:
+          description: The migration facts the batch created or updated (its items carry none); `null` when nothing was written.
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/RecordedFact'
             - type: 'null'
 
     # ---------------------------------------------------------------- diagnostics
@@ -8350,6 +8436,7 @@ components:
             - $ref: '#/components/schemas/DatabaseTypeRecord'
             - $ref: '#/components/schemas/SqlObjectRecord'
             - $ref: '#/components/schemas/QueryRecord'
+            - $ref: '#/components/schemas/MigrationRecord'
         next:
           type: [string, 'null']
           description: The cursor of the next page; null on the last one.
@@ -9647,6 +9734,114 @@ components:
           $ref: '#/components/schemas/Ulid'
         query:
           $ref: '#/components/schemas/QueryView'
+    MigrationRecord:
+      x-engine-record: Maquettiste.Engine.MigrationRecord
+      description: One open migration fact (scope `migrations`, next-phase-1-design.md section 3.2), sorted by database name, then applied order.
+      type: object
+      required: [id, kind, name, database, order, fact, state, missing, after, object, currentKey, from, to, hash]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          type: string
+          const: migration
+        name:
+          type: string
+          description: The fact's name; the empty string for a recorded fact.
+        database:
+          $ref: '#/components/schemas/Ulid'
+        order:
+          type: integer
+          minimum: 1
+          description: The fact's place in its database's applied order, from 1.
+        fact:
+          type: string
+          enum: [rename, rekey, change-type, drop, adopt, baseline, backfill, raw, value-map, state-map]
+        state:
+          type: string
+          enum: [pending, complete, held, released]
+        missing:
+          type: array
+          items:
+            type: string
+          description: The intent fields MQ4101 names; empty unless the fact is pending.
+        after:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+          description: The ids of the facts it follows that exist in its database.
+        object:
+          description: Its object as recorded, or null.
+          oneOf:
+            - $ref: '#/components/schemas/MigrationRecordObject'
+            - type: 'null'
+        currentKey:
+          type: [string, 'null']
+          description: The object's key moved through the rekey facts after it; null without an object.
+        from:
+          description: The state before, as recorded, or null.
+          oneOf:
+            - $ref: '#/components/schemas/MigrationRecordState'
+            - type: 'null'
+        to:
+          description: The state after, as recorded, or null.
+          oneOf:
+            - $ref: '#/components/schemas/MigrationRecordState'
+            - type: 'null'
+        hash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: The fact content hash (what a migration ledger row records).
+    MigrationRecordObject:
+      x-engine-record: Maquettiste.Engine.Model.MigrationObject
+      description: A migration fact's object by physical key and by its physical names at the time (`migrationObject` of `schemas/v1/migration.json`, with null for what is not recorded).
+      type: object
+      required: [kind, table, key, schema, tableName, name, formerNames]
+      properties:
+        kind:
+          type: string
+          enum: [table, column, view, sequence, index, unique, foreign-key, check, routine, database-type, sql-object, schema]
+        table:
+          type: [string, 'null']
+          description: The key of the table a member (a column, index or constraint) belongs to.
+        key:
+          type: string
+        schema:
+          type: [string, 'null']
+        tableName:
+          type: [string, 'null']
+        name:
+          type: [string, 'null']
+        formerNames:
+          type: array
+          items:
+            type: string
+    MigrationRecordState:
+      x-engine-record: Maquettiste.Engine.Model.MigrationState
+      description: A side of a migration fact (`migrationState` of `schemas/v1/migration.json`, with null for what is not recorded).
+      type: object
+      required: [name, schema, type, length, precision, scale, nativeType, strategy, referenceTable, nullable]
+      properties:
+        name:
+          type: [string, 'null']
+        schema:
+          type: [string, 'null']
+        type:
+          type: [string, 'null']
+        length:
+          type: [integer, 'null']
+        precision:
+          type: [integer, 'null']
+        scale:
+          type: [integer, 'null']
+        nativeType:
+          type: [string, 'null']
+        strategy:
+          type: [string, 'null']
+        referenceTable:
+          type: [string, 'null']
+        nullable:
+          type: [boolean, 'null']
     # ---------------------------------------------------------------- databases (E1)
     DatabaseViewResult:
       x-engine-addition: E1
@@ -11449,6 +11644,14 @@ components:
         stageBarriers:
           type: boolean
           default: false
+        against:
+          description: >-
+            The baseline the schema diff runs from for this run: a model snapshot id (the CLI and its MCP server also
+            take a folder, stored as its full path). `null`: the committed physical snapshots. A run against a baseline
+            never writes those; applying its plan opens the baseline again, and a baseline changed in between makes the
+            plan stale.
+          type: [string, 'null']
+          default: null
     ApplyRequest:
       type: object
       required: [planId]

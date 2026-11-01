@@ -66,6 +66,13 @@ maquettiste generate --watch    # regenerate on every change under .maquettiste/
 
 A generated file that someone edited by hand stops the run (exit 3), so a hand edit is never lost silently.
 
+On PostgreSQL, the SQL scripts also keep a record of the [migration facts](schema-changes.md) they apply. `schema.sql`
+and each migration write one row per fact they reach into the **migration ledger**, a few bookkeeping tables in the
+database (in the schema `migration_ledger`, unless `migrations.ledgerSchema` names another), inside the script's own
+transaction, so a failed run records nothing. A model without facts gets the same scripts as before. When your team
+applies changes with a migrator of its own, `maquettiste migration ledger --grant-read <role>` prints the tables' DDL
+and a read grant for it; [The migration ledger](../ledger.md) has the rules.
+
 ## 5. Guard the outputs in CI
 
 `generate --check` renders every output in memory, writes nothing, and exits 2 when any file would be added, changed or

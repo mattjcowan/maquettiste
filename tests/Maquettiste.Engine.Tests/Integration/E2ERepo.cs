@@ -49,10 +49,11 @@ internal sealed class E2ERepo : IAsyncDisposable
     /// <param name="settings">Edits maquettiste.json (after the packs are configured).</param>
     /// <param name="demo">Whether to install billing-demo.</param>
     /// <param name="migrations">Whether to install the migrations pack.</param>
+    /// <param name="seed">The seed of the ids the copy mints (<see cref="SequentialIdGenerator"/>): two copies that both write need two.</param>
     /// <returns>The repo.</returns>
-    public static E2ERepo Create(int parallelism = 2, Action<JsonObject>? settings = null, bool demo = true, bool migrations = false)
+    public static E2ERepo Create(int parallelism = 2, Action<JsonObject>? settings = null, bool demo = true, bool migrations = false, int seed = 1)
     {
-        var repo = new TempRepo();
+        var repo = new TempRepo(seed == 1 ? null : new SequentialIdGenerator(seed));
         CopyTree(Fixtures.Path("models", "billing"), repo.RepoRoot);
         var packs = new List<(string Name, string Source, string Output)> { ("e2e", Fixtures.Path("integration", "packs", "e2e"), "db/e2e") };
         if (demo)
@@ -71,6 +72,12 @@ internal sealed class E2ERepo : IAsyncDisposable
         File.WriteAllBytes(settingsPath, TestServices.Json.Write(node, "maquettiste.json", "maquettiste.json"));
         return new E2ERepo(repo, parallelism);
     }
+
+    /// <summary>
+    /// A settings edit that turns off the recording of migration facts, for tests of other behaviour whose changes would leave pending
+    /// facts (a drop, a narrowing) that stop generation (next-phase-1-design.md section 3.2).
+    /// </summary>
+    public static void RecordOff(JsonObject settings) => settings["migrations"] = new JsonObject { ["record"] = "off" };
 
     /// <summary>Recreates the store and the service over the same folders (a host restart).</summary>
     public async Task RestartAsync()

@@ -12,8 +12,10 @@ internal sealed record TableRekey(string OldKey, string NewKey, IReadOnlyDiction
 /// <summary>
 /// Rewrites the keys of a committed physical snapshot after <c>materialize-tables</c> (erratum E43): the designed table keeps every
 /// physical property of the projected table, only its keys change (the table key, the column keys, and the keys derived from them
-/// for constraints and indexes, here and in the foreign keys of other tables), so the next schema diff sees the same table instead
-/// of a drop and a create.
+/// for constraints and indexes, here and in the foreign keys and reference columns of other tables), so the next schema diff sees
+/// the same table instead of a drop and a create. The same step reads a baseline under today's keys before every diff: the
+/// snapshot's aliases, then the open <c>rekey</c> facts it lacks (next-phase-1-design.md section 3.2). A key that is no longer in
+/// the snapshot is not moved again, so aliases and facts that record the same move never move a key twice.
 /// </summary>
 internal static partial class SnapshotRekey
 {
@@ -34,7 +36,7 @@ internal static partial class SnapshotRekey
         {
             var own = byKey.GetValueOrDefault(table.Key);
             var touches = own is not null || table.ForeignKeys.Any(f => byKey.ContainsKey(f.ReferencedTable))
-                || table.Columns.Any(c => c.Sequence is { } s && sequences.ContainsKey(s));
+                || table.Columns.Any(c => (c.Sequence is { } s && sequences.ContainsKey(s)) || (c.ReferenceTable is { } bound && byKey.ContainsKey(bound)));
             if (!touches)
             {
                 result.Add(table);
@@ -51,6 +53,8 @@ internal static partial class SnapshotRekey
                 {
                     Key = Col(c.Key),
                     Sequence = c.Sequence is { } s && sequences.TryGetValue(s, out var newSequence) ? newSequence : c.Sequence,
+                    // A reference column's bound table follows its table's key (next-phase-1-design.md section 3.2, decision 26).
+                    ReferenceTable = c.ReferenceTable is { } bound && byKey.TryGetValue(bound, out var boundTable) ? boundTable.NewKey : c.ReferenceTable,
                 })],
                 PrimaryKey = table.PrimaryKey is { } pk ? pk with { Columns = Cols(pk.Columns) } : null,
                 Uniques = [.. table.Uniques.Select(u => u with { Key = "uq:" + string.Join(',', Cols(u.Columns)) + Suffix(u.Key), Columns = Cols(u.Columns) })],

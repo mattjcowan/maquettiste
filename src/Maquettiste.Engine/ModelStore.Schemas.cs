@@ -59,8 +59,9 @@ public sealed partial class ModelStore
 
         changes.AddRange(materialized);
         if (changes.Count == 0)
-            return new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source));
-        var result = await ExecuteAsync(changes, source, ct, preview).ConfigureAwait(false);
+            return new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source)) { Facts = [] };
+        // The materialize results go along: their key maps tell the recording of migration facts which keys moved (a rekey, not a drop).
+        var result = await ExecuteAsync(changes, source, ct, preview, materializeResults).ConfigureAwait(false);
         if (result.Outcome == SaveOutcome.Saved && materializeResults.Count > 0 && preview is null)
             await RecordAliasesAsync(materializeResults, ct).ConfigureAwait(false);
         return result;

@@ -261,6 +261,7 @@ export const KIND_LABELS: Record<ElementKind, string> = {
   process: "Process",
   actor: "Actor",
   scenario: "Scenario",
+  migration: "Migration fact",
 };
 
 /** A domain inside another domain. */

@@ -53,6 +53,7 @@ public sealed class ValidationFixtureTests
     [InlineData("scripts", new[] { "MQ2007", "MQ5002", "MQ5003", "x/no-draft" })]
     [InlineData("reference-data", new[] { "MQ2001", "MQ2002", "MQ3019", "MQ7001", "MQ7002", "MQ7006", "MQ7007", "MQ7008", "MQ7010", "MQ7011" })]
     [InlineData("seeds", new[] { "MQ7002", "MQ7003", "MQ7004", "MQ7005", "MQ7009", "MQ7101", "MQ7102", "MQ7103", "MQ7105", "MQ7106" })]
+    [InlineData("migrations", new[] { "MQ4056", "MQ4101", "MQ4104", "MQ4105", "MQ4106", "MQ4107", "MQ4108", "MQ4111" })]
     public async Task Invalid_model_matches_its_golden_diagnostics(string family, string[] rules)
     {
         var report = await ValidateAsync(family);
@@ -123,7 +124,7 @@ public sealed class ValidationFixtureTests
     [Fact]
     public async Task Results_do_not_depend_on_parallelism()
     {
-        foreach (var family in new[] { "references", "physical", "mappings", "extensions" })
+        foreach (var family in new[] { "references", "physical", "mappings", "extensions", "migrations" })
         {
             var model = ValidationFixture.Load(family);
             var one = await ValidationFixture.Validator(ValidationFixture.RepoRoot(family), parallelism: 1)

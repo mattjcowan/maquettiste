@@ -18,4 +18,12 @@ public sealed record SettingsDocument(ProjectSettings Settings, string Path, str
 /// <param name="Hash">The new hash when saved; the disk hash on conflict.</param>
 /// <param name="Current">The settings now on disk: the saved document, or the disk version on conflict.</param>
 /// <param name="Diagnostics">Why the save is invalid, or the warnings and infos it introduced.</param>
-public sealed record SettingsSaveResult(SaveOutcome Outcome, string? Hash, SettingsDocument? Current, IReadOnlyList<Diagnostic> Diagnostics);
+public sealed record SettingsSaveResult(SaveOutcome Outcome, string? Hash, SettingsDocument? Current, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>
+    /// When saved, the migration facts the save recorded (next-phase-1-design.md section 3.2): a change of <c>conventions</c>,
+    /// <c>databases</c>, <c>typeMaps</c> or <c>inflection</c> classifies every database; otherwise none. <see langword="null"/> when
+    /// nothing was written.
+    /// </summary>
+    public IReadOnlyList<RecordedFact>? Facts { get; init; }
+}

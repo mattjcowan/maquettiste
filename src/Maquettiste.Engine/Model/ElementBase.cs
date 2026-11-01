@@ -74,6 +74,7 @@ public abstract record ElementBase
 [JsonDerivedType(typeof(Process))]
 [JsonDerivedType(typeof(Actor))]
 [JsonDerivedType(typeof(Scenario))]
+[JsonDerivedType(typeof(Migration))]
 public abstract record Element : ElementBase
 {
     /// <summary>

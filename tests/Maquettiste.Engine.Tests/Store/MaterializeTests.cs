@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Ledger;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Tests.Editor;
@@ -12,8 +13,8 @@ namespace Maquettiste.Engine.Tests.Store;
 /// <summary>
 /// Materialize, both directions (erratum E43), over the billing fixture: <c>materialize-tables</c> turns a projected table into a
 /// designed table with the same shape and binds the entity to it (the overlay folds in and keeps its id, the mapping element goes,
-/// the relations keep their foreign keys, queries and other tables follow, the committed snapshot is rekeyed so no migration
-/// appears); <c>materialize-entities</c> makes an entity per table with relations for the foreign keys; <c>materialize-attributes</c>
+/// the relations keep their foreign keys, queries and other tables follow, the committed snapshot is read under the new keys so the
+/// next migration changes no table: it carries only the write's <c>rekey</c> fact); <c>materialize-entities</c> makes an entity per table with relations for the foreign keys; <c>materialize-attributes</c>
 /// adds to a bound entity an attribute per column its binding leaves without one, <c>materialize-columns</c> a column of its table per
 /// attribute its binding leaves unmapped; each previews without
 /// writing and refuse what is already bound; deletes drop bindings and keep the entities.
@@ -144,30 +145,39 @@ public sealed class MaterializeTests
     }
 
     [Fact]
-    public async Task The_committed_snapshot_is_rekeyed_so_the_next_run_writes_no_migration()
+    public async Task The_committed_snapshot_is_rekeyed_so_the_next_migration_changes_no_table()
     {
         await using var r = EditorRepo.Create();
         var first = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
         Assert.Equal(RunOutcome.Succeeded, first.Outcome);
-        var migrations = r.Repo.ListFiles().Count(p => p.Contains("/migrations/", StringComparison.Ordinal));
+        var migrations = r.Repo.ListFiles().Count(IsMigrationScript);
 
-        Assert.Equal(SaveOutcome.Saved, (await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId))).Outcome);
+        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId));
+        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
+        var rekey = Assert.Single(stored.Facts!, f => f.Fact == "rekey").Id;
         var second = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
 
+        // The rekey fact alone makes the diff non-empty (next-phase-1-design.md section 3.2): its migration changes no table, and the
+        // snapshot lists the fact as rendered.
         Assert.Equal(RunOutcome.Succeeded, second.Outcome);
-        Assert.Equal(migrations, r.Repo.ListFiles().Count(p => p.Contains("/migrations/", StringComparison.Ordinal)));
-        // A table's script says nothing of the entity laid out on it, so storing the tables as files changes no script.
-        Assert.Empty(second.Changes.Where(c => c.Kind == FileChangeKind.Modified).Select(c => c.Path));
+        Assert.Equal(migrations + 1, r.Repo.ListFiles().Count(IsMigrationScript));
+        AssertNoTableChange(r, second);
+        var snapshotPath = r.Repo.ListFiles().Single(p => p.EndsWith("snapshots/main.json", StringComparison.Ordinal));
+        Assert.Equal([rekey], JsonNode.Parse(r.Repo.ReadFile(snapshotPath))!["facts"]!.AsArray().Select(f => (string)f!));
+        // A table's script says nothing of the entity laid out on it, so storing the tables as files changes no table script; the
+        // schema script records the rekey fact, which a build reaches, in the migration ledger (section 3.3).
+        Assert.Equal(["db/main/schema.sql"], second.Changes.Where(c => c.Kind == FileChangeKind.Modified).Select(c => c.Path));
+        Assert.Contains($"VALUES ('{rekey}', ", r.Repo.ReadFile("db/main/schema.sql"), StringComparison.Ordinal);
         foreach (var table in new[] { "customers", "invoices" })
             Assert.DoesNotContain("entity", r.Repo.ReadFile($"db/main/billing/tables/{table}.sql"), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task Undoing_and_redoing_a_materialize_writes_no_migration_and_rewrites_no_snapshot_key()
+    public async Task Undoing_and_redoing_a_materialize_writes_migrations_that_change_no_table()
     {
         await using var r = EditorRepo.Create();
         Assert.Equal(RunOutcome.Succeeded, (await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct)).Outcome);
-        int Migrations() => r.Repo.ListFiles().Count(p => p.Contains("/migrations/", StringComparison.Ordinal));
+        int Migrations() => r.Repo.ListFiles().Count(IsMigrationScript);
         var migrations = Migrations();
         var snapshotPath = r.Repo.ListFiles().Single(p => p.EndsWith("snapshots/main.json", StringComparison.Ordinal));
         string Keys() => string.Join(",", JsonNode.Parse(r.Repo.ReadFile(snapshotPath))!["tables"]!.AsArray().Select(t => (string)t!["key"]!));
@@ -182,7 +192,7 @@ public sealed class MaterializeTests
         var after = items.ToDictionary(i => i.Id!, i => i.Current?.Json.GetRawText(), StringComparer.Ordinal);
         var hashes = items.ToDictionary(i => i.Id!, i => i.Hash, StringComparer.Ordinal);
 
-        // The snapshot keeps its keys and records the aliases.
+        // The materialize leaves the snapshot's keys and records the aliases.
         Assert.Equal(keys, Keys());
         var aliases = JsonNode.Parse(r.Repo.ReadFile(snapshotPath))!["aliases"]!.AsArray();
         Assert.Contains(aliases, a => (string)a!["key"]! == EditorRepo.InvoiceId + "@" + EditorRepo.MainDatabaseId && (string)a["alias"]! == EditorRepo.OverlayTableId);
@@ -207,6 +217,8 @@ public sealed class MaterializeTests
                 hashes[item.Id!] = item.Hash;
         }
 
+        // Each step records one rekey fact (the undo, its move back), so each run writes one migration, which changes no table; the
+        // snapshot it saves takes the keys the model gives the tables then.
         foreach (var round in new[] { "stored", "undone", "redone" })
         {
             if (round == "undone")
@@ -215,10 +227,11 @@ public sealed class MaterializeTests
                 await Step(id => priors.GetValueOrDefault(id), id => after.GetValueOrDefault(id), id => hashes.GetValueOrDefault(id));
             var run = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
             Assert.Equal(RunOutcome.Succeeded, run.Outcome);
-            Assert.True(migrations == Migrations(), $"{round}: a migration was written: " + string.Join(", ", run.Changes.Select(c => c.Path)));
+            Assert.True(++migrations == Migrations(), $"{round}: " + string.Join(", ", run.Changes.Select(c => c.Path)));
+            AssertNoTableChange(r, run);
+            Assert.Equal(round == "undone", keys == Keys());
+            Assert.Equal(RunOutcome.Succeeded, (await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Check, Packs = ["sql-ddl"] }, null, Ct)).Outcome);
         }
-
-        Assert.Equal(keys, Keys());
     }
 
     /// <summary>
@@ -264,10 +277,12 @@ public sealed class MaterializeTests
                 Assert.Contains("scratch_" + cycle, adding, StringComparison.Ordinal);
                 var undone = await r.Store.SaveAsync(table.Id, Encoding.UTF8.GetBytes(stored), added.Hash!, ChangeSource.Editor, Ct);
                 Assert.Equal(SaveOutcome.Saved, undone.Outcome);
+                // The column's drop is a migration fact pending its acknowledgement, which generation waits for.
+                await AcknowledgeAsync(r, Assert.Single(undone.Facts!, f => f.Fact == "drop"));
             }
             else
             {
-                Assert.Empty(await Generate());
+                AssertNoTableChange(await Generate()); // the store's rekey fact only
             }
 
             await undoStore();
@@ -276,8 +291,9 @@ public sealed class MaterializeTests
             var migrations = await Generate();
             if (addColumn)
             {
-                // (PostgreSQL: dropping a column drops every view first and creates it again after, whichever table it reads.)
-                var migration = Assert.Single(migrations);
+                // (PostgreSQL: dropping a column drops every view first and creates it again after, whichever table it reads.) The
+                // migration records its facts, so it opens with the ledger DDL, whose tables are no table of the model.
+                var migration = Assert.Single(migrations).Replace(LedgerContract.Ddl(Dialect.PostgreSql, LedgerContract.DefaultSchema), "", StringComparison.Ordinal);
                 Assert.Single(Regex.Matches(migration, "DROP COLUMN"));
                 Assert.Contains("scratch_" + cycle, migration, StringComparison.Ordinal);
                 foreach (var statement in new[] { "DROP TABLE", "CREATE TABLE", "ADD COLUMN", "ADD CONSTRAINT", "DROP CONSTRAINT", "INDEX" })
@@ -285,12 +301,12 @@ public sealed class MaterializeTests
             }
             else
             {
-                Assert.True(migrations.Count == 0, $"cycle {cycle}: " + string.Join("\n", migrations));
+                AssertNoTableChange(migrations); // the undo's and the new store's rekey facts only
             }
 
-            // Back to the projection for the next cycle; generating there writes nothing either.
+            // Back to the projection for the next cycle; generating there changes no table either.
             await undoAgain();
-            Assert.Empty(await Generate());
+            AssertNoTableChange(await Generate());
         }
     }
 
@@ -571,5 +587,30 @@ public sealed class MaterializeTests
     {
         var result = await r.Store.CreateAsync(Encoding.UTF8.GetBytes(JsonNode.Parse(json)!.ToJsonString()), ChangeSource.Editor, Ct);
         Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+    }
+
+    /// <summary>Whether a repo path is a generated migration script (the model's migration facts live under <c>.maquettiste/</c>).</summary>
+    private static bool IsMigrationScript(string path) =>
+        path.Contains("/migrations/", StringComparison.Ordinal) && !path.StartsWith(".maquettiste/", StringComparison.Ordinal);
+
+    /// <summary>The run wrote one migration (for its rekey facts) and it names no table of the billing schema.</summary>
+    private static void AssertNoTableChange(EditorRepo r, GenerationResult run) =>
+        AssertNoTableChange([.. run.Changes.Where(c => c.Kind == FileChangeKind.Added && IsMigrationScript(c.Path)).Select(c => r.Repo.ReadFile(c.Path))]);
+
+    /// <summary>One migration, which names no table of the billing schema: a rekey fact writes no DDL.</summary>
+    private static void AssertNoTableChange(IReadOnlyList<string> migrations)
+    {
+        var migration = Assert.Single(migrations);
+        Assert.False(migration.Contains("billing.", StringComparison.Ordinal), migration);
+    }
+
+    /// <summary>Completes a pending drop fact with its acknowledgement.</summary>
+    private static async Task AcknowledgeAsync(EditorRepo r, RecordedFact fact)
+    {
+        var document = (await r.Store.GetElementAsync(fact.Id, Ct))!;
+        var node = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
+        node["acknowledge"] = "Scratch data only.";
+        var saved = await r.Store.SaveAsync(fact.Id, Encoding.UTF8.GetBytes(node.ToJsonString()), document.Hash, ChangeSource.Editor, Ct);
+        Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join("; ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
     }
 }
