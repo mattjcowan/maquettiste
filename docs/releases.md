@@ -7,6 +7,19 @@ one.
 
 ## 0.11.0 (unreleased)
 
+- **Table seeds follow their foreign keys.** `model.seeds_in_order` puts a table seed after the seeds that hold the
+  rows its foreign keys name, in every environment it loads in. A table whose rows name rows of the same table orders
+  its seeds, then each seed's rows, so a named row comes first and a seed's rows stay together. sql-ddl follows that
+  order, so a seed script may list its blocks, or a self-referencing seed its rows, in a new order. MQ7111 now asks
+  for the named row in every environment the row loads in.
+- **Reference types stored in a table.** A reference type can name, per database, the table file that holds its rows:
+  `bindings` map its fields to columns, and constant columns tell types that share a table apart. Its rows are then the
+  table's rows: foreign keys into the table may name them, table seeds may not repeat their keys (MQ7112), and
+  `database.seed_tables` lists them first. New rules MQ7117 to MQ7120 check the table, the field map, the key and the
+  NOT NULL columns. sql-ddl stores such a type in its table, with no lookup table, CHECK or enum type: `seed.sql`
+  writes its rows with the table's other rows, then points every column holding its codes at the table's code column
+  with a foreign key. Templates read a column's binding as `column.reference_binding`, and the editor's Storage tab
+  gains "Stored in a table".
 - **Migration facts.** A change to a database's shape that its stored rows must follow (a rename, a type change, a
   drop, a column made not null) is now recorded as a migration fact: a small file of the new kind `migration` under
   `model/databases/<database>/migrations/open/`, written by the save that makes the change, in the editor, the command
