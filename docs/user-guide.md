@@ -1995,6 +1995,100 @@ through the gate 3 fixture's solution); for TypeScript, `npx tsc --noEmit` then 
 (samples/typescript-pack/README.md). `maquettiste process verify` replays the same scenarios in the engine, without
 generated code, and is the faster check while you model.
 
+## Packages and layering
+
+Every element can belong to a package (a domain): entities and relations as before, and now tables, views, sequences,
+routines, database types, SQL objects, queries, databases, mappings, stereotypes, reference types, seeds, actors and
+scenarios too. The element's `package` holds the package's id, and a package names its parent in `parent`. A migration
+fact is part of its database's history and has no package. Until the editor's forms show the key for every kind, set it
+on the inspector's **JSON** tab.
+
+Membership groups elements: the explorers, `model stats --by package`, `model export --package`, `get_model_kinds`,
+`get_elements` and a pack unit's `packages` filter follow it, and a table in a domain sees that domain's tags. It never
+changes a database: `database.packages[].schema` still routes only the tables that entities lay out by convention, and
+moving a table to another package records no migration fact. Names stay unique as before.
+
+A package can declare layers with `dependsOn`, the packages its elements may reference:
+
+```json
+{
+  "kind": "package",
+  "name": "Catalog",
+  "parent": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "dependsOn": ["01J92P0V01KDRN8GX5PGYCNKSX"]
+}
+```
+
+- A package is **checked** when it or a parent declares `dependsOn`, even as `[]`. A model without any `dependsOn`
+  behaves exactly as before.
+- An element of a checked package may reference the elements of its own package and of its sub-packages, and of every
+  package that the `dependsOn` of its package or of a parent lists, with their sub-packages. Parents lend their
+  `dependsOn` to the whole subtree.
+- A sub-package does not reach its parent by default: in the example, Catalog lists Billing, its parent, so that its
+  products may use Billing's `Money`.
+- Any other reference is **MQ2020**, an error at the reference, in the file that holds it. Every reference counts:
+  attribute types, relation ends, `base`, stereotype keys, `x-ref` values, a seed's target, a view's `dependsOn`. These
+  do not:
+    - a package's `parent` and `dependsOn`;
+    - `package` fields: membership, a vocabulary's scope and a database's convention entries;
+    - categories, which MQ2008 already checks along the domain chain;
+    - references from diagrams, which only show elements;
+    - references from or to an element in no package.
+- A package's own references, such as its stereotypes, are judged as the package's, not its parent's.
+- **MQ2021** reports a `dependsOn` entry that names the package itself, or packages that depend on each other in a cycle
+  (on each entry of the cycle). Layers depend one way.
+
+On a view, a routine or a SQL object, `dependsOn` keeps its own meaning: the database objects to create first. A save is
+judged on every element it reaches, so dropping an entry from a package's `dependsOn` is refused while an element
+anywhere under that package still uses it, and moving a package is refused while something that may no longer reach it
+references its elements. Layering errors never keep a migration fact from being recorded. Like the other rules, MQ2020
+and MQ2021 can be turned off or given another severity in `validation.rules`.
+
+## Rationale, decision and status
+
+Every element, and every attribute, enum member, column, database schema and category, can say why it exists. Three
+optional fields sit right after `description` in its file:
+
+| Field | What it holds |
+| --- | --- |
+| `rationale` | Markdown: why the element is shaped this way. It is written in the file itself; there is no sidecar file |
+| `decision` | A URL or a reference to the decision record, such as `ADR-0042` (at most 2000 characters). It is not an element id and is not checked: it points into your team's tracker |
+| `status` | `proposed`, `approved`, `deprecated` or `retired`. There is no default: an element without `status` says nothing |
+
+```json
+{
+  "kind": "entity",
+  "name": "Invoice",
+  "description": "A bill issued to a customer.",
+  "rationale": "One row per issued bill; a credit note is an entity of its own, so a total never goes negative.",
+  "decision": "ADR-0042",
+  "status": "approved"
+}
+```
+
+A file without them is written exactly as before. Until the editor's screens show them, edit them on the inspector's
+**JSON** tab. `get_element`, `get_elements` and `model export` return them with the rest of the document, and
+templates read `rationale`, `decision` and `status` (the JSON text) on entities and their attributes, tables and their
+columns, databases and their schemas, and the other resolved elements; enum members, categories and stereotypes do not
+carry them in templates yet, and neither does `get_resolved_model`. Process states, transitions and the other parts of a
+process do not take them: the process does. A migration fact's `status` is its status as an element; the fact's own
+progress is its `state`. Editing the three fields records no migration fact, because they never change a database.
+
+**Retiring.** `retired` means no longer to be used. Each reference to a retired element or sub-element is MQ2022, a
+warning on the file that holds the reference, so retiring something lists its last users: an attribute typed by a
+retired enum, an index over a retired column, a relation end or a `base` that names a retired entity, a retired
+stereotype in `stereotypes`. Repoint the reference, or retire the element that holds it as well. These do not warn:
+
+- a reference held by an element or sub-element that is retired itself;
+- membership: an element's `package`, and a package's or a category's `parent`, so retiring a package does not warn on
+  each of its members;
+- owning references: a migration fact's database, a seed's target, a scenario's process, so retiring a database does
+  not warn once per fact;
+- references from diagrams, which only show elements;
+- a reference to a `deprecated` element, which is still in use.
+
+Like the other rules, MQ2022 can be turned off or given another severity in `validation.rules`.
+
 ## Migration facts
 
 A change to a database's shape that its stored rows must follow (a renamed column, a narrower type, a dropped table) is
@@ -2009,8 +2103,9 @@ needs a fact, are in the [schema changes guide](guides/schema-changes.md).
 Facts are recorded by the writes themselves: a save, create, delete or batch (in the editor, the command line, MCP or
 the HTTP API) that renames, retypes or drops a table, column or sequence, or makes a column not null, writes its facts
 in the same atomic save and lists them in its answer (`facts`). A settings change of `conventions`, `databases`,
-`typeMaps` or `inflection` and a default-locale change record theirs too. Edits of descriptions, display names, tags or
-categories record nothing, and neither do hand edits or a snapshot restore. The guide explains what each change records.
+`typeMaps` or `inflection` and a default-locale change record theirs too. Edits of descriptions, display names, tags,
+categories, rationales, decisions or statuses record nothing, and neither do hand edits or a snapshot restore. The guide
+explains what each change records.
 
 A fact that lacks the intent its change needs is **pending** (MQ4101, an error): generation stops until it is completed
 or held, while template previews, path listings and the resolved model keep working. A **held** fact (`held: true`)
@@ -2071,11 +2166,12 @@ keeps a part only when a condition holds. A template that prints `CREATE TABLE {
 `CREATE TABLE customers (` for the customers table.
 
 A table offers what its own file says about it, the way an entity does: `table.display_name`, `table.plural_name`,
-`table.description`, `table.tags`, `table.category` (with `name` and `path`), `table.stereotypes` (each with `key`
-and `name`), `table.properties` (a custom property reads as `{{ table.properties.tablespace }}`, with the stereotypes'
-default properties under the file's own values) and `table.generation`. The file is the designed or imported table,
-or the overlay you add to a synthesized table; a synthesized table without one has none of these, and its entity's
-are at `table.entity`. The rest of the database side works the same way, each from its own file or entry:
+`table.description`, `table.rationale`, `table.decision`, `table.status` (see [Rationale, decision and
+status](#rationale-decision-and-status)), `table.tags`, `table.category` (with `name` and `path`), `table.stereotypes`
+(each with `key` and `name`), `table.properties` (a custom property reads as `{{ table.properties.tablespace }}`, with
+the stereotypes' default properties under the file's own values) and `table.generation`. The file is the designed or
+imported table, or the overlay you add to a synthesized table; a synthesized table without one has none of these, and
+its entity's are at `table.entity`. The rest of the database side works the same way, each from its own file or entry:
 `database` (and `table.database`) from the database file, which also gives `by_convention`, `packages`, `quoting` and
 `max_identifier_length`; each of `database.schemas` from its entry in that file, with `is_default` (a schema the file
 does not declare has no annotations); each column of `table.columns` from its own entry in the table file, a designed
@@ -2478,6 +2574,15 @@ shows anywhere: no switcher, no Translations section, no locale columns.
   **Fields** tab a **Translations of the fields** section for each field's display name and description (see
   Reference data).
 
+Custom properties whose schema marks them `x-translatable` (see
+[Translatable properties](#translatable-properties-x-translatable)) are translated like the standard fields. Their
+field is `properties/<name>`: the Translations section and the translation queue list it under the property's name,
+the completeness matrix and MQ7204 to MQ7206 count it, and the `l10n` verbs, XLIFF and CSV exports carry it. A locale
+shard keeps the texts in a nested `properties` object, with their fingerprints under `src` as `properties/<name>`. Only
+an element's or sub-element's own text is translated: a stereotype's `defaultProperties` text serves every element that
+carries the stereotype and stays in the default locale. When a property is no longer marked, its translations become
+orphans (MQ7203), and `l10n prune` removes them.
+
 ## The assistant
 
 The **Assistant** panel (the top bar's assistant button, tooltip "Assistant (Ctrl+I)", or **Ctrl+I**, which also closes it) is a chat about the model
@@ -2652,6 +2757,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations` (open migration facts by database, in applied order), `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
+| `maquettiste model apply <batch.json>` | Applies a batch file all or nothing, as the agent server's `apply_batch` does: `{ "operations": [...] }` or the bare array of creates, updates, deletes and the schema, materialize, process and tag operations. Id fields take ids, qualified names such as `@table:billing.notes` or `@entity:Billing.Invoice`, and placeholders (`"as": "$pm"` names a new element for the whole batch), and the engine mints every missing id, so a batch needs no id written by hand (docs/mcp.md, "Batches by name"). Prints a line per path written or deleted, then each name and placeholder with its id; `--dry-run` writes nothing and prints the diffs, the names, and a `+` or `-` line per diagnostic the change adds or removes; `--format json` prints the `apply_batch` answer. Exit 1 when the file is not a valid batch or the batch is invalid or refused, 3 on a conflict. |
 | `maquettiste snapshot create <name>` | Takes a snapshot of the whole model: a zip under `.maquettiste/model-snapshots/` named `<name in kebab case>-<yyyymmdd-hhmmss>.zip` (the snapshot's id) holding `maquettiste.json`, `model/`, `extensions/` and `branding/`; `--packs` holds the template packs too, `--description <text>`, `--format json`. |
 | `maquettiste snapshot list` | The snapshots, newest first, with their elements and flags (`[published]`, `[packs]`, `[before-restore]`); `snapshot show <id>` prints one snapshot's metadata, `snapshot delete <id>` deletes it. |
 | `maquettiste snapshot compare <from> [<to>]` | What differs between two snapshots, or a snapshot and the working model (`working`, the default `to`): counts per kind, then `+` added, `-` removed and `~` changed elements (a rename and a moved file say so) and the other documents; `--element <id>` prints that element's changed fields; `--format json`. |
@@ -2865,6 +2971,19 @@ domain's own uses change: a tag the domain declares itself is kept when the glob
 line or an agent: `apply_batch` with `{ "op": "retag", "tags": [...], "name": "<new key>", "package": "<domain>" }`
 (`name` to rename, `package` for a domain's vocabulary), and `tag_usage` for the counts.
 
+**Turn tags into a property.** Tags that carry a value, such as `status:draft` and `status:paid`, read better as a
+custom property once one exists. The batch operation `tags-to-property` moves them:
+`{ "op": "tags-to-property", "prefix": "status:", "name": "status" }` takes every tag that starts with `status:` off
+each element and sub-element that holds it (in the scope `retag` would change; `package` for a domain's vocabulary) and
+writes what follows the prefix into its `status` property. A property schema that applies to the holder must declare
+the property, and it decides the value: a string takes one suffix, an array of strings all of them in their order, an
+integer, number or boolean one parsed as written (`3`, `2.5`, `true`), an `enum` one of its values, and an `x-ref` the
+id the suffix names, matched as `names-to-ids` matches names. The moved tags leave the vocabulary too, except a tag
+that something without properties still uses (a relation end, for example): its declaration stays. With
+`"elementIds": [...]` only those elements change and the declarations stay. Nothing is written when one holder cannot
+take its value: no schema declares the property, the suffixes do not fit (two for a string, `big` for an integer), or
+the holder already has another value there; each such holder is MQ5001 at its property. No matching tag is MQ1002.
+
 ## Extending the model and the generation
 
 Three kinds of files let a project add to what Maquettiste knows, without changing Maquettiste itself. All three are plain
@@ -2933,6 +3052,145 @@ Number or True/false) and read by templates the same way. For attributes and enu
 and reach the templates the same way; edit them in the element's JSON. A table column's own properties edit in the
 table inspector's column section, as a property bag. Validation reports a value that does not match as MQ5001 on `/properties/<name>`, and templates read the merged value
 as `entity.properties.retentionDays`.
+
+#### Translatable properties (`x-translatable`)
+
+A top-level string property of an extension file, or of a stereotype's `parameters`, can be marked
+`"x-translatable": true`. Its text is then translated per locale like a display name or a description (see
+[Translating the model in the editor](#translating-the-model-in-the-editor)), and templates read a locale's text with
+`translate(entity, "properties/<name>")`, which walks the fallback chain to the element's own value. For example,
+`.maquettiste/extensions/invoice-texts.json` gives every entity a footer text that each locale can translate:
+
+```json
+{
+  "name": "invoice-texts",
+  "appliesTo": { "kinds": ["entity"] },
+  "properties": {
+    "footer": { "type": "string", "x-translatable": true }
+  }
+}
+```
+
+The holders that are translated are the ones localization knows: the domain kinds and their attributes, enum members,
+process states, transitions and events. The keyword anywhere else is an error, MQ7212: under a nested schema, on a
+property that is not a string, or with a value that is not `true` or `false`. A mark on a schema whose `appliesTo` kinds
+all lack translations (tables and other physical objects, mappings, diagrams, the vocabulary containers) is the warning
+MQ7213, since it does nothing there. Both are reported on the extension file, or on the stereotype at
+`/parameters/properties/<name>/x-translatable`.
+
+#### Typed links (`x-ref`)
+
+A property schema may type its value as a link with the `x-ref` keyword (`common.json#/$defs/xRef`): on a string, or on
+an array's items, `"x-ref": { "kind": "entity" }` says the value is the id of an entity. The value stays an id, so a
+rename changes nothing in the property, and where used (`get_references`) lists it with the schema that types it.
+
+| Key | Meaning |
+| --- | --- |
+| `kind` | Required. An element kind (`entity`, `table`, ...), a sub-element kind (`attribute`, `column`, `enum-member`, `row`, ...) or a list of them. `operation`, `outcome`, `error`, `member`, `custom` and `custom:<type>` are accepted now; their values dangle (MQ2001) until those kinds arrive. |
+| `of` | Sub-element kinds only. `"$element"`: a member of the element that holds the value, of its base entities or of its stereotypes (a column property may name a sibling column). An element id: a row of a seed of that element. |
+| `sameDatabase` | Physical kinds only. The target is in the database of the element that holds the value. |
+| `optional` | Whether a delete with `remove-references` may clear the value. Default `false`. |
+
+For example, `.maquettiste/extensions/listing.json` lets an entity name the attribute its lists sort by:
+
+```json
+{
+  "name": "listing",
+  "appliesTo": { "kinds": ["entity"] },
+  "properties": {
+    "defaultSort": { "type": "string", "x-ref": { "kind": "attribute", "of": "$element", "optional": true } }
+  }
+}
+```
+
+Validation checks each value: a name or other text where the id belongs is MQ2010, an id that does not exist MQ2001, an
+id of another kind MQ2002, and a target out of scope MQ2011 (a member of another element, a row of another list, another
+database, an element with no single database for `sameDatabase`, or a stereotype default under `of: "$element"` or
+`sameDatabase`, since a default serves many elements). A malformed or misplaced `x-ref` (an unknown kind or key, `of` or
+`sameDatabase` where they do not fit, an `of` naming no element, a keyword not on a string or under `allOf`, `anyOf` and
+the other applicators the link walk does not follow) is MQ2009 on the extension file.
+
+**Names to ids.** A value written as a name (by hand, or before the schema typed the property) stays MQ2010 until it
+becomes an id. The batch operation `names-to-ids` converts them all at once: `apply_batch` or `maquettiste model apply`
+with `{ "op": "names-to-ids" }` looks at every document with typed values, stereotype defaults included, and
+`"elementIds": [...]` (ids or names such as `@entity:Invoice`) limits it to those elements. Each name is matched against
+what the keyword allows and its scope admits: an element by its name or a longer form such as `Billing.Invoice` (a
+stereotype by its key), and within `of` a member by its own name (`issuedOn`), a column by its physical name and a row
+of the list by its code. A value that finds one target gets its id; one that finds nothing, or several, is MQ2010 at the
+value, and the whole batch is refused, so nothing changes until every name finds one target. A value that is already an
+id is left alone, so a second run writes nothing. Preview it with `--dry-run` (`dryRun` for `apply_batch`).
+
+Deletes treat a typed value as a reference. A plain delete refuses while one names the element. `remove-references`
+clears an optional value and refuses a required one; `delete-dependents` clears it either way and keeps the element that
+holds it. Either refuses (MQ2001, naming the property and the schema) when a schema that declares the property would
+fail without the value: its `required` lists the property, or an array drops below its `minItems`. A save that removes a
+sub-element (an attribute, a column, a member) clears the optional values that name it in every file, the saved one
+included; a required value makes the save invalid, with MQ2001 at the value.
+
+A pack's `parameterSchema` takes `x-ref` too. Its values are settings in `maquettiste.json`, so the pack load checks
+them (`maquettiste validate`, and the MCP `plan` and `get_pack`): MQ2010, MQ2001, MQ2002 and MQ2011 at
+`/packs/<name>/parameters/<key>`, and MQ2009 in `pack.json`, where `of: "$element"` and `sameDatabase` do not fit
+because no element holds a parameter. A plain delete of an element that a parameter value names refuses with MQ2001 in
+`maquettiste.json`. `remove-references` (an optional value) and `delete-dependents` remove the entry, or its array item,
+in the same change, unless the parameter schema requires the parameter or its `minItems` would fail; a save that removes
+a sub-element does the same with optional values. The delete plan lists those entries under `settings`, and warns about
+an `of` in an extension or pack file that names the deleted element: once the element is gone, that keyword is MQ2009.
+
+### Stereotype rules and parameters
+
+A stereotype (`model/vocabularies/stereotypes/`) can say how it combines with others, and can type the custom properties
+of the elements that carry it. Until the stereotype form follows, edit these keys in the stereotype's JSON.
+
+| Key | Meaning |
+| --- | --- |
+| `group` | A label, not a link. An element carries at most one stereotype of a group (MQ2013). |
+| `requires` | Stereotype keys an element that carries this one must also carry (MQ2014). |
+| `conflicts` | Stereotype keys an element that carries this one must not carry (MQ2015). |
+| `implies` | Stereotype keys applied with this one: an element that carries it carries them too. |
+| `parameters` | `{ "properties": {...}, "required": [...] }`, shaped like an extension file: one JSON Schema per property name (`x-ref` and `x-translatable` included) and the names each carrier must have. |
+
+`requires`, `conflicts` and `implies` hold keys, as an element's `stereotypes` does, and the keys are references: a
+stereotype they name cannot be deleted plainly. An element's stereotypes are its own plus the ones they imply. The
+implied ones come first and its own after, so where two give the same default property, its own stereotype wins, and an
+element that lists an implied stereotype itself keeps its own entry. Implied stereotypes give virtual attributes, table
+storage and defaults exactly as listed ones do, and templates see them in `stereotypes`, each implied one with
+`implied_by` (the key of the stereotype that implies it). Implication is one level: a stereotype that implies one that
+implies others is MQ2017, which also refuses a cycle.
+
+The rules judge every element on its own and implied stereotypes together. Two of one group are MQ2013, a missing
+required one MQ2014 and two that conflict MQ2015, each at the later stereotype's entry in the element's `stereotypes`
+(for an implied one, the entry of the stereotype that implies it). An implied stereotype that does not apply to the
+element's kind is MQ2004 at the implying entry. On the stereotype itself, MQ2016 reports a `requires`, `conflicts` or
+`implies` entry that names an unknown key or the stereotype itself, a conflict with a stereotype it requires or implies,
+and an implied stereotype of its own group. A save is judged on every element the change reaches, so giving an implied
+stereotype a group that one of its carriers already fills is refused on that carrier.
+
+For example, a `deletion` group keeps soft and hard deletes apart, and `audited` types its retention period:
+
+```json
+{
+  "kind": "stereotype",
+  "key": "audited",
+  "name": "Audited",
+  "appliesTo": ["entity", "table"],
+  "parameters": {
+    "properties": {
+      "retentionDays": { "type": "integer", "minimum": 1 }
+    },
+    "required": ["retentionDays"]
+  },
+  "defaultProperties": { "retentionDays": 2555 }
+}
+```
+
+Values stay in each element's `properties`, where templates read them merged with the defaults
+(`table.properties.retentionDays`). A value that fails the parameters is MQ2018 at `/properties/<name>`; a required
+parameter that neither the element nor a default sets is MQ2018 at the stereotype's entry. Defaults live only in
+`defaultProperties` (a `default` keyword in the schema is ignored), and each is checked against its own property schema
+without `required`, so a stereotype may leave a required parameter to the elements that carry it (MQ2018 at
+`/defaultProperties/<name>`). `parameters` that is not a valid schema, or a `required` that names an undeclared
+parameter, is MQ2019; a malformed `x-ref` in it is MQ2009 on the stereotype. MCP `get_schema` lists the parameters of
+the stereotypes that may apply to a kind under `stereotypeParameters`.
 
 ### Script rules (`extensions/rules/*.js`)
 

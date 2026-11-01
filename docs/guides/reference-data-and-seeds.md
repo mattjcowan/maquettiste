@@ -158,6 +158,23 @@ The engine now knows the rows are in `bike_types`:
 
 Without a binding nothing changes: it is optional, and a database without one keeps its strategy.
 
+## Several seeds of one target
+
+A reference type, an entity or a table can have several seeds: base rows in one domain, extra rows in another. A seed
+states its own domain in the `package` of its file. The seeds of one target merge in one order: by the qualified name
+of their package (`Billing.Catalog` for a sub-domain), a seed in no package first, then by seed name, then by id.
+Without packages that is the name order.
+
+- The first row of a code or a key wins. A later row that repeats it is refused on the later seed: MQ7001 for a code of
+  a reference type, MQ7102 for an entity's key, MQ7112 for a table's row key. When the two seeds are in different
+  packages, the message names both.
+- Every seed of one table must find its rows by the same **Row key**: the same unique constraint, or the primary key for
+  all of them. The first seed in that order decides the table's row key, and a later seed that names another key, or a
+  key beside a seed that names none, is MQ7121, at its row key or, when it names none, at its target.
+
+A seed in a domain that declares layers (`dependsOn`, see
+[Packages and layering](../user-guide.md#packages-and-layering)) may target only what that domain may reference.
+
 ## Where the rows go
 
 - The `sql-ddl` pack's `seed.sql` reconciles the reference data (by the type's storage strategy) and writes the seed

@@ -21,7 +21,7 @@ public sealed partial class ModelStore
     public static bool IsSchemaOperation(BatchOp op) => op is BatchOp.AddSchema or BatchOp.RenameSchema or BatchOp.RemoveSchema or BatchOp.SetDefaultSchema;
 
     private async Task<BatchResult> ApplyWithSchemasAsync(ModelBatch batch, List<PlannedChange> changes, SaveResult?[] invalid, ChangeSource source,
-        List<BatchPreviewFile>? preview, CancellationToken ct)
+        BatchPreviewSink? preview, CancellationToken ct)
     {
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         var work = new SchemaWork(snapshot, _options.EffectiveIdGenerator);
@@ -31,17 +31,20 @@ public sealed partial class ModelStore
         for (var i = 0; i < batch.Operations.Count; i++)
         {
             var o = batch.Operations[i];
-            if (!(IsSchemaOperation(o.Op) || IsProcessOperation(o.Op) || IsMaterializeOperation(o.Op) || IsTagOperation(o.Op)) || invalid[i] is not null)
+            if (!IsExpandedOperation(o.Op) || invalid[i] is not null)
                 continue;
-            var (rule, refusal) = IsSchemaOperation(o.Op) ? ("MQ4015", work.Apply(o))
-                : IsMaterializeOperation(o.Op) ? ("MQ4055", await MaterializeAsync(snapshot, o, materialized, materializeResults, ct).ConfigureAwait(false))
-                : IsTagOperation(o.Op) ? ("MQ1002", Retag(snapshot, o, materialized))
-                : ("MQ9019", processWork.Apply(o));
-            if (refusal is not null)
-            {
-                var pointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture);
-                invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null, [RuleCatalog.Create(rule, refusal, o.Id, null, pointer)], [], null);
-            }
+            // Each expansion answers with the diagnostics that refuse it (none when it applies): most wrap one message in their rule at the
+            // operation, names-to-ids and tags-to-property report at each value or holder they cannot convert.
+            var pointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture);
+            IReadOnlyList<Diagnostic>? Wrap(string rule, string? refusal) => refusal is null ? null : [RuleCatalog.Create(rule, refusal, o.Id, null, pointer)];
+            var refusals = IsSchemaOperation(o.Op) ? Wrap("MQ4015", work.Apply(o))
+                : IsMaterializeOperation(o.Op) ? Wrap("MQ4055", await MaterializeAsync(snapshot, o, materialized, materializeResults, ct).ConfigureAwait(false))
+                : o.Op == BatchOp.Retag ? Wrap("MQ1002", Retag(snapshot, o, materialized))
+                : o.Op == BatchOp.TagsToProperty ? TagsToProperty(snapshot, o, materialized, pointer)
+                : o.Op == BatchOp.NamesToIds ? NamesToIds(snapshot, o, materialized, pointer)
+                : Wrap("MQ9019", processWork.Apply(o));
+            if (refusals is { Count: > 0 })
+                invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null, refusals, [], null);
         }
 
         if (invalid.Any(r => r is not null))

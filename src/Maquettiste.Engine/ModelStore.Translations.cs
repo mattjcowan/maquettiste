@@ -12,7 +12,7 @@ namespace Maquettiste.Engine;
 /// <summary>One translated field as the store serves it (reference-types-seeds-localization.md section 3.9).</summary>
 /// <param name="Id">The node id.</param>
 /// <param name="OwnerId">The element whose file holds the node.</param>
-/// <param name="Field">displayName, pluralName, label or description.</param>
+/// <param name="Field">displayName, pluralName, label, description, or <c>properties/&lt;name&gt;</c> for a translatable custom property.</param>
 /// <param name="Source">The default-locale text.</param>
 /// <param name="Value">The locale's own translation, or <see langword="null"/>.</param>
 /// <param name="Effective">The text the chain gives (the translation, a fallback locale's, or the default).</param>
@@ -69,7 +69,7 @@ public sealed partial class ModelStore
                 continue;
             if (snapshot.LocaleShards.FirstOrDefault(s => s.Path == shard) is { } loaded)
                 hashes[shard] = loaded.Hash;
-            foreach (var field in LocalizationIndex.Fields.Where(node.Allows))
+            foreach (var field in LocalizationIndex.FieldsOf(node))
             {
                 var value = l10n.Text(locale, node.Id, field);
                 var source = field == LocalizationIndex.DescriptionField && node.Description is { } d && d.StartsWith("file:", StringComparison.Ordinal)
@@ -175,7 +175,7 @@ public sealed partial class ModelStore
                 break;
             }
 
-            if (!LocalizationIndex.Fields.Contains(edit.Field, StringComparer.Ordinal) || !node.Allows(edit.Field))
+            if (!LocalizationIndex.IsField(edit.Field) || !node.Allows(edit.Field))
             {
                 var rule = edit.Field == LocalizationIndex.PluralNameField && node.Kind == "end" ? "MQ7211" : "MQ7203";
                 diagnostics.Add(RuleCatalog.Create(rule, $"A {node.Kind} has no translatable '{edit.Field}'.", edit.Id, null, pointer + "/field"));
@@ -203,7 +203,7 @@ public sealed partial class ModelStore
             var fingerprint = node.Source(edit.Field) is { } text ? LocalizationIndex.SourceHash(text) : null;
             if (edit.Confirm)
             {
-                if (entry[edit.Field] is null)
+                if (LocalizationIndex.FieldValue(entry, edit.Field) is null)
                 {
                     diagnostics.Add(RuleCatalog.Create("MQ7203", $"There is no '{locale}' {edit.Field} of {edit.Id} to confirm.", edit.Id, null, pointer + "/confirm"));
                     break;
@@ -211,13 +211,13 @@ public sealed partial class ModelStore
             }
             else if (edit.Value is null || edit.Value.Length == 0)
             {
-                entry.Remove(edit.Field);
+                LocalizationIndex.SetFieldValue(entry, edit.Field, null);
                 src.Remove(edit.Field);
                 fingerprint = null;
             }
             else
             {
-                entry[edit.Field] = edit.Value;
+                LocalizationIndex.SetFieldValue(entry, edit.Field, edit.Value);
             }
 
             if (fingerprint is not null)

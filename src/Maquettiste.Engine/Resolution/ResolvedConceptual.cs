@@ -14,6 +14,9 @@ public sealed class RPackage : RElement
     /// <summary>The parent package.</summary>
     public RPackage? Parent { get; internal set; }
 
+    /// <summary>The packages its <c>dependsOn</c> names, in file order (dangling ids left out); empty when it declares none.</summary>
+    public IReadOnlyList<RPackage> DependsOn { get; internal set; } = [];
+
     /// <summary>Child packages.</summary>
     public RList<RPackage> Children { get; internal set; } = RList<RPackage>.Empty;
 
@@ -75,7 +78,7 @@ public sealed class REntity : RElement
     /// <summary>The relation this entity was promoted from.</summary>
     public RRelation? PromotedFrom { get; internal set; }
 
-    /// <summary>The seeds whose target is the entity, by (name, id).</summary>
+    /// <summary>The seeds whose target is the entity, in merge order (package qualified name with none first, name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 
     /// <summary>The lifecycle process the entity names, or <see langword="null"/>.</summary>
@@ -341,7 +344,7 @@ public sealed class RRelation : RElement
     /// <summary>Mappings by database name.</summary>
     public IReadOnlyDictionary<string, RRelationMapping> Mappings { get; internal set; } = FrozenDictionary<string, RRelationMapping>.Empty;
 
-    /// <summary>The seeds whose target is the relation, by (name, id).</summary>
+    /// <summary>The seeds whose target is the relation, in merge order (package qualified name with none first, name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 }
 

@@ -19,7 +19,7 @@ public interface IProcessNode
 /// implicit root compound state: its <see cref="States"/> are the root's children and <see cref="Initial"/> is the root's initial child.
 /// The engine models intent only: it synthesizes no storage for process instances.
 /// </summary>
-public sealed record Process : Element
+public sealed record Process : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
@@ -118,6 +118,7 @@ public sealed record ProcessState : IProcessNode
     public Description? Description { get; init; }
 
     /// <summary>Stereotype keys, in application order.</summary>
+    [StereotypeKeys]
     public IReadOnlyList<string> Stereotypes { get; init; } = [];
 
     /// <summary>Custom property values, validated by extension schemas.</summary>
@@ -207,6 +208,7 @@ public sealed record ProcessTransition : IProcessNode
     public Description? Description { get; init; }
 
     /// <summary>Stereotype keys, in application order.</summary>
+    [StereotypeKeys]
     public IReadOnlyList<string> Stereotypes { get; init; } = [];
 
     /// <summary>Custom property values, validated by extension schemas.</summary>
@@ -259,6 +261,7 @@ public sealed record ProcessEvent : IProcessNode
     public Description? Description { get; init; }
 
     /// <summary>Stereotype keys, in application order.</summary>
+    [StereotypeKeys]
     public IReadOnlyList<string> Stereotypes { get; init; } = [];
 
     /// <summary>Custom property values, validated by extension schemas.</summary>
@@ -404,14 +407,19 @@ public sealed record GateMeaning : IProcessNode
 }
 
 /// <summary>
-/// A person, a role or an external system that takes part in processes (phase-3-design.md section 2.5; <c>model/actors/</c>). Actors
-/// are not in a domain. A persona is an actor carrying a project-defined stereotype: the product defines none.
+/// A person, a role or an external system that takes part in processes (phase-3-design.md section 2.5; <c>model/actors/</c>). An actor
+/// may join a package (membership only). A persona is an actor carrying a project-defined stereotype: the product defines none.
 /// </summary>
-public sealed record Actor : Element
+public sealed record Actor : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Actor;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>What the actor is.</summary>
     public required ActorType Type { get; init; }
@@ -435,11 +443,16 @@ public enum ActorType
 /// A recorded event sequence of one process with the expected states after each step (phase-3-design.md section 2.4;
 /// <c>model/scenarios/&lt;process stem&gt;/</c>). A scenario belongs to its process and is deleted with it.
 /// </summary>
-public sealed record Scenario : Element
+public sealed record Scenario : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Scenario;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The process the scenario runs; the scenario belongs to it.</summary>
     [ElementRef(ElementKind.Process, Owning = true)]

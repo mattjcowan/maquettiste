@@ -190,6 +190,37 @@ public sealed class UnitPlannerTests
     }
 
     [Fact]
+    public async Task A_table_file_package_wins_over_its_entitys()
+    {
+        // next-phase-1-design.md section 4.3: a table's own package wins; a table without one is in its entity's.
+        var b = new ModelBuilder(seed: 6);
+        var sales = b.Package("Sales");
+        var catalog = b.Package("Catalog");
+        var customer = b.Entity("Customer", sales).Key("id", "uuid");
+        b.Entity("Order", sales).Key("id", "uuid");
+        var main = b.Database("main", Dialect.PostgreSql);
+        b.Add(new Table { Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = customer.Id, Name = "clients", Package = catalog.Id });
+        b.Add(new Table { Id = b.NewId(), Name = "legacy", Database = main.Id, Package = catalog.Id, Columns = [new Column { Id = b.NewId(), Name = "id", Type = "int" }] });
+        b.Add(new Table { Id = b.NewId(), Name = "loose", Database = main.Id, Columns = [new Column { Id = b.NewId(), Name = "id", Type = "int" }] });
+        var model = Resolve(b.Build());
+        var packages = model.Databases.Single().Tables.ToDictionary(t => t.Name, t => t.Package?.Name, StringComparer.Ordinal);
+        Assert.Equal("Catalog", packages["clients"]);
+        Assert.Equal("Sales", packages["orders"]);
+        Assert.Equal("Catalog", packages["legacy"]);
+        Assert.Null(packages["loose"]);
+
+        var packs = new PackSet([Pack("p", [Unit("c", "each table", new UnitWhere { Packages = ["Catalog"] }),
+            Unit("s", "each table", new UnitWhere { Packages = ["Sales"] }), Unit("n", "each table", new UnitWhere { NotPackages = ["Sales", "Catalog"] })])], []);
+        var plan = await new UnitPlanner(Options).PlanAsync(model, packs, new ScriptSandboxFactory(), null, Ct);
+
+        Assert.Empty(plan.Diagnostics);
+        string[] Tables(string unit) => [.. plan.Units.Where(u => u.Unit.Id == unit).Select(u => ((RTable)u.Element!).Name).Order(StringComparer.Ordinal)];
+        Assert.Equal(["clients", "legacy"], Tables("c"));
+        Assert.Equal(["orders"], Tables("s"));
+        Assert.Equal(["loose"], Tables("n"));
+    }
+
+    [Fact]
     public void Static_hash_depends_on_the_pack_version()
     {
         var unit = Unit("u", "each entity");

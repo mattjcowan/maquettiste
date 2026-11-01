@@ -71,9 +71,10 @@ public sealed partial class ModelStore
             }
         }
 
-        // Owned seeds go with their target in every resolution; the refuse planner deletes them without a report.
+        // Owned seeds go with their target in every resolution; the refuse planner deletes them without a report (a report it makes
+        // holds only the pack parameter values that refuse the delete).
         var deletes = report?.Deletes.ToList() ?? [];
-        if (report is null)
+        if (resolution == DeleteResolution.Refuse)
         {
             foreach (var id in plan.ChangeByElement.Keys.Where(id => !distinct.Contains(id)).Order(StringComparer.Ordinal))
             {
@@ -93,6 +94,7 @@ public sealed partial class ModelStore
             .Distinct(StringComparer.Ordinal)
             .ToList();
         var warnings = PackFiltersNaming(deletedDatabases);
+        warnings.AddRange(XRefScopesNaming(snapshot, distinct.Concat(deletes.Select(d => d.Id)).ToHashSet(StringComparer.Ordinal)));
         var first = plan.Outcomes.Select(o => o.Outcome).FirstOrDefault(o => o != SaveOutcome.Saved, SaveOutcome.Saved);
         return new DeletePlan(distinct, resolution, first, deletes, report?.Clears ?? [], report?.Removes ?? [], refused,
             first == SaveOutcome.Saved ? report?.Settings ?? [] : [], warnings);
@@ -101,6 +103,33 @@ public sealed partial class ModelStore
     private ModelPaths Paths => _paths.Value;
 
     private static string Label(ModelSnapshot snapshot, string id) => ChangePlanner.Describe(snapshot, id);
+
+    /// <summary>
+    /// The <c>x-ref</c> keywords of extension files and local packs' <c>parameterSchema</c> whose <c>of</c> names a deleted element
+    /// (next-phase-1-design.md section 4.1). A delete leaves those files as they are, so the plan only warns: once the element is
+    /// gone the keyword is MQ2009 until it changes.
+    /// </summary>
+    private List<DeletePlanWarning> XRefScopesNaming(ModelSnapshot snapshot, IReadOnlySet<string> deleted)
+    {
+        var warnings = new List<DeletePlanWarning>();
+        if (deleted.Count == 0)
+            return warnings;
+        string Warning(string path, string pointer, string of) =>
+            $"The x-ref at {path} {pointer} takes the rows of {Label(snapshot, of)}; once it is deleted that of names no element (MQ2009) until the file changes.";
+        // Extension files only: an of in a stereotype's parameters is a reference of a model document, which the plan reports itself.
+        foreach (var source in snapshot.PropertySchemas.Sources.Where(s => s.StereotypeKey is null))
+        {
+            foreach (var (pointer, xref) in source.Keywords)
+            {
+                if (xref.Of is { } of && deleted.Contains(of))
+                    warnings.Add(new DeletePlanWarning(Warning(source.Path, pointer + "/of", of), null, null));
+            }
+        }
+
+        foreach (var of in PackParameterRefs.Read(Paths, snapshot.Settings).Ofs.Where(o => deleted.Contains(o.Of)))
+            warnings.Add(new DeletePlanWarning(Warning(of.Path, of.Pointer, of.Of), of.Pack, null));
+        return warnings;
+    }
 
     /// <summary>
     /// The units of local packs whose <c>where.database</c> names one of <paramref name="names"/>. A delete leaves pack manifests as they

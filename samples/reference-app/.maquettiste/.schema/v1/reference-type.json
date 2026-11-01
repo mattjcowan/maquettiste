@@ -10,7 +10,11 @@
     "name",
     "displayName",
     "pluralName",
+    "package",
     "description",
+    "rationale",
+    "decision",
+    "status",
     "stereotypes",
     "tags",
     "category",
@@ -43,8 +47,25 @@
     "pluralName": {
       "type": "string"
     },
+    "package": {
+      "$ref": "common.json#/$defs/id"
+    },
     "description": {
       "$ref": "common.json#/$defs/description"
+    },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
     },
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",

@@ -18,6 +18,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 public sealed class FactRecordingTests
 {
     private const string NotesTableId = "01K6BND0000000000000000001";
+    private const string CatalogPackageId = "01J92P0V025DRFTXKMS240G2NG";
     private const string NotesBodyColumnId = "01K6BND0000000000000000005";
     private const string InvoiceNumberAttributeId = "01J92P0V0R3VSP7D5238DTNZX1";
 
@@ -192,6 +193,46 @@ public sealed class FactRecordingTests
             e["tags"] = new JsonArray("billing");
         });
         Assert.Empty(saved.Facts!);
+        Assert.Empty(repo.Store.RecordingResolves);
+    }
+
+    [Fact]
+    public async Task Rationale_decision_and_status_edits_resolve_no_database()
+    {
+        // next-phase-1-design.md section 4.5: the three fields never reshape a database, at the top level or in a sub-element.
+        await using var repo = E2ERepo.Create(demo: false);
+        var entity = await repo.EditAsync(E2ERepo.CustomerId, e =>
+        {
+            e["rationale"] = "One row per **billed** party.";
+            e["decision"] = "ADR-0042";
+            e["status"] = "approved";
+            e["attributes"]![1]!["status"] = "deprecated";
+            e["attributes"]![1]!["rationale"] = "Split into given and family names.";
+        });
+        var table = await repo.EditAsync(NotesTableId, t =>
+        {
+            t["status"] = "deprecated";
+            t["columns"]![3]!["status"] = "retired";
+            t["columns"]![3]!["decision"] = "https://example.com/adr/7";
+        });
+
+        Assert.Empty(entity.Facts!);
+        Assert.Empty(table.Facts!);
+        Assert.Empty(repo.Store.RecordingResolves);
+    }
+
+    [Fact]
+    public async Task A_table_package_edit_resolves_no_database()
+    {
+        // next-phase-1-design.md section 4.3: a physical object's package is membership only, so it never reshapes a database.
+        await using var repo = E2ERepo.Create(demo: false);
+        var joined = await repo.EditAsync(NotesTableId, t => t["package"] = CatalogPackageId);
+        var moved = await repo.EditAsync(NotesTableId, t => t["package"] = BillingPackageId);
+        var left = await repo.EditAsync(NotesTableId, t => t.Remove("package"));
+
+        Assert.Empty(joined.Facts!);
+        Assert.Empty(moved.Facts!);
+        Assert.Empty(left.Facts!);
         Assert.Empty(repo.Store.RecordingResolves);
     }
 
@@ -503,6 +544,29 @@ public sealed class FactRecordingTests
         Assert.Contains("database 'ledger'", left.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task A_layering_error_still_records_facts()
+    {
+        // next-phase-1-design.md section 4.3: MQ2020 is a policy rule (MQ2009 to MQ2023), so an element with a layering error keeps
+        // its objects in the captures. Catalog declares dependsOn without Billing, so Product's Money attribute is MQ2020.
+        await using var repo = E2ERepo.Create(demo: false);
+        const string path = "model/packages/catalog.json";
+        var node = JsonNode.Parse(repo.Repo.ReadFile(".maquettiste/" + path))!;
+        node["dependsOn"] = new JsonArray();
+        repo.Repo.WriteFile(".maquettiste/" + path, Encoding.UTF8.GetString(TestServices.Json.Write(node, "package.json", path)));
+        await repo.RestartAsync();
+        Assert.Contains((await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ2020" && d.ElementId == E2ERepo.ProductListPriceAttributeId);
+
+        var saved = await repo.EditAsync(E2ERepo.ProductId, e => e["attributes"]!.AsArray().First(a => (string?)a!["name"] == "name")!["name"] = "title");
+
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
+        Assert.Contains(saved.Diagnostics, d => d.Rule == "MQ2020");
+        Assert.DoesNotContain(saved.Diagnostics, d => d.Rule == "MQ4110");
+        var fact = Assert.Single(saved.Facts!);
+        Assert.Equal(("rename", "complete", E2ERepo.MainDatabaseId), (fact.Fact, fact.State, fact.Database));
+        Assert.EndsWith(".name to title", fact.Summary, StringComparison.Ordinal);
+    }
+
     // ---------------------------------------------------------------- cost and walker
 
     [Fact]
@@ -568,6 +632,26 @@ public sealed class FactRecordingTests
                     Assert.True(chosen.Contains(database), $"Changing {id} reshaped {database}, which was not chosen.");
             }
         }
+    }
+
+    [Fact]
+    public async Task Changing_an_implied_stereotype_records_facts_on_the_implying_carriers_tables()
+    {
+        await using var repo = E2ERepo.Create(demo: false);
+        await AddLedgerAsync(repo);
+        // ledgered implies soft-delete, and only LedgerEntry carries it: soft-delete reaches the ledger database through it alone.
+        await repo.CreateElementAsync($$"""
+            { "kind": "stereotype", "id": "{{LedgeredId}}", "key": "ledgered", "name": "Ledgered", "appliesTo": ["entity"], "implies": ["soft-delete"] }
+            """);
+        await repo.EditAsync(LedgerEntryId, e => e["stereotypes"] = new JsonArray("ledgered"));
+        await repo.RestartAsync(); // no capture: the write chooses its databases by reach
+        var count = repo.Store.RecordingResolveCount;
+
+        var saved = await repo.EditAsync(SoftDeleteId, e => e["attributes"]![0]!["name"] = "removedAt");
+
+        Assert.Contains(LedgerDatabaseId, repo.Store.RecordingResolvesSince(count));
+        Assert.Contains(saved.Facts!, f => f.Database == LedgerDatabaseId && f.Fact == "rename"
+            && f.Summary == "rename column ledger.ledger_entries.deleted_at to removed_at");
     }
 
     [Theory]
@@ -1463,6 +1547,8 @@ public sealed class FactRecordingTests
     private const string JournalTableId = "01JFRD00000000000000000007";
     private const string JournalIdColumnId = "01JFRD00000000000000000008";
     private const string JournalMemoColumnId = "01JFRD00000000000000000009";
+    private const string LedgeredId = "01JFRD00000000000000000010";
+    private const string SoftDeleteId = "01J92P0V28YYY43REGJ9RXZ662";
 
     /// <summary>
     /// Adds a second database, <c>ledger</c>, that takes the Ledger package only (with one entity, which the main database also takes,

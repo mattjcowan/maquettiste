@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Hashing;
+using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Pipeline;
 
@@ -34,6 +35,7 @@ public sealed class ModelSnapshot
         ImmutableArray<Diagnostic> loadDiagnostics,
         ImmutableArray<ExtensionDocument> extensions,
         ImmutableArray<ScriptSource> ruleScripts,
+        PropertySchemaSet propertySchemas,
         ModelIndexer.Result index,
         IReadOnlyList<LocaleShardDocument> shards)
     {
@@ -44,6 +46,7 @@ public sealed class ModelSnapshot
         LoadDiagnostics = loadDiagnostics;
         Extensions = extensions;
         RuleScripts = ruleScripts;
+        PropertySchemas = propertySchemas;
         _entries = index.Entries;
         _documentsById = index.DocumentsById;
         _referencesTo = index.ReferencesTo;
@@ -59,9 +62,11 @@ public sealed class ModelSnapshot
         Index = index;
         LocaleShards = shards;
         _localization = new Lazy<LocalizationIndex>(() => new LocalizationIndex(this, shards), LazyThreadSafetyMode.ExecutionAndPublication);
+        _names = new Lazy<NameIndexes>(() => new NameIndexes(this), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     private readonly Lazy<LocalizationIndex> _localization;
+    private readonly Lazy<NameIndexes> _names;
 
     /// <summary>The locale shards the loader read (reference-types-seeds-localization.md section 3.3), ordinal by path.</summary>
     public IReadOnlyList<LocaleShardDocument> LocaleShards { get; }
@@ -123,7 +128,9 @@ public sealed class ModelSnapshot
             sorted = string.CompareOrdinal(docs[i - 1].Path, docs[i].Path) <= 0;
         if (!sorted)
             docs = [.. docs.OrderBy(d => d.Path, StringComparer.Ordinal)];
-        var index = ModelIndexer.Build(docs, previous?.Index, parallelism, ct);
+        var sortedExtensions = extensions.OrderBy(e => e.Path, StringComparer.Ordinal).ToImmutableArray();
+        var propertySchemas = PropertySchemaSet.Create(sortedExtensions, previous?.PropertySchemas, [.. docs.Where(d => d.Element is Stereotype)]);
+        var index = ModelIndexer.Build(docs, propertySchemas, previous?.Index, parallelism, ct);
         var diagnostics = (loadDiagnostics ?? []).ToImmutableArray();
         if (!index.Diagnostics.IsEmpty)
             diagnostics = [.. diagnostics.AddRange(index.Diagnostics).Order(Diagnostic.Order)];
@@ -133,8 +140,9 @@ public sealed class ModelSnapshot
             settingsHash,
             docs,
             diagnostics,
-            extensions.OrderBy(e => e.Path, StringComparer.Ordinal).ToImmutableArray(),
+            sortedExtensions,
             ruleScripts.OrderBy(s => s.Path, StringComparer.Ordinal).ToImmutableArray(),
+            propertySchemas,
             index,
             localeShards is null ? previous?.LocaleShards ?? [] : [.. localeShards.OrderBy(s => s.ModelPath, StringComparer.Ordinal)]);
     }
@@ -159,6 +167,12 @@ public sealed class ModelSnapshot
 
     /// <summary>JavaScript rule scripts, ordinal by path.</summary>
     public IReadOnlyList<ScriptSource> RuleScripts { get; }
+
+    /// <summary>
+    /// The custom property schemas (next-phase-1-design.md section 4.1): the extension files' property schemas with their
+    /// <c>x-ref</c> sites and translatable names, reused from the previous snapshot when the files did not change.
+    /// </summary>
+    internal PropertySchemaSet PropertySchemas { get; }
 
     /// <summary>The global tag vocabulary (one with no <c>package</c>), when the model has one.</summary>
     public TagVocabulary? Tags { get; }
@@ -259,6 +273,47 @@ public sealed class ModelSnapshot
     public Stereotype? GetStereotype(string key) => _stereotypes.TryGetValue(key, out var s) ? s : null;
 
     /// <summary>
+    /// The effective stereotypes of a list of keys (next-phase-1-design.md section 4.2). Implied first, then own; an own entry
+    /// replaces an implied copy of the same key; unknown keys skipped. Implication is one level, in entry then <c>implies</c> order,
+    /// each key once. Rules judge this set, and resolution merges it in order, so an explicit choice beats an implied default.
+    /// </summary>
+    /// <param name="keys">The element's stereotype keys, as its file lists them.</param>
+    /// <returns>The effective set.</returns>
+    public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(IReadOnlyList<string> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        if (keys.Count == 0)
+            return [];
+        var own = new List<AppliedStereotype>(keys.Count);
+        var implies = false;
+        for (var i = 0; i < keys.Count; i++)
+        {
+            if (GetStereotype(keys[i]) is not { } stereotype)
+                continue;
+            own.Add(new AppliedStereotype(stereotype, i, null));
+            implies |= stereotype.Implies.Count > 0;
+        }
+
+        if (!implies)
+            return own;
+        var result = new List<AppliedStereotype>(own.Count * 2);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in own)
+            seen.Add(entry.Stereotype.Key);
+        foreach (var entry in own)
+        {
+            foreach (var key in entry.Stereotype.Implies)
+            {
+                if (seen.Add(key) && GetStereotype(key) is { } implied)
+                    result.Add(new AppliedStereotype(implied, entry.Entry, entry.Stereotype.Key));
+            }
+        }
+
+        result.AddRange(own);
+        return result;
+    }
+
+    /// <summary>
     /// Returns the current hash of the <c>r:&lt;id&gt;</c> dependency key (engine-design.md section 11): <c>H</c> over the sorted
     /// <c>(element id, DependencyHash)</c> pairs of every file that references <paramref name="id"/>, excluding the file that holds
     /// it and diagram files (never visible to templates). It changes when a file starts or stops referencing the id, or a referrer
@@ -286,6 +341,26 @@ public sealed class ModelSnapshot
     /// <param name="kind">The kind.</param>
     /// <returns>The hash.</returns>
     public string KindSetHash(ElementKind kind) => _kindSetHashes.TryGetValue(kind, out var h) ? h : HashBuilder.Of();
+
+    /// <summary>
+    /// Whether an element or sub-element's <c>status</c> is <c>retired</c> (next-phase-1-design.md section 4.5; MQ2022 reads it).
+    /// </summary>
+    /// <param name="id">An element or sub-element id.</param>
+    /// <returns><see langword="true"/> when the model holds the id and it is retired.</returns>
+    internal bool IsRetired(string id) => Index.Retired.Contains(id);
+
+    /// <summary>
+    /// The forms of one kind that qualified names find (next-phase-1-design.md section 5.1), built from the typed elements on first
+    /// use and cached; templates and rule engines read it in parallel. A batch layers its private overlay on it.
+    /// </summary>
+    /// <param name="kind">A kind of <see cref="NameIndex.NamedKinds"/>.</param>
+    /// <returns>The immutable index.</returns>
+    internal NameIndex Names(string kind) => _names.Value.Get(kind);
+
+    /// <summary>The elements of one kind, in index order.</summary>
+    /// <param name="kind">The kind.</param>
+    /// <returns>The elements.</returns>
+    internal IEnumerable<Element> ElementsOf(ElementKind kind) => _byKind.TryGetValue(kind, out var list) ? list : [];
 
     /// <summary>Returns a summary of every element, ordinal by path.</summary>
     /// <returns>The summaries.</returns>

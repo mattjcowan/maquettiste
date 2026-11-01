@@ -100,7 +100,7 @@ MQ4071 to MQ4075, MQ5006 to MQ5009, MQ6035 to MQ6039, MQ7122, MQ7123, MQ7214) st
 | MQ1014 | E | A write misuses an identity: a placeholder declared twice, a misplaced `as`, two `expectedHashes` keys for one element, or a sub-element dropped and added again without its id. | 5.1 |
 | MQ1015 | E | A name in a batch is malformed or misplaced. | 5.1 |
 | MQ1016 | E | A JSON Patch cannot be applied; nothing is written. | 5.2 |
-| MQ2009 | E | An `x-ref` keyword is malformed or misplaced. | 4.1 |
+| MQ2009 | E | An `x-ref` keyword is malformed or misplaced, or sits beside a `patternProperties` pattern that needs backtracking. | 4.1 |
 | MQ2010 | E | A value an `x-ref` types is a name or other text, not an id. | 4.1 |
 | MQ2011 | E | An `x-ref` value is out of scope. | 4.1 |
 | MQ2013 | E | An element carries two stereotypes of one group, own or implied. | 4.2 |
@@ -112,7 +112,7 @@ MQ4071 to MQ4075, MQ5006 to MQ5009, MQ6035 to MQ6039, MQ7122, MQ7123, MQ7214) st
 | MQ2019 | E | A stereotype's `parameters` is not a valid schema. | 4.2 |
 | MQ2020 | E | A reference from one package to another that its package does not depend on. | 4.3 |
 | MQ2021 | E | `dependsOn` names the package itself or forms a cycle. | 4.3 |
-| MQ2022 | W | A reference to a retired element or sub-element (membership, owning references and diagrams excepted). | 4.5 |
+| MQ2022 | W | A reference to a retired element or sub-element from one that is not retired (membership, owning references and diagrams excepted). | 4.5 |
 | MQ3019 | E | Changed text: a column's literal default is checked against its resolved length and type; a `json` column takes a string of JSON text. | 3.5 |
 | MQ4001 | E | Changed behaviour: the resolver measures identifiers in the dialect's unit. | 3.5 |
 | MQ4056 | W | Changed text: also migration fact steps and ledger rows, index `nulls`, range columns and run-once SQL objects outside PostgreSQL. | 3.2, 3.4 |
@@ -2045,6 +2045,47 @@ Test classes marked "(new)" are created by the task that owns them. The MCP test
 - **Names to ids.** Conversion is the batch operation `names-to-ids`, expanded like `retag`
   (`ModelStore.Schemas.cs:34-38`), so it gets validation, conflicts, all-or-nothing and undo. It cannot go in the
   formatter, which reads one file without a snapshot and changes only bytes (`ModelStore.Format.cs:27`).
+- **One value, several schemas (B4).** `PropertySchemaSet.Sites` yields one site per schema, so the validator judges
+  each. The index keeps one reference per (pointer, id): `Schema` names the first schema in set order, and `Optional`
+  holds only when every schema that types the value says so, so a required declaration still refuses
+  `remove-references`.
+- **Where MQ2009 is reported (B4).** The set parses keywords once per set of files; `ExtensionSet` reports its findings
+  with MQ5004 in a whole-model validation, plus an `of` that names no element, which needs the snapshot. The set also
+  compiles each schema once, and `ExtensionSet` reuses it instead of compiling per run.
+- **Keywords that compile (B5).** The default JSON Schema dialect refuses unknown keywords, so every extension with an
+  `x-ref` failed to compile (MQ5004). `PropertySchemaSource` compiles with that dialect plus `x-ref` and
+  `x-translatable` as keywords the evaluation ignores; any other unknown keyword is still MQ5004.
+- **Keyed values (B5).** Every id of a value joined by `.` must exist (MQ2001 per missing id); the kind (MQ2002) and the
+  scope (MQ2011) are judged on the last id, the member the value names. A finding two schemas share at one pointer is
+  reported once.
+- **One database (B5).** For `sameDatabase`, the holder's database is the database itself, the database of a physical
+  object, mapping or migration fact, or the one database all of an entity's bindings name; any other holder has no
+  single database.
+- **Pack parameter checks (B5).** `UnitRules.Parameters` gains the snapshot and the `pack.json` path, both optional. It
+  also reports MQ2011 for a value outside the list a fixed `of` names, and MQ2009 for `of: "$element"` and
+  `sameDatabase` in a `parameterSchema`, since no element holds a parameter.
+- **Pack value removals (B6).** A removal that leaves the parameter's schema failing (a required key, an array below
+  `minItems`) refuses in every resolution and in saves, as for model documents, not only under `delete-dependents`. A
+  plain delete's pack refusals fail the change before the reference check, so its plan lists them instead of the
+  referrers. The planner makes a report for them in that resolution, so `GetDeletePlanAsync` lists owned seeds by
+  resolution. Database conventions and pack values share one settings edit, so both land in one write of
+  `maquettiste.json`.
+- **`of` warnings (B6).** The delete plan warns, through `DeletePlanWarning`, for each `x-ref` of an extension file or a
+  pack's `parameterSchema` whose `of` names a deleted element.
+- **The `names-to-ids` resolver (B7).** It lives in `ModelStore.NamesToIds.cs` as `XRefNames`, which `tags-to-property`
+  reuses. Every allowed kind with names is matched through its `NameIndex` forms, sub-element kinds included (an
+  attribute as `Invoice.total`), and a value that starts with `@` is read as a qualified name of one of the kinds. The
+  `of: "$element"` scope adds a sub-element's own name (the last segment of its forms), `of: <id>` adds
+  `ReferenceDataIndex.RowOf`, and every candidate is narrowed by the scope, `sameDatabase` included (through
+  `BuiltinRules.XRefDatabaseOf`, now internal). A value several schemas type must find one id in the candidates of each.
+  An `elementIds` item that is not an element refuses the operation with MQ1002 at the item, as `retag` refuses a
+  `package` that is not a domain.
+- **Patterns beside a typed `additionalProperties`.** The link walk compiles each `patternProperties` pattern there for
+  the non-backtracking engine with no timeout, so which members an `x-ref` types never depends on the machine's load. A
+  pattern that engine cannot run (a backreference, a lookaround, an atomic group or a conditional) is MQ2009 at the
+  pattern, and the keyword then types no member until the pattern changes.
+- **MQ2010's message.** On a model value it names the batch operation `names-to-ids`; on a pack parameter it does not,
+  since the operation writes model documents only. The catalog `QuickFix` stays null.
 
 **Model and schema**
 
@@ -2139,7 +2180,8 @@ These internal names are fixed. `PropertySchemaSet`, `XRef` and `PropertyHost` l
    - an optional value under either resolution, or a required one under `delete-dependents`: the entry (or its array
      item) is removed in the same change. The edit is staged in `_writes` and `_candidateSettings`, as
      `RemoveDatabaseConventions` does (`ChangePlanner.Cascade.cs:342`), and listed as a `DeletePlanSetting`;
-   - under `delete-dependents`, a key that `parameterSchema.required` names refuses instead, naming the key.
+   - in every resolution and in saves, a removal that leaves the schema failing refuses instead, naming the key: a key
+     that `parameterSchema.required` names, or an array that drops below `minItems`.
 
    The planner adds each refusal to its report with `id` null, in every resolution, because the plan drops the MQ2001
    diagnostics it reads from outcomes (`ModelStore.DeletePlan.cs:53`). `GetDeletePlanAsync` only reports. An `of` id
@@ -2169,7 +2211,7 @@ updates `BatchOperation` and `ReferenceInfo`.
 | --- | --- | --- | --- |
 | MQ2009 | E | An `x-ref` is malformed: unknown `kind` or key, a `custom:<type>` whose type is not a key, `of` or `sameDatabase` where they do not fit, an `of` naming no element, not on a string, or under an applicator the walker does not follow. | Fix the schema |
 | MQ2010 | E | A value an `x-ref` types is a name or other text, not an id. | Batch `names-to-ids` (catalog `QuickFix` null for now) |
-| MQ2011 | E | An `x-ref` value is out of scope: a member of another element, another database, a holder with no single database, or a stereotype default under `of: "$element"` or `sameDatabase`. | Pick a target in scope |
+| MQ2011 | E | An `x-ref` value is out of scope: a member of another element, a row of another list, another database, a holder with no single database, or a stereotype default under `of: "$element"` or `sameDatabase`. | Pick a target in scope |
 
 **Docs**
 
@@ -2267,6 +2309,29 @@ copies; `openapi.yaml` (`ReferenceInfo` in B4, `BatchOperation` in B7).
 | `UnitPlanner.Stereotypes` (`UnitPlanner.cs:658-668`) | effective |
 | 3.2's classifier for a stereotype change: `Migrations/DatabaseReach.cs` and the selection in `ModelStore.Migrations.cs` | effective: carriers through `EffectiveStereotypes`, footprint and reach included |
 | `ModelIndexer.Summarize`, `ModelPages --stereotype`, index references | the file's list (rows mirror files) |
+| `PropertySchemaSet.For` and `Sites` (the `x-ref` walk of the index and the validator, delete checks, localization) | effective keys, from the set's own `implies` map |
+
+- **Schema applicability (B9).** The set is built before the index, so it keeps its own map of each key's `implies` (the
+  ordinally first file per key) and `For` applies schemas by the holder's keys plus the keys they imply. A schema that
+  applies to an implied stereotype then types the values of its carriers in the index, the validator and deletes alike,
+  as `ExtensionSet` judges them. `PropertySchemaSet.Create` takes the stereotype documents as an optional third
+  argument; `Hash` adds their ordinal `(path, hash)` pairs after the extension files' (unchanged for a model without
+  stereotypes), and a source whose file did not change is reused with its compiled schema.
+- **`properties` is required (B9).** `StereotypeParameters.Properties` is a `required` member and `stereotype.json`
+  requires `properties` in `parameters`, as `ExtensionSchema.Properties` and `extension.json` do: a `parameters` without
+  it has nothing to type, and an unset `JsonElement` cannot be written back.
+- **Where parameter findings go (B9).** A malformed `x-ref` in `parameters`, or an `of` that names no element, is MQ2009
+  on the stereotype's own document, so a save of the stereotype reports it (extension files keep their whole-model
+  report). A required parameter that neither the host nor a default sets is MQ2018 at the entry of the stereotype that
+  requires it (the implying entry for an implied one), as `Locate` does for inherited values. Parameters that fail to
+  evaluate are MQ2019 on the host. An `of` id in `parameters` is indexed under the field `of` (4.1, step 3) by the
+  index's walk of the stereotype, so the delete plan's `of` warnings (B6) stay on extension files and pack schemas.
+- **Carriers in the classifier (B8).** The carriers of a stereotype are the files whose stereotype lists name it and the
+  carriers of each stereotype whose `implies` names it; a stereotype that only requires or conflicts with it is no
+  carrier, since neither changes a database. The reach needs no change: a reached stereotype's `implies` are references.
+- **A parameter's `of` on delete.** `remove-references` refuses to clear a stereotype parameter's `x-ref` `of`, since
+  without it the parameter would take the members of any element; `delete-dependents` removes the `of` key, and the
+  delete plan lists it as a clear.
 
 **Model and schema**
 
@@ -2295,7 +2360,7 @@ public sealed record Stereotype : Element
     [StereotypeKeys] public IReadOnlyList<string> Implies { get; init; } = [];
     public StereotypeParameters? Parameters { get; init; }
 }
-public sealed record StereotypeParameters { public JsonElement Properties { get; init; }
+public sealed record StereotypeParameters { public required JsonElement Properties { get; init; }
                                             public IReadOnlyList<string> Required { get; init; } = []; }
 /// <param name="Entry">The element's own entry, or the implying stereotype's.</param>
 public sealed record AppliedStereotype(Stereotype Stereotype, int Entry, string? ImpliedBy);
@@ -2399,8 +2464,8 @@ its copy.
   database type, SQL object, query, database, mapping, stereotype, reference type, seed, actor and scenario. A package
   keeps `parent`, and vocabularies keep `package` as their scope.
 - **Migration facts have no package.** A fact (3.2) is history of its database: its file states no package, so it sits
-  in no layer, `PackageOf` returns null for it, and 5.1's name index lists it by id only. `IPackaged` names the 14
-  kinds above, not `Package` or `Migration`.
+  in no layer, `PackageOf` returns null for it, and 5.1's name index lists it by id only. `IPackaged` is on every kind
+  with a `package` key (the 14 above and the nine that had one), not on `Package` or `Migration`.
 - **Coverage and fact recording.** Where a targeted resolved type lacks `Package`, B3 adds a `Pending` entry with its
   reason to `ResolvedCoverageTests`. A table's or other physical object's `package` never reshapes a database, so B3
   adds it to 3.2's skip list.
@@ -2438,6 +2503,36 @@ its copy.
   id). That is today's order when no seed has a package.
 - **Seed key errors.** Duplicate keys keep MQ7112, MQ7001 and MQ7102, with both packages named. Where today the first
   table seed silently decides the key (`ResolveRun.TableSeeds.cs:57`), seeds that disagree now raise MQ7121.
+- **`IPackaged` on every kind with the key (B3).** `PackageOf` becomes the two-arm switch below, so the kinds that
+  already had `package` (entity, value object, scalar type, enum, relation, diagram, process, tag vocabulary, category
+  tree) implement `IPackaged` too; naming only the 14 new kinds would have dropped them from the index.
+- **Where the skip and the fallback sit (B3).** The fact-recording skip strips a top-level `package` only on the 14
+  kinds that gained it; an entity's package can still route its tables. The table fallback runs at the start of
+  `DatabaseRun.FinishTables`, after relations bound their junctions, so `RTable.Package` is final before templates and
+  `UnitPlanner.PackageMatches` read it.
+- **Every `package` field is skipped (B10).** The skip goes by field name, so a database's convention entries
+  (`packages[].package`) do not count either: routing is not a layering reference. A reference whose target is a package
+  (an `x-ref`, a convention entry) sits in that package's own layer, as a package's own references do.
+- **MQ2021 on each edge (B10).** A `dependsOn` entry is reported when it names the package itself, or when both ends sit
+  in one strongly connected component of the graph. The pass is `DatabaseObjectIndex.StronglyConnected`, made internal
+  and shared.
+- **The first seed decides (B11).** MQ7121 compares each table seed with the table's first seed in merge order, whose
+  key the resolver uses. A later seed that disagrees is reported, whatever its environments, because a table has one
+  row key.
+- **Both packages, when they differ (B11).** MQ7112, MQ7001 and MQ7102 name both seeds' packages, with "in no package"
+  for a seed without one, only when the two packages differ, so the messages of models without packages stay as they
+  are. The code index in `ReferenceDataIndex` keeps its (name, id) order: only duplicate codes, which are errors, can
+  tell the difference.
+- **Seeds record the packages of their chain (B11).** No seed file holds the qualified name the merge order reads, so
+  each `RSeed` adds the `e:` key of its file's package and of every parent (`SeedOrder.ChainOf`), and the seed lists of
+  a target add those of all its seeds to their membership keys. Renaming or moving a package then re-renders what read
+  the reordered seeds, and an incremental run writes what a full run writes.
+- **A package save revisits no cycle peers or reordered seeds (B10, B11).** Save scope is as stated under "Save scope"
+  below and no wider. A save that closes a `dependsOn` cycle is refused on the saved package's own MQ2021, but the other
+  packages of the cycle, and those of a cycle a save opens, keep their last findings until the whole model is
+  validated. A rename or move that reorders seeds only moves MQ7112, MQ7121, MQ7001 and MQ7102 between seeds that
+  already disagree, so the save does not revisit those seeds either; whole-model validation shows where the findings
+  now sit.
 
 **Model and schema**
 
@@ -2450,7 +2545,7 @@ its copy.
 
 ```csharp
 namespace Maquettiste.Engine.Model;
-public interface IPackaged { string? Package { get; } }   // the 14 kinds below; not Package or Migration
+public interface IPackaged { string? Package { get; } }   // every kind with a package key; not Package or Migration
 // Table, View, Sequence, Routine, DatabaseType, SqlObject, Query, Database, Mapping, Stereotype, ReferenceType, Seed,
 // Actor, Scenario gain:  [ElementRef(ElementKind.Package)] public string? Package { get; init; }
 public sealed record Package : Element
@@ -2513,7 +2608,9 @@ New user-guide section "Packages and layering"; the merge order and MQ7121 in
 - `PackLoaderTests.Physical_object_units_filter_on_packages`.
 - `UnitPlannerTests.A_table_file_package_wins_over_its_entitys`.
 - `TableSeedTests`: `Seeds_in_two_packages_merge_by_package_then_name`, `Seeds_keying_rows_differently_are_MQ7121`,
-  `A_row_key_claimed_in_two_packages_is_MQ7112_naming_both`.
+  `A_row_key_claimed_in_two_packages_is_MQ7112_naming_both`,
+  `Renaming_a_package_on_a_seeds_chain_reorders_its_rows_and_re_renders_the_seed_script`.
+- `ReferenceDataGenerationTests.Renaming_a_package_that_orders_a_types_seeds_re_renders_the_type` (B11).
 - **Acceptance (3.4, first and second lines):** Cli
   `ModelCommandTests.Catalog_holds_tables_seeds_and_reference_types_and_stats_list_them`. Setup: a `CliRepo.Billing()`
   copy where the `notes` table joins Catalog, and Catalog gains a reference type and a table seed. Expected: both
@@ -2563,6 +2660,33 @@ New user-guide section "Packages and layering"; the merge order and MQ7121 in
 - **The refactor is a batch operation, `tags-to-property`, beside `retag`.** None exists today: a8bd16b added only
   `tag_usage` and `retag`. The target property must be declared by a schema that applies to each holder, because a
   typed value is a property (the rule of 2026-10-06).
+- **`src` takes property fields through `propertyNames`, not `patternProperties` (B12).** The schema precheck
+  (`Json/SchemaPrecheck.cs`) treats `patternProperties` as unsupported, so every shard with a `src` would fall to the
+  full evaluator and `SchemaPrecheckTests` would fail its "valid fixtures are decided" check. `src` keeps its four
+  declared keys and adds `additionalProperties` `#/$defs/hash` with the `propertyNames` pattern
+  `^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$`: the same documents are valid, and
+  the canonical writer still puts the undeclared keys after the declared ones, ordinal.
+- **The shard readers and the XLIFF reader learn the new keys (B12).** `LocaleShardReader.cs` (the streamed read) and
+  `Loading/ShardCache.cs` (the parsed-shard cache, format 2) read and keep `properties`; without them a reload drops
+  the texts. `TranslationFiles.ReadXliff` splits a unit id at its first slash, since ids hold none and
+  `properties/<name>` does.
+- **Where MQ7212 and MQ7213 are reported (B12).** `PropertySchemaSet.TranslatableFindings` finds them. An extension
+  file's join the set's file diagnostics (whole-model validation, with MQ2009). A stereotype's are reported by
+  `BuiltinRules.CheckStereotypeParameters` with the stereotype, beside its MQ2009, so a save of it reports them. A
+  `x-translatable` that is not a boolean is MQ7212 too, and a misplaced mark marks nothing.
+- **The `l:` hash and the helper (B12).** `OwnerHash` hashes the standard fields as before, then `FieldsIn(entry)`'s
+  property fields with their texts and `src`, so an entry without property texts keeps its hash. `translate` on a
+  property field falls back to the holder's own text, else to its resolved value (a stereotype default, untranslated),
+  recording the object's dependencies.
+- **Editor labels (B12).** The field of `TranslationPage` and `TranslationWrite` in `openapi.yaml` becomes a string
+  with that pattern, so the editor's translation queue and Translations section label a property field by its name
+  (`l10n/model.ts` `fieldLabel`).
+- **What leaves the vocabulary (B13).** Without `elementIds`, the declarations of the tags that moved leave the
+  vocabulary, except one still used on an object that holds no properties (a relation end, say), which the move does not
+  reach. A prefixed declaration nothing used is not a moved tag and stays. `batch.json` requires `prefix` and `name` for
+  the op. An array property takes each suffix as its `items` schema makes it, so a string array is the common case and
+  an array of integers or of an `enum` works the same way. The first schema in set order that applies to the holder and
+  declares the property converts the suffixes.
 
 **Model and schema**
 
@@ -2572,7 +2696,7 @@ New user-guide section "Packages and layering"; the merge order and MQ7121 in
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `properties` | object, identifier to non-empty string | `{}` | Translated property texts |
-| `src` › `properties/<name>` | `#/$defs/hash` via `patternProperties` `^properties/[A-Za-z_][A-Za-z0-9_]*$` | absent | After the standard keys, ordinal |
+| `src` › `properties/<name>` | `#/$defs/hash` via `additionalProperties`, the names by `propertyNames` `^(displayName\|pluralName\|label\|description\|properties/[A-Za-z_][A-Za-z0-9_]*)$` | absent | After the standard keys, ordinal |
 
 `batch.json` adds the op `tags-to-property` and `prefix`, a non-empty string placed after `tags`. `name` names the
 property. `package` and `expectedHashes` behave as they do for `retag`, and `elementIds` as it does for `names-to-ids`
@@ -2607,9 +2731,11 @@ public sealed class LocalizationIndex
   `Source`, `Allows`, `ExpectedFields`, `Text`, `StateOf` and the `l:` hashes handle the prefix.
 - **Positional field storage.** Three spots in `LocalizationIndex.cs` index fields by position today: `Completeness`
   (`:423-426`, `f switch { 0..3 }` over `_nodeHashes[n][f]`), the per-node hash rows (`:629`, arrays sized to
-  `Fields.Count`) and `OwnerHash` (`:464`, a loop over `Fields`). Per-node hashes become field-keyed, with the standard
-  fields first and then property fields in ordinal order. `Completeness` iterates `FieldsOf(node)`, and `OwnerHash`
-  iterates `FieldsIn(entry)` and also hashes the entry's `properties`.
+  `Fields.Count`) and `OwnerHash` (`:464`, a loop over `Fields`). Per-node hashes become field-keyed rows built from
+  `node.ExpectedFields()`: the standard fields the node has, then its own property texts in ordinal order, each with
+  the hash of its source text. `Completeness` walks those rows, not `FieldsOf(node)`, because a property that only
+  inherits its default text is not text the node holds, so nobody is expected to translate it. `OwnerHash` iterates
+  `FieldsIn(entry)` and also hashes the entry's `properties`.
 - **Field loops.** `ModelStore.Translations.cs:72` uses `FieldsOf(node)`. `ModelStore.Translations.cs:178` checks
   `IsField && Allows`. `TranslationPrune.cs:66`, `DefaultLocale.cs:102` and `LocalizationRules.cs:83` use
   `FieldsIn(entry)`. `LocalizationHelpers.cs:36` accepts `IsField`, and its MQ6006 message names the prefix. As a
@@ -2663,10 +2789,12 @@ and a paragraph after "Rename or remove a tag everywhere" in the user guide (B13
   `ModelStore.Translations.cs`, `TranslationPrune.cs`, `DefaultLocale.cs`, `LocalizationApi.cs`, `LocalizationRules.cs`,
   `LocalizationHelpers.cs`, `PropertySchemas.cs` (MQ7212, MQ7213), `RuleCatalog.cs`, `CatalogTests.cs` (+2), the
   `ModelTools.cs` texts, the `localization_status` description in `tools.json`, `locale.json` with its copy, the three
-  `docs/mcp.md` rows and the user-guide paragraphs. Tests: `LocalizationTests`, `LocalizationRuleTests`,
-  `LocalizationHelperTests`, `McpLocalizationToolTests`. Verify: `E "~CatalogTests|~Localization|~Json."`; `C
-  "~McpSurfaceTests|~McpLocalizationToolTests|~L10nAndSeedCommandTests"`; `F "~LocalizationEndpointTests"`; `record`;
-  `editor`; `copies`.
+  `docs/mcp.md` rows and the user-guide paragraphs; also, as decided above, `LocaleShardReader.cs`, `ShardCache.cs`,
+  `TranslationFiles.cs`, the stereotype call in `BuiltinRules.cs`, the translation field in `openapi.yaml`, the
+  editor's `l10n` labels, and the `extension.json` description (2.3) with its copy. Tests: `LocalizationTests`,
+  `LocalizationRuleTests`, `LocalizationHelperTests`, `McpLocalizationToolTests`. Verify:
+  `E "~CatalogTests|~Localization|~Json."`; `C "~McpSurfaceTests|~McpLocalizationToolTests|~L10nAndSeedCommandTests"`;
+  `F "~LocalizationEndpointTests"`; `record`; `editor`; `copies`.
 - **B13. `tags-to-property`.** Runs after B7, and so after C6. Owns: `ModelStore.Tags.cs`
   (`TagsToProperty`, `IsTagOperation`), `ModelStore.Schemas.cs` (the tag branch only), `ModelStore.cs`
   (`BatchOp.TagsToProperty`, `BatchOperation.Prefix`), `BatchParser.cs`, `batch.json` with its copy, `openapi.yaml`,
@@ -2699,7 +2827,11 @@ and a paragraph after "Rename or remove a tag everywhere" in the user guide (B13
 - **Coverage and fact recording.** B1 adds `rationale`, `decision` and `status` to `ResolvedCoverageTests.Pending` for
   every target; B2 removes the entries its `RAnnotated` members cover and keeps, with a reason, those of targets whose
   resolved type is not an `RAnnotated` (categories among them). The three fields never reshape a database, so B2 adds
-  them to 3.2's skip list.
+  them to 3.2's skip list, at the top level and inside each sub-element, since sub-elements carry them too.
+- **Recordings.** The editor API's element bodies serialize the records, so B2's `record` also rewrites
+  `element-invoice.json`, `element-contains.json` and `diagram-billing-overview.json` under
+  `src/editor/src/mocks/recorded/`: each element and sub-element gains `rationale`, `decision` and `status` as null.
+  Those rewrites are intended, with `validation-rules.json`.
 
 **Model and schema**
 
@@ -2860,6 +2992,39 @@ the engine, the CLI and MCP; the editor keeps ids and its own endpoints.
 9. Result records gain init properties only, and each is stated once in its final form after milestones A and C:
    `BatchResult` and `BatchPreview` here, with 3.2's `Facts`; `BatchOperation` in 4.1. A dry run carries the facts it
    would record (3.2) through the same sink as its files.
+10. A package path in a form is the path from a root package or any trailing part of it, so `@entity:Catalog.Product`
+    finds Product in `Billing.Catalog`, as the C4 rename test needs; the longest form is the full path. A package's own
+    forms follow the same rule. (Taken in C3.)
+11. A row of a reference-type seed is named by its cell in the seed's `code` column, as `ReferenceDataIndex.CodeKey`
+    reads it: rows have no `code` key. The "keep its id" check (MQ1014) reads the same cell. (Taken in C2.)
+12. `IdMinter.Fill` reports operation 0 and no name; the resolver (C4) sets the operation index and the longest form.
+    The `as` key, when the object still carries it, fills `Placeholder`. (Taken in C2.)
+13. `MintedId.Name` and the candidates MQ1013 lists are written as qualified names, `@kind:` then the longest form
+    (`@column:main.billing.payment_method.code`), so an agent can paste them into a later batch. An `as` key is read
+    only on an object whose schema declares keys and not `as`; in a free-form value (custom properties, scenario
+    values) it is data. Two keys of an id-keyed map that name one element are MQ1014, like two `expectedHashes` keys.
+    (Taken in C4.)
+14. A dry run validates `before` over the keys of `plan.ChangeByElement`, the placements and the migration facts that
+    follow a deleted fact, each that `before` has, with their referrers. It reuses the refusal baseline when the change
+    deletes nothing. The validator widens each scope with conflict and row peers worked out on its own model, so the two
+    runs can reach different documents: a peer of a created seed or name only after the change, a peer of a deleted one
+    only before. Each side therefore also validates the documents that only the other run reached and that it has
+    (`ModelValidator.TargetIds` gives a run's documents) and keeps their own findings, so both reports cover the same
+    documents and an element that one run alone reached does not show as added or removed. (Taken in C5, corrected in
+    its review.)
+15. The proposal resolves its targets before it parses the batch, because an update without its `expectedHash` does not
+    parse: `BatchNames.ResolveTargets` reads a stand-in batch built from each raw operation's `op` and `id`. A
+    placeholder target goes through it too, so it fails with MQ1015 rather than with a missing hash. After the preview,
+    an update's or delete's `id` is the target pinned before it, and a create's is its element's id, else the
+    operation's, else the root id `Ids.Minted` gives for that operation: the items do not line up with the operations
+    when the batch holds expanded operations, so the pin never reads them. (Taken in C7.)
+16. openapi-typescript renders the root `$defs` of `batch.json` (the name grammar, C1) as a required member of the batch
+    body's type, so the editor's `BatchRequest` omits `$defs` and `applyBatch` casts back to the body type; the
+    assistant's unit-test fixtures and its mock proposal gain `diff`. (Taken in C8.)
+17. The "keep its id" check (MQ1014) keys a reference-type seed row's code by `ReferenceDataIndex.CodeKey`, as
+    `NameIndex` keys rows, so the string `"1"` and the number `1` are one code.
+18. `docs/api/openapi.yaml` lists `BatchResult.ids` under `properties` but not under `required`, like `facts`, so editor
+    code that builds `BatchResult` objects keeps compiling. The engine always writes it.
 
 **Model and schema**
 
@@ -2890,13 +3055,14 @@ segment     = 1*( any char but "." DQUOTE white-space ) / DQUOTE *( any char but
 ```
 
 Each kind registers the forms below, and a name finds what is registered under exactly that form. A bare name is
-unique or ambiguous (MQ1013); the longer forms qualify it. When every form of a target is shared with another, the id
-is the way. One example: an attribute of a reference type named like a root-package entity. MQ1013 then lists each
-candidate's longest form and id.
+unique or ambiguous (MQ1013); the longer forms qualify it. A `<package path>` is the full path or any trailing part of
+it (decision 10). A form with an empty segment (no stored name, no schema and no default schema) is not registered.
+When every form of a target is shared with another, the id is the way. One example: an attribute of a reference type
+named like a root-package entity. MQ1013 then lists each candidate's longest form and id.
 
 | Kind | Forms (billing and invented examples) |
 | --- | --- |
-| `package` | `Name`, or the path from a root package: `@package:Billing.Catalog` |
+| `package` | `Name`, or the path from a root package or a trailing part of it (decision 10): `@package:Billing.Catalog` |
 | `entity`, `value-object`, `scalar-type`, `enum`, `process`, `relation`, `diagram` | `Name`, `<package path>.Name`: `@entity:Billing.Invoice` |
 | `database`, `mapping`, `reference-type`, `seed`, `actor` | `name`, plus `<package path>.name` when the file states a package (decision 7): `@database:main`, `@seed:Billing.currencies` |
 | `stereotype` | the key: `@stereotype:audited` |
@@ -2975,19 +3141,23 @@ public sealed class ObjectLayout
    `Loading/IdMinter.cs`) gives each `RequiresId` object below the root that has no `id` a new one, in the order of
    decision 5. It never touches the root. `ChangePlanner.Create` and `Update` call it after the root id is set
    (`Loading/ChangePlanner.cs:199-211`, `:256-263`) and before `Read`. A stale replan (`ModelStore.cs:613-626`) works
-   on a fresh clone and changes nothing already reported.
+   on a fresh clone and changes nothing already reported. Each `MintedId` takes its kind from the record type the
+   pointer reaches (`ModelIndexer.SubElementKind`), operation 0 and no name (decision 12).
 3. `PlannedChange` (internal, `ChangePlanner.cs:17`) gains `IReadOnlyList<string>? Minted`: the pointers that pass 1
    minted in the operation's element. `Update` adds the pointers it minted itself. Before `DropSeedColumns` (`:291`),
    it refuses with MQ1014 at the new sub-element's pointer when a removed sub-element and a minted one share three
    things: the parent (the element, or the sub-element that holds them, compared by id), the property, and the name
-   (`name`, or a row's `code`). The batch fails, so nothing is written and no seed column is dropped. `save_element`
-   and `patch_element` reach the same check.
+   (`name`, or a reference-type seed row's `code` cell, decision 11). The batch fails, so nothing is written and no seed
+   column is dropped. `save_element` and `patch_element` reach the same check.
 4. `QualifiedName` (new, internal, `Loading/QualifiedName.cs`) parses and canonicalizes names. `NameIndex` (new,
    internal, `Loading/NameIndex.cs`) holds one kind's forms, built from typed elements on first use and cached in an
    internal lazy member of `ModelSnapshot` (`LazyThreadSafetyMode.ExecutionAndPublication`, decision 8), so a batch that
    names no table never indexes tables. The built index is immutable; a batch layers a private overlay on it. An
    operation replaces or removes the entries of the element it writes and of that element's sub-elements, and nothing
-   else (decision 4).
+   else (decision 4). The internal surface: `ModelSnapshot.Names(kind)`; `NameIndex.Find(path)` (the candidates, ordinal
+   by longest form, then id), `Get(id)`, `EntriesOf(elementId)` and `Of(element, lookup, kind)`, which gives an element
+   file's entries with qualifiers from other files read through `lookup`, for the overlay; `NameEntry(Kind, Id,
+   ElementId, Forms, Longest)`; `NameIndex.NamedKinds` and `IdOnlyKinds`, which `QualifiedName.TryParse` checks.
 5. `BatchNames` (new, internal, `Loading/BatchNames.cs`) runs first in `ApplyBatchCoreAsync` (`ModelStore.cs:223`, made
    async) on `LoadedAsync`'s snapshot, before operations are planned or expanded (`ModelStore.Schemas.cs:23`).
    - Pass 1, every operation in order. An update's or delete's `id` that is a qualified name resolves on the model as
@@ -3007,7 +3177,8 @@ public sealed class ObjectLayout
      the planner reports its schema errors (MQ1002) as today.
    - Any MQ1012 to MQ1015 makes those operations `invalid`, with pointers under `/operations/<i>`, and nothing is
      written. Otherwise the batch goes on with ids only, each operation carrying its `Minted` pointers, and its result
-     carries `Ids`. A batch with no `as` and no value starting with `@` or `$` skips pass 2; minting still runs.
+     carries `Ids`. A batch with no `as` and no value starting with `@` or `$` skips pass 2; minting still runs, and its
+     elements still reach the overlay in order so that each minted id gets its longest form.
 6. The resolver runs outside the store's gate on the snapshot it read, as schema-operation expansion does; a change in
    between is caught as today (hashes checked on disk, MQ2001 for a target that went). The resolved batch reaches
    `ExecuteCoreAsync` (`ModelStore.cs:599`), so section 3.2's migration classifier sees batch writes like any other.
@@ -3018,17 +3189,19 @@ public sealed class ObjectLayout
    its refusal baseline (`known`, `:779`) exactly as today, so refusals do not change. It also validates `before` over
    the change's scope: the keys of `plan.ChangeByElement` (deletes included, unlike `plan.ChangedIds`,
    `ChangePlanner.cs:177`), their former referrers and the placements, each that `before` has. The early return when
-   nothing changed (`:768`) counts the deletes too when a sink is present. The two reports are compared as multisets
-   keyed like `ErrorKey` (`:900`: rule, element, pointer), every severity, so a deleted element's diagnostics show as
-   removed. The scope is the apply's, never the whole model. An invalid dry run answers its errors in `items`, with no
-   files, no ids and an empty delta. Facts (3.2) are recorded after `ValidateAsync`; the sink takes them, and the
-   MQ4101 of each pending fact the change would record joins `DiagnosticsAdded`.
+   nothing changed (`:768`) counts the deletes too when a sink is present. Each side also validates the documents that
+   only the other side's run reached, so both cover the same documents (decision 14). The two reports are
+   compared as multisets keyed like `ErrorKey` (`:900`: rule, element, pointer), every severity, so a deleted element's
+   diagnostics show as removed. The scope is the apply's, never the whole model. An invalid dry run answers its errors
+   in `items`, with no files, no ids and an empty delta. Facts (3.2) are recorded after `ValidateAsync`; the sink takes
+   them, and the MQ4101 of each pending fact the change would record joins `DiagnosticsAdded`.
 8. `AssistantProposals` (`Agent/AssistantProposals.cs:85-160`) drops `FillMissingIds`, its retries and the create id
    fill (`:92`); the engine mints. Before it fills a missing `expectedHash` (`:94-96`), it resolves each update and
    delete `id` that starts with `@` through `BatchNames.ResolveTargets`, pins the resolved id, and reads the hash from
    that document. A name that does not resolve is returned like a parse failure, with its MQ1012 to MQ1015
-   diagnostics. After the preview it pins each operation's `id` to the item's id, its other id fields through
-   `Ids.Names`, and its element to the previewed document, and drops `as`. Proposals carry `Diff` like any preview.
+   diagnostics. After the preview it pins each operation's `id` to the id it wrote (decision 15), its other id fields
+   through `Ids.Names`, and its element to the previewed document, and drops `as`. Proposals carry `Diff` like any
+   preview.
 
 **CLI and MCP**
 
@@ -3154,9 +3327,11 @@ database container run.
   callable on its own). Tests: `A_proposal_by_name_is_pinned_to_ids`. Verify: `E "~AgentToolsTests"`;
   `F "~AssistTests"`.
 - **C8. Contract, skill, guide, release note.** Files: `docs/api/openapi.yaml`, generated
-  `src/editor/src/api/schema.d.ts` and `src/editor/src/mocks/openapi.json`, `skills/maquettiste-modeling/SKILL.md`,
-  `docs/guides/work-with-an-agent.md`, `docs/releases.md`. Tests: `ContractTests`, `SkillRefreshTests`,
-  `AgentSetupTests`. Verify: `editor`; `F "~ContractTests"`; `C "~SkillRefreshTests|~AgentSetupTests"`.
+  `src/editor/src/api/schema.d.ts` and `src/editor/src/mocks/openapi.json`, `src/editor/src/api/types.ts` and
+  `endpoints.ts` (`BatchRequest`, decision 16), `src/editor/src/mocks/assist.ts` and `tests/unit/assistant.test.ts`
+  (`diff`), `skills/maquettiste-modeling/SKILL.md`, `docs/guides/work-with-an-agent.md`, `docs/releases.md`. Tests:
+  `ContractTests`, `SkillRefreshTests`, `AgentSetupTests`. Verify: `editor`; `F "~ContractTests"`; `C
+  "~SkillRefreshTests|~AgentSetupTests"`.
 - **C9. Pre-release note** (scope 16.5). File: `tmp/response-next-capabilities-note-batches-by-name.md`, a short
   anonymous note the owner sends: what changed, one batch by name on billing (the acceptance batch), how to dry-run
   it, and the "keep its id" rule. Billing and invented names only. Tests: none. Verify: the owner reads it before

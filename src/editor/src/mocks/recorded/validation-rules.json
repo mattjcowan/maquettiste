@@ -88,6 +88,38 @@
     "canBeOff": false
   },
   {
+    "id": "MQ1012",
+    "defaultSeverity": "error",
+    "description": "A name or placeholder in a batch finds nothing. No element or sub-element of that kind has the name (an update's or delete's target on the model as loaded; any other name on the model as the earlier operations leave it, with the operation's own element as it will be written), or no operation declares the placeholder. A form through an element renamed earlier in the batch keeps the old qualifier: use the id or a second batch.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1013",
+    "defaultSeverity": "error",
+    "description": "A name in a batch finds more than one element or sub-element. Use a longer form (package, database, schema, owner or seed), or the id when every form is shared; the message lists each candidate's longest form and id.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1014",
+    "defaultSeverity": "error",
+    "description": "A write misuses an identity: a placeholder declared twice; as on a delete, a schema, materialize, process or tag operation, or on an object that is not a sub-element; two expectedHashes keys for one element; or an update that drops a sub-element and adds one without an id under the same parent and property with the same name (send the existing id to keep it).",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1015",
+    "defaultSeverity": "error",
+    "description": "A name in a batch is malformed or misplaced: not @kind:path or $name, an unknown kind or one without names, an empty or unclosed quoted segment, a name as a create's id (declare a placeholder with as), or a placeholder where the element must exist before the batch (an update's or delete's id, an expectedHashes key).",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
     "id": "MQ2001",
     "defaultSeverity": "error",
     "description": "Dangling reference.",
@@ -147,6 +179,110 @@
     "id": "MQ2008",
     "defaultSeverity": "error",
     "description": "A tag or category is declared only in a domain vocabulary outside the element's domain chain.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2009",
+    "defaultSeverity": "error",
+    "description": "An x-ref keyword is malformed: an unknown kind or key, a custom:<type> whose type is not a key, of or sameDatabase where they do not fit, an of naming no element, not on a string, under an applicator the link walk does not follow, or beside a patternProperties pattern that needs backtracking (a lookaround, backreference, atomic group or conditional).",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2010",
+    "defaultSeverity": "error",
+    "description": "A value an x-ref types is a name or other text, not an id.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2011",
+    "defaultSeverity": "error",
+    "description": "An x-ref value is out of scope: a member of another element, a row of another list, another database, a holder with no single database, or a stereotype default under of \"$element\" or sameDatabase.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2013",
+    "defaultSeverity": "error",
+    "description": "An element carries two stereotypes of one group, own or implied.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2014",
+    "defaultSeverity": "error",
+    "description": "An element carries a stereotype that requires another it does not carry.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2015",
+    "defaultSeverity": "error",
+    "description": "An element carries two stereotypes that conflict.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2016",
+    "defaultSeverity": "error",
+    "description": "A stereotype's requires, conflicts or implies names an unknown key or itself, conflicts with one it requires or implies, or implies one of its own group.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2017",
+    "defaultSeverity": "error",
+    "description": "A stereotype implies one that implies others; implication is one level.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2018",
+    "defaultSeverity": "error",
+    "description": "A property value fails the parameters of a stereotype the element carries (required included, on the merged values), or a default fails its own property schema (required not applied).",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2019",
+    "defaultSeverity": "error",
+    "description": "A stereotype's parameters is not a valid schema, or its required names an undeclared parameter.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2020",
+    "defaultSeverity": "error",
+    "description": "A reference from one package to another that its package does not depend on (dependsOn of the package or a parent).",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2021",
+    "defaultSeverity": "error",
+    "description": "dependsOn names the package itself or forms a cycle.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2022",
+    "defaultSeverity": "warning",
+    "description": "A reference to a retired element or sub-element from one that is not retired (membership, owning references and diagrams excepted).",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -1472,6 +1608,14 @@
     "canBeOff": true
   },
   {
+    "id": "MQ7121",
+    "defaultSeverity": "error",
+    "description": "Two seeds of one table key their rows differently (a different key, or a key beside the primary key).",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
     "id": "MQ7201",
     "defaultSeverity": "error",
     "description": "Invalid localization settings: a locale that is not BCP 47, a default not in the locales, a fallback naming an undeclared locale, a fallback cycle, or a required node kind that does not exist.",
@@ -1555,6 +1699,22 @@
     "id": "MQ7211",
     "defaultSeverity": "warning",
     "description": "A plural name on a to-one relation end, or its translation; it is never read.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7212",
+    "defaultSeverity": "error",
+    "description": "x-translatable is not on a top-level string property of an extension file or stereotype parameters: nested, on another type, or not a boolean.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7213",
+    "defaultSeverity": "warning",
+    "description": "x-translatable is on a property whose schema applies only to kinds without translations (physical objects, mappings, diagrams, vocabulary containers).",
     "family": "MQ72xx",
     "familyLabel": "Localization",
     "canBeOff": true

@@ -36,6 +36,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     private static readonly FrozenSet<string> FixedSeverityRules =
         new[] { "MQ1001", "MQ1002", "MQ1004", "MQ1006", "MQ1007", "MQ1009", "MQ7012" }.ToFrozenSet(StringComparer.Ordinal);
 
+    /// <summary>The walker of <see cref="TargetIds"/> (thread-safe; it caches metadata).</summary>
+    private static readonly ReferenceWalker SelectionWalker = new();
+
     private readonly ReferenceWalker _walker = new();
 
     /// <summary>The schema registry.</summary>
@@ -147,6 +150,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 {
                     var report = new Report(targets[i]);
                     BuiltinRules.Validate(context, report);
+                    StatusRules.Validate(context, report);
+                    PackageRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
                     ScenarioRules.Validate(context, report, runtime);
                     if (facts is not null)
@@ -270,6 +275,24 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         return active.Where(d => selected.Contains(d.Element.Id)).ToList();
     }
 
+    /// <summary>
+    /// The ids of the documents a validation of <paramref name="scope"/> looks at (<see cref="SelectTargets"/>: the listed elements'
+    /// owners, their conflict peers and, with <see cref="ValidationScope.IncludeReferrers"/>, their referrers), worked out on
+    /// <paramref name="model"/>. A dry run compares two models over the same documents with it.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="scope">What would be validated; it must list elements.</param>
+    /// <returns>The document ids, in path order.</returns>
+    internal static IReadOnlyList<string> TargetIds(ModelSnapshot model, ValidationScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(scope);
+        if (scope.ElementIds is not { Count: > 0 })
+            return [];
+        var active = ActiveDocuments(model);
+        return [.. SelectTargets(new ValidationContext(model, active, SelectionWalker, null), active, scope).Select(d => d.Element.Id)];
+    }
+
     /// <summary>Every vocabulary, and every document whose vocabulary chain contains <paramref name="scope"/>.</summary>
     /// <param name="model">The model.</param>
     /// <param name="scope">A package id, or <see langword="null"/> for the global scope (every document).</param>
@@ -352,7 +375,13 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// every element under it (a move changes their chains); for a migration fact the facts of its database and the facts whose
     /// <c>after</c> links name it, in any database (MQ4104, MQ4105, MQ4107, MQ4111). Peers come from the document in scope: a deleted
     /// fact has none, so the store adds the facts whose links named it (their MQ4111); the facts of a moved fact's former database
-    /// are not revisited, since leaving a database only removes findings there.
+    /// are not revisited, since leaving a database only removes findings there. For a stereotype, the elements that carry a
+    /// stereotype whose <c>implies</c> names it (MQ2004, MQ2013 to MQ2015, MQ2018 on its effective carriers). For a package, when
+    /// some package is checked, every element whose file states a package of its subtree and every referrer of those elements
+    /// (MQ2020: its <c>dependsOn</c> and <c>parent</c> decide what its subtree may reference and what reaches it). The other packages
+    /// of a <c>dependsOn</c> cycle (MQ2021; the saved package reports its own edge) and the seeds a rename or move reorders (it only
+    /// moves MQ7112, MQ7121, MQ7001 and MQ7102 between seeds that already disagree) are not revisited (next-phase-1-design.md
+    /// section 4.3).
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="document">The document in scope.</param>
@@ -445,6 +474,22 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         foreach (var peer in ProcessPeers(model, element))
             yield return peer;
 
+        // MQ2004, MQ2013 to MQ2015 and MQ2018 on the carriers of a stereotype that implies this one depend on it (its applicability,
+        // group, conflicts, requirements and parameters), and they are not its referrers (next-phase-1-design.md section 4.2).
+        if (element is Stereotype)
+        {
+            foreach (var implying in model.ReferencesTo(element.Id))
+            {
+                if (implying.Field != "implies" || model.GetDocument(implying.FromElementId)?.Element is not Stereotype)
+                    continue;
+                foreach (var carrier in model.ReferencesTo(implying.FromElementId))
+                {
+                    if (carrier.Field == "stereotypes" && model.GetDocument(carrier.FromElementId) is { } peer)
+                        yield return peer;
+                }
+            }
+        }
+
         // MQ4104, MQ4105, MQ4107 and MQ4111 on a migration fact depend on the other facts of its database and on the facts that
         // name it in their after links (which are not references); the store adds the facts that named a deleted fact.
         if (element is Migration fact)
@@ -465,10 +510,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 foreach (var peer in VocabularyDependents(model, ModelIndexer.PackageOf(element)))
                     yield return peer;
                 break;
-            case Package when HasDomainVocabularies(model):
+            case Package:
                 // Moving a domain changes the chain of every element under it (MQ2006, MQ2008) and the enclosing domains of its
                 // vocabularies (MQ3021).
-                foreach (var peer in VocabularyDependents(model, element.Id))
+                if (HasDomainVocabularies(model))
+                {
+                    foreach (var peer in VocabularyDependents(model, element.Id))
+                        yield return peer;
+                }
+
+                foreach (var peer in LayerPeers(context, element.Id))
                     yield return peer;
                 break;
             case Table table when ValidationContext.OverlayTarget(table) is { } overlayTarget:
@@ -529,6 +580,38 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 }
 
                 break;
+        }
+    }
+
+    /// <summary>
+    /// MQ2020 depends on a package's <c>dependsOn</c> and <c>parent</c> beyond its referrers (next-phase-1-design.md section 4.3): a
+    /// changed <c>dependsOn</c> changes what every element of its subtree may reference, and the members of child packages do not
+    /// reference the changed package; a moved subtree changes what may reference its elements. So, only when some package is
+    /// checked: every element whose file states a package of the subtree, and every referrer of those elements.
+    /// </summary>
+    private static IEnumerable<ElementDocument> LayerPeers(ValidationContext context, string packageId)
+    {
+        if (!context.Layers.AnyChecked)
+            yield break;
+        var model = context.Model;
+        var members = new List<ElementDocument>();
+        foreach (var doc in context.Documents)
+        {
+            if (ModelIndexer.PackageOf(doc.Element) is { } memberOf && context.Layers.ChainOf(memberOf).Contains(packageId, StringComparer.Ordinal))
+                members.Add(doc);
+        }
+
+        foreach (var member in members)
+        {
+            yield return member;
+            foreach (var id in SubElementIds(member.Element).Prepend(member.Element.Id))
+            {
+                foreach (var reference in model.ReferencesTo(id))
+                {
+                    if (model.GetDocument(reference.FromElementId) is { } referrer)
+                        yield return referrer;
+                }
+            }
         }
     }
 

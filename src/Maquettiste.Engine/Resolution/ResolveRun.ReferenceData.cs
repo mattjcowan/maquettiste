@@ -37,7 +37,7 @@ internal sealed partial class ResolveRun
             var r = new RReferenceType();
             var deps = DepsOf(r);
             FillCommon(r, type, deps);
-            // A reference type lives in the reference data scope, in no package.
+            r.Package = PackageOf(type.Package);
             r.Code = new RReferenceField
             {
                 Id = type.Code.Id, Type = type.Code.Type, Length = type.Code.Length, Pattern = type.Code.Pattern,
@@ -138,9 +138,14 @@ internal sealed partial class ResolveRun
         }
 
         var seedRowsById = new Dictionary<string, RSeedRow>(StringComparer.Ordinal);
-        var sources = Model.All<Seed>().OrderBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.Id, StringComparer.Ordinal).ToList();
+        // Every target's seeds merge in one order (next-phase-1-design.md section 4.3): package qualified name with none first, then
+        // name, then id; without packages that is the (name, id) order.
+        var order = new SeedOrder(Model);
+        var sources = Model.All<Seed>().Order(order).ToList();
         var seedsByTarget = new Dictionary<string, List<RSeed>>(StringComparer.Ordinal);
         var rowsByType = new Dictionary<string, List<RRow>>(StringComparer.Ordinal);
+        // The packages whose names order each target's seeds: no seed file holds them, so they join the lists' membership keys.
+        var orderKeysByTarget = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
         foreach (var seed in sources)
         {
             Ct.ThrowIfCancellationRequested();
@@ -148,12 +153,22 @@ internal sealed partial class ResolveRun
             var deps = DepsOf(s);
             FillCommon(s, seed, deps);
             deps.Element(seed.Target);
+            // The merge order reads the qualified name of the seed's package: renaming or moving a package of its chain can reorder the
+            // target's seeds (its rows, the first table seed's key) without touching the seed's file.
+            foreach (var package in order.ChainOf(seed))
+            {
+                deps.Element(package);
+                if (!orderKeysByTarget.TryGetValue(seed.Target, out var orderKeys))
+                    orderKeysByTarget[seed.Target] = orderKeys = new SortedSet<string>(StringComparer.Ordinal);
+                orderKeys.Add(Keys.Element(package));
+            }
+
             IResolvedObject? target = _referenceTypes.TryGetValue(seed.Target, out var rt) ? rt
                 : _entities.TryGetValue(seed.Target, out var entity) && entity.Id.Length > 0 ? entity
                 : _relations.TryGetValue(seed.Target, out var relation) ? relation
                 : tablesByKey.GetValueOrDefault(seed.Target);
             s.Target = target;
-            s.Package = (target as RElement)?.Package; // a seed of an entity or relation stays in its target's package
+            s.Package = PackageOf(seed.Package) ?? (target as RAnnotated)?.Package; // its own file's package, else its target's
             s.Environments = seed.Environments;
             s.Apply = seed.Apply == SeedApply.Converge ? "converge" : "once";
             s.Delete = seed.Delete;
@@ -218,11 +233,11 @@ internal sealed partial class ResolveRun
                 byCode.TryAdd(row.CodeKey, row); // a duplicate code is MQ7001: the first row wins
             type.RowsByCode = byCode;
             var seeds = seedsByTarget.GetValueOrDefault(type.Id) ?? [];
-            var membership = new DependencySet(Keys).Add("k:seed").Referrers(type.Id);
+            var membership = new DependencySet(Keys).Add("k:seed").Referrers(type.Id).AddRange(OrderKeys(type.Id));
             foreach (var seed in seeds)
                 membership.Element(seed.Id);
             type.Rows = new RList<RRow>(rows, membership.ToList());
-            type.Seeds = new RList<RSeed>(seeds, [Keys.Referrers(type.Id), "k:seed"]);
+            type.Seeds = new RList<RSeed>(seeds, [Keys.Referrers(type.Id), "k:seed", .. OrderKeys(type.Id)]);
             var fields = type.Attributes.Where(a => a.Type.ReferenceType is not null).ToList();
             foreach (var row in rows)
                 row.SetRefs(r => RowRefs(fields, r.Values));
@@ -235,16 +250,18 @@ internal sealed partial class ResolveRun
         }
 
         foreach (var entity in _entities.Values.Concat(_promoted.Values).Where(e => e.Id.Length > 0))
-            entity.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(entity.Id) ?? [], [Keys.Referrers(entity.Id), "k:seed"]);
+            entity.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(entity.Id) ?? [], [Keys.Referrers(entity.Id), "k:seed", .. OrderKeys(entity.Id)]);
         foreach (var relation in _relations.Values.Concat(_promotedRelations))
-            relation.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(relation.Id) ?? [], [Keys.Referrers(relation.Id), "k:seed"]);
+            relation.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(relation.Id) ?? [], [Keys.Referrers(relation.Id), "k:seed", .. OrderKeys(relation.Id)]);
         foreach (var table in tablesByKey.Values)
-            table.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(table.Key) ?? [], [Keys.Referrers(table.Key), "k:seed"]);
+            table.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(table.Key) ?? [], [Keys.Referrers(table.Key), "k:seed", .. OrderKeys(table.Key)]);
 
         OrderSeeds(seedRowsById);
         foreach (var database in databases)
             PrepareSeedTables(database, [.. _seedOrder], seedRowsById);
         ResolveUsages();
+
+        IEnumerable<string> OrderKeys(string target) => orderKeysByTarget.GetValueOrDefault(target) ?? (IEnumerable<string>)[];
     }
 
     /// <summary>
@@ -480,7 +497,8 @@ internal sealed partial class ResolveRun
 
     /// <summary>
     /// <see cref="RSeed.OrderedRows"/> by Kahn's algorithm (ties by file order; a cycle, which MQ7103 allows through optional cells,
-    /// is broken at its first row in file order), and <see cref="ResolvedModel.SeedsInOrder"/> by (dependency depth, name, id). Both
+    /// is broken at its first row in file order), and <see cref="ResolvedModel.SeedsInOrder"/> by dependency depth, then
+    /// seed order (<see cref="SeedOrder"/>). Both
     /// are computed on first read (<see cref="SeedOrdering"/>), so the rows of a seed nothing reads are never ordered; only the
     /// dependency keys of the insert order are set here, since they do not depend on the rows.
     /// </summary>
@@ -752,7 +770,7 @@ internal sealed partial class ResolveRun
             return _seedsByTable.GetValueOrDefault(table) ?? [];
         }
 
-        /// <summary>Every seed by (dependency depth, name, id): depth 0 without dependencies, else one more than the deepest seed it names; a back edge of a cycle counts as none.</summary>
+        /// <summary>Every seed by dependency depth, then merge order: depth 0 without dependencies, else one more than the deepest seed it names; a back edge of a cycle counts as none.</summary>
         public List<RSeed> InsertOrder()
         {
             var depth = new int[seeds.Count];

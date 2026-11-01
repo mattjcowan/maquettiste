@@ -74,6 +74,38 @@ public sealed class SchemaConsistencyTests
         }
     }
 
+    [Fact]
+    public void Layout_marks_objects_that_require_an_id()
+    {
+        static ObjectLayout Items(ObjectLayout layout, string key) => layout.Properties[key].Layout.Items!;
+
+        var entity = Schemas.GetLayout("entity.json");
+        var table = Schemas.GetLayout("table.json");
+        var referenceType = Schemas.GetLayout("reference-type.json");
+        var batch = Schemas.GetLayout("batch.json");
+
+        // Element roots and sub-elements: the schema requires an id typed common.json#/$defs/id, own or through a $ref.
+        Assert.All(KindInfo.All, kind => Assert.True(Schemas.GetLayout(kind.SchemaFile).RequiresId, kind.SchemaFile));
+        Assert.True(Items(entity, "attributes").RequiresId);
+        Assert.True(Items(entity, "bindings").RequiresId);
+        Assert.True(Items(table, "columns").RequiresId);
+        Assert.True(Items(table, "indexes").RequiresId);
+        Assert.True(Items(Schemas.GetLayout("enum.json"), "members").RequiresId);
+        Assert.True(Items(Schemas.GetLayout("seed.json"), "rows").RequiresId);
+        Assert.True(referenceType.Properties["code"].Layout.RequiresId);
+
+        // Not mint sites: arrays and plain objects, an id that is not a model id, and a batch operation, whose id is required only
+        // by a conditional then, which is never merged into the layout.
+        Assert.False(entity.Properties["attributes"].Layout.RequiresId);
+        Assert.False(Items(Items(table, "indexes"), "columns").RequiresId);
+        Assert.False(Items(Schemas.GetLayout("pack.json"), "units").RequiresId);
+        Assert.False(Schemas.GetLayout("maquettiste.json").RequiresId);
+        Assert.False(Schemas.GetLayout("snapshot.json").RequiresId);
+        Assert.False(batch.RequiresId);
+        Assert.False(Items(batch, "operations").RequiresId);
+        Assert.False(ObjectLayout.FreeForm.RequiresId);
+    }
+
     [Theory]
     [MemberData(nameof(Documents))]
     public void Record_properties_match_schema_properties_and_initializers_match_defaults(string file, Type type)

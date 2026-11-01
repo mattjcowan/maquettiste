@@ -73,9 +73,52 @@
         }
       ]
     },
+    "status": {
+      "description": "The status of an element or sub-element: proposed, approved, deprecated or retired. It has no default. A reference to a retired element warns (MQ2022).",
+      "enum": ["proposed", "approved", "deprecated", "retired"]
+    },
     "properties": {
       "description": "Custom property values, validated by extension schemas.",
       "type": "object"
+    },
+    "xRef": {
+      "description": "The x-ref keyword of a custom property schema (an extension file's properties, a stereotype's parameters, a pack's parameterSchema): the string it sits on, or each item of the array whose items it sits on, is the id of an element or sub-element. It goes on a schema of type string or on an array's items, under properties, items or additionalProperties only; anything else is MQ2009. Values are ids (or ids joined by '.', the keyed id of an inherited member): the index lists them as references, so where-used, delete refusals and remove-references see them.",
+      "type": "object",
+      "x-order": ["kind", "of", "sameDatabase", "optional"],
+      "properties": {
+        "kind": {
+          "description": "The kinds the value may name: element kind names (entity, table...), sub-element kinds as the index names them (attribute, enum-member, column, row, state...), or a reserved kind (operation, outcome, error, member, custom, custom:<type> with a kebab-case type), whose values dangle until the kind exists.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          ]
+        },
+        "of": {
+          "description": "For sub-element kinds only: \"$element\" (a member of the element whose file holds the value, its base chain and its stereotypes included) or an element id (a row whose seed targets that element).",
+          "type": "string"
+        },
+        "sameDatabase": {
+          "description": "For physical kinds only: the target must be in the database of the element holding the value.",
+          "type": "boolean",
+          "default": false
+        },
+        "optional": {
+          "description": "Whether a delete with remove-references may clear the value; a required one refuses it.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
     },
     "generationHints": {
       "type": "object",
@@ -330,6 +373,9 @@
         "validation",
         "order",
         "description",
+        "rationale",
+        "decision",
+        "status",
         "stereotypes",
         "tags",
         "category",
@@ -406,6 +452,20 @@
         },
         "description": {
           "$ref": "#/$defs/description"
+        },
+        "rationale": {
+          "description": "Markdown text: why the element is shaped this way.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "status": {
+          "$ref": "#/$defs/status"
         },
         "stereotypes": {
           "$ref": "#/$defs/keyList",

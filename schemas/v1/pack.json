@@ -38,7 +38,7 @@
       "default": {}
     },
     "parameterSchema": {
-      "description": "The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters.",
+      "description": "The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters. On a string, or an array's items, x-ref types the value as the id of an element or sub-element (MQ2009).",
       "type": "object",
       "x-order": [
         "properties",

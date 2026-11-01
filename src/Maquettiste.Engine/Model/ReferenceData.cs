@@ -9,11 +9,16 @@ namespace Maquettiste.Engine.Model;
 /// section 1). Two built-in fields, <see cref="Code"/> and <see cref="Label"/>, the row description every row may carry, any number
 /// of user fields, and rows held in seeds.
 /// </summary>
-public sealed record ReferenceType : Element
+public sealed record ReferenceType : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.ReferenceType;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The built-in code field: the row's business key, unique in the type.</summary>
     public required ReferenceCode Code { get; init; }
@@ -87,11 +92,16 @@ public sealed record StorageChoice
 /// Rows of data for one target: an entity, a relation or a reference type (<c>model/seeds/&lt;target&gt;/</c>;
 /// reference-types-seeds-localization.md section 2). A seed belongs to its target and is deleted with it.
 /// </summary>
-public sealed record Seed : Element
+public sealed record Seed : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Seed;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the entity, relation, reference type or table (a table file of a database) the rows are for.</summary>
     [ElementRef(ElementKind.Entity, ElementKind.Relation, ElementKind.ReferenceType, ElementKind.Table, Owning = true)]

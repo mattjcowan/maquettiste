@@ -51,6 +51,18 @@ internal static class ModelIndexer
 
         /// <summary>The reference-data facts the walks used (kept by a patch, which rebuilds in full when they could change).</summary>
         internal ReferenceDataIndex? ReferenceData { get; init; }
+
+        /// <summary>
+        /// The ids of the elements and sub-elements whose <c>status</c> is <c>retired</c> (next-phase-1-design.md section 4.5), from
+        /// the walks, so a patch keeps them. Never written after the build.
+        /// </summary>
+        internal HashSet<string> Retired { get; init; } = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// The <see cref="PropertySchemaSet.Hash"/> the walks used (next-phase-1-design.md section 4.1): a patch whose set differs
+        /// rebuilds in full, since every document's <c>x-ref</c> sites may change.
+        /// </summary>
+        internal string PropertySchemasHash { get; init; } = "";
     }
 
     internal enum PropertyRole { Reference, KeyedReference, StereotypeKeys, TypeRef, Record, RecordList }
@@ -85,30 +97,43 @@ internal static class ModelIndexer
         _ => null,
     };
 
+    /// <summary>Every <see cref="IndexEntry.Kind"/> of a sub-element (<see cref="SubElementKind"/>'s values).</summary>
+    internal static readonly FrozenSet<string> SubElementKinds = new[]
+    {
+        "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
+        "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key",
+    }.ToFrozenSet(StringComparer.Ordinal);
+
     /// <summary>
     /// Builds the indexes of the documents (sorted by path). With the previous snapshot's index, and when the change is small and
     /// touches no stereotype, tag vocabulary or category tree, the previous indexes are patched instead of rebuilt; the result is
     /// the same as a full build (<c>ModelIndexerTests</c> compares them on random edits), which runs whenever the patch cannot be sure.
     /// </summary>
     /// <param name="documents">The documents, in path order.</param>
+    /// <param name="schemas">The custom property schemas, whose <c>x-ref</c> sites become references.</param>
     /// <param name="previous">The previous snapshot's index, or <see langword="null"/>.</param>
     /// <param name="parallelism">The most documents walked at once by a full build (the caller's
     /// <see cref="EngineOptions.EffectiveParallelism"/>; <see cref="DefaultParallelism"/> without one).</param>
     /// <param name="ct">Cancellation, observed between documents.</param>
     /// <returns>The index.</returns>
-    public static Result Build(ImmutableArray<ElementDocument> documents, Result? previous, int parallelism, CancellationToken ct)
+    public static Result Build(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, Result? previous, int parallelism, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(schemas);
         ArgumentOutOfRangeException.ThrowIfLessThan(parallelism, 1);
         ct.ThrowIfCancellationRequested();
-        if (previous is { Clean: true, Walks: not null } && TryPatch(documents, previous) is { } patched)
+        if (previous is { Clean: true, Walks: not null } && string.Equals(previous.PropertySchemasHash, schemas.Hash, StringComparison.Ordinal)
+            && TryPatch(documents, schemas, previous) is { } patched)
+        {
             return patched;
-        return BuildFull(documents, parallelism, ct) with { Patched = false };
+        }
+
+        return BuildFull(documents, schemas, parallelism, ct) with { Patched = false };
     }
 
     /// <summary>The walk parallelism of a build whose caller has no engine options (the public <see cref="ModelSnapshot.Create"/>).</summary>
     internal static int DefaultParallelism => Math.Max(1, Math.Min(Environment.ProcessorCount, 8));
 
-    private static Result BuildFull(ImmutableArray<ElementDocument> documents, int parallelism, CancellationToken ct)
+    private static Result BuildFull(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, int parallelism, CancellationToken ct)
     {
         // Stereotype keys first, so every element's stereotypes[i] can be indexed as a reference to the stereotype's id.
         var stereotypes = new Dictionary<string, Stereotype>(StringComparer.Ordinal);
@@ -126,7 +151,7 @@ internal static class ModelIndexer
         var walks = new DocumentWalk[documents.Length];
         Parallel.For(0, documents.Length, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct }, i =>
         {
-            var walk = new DocumentWalk(stereotypes, metadata, referenceData);
+            var walk = new DocumentWalk(stereotypes, metadata, referenceData, schemas);
             walk.WalkElement(documents[i].Element);
             walks[i] = walk;
         });
@@ -140,6 +165,7 @@ internal static class ModelIndexer
         // One vocabulary of each kind per scope (explorer-redesign.md section 1.11): the scope is the package id, "" for global.
         var tagScopes = new Dictionary<string, (TagVocabulary Vocabulary, string Path)>(StringComparer.Ordinal);
         var categoryScopes = new Dictionary<string, (CategoryTree Tree, string Path)>(StringComparer.Ordinal);
+        var retired = new HashSet<string>(StringComparer.Ordinal);
         var clean = true;
 
         for (var d = 0; d < documents.Length; d++)
@@ -180,6 +206,7 @@ internal static class ModelIndexer
             var walk = walks[d];
             foreach (var (id, entry) in walk.Entries)
                 clean &= entries.TryAdd(id, entry);
+            retired.UnionWith(walk.Retired);
             references.AddRange(walk.References);
             summaries.Add(Summarize(element, doc.Hash, doc.Path));
         }
@@ -212,6 +239,8 @@ internal static class ModelIndexer
             Walks = walks,
             Clean = clean,
             ReferenceData = referenceData,
+            Retired = retired,
+            PropertySchemasHash = schemas.Hash,
         };
     }
 
@@ -221,10 +250,11 @@ internal static class ModelIndexer
     /// <summary>
     /// Patches the previous index for a small change, or returns <see langword="null"/> when a full build is needed: a changed,
     /// added or removed stereotype, tag vocabulary or category tree (they change how other files are indexed), too many changes, or
-    /// an id that would now be registered twice. Unchanged documents (the same <see cref="ElementDocument"/> instance at the same
+    /// an id that would now be registered twice. The caller has checked that the custom property schemas are the ones the previous
+    /// walks used (a changed set rebuilds in full, even when no document changed). Unchanged documents (the same <see cref="ElementDocument"/> instance at the same
     /// path) keep their walks; every map ends up with exactly the content and order a full build gives.
     /// </summary>
-    private static Result? TryPatch(ImmutableArray<ElementDocument> documents, Result previous)
+    private static Result? TryPatch(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, Result previous)
     {
         var old = previous.Documents;
         var oldWalks = previous.Walks!;
@@ -275,7 +305,7 @@ internal static class ModelIndexer
         var metadata = new MetadataCache();
         foreach (var a in added)
         {
-            var walk = new DocumentWalk(previous.Stereotypes, metadata, referenceData);
+            var walk = new DocumentWalk(previous.Stereotypes, metadata, referenceData, schemas);
             walk.WalkElement(documents[a].Element);
             walks[a] = walk;
         }
@@ -306,6 +336,17 @@ internal static class ModelIndexer
                 if (!entries.TryAdd(id, entry))
                     return null;
             }
+        }
+
+        // Retired ids: the previous set without the removed walks' ids, with the added walks' ids (unchanged when neither has any).
+        var retired = previous.Retired;
+        if (removed.Any(r => oldWalks[r].Retired.Count > 0) || added.Any(a => walks[a].Retired.Count > 0))
+        {
+            retired = new HashSet<string>(previous.Retired, StringComparer.Ordinal);
+            foreach (var r in removed)
+                retired.ExceptWith(oldWalks[r].Retired);
+            foreach (var a in added)
+                retired.UnionWith(walks[a].Retired);
         }
 
         // References from a file: one group per document.
@@ -428,6 +469,7 @@ internal static class ModelIndexer
             Documents = documents,
             Walks = walks,
             Patched = true,
+            Retired = retired,
         };
     }
 
@@ -507,18 +549,12 @@ internal static class ModelIndexer
         return ends;
     }
 
+    /// <summary>The package the file states: a package's parent, any other kind's <c>package</c> (a vocabulary's scope); null for
+    /// a migration fact. No fallback to an entity's or a target's package: layering and the index read only the file.</summary>
     internal static string? PackageOf(Element element) => element switch
     {
         Package p => p.Parent,
-        Entity e => e.Package,
-        ValueObject v => v.Package,
-        ScalarType s => s.Package,
-        EnumType e => e.Package,
-        Relation r => r.Package,
-        Diagram d => d.Package,
-        Process p => p.Package,
-        TagVocabulary t => t.Package,
-        CategoryTree c => c.Package,
+        IPackaged x => x.Package,
         _ => null,
     };
 
@@ -574,25 +610,34 @@ internal static class ModelIndexer
     }
 
     /// <summary>The walk of one document: its sub-element entries (in walk order) and its references.</summary>
-    internal sealed class DocumentWalk(IReadOnlyDictionary<string, Stereotype> stereotypes, MetadataCache metadata, ReferenceDataIndex referenceData)
+    internal sealed class DocumentWalk(IReadOnlyDictionary<string, Stereotype> stereotypes, MetadataCache metadata, ReferenceDataIndex referenceData,
+        PropertySchemaSet schemas)
     {
         public List<(string Id, IndexEntry Entry)> Entries { get; } = [];
 
         public List<ReferenceInfo> References { get; } = [];
 
+        /// <summary>The ids of the element and sub-elements of this document whose status is retired, in walk order.</summary>
+        public List<string> Retired { get; } = [];
+
         public void WalkElement(Element element)
         {
+            // The element itself does not pass through WalkObject, so its own status is recorded here.
+            if (element.Status == ElementStatus.Retired)
+                Retired.Add(element.Id);
             WalkProperties(element, "", element.Id, element.Id);
             WalkReferenceData(element);
         }
 
         /// <summary>
         /// References that no property attribute declares: a reference type's <c>storage</c> keys (database ids), the codes that
-        /// reference-typed defaults and <c>allowedValues</c> hold (to the row with that code), and seed cells (codes to rows, end
-        /// cells to the row ids they hold).
+        /// reference-typed defaults and <c>allowedValues</c> hold (to the row with that code), seed cells (codes to rows, end
+        /// cells to the row ids they hold), and the ids at the <c>x-ref</c> sites of custom properties.
         /// </summary>
         private void WalkReferenceData(Element element)
         {
+            WalkPropertyReferences(element);
+
             if (element is ReferenceType type)
             {
                 foreach (var key in type.Storage.Keys.Order(StringComparer.Ordinal))
@@ -648,6 +693,74 @@ internal static class ModelIndexer
             }
         }
 
+        /// <summary>
+        /// The ids at the <c>x-ref</c> sites of the document's custom properties (next-phase-1-design.md section 4.1): the holder is
+        /// <see cref="ReferenceInfo.FromId"/> and the top-level property the field. A value is an id, or ids joined by <c>.</c> (the
+        /// keyed id of an inherited member), each a reference; text is data, which validation reports. One value several schemas
+        /// type is one reference, naming the first schema, optional only when every one of them says so.
+        /// </summary>
+        private void WalkPropertyReferences(Element element)
+        {
+            if (element is Stereotype { Parameters: { } parameters })
+                WalkParameterScopes(element.Id, parameters);
+            if (!schemas.HasRefs)
+                return;
+            Dictionary<(string Pointer, string To), int>? seen = null;
+            foreach (var site in schemas.Sites(element))
+            {
+                foreach (var id in IdsOf(site.Value))
+                {
+                    seen ??= [];
+                    if (seen.TryGetValue((site.Pointer, id), out var at))
+                    {
+                        if (References[at].Optional && !site.Ref.Optional)
+                            References[at] = References[at] with { Optional = false };
+                        continue;
+                    }
+
+                    seen[(site.Pointer, id)] = References.Count;
+                    References.Add(new ReferenceInfo(element.Id, site.Host.Id, site.Pointer, site.Field, id, false, site.Ref.Optional, site.Source.Schema));
+                }
+            }
+        }
+
+        /// <summary>
+        /// The element ids a stereotype's <c>parameters</c> name in an <c>x-ref</c> <c>of</c> (next-phase-1-design.md section 4.2),
+        /// each a reference under the field <c>of</c>, so the list it scopes to cannot be deleted plainly. Malformed keywords are no
+        /// reference (validation reports them, MQ2009).
+        /// </summary>
+        private void WalkParameterScopes(string stereotypeId, StereotypeParameters parameters)
+        {
+            var (_, keywords, _) = PropertySchemaSet.Read(parameters.Properties, "/parameters/properties", static (_, _) => { });
+            foreach (var (pointer, xref) in keywords)
+            {
+                if (xref.Of is { } of && of != XRef.ElementScope)
+                    References.Add(new ReferenceInfo(stereotypeId, stereotypeId, pointer + "/of", "of", of));
+            }
+        }
+
+        private static IEnumerable<string> IdsOf(string value)
+        {
+            if (IdFormat.IsValid(value))
+            {
+                yield return value;
+                yield break;
+            }
+
+            if (!value.Contains('.', StringComparison.Ordinal))
+                yield break;
+            var segments = value.Split('.');
+            if (!segments.All(IdFormat.IsValid))
+                yield break;
+            string? previous = null;
+            foreach (var segment in segments)
+            {
+                if (segment != previous)
+                    yield return segment;
+                previous = segment;
+            }
+        }
+
         private void AddCodes(string ownerId, string fromId, string pointer, string field, string typeId, System.Text.Json.JsonElement value)
         {
             if (value.ValueKind != System.Text.Json.JsonValueKind.Array)
@@ -673,6 +786,8 @@ internal static class ModelIndexer
             if (subKind is not null && IdOf(value) is { } id)
             {
                 Entries.Add((id, new IndexEntry(id, ownerId, subKind, pointer)));
+                if (value is ElementBase { Status: ElementStatus.Retired })
+                    Retired.Add(id);
                 fromId = id;
             }
 
@@ -776,8 +891,7 @@ internal static class ModelIndexer
             {
                 if (pi.GetCustomAttribute<ElementRefAttribute>(inherit: true) is { } reference)
                     return reference.Keyed ? PropertyRole.KeyedReference : PropertyRole.Reference;
-                if (pi.Name == nameof(ElementBase.Stereotypes)
-                    && (pi.DeclaringType == typeof(ElementBase) || typeof(IProcessNode).IsAssignableFrom(pi.DeclaringType)))
+                if (pi.GetCustomAttribute<StereotypeKeysAttribute>(inherit: true) is not null)
                     return PropertyRole.StereotypeKeys;
             }
 

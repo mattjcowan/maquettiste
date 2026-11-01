@@ -10854,13 +10854,9 @@
                   "description": "The text the fallback chain gives."
                 },
                 "field": {
+                  "description": "A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.",
                   "type": "string",
-                  "enum": [
-                    "displayName",
-                    "pluralName",
-                    "label",
-                    "description"
-                  ]
+                  "pattern": "^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "source": {
                   "type": [
@@ -10928,13 +10924,9 @@
                   "$ref": "#/components/schemas/Ulid"
                 },
                 "field": {
+                  "description": "A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.",
                   "type": "string",
-                  "enum": [
-                    "displayName",
-                    "pluralName",
-                    "label",
-                    "description"
-                  ]
+                  "pattern": "^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "value": {
                   "description": "The text, `{ \"file\": \"<sidecar>\" }`, or `null` to remove."
@@ -11712,6 +11704,15 @@
             "type": "boolean",
             "default": false,
             "description": "The referrer belongs to the referenced element (a seed's `target`): the reference never refuses the target's delete,\nwhich deletes the referrer in the same save, so a delete confirmation lists these as deleted with it. Left out when false.\n"
+          },
+          "optional": {
+            "type": "boolean",
+            "default": false,
+            "description": "For a custom property value an `x-ref` types: every schema that types it says `optional`, so a delete with\n`remove-references` may clear it. Left out when false.\n"
+          },
+          "schema": {
+            "type": "string",
+            "description": "For a custom property value an `x-ref` types: the schema that types it, `extension:<name>` (an extension file) or\n`stereotype:<key>` (a stereotype's parameters). Left out for every other reference.\n"
           }
         }
       },
@@ -12278,7 +12279,7 @@
       },
       "BatchOp": {
         "type": "string",
-        "description": "`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`.",
+        "description": "`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`. `tags-to-property` (next-phase-1-design.md section 4.4) moves the tags that start with `prefix` into the custom property `name` of each element and sub-element with properties that holds them, in the scope `retag` would change, limited to `elementIds`: the schema that declares the property converts the suffixes (a string takes one, a string array all of them in list order, an integer, number or boolean one parsed with the invariant culture, an `enum` one member, an `x-ref` the one id the suffix finds as `names-to-ids` resolves it); the tags leave their holders and, without `elementIds`, their declarations leave the vocabulary, except a tag that something without properties (a relation end, for example) still uses, whose declaration stays. It expands the same way and takes `expectedHashes`; no matching tag is MQ1002 at `/operations/<n>`, and each holder whose property no schema declares, whose suffix does not fit or that already holds another value is one MQ5001 at its file and `/properties/<name>`. `names-to-ids` (section 4.1) turns every custom property value an `x-ref` types that is a name, not an id, into the one id it finds among the in-scope candidates of the keyword's kinds (elements by their qualified-name forms, stereotypes by key; within `of` sub-elements by name, columns by physical name, rows by code), in the elements `elementIds` lists or in every document with `x-ref` sites, stereotype defaults included. It expands the same way and takes `expectedHashes`; each value that finds nothing or several is one MQ2010 at its file and pointer, and nothing to convert writes nothing.",
         "enum": [
           "create",
           "update",
@@ -12296,11 +12297,14 @@
           "set-lifecycle",
           "set-initial",
           "refresh-scenario",
-          "retag"
+          "retag",
+          "tags-to-property",
+          "names-to-ids"
         ]
       },
       "BatchOperation": {
         "x-engine-record": "Maquettiste.Engine.BatchOperation",
+        "description": "One batch operation. Every id field (`id`, `database`, `package`, `schema`, `target`, `default`, the items of\n`entities`, `tables` and `elementIds`, an `attributes` item that starts with `@` or `$`, the keys of\n`expectedHashes`) and every reference inside `element` takes an id, a qualified name (`@kind:path`, the name as\nstored: `@table:billing.notes`) or a placeholder (`$name`, declared with `as`); the engine resolves them to ids before\nthe batch is planned and mints every missing id (next-phase-1-design.md section 5.1). A name that finds nothing is\nMQ1012, several MQ1013; a misused identity is MQ1014 and a malformed or misplaced name MQ1015.\n",
         "type": "object",
         "required": [
           "op",
@@ -12313,6 +12317,14 @@
             "$ref": "#/components/schemas/BatchOp"
           },
           "id": {
+            "description": "An id, a qualified name or a placeholder. A create's `id` must be an id; an update's or delete's names an element that exists before the batch, never a placeholder.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "as": {
+            "description": "Create and update: the placeholder (`$name`) that names the operation's element for the whole batch, so other operations write it where the element's id goes. An object inside `element` whose schema requires an `id` may carry `as` too, naming that sub-element.",
             "type": [
               "string",
               "null"
@@ -12359,42 +12371,42 @@
             "description": "The translated text, `{ \"file\": \"<sidecar>\" }`, or `null` to remove the translation (`translate`)."
           },
           "schema": {
-            "description": "The database schema id (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`).",
+            "description": "The database schema (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`) as an id, a qualified name or a placeholder.",
             "type": [
               "string",
               "null"
             ]
           },
           "name": {
-            "description": "The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`).",
+            "description": "The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`); the custom property the tags move to (`tags-to-property`).",
             "type": [
               "string",
               "null"
             ]
           },
           "target": {
-            "description": "The schema id that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`).",
+            "description": "The schema that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`). An id, a qualified name or a placeholder.",
             "type": [
               "string",
               "null"
             ]
           },
           "default": {
-            "description": "The schema id that becomes the default when the removed schema is the default (`remove-schema`).",
+            "description": "The schema that becomes the default when the removed schema is the default (`remove-schema`). An id, a qualified name or a placeholder.",
             "type": [
               "string",
               "null"
             ]
           },
           "database": {
-            "description": "The database id (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`).",
+            "description": "The database (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`). An id, a qualified name or a placeholder.",
             "type": [
               "string",
               "null"
             ]
           },
           "entities": {
-            "description": "The entity ids (`materialize-tables`, `materialize-attributes`, `materialize-columns`).",
+            "description": "The entities (`materialize-tables`, `materialize-attributes`, `materialize-columns`), each an id, a qualified name or a placeholder.",
             "type": [
               "array",
               "null"
@@ -12404,7 +12416,7 @@
             }
           },
           "tables": {
-            "description": "The table and view ids (`materialize-entities`).",
+            "description": "The tables and views (`materialize-entities`), each an id, a qualified name or a placeholder.",
             "type": [
               "array",
               "null"
@@ -12414,7 +12426,7 @@
             }
           },
           "package": {
-            "description": "The package id the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, absent for the global one).",
+            "description": "The package the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, `tags-to-property`; absent for the global one). An id, a qualified name or a placeholder.",
             "type": [
               "string",
               "null"
@@ -12431,7 +12443,7 @@
             }
           },
           "attributes": {
-            "description": "The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped.",
+            "description": "The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped. An item that starts with `@` or `$` is one attribute or end by name or placeholder; the composite `attributeId.memberId` stays ids.",
             "type": [
               "array",
               "null"
@@ -12450,8 +12462,25 @@
               "type": "string"
             }
           },
+          "elementIds": {
+            "description": "The elements `names-to-ids` and `tags-to-property` act on, each an id, a qualified name or a placeholder; absent means every element they apply to.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "prefix": {
+            "description": "The prefix of the tags that move into the property `name` (`tags-to-property`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "expectedHashes": {
-            "description": "Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's\nupdates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is\na conflict and nothing is written.\n",
+            "description": "Materialize, `retag`, `tags-to-property` and `names-to-ids`: the hash the caller read of each element it expects the operation to change or delete (the preview's\nupdates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is\na conflict and nothing is written. A key may be an id or a qualified name; a placeholder key is MQ1015, two keys for\none element are MQ1014.\n",
             "type": [
               "object",
               "null"
@@ -12543,6 +12572,84 @@
               {
                 "type": "null"
               }
+            ]
+          },
+          "ids": {
+            "description": "When saved, the names the batch resolved, the placeholders it declared and the ids it minted; empty otherwise.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BatchIds"
+              }
+            ]
+          }
+        }
+      },
+      "BatchIds": {
+        "x-engine-record": "Maquettiste.Engine.BatchIds",
+        "description": "The names a batch resolved and the ids it minted (next-phase-1-design.md section 5.1).",
+        "type": "object",
+        "required": [
+          "names",
+          "minted"
+        ],
+        "properties": {
+          "names": {
+            "description": "Each placeholder declared and each qualified name used, to its id, ordinal by key.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "minted": {
+            "description": "The ids the engine minted, in operation and document order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MintedId"
+            }
+          }
+        }
+      },
+      "MintedId": {
+        "x-engine-record": "Maquettiste.Engine.MintedId",
+        "description": "An id the engine minted for a batch.",
+        "type": "object",
+        "required": [
+          "operation",
+          "pointer",
+          "kind",
+          "id",
+          "name",
+          "placeholder"
+        ],
+        "properties": {
+          "operation": {
+            "description": "The operation's index in the batch.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "pointer": {
+            "description": "The JSON pointer into the operation's element (`\"\"` for its root).",
+            "type": "string"
+          },
+          "kind": {
+            "description": "The element kind, else the index kind of the sub-element, else `sub-element`.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "description": "The longest qualified form (`@column:main.billing.payment_method.code`) when the kind has names.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "placeholder": {
+            "description": "The placeholder the batch declared on the object with `as`, if any.",
+            "type": [
+              "string",
+              "null"
             ]
           }
         }
@@ -23154,7 +23261,7 @@
         }
       },
       "AssistProposalFile": {
-        "description": "A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files).",
+        "description": "A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files) and the change as a unified diff.",
         "x-engine-record": "BatchPreviewFile",
         "type": "object",
         "required": [
@@ -23165,7 +23272,8 @@
           "name",
           "beforeHash",
           "before",
-          "after"
+          "after",
+          "diff"
         ],
         "properties": {
           "path": {
@@ -23210,6 +23318,13 @@
             ]
           },
           "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "diff": {
+            "description": "The change as a unified diff with three lines of context (`--- a/<path>`, `+++ b/<path>`, then hunks).",
             "type": [
               "string",
               "null"
@@ -25395,6 +25510,12 @@
         "type": "string",
         "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
       },
+      "idList": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/id"
+        }
+      },
       "description": {
         "description": "Markdown text, or a sidecar Markdown file beside the element's file.",
         "oneOf": [
@@ -25417,6 +25538,15 @@
             ],
             "additionalProperties": false
           }
+        ]
+      },
+      "status": {
+        "description": "The status of an element or sub-element: proposed, approved, deprecated or retired. It has no default. A reference to a retired element warns (MQ2022).",
+        "enum": [
+          "proposed",
+          "approved",
+          "deprecated",
+          "retired"
         ]
       },
       "key": {
@@ -25531,7 +25661,11 @@
           "displayName",
           "pluralName",
           "parent",
+          "dependsOn",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -25562,8 +25696,27 @@
           "parent": {
             "$ref": "#/components/schemas/id"
           },
+          "dependsOn": {
+            "description": "The packages this package's elements may reference. Declared, even as [], it makes the package and the packages under it checked; absent, the package is unchecked unless a parent declares it.",
+            "$ref": "#/components/schemas/idList",
+            "uniqueItems": true
+          },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -25594,12 +25747,6 @@
           "name"
         ],
         "additionalProperties": false
-      },
-      "idList": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/id"
-        }
       },
       "builtinType": {
         "description": "A built-in scalar type keyword.",
@@ -25747,6 +25894,9 @@
           "validation",
           "order",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -25827,6 +25977,20 @@
           "description": {
             "$ref": "#/components/schemas/description"
           },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
             "default": []
@@ -25874,6 +26038,9 @@
           "base",
           "lifecycle",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -25921,6 +26088,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -26257,6 +26438,9 @@
           "pluralName",
           "package",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -26290,6 +26474,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -26343,6 +26541,9 @@
           "pluralName",
           "package",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -26381,6 +26582,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -26461,6 +26676,9 @@
           "package",
           "flags",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -26499,6 +26717,20 @@
           "description": {
             "$ref": "#/components/schemas/description"
           },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
             "default": []
@@ -26523,6 +26755,9 @@
                 "value",
                 "code",
                 "description",
+                "rationale",
+                "decision",
+                "status",
                 "stereotypes",
                 "tags",
                 "category",
@@ -26553,6 +26788,20 @@
                 },
                 "description": {
                   "$ref": "#/components/schemas/description"
+                },
+                "rationale": {
+                  "description": "Markdown text: why the element is shaped this way.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "decision": {
+                  "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "status": {
+                  "$ref": "#/components/schemas/status"
                 },
                 "stereotypes": {
                   "$ref": "#/components/schemas/keyList",
@@ -26627,6 +26876,9 @@
           "inverseName",
           "relationKind",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -26675,6 +26927,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -26817,10 +27083,14 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "dialect",
           "version",
           "defaultSchema",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -26853,6 +27123,10 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "description": "The owning package. Membership only: packages routes the tables.",
+            "$ref": "#/components/schemas/id"
+          },
           "dialect": {
             "enum": [
               "postgresql",
@@ -26872,6 +27146,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -26895,6 +27183,9 @@
                 "displayName",
                 "pluralName",
                 "description",
+                "rationale",
+                "decision",
+                "status",
                 "stereotypes",
                 "tags",
                 "category",
@@ -26918,6 +27209,20 @@
                 },
                 "description": {
                   "$ref": "#/components/schemas/description"
+                },
+                "rationale": {
+                  "description": "Markdown text: why the element is shaped this way.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "decision": {
+                  "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "status": {
+                  "$ref": "#/components/schemas/status"
                 },
                 "stereotypes": {
                   "$ref": "#/components/schemas/keyList",
@@ -27104,6 +27409,7 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "database",
           "schema",
           "origin",
@@ -27111,6 +27417,9 @@
           "attribute",
           "relation",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -27149,6 +27458,10 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "description": "The owning package. Membership only: the database still decides where the object goes.",
+            "$ref": "#/components/schemas/id"
+          },
           "database": {
             "$ref": "#/components/schemas/id"
           },
@@ -27177,6 +27490,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -27220,6 +27547,9 @@
                 "collation",
                 "comment",
                 "description",
+                "rationale",
+                "decision",
+                "status",
                 "stereotypes",
                 "tags",
                 "category",
@@ -27341,6 +27671,20 @@
                 },
                 "description": {
                   "$ref": "#/components/schemas/description"
+                },
+                "rationale": {
+                  "description": "Markdown text: why the element is shaped this way.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "decision": {
+                  "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "status": {
+                  "$ref": "#/components/schemas/status"
                 },
                 "stereotypes": {
                   "$ref": "#/components/schemas/keyList",
@@ -27988,9 +28332,13 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "database",
           "schema",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -28027,6 +28375,10 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "description": "The owning package. Membership only: the database still decides where the object goes.",
+            "$ref": "#/components/schemas/id"
+          },
           "database": {
             "$ref": "#/components/schemas/id"
           },
@@ -28035,6 +28387,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -28146,9 +28512,13 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "database",
           "schema",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -28183,6 +28553,10 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "description": "The owning package. Membership only: the database still decides where the object goes.",
+            "$ref": "#/components/schemas/id"
+          },
           "database": {
             "$ref": "#/components/schemas/id"
           },
@@ -28191,6 +28565,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -28279,9 +28667,13 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "database",
           "schema",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -28320,6 +28712,10 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "description": "The owning package. Membership only: the database still decides where the object goes.",
+            "$ref": "#/components/schemas/id"
+          },
           "database": {
             "$ref": "#/components/schemas/id"
           },
@@ -28328,6 +28724,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -28607,9 +29017,13 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "database",
           "schema",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -28649,6 +29063,10 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "description": "The owning package. Membership only: the database still decides where the object goes.",
+            "$ref": "#/components/schemas/id"
+          },
           "database": {
             "$ref": "#/components/schemas/id"
           },
@@ -28657,6 +29075,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -28809,9 +29241,13 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "database",
           "schema",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -28845,6 +29281,10 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "description": "The owning package. Membership only: the database still decides where the object goes.",
+            "$ref": "#/components/schemas/id"
+          },
           "database": {
             "$ref": "#/components/schemas/id"
           },
@@ -28853,6 +29293,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -29528,8 +29982,12 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "database",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -29569,11 +30027,29 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "description": "The owning package. Membership only: the database still decides where the object goes.",
+            "$ref": "#/components/schemas/id"
+          },
           "database": {
             "$ref": "#/components/schemas/id"
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -30274,12 +30750,16 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "database",
           "entity",
           "relation",
           "table",
           "schema",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -30317,6 +30797,10 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "description": "The owning package. Membership only: the database still decides where the object goes.",
+            "$ref": "#/components/schemas/id"
+          },
           "database": {
             "$ref": "#/components/schemas/id"
           },
@@ -30335,6 +30819,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -30501,6 +30999,9 @@
           "process",
           "membership",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -30547,6 +31048,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -30660,6 +31175,9 @@
           "displayName",
           "pluralName",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -30695,6 +31213,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -30771,6 +31303,9 @@
           "displayName",
           "pluralName",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -30806,6 +31341,20 @@
           "description": {
             "$ref": "#/components/schemas/description"
           },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
             "default": []
@@ -30831,6 +31380,9 @@
                 "parent",
                 "order",
                 "description",
+                "rationale",
+                "decision",
+                "status",
                 "stereotypes",
                 "tags",
                 "category",
@@ -30860,6 +31412,20 @@
                 },
                 "description": {
                   "$ref": "#/components/schemas/description"
+                },
+                "rationale": {
+                  "description": "Markdown text: why the element is shaped this way.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "decision": {
+                  "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "status": {
+                  "$ref": "#/components/schemas/status"
                 },
                 "stereotypes": {
                   "$ref": "#/components/schemas/keyList",
@@ -30924,12 +31490,21 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
           "appliesTo",
+          "group",
+          "requires",
+          "conflicts",
+          "implies",
           "attributes",
+          "parameters",
           "defaultProperties",
           "storage",
           "icon",
@@ -30962,8 +31537,25 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "$ref": "#/components/schemas/id"
+          },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -31015,6 +31607,25 @@
             "uniqueItems": true,
             "default": []
           },
+          "group": {
+            "description": "A label, not a link: an element carries at most one stereotype of a group, its own and implied ones together (MQ2013).",
+            "$ref": "#/components/schemas/key"
+          },
+          "requires": {
+            "description": "Stereotype keys an element that carries this one must also carry (MQ2014).",
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "conflicts": {
+            "description": "Stereotype keys an element that carries this one must not carry (MQ2015).",
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "implies": {
+            "description": "Stereotype keys applied with this one, one level deep: an element that carries it carries them too, before its own stereotypes (MQ2017 refuses a stereotype that implies one that implies others).",
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
           "attributes": {
             "type": "array",
             "x-sort": "order",
@@ -31023,7 +31634,35 @@
             },
             "default": []
           },
+          "parameters": {
+            "description": "Typed parameters, shaped like an extension file: a JSON Schema per property name (x-ref and x-translatable included) and the names each carrier must have. Values stay in the element's properties; defaults live in defaultProperties (MQ2018, MQ2019).",
+            "type": "object",
+            "x-order": [
+              "properties",
+              "required"
+            ],
+            "properties": {
+              "properties": {
+                "description": "A JSON Schema properties object: one schema per parameter name.",
+                "type": "object"
+              },
+              "required": {
+                "description": "The parameters each carrier must have, judged on its merged values (the stereotype's defaults count).",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true,
+                "default": []
+              }
+            },
+            "required": [
+              "properties"
+            ],
+            "additionalProperties": false
+          },
           "defaultProperties": {
+            "description": "Default property values, merged under each carrier's own properties; each is checked against its own schema in parameters, without required (MQ2018).",
             "type": "object",
             "default": {}
           },
@@ -31069,7 +31708,11 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -31102,8 +31745,25 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "$ref": "#/components/schemas/id"
+          },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -31345,7 +32005,11 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -31381,8 +32045,25 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "$ref": "#/components/schemas/id"
+          },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -32021,6 +32702,9 @@
           "subject",
           "boundAttribute",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -32075,6 +32759,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -32661,8 +33359,12 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "type",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -32690,6 +33392,9 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "$ref": "#/components/schemas/id"
+          },
           "type": {
             "enum": [
               "person",
@@ -32699,6 +33404,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -32863,8 +33582,12 @@
           "name",
           "displayName",
           "pluralName",
+          "package",
           "process",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -32895,12 +33618,29 @@
           "pluralName": {
             "type": "string"
           },
+          "package": {
+            "$ref": "#/components/schemas/id"
+          },
           "process": {
             "description": "The process; the scenario belongs to it.",
             "$ref": "#/components/schemas/id"
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -33307,6 +34047,9 @@
           "fact",
           "after",
           "description",
+          "rationale",
+          "decision",
+          "status",
           "stereotypes",
           "tags",
           "category",
@@ -33383,6 +34126,20 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -33953,10 +34710,34 @@
           }
         }
       },
+      "placeholder": {
+        "description": "A name a batch declares with as and uses anywhere in the batch.",
+        "type": "string",
+        "pattern": "^\\$[A-Za-z_][A-Za-z0-9_-]*$"
+      },
+      "qualifiedName": {
+        "description": "An element or sub-element by kind and stored name: @kind:path, its segments separated by dots, a segment with a dot, quote or white space written in double quotes.",
+        "type": "string",
+        "pattern": "^@[a-z][a-z-]*:.+$"
+      },
+      "idOrName": {
+        "description": "An id, a qualified name or a placeholder.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/id"
+          },
+          {
+            "$ref": "#/components/schemas/placeholder"
+          },
+          {
+            "$ref": "#/components/schemas/qualifiedName"
+          }
+        ]
+      },
       "batch": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Model batch",
-        "description": "An atomic batch of element creates, updates and deletes, database schema operations, materialize operations and process operations, from the editor, a refactoring or an AI proposal.",
+        "description": "An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, process operations, tag operations and the names-to-ids refactor, from the editor, a refactoring or an AI proposal.",
         "type": "object",
         "x-order": [
           "operations"
@@ -33970,6 +34751,7 @@
               "x-order": [
                 "op",
                 "id",
+                "as",
                 "expectedHash",
                 "resolution",
                 "element",
@@ -33982,7 +34764,9 @@
                 "package",
                 "columns",
                 "attributes",
+                "elementIds",
                 "tags",
+                "prefix",
                 "expectedHashes",
                 "schema",
                 "name",
@@ -34008,11 +34792,18 @@
                     "set-lifecycle",
                     "set-initial",
                     "refresh-scenario",
-                    "retag"
+                    "retag",
+                    "tags-to-property",
+                    "names-to-ids"
                   ]
                 },
                 "id": {
-                  "$ref": "#/components/schemas/id"
+                  "description": "The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder.",
+                  "$ref": "#/components/schemas/idOrName"
+                },
+                "as": {
+                  "description": "Create and update: a placeholder that names the operation's element for the whole batch.",
+                  "$ref": "#/components/schemas/placeholder"
                 },
                 "expectedHash": {
                   "type": "string",
@@ -34027,6 +34818,7 @@
                   ]
                 },
                 "element": {
+                  "description": "The element document. Its references may be qualified names or placeholders, and an object whose schema requires an id may carry as; the engine mints every missing id below the root.",
                   "type": "object",
                   "required": [
                     "kind"
@@ -34055,22 +34847,28 @@
                   ]
                 },
                 "database": {
-                  "description": "The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns).",
-                  "$ref": "#/components/schemas/id"
+                  "description": "The database: an id, a qualified name or a placeholder (materialize-tables, materialize-entities, materialize-attributes, materialize-columns).",
+                  "$ref": "#/components/schemas/idOrName"
                 },
                 "entities": {
-                  "description": "The entities that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns).",
-                  "$ref": "#/components/schemas/idList",
+                  "description": "The entities, each an id, a qualified name or a placeholder, that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns).",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/idOrName"
+                  },
                   "minItems": 1
                 },
                 "tables": {
-                  "description": "The designed or imported tables and the views that get an entity and a binding (materialize-entities).",
-                  "$ref": "#/components/schemas/idList",
+                  "description": "The designed or imported tables and the views, each an id, a qualified name or a placeholder, that get an entity and a binding (materialize-entities).",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/idOrName"
+                  },
                   "minItems": 1
                 },
                 "package": {
-                  "description": "The package the new entities go to (materialize-entities); the domain whose tag vocabulary it is (retag; absent for the global one).",
-                  "$ref": "#/components/schemas/id"
+                  "description": "The package the new entities go to (materialize-entities); the domain whose tag vocabulary it is (retag, tags-to-property; absent for the global one). An id, a qualified name or a placeholder.",
+                  "$ref": "#/components/schemas/idOrName"
                 },
                 "columns": {
                   "description": "The columns of the source, as keys or physical names, that get an attribute mapped to them (materialize-attributes, one entity only); absent means every column nothing in the binding names.",
@@ -34082,7 +34880,7 @@
                   "minItems": 1
                 },
                 "attributes": {
-                  "description": "The binding field references (attribute ids, attributeId.memberId for a value object member, to-one end ids) that get a column of the entity's table mapped to them (materialize-columns, one entity only); absent means every attribute the binding leaves unmapped.",
+                  "description": "The binding field references (attribute ids, attributeId.memberId for a value object member, to-one end ids) that get a column of the entity's table mapped to them (materialize-columns, one entity only); absent means every attribute the binding leaves unmapped. An item that starts with @ or $ names one attribute or end; the composite attributeId.memberId stays ids.",
                   "type": "array",
                   "items": {
                     "type": "string",
@@ -34090,13 +34888,27 @@
                   },
                   "minItems": 1
                 },
+                "elementIds": {
+                  "description": "The elements names-to-ids and tags-to-property act on, each an id, a qualified name or a placeholder; absent means every element they apply to (names-to-ids: every document with x-ref sites; tags-to-property: every holder the vocabulary governs, and the moved tags' declarations leave the vocabulary).",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/idOrName"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                },
                 "tags": {
                   "description": "The tag keys to remove, or the one to rename (retag).",
                   "$ref": "#/components/schemas/tagList",
                   "minItems": 1
                 },
+                "prefix": {
+                  "description": "The prefix of the tags that move into the property name (tags-to-property): each tag that starts with it and leaves a non-empty suffix.",
+                  "type": "string",
+                  "minLength": 1
+                },
                 "expectedHashes": {
-                  "description": "Materialize and retag: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version.",
+                  "description": "Materialize, retag, tags-to-property and names-to-ids: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. A key may be a qualified name, never a placeholder.",
                   "type": "object",
                   "additionalProperties": {
                     "type": "string",
@@ -34104,21 +34916,21 @@
                   }
                 },
                 "schema": {
-                  "description": "The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own).",
-                  "$ref": "#/components/schemas/id"
+                  "description": "The database schema: an id, a qualified name or a placeholder (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own).",
+                  "$ref": "#/components/schemas/idOrName"
                 },
                 "name": {
-                  "description": "The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags).",
+                  "description": "The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags); the custom property the tags move to (tags-to-property).",
                   "type": "string",
                   "minLength": 1
                 },
                 "target": {
-                  "description": "The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial).",
-                  "$ref": "#/components/schemas/id"
+                  "description": "The schema that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial). An id, a qualified name or a placeholder.",
+                  "$ref": "#/components/schemas/idOrName"
                 },
                 "default": {
-                  "description": "The schema id that becomes the default when the removed schema is the default (remove-schema).",
-                  "$ref": "#/components/schemas/id"
+                  "description": "The schema that becomes the default when the removed schema is the default (remove-schema): an id, a qualified name or a placeholder.",
+                  "$ref": "#/components/schemas/idOrName"
                 }
               },
               "required": [
@@ -34280,6 +35092,21 @@
                   "if": {
                     "properties": {
                       "op": {
+                        "const": "tags-to-property"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "prefix",
+                      "name"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "op": {
                         "const": "set-initial"
                       }
                     }
@@ -34333,7 +35160,33 @@
         "required": [
           "operations"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "$defs": {
+          "placeholder": {
+            "description": "A name a batch declares with as and uses anywhere in the batch.",
+            "type": "string",
+            "pattern": "^\\$[A-Za-z_][A-Za-z0-9_-]*$"
+          },
+          "qualifiedName": {
+            "description": "An element or sub-element by kind and stored name: @kind:path, its segments separated by dots, a segment with a dot, quote or white space written in double quotes.",
+            "type": "string",
+            "pattern": "^@[a-z][a-z-]*:.+$"
+          },
+          "idOrName": {
+            "description": "An id, a qualified name or a placeholder.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/id"
+              },
+              {
+                "$ref": "#/components/schemas/placeholder"
+              },
+              {
+                "$ref": "#/components/schemas/qualifiedName"
+              }
+            ]
+          }
+        }
       },
       "pack": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -34375,7 +35228,7 @@
             "default": {}
           },
           "parameterSchema": {
-            "description": "The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters.",
+            "description": "The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters. On a string, or an array's items, x-ref types the value as the id of an element or sub-element (MQ2009).",
             "type": "object",
             "x-order": [
               "properties",

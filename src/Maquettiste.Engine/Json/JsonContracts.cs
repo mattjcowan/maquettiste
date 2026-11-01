@@ -109,6 +109,13 @@ public sealed class ObjectLayout
     /// </summary>
     public string? CollapseKey { get; internal set; }
 
+    /// <summary>
+    /// Whether the object's schema requires an <c>id</c> typed <c>common.json#/$defs/id</c>, through its own keywords or the
+    /// <c>allOf</c>, <c>anyOf</c> and <c>oneOf</c> branches merged into it (never a <c>then</c>): an element root or a sub-element,
+    /// where the engine mints a missing id (next-phase-1-design.md section 5.1).
+    /// </summary>
+    public bool RequiresId { get; internal set; }
+
     /// <summary>Whether the location is an object with declared keys.</summary>
     public bool HasKeys => _keys.Count > 0;
 

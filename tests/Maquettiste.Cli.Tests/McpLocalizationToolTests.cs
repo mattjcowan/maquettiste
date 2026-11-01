@@ -48,6 +48,45 @@ public sealed class McpLocalizationToolTests
     }
 
     [Fact]
+    public async Task Translations_handle_property_fields()
+    {
+        const string recipe = "01JRDE00000000000000000001";
+        const string root = ".maquettiste/model/locales/fr/_root.json";
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.ReferenceData();
+        repo.Write(".maquettiste/extensions/texts.json",
+            """{ "name": "texts", "appliesTo": { "kinds": ["entity"] }, "properties": { "footer": { "type": "string", "x-translatable": true }, "note": { "type": "string" } } }""");
+        repo.Replace(".maquettiste/model/entities/recipe.json", "\"name\": \"Recipe\",",
+            "\"name\": \"Recipe\",\n  \"properties\": { \"footer\": \"Thank you for cooking.\", \"note\": \"Plain.\" },");
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var read = await session.CallAsync("get_translations", new { locale = "fr", owner = recipe });
+        var written = await session.CallAsync("set_translations", new
+        {
+            locale = "fr",
+            entries = new[] { new { id = recipe, field = "properties/footer", value = "Merci d'avoir cuisiné." } },
+            expected = new Dictionary<string, string>(),
+        });
+        var plain = await session.CallAsync("set_translations", new { locale = "fr", entries = new[] { new { id = recipe, field = "properties/note", value = "x" } } });
+        var after = await session.CallAsync("get_translations", new { locale = "fr", owner = recipe });
+        var status = await session.CallAsync("localization_status");
+
+        Assert.False(read.IsError, read.ToString());
+        var row = Assert.Single(read.Json["entries"]!.AsArray(), e => (string)e!["field"]! == "properties/footer")!;
+        Assert.Equal(("Thank you for cooking.", "missing", root), ((string?)row["source"], (string?)row["state"], (string?)row["shard"]));
+        Assert.DoesNotContain(read.Json["entries"]!.AsArray(), e => (string)e!["field"]! == "properties/note");
+        Assert.False(written.IsError, written.ToString());
+        Assert.Equal("saved", (string)written.Json["outcome"]!);
+        Assert.Equal("invalid", plain.Code);
+        var translated = Assert.Single(after.Json["entries"]!.AsArray(), e => (string)e!["field"]! == "properties/footer")!;
+        Assert.Equal(("Merci d'avoir cuisiné.", "translated"), ((string?)translated["translation"], (string?)translated["state"]));
+        Assert.Contains("\"footer\": \"Merci d'avoir cuisiné.\"", repo.Read(root), StringComparison.Ordinal);
+        Assert.Contains("\"properties/footer\": ", repo.Read(root), StringComparison.Ordinal);
+        var shard = status.Json["locales"]!.AsArray().Single(l => (string)l!["locale"]! == "fr")!["shards"]!.AsArray().Single(s => (string)s!["shard"]! == root)!;
+        Assert.True((int)shard["translated"]! >= 1, shard.ToJsonString());
+    }
+
+    [Fact]
     public async Task Seed_csv_export_import_preview_apply_and_reference_type_usage()
     {
         var ct = TestContext.Current.CancellationToken;

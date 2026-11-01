@@ -157,11 +157,26 @@ public sealed class ResolvedCoverageTests
         ("stereotype", "defaultProperties"), ("stereotype", "properties"), ("stereotype", "generation"),
         // A stereotype's storage reaches templates merged under a table's own (table.storage), as its defaultProperties do.
         ("stereotype", "storage"),
+        // A stereotype's package (next-phase-1-design.md section 4.3) is membership, which layering and the index read from the
+        // file; the summary an annotated object carries has no package.
+        ("stereotype", "package"),
+        // A stereotype's group, requires, conflicts, implies and parameters (next-phase-1-design.md section 4.2) are judged by
+        // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
+        // the merged properties), not as members of the summary.
+        ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
 
         // A category reaches templates only as the summary an annotated object carries (id, name, path).
         ("category", "displayName"), ("category", "pluralName"), ("category", "parent"), ("category", "order"), ("category", "description"),
         ("category", "stereotypes"), ("category", "tags"), ("category", "category"), ("category", "properties"), ("category", "generation"),
+
+        // Rationale, decision and status (next-phase-1-design.md section 4.5) resolve on every RAnnotated object; these three
+        // targets resolve to types that are not RAnnotated (an enum member is a plain RObject, a stereotype and a category reach
+        // templates only as the summaries above), so their annotations wait with their other pending members.
+        .. Annotations("enum member", "stereotype", "category"),
     ];
+
+    private static IEnumerable<(string Target, string Property)> Annotations(params string[] targets) =>
+        targets.SelectMany(t => new[] { (t, "rationale"), (t, "decision"), (t, "status") });
 
     /// <summary>
     /// Kinds with no resolved object at all (found 2026-10-01, a later round): every property of their files is pending. A mapping

@@ -89,7 +89,7 @@ internal sealed class DatabaseObjectIndex
     public bool InCycle(string id, out string names) => _cycles.TryGetValue(id, out names!);
 
     /// <summary>Tarjan's strongly connected components, iterative, over the graph's nodes in ordinal order (edges to unknown nodes ignored).</summary>
-    private static List<List<string>> StronglyConnected(Dictionary<string, List<string>> edges)
+    internal static List<List<string>> StronglyConnected(Dictionary<string, List<string>> edges)
     {
         var index = new Dictionary<string, int>(StringComparer.Ordinal);
         var low = new Dictionary<string, int>(StringComparer.Ordinal);

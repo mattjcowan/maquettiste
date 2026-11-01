@@ -1,11 +1,16 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
 public sealed class ModelStoreDeleteTests
 {
+    private const string ScratchId = "01K9XRF00000000000000000E1";
+    private const string Settings = ".maquettiste/maquettiste.json";
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -155,5 +160,95 @@ public sealed class ModelStoreDeleteTests
 
         Assert.Equal(SaveOutcome.Invalid, array.Outcome);
         Assert.Equal(("MQ1002", "/kind"), (noKind.Diagnostics[0].Rule, noKind.Diagnostics[0].JsonPointer));
+    }
+
+    [Fact]
+    public async Task A_pack_parameter_naming_the_element_refuses_a_plain_delete()
+    {
+        // next-phase-1-design.md section 4.1: a pack parameter value an x-ref types is a setting, not a model document; a plain delete
+        // never changes the settings, so it refuses with MQ2001 in maquettiste.json at the value, with no element id.
+        await using var s = await WithReportsPack(optional: true);
+        var scratch = s.Model.GetDocument(ScratchId)!;
+        var before = s.Files();
+
+        var result = await s.Store.DeleteAsync(ScratchId, scratch.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Invalid, result.Outcome);
+        Assert.Equal(["/packs/reports/parameters/audited/0", "/packs/reports/parameters/rootEntity"],
+            result.Diagnostics.Where(x => x.Rule == "MQ2001").Select(x => x.JsonPointer!).Order(StringComparer.Ordinal));
+        var d = Assert.Single(result.Diagnostics, x => x.Rule == "MQ2001" && x.JsonPointer == "/packs/reports/parameters/rootEntity");
+        Assert.Equal((null, Settings), (d.ElementId, d.FilePath));
+        Assert.Contains("Parameter 'rootEntity' of pack 'reports' names entity Scratch", d.Message, StringComparison.Ordinal);
+        Assert.Equal(before, s.Files());
+
+        var plan = await s.Store.GetDeletePlanAsync([ScratchId], DeleteResolution.Refuse, Ct);
+        Assert.Equal(SaveOutcome.Invalid, plan.Outcome);
+        Assert.Equal(
+            [(null, "/packs/reports/parameters/audited/0"), (null, "/packs/reports/parameters/rootEntity")],
+            plan.Refused.Select(x => (x.Id, x.Pointer)).Order());
+        Assert.All(plan.Refused, x => Assert.Equal("MQ2001", x.Rule));
+        // A required value refuses remove-references the same way.
+        await using var required = await WithReportsPack(optional: false);
+        var refused = await required.Store.GetDeletePlanAsync([ScratchId], DeleteResolution.RemoveReferences, Ct);
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        Assert.Contains(refused.Refused, x => x.Id is null && x.Pointer == "/packs/reports/parameters/rootEntity" && x.Why.Contains("without optional", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Remove_references_removes_an_optional_pack_parameter_in_the_same_change()
+    {
+        await using var s = await WithReportsPack(optional: true);
+        var scratch = s.Model.GetDocument(ScratchId)!;
+        var customer = s.Id("entity", "Customer");
+
+        var plan = await s.Store.GetDeletePlanAsync([ScratchId], DeleteResolution.RemoveReferences, Ct);
+        Assert.Equal(SaveOutcome.Saved, plan.Outcome);
+        Assert.Equal(["/packs/reports/parameters/audited/0", "/packs/reports/parameters/rootEntity"], plan.Settings.Select(x => x.Pointer).Order(StringComparer.Ordinal));
+        Assert.Contains(plan.Settings, x => x.What == "parameter 'rootEntity' of pack 'reports', which names entity Scratch");
+
+        var result = await s.Store.DeleteAsync(ScratchId, scratch.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        Assert.False(s.Harness.Exists("model/entities/scratch.json"));
+        var parameters = s.Model.Settings.Packs["reports"].Parameters;
+        Assert.False(parameters.ContainsKey("rootEntity"));
+        Assert.Equal([customer], parameters["audited"].EnumerateArray().Select(e => e.GetString()));
+        using var written = JsonDocument.Parse(s.Harness.Read("maquettiste.json"));
+        var onDisk = written.RootElement.GetProperty("packs").GetProperty("reports").GetProperty("parameters");
+        Assert.False(onDisk.TryGetProperty("rootEntity", out _));
+        Assert.Equal(1, onDisk.GetProperty("audited").GetArrayLength());
+        Assert.Single(s.Notifications);
+    }
+
+    /// <summary>
+    /// The billing store with an entity Scratch that nothing in the model references, and a local pack <c>reports</c> whose
+    /// parameterSchema types <c>rootEntity</c> and the items of <c>audited</c> as entity links; the project names Scratch in both.
+    /// </summary>
+    private static async Task<BillingStore> WithReportsPack(bool optional)
+    {
+        var s = await BillingStore.OpenAsync(load: false);
+        var flag = optional ? "true" : "false";
+        s.Harness.Write("templates/reports/pack.json", $$"""
+            { "name": "reports", "version": "1.0.0", "engine": ">=1.0", "units": [],
+              "parameterSchema": { "properties": {
+                "rootEntity": { "type": "string", "x-ref": { "kind": "entity", "optional": {{flag}} } },
+                "audited": { "type": "array", "items": { "type": "string", "x-ref": { "kind": "entity", "optional": {{flag}} } } } } } }
+            """);
+        var entity = new JsonObject
+        {
+            ["kind"] = "entity", ["id"] = ScratchId, ["name"] = "Scratch",
+            ["key"] = new JsonObject { ["attributes"] = new JsonArray("01K9XRF00000000000000000E2") },
+            ["attributes"] = new JsonArray(new JsonObject { ["id"] = "01K9XRF00000000000000000E2", ["name"] = "id", ["type"] = "uuid", ["required"] = true }),
+        };
+        s.Harness.Write("model/entities/scratch.json", Encoding.UTF8.GetString(TestServices.Json.Write(entity, "entity.json", ".maquettiste/model/entities/scratch.json")));
+        var settings = JsonNode.Parse(s.Harness.Read("maquettiste.json"))!.AsObject();
+        var customer = JsonNode.Parse(s.Harness.Read("model/entities/customer.json"))!["id"]!.GetValue<string>();
+        settings["packs"]!["reports"] = new JsonObject
+        {
+            ["parameters"] = new JsonObject { ["rootEntity"] = ScratchId, ["audited"] = new JsonArray(ScratchId, customer) },
+        };
+        s.Harness.Write("maquettiste.json", Encoding.UTF8.GetString(TestServices.Json.Write(settings, "maquettiste.json", Settings)));
+        await s.Store.LoadAsync(Ct);
+        return s;
     }
 }

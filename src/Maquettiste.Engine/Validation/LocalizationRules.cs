@@ -80,10 +80,13 @@ internal static class LocalizationRules
                     continue;
                 }
 
-                foreach (var field in LocalizationIndex.Fields.Where(f => LocalizationIndex.Has(entry, f) && !node.Allows(f)))
+                foreach (var field in LocalizationIndex.FieldsIn(entry).Where(f => !node.Allows(f)))
                 {
                     if (field == LocalizationIndex.PluralNameField && node.Kind == "end")
                         diagnostics.Add(RuleCatalog.Create("MQ7211", $"The '{locale}' plural name of the to-one end {id} is never read.", id, shard.Path, Pointer(id, field)));
+                    else if (LocalizationIndex.PropertyNameOf(field) is { } name)
+                        diagnostics.Add(RuleCatalog.Create("MQ7203", $"The '{locale}' entry {id} translates the property '{name}', which no schema that applies to the {node.Kind} marks x-translatable.",
+                            id, shard.Path, Pointer(id, field)));
                     else
                         diagnostics.Add(RuleCatalog.Create("MQ7203", $"The '{locale}' entry {id} has a '{field}', which a {node.Kind} does not have.", id, shard.Path, Pointer(id, field)));
                 }
@@ -130,7 +133,9 @@ internal static class LocalizationRules
         return cut < 0 ? modelPath : settings[..cut] + "/" + modelPath;
     }
 
-    private static string Pointer(string id, string field) => "/entries/" + id + "/" + JsonPointer.Escape(field);
+    private static string Pointer(string id, string field) => LocalizationIndex.PropertyNameOf(field) is { } name
+        ? "/entries/" + id + "/properties/" + JsonPointer.Escape(name)
+        : "/entries/" + id + "/" + JsonPointer.Escape(field);
 
     private static string Str(int i) => i.ToString(CultureInfo.InvariantCulture);
 }

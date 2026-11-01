@@ -82,7 +82,7 @@
       "additionalProperties": false
     },
     "properties": {
-      "description": "A JSON Schema properties object.",
+      "description": "A JSON Schema properties object: one schema per property name. On a string, or an array's items, x-ref types the value as the id of an element or sub-element (MQ2009). On a top-level string property, \"x-translatable\": true translates its text per locale (MQ7212, MQ7213).",
       "type": "object",
       "additionalProperties": {
         "type": [

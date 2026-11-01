@@ -356,6 +356,40 @@ public sealed class CanonicalJsonTests
     }
 
     [Fact]
+    public void Absent_rationale_decision_and_status_keep_files_byte_identical()
+    {
+        // next-phase-1-design.md section 4.5: the three keys have no default, so a file without them reads and writes back as it was.
+        var model = Fixtures.Path("models", "billing", ".maquettiste", "model");
+        var files = Directory.EnumerateFiles(model, "*.json", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToList();
+        Assert.True(files.Count > 20, files.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        foreach (var file in files)
+        {
+            var bytes = File.ReadAllBytes(file);
+            var path = ".maquettiste/model/" + System.IO.Path.GetRelativePath(model, file).Replace('\\', '/');
+            var element = ElementReader.ReadElement(bytes);
+            Assert.Equal((null, null, null), (element.Rationale, element.Decision, element.Status));
+            Assert.Equal(Encoding.UTF8.GetString(bytes), Encoding.UTF8.GetString(Canonical.Serialize(element, KindInfo.Get(element.Kind).SchemaFile, path)));
+        }
+
+        // Written, they follow description in the element and in its sub-elements, and read back into the records.
+        const string entity = """
+            {
+              "kind": "entity", "id": "01JAX3K9V2Q7M4T8W1Z5C6B0DE", "name": "Invoice", "status": "deprecated", "decision": "ADR-0042",
+              "stereotypes": ["audited"], "rationale": "Kept for **issued** invoices.", "description": "A bill.",
+              "attributes": [{ "id": "01JAX3KA1B2C3D4E5F6G7H8J9K", "name": "total", "status": "retired", "type": "decimal", "rationale": "Old total." }]
+            }
+            """;
+        var text = Write(entity);
+        var node = JsonNode.Parse(text)!.AsObject();
+        Assert.Equal(["$schema", "kind", "id", "name", "description", "rationale", "decision", "status", "stereotypes", "attributes"], node.Select(p => p.Key));
+        Assert.Equal(["id", "name", "type", "rationale", "status"], node["attributes"]![0]!.AsObject().Select(p => p.Key));
+        var read = Assert.IsType<Entity>(ElementReader.ReadElement(Encoding.UTF8.GetBytes(text)));
+        Assert.Equal(("Kept for **issued** invoices.", "ADR-0042", ElementStatus.Deprecated), (read.Rationale, read.Decision, read.Status));
+        Assert.Equal(("Old total.", ElementStatus.Retired), (read.Attributes[0].Rationale, read.Attributes[0].Status));
+        Assert.Equal(text, Encoding.UTF8.GetString(Canonical.Serialize(read, "entity.json", EntityPath)));
+    }
+
+    [Fact]
     public void Designed_columns_drop_nullable_true_but_overlay_columns_keep_it()
     {
         const string table = """

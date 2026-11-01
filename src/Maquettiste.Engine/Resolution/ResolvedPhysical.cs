@@ -225,7 +225,7 @@ public sealed class RTable : RAnnotated
     /// <summary>Whether the table is a relation's junction table.</summary>
     public bool IsJunction { get; internal set; }
 
-    /// <summary>The seeds whose target is this table (a table file's), by seed name.</summary>
+    /// <summary>The seeds whose target is this table (a table file's), in merge order (package qualified name with none first, name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 
     /// <summary>The reference types whose rows the table holds (their bindings, 2026-10-11), by (type name, type id).</summary>

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Immutable;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine.Validation;
 
@@ -46,6 +47,8 @@ internal sealed class ValidationContext
     private readonly Lazy<FrozenSet<string>> _modelTypeNames;
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<NativeTypeUse>>> _userDefinedTypes;
     private readonly Lazy<DatabaseObjectIndex> _databaseObjects;
+    private readonly Lazy<PackageLayers> _layers;
+    private readonly Lazy<SeedOrder> _seedOrder;
 
     /// <summary>Creates a context.</summary>
     /// <param name="model">The snapshot.</param>
@@ -74,6 +77,8 @@ internal sealed class ValidationContext
         _modelTypeNames = new(BuildModelTypeNames);
         _userDefinedTypes = new(BuildUserDefinedTypes);
         _databaseObjects = new(() => DatabaseObjectIndex.Build(this));
+        _layers = new(() => PackageLayers.Build(this));
+        _seedOrder = new(() => new SeedOrder(model));
     }
 
     /// <summary>A context over the same model and documents, sharing every index already built, with other rule names.</summary>
@@ -101,16 +106,24 @@ internal sealed class ValidationContext
         _modelTypeNames = other._modelTypeNames;
         _userDefinedTypes = other._userDefinedTypes;
         _databaseObjects = other._databaseObjects;
+        _layers = other._layers;
+        _seedOrder = other._seedOrder;
     }
 
     /// <summary>The database types by name and the dependency cycles among routines, database types and SQL objects (MQ4018 to MQ4020).</summary>
     public DatabaseObjectIndex DatabaseObjects => _databaseObjects.Value;
 
+    /// <summary>The layers packages declare: which are checked and what each may reference (MQ2020, MQ2021).</summary>
+    public PackageLayers Layers => _layers.Value;
+
+    /// <summary>The order seeds of one target merge in (<see cref="Resolution.SeedOrder"/>), and their packages' names for messages.</summary>
+    public SeedOrder SeedOrder => _seedOrder.Value;
+
     /// <summary>The reference-data facts: reference-typed attributes, ends and each type's codes.</summary>
     public ReferenceDataIndex ReferenceData => _referenceData.Value;
 
-    /// <summary>The seeds of a target, ordered by (name, id).</summary>
-    /// <param name="targetId">The entity, relation or reference type id.</param>
+    /// <summary>The seeds of a target in merge order (<see cref="Resolution.SeedOrder"/>: package qualified name with none first, then name, then id).</summary>
+    /// <param name="targetId">The entity, relation, reference type or table id.</param>
     /// <returns>The seeds.</returns>
     public ImmutableArray<Seed> SeedsOf(string targetId) => _seeds.Value.TryGetValue(targetId, out var list) ? list : [];
 
@@ -132,7 +145,7 @@ internal sealed class ValidationContext
             .GroupBy(s => s.Target, StringComparer.Ordinal)
             .ToFrozenDictionary(
                 g => g.Key,
-                g => g.OrderBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.Id, StringComparer.Ordinal).ToImmutableArray(),
+                g => g.Order(SeedOrder).ToImmutableArray(),
                 StringComparer.Ordinal);
 
     /// <summary>The reference types bound to a table file, with their binding, ordered by (type name, type id, binding index).</summary>
@@ -263,19 +276,26 @@ internal sealed class ValidationContext
         return list.ToImmutable();
     }
 
-    /// <summary>Returns the virtual attributes an element's stereotypes add, in stereotype then array order.</summary>
+    /// <summary>Returns the virtual attributes an element's stereotypes add (its effective set), in stereotype then array order.</summary>
     /// <param name="element">The element.</param>
     /// <returns>The attributes.</returns>
     public IEnumerable<FlatAttribute> VirtualAttributes(ElementBase element)
     {
-        foreach (var key in element.Stereotypes)
+        foreach (var stereotype in StereotypesOf(element))
         {
-            if (Model.GetStereotype(key) is not { } stereotype)
-                continue;
             foreach (var attribute in stereotype.Attributes)
-                yield return new FlatAttribute(attribute, AttributeSource.Virtual, key, -1);
+                yield return new FlatAttribute(attribute, AttributeSource.Virtual, stereotype.Key, -1);
         }
     }
+
+    /// <summary>
+    /// The stereotypes an element carries that exist, its effective set (<see cref="ModelSnapshot.EffectiveStereotypes"/>: implied
+    /// first, then own): the set its virtual attributes come from, and the set the <c>x-ref</c> scope <c>of: "$element"</c> reaches
+    /// through (next-phase-1-design.md sections 4.1 and 4.2).
+    /// </summary>
+    /// <param name="element">The element.</param>
+    /// <returns>The stereotypes.</returns>
+    public IEnumerable<Stereotype> StereotypesOf(ElementBase element) => Model.EffectiveStereotypes(element.Stereotypes).Select(s => s.Stereotype);
 
     /// <summary>Returns the first document that holds a name key (see <see cref="NameKeys"/>).</summary>
     /// <param name="key">The scope key.</param>

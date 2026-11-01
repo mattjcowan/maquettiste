@@ -7,7 +7,9 @@ namespace Maquettiste.Engine.Loading;
 /// <summary>
 /// Parses an untrusted batch (editor, refactoring or AI proposal) against <c>batch.json</c> with no disk access (host-contracts
 /// requirement 16). Diagnostics carry the pointer, line and column in the batch text and no file path. Element contents are
-/// validated when the batch is applied, against their kind's schema.
+/// validated when the batch is applied, against their kind's schema. Id fields keep their text as written: an id, a qualified
+/// name (<c>@kind:path</c>) or a placeholder (<c>$name</c>), which the batch resolver turns into ids (next-phase-1-design.md
+/// section 5.1); <c>as</c> is read into <see cref="BatchOperation.As"/>.
 /// </summary>
 /// <param name="schemas">The schema registry.</param>
 /// <param name="json">The canonical writer (unused by parsing; the reader shares it).</param>
@@ -62,6 +64,8 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "materialize-attributes" => BatchOp.MaterializeAttributes,
                     "materialize-columns" => BatchOp.MaterializeColumns,
                     "retag" => BatchOp.Retag,
+                    "tags-to-property" => BatchOp.TagsToProperty,
+                    "names-to-ids" => BatchOp.NamesToIds,
                     _ => BatchOp.Delete,
                 };
                 operations.Add(new BatchOperation(
@@ -87,7 +91,10 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     ExpectedHashes: Map(item, "expectedHashes"),
                     Columns: Texts(item, "columns"),
                     Attributes: Texts(item, "attributes"),
-                    Tags: Texts(item, "tags")));
+                    Tags: Texts(item, "tags"),
+                    As: Text(item, "as"),
+                    ElementIds: Texts(item, "elementIds"),
+                    Prefix: Text(item, "prefix")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);

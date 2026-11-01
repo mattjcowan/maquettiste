@@ -265,18 +265,18 @@ changes for the user to review (`propose_changes`) instead.
 | `get_resolved_model` | getResolvedModel | `scope` (`all` default, `packages`, `entities`, `relations`, `enums`, `value-objects`, `scalar-types`, `reference-types`, `seeds`, `processes`, `actors`, `scenarios`, `databases`, `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations`), `database` (an id), `cursor`, `limit` | `{ items, next, diagnostics }`: what templates read, as flat records with `id`, `kind` and `name` (other objects by id); `migrations` lists open migration facts by database name, then applied order; a model with errors returns no items and the errors, unless its only errors are pending migration facts (MQ4101), which still return items |
 | `save_element` | saveElement | `id`, `element` (whole document), `expectedHash` | the save result (new `hash`, changes, and `facts`: the migration facts the save recorded, `{ id, database, fact, state, missing, summary, path }`; a pending fact's MQ4101 is among the diagnostics and the save still goes through) |
 | `create_element` | createElement | `element` (an id is assigned when absent) | the save result with the new `id` and its `facts`; write a database with `byConvention` (`none`, `packages` or `all`): without it a database with no `packages` takes every entity (the rule from before 0.3.0) |
-| `delete_element` | deleteElement, getDeletePlan | `id`, `expectedHash` (not with `dryRun`), `resolution` (`refuse` default, `remove-references` or `delete-dependents`), `dryRun` (`true`: write nothing and return the plan; the resolution then defaults to `delete-dependents`) | the save result with its `facts` (a dropped table or column records a `drop`, cascades included); with `dryRun` the delete plan `{ ids, resolution, outcome, deletes: [{ id, kind, name, path, because }], clears: [{ id, kind, name, pointer, field, target, because }], removes: [{ id, kind, name, pointer, what, subId, subKind, because }], refused: [{ id, kind, name, pointer, why, rule }], settings: [{ pointer, what }], warnings: [{ message, pack, unit }] }` |
-| `apply_batch` | applyBatch | `operations` (the batch's `operations` array, or the whole `{ "operations": [...] }` body); besides create, update and delete, the database schema operations `add-schema`, `rename-schema`, `remove-schema` (with `target` to move what lives there, `default` when removing the default) and `set-default-schema`; the process operations `sync-enum` (`id` a lifecycle process: its bound enum's members become the root-level states in order; a removal of a member still used by a default, allowed values, a seed cell or a scenario value is refused with MQ9019; change the uses first), `set-lifecycle` (`id` an entity, `target` a process, both sides in one change; no `target` clears it), `set-initial` (`id` a process or compound state, `target` a direct child) and `refresh-scenario` (`id` a scenario: its steps' `expect` and its `outcome` are rewritten from the engine's replay; refused when the batch also writes the scenario or its process, or when the replay stops early); the tag operation `retag` (`tags`, optional `name` to rename the one tag, optional `package` for a domain's vocabulary: the vocabulary and every use it governs, see `tag_usage`); the materialize operations `materialize-tables` (`database`, `entities`, optional `schema`) and `materialize-entities` (`database`, `tables`, `package`), refused with MQ4055 for what is already bound (preview them with `preview_materialize`) | the batch result, all or nothing, with the migration facts the batch recorded in `facts` (its items carry none) |
+| `delete_element` | deleteElement, getDeletePlan | `id`, `expectedHash` (not with `dryRun`), `resolution` (`refuse` default, `remove-references` or `delete-dependents`), `dryRun` (`true`: write nothing and return the plan; the resolution then defaults to `delete-dependents`) | the save result with its `facts` (a dropped table or column records a `drop`, cascades included); with `dryRun` the delete plan `{ ids, resolution, outcome, deletes: [{ id, kind, name, path, because }], clears: [{ id, kind, name, pointer, field, target, because }], removes: [{ id, kind, name, pointer, what, subId, subKind, because }], refused: [{ id, kind, name, pointer, why, rule }], settings: [{ pointer, what }], warnings: [{ message, pack, unit }] }`. A custom property value an `x-ref` types is cleared by `remove-references` when optional and by `delete-dependents` either way (its holder stays); a schema declaring the property that would then fail (`required`, `minItems`) refuses with MQ2001. A pack parameter value naming the element refuses a plain delete (MQ2001 in `maquettiste.json`, `id` null in `refused`); the resolutions remove it in the same change (`settings`) as for properties, unless the parameter is required |
+| `apply_batch` | applyBatch | `operations` (the batch's `operations` array, or the whole `{ "operations": [...] }` body); besides create, update and delete, the database schema operations `add-schema`, `rename-schema`, `remove-schema` (with `target` to move what lives there, `default` when removing the default) and `set-default-schema`; the process operations `sync-enum` (`id` a lifecycle process: its bound enum's members become the root-level states in order; a removal of a member still used by a default, allowed values, a seed cell or a scenario value is refused with MQ9019; change the uses first), `set-lifecycle` (`id` an entity, `target` a process, both sides in one change; no `target` clears it), `set-initial` (`id` a process or compound state, `target` a direct child) and `refresh-scenario` (`id` a scenario: its steps' `expect` and its `outcome` are rewritten from the engine's replay; refused when the batch also writes the scenario or its process, or when the replay stops early); the tag operations `retag` (`tags`, optional `name` to rename the one tag, optional `package` for a domain's vocabulary: the vocabulary and every use it governs, see `tag_usage`) and `tags-to-property` (`prefix`, `name` a custom property, optional `package` and `elementIds`: the tags that start with `prefix` move into the property of each element and sub-element holding them, converted by the schema that declares it, one suffix for a string, number, integer, boolean or `enum`, all of them for a string array, the one id the suffix names for an `x-ref`; the tags leave their holders and, without `elementIds`, the vocabulary, unless something without properties such as a relation end still uses them; no matching tag is MQ1002, a holder whose property no schema declares, whose suffix does not fit or that holds another value is MQ5001); `names-to-ids` (optional `elementIds`: every custom property value an `x-ref` types that is still a name becomes the one id it finds, in those elements or in every document with `x-ref` sites; a value that finds nothing or several is MQ2010 at the value, nothing to convert writes nothing); the materialize operations `materialize-tables` (`database`, `entities`, optional `schema`), `materialize-entities` (`database`, `tables`, `package`), `materialize-attributes` (`database`, `entities`, for one entity optional `columns`: an attribute per unnamed column of its binding's source) and `materialize-columns` (`database`, `entities`, for one entity optional `attributes`: a table column per unmapped attribute), refused with MQ4055 for what is already bound or has nothing to add (preview them with `preview_materialize`). Every id field takes an id, a qualified name such as `@table:billing.notes` or a placeholder declared with `as` (see "Batches by name"), and the engine mints every missing id; `dryRun` (`true`: write nothing) | the batch result, all or nothing, with `ids` (`{ names, minted }`: each name and placeholder to its id, and each minted `{ operation, pointer, kind, id, name, placeholder }`) and the migration facts the batch recorded in `facts` (its items carry none); with `dryRun` `{ outcome, items, files: [{ path, action, id, kind, name, beforeHash, diff }], diagnosticsAdded, diagnosticsRemoved, ids, facts }`: a unified diff per file, the diagnostics the change adds and removes over the elements it touches, and the facts it would record (`null` when the change reaches every database) |
 | `simulate_process` | simulateProcess | `process` (id, name or model path), `steps` (scenario steps without `expect`; ids optional), `start` (`{ context, at }`), `scenario` (its start and steps run first), `document` (an unsaved draft; invalid is `invalid` with diagnostics), `from` | `{ processHash, trace, configuration, context, enabled, pending, timers, gates, final, clock, diagnostics }`; nothing is kept between calls: send the whole input list each time |
 | `record_scenario` | recordScenario | `process`, `name`, `steps`, `start`, `outcome` (the replay's when absent), `dryRun` | `{ id, element, hash, applied, diagnostics }`: the scenario with every step's `expect` and the outcome filled from the engine's replay, saved unless `dryRun` |
 | `verify_scenarios` | verifyScenarios | `process`, `scenarios` (ids or names; all when absent) | `{ process, results: [{ scenario, name, passed, steps, failure }], passed }`; `failure` is `{ step, rule, message, expected, actual }` |
 | `export_process` | exportProcess | `process`, `format` (`xstate`) | the XState v5 machine config text (canonical key order; the model data without an XState home under `meta.maquettiste`), then, when there are any, a second block `{ diagnostics }` (MQ9404, MQ9406) |
 | `import_process` | importProcess | `config` (object or string), `package`, `name`, `use`, `subject` for a new process, or `into` (id or name) and `expectedHash`; `apply` (false: a dry run) | `{ document, diagnostics, created, removed, applied, id, hash }`; the diagnostics are MQ9401 to MQ9405 (and, when applied, the save's findings), and an error among them (MQ9403, MQ9405) or a changed `into` refuses the apply |
 | `sync_enum_from_process` | syncEnumFromProcess | `process` (a lifecycle), `expectedHash`, `apply` (false: a dry run) | `{ process, enum, added, removed, reordered, refused, applied, diagnostics }`; a member still in use is refused, never removed |
-| `get_references` | getReferences | `id` | where the element is used |
-| `localization_status` | getLocalizationStatus | | `defaultLocale`, `declared`, and per translated locale its `chain` and per shard `expected`, `translated`, `missing`, `stale` |
-| `get_translations` | getTranslations | `locale`, `owner` or `shard` (optional), `missing` (the entries that need work, 200 per page), `cursor` | `{ entries, cursor }`: per field the `source`, `translation`, `effective` text, `state` (`translated`, `missing`, `stale`, `fallback`), `shard` and `shardHash` |
-| `set_translations` | putTranslations | `locale`, `entries` (`[{ id, field, value, confirm? }]`, `value` null removes), `expected` (`{ "<shard path>": "<shardHash>" }`) | `{ outcome, hashes, diagnostics }`; a changed shard is `conflict`, an unknown id or field `invalid` |
+| `get_references` | getReferences | `id` | where the element is used; a custom property value an `x-ref` types is a row too, with `schema` (`extension:<name>` or `stereotype:<key>`) and `optional` (true when `remove-references` may clear it) |
+| `localization_status` | getLocalizationStatus | | `defaultLocale`, `declared`, and per translated locale its `chain` and per shard `expected`, `translated`, `missing`, `stale`; the counts include the texts of `x-translatable` custom properties |
+| `get_translations` | getTranslations | `locale`, `owner` or `shard` (optional), `missing` (the entries that need work, 200 per page), `cursor` | `{ entries, cursor }`: per field (`displayName`, `pluralName`, `label`, `description`, or `properties/<name>` for an `x-translatable` custom property) the `source`, `translation`, `effective` text, `state` (`translated`, `missing`, `stale`, `fallback`), `shard` and `shardHash` |
+| `set_translations` | putTranslations | `locale`, `entries` (`[{ id, field, value, confirm? }]`, `field` a standard field or `properties/<name>`, `value` null removes), `expected` (`{ "<shard path>": "<shardHash>" }`) | `{ outcome, hashes, diagnostics }`; a changed shard is `conflict`, an unknown id or field (a property no schema marks `x-translatable` among them) `invalid` |
 | `create_seed` | (CLI `seed new`) | `type`: a reference type id | the seed id: a new seed named after the type with the columns `code`, `label` and `description` and no rows, or the seed the type already has (nothing changes). `create_element` of a seed for a reference type without `columns` gets the same three |
 | `export_seed_csv` | exportSeedCsv | `id` of a seed, `bom` (byte order mark and CRLF), `locales` (adds `@label:<locale>` and `@description:<locale>`) | the CSV text: `@id`, then `@code`, `@label`, `@description` for a reference type, then attribute names and end roles |
 | `import_seed_csv` | importSeedCsv | `id`, `csv`, `mode` (`merge` default, or `replace`), `apply` (false: a dry run), `expectedHash` | the preview: `added`, `changed` (before and after), `removed`, `blocked` (rows other seeds reference, kept), `ignoredHeaders`, `applied`, `hash` |
@@ -325,7 +325,7 @@ changes for the user to review (`propose_changes`) instead.
 | `list_migrations` | (none) | `database` (name or id), `cursor`, `limit` (1 to 1000, default 100) | the open migration facts in applied order (by database name, then the order their `after` links give, ties by id), one page: `{ facts: [{ id, database, databaseName, order, fact, state, stale, missing, summary, object, after, path, hash }], total, next }`; pass `next` as `cursor` until it is null. `state` is `pending`, `complete`, `held` or `released`; `missing` names the intent a pending fact lacks; `stale` marks a fact `fold_migrations` removes (MQ4103). An unknown database or cursor is `bad-request` |
 | `fold_migrations` | (none) | `database` (name or id), `against` (a model snapshot id, or a folder holding another copy of the project, relative to the server's current directory), `dryRun` | `{ outcome, joined: [{ kept, removed, fact }], removedStale, refused: [{ facts, reason }], files, diagnostics }`: the facts the baseline lacks (`against`'s, else those each database's committed physical snapshot lists as rendered, else pending facts only) lose their stale ones, and consecutive facts on one object join into the last one (renames keep their intermediate names in `via`; a widening joins its neighbour; two pending `change-type` facts join; a rename then a drop join into the drop). Two conversions, or a join that would order facts in a cycle, are refused and stay. `files` (with `dryRun`) lists each file with its text before and after. `conflict` when a fact file changed, `invalid` when the model has errors outside the migration rules, `bad-request` for an unknown database or baseline |
 | `get_ledger_ddl` | (none) | `database` (name or id; optional when the model has one PostgreSQL database), `grantRead` (a role) | `{ contractVersion, database, dialect, schema, ddl, grant }`: the migration ledger's DDL for one PostgreSQL database (docs/ledger.md), three tables in the schema `migrations.ledgerSchema` names (default `migration_ledger`), idempotent and without transaction control, so a migrator runs it in its own transaction; `grant` is the read grant for `grantRead`, else null. The engine never reads a ledger. No PostgreSQL database, an unknown or other database, several PostgreSQL databases and none named, or an empty `grantRead` is `bad-request` |
-| `get_schema` | (none) | `kind`: an element kind (`entity`, `value-object`, ...) or a document (`maquettiste`, `batch`, `pack`, `extension`) | `{ name, file, schema, references, extensions? }`: the JSON schema, the schema files it references (`common.json`) and, for an element kind, the project's extension schemas that apply to it (`name`, `description`, `appliesTo`, `properties`, `required`, `schemaPath`; they constrain the element's `properties`) |
+| `get_schema` | (none) | `kind`: an element kind (`entity`, `value-object`, ...) or a document (`maquettiste`, `batch`, `pack`, `extension`) | `{ name, file, schema, references, extensions?, stereotypeParameters? }`: the JSON schema, the schema files it references (`common.json`) and, for an element kind, the project's extension schemas that apply to it (`name`, `description`, `appliesTo`, `properties`, `required`, `schemaPath`; they constrain the element's `properties`) and the typed parameters of the stereotypes that may apply to it (`[{ stereotype, parameters: { properties, required } }]`, by key; they constrain the `properties` of the elements that carry the stereotype, implied ones included) |
 
 Documents may be passed as JSON objects or as strings holding one. Writes are recorded as `ChangeSource.Cli`.
 
@@ -431,6 +431,116 @@ live in locale shards, not in element files: read them with `get_translations`, 
 - **Cancellation.** A `notifications/cancelled` for a running call cancels the engine call (a cancelled plan stores nothing and
   releases the run lock); per the protocol the cancelled call gets no result. Note: the C# SDK's client (2.2.0) does not send the
   notification when a call's token is cancelled; it only stops waiting.
+
+### Batches by name
+
+`apply_batch` and `maquettiste model apply` take names where ids go, so an agent can build a change without reading or
+writing ids. Files stay id-based: the engine turns every name into an id before it plans the batch, and mints every id a
+new element or sub-element needs. An update or delete still takes `expectedHash`: a name changes how the target is
+written, not the conflict rule.
+
+**Where a name may stand.** In the id fields of an operation (`id`, `database`, `package`, `schema`, `target`,
+`default`, the items of `entities`, `tables`, `attributes` and `elementIds`, the keys of `expectedHashes`) and wherever
+an element refers to another element or sub-element: the sites `get_references` lists (typed and keyed references, type
+references, id-keyed maps such as `storage`, custom properties an `x-ref` types). Free text, seed cells, `columns` (keys
+or physical names) and other physical names are data and are never rewritten. A composite `attributeId.memberId` item of
+`attributes` stays ids, and a migration fact's keys and `after` take ids only.
+
+**Grammar.** A string at a name site that starts with `@` or `$` is a name; no id starts with either.
+
+```text
+reference   = "@" kind ":" path
+placeholder = "$" ( ALPHA / "_" ) *( ALPHA / DIGIT / "_" / "-" )
+path        = segment *( "." segment )
+segment     = 1*( any char but "." DQUOTE white-space ) / DQUOTE *( any char but DQUOTE / 2DQUOTE ) DQUOTE
+```
+
+A segment holding a dot or a space is quoted, a quote inside doubled. Names compare ordinally with the names as written
+in the files, never with resolved ones (naming conventions and prefixes do not apply), so a lookup never resolves the
+model.
+
+**Forms.** Each kind registers the forms below, and a name finds what is registered under exactly that form. A bare name
+that two elements share is ambiguous (MQ1013): a longer form qualifies it, and when every form is shared, the id is the
+way. A `<package path>` is the full path from a root package or any trailing part of it, so `@entity:Catalog.Product`
+finds Product in `Billing.Catalog`. A form with an empty segment (no stored name, no schema and no default schema) is
+not registered.
+
+| Kind | Forms |
+| --- | --- |
+| `package` | `Name`, or the path from a root package or a trailing part of it: `@package:Billing.Catalog` |
+| `entity`, `value-object`, `scalar-type`, `enum`, `process`, `relation`, `diagram` | `Name`, `<package path>.Name`: `@entity:Billing.Invoice` |
+| `database`, `mapping`, `reference-type`, `seed`, `actor` | `name`, plus `<package path>.name` when the file states a package: `@database:main`, `@seed:Billing.currencies` |
+| `stereotype` | the key: `@stereotype:audited` |
+| `table`, `view`, `sequence`, `routine`, `database-type`, `sql-object` | `name`, `schema.name`, `database.schema.name` (the schema, else the database's `defaultSchema`): `@table:billing.notes` |
+| `query` | `name`, `database.name` |
+| `scenario` | `name`, `<process form>.name` |
+| `attribute` | `<owner form>.name` for an entity, value object, relation, reference type or stereotype: `@attribute:Invoice.total`, `@attribute:settles.allocated`, `@attribute:audited.createdAt`; a process's context `<process form>.name`; an event's payload `<process form>.<event>.name`; a gate's audit attributes `<process form>.<gate>.name` |
+| `column` | `<table form>.name`: `@column:billing.notes.body` |
+| `schema` | `name`, `database.name`: `@schema:billing` |
+| `enum-member`, `event`, `guard`, `action`, `invoke`, `gate` | `<enum or process form>.name` |
+| `meaning` | `<process form>.<gate>.name` |
+| `state` | `<process form>.<state path>`, parent states first |
+| `end` | `<relation form>.<role, else navigation>` |
+| `reference-field` | `<reference type>.code`, `<reference type>.label` |
+| `row` | rows of reference-type seeds: `<reference type>.<code>` and `<seed name>.<code>`; integer codes in invariant digits |
+| `binding` | `<entity or reference type form>.<database name>` |
+| `key` | `<table form>.<name>` (unique, foreign key, check, index), `<entity form>.<name>` (alternate key) |
+| `category` | names from the tree's root, in any tree: `@category:Finance.Receivables`; in a package's tree, also `<package path>.<category path>` |
+| `tag-vocabulary`, `category-tree`, `migration`, `transition`, `step`, rows of table seeds, unnamed keys | none: an id or a placeholder |
+
+**Placeholders and order.** `"as": "$name"` on a create or an update names its element for the whole batch; on an object
+inside the element whose schema requires an `id` (an attribute, a column, a row) it names that sub-element. Placeholders
+reach forward and back, so two new tables can reference each other. An update's or delete's `id` names an element that
+exists before the batch, by id or qualified name, never by placeholder. Every other name sees the model as the earlier
+operations leave it, with the operation's own element as it will be written, so a primary key names its own new column.
+A form that goes through an element renamed earlier in the batch (a package path, a database, a schema, a table, an
+owner) keeps its old qualifier for the elements the batch does not touch: use the id or a second batch. Names see the
+creates, updates and deletes before them, not what schema, materialize, process and tag operations produce.
+
+**Minted ids.** Every object whose schema requires an `id` gets one when it has none: a create's element (its `id`, else
+the operation's `id`, else a new id) and each sub-element below it. The order is fixed: operations in order; in an
+element, the root first, then keys in schema order, array items by index, an object before its children. The answer's
+`ids.minted` lists each `{ operation, pointer, kind, id, name, placeholder }`, where `name` is the longest qualified
+form (`@column:main.billing.payment_method.code`), ready to paste into a later batch; `ids.names` maps each name and
+placeholder the batch used to its id. A dry run mints too, and an apply mints again: take the ids from the apply's
+answer.
+
+**Keep its id.** A sub-element without an id in an update is new: the engine never matches by name. An update that drops
+a sub-element and adds one without an id under the same parent and property with the same name (`name`, or a
+reference-type seed row's `code` cell) is refused with MQ1014, because the drop would also remove the seed columns and
+cells that name the old id. Send the existing id to keep it.
+
+| Rule | When |
+| --- | --- |
+| MQ1012 | A name or placeholder finds nothing: no element or sub-element of that kind has the name (an update's or delete's target on the model as loaded, any other name on the model as the earlier operations leave it), or no operation declares the placeholder. |
+| MQ1013 | A name finds more than one element or sub-element; the message lists each candidate's longest form and id. Use a longer form, or the id when every form is shared. |
+| MQ1014 | An identity is misused: a placeholder declared twice; `as` on a delete, a schema, materialize, process or tag operation, or on an object that is not a sub-element; two `expectedHashes` keys (or two keys of an id-keyed map) for one element; or the "keep its id" case above. |
+| MQ1015 | A name is malformed or misplaced: not `@kind:path` or `$name`, an unknown kind or one without names, an empty or unclosed quoted segment, a name as a create's id (declare a placeholder with `as`), or a placeholder where the element must exist before the batch (an update's or delete's id, an `expectedHashes` key). |
+
+Any of them makes its operations `invalid`, with pointers under `/operations/<n>`, and nothing is written. One batch on
+the billing model creates a table with two columns and its primary key, a reference type bound to it and the type's
+seed, without one id:
+
+```json
+{ "operations": [
+  { "op": "create", "as": "$pm", "element": { "kind": "table", "name": "payment_method",
+      "database": "@database:main", "schema": "@schema:billing",
+      "columns": [ { "name": "code", "type": "string", "length": 16, "nullable": false },
+                   { "name": "label", "type": "string", "length": 64, "nullable": false } ],
+      "primaryKey": { "columns": [ "@column:billing.payment_method.code" ] } } },
+  { "op": "create", "as": "$type", "element": { "kind": "reference-type", "name": "PaymentMethod",
+      "code": { "length": 16 }, "label": { "length": 64 },
+      "bindings": [ { "database": "@database:main", "table": "$pm",
+                      "fields": [ { "attribute": "code", "column": "code" },
+                                  { "attribute": "label", "column": "label" } ] } ] } },
+  { "op": "create", "element": { "kind": "seed", "name": "PaymentMethods", "target": "$type",
+      "columns": [ "code", "label" ],
+      "rows": [ { "values": [ "card", "Card" ] }, { "values": [ "transfer", "Bank transfer" ] } ] } }
+] }
+```
+
+With `"dryRun": true` the answer shows the three files as diffs, the ten ids it would mint and the diagnostics the
+change adds or removes, and writes nothing; `maquettiste model apply payment-methods.json --dry-run` prints the same.
 
 ### Errors
 

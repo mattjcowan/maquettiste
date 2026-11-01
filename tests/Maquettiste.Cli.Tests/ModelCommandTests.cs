@@ -137,6 +137,72 @@ public sealed class ModelCommandTests
     }
 
     [Fact]
+    public async Task Catalog_holds_tables_seeds_and_reference_types_and_stats_list_them()
+    {
+        // next-phase-1-design.md section 4.3: every kind may join a package, and the package listings follow the file's package.
+        using var repo = CliRepo.Billing();
+        const string catalog = "01J92P0V025DRFTXKMS240G2NG";
+        repo.Replace(".maquettiste/model/databases/main/tables/notes.json", "\"name\": \"notes\",", $"\"name\": \"notes\",\n  \"package\": \"{catalog}\",");
+        repo.Write(".maquettiste/model/reference-types/shelf-zone.json", $$"""
+            {
+              "$schema": "../../.schema/v1/reference-type.json",
+              "kind": "reference-type",
+              "id": "01K9PKG0000000000000000001",
+              "name": "ShelfZone",
+              "package": "{{catalog}}",
+              "code": {
+                "id": "01K9PKG0000000000000000002",
+                "length": 8
+              },
+              "label": {
+                "id": "01K9PKG0000000000000000003",
+                "length": 40
+              }
+            }
+
+            """);
+        repo.Write(".maquettiste/model/seeds/notes/welcome-notes.json", $$"""
+            {
+              "$schema": "../../../.schema/v1/seed.json",
+              "kind": "seed",
+              "id": "01K9PKG0000000000000000004",
+              "name": "welcome_notes",
+              "package": "{{catalog}}",
+              "target": "01K6BND0000000000000000001",
+              "columns": [
+                "01K6BND0000000000000000002",
+                "01K6BND0000000000000000003",
+                "01K6BND0000000000000000004",
+                "01K6BND0000000000000000005"
+              ],
+              "rows": [
+                {
+                  "id": "01K9PKG0000000000000000005",
+                  "values": ["7d0f8d52-63a5-4c4e-9a43-0c8d1f6f0a11", "customer", "1c5b3a8e-2f7d-4e61-b0a9-5d4c3b2a1908", "Welcome aboard."]
+                }
+              ]
+            }
+
+            """);
+
+        var stats = await repo.RunAsync("model", "stats", "--by", "package", "--format", "json");
+        Assert.True(stats.ExitCode == 0, stats.Error);
+        var row = JsonNode.Parse(stats.Out)!["packages"]!.AsArray().Single(p => (string?)p!["name"] == "Catalog")!;
+        var kinds = row["kinds"]!.AsArray().ToDictionary(k => (string)k!["kind"]!, k => (int)k!["count"]!, StringComparer.Ordinal);
+        Assert.Equal(1, kinds["table"]);
+        Assert.Equal(1, kinds["seed"]);
+        Assert.Equal(1, kinds["reference-type"]);
+
+        var export = await repo.RunAsync("model", "export", "--package", "Catalog", "--format", "ndjson");
+        Assert.True(export.ExitCode == 0, export.Error);
+        var members = Text.Lines(export.Out).Select(l => JsonNode.Parse(l)!).Select(d => ((string)d["kind"]!, (string)d["name"]!)).ToList();
+        Assert.Contains(("table", "notes"), members);
+        Assert.Contains(("seed", "welcome_notes"), members);
+        Assert.Contains(("reference-type", "ShelfZone"), members);
+        Assert.Equal(catalog, (string)JsonNode.Parse(Text.Lines(export.Out).First(l => l.Contains("\"notes\"", StringComparison.Ordinal)))!["package"]!);
+    }
+
+    [Fact]
     public async Task Delete_prints_the_plan_with_dry_run_and_deletes_with_dependents_in_one_change()
     {
         using var repo = CliRepo.Billing();

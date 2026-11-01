@@ -102,6 +102,14 @@ export function nextOpen(entries: readonly Pick<TranslationEntry, "state">[], fr
 /** An entry's key in the queue and in writes. */
 export const entryKey = (e: Pick<TranslationEntry, "id" | "field">) => `${e.id}/${e.field}`;
 
+/** The prefix of a custom property's text field (`properties/<name>`, next-phase-1-design.md 4.4). */
+export const PROPERTY_FIELD_PREFIX = "properties/";
+
+/** A translated field's label: a standard field's from `labels`, a custom property's text by its property name. */
+export function fieldLabel(field: string, labels: Readonly<Record<string, string>>): string {
+  return labels[field] ?? (field.startsWith(PROPERTY_FIELD_PREFIX) ? field.slice(PROPERTY_FIELD_PREFIX.length) : field);
+}
+
 /**
  * The index rows with the content locale's display names from model.changed's `translations` (RT 3.8): only rows whose
  * name changed are replaced, in place, so the explorer applies a patch rather than rebuilding. The same array when the

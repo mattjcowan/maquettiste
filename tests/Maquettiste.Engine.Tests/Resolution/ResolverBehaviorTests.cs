@@ -3,6 +3,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.Tests.Rendering;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Resolution;
@@ -60,6 +61,48 @@ public sealed class ResolverBehaviorTests
         Assert.Equal(["Sales", "Sales.Orders"], model.Packages.Select(p => p.QualifiedName));
         Assert.Equal(["Sales.Orders"], model.Packages[0].Children.Select(p => p.QualifiedName));
         Assert.Same(person, Assert.Single(model.Packages[1].Entities));
+    }
+
+    [Fact]
+    public void Implied_stereotypes_merge_under_own_and_carry_implied_by()
+    {
+        var b = new ModelBuilder(seed: 82);
+        b.Stereotype("soft-delete").Attr("deletedAt", "datetimeoffset").DefaultProperty("retention", 30).DefaultProperty("purge", "nightly");
+        b.Stereotype("archived").DefaultProperty("archive", true);
+        b.Stereotype("aggregate-root").Implies("soft-delete", "archived").DefaultProperty("retention", 90);
+        b.Entity("Invoice").Key("id", "uuid").Stereotype("aggregate-root").Property("purge", "weekly");
+        var model = ResolutionKit.Resolve(b);
+        var invoice = model.Entity("Invoice");
+
+        // Implied first (in implies order), then own; the own stereotype's default wins over the implied one's, the element's own
+        // value over both.
+        Assert.Equal([("soft-delete", "aggregate-root"), ("archived", "aggregate-root"), ("aggregate-root", null)],
+            invoice.Stereotypes.Select(s => (s.Key, s.ImpliedBy)));
+        Assert.True(invoice.HasStereotype("soft-delete"));
+        Assert.Equal(90L, invoice.Properties["retention"]);
+        Assert.Equal("weekly", invoice.Properties["purge"]);
+        Assert.Equal(true, invoice.Properties["archive"]);
+        // An implied stereotype gives virtual attributes as an own one does, and the carrier depends on it.
+        var deletedAt = invoice.Attributes.Single(a => a.Name == "deletedAt");
+        Assert.True(deletedAt.IsVirtual);
+        Assert.Equal("soft-delete", deletedAt.FromStereotype!.Key);
+        Assert.Contains("e:" + model.Source.GetStereotype("soft-delete")!.Id, invoice.Dependencies);
+        Assert.Contains("e:" + model.Source.GetStereotype("aggregate-root")!.Id, invoice.Dependencies);
+    }
+
+    [Fact]
+    public void An_own_entry_replaces_an_implied_copy_of_the_same_stereotype()
+    {
+        var b = new ModelBuilder(seed: 83);
+        b.Stereotype("soft-delete").DefaultProperty("retention", 30);
+        b.Stereotype("aggregate-root").Implies("soft-delete").DefaultProperty("retention", 90);
+        // The element lists soft-delete after the stereotype that implies it: its own entry is kept, at its own position, and wins.
+        b.Entity("Invoice").Key("id", "uuid").Stereotype("aggregate-root").Stereotype("soft-delete");
+        var model = ResolutionKit.Resolve(b);
+        var invoice = model.Entity("Invoice");
+
+        Assert.Equal([("aggregate-root", null), ("soft-delete", null)], invoice.Stereotypes.Select(s => (s.Key, s.ImpliedBy)));
+        Assert.Equal(30L, invoice.Properties["retention"]);
     }
 
     [Fact]
@@ -208,6 +251,46 @@ public sealed class ResolverBehaviorTests
         var model = ResolutionKit.Resolve(b);
         Assert.Empty(model.Relations);
         Assert.Equal("string", model.Db("main").Table("orphans").Column("x").Type);
+    }
+
+    [Fact]
+    public async Task Rationale_decision_and_status_reach_templates()
+    {
+        // next-phase-1-design.md section 4.5: each object reads the three fields from its own file or entry; status is its JSON value.
+        var b = new ModelBuilder(seed: 87);
+        var db = b.Database("main", Dialect.PostgreSql);
+        b.Entity("Invoice").Key("id", "uuid").Attr("amount", "decimal", a => a.Precision(18).Scale(2));
+        b.Table("ledger", db).Column("id", "int64", nullable: false).Column("code", "string", length: 20).PrimaryKey("id");
+        var annotated = new ModelBuilder(seed: 88);
+        foreach (var element in b.BuildElements())
+        {
+            annotated.Add(element switch
+            {
+                Entity e => e with
+                {
+                    Rationale = "One row per **issued** bill.", Decision = "ADR-0042", Status = ElementStatus.Approved,
+                    Attributes = [e.Attributes[0], e.Attributes[1] with { Rationale = "Replaced by total.", Status = ElementStatus.Deprecated }],
+                },
+                Table t => t with { Status = ElementStatus.Retired, Columns = [t.Columns[0], t.Columns[1] with { Decision = "https://example.com/adr/7", Status = ElementStatus.Proposed }] },
+                Database d => d with { Rationale = "The one store." },
+                _ => element,
+            });
+        }
+
+        var model = ResolutionKit.Resolve(annotated);
+        var invoice = model.Entity("Invoice");
+        Assert.Equal(("One row per **issued** bill.", "ADR-0042", "approved"), (invoice.Rationale, invoice.Decision, invoice.Status));
+        Assert.Equal(("The one store.", null, null), (model.Db("main").Rationale, model.Db("main").Decision, model.Db("main").Status));
+
+        var entityUnit = await Adhoc.RenderAsync(
+            "{{ entity.rationale }}|{{ entity.decision }}|{{ entity.status }}|{{ for a in entity.attributes }}{{ a.name }}:{{ a.status }}:{{ a.rationale }};{{ end }}",
+            invoice, model: model);
+        Assert.Equal("One row per **issued** bill.|ADR-0042|approved|id::;amount:deprecated:Replaced by total.;", entityUnit.Text());
+
+        var tableUnit = await Adhoc.RenderAsync(
+            "{{ table.status }}|{{ for c in table.columns }}{{ c.name }}:{{ c.status }}:{{ c.decision }};{{ end }}",
+            model.Db("main").Table("ledger"), u => u with { For = "each table" }, model: model);
+        Assert.Equal("retired|id::;code:proposed:https://example.com/adr/7;", tableUnit.Text());
     }
 
     private sealed class SyncProgress(Action<ProgressUpdate> report) : IProgress<ProgressUpdate>

@@ -90,16 +90,27 @@ internal static class UnitRules
         return result;
     }
 
-    /// <summary>MQ6023 and MQ6024 for the project's values of one pack's parameters.</summary>
+    /// <summary>
+    /// MQ6023 and MQ6024 for the project's values of one pack's parameters and, with the snapshot, the <c>x-ref</c> checks of
+    /// next-phase-1-design.md section 4.1: MQ2009 for a malformed or misplaced keyword in <c>parameterSchema</c> (in
+    /// <c>pack.json</c>), and MQ2010, MQ2001, MQ2002 and MQ2011 for a project value it types (in <c>maquettiste.json</c>).
+    /// </summary>
     /// <param name="name">The pack name.</param>
     /// <param name="manifest">The manifest.</param>
     /// <param name="settings">The pack's project settings.</param>
     /// <param name="settingsFile">The repo path of <c>maquettiste.json</c>.</param>
-    /// <returns>The diagnostics, ordinal by parameter name.</returns>
-    public static IReadOnlyList<Diagnostic> Parameters(string name, PackManifest manifest, PackSettings settings, string settingsFile)
+    /// <param name="model">The snapshot the values name ids of, or <see langword="null"/> to leave the <c>x-ref</c> checks out.</param>
+    /// <param name="packFile">The repo path of the pack's <c>pack.json</c>, where MQ2009 is reported.</param>
+    /// <returns>The diagnostics: MQ2009 in keyword order, then ordinal by parameter name.</returns>
+    public static IReadOnlyList<Diagnostic> Parameters(string name, PackManifest manifest, PackSettings settings, string settingsFile,
+        ModelSnapshot? model = null, string? packFile = null)
     {
+        ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(settings);
         var properties = SchemaProperties(manifest);
         var result = new List<Diagnostic>();
+        var refs = model is null ? null : ParameterRefs(manifest, model, packFile ?? "", result);
+        var found = new List<(string Pointer, string Value, XRef Ref)>();
         foreach (var (key, value) in settings.Parameters.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
             var pointer = "/packs/" + JsonPointer.Escape(name) + "/parameters/" + JsonPointer.Escape(key);
@@ -107,6 +118,16 @@ internal static class UnitRules
             {
                 if (Check(schema, value) is { } problem)
                     result.Add(RuleCatalog.Create("MQ6023", $"Parameter '{key}' of pack '{name}' {problem}.", filePath: settingsFile, jsonPointer: pointer));
+                if (refs is not null && refs.TryGetValue(key, out var node))
+                {
+                    found.Clear();
+                    PropertySchemaSet.Walk(node, value, pointer, found);
+                    foreach (var (at, text, xref) in found)
+                    {
+                        foreach (var bad in ParameterRefProblems(model!, text, xref))
+                            result.Add(RuleCatalog.Create(bad.Rule, $"Parameter '{key}' of pack '{name}' {bad.Message}.", filePath: settingsFile, jsonPointer: at));
+                    }
+                }
             }
             else if (!manifest.Parameters.ContainsKey(key))
             {
@@ -117,6 +138,64 @@ internal static class UnitRules
 
         return result;
     }
+
+    /// <summary>
+    /// The <c>x-ref</c> trees of a manifest's <c>parameterSchema.properties</c> by parameter name, reporting MQ2009 in
+    /// <paramref name="packFile"/>: a malformed keyword, and the keys that need what a parameter lacks (<c>of: "$element"</c> and
+    /// <c>sameDatabase</c> need a host element), plus an <c>of</c> that names no element of the model.
+    /// </summary>
+    /// <param name="manifest">The manifest.</param>
+    /// <param name="model">The snapshot, or <see langword="null"/> to skip the check of <c>of</c> ids.</param>
+    /// <param name="packFile">The repo path of <c>pack.json</c>.</param>
+    /// <param name="diagnostics">Receives MQ2009, or <see langword="null"/> to report nothing.</param>
+    /// <returns>The trees.</returns>
+    internal static IReadOnlyDictionary<string, XRefNode> ParameterRefs(PackManifest manifest, ModelSnapshot? model, string packFile, List<Diagnostic>? diagnostics)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.ParameterSchema is not { ValueKind: JsonValueKind.Object } schema || !schema.TryGetProperty("properties", out var properties))
+            return new Dictionary<string, XRefNode>(StringComparer.Ordinal);
+        void Problem(string pointer, string message) => diagnostics?.Add(RuleCatalog.Create("MQ2009", message, filePath: packFile, jsonPointer: pointer));
+        var (refs, keywords, _) = PropertySchemaSet.Read(properties, "/parameterSchema/properties", Problem);
+        foreach (var (pointer, xref) in keywords)
+        {
+            if (xref.Of == XRef.ElementScope)
+                Problem(pointer + "/of", "x-ref of \"$element\" names a member of the element that holds the value, and a pack parameter is held by no element: name an element id or leave of out.");
+            else if (xref.Of is { } of && model is not null && !(model.TryGetEntry(of, out var entry) && entry.OwnerId == of))
+                Problem(pointer + "/of", $"x-ref of names {of}, which is no element of the model.");
+            if (xref.SameDatabase)
+                Problem(pointer + "/sameDatabase", "x-ref sameDatabase compares with the database of the element that holds the value, and a pack parameter is held by no element.");
+        }
+
+        return refs;
+    }
+
+    /// <summary>
+    /// What is wrong with one value an <c>x-ref</c> types in a pack parameter, as <c>BuiltinRules.CheckXRef</c> judges
+    /// a model value: MQ2010 for text, else MQ2001 for each id of a keyed value that does not exist, else MQ2002 or
+    /// MQ2011 on the last id.
+    /// </summary>
+    private static List<(string Rule, string Message)> ParameterRefProblems(ModelSnapshot model, string value, XRef xref)
+    {
+        var kinds = string.Join(" or ", xref.Kinds);
+        if (Validation.BuiltinRules.XRefIds(value) is not { } ids)
+            return [("MQ2010", $"holds '{value}', which is a name or other text, not an id: the pack's parameterSchema types it as the id of {Article(kinds)} {kinds}")];
+        var missing = ids.Distinct(StringComparer.Ordinal).Where(id => !model.TryGetEntry(id, out _)).ToList();
+        if (missing.Count > 0)
+        {
+            var note = Validation.BuiltinRules.ReservedKindsNote(xref);
+            return [.. missing.Select(id => ("MQ2001", $"references '{id}', which does not exist" + (note.Length > 0 ? $" ({note})" : "")))];
+        }
+
+        model.TryGetEntry(ids[^1], out var entry);
+        if (!xref.Kinds.Contains(entry!.Kind, StringComparer.Ordinal))
+            return [("MQ2002", $"references '{ids[^1]}', {Article(entry.Kind)} {entry.Kind}; the pack's parameterSchema expects {Article(kinds)} {kinds}")];
+        if (xref.Of is { } listId && listId != XRef.ElementScope
+            && (entry.Kind != "row" || model.Get<Seed>(entry.OwnerId) is not { } seed || seed.Target != listId))
+            return [("MQ2011", $"references '{ids[^1]}', which is not a row of a seed of {listId} (x-ref of)")];
+        return [];
+    }
+
+    private static string Article(string noun) => Validation.BuiltinRules.Article(noun);
 
     /// <summary>The <c>parameterSchema.properties</c> of a manifest, by name.</summary>
     /// <param name="manifest">The manifest.</param>

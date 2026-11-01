@@ -65,7 +65,7 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
             if (pack is not null)
             {
                 loaded.Add(pack);
-                diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json")));
+                diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json"), model, relative + "/pack.json"));
                 diagnostics.AddRange(await ParsePassAsync(pack, ct).ConfigureAwait(false));
             }
         }
@@ -99,7 +99,7 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
         var pack = await LoadOneAsync(name, 0, root, relative, settings, diagnostics, ct).ConfigureAwait(false);
         if (pack is not null)
         {
-            diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json")));
+            diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json"), model, relative + "/pack.json"));
             diagnostics.AddRange(await ParsePassAsync(pack, ct).ConfigureAwait(false));
         }
 
@@ -195,10 +195,8 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
                 Error(InvalidPack, $"Unit '{unit.Id}' is for 'each locale', which has no element to filter: it takes no 'where'.", pointer + "/where");
             if (unit.For is "each view" or "each sequence" or "each routine" or "each database type" or "each sql object" or "each query" && unit.Where is { } objectWhere)
             {
-                // Views, sequences, routines, database types, SQL objects and queries belong to a database, not to a package, and are never abstract.
-                if (objectWhere.Packages.Count > 0 || objectWhere.NotPackages.Count > 0)
-                    Error(InvalidPack, $"Unit '{unit.Id}' is for '{unit.For}', which is in no package: its 'where' cannot filter on packages.",
-                        pointer + (objectWhere.Packages.Count > 0 ? "/where/packages" : "/where/notPackages"));
+                // Views, sequences, routines, database types, SQL objects and queries are never abstract; they filter on the package
+                // their file states (next-phase-1-design.md section 4.3).
                 if (objectWhere.Abstract is not null)
                     Error(InvalidPack, $"Unit '{unit.Id}' is for '{unit.For}', which is never abstract: its 'where' cannot filter on 'abstract'.", pointer + "/where/abstract");
             }

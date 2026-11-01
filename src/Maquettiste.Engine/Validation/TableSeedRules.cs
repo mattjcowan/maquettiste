@@ -7,8 +7,10 @@ namespace Maquettiste.Engine.Validation;
 /// <summary>
 /// The rules of a seed whose target is a table (2026-10-07, table seeds): MQ7107 (a table file and its own columns), MQ7108 (no
 /// column the database fills), MQ7109 (each cell fits its column), MQ7111 (a foreign key names a seeded row, in every environment the
-/// row is loaded in), MQ7112 (one row per key), MQ7113 (one source for a table's rows) and MQ7114 (a row key). The rows of the
-/// reference types bound to a table count as its rows for MQ7111 and MQ7112 (2026-10-11). Cells are column values: a text column
+/// row is loaded in), MQ7112 (one row per key), MQ7113 (one source for a table's rows), MQ7114 (a row key) and MQ7121 (every seed of
+/// the table finds its rows by the same key). The rows of the reference types bound to a table count as its rows for MQ7111 and
+/// MQ7112 (2026-10-11). The seeds of a table come in merge order (<see cref="Resolution.SeedOrder"/>: package, name, id), which decides
+/// which of two is the later one a finding goes on (next-phase-1-design.md section 4.3). Cells are column values: a text column
 /// takes any scalar (a number or a boolean read from a rows file stands for its text), numbers fit their type, a NOT NULL column
 /// without a default needs a value. CHECK constraints are left to the database.
 /// </summary>
@@ -115,6 +117,7 @@ internal static class TableSeedRules
             }
         }
 
+        CheckKeyAgreement(context, seed, table, report);
         CheckOtherSeeds(context, seed, table, keyIds, report);
         CheckForeignKeys(context, seed, table, report);
         CheckOneSource(context, seed, table, report);
@@ -185,8 +188,30 @@ internal static class TableSeedRules
     };
 
     /// <summary>
-    /// Two seeds of one table with overlapping environments that give the same row key (MQ7112, reported on the later seed by name),
-    /// and a row whose key is a row of a reference type bound to the table where both are loaded (reported on the table seed).
+    /// MQ7121: the first seed of a table in merge order decides the table's row key (its <c>key</c>, else the primary key), as the
+    /// resolver does, so a later seed that names another <c>key</c>, or none beside a seed that names one, is reported at its
+    /// <c>/key</c>, or at <c>/target</c> when it names none. Environments do not matter: a table has one row key.
+    /// </summary>
+    private static void CheckKeyAgreement(ValidationContext context, Seed seed, Table table, Report report)
+    {
+        var seeds = context.SeedsOf(table.Id);
+        if (seeds.Length < 2 || seeds[0].Id == seed.Id || string.Equals(seeds[0].Key, seed.Key, StringComparison.Ordinal))
+            return;
+        var first = seeds[0];
+        report.Add(
+            "MQ7121",
+            $"Seed '{seed.Name}' finds its rows by {KeyName(table, seed.Key)}, but seed '{first.Name}' of table '{table.Name}', which comes first, finds them by {KeyName(table, first.Key)}{ReferenceDataRules.BothPackages(context, seed, first)}: the first seed decides the table's row key, so give every seed of the table the same key.",
+            seed.Key is null ? "/target" : "/key");
+    }
+
+    private static string KeyName(Table table, string? key) => key is null
+        ? "the primary key"
+        : table.Uniques.FirstOrDefault(u => u.Id == key) is { } unique ? $"the unique constraint '{unique.Name}'" : $"the key '{key}'";
+
+    /// <summary>
+    /// Two seeds of one table with overlapping environments that give the same row key (MQ7112, reported on the later seed in merge
+    /// order, naming both packages when they differ), and a row whose key is a row of a reference type bound to the table where both
+    /// are loaded (reported on the table seed).
     /// </summary>
     private static void CheckOtherSeeds(ValidationContext context, Seed seed, Table table, IReadOnlyList<string>? keyIds, Report report)
     {
@@ -204,7 +229,7 @@ internal static class TableSeedRules
             }
         }
 
-        foreach (var other in context.SeedsOf(table.Id).Where(o => o.Id != seed.Id && string.CompareOrdinal(o.Name, seed.Name) < 0))
+        foreach (var other in context.SeedsOf(table.Id).TakeWhile(o => o.Id != seed.Id))
         {
             if (!Overlap(seed, other))
                 continue;
@@ -212,7 +237,7 @@ internal static class TableSeedRules
             for (var r = 0; r < seed.Rows.Count; r++)
             {
                 if (KeyOf(seed, seed.Rows[r], keyIds) is { } key && theirs.Contains(key))
-                    report.Add("MQ7112", $"Row {seed.Rows[r].Id} repeats a row key of seed '{other.Name}' of the same table.", "/rows/" + Str(r), seed.Rows[r].Id);
+                    report.Add("MQ7112", $"Row {seed.Rows[r].Id} repeats a row key of seed '{other.Name}' of the same table{ReferenceDataRules.BothPackages(context, seed, other)}.", "/rows/" + Str(r), seed.Rows[r].Id);
             }
         }
     }

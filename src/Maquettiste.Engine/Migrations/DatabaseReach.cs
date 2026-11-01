@@ -15,7 +15,9 @@ namespace Maquettiste.Engine.Migrations;
 /// mappings and facts), the elements that name one of those (entity and reference type bindings, seeds) and the entities its
 /// convention takes (<see cref="DatabaseScope.ByConvention"/>). It then closes over what each reached element references (base
 /// entities, value objects, scalar types, enums, reference types, stereotypes, packages and their parents), over the relations
-/// that name a reached entity (and so the entities at their other ends) and over the entities that derive from a reached one.
+/// that name a reached entity (and so the entities at their other ends) and over the entities that derive from a reached one. A
+/// reached stereotype's <c>implies</c> are references too, so the stereotypes it implies are reached: an element's effective set
+/// (next-phase-1-design.md section 4.2) is in the reach of every database that reaches the element.
 /// </remarks>
 internal static class DatabaseReach
 {

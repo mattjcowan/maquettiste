@@ -11,12 +11,21 @@
     "name",
     "displayName",
     "pluralName",
+    "package",
     "description",
+    "rationale",
+    "decision",
+    "status",
     "stereotypes",
     "tags",
     "category",
     "appliesTo",
+    "group",
+    "requires",
+    "conflicts",
+    "implies",
     "attributes",
+    "parameters",
     "defaultProperties",
     "storage",
     "icon",
@@ -49,8 +58,25 @@
     "pluralName": {
       "type": "string"
     },
+    "package": {
+      "$ref": "common.json#/$defs/id"
+    },
     "description": {
       "$ref": "common.json#/$defs/description"
+    },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
     },
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",
@@ -102,6 +128,25 @@
       "uniqueItems": true,
       "default": []
     },
+    "group": {
+      "description": "A label, not a link: an element carries at most one stereotype of a group, its own and implied ones together (MQ2013).",
+      "$ref": "common.json#/$defs/key"
+    },
+    "requires": {
+      "description": "Stereotype keys an element that carries this one must also carry (MQ2014).",
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "conflicts": {
+      "description": "Stereotype keys an element that carries this one must not carry (MQ2015).",
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "implies": {
+      "description": "Stereotype keys applied with this one, one level deep: an element that carries it carries them too, before its own stereotypes (MQ2017 refuses a stereotype that implies one that implies others).",
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
     "attributes": {
       "type": "array",
       "x-sort": "order",
@@ -110,7 +155,30 @@
       },
       "default": []
     },
+    "parameters": {
+      "description": "Typed parameters, shaped like an extension file: a JSON Schema per property name (x-ref and x-translatable included) and the names each carrier must have. Values stay in the element's properties; defaults live in defaultProperties (MQ2018, MQ2019).",
+      "type": "object",
+      "x-order": ["properties", "required"],
+      "properties": {
+        "properties": {
+          "description": "A JSON Schema properties object: one schema per parameter name.",
+          "type": "object"
+        },
+        "required": {
+          "description": "The parameters each carrier must have, judged on its merged values (the stereotype's defaults count).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        }
+      },
+      "required": ["properties"],
+      "additionalProperties": false
+    },
     "defaultProperties": {
+      "description": "Default property values, merged under each carrier's own properties; each is checked against its own schema in parameters, without required (MQ2018).",
       "type": "object",
       "default": {}
     },

@@ -11,10 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge, Kbd, Spinner } from "@/components/ui/misc";
 import { displayName } from "@/model/model";
-import { entryKey, localeName, nextOpen, shardLabel, shardStem } from "./model";
+import { entryKey, fieldLabel, localeName, nextOpen, shardLabel, shardStem } from "./model";
 import { useShardTranslations, writeTranslations } from "./queries";
 
-const FIELD = { displayName: "display name", pluralName: "plural name", label: "label", description: "description" } as const;
+const FIELD: Readonly<Record<string, string>> = { displayName: "display name", pluralName: "plural name", label: "label", description: "description" };
 
 export function TranslationQueue({ locale, shard, onClose }: { locale: string; shard: string; onClose(): void }) {
   const page = useShardTranslations(locale, shard);
@@ -100,7 +100,7 @@ export function TranslationQueue({ locale, shard, onClose }: { locale: string; s
       <ol className="flex max-h-[28rem] flex-col overflow-auto rounded-control border border-default" aria-label="Entries">
         {entries.map((e, i) => {
           const owner = names.get(e.owner ?? e.id);
-          const label = `${FIELD[e.field]} of ${owner ? displayName(owner) : e.id} (${locale})`;
+          const label = `${fieldLabel(e.field, FIELD)} of ${owner ? displayName(owner) : e.id} (${locale})`;
           return (
             <li
               key={entryKey(e)}
@@ -111,7 +111,7 @@ export function TranslationQueue({ locale, shard, onClose }: { locale: string; s
               <div className="min-w-0">
                 <div className="truncate text-13">{e.source ?? <span className="italic text-secondary">(no source text)</span>}</div>
                 <div className="truncate text-11 text-secondary">
-                  {owner ? displayName(owner) : e.id} · {FIELD[e.field]}
+                  {owner ? displayName(owner) : e.id} · {fieldLabel(e.field, FIELD)}
                   {e.state === "stale" ? (
                     <Badge tone="warning" className="ml-1">
                       stale

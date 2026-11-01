@@ -102,6 +102,7 @@ internal static class LocaleShardReader
         string? display = null, plural = null, label = null;
         Description? description = null;
         Dictionary<string, string>? src = null;
+        Dictionary<string, string>? properties = null;
         while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
         {
             var name = reader.GetString();
@@ -151,13 +152,30 @@ internal static class LocaleShardReader
                     }
 
                     break;
+                case "properties":
+                    if (reader.TokenType != JsonTokenType.StartObject)
+                        return null;
+                    properties ??= new Dictionary<string, string>(StringComparer.Ordinal);
+                    while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+                    {
+                        var property = reader.GetString()!;
+                        reader.Read();
+                        properties[property] = reader.GetString()!;
+                    }
+
+                    break;
                 default:
                     reader.Skip();
                     break;
             }
         }
 
-        return new TranslationEntry { DisplayName = display, PluralName = plural, Label = label, Description = description, Src = src ?? (IReadOnlyDictionary<string, string>)ImmutableDictionary<string, string>.Empty };
+        return new TranslationEntry
+        {
+            DisplayName = display, PluralName = plural, Label = label, Description = description,
+            Properties = properties ?? (IReadOnlyDictionary<string, string>)ImmutableDictionary<string, string>.Empty,
+            Src = src ?? (IReadOnlyDictionary<string, string>)ImmutableDictionary<string, string>.Empty,
+        };
     }
 
     /// <summary>The description sidecars a shard references, as (pointer, file).</summary>

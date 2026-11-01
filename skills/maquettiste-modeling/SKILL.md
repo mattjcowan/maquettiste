@@ -20,7 +20,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | types/ | value objects and custom scalar types | reusable across attributes |
 | reference-types/ | reference type: built-in `code` and `label`, plus your own fields | an attribute's `type` may name one (single, or `collection`); defaults and cells use the row's code; storage is template-defined unless `referenceData.strategies` declares one |
 | seeds/<target>/ | rows of an entity, relation or reference type | one row per line with its own id; owned by its target and deleted with it |
-| locales/<locale>/ | translation shards (`kind: "locale-shard"`) keyed by id | only display name, plural name, description, and a row's label and description |
+| locales/<locale>/ | translation shards (`kind: "locale-shard"`) keyed by id | only display name, plural name, description, a row's label and description, and the text of a custom property marked `x-translatable` (field `properties/<name>`) |
 | databases/<db>/ | database, tables (overlays), views, sequences | tables from entities store only overrides |
 | databases/<db>/routines/ | routine (`kind: "routine"`): a function or procedure, `parameters` typed by a built-in type or a database type id, `returns`, a `body` per dialect | `dependsOn` orders it; routines are not overloaded |
 | databases/<db>/types/ | database type (`kind: "database-type"`): a domain, composite, enum or range the database owns | a column uses it by naming its id or name in `nativeType` |
@@ -29,7 +29,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | databases/<db>/migrations/open/ | migration fact (`kind: "migration"`): what a change of the database's shape means for its stored rows (`rename`, `change-type`, `drop`, `backfill`, `raw`, ...) | recorded by the saves themselves; complete a pending one, never delete one by hand |
 | mappings/ | projection overrides of older models, and relation mappings (`foreignKey`, junctions) | new work binds entities in their own file instead |
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
-| actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; not in a domain |
+| actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
 | diagrams/ | canvas membership and positions only (a process's diagram holds its chart's places) | never own elements |
 | vocabularies/ | tags, categories, stereotypes | |
@@ -47,12 +47,28 @@ clobber a concurrent edit or leave a dangling id.
 
 1. Find: `get_project`, then `get_model_index` (filter by `kind`, `package`, `tag`, `category`, `stereotype`, `query`)
    for ids; `get_references` for where an element is used; `get_database_view` for a database's tables and columns.
-2. Read: `get_schema` for the kind before building a document (its `extensions` constrain `properties`); `get_element` returns the document (`json`) and its `hash`.
+2. Read: `get_schema` for the kind before building a document (its `extensions` and `stereotypeParameters` constrain
+   `properties`); `get_element` returns the document (`json`) and its `hash`. Read an element's `rationale` and
+   `status` before you edit it: the rationale says why it is shaped this way, and a `deprecated` or `retired` element is
+   not one to build on.
    Reading many elements: `get_model_kinds` (`by: "package"`) says what there is, `get_elements` returns documents in pages
    (`fields` keeps only the members you need), `get_resolved_model` returns what generation sees (resolved attributes, tables,
    processes) as flat records; pass each page's `next` as `cursor` until it is null, and never loop `get_element` over thousands of ids.
 3. Change: `save_element` (the whole edited document plus `expectedHash` = the hash you read), `create_element`,
    `delete_element`, or `apply_batch` for several changes that must land together (all or nothing).
+   - In `apply_batch`, write names instead of ids: every id field and reference takes a qualified name, `@kind:path`
+     with the name as stored (`@database:main`, `@table:billing.notes`, `@column:billing.notes.body`,
+     `@entity:Billing.Invoice`, `@attribute:Invoice.total`), and `"as": "$pm"` on a create names the new element for
+     the whole batch, so other operations write `"$pm"` where its id goes. Send no ids for new elements and
+     sub-elements: the engine mints them and the answer's `ids` lists every name and minted id. An ambiguous name
+     (MQ1013) lists the candidates; use a longer form or the id. Run it with `dryRun: true` first: nothing is written,
+     and the answer holds a diff per file and the diagnostics the change adds or removes.
+   - Keep the ids of sub-elements you re-send: a sub-element without an id in an update is new, and dropping one and
+     adding one with the same name without its id is refused (MQ1014).
+   - Custom property values still written as names where an `x-ref` types an id (MQ2010): `apply_batch`
+     `{"op":"names-to-ids"}` (optionally `"elementIds":[...]`) converts them all; never look the ids up one by one.
+     Tags that carry a value (`status:draft`) move into a declared custom property with
+     `{"op":"tags-to-property","prefix":"status:","name":"status"}`. Run both with `dryRun: true` first.
    - `conflict`: the file changed since you read it; nothing was written. Merge your change into `current` and retry with
      its `hash`. Never retry blindly with the new hash and your old document.
    - `invalid`: nothing was written; fix what `diagnostics` name (rule id, JSON pointer).
@@ -129,8 +145,9 @@ root-level states must equal its bound enum's members, in order (MQ9203).
 
 Without the server (or for bulk mechanical edits the tools do not cover), edit the files directly:
 
-1. Change the JSON files (keep them canonical; the next save by the tool rewrites them anyway). New elements need a new
-   ULID `id` (uppercase, 26 characters); references are ids.
+1. Change the JSON files (keep them canonical; the next save by the tool rewrites them anyway); references are ids. To
+   add elements, write a batch file instead and run `maquettiste model apply <batch.json>` (`--dry-run` first): it takes
+   the `apply_batch` shapes, names and placeholders, and mints every id.
 2. `maquettiste validate` (exit 1 on errors; `--format sarif` for annotations). Fix dangling ids first.
 3. `maquettiste generate --dry-run --diff` to see what would change, then `maquettiste generate`.
 4. `maquettiste generate --check` is what CI runs: it renders every output root and fails on stale, missing, orphaned or
@@ -170,6 +187,21 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
 - Tags: `tag_usage` counts each tag's uses in a vocabulary's scope (and the undeclared ones in use); to remove tags from the
   vocabulary and every use, or rename one, use `apply_batch` `{"op":"retag","tags":[...],"name":<new key>,"package":<domain>}`
   rather than editing every element.
+- Typed links: a custom property whose schema has `x-ref` (`{"kind":"attribute","of":"$element"}`, `{"kind":"entity"}`)
+  holds ids, never names, exactly like a reference field; `get_references` lists such values with their `schema`, and
+  deletes clear or refuse them by the schema's `optional`. MQ2010 is a name where the id belongs, MQ2011 a target out
+  of the `of` or `sameDatabase` scope.
+- Stereotype rules: a stereotype's `group` (one per element), `requires`, `conflicts` and `implies` (one level) bind
+  every element that carries it, implied stereotypes included (MQ2013 to MQ2017); its `parameters` type the
+  `properties` of its carriers, with `defaultProperties` as defaults (MQ2018). Read the stereotype before adding or
+  removing one on an element.
+- Layers: a package's `dependsOn` lists the packages its elements may reference (with their sub-packages; a parent's
+  list applies to its subtree). A reference to any other package is MQ2020: when you add one, check the layers first,
+  and never add a `dependsOn` entry just to silence it, since the direction of the layers is the user's decision.
+  `package` on a table, seed, stereotype or other kind is membership only and never changes a database.
+- Status: `status` is `proposed`, `approved`, `deprecated` or `retired`, with `rationale` (Markdown) and `decision` (a
+  URL or a record such as `ADR-0042`) beside it. A reference to a retired element is MQ2022: repoint it rather than
+  adding new ones. Write `rationale` when you make a choice the user will want explained.
 - Reference data (units, countries, statuses that grow) is a reference type with its rows in a seed; an entity's
   starting rows are a seed of that entity. Deleting an element deletes its seeds and translations in the same save.
 - The engine creates no table or column for reference data on its own: the packs decide the physical form, from the

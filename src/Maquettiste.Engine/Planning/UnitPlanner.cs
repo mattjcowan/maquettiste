@@ -660,8 +660,9 @@ internal sealed class UnitFilter
         var set = new HashSet<string>(StringComparer.Ordinal);
         if (SourceOf(element) is { } source)
             set.UnionWith(source.Stereotypes.Select(s => s.Key));
+        // A table file's effective set (implied stereotypes included), as the resolved objects carry theirs.
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file))
-            set.UnionWith(file.Stereotypes);
+            set.UnionWith(_model.Source.EffectiveStereotypes(file.Stereotypes).Select(s => s.Stereotype.Key));
         if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery)
             set.UnionWith(((RAnnotated)element).Stereotypes.Select(s => s.Key));
         return set;
@@ -693,7 +694,8 @@ internal sealed class UnitFilter
 
     private static bool PackageMatches(IResolvedObject element, IReadOnlyList<string> filters)
     {
-        var package = element as RPackage ?? SourceOf(element)?.Package;
+        // The object's own package: a table's file wins over its entity's or relation's, which the resolver already falls back to.
+        var package = element as RPackage ?? (element as RAnnotated)?.Package;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (; package is not null && seen.Add(package.Id); package = package.Parent)
         {

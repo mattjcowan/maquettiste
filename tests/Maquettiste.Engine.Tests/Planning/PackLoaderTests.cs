@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Planning;
+using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.Scripting;
 using Maquettiste.Engine.Tests.Generation;
 using Maquettiste.Testing;
 
@@ -69,8 +71,6 @@ public sealed class PackLoaderTests
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each process\", \"where\": { \"database\": \"main\" } } ] }", "MQ6001", "/units/0/where/database")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each scenario\", \"where\": { \"database\": \"main\" } } ] }", "MQ6001", "/units/0/where/database")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each actor\", \"where\": { \"abstract\": false } } ] }", "MQ6001", "/units/0/where/abstract")]
-    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each view\", \"where\": { \"packages\": [\"Sales\"] } } ] }", "MQ6001", "/units/0/where/packages")]
-    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each sequence\", \"where\": { \"notPackages\": [\"Sales\"] } } ] }", "MQ6001", "/units/0/where/notPackages")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each sequence\", \"where\": { \"abstract\": false } } ] }", "MQ6001", "/units/0/where/abstract")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"scripts\": [\"nope.js\"], \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/scripts/0")]
     public async Task Invalid_pack_json_is_reported_and_the_pack_left_out(string json, string rule, string pointer)
@@ -83,6 +83,115 @@ public sealed class PackLoaderTests
 
         Assert.Empty(set.Packs);
         Assert.Contains(set.Diagnostics, d => d.Rule == rule && d.JsonPointer == pointer && d.FilePath == ".maquettiste/templates/basic/pack.json");
+    }
+
+    [Fact]
+    public async Task Physical_object_units_filter_on_packages()
+    {
+        // next-phase-1-design.md section 4.3: views, sequences, routines, database types, SQL objects and queries may join a
+        // package, so their units filter on it like a table's.
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
+        string[] scopes = ["each view", "each sequence", "each routine", "each database type", "each sql object", "each query"];
+        var units = string.Join(", ", scopes.Select((scope, i) =>
+            $"{{ \"id\": \"in{i}\", \"template\": \"index.tpl\", \"for\": \"{scope}\", \"output\": \"out/in{i}/{{{{ name }}}}\", \"where\": {{ \"packages\": [\"Sales\"] }} }}, " +
+            $"{{ \"id\": \"out{i}\", \"template\": \"index.tpl\", \"for\": \"{scope}\", \"output\": \"out/out{i}/{{{{ name }}}}\", \"where\": {{ \"notPackages\": [\"Sales\"] }} }}"));
+        f.WritePackFile("basic", "pack.json", $"{{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ {units} ] }}");
+        await f.WriteModelAsync(b => Models.Shop(b, extra: (m, _, main) =>
+        {
+            var sales = m.Package("Sales");
+            m.Add(new View { Id = m.NewId(), Name = "sales_view", Database = main.Id, Package = sales.Id, Body = new Dictionary<string, string> { ["*"] = "select 1" } });
+            m.Add(new View { Id = m.NewId(), Name = "loose_view", Database = main.Id, Body = new Dictionary<string, string> { ["*"] = "select 1" } });
+            m.Add(new Sequence { Id = m.NewId(), Name = "sales_seq", Database = main.Id, Package = sales.Id });
+        }));
+        var snapshot = await f.Store.GetSnapshotAsync(Ct);
+
+        var set = await new PackLoader(f.Repo.Options, TestServices.Schemas).LoadAsync(snapshot, null, null, Ct);
+
+        Assert.Empty(set.Diagnostics);
+        Assert.Equal(["basic"], set.Packs.Select(p => p.Name));
+        var model = await new ModelResolver(f.Repo.Options).ResolveAsync(snapshot, null, Ct);
+        var plan = await new UnitPlanner(f.Repo.Options).PlanAsync(model, set, new ScriptSandboxFactory(), null, Ct);
+        Assert.Empty(plan.Diagnostics);
+        string Names(string unit) => string.Join(",", plan.Units.Where(u => u.Unit.Id == unit)
+            .Select(u => u.Element switch { RView v => v.Name, RSequence q => q.Name, var other => other!.Id }).Order(StringComparer.Ordinal));
+        Assert.Equal("sales_view", Names("in0"));
+        Assert.Equal("loose_view", Names("out0"));
+        Assert.Equal("sales_seq", Names("in1"));
+        Assert.Equal("", Names("out1"));
+    }
+
+    [Fact]
+    public async Task Pack_parameter_xrefs_are_checked()
+    {
+        // next-phase-1-design.md section 4.1: a pack's parameterSchema may type a parameter as a link. The load reports a malformed or
+        // misplaced keyword in pack.json (MQ2009), and each project value it types in maquettiste.json that is a name (MQ2010),
+        // dangles (MQ2001), names another kind (MQ2002) or a row of another list (MQ2011). The pack still loads, as with MQ6023.
+        string customer = "", main = "", euro = "";
+        void Model(ModelBuilder b) => Models.Shop(b, extra: (m, c, db) =>
+        {
+            customer = c.Id;
+            main = db.Id;
+            var currency = m.Entity("Currency").Key("code", "string");
+            euro = m.NewId();
+            m.Add(new Seed { Id = m.NewId(), Name = "currencies", Target = currency.Id, Columns = [currency.AttrId("code")], Rows = [new SeedRow { Id = euro, Values = [JsonSerializer.SerializeToElement("EUR")] }] });
+        });
+        await using var f = await GenerationFixture.CreateAsync(Model, "basic");
+        var ghost = "01JB9EE0ZBGJ09TQM83XSSSS6Y";
+        f.WritePackFile("basic", "pack.json", """
+            { "name": "basic", "version": "1.0.0", "engine": ">=1.0", "units": [ { "id": "index", "template": "index.tpl", "for": "model", "output": "out/index.txt" } ],
+              "parameterSchema": { "properties": {
+                "root": { "type": "string", "x-ref": { "kind": "entity" } },
+                "audited": { "type": "array", "items": { "type": "string", "x-ref": { "kind": "entity", "optional": true } } },
+                "target": { "type": "string", "x-ref": { "kind": "database" } },
+                "sortBy": { "type": "string", "x-ref": { "kind": "attribute", "of": "$element" } },
+                "region": { "type": "string", "x-ref": { "kind": "table", "sameDatabase": true } },
+                "first": { "type": "string", "x-ref": { "kind": "row", "of": "CUSTOMER" } },
+                "broken": { "type": "string", "x-ref": { "kind": "widget" } } } } }
+            """.Replace("CUSTOMER", customer, StringComparison.Ordinal));
+        await f.WriteModelAsync(Model, s => s with
+        {
+            Packs = new Dictionary<string, PackSettings>
+            {
+                ["basic"] = new()
+                {
+                    Parameters = new Dictionary<string, JsonElement>
+                    {
+                        ["root"] = JsonSerializer.SerializeToElement("Customer"),
+                        ["audited"] = JsonSerializer.SerializeToElement(new[] { customer, ghost }),
+                        ["target"] = JsonSerializer.SerializeToElement(customer),
+                        ["first"] = JsonSerializer.SerializeToElement(euro),
+                        ["region"] = JsonSerializer.SerializeToElement(main),
+                    },
+                },
+            },
+        });
+        var snapshot = await f.Store.GetSnapshotAsync(Ct);
+        var loader = new PackLoader(f.Repo.Options, TestServices.Schemas);
+
+        var set = await loader.LoadAsync(snapshot, null, null, Ct);
+
+        const string Settings = ".maquettiste/maquettiste.json";
+        const string Pack = ".maquettiste/templates/basic/pack.json";
+        Assert.Equal(
+            [
+                // Sorted as reports sort them: path, rule, message.
+                ("MQ2001", Settings, "/packs/basic/parameters/audited/1"),
+                ("MQ2002", Settings, "/packs/basic/parameters/region"),
+                ("MQ2002", Settings, "/packs/basic/parameters/target"),
+                ("MQ2010", Settings, "/packs/basic/parameters/root"),
+                ("MQ2011", Settings, "/packs/basic/parameters/first"),
+                ("MQ2009", Pack, "/parameterSchema/properties/broken/x-ref/kind"),
+                ("MQ2009", Pack, "/parameterSchema/properties/sortBy/x-ref/of"),
+                ("MQ2009", Pack, "/parameterSchema/properties/region/x-ref/sameDatabase"),
+            ],
+            set.Diagnostics.Select(d => (d.Rule, d.FilePath!, d.JsonPointer!)));
+        Assert.Equal(["basic"], set.Packs.Select(p => p.Name));
+        Assert.Contains("Parameter 'root' of pack 'basic' holds 'Customer', which is a name or other text, not an id", set.Diagnostics[3].Message, StringComparison.Ordinal);
+        Assert.Contains("a pack parameter is held by no element", set.Diagnostics[6].Message, StringComparison.Ordinal);
+        // The pack read (MCP get_pack) reports the same findings.
+        var (pack, named) = await loader.LoadNamedAsync(snapshot, "basic", Ct);
+        Assert.NotNull(pack);
+        Assert.Equal(set.Diagnostics, named);
     }
 
     [Fact]

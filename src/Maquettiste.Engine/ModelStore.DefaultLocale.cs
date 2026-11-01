@@ -107,17 +107,18 @@ public sealed partial class ModelStore
                 continue;
             }
 
-            foreach (var field in LocalizationIndex.Fields.Where(f => LocalizationIndex.Has(entry, f) && node.Allows(f)))
+            foreach (var field in LocalizationIndex.FieldsIn(entry).Where(node.Allows))
             {
                 var text = field switch
                 {
                     LocalizationIndex.DisplayNameField => entry.DisplayName,
                     LocalizationIndex.PluralNameField => entry.PluralName,
                     LocalizationIndex.LabelField => entry.Label,
-                    _ => entry.Description?.Text,
+                    LocalizationIndex.DescriptionField => entry.Description?.Text,
+                    _ => l10n.Text(locale, id, field), // a property text (next-phase-1-design.md section 4.4)
                 };
                 var before = node.Source(field);
-                if (text is null || before?.StartsWith("file:", StringComparison.Ordinal) == true)
+                if (text is null || (LocalizationIndex.PropertyNameOf(field) is null && before?.StartsWith("file:", StringComparison.Ordinal) == true))
                 {
                     skipped.Add(id + "/" + field + ": a description in a sidecar file is not moved (the translation stays in the new default's locale folder, which is not loaded, MQ7202; the element keeps its sidecar text)");
                     continue;
@@ -137,19 +138,8 @@ public sealed partial class ModelStore
 
                 moves.Add(new DefaultLocaleMove(id, field, before, text));
                 var from = ShardJson(shard.ModelPath, locale, shard.Shard.Scope);
-                if (from["entries"] is JsonObject fromEntries && fromEntries[id] is JsonObject fromEntry)
-                {
-                    fromEntry.Remove(field);
-                    if (fromEntry["src"] is JsonObject fromSrc)
-                    {
-                        fromSrc.Remove(field);
-                        if (fromSrc.Count == 0)
-                            fromEntry.Remove("src");
-                    }
-
-                    if (!fromEntry.Any(kv => kv.Key != "src"))
-                        fromEntries.Remove(id);
-                }
+                if (from["entries"] is JsonObject fromEntries && fromEntries[id] is JsonObject fromEntry && LocalizationIndex.RemoveField(fromEntry, field))
+                    fromEntries.Remove(id);
 
                 if (before is null)
                     continue;
@@ -158,7 +148,7 @@ public sealed partial class ModelStore
                 to["entries"] = toEntries;
                 var toEntry = toEntries[id] as JsonObject ?? new JsonObject();
                 toEntries[id] = toEntry;
-                toEntry[field] = before;
+                LocalizationIndex.SetFieldValue(toEntry, field, before);
                 var src = toEntry["src"] as JsonObject ?? new JsonObject();
                 toEntry.Remove("src");
                 src[field] = LocalizationIndex.SourceHash(text);
@@ -303,9 +293,23 @@ public sealed partial class ModelStore
             }
         }
 
-        if (target is not JsonObject properties)
+        if (target is not JsonObject holder)
             return false;
-        properties[field] = text;
+        if (LocalizationIndex.PropertyNameOf(field) is { } name)
+        {
+            // A property text goes into the holder's own properties (an inherited default becomes its own value).
+            if (holder["properties"] is not JsonObject properties)
+            {
+                if (holder["properties"] is not null)
+                    return false;
+                holder["properties"] = properties = new JsonObject();
+            }
+
+            properties[name] = text;
+            return true;
+        }
+
+        holder[field] = text;
         return true;
     }
 }

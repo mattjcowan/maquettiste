@@ -14,7 +14,10 @@ namespace Maquettiste.Engine.Loading;
 /// <param name="ExpectedHash">The ETag the caller loaded (update and delete).</param>
 /// <param name="Element">The element JSON (create and update).</param>
 /// <param name="Resolution">What a delete does with references to the element.</param>
-internal sealed record PlannedChange(BatchOp Op, string? Id, string? ExpectedHash, JsonNode? Element, DeleteResolution Resolution);
+/// <param name="Minted">The pointers of the ids the batch resolver minted in the element (next-phase-1-design.md section 5.1), or
+/// <see langword="null"/>; an update adds the ones it mints itself before its "keep its id" check (MQ1014).</param>
+internal sealed record PlannedChange(BatchOp Op, string? Id, string? ExpectedHash, JsonNode? Element, DeleteResolution Resolution,
+    IReadOnlyList<string>? Minted = null);
 
 /// <summary>The planner's verdict on one change.</summary>
 internal sealed class ChangeOutcome
@@ -109,6 +112,7 @@ internal sealed partial class ChangePlanner
     private HashSet<string> _batchIds = new(StringComparer.Ordinal);
     private Dictionary<string, HashSet<string>>? _sidecarUsers;
     private readonly int _parallelism;
+    private readonly Lazy<PackParameterRefs>? _packParameters;
     private CancellationToken _ct;
 
     /// <summary>Creates a planner over a snapshot.</summary>
@@ -119,10 +123,14 @@ internal sealed partial class ChangePlanner
     /// <param name="ids">The id generator for creates without an id.</param>
     /// <param name="parallelism">The most documents a candidate snapshot's index build walks at once
     /// (<see cref="EngineOptions.EffectiveParallelism"/>).</param>
-    public ChangePlanner(ModelSnapshot snapshot, ISchemaRegistry schemas, ICanonicalJson json, ModelPaths paths, IIdGenerator ids, int parallelism)
+    /// <param name="packParameters">The pack parameter values <c>x-ref</c> types, read only when a change removes something
+    /// (next-phase-1-design.md section 4.1); <see langword="null"/> leaves pack parameters out.</param>
+    public ChangePlanner(ModelSnapshot snapshot, ISchemaRegistry schemas, ICanonicalJson json, ModelPaths paths, IIdGenerator ids, int parallelism,
+        Lazy<PackParameterRefs>? packParameters = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(parallelism, 1);
         _parallelism = parallelism;
+        _packParameters = packParameters;
         _snapshot = snapshot;
         _schemas = schemas;
         _json = json;
@@ -163,9 +171,19 @@ internal sealed partial class ChangePlanner
         }
 
         if (outcomes.All(o => o.Outcome == SaveOutcome.Saved))
+        {
             FinishCascade(outcomes);
+        }
         else if (_cascadeOrder.Count > 0)
+        {
+            PlanCascadePackValues(outcomes);
             CascadeReport = BuildReport();
+        }
+
+        // Pack parameter values that name what goes (section 4.1): removed in the same change, or listed as refusals by the delete plan.
+        RemovePackValues(outcomes);
+        if (CascadeReport is null && _packRefusals.Count > 0)
+            CascadeReport = new DeletePlanReport([.. changes.Where(c => c.Op == BatchOp.Delete).Select(c => c.Id).OfType<string>()], [], [], [], [.. _packRefusals], []);
 
         ModelSnapshot? candidate = null;
         if (outcomes.All(o => o.Outcome == SaveOutcome.Saved))
@@ -229,6 +247,8 @@ internal sealed partial class ChangePlanner
             return;
         }
 
+        // Sub-elements without an id get one before the schema runs (section 5.1); the batch resolver has minted its own already.
+        IdMinter.Fill(node, _schemas.GetLayout(info.SchemaFile), _ids, null);
         _changeByElement[id] = index;
         if (Read(node, info, null, outcome) is not { } element)
             return;
@@ -263,6 +283,10 @@ internal sealed partial class ChangePlanner
             return;
         }
 
+        // A sub-element without an id is new: it gets one (section 5.1); the engine never matches sub-elements by name.
+        var mintedHere = new List<MintedId>();
+        IdMinter.Fill(node, _schemas.GetLayout(info.SchemaFile), _ids, mintedHere);
+        IReadOnlyList<string> minted = [.. change.Minted ?? [], .. mintedHere.Select(m => m.Pointer)];
         if (Read(node, info, _paths.ToRepoPath(current.ModelPath), outcome) is not { } element)
             return;
         if (current.Element is Stereotype before && element is Stereotype after && before.Key != after.Key)
@@ -280,6 +304,8 @@ internal sealed partial class ChangePlanner
             ? MoveDatabase(current, database)
             : Relocate(current, element);
         var previousIds = SubElementIds(id, current.Json);
+        // Before Stage, which may move a seed's rows to its CSV file.
+        var slots = minted.Count > 0 ? MintedSlots(node, minted, HasRowCodes(element)) : [];
         Stage(id, element, node, info, modelPath, outcome, current);
         if (outcome.Outcome != SaveOutcome.Saved || !_working.TryGetValue(id, out var staged))
             return;
@@ -287,8 +313,115 @@ internal sealed partial class ChangePlanner
         var removed = previousIds.Where(sub => !kept.Contains(sub)).ToList();
         if (removed.Count == 0)
             return;
+        if (slots.Count > 0 && RefuseReplacements(id, current, removed, slots, outcome))
+            return;
         _removedIds.UnionWith(removed);
         DropSeedColumns(index, removed, outcome);
+        ClearOptionalReferences(index, id, removed, outcome);
+        CheckPackValues(index, removed, PackValueMode.Save, outcome);
+    }
+
+    /// <summary>Where a sub-element sits: the id of the element or sub-element that holds it, the property, and its name.</summary>
+    /// <param name="Pointer">The sub-element's pointer.</param>
+    /// <param name="ParentId">The id of the nearest object above it that has one: the element, or a sub-element.</param>
+    /// <param name="Property">The property of that parent it sits in.</param>
+    /// <param name="NameKey">Its <c>name</c>, else a reference-type seed row's cell in the <c>code</c> column, tagged and compared
+    /// ordinally.</param>
+    /// <param name="Name">The name or code as text, for messages.</param>
+    private sealed record SubElementSlot(string Pointer, string ParentId, string Property, string NameKey, string Name);
+
+    /// <summary>Whether the element is a seed of a reference type, whose rows are named by their code.</summary>
+    private bool HasRowCodes(Element element) =>
+        element is Seed seed && !_deleted.Contains(seed.Target) && TryGetCurrent(seed.Target, null, out var target) && target.Element is ReferenceType;
+
+    /// <summary>The slots of the named sub-elements a write minted ids for, read from the element as planned.</summary>
+    private static List<SubElementSlot> MintedSlots(JsonObject node, IReadOnlyList<string> pointers, bool rowCodes)
+    {
+        using var document = JsonDocument.Parse(node.ToJsonString());
+        return [.. pointers.Select(p => Slot(document.RootElement, p, rowCodes)).OfType<SubElementSlot>()];
+    }
+
+    /// <summary>The slot of the object at a pointer, or <see langword="null"/> when it does not resolve or has no name or code.</summary>
+    /// <param name="root">The element document.</param>
+    /// <param name="pointer">The sub-element's pointer.</param>
+    /// <param name="rowCodes">Whether the document is a reference-type seed, whose rows take their name from the code column.</param>
+    private static SubElementSlot? Slot(JsonElement root, string pointer, bool rowCodes)
+    {
+        if (!JsonPointer.TryParse(pointer, out var segments) || segments.Length == 0
+            || !root.TryGetProperty("id", out var rootId) || rootId.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var parentId = rootId.GetString()!;
+        var parentDepth = 0;
+        var current = root;
+        for (var k = 0; k < segments.Length; k++)
+        {
+            if (current.ValueKind == JsonValueKind.Object && current.TryGetProperty(segments[k], out var child))
+                current = child;
+            else if (current.ValueKind == JsonValueKind.Array && JsonPointer.TryIndex(segments[k], out var i) && i < current.GetArrayLength())
+                current = current[i];
+            else
+                return null;
+            if (k < segments.Length - 1 && current.ValueKind == JsonValueKind.Object && current.TryGetProperty("id", out var holder)
+                && holder.ValueKind == JsonValueKind.String)
+            {
+                parentId = holder.GetString()!;
+                parentDepth = k + 1;
+            }
+        }
+
+        if (current.ValueKind != JsonValueKind.Object)
+            return null;
+        if (current.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
+            return new SubElementSlot(pointer, parentId, segments[parentDepth], "name:" + name.GetString(), name.GetString()!);
+        if (!rowCodes || parentDepth != 0 || segments is not ["rows", _] || !current.TryGetProperty("values", out var values)
+            || values.ValueKind != JsonValueKind.Array || !root.TryGetProperty("columns", out var columns) || columns.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var codeColumn = columns.EnumerateArray().TakeWhile(c => !(c.ValueKind == JsonValueKind.String && c.ValueEquals("code"))).Count();
+        if (codeColumn >= columns.GetArrayLength() || codeColumn >= values.GetArrayLength() || values[codeColumn] is not { ValueKind: JsonValueKind.String or JsonValueKind.Number } code)
+            return null;
+        // Keyed as NameIndex keys rows (ReferenceDataIndex.CodeKey), so the string "1" and the number 1 are one code.
+        var key = ReferenceDataIndex.CodeKey(code)!;
+        return new SubElementSlot(pointer, parentId, "rows", "code:" + key, key);
+    }
+
+    /// <summary>
+    /// The "keep its id" refusal (MQ1014, section 5.1): an update that drops a sub-element and adds one without an id under the same
+    /// parent and property with the same name would silently replace it, and the drop would also remove the seed columns and cells
+    /// that name the old id. Each such new sub-element fails the change at its pointer, before any seed column is dropped.
+    /// </summary>
+    /// <returns><see langword="true"/> when the change was refused.</returns>
+    private bool RefuseReplacements(string id, Working current, IReadOnlyCollection<string> removed, IReadOnlyList<SubElementSlot> minted, ChangeOutcome outcome)
+    {
+        var gone = removed.ToHashSet(StringComparer.Ordinal);
+        var rowCodes = HasRowCodes(current.Element);
+        var dropped = new Dictionary<(string ParentId, string Property, string NameKey), string>();
+        foreach (var (subId, pointer) in DocumentReader.Scan(current.Json).Ids)
+        {
+            if (gone.Contains(subId) && Slot(current.Json, pointer, rowCodes) is { } slot)
+                dropped.TryAdd((slot.ParentId, slot.Property, slot.NameKey), subId);
+        }
+
+        var refused = false;
+        foreach (var slot in minted)
+        {
+            if (!dropped.TryGetValue((slot.ParentId, slot.Property, slot.NameKey), out var oldId))
+                continue;
+            refused = true;
+            outcome.Fail(SaveOutcome.Invalid, RuleCatalog.Create(
+                "MQ1014",
+                $"{slot.Pointer} The update drops '{slot.Name}' ({oldId}) from {slot.Property} and adds one without an id under the same parent with the same name: send the existing id {oldId} to keep it.",
+                id,
+                _paths.ToRepoPath(current.ModelPath),
+                slot.Pointer));
+        }
+
+        return refused;
     }
 
     /// <summary>
@@ -379,6 +512,7 @@ internal sealed partial class ChangePlanner
             .Order(StringComparer.Ordinal)
             .ToList();
         var subIds = StageDelete(index, id, current);
+        CheckPackValues(index, [id, .. subIds], PackValueMode.Refuse, outcome);
         foreach (var seedId in owned)
         {
             if (!TryGetCurrent(seedId, null, out var seed))

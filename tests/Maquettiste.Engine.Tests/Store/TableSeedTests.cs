@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Editor;
 
@@ -29,9 +30,9 @@ public sealed class TableSeedTests
         return result;
     }
 
-    private static async Task<EditorRepo> RepoAsync()
+    private static async Task<EditorRepo> RepoAsync(bool packs = false)
     {
-        var r = EditorRepo.Create(packs: false);
+        var r = EditorRepo.Create(packs);
         await CreateAsync(r, $$"""
             {"kind":"table","id":"{{Currencies}}","name":"currencies","database":"{{EditorRepo.MainDatabaseId}}","columns":[
               {"id":"{{CurrencyCode}}","name":"code","type":"string","length":3,"nullable":false},
@@ -266,6 +267,151 @@ public sealed class TableSeedTests
         Assert.Equal(2, rules.Count);
         Assert.Contains(rules, d => d.Message.StartsWith("Row 01K6TSD0000000000000000081:", StringComparison.Ordinal) && d.Message.Contains("do not hold in every environment", StringComparison.Ordinal));
         Assert.Contains(rules, d => d.Message.StartsWith("Row 01K6TSD0000000000000000083:", StringComparison.Ordinal) && d.Message.Contains("in the environment 'test'", StringComparison.Ordinal));
+    }
+
+    private const string CatalogPackageId = "01J92P0V025DRFTXKMS240G2NG";
+
+    private static string CurrencySeedJson(string id, string name, string? package, string rowId, string code, string? key = null) =>
+        $$"""
+        {"kind":"seed","id":"{{id}}","name":"{{name}}",{{(package is null ? "" : $"\"package\":\"{package}\",")}}"target":"{{Currencies}}",
+         {{(key is null ? "" : $"\"key\":\"{key}\",")}}"columns":["{{CurrencyCode}}","{{CurrencyName}}"],
+         "rows":[{"id":"{{rowId}}","values":["{{code}}","{{code}} name"]}]}
+        """;
+
+    [Fact]
+    public async Task Seeds_in_two_packages_merge_by_package_then_name()
+    {
+        // next-phase-1-design.md section 4.3: by package qualified name (none first), then name, then id. Catalog is Billing.Catalog.
+        await using var r = await RepoAsync();
+        await CreateAsync(r, CurrencySeedJson("01K6TSD0000000000000000101", "catalogRates", CatalogPackageId, "01K6TSD0000000000000000111", "GBP"));
+        await CreateAsync(r, CurrencySeedJson("01K6TSD0000000000000000102", "zzBase", null, "01K6TSD0000000000000000112", "EUR"));
+        await CreateAsync(r, CurrencySeedJson("01K6TSD0000000000000000103", "billingRates", EditorRepo.BillingPackageId, "01K6TSD0000000000000000113", "USD"));
+        await CreateAsync(r, CurrencySeedJson("01K6TSD0000000000000000104", "billingExtra", EditorRepo.BillingPackageId, "01K6TSD0000000000000000114", "CHF"));
+
+        var model = await ResolvedAsync(r);
+
+        string[] expected = ["zzBase", "billingExtra", "billingRates", "catalogRates"];
+        var currencies = model.Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).SeedTables.Single(t => t.Table.Name == "currencies");
+        Assert.Equal(expected, currencies.Seeds.Select(seed => seed.Name));
+        Assert.Equal(["EUR", "CHF", "USD", "GBP"], currencies.Rows.Select(row => row.Values["code"]));
+        Assert.Equal(expected, currencies.Table.Seeds.Select(seed => seed.Name));
+        Assert.Equal(expected, model.Seeds.Where(seed => seed.Target == currencies.Table).Select(seed => seed.Name));
+        Assert.Equal([null, "Billing", "Billing", "Billing.Catalog"], currencies.Seeds.Select(seed => seed.Package?.QualifiedName));
+    }
+
+    [Fact]
+    public async Task Seeds_keying_rows_differently_are_MQ7121()
+    {
+        const string Settings = "01K6TSD0000000000000000120", SettingId = "01K6TSD0000000000000000121", SettingKey = "01K6TSD0000000000000000122";
+        const string ByKey = "01K6TSD0000000000000000123";
+        await using var r = await RepoAsync();
+        await CreateAsync(r, $$"""
+            {"kind":"table","id":"{{Settings}}","name":"app_settings","database":"{{EditorRepo.MainDatabaseId}}","columns":[
+              {"id":"{{SettingId}}","name":"id","type":"int32","nullable":false},
+              {"id":"{{SettingKey}}","name":"key","type":"string","length":40,"nullable":false}],
+             "primaryKey":{"columns":["{{SettingId}}"]},"uniques":[{"id":"{{ByKey}}","name":"uq_app_settings_key","columns":["{{SettingKey}}"]}]}
+            """);
+        string Seed(string id, string name, string? package, string? key, string rowId, int value) => $$"""
+            {"kind":"seed","id":"{{id}}","name":"{{name}}",{{(package is null ? "" : $"\"package\":\"{package}\",")}}"target":"{{Settings}}",
+             {{(key is null ? "" : $"\"key\":\"{key}\",")}}"columns":["{{SettingId}}","{{SettingKey}}"],"rows":[{"id":"{{rowId}}","values":[{{value}},"k{{value}}"]}]}
+            """;
+        await CreateAsync(r, Seed("01K6TSD0000000000000000130", "base", null, ByKey, "01K6TSD0000000000000000131", 1));
+
+        // A later seed (by package) that finds its rows by the primary key is refused at its target.
+        var byPrimaryKey = await r.Store.CreateAsync(Encoding.UTF8.GetBytes(JsonNode.Parse(Seed("01K6TSD0000000000000000140", "aaDemo", EditorRepo.BillingPackageId, null, "01K6TSD0000000000000000141", 2))!.ToJsonString()), ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Invalid, byPrimaryKey.Outcome);
+        var d = Assert.Single(byPrimaryKey.Diagnostics, d => d.Rule == "MQ7121");
+        Assert.Equal((DiagnosticSeverity.Error, "01K6TSD0000000000000000140", "/target"), (d.Severity, d.ElementId, d.JsonPointer));
+        Assert.Contains("Seed 'aaDemo' finds its rows by the primary key, but seed 'base' of table 'app_settings', which comes first, finds them by the unique constraint 'uq_app_settings_key'", d.Message, StringComparison.Ordinal);
+        Assert.Contains("(seed 'base' is in no package, this seed in package 'Billing')", d.Message, StringComparison.Ordinal);
+
+        // The same key is fine, and the table's row key is that constraint.
+        await CreateAsync(r, Seed("01K6TSD0000000000000000140", "aaDemo", EditorRepo.BillingPackageId, ByKey, "01K6TSD0000000000000000141", 2));
+        var table = (await ResolvedAsync(r)).Databases.Single(x => x.Id == EditorRepo.MainDatabaseId).SeedTables.Single(t => t.Table.Name == "app_settings");
+        Assert.Equal(["key"], table.KeyColumns.Select(c => c.Name));
+
+        // A new first seed (by name, in no package) that names no key makes the others the later ones: its save is refused on them,
+        // at their key.
+        var first = await r.Store.CreateAsync(Encoding.UTF8.GetBytes(JsonNode.Parse(Seed("01K6TSD0000000000000000150", "aaa", null, null, "01K6TSD0000000000000000151", 3))!.ToJsonString()), ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Invalid, first.Outcome);
+        Assert.Equal(
+            [("01K6TSD0000000000000000130", "/key"), ("01K6TSD0000000000000000140", "/key")],
+            first.Diagnostics.Where(x => x.Rule == "MQ7121").Select(x => (x.ElementId!, x.JsonPointer!)).Order());
+    }
+
+    [Fact]
+    public async Task A_row_key_claimed_in_two_packages_is_MQ7112_naming_both()
+    {
+        await using var r = await RepoAsync();
+        await CreateAsync(r, CurrencySeedJson("01K6TSD0000000000000000170", "zzBase", null, "01K6TSD0000000000000000171", "EUR"));
+
+        // By name the new seed comes first; by package it comes later, so the finding goes on it.
+        var claimed = await r.Store.CreateAsync(Encoding.UTF8.GetBytes(JsonNode.Parse(CurrencySeedJson("01K6TSD0000000000000000180", "aaCatalog", CatalogPackageId, "01K6TSD0000000000000000181", "EUR"))!.ToJsonString()), ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Invalid, claimed.Outcome);
+        var d = Assert.Single(claimed.Diagnostics, d => d.Rule == "MQ7112");
+        Assert.Equal(("01K6TSD0000000000000000181", "/rows/0"), (d.ElementId, d.JsonPointer));
+        Assert.Equal(".maquettiste/model/seeds/currencies/aa-catalog.json", d.FilePath);
+        Assert.Contains("repeats a row key of seed 'zzBase' of the same table (seed 'zzBase' is in no package, this seed in package 'Billing.Catalog')", d.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Renaming_a_package_on_a_seeds_chain_reorders_its_rows_and_re_renders_the_seed_script()
+    {
+        // The merge order reads package qualified names, which no seed file holds: each seed records the packages of its chain, so an
+        // incremental run re-renders the seed script when one of them is renamed and writes what a full run writes.
+        const string Ledger = "01K6TSD0000000000000000190";
+        const string SeedUnit = "sql-ddl/seed:" + EditorRepo.MainDatabaseId, SeedScript = "db/main/seed.sql";
+        await using var r = await RepoAsync(packs: true);
+        await CreateAsync(r, $$"""{"kind":"package","id":"{{Ledger}}","name":"Ledger"}""");
+        await CreateAsync(r, CurrencySeedJson("01K6TSD0000000000000000191", "catalogRates", CatalogPackageId, "01K6TSD0000000000000000192", "GBP"));
+        await CreateAsync(r, CurrencySeedJson("01K6TSD0000000000000000193", "ledgerRates", Ledger, "01K6TSD0000000000000000194", "USD"));
+        async Task<GenerationResult> RunAsync(bool force = false)
+        {
+            var run = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"], Force = force }, null, Ct);
+            Assert.Equal(RunOutcome.Succeeded, run.Outcome);
+            return run;
+        }
+
+        async Task RenameAsync(string id, string name)
+        {
+            var document = await r.Store.GetElementAsync(id, Ct);
+            var node = JsonNode.Parse(document!.Json.GetRawText())!.AsObject();
+            node["name"] = name;
+            var saved = await r.Store.SaveAsync(id, Encoding.UTF8.GetBytes(node.ToJsonString()), document.Hash, ChangeSource.Editor, Ct);
+            Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join("; ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        }
+
+        async Task AssertRerenderedAsync(string first, string second)
+        {
+            var plan = (await r.Service.PlanAsync(new GenerationRequest { Packs = ["sql-ddl"] }, null, Ct)).Plan!;
+            Assert.Contains(plan.Units, u => u.Key == SeedUnit && !u.Skipped);
+            await RunAsync();
+            var script = r.Repo.ReadFile(SeedScript);
+            Assert.True(script.IndexOf($"'{first}'", StringComparison.Ordinal) < script.IndexOf($"'{second}'", StringComparison.Ordinal), script);
+            Assert.All((await RunAsync(force: true)).Changes, c => Assert.True(c.Kind == FileChangeKind.Kept, "forced run changed " + c.Kind + " " + c.Path));
+        }
+
+        // Each seed, and so the table's seed rows, records its file's package and that package's parents.
+        var currencies = (await ResolvedAsync(r)).Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).SeedTables.Single(t => t.Table.Name == "currencies");
+        Assert.Equal(
+            [["e:" + EditorRepo.BillingPackageId, "e:" + CatalogPackageId], ["e:" + Ledger]],
+            currencies.Seeds.Select(seed => seed.Dependencies.Where(k => k == "e:" + CatalogPackageId || k == "e:" + EditorRepo.BillingPackageId || k == "e:" + Ledger).Order(StringComparer.Ordinal).ToArray()));
+        Assert.Contains("e:" + Ledger, currencies.Dependencies);
+        Assert.Contains("e:" + EditorRepo.BillingPackageId, currencies.Table.Seeds.MembershipKeys);
+
+        await RunAsync();
+        Assert.Contains((await r.Service.PlanAsync(new GenerationRequest { Packs = ["sql-ddl"] }, null, Ct)).Plan!.Units, u => u.Key == SeedUnit && u.Skipped);
+        var initial = r.Repo.ReadFile(SeedScript);
+        Assert.True(initial.IndexOf("'GBP'", StringComparison.Ordinal) < initial.IndexOf("'USD'", StringComparison.Ordinal), initial); // Billing.Catalog, Ledger
+
+        // The seed's own package: Alpha now sorts before Billing.Catalog.
+        await RenameAsync(Ledger, "Alpha");
+        await AssertRerenderedAsync("USD", "GBP");
+
+        // A parent of the seed's package: Aaa.Catalog now sorts before Alpha.
+        await RenameAsync(EditorRepo.BillingPackageId, "Aaa");
+        await AssertRerenderedAsync("GBP", "USD");
     }
 
     [Fact]

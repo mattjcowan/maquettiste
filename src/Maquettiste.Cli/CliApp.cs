@@ -208,6 +208,12 @@ public sealed class CliApp(CliEnvironment environment)
                                 Delete an element: --resolution refuse|remove-references|delete-dependents (default refuse;
                                   delete-dependents also deletes what cannot exist without it), --dry-run (print what the
                                   delete would do and write nothing), --format text|json
+          model apply <batch.json>
+                                Apply a batch all or nothing ({ "operations": [...] } or the bare array, as apply_batch
+                                  takes it): id fields take ids, qualified names (@table:billing.notes) or placeholders ($t,
+                                  declared with "as"), and missing ids are minted; prints the paths written and the names
+                                  with their ids; --dry-run (print the diffs and the diagnostics added and removed, write
+                                  nothing), --format text|json
           model materialize tables --database <id|name> <entity...>
                                 Write a designed table per entity with its projection's shape and bind the entity to it:
                                   --schema <id|name>, --dry-run (print the plan and write nothing), --format text|json

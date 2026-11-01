@@ -215,6 +215,76 @@ public sealed class ModelStoreTests
     }
 
     [Fact]
+    public async Task A_save_that_puts_an_implied_stereotype_in_a_taken_group_is_refused_on_its_carriers()
+    {
+        await using var s = await BillingStore.OpenAsync();
+        // The real validator, with its scope: the carriers are not referrers of the saved stereotype, only its conflict peers.
+        var validator = Validation.ValidationFixture.Validator();
+        s.Harness.Validator.Rule = (model, scope) => validator.ValidateAsync(model, scope, null, Ct).GetAwaiter().GetResult().Diagnostics;
+        async Task<SaveResult> SaveAsync(string kind, string name, Action<JsonObject> edit)
+        {
+            var document = s.Doc(kind, name);
+            return await s.Store.SaveAsync(document.Element.Id, BillingStore.Edit(document, edit), document.Hash, ChangeSource.Editor, Ct);
+        }
+
+        // Customer and Invoice carry aggregate-root and audited, and soft-delete only through aggregate-root once it implies it.
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync("entity", "Invoice", n => n["stereotypes"] = new JsonArray("aggregate-root", "audited"))).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync("stereotype", "Audited", n => n["group"] = "lifecycle")).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync("stereotype", "Aggregate root", n => n["implies"] = new JsonArray("soft-delete"))).Outcome);
+        var before = s.Files();
+
+        // Neither carrier references soft-delete, yet the group it joins is judged on them.
+        var refused = await SaveAsync("stereotype", "Soft delete", n => n["group"] = "lifecycle");
+
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        Assert.Equal(
+            [(s.Id("entity", "Customer"), "/stereotypes/1"), (s.Id("entity", "Invoice"), "/stereotypes/1")],
+            refused.Diagnostics.Where(d => d.Rule == "MQ2013").Select(d => (d.ElementId!, d.JsonPointer!)).Order());
+        Assert.Contains("'soft-delete' (implied by 'aggregate-root')", refused.Diagnostics.First(d => d.Rule == "MQ2013").Message, StringComparison.Ordinal);
+        Assert.Equal(before, s.Files());
+    }
+
+    [Fact]
+    public async Task A_save_that_drops_a_dependsOn_entry_is_refused_with_MQ2020_on_a_grandchilds_element()
+    {
+        await using var s = await BillingStore.OpenAsync();
+        // The real validator, with its scope: the grandchild package's members do not reference Billing, they are its layer peers.
+        var validator = Validation.ValidationFixture.Validator();
+        s.Harness.Validator.Rule = (model, scope) => validator.ValidateAsync(model, scope, null, Ct).GetAwaiter().GetResult().Diagnostics;
+        Task<SaveResult> CreateAsync(string json) => s.Store.CreateAsync(Encoding.UTF8.GetBytes(json), ChangeSource.Editor, Ct);
+        Task<SaveResult> SaveAsync(string id, Action<JsonObject> edit)
+        {
+            var document = s.Model.GetDocument(id)!;
+            return s.Store.SaveAsync(id, BillingStore.Edit(document, edit), document.Hash, ChangeSource.Editor, Ct);
+        }
+
+        const string Shared = "01K9PKG0000000000000000001", Percent = "01K9PKG0000000000000000002", Pricing = "01K9PKG0000000000000000003";
+        const string PriceList = "01K9PKG0000000000000000004", PriceListId = "01K9PKG0000000000000000005", Discount = "01K9PKG0000000000000000006";
+        var billing = s.Id("package", "Billing");
+        var catalog = s.Id("package", "Catalog");
+        Assert.Equal(SaveOutcome.Saved, (await CreateAsync($$"""{"kind":"package","id":"{{Shared}}","name":"Shared"}""")).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await CreateAsync($$"""{"kind":"scalar-type","id":"{{Percent}}","name":"Percent","package":"{{Shared}}","base":"decimal"}""")).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await CreateAsync($$"""{"kind":"package","id":"{{Pricing}}","name":"Pricing","parent":"{{catalog}}"}""")).Outcome);
+        // Catalog reaches its parent through its own dependsOn; Billing lends Shared to its whole subtree, Pricing included.
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync(catalog, n => n["dependsOn"] = new JsonArray(billing))).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync(billing, n => n["dependsOn"] = new JsonArray(Shared))).Outcome);
+        var created = await CreateAsync($$$"""
+            {"kind":"entity","id":"{{{PriceList}}}","name":"PriceList","package":"{{{Pricing}}}","key":{"attributes":["{{{PriceListId}}}"],"strategy":"uuid-v7"},
+             "attributes":[{"id":"{{{PriceListId}}}","name":"id","type":"uuid","required":true},{"id":"{{{Discount}}}","name":"discount","type":{"ref":"{{{Percent}}}"}}]}
+            """);
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        var before = s.Files();
+
+        var refused = await SaveAsync(billing, n => n["dependsOn"] = new JsonArray());
+
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        var d = Assert.Single(refused.Diagnostics, d => d.Rule == "MQ2020");
+        Assert.Equal((Discount, "/attributes/1/type/ref"), (d.ElementId, d.JsonPointer));
+        Assert.Contains("in package 'Shared', which package 'Billing.Catalog.Pricing' does not depend on", d.Message, StringComparison.Ordinal);
+        Assert.Equal(before, s.Files());
+    }
+
+    [Fact]
     public async Task Schema_violations_and_bad_json_are_invalid_and_write_nothing()
     {
         await using var s = await BillingStore.OpenAsync();

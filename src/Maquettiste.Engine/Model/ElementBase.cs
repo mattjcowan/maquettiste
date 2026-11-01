@@ -24,6 +24,15 @@ public abstract record ElementBase
     /// <summary>Markdown text, or a reference to a sidecar Markdown file beside the element's file.</summary>
     public Description? Description { get; init; }
 
+    /// <summary>Markdown text: why the element is shaped this way. No sidecar.</summary>
+    public string? Rationale { get; init; }
+
+    /// <summary>A URL or a reference (such as <c>ADR-0042</c>) of the decision record. Not an element id, and not checked.</summary>
+    public string? Decision { get; init; }
+
+    /// <summary>The element's status, or <see langword="null"/> when none is written (there is no default).</summary>
+    public ElementStatus? Status { get; init; }
+
     /// <summary>Tag keys, in the order written.</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 
@@ -32,6 +41,7 @@ public abstract record ElementBase
     public string? Category { get; init; }
 
     /// <summary>Stereotype keys, in application order.</summary>
+    [StereotypeKeys]
     public IReadOnlyList<string> Stereotypes { get; init; } = [];
 
     /// <summary>Custom property values, validated by extension schemas.</summary>

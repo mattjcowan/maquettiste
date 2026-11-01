@@ -247,7 +247,7 @@ public sealed record Stereotype : Element {                 // Name is a renamab
     IReadOnlyDictionary<string, JsonElement> DefaultProperties = {}; string? Icon; string? Color; }
 
 // Reference types, seeds and localization (reference-types-seeds-localization.md, Appendix A). TypeRef.Ref may also name a ReferenceType.
-public sealed record ReferenceType : Element {             // no Package (RS3)
+public sealed record ReferenceType : Element {             // string? Package: membership only (next-phase-1-design.md 4.3)
     req ReferenceCode Code; req ReferenceLabel Label;
     IReadOnlyList<ModelAttribute> Attributes = [];          // x-sort "order"; names exclude code, label, description (MQ7010)
     IReadOnlyDictionary<string, StorageChoice> Storage = {}; }   // key: database id or "*"
@@ -668,9 +668,10 @@ public sealed class ResolvedModel { ModelSnapshot Source; ProjectSettings Settin
 // Common to all conceptual R-types: Id, Name, DisplayName (fallback Name), PluralName (fallback inflector), Description (text, sidecar loaded),
 // Tags, Category (RCategory: Id, Name, Path), Stereotypes (RStereotype: Key, Name, Icon, Color), Properties (merged, plain CLR values),
 // Generation (IReadOnlyDictionary<string, GenerationHints>), Package (RPackage?), bool HasStereotype(string key), bool HasTag(string key).
-// All of these but Name and Package sit on RAnnotated, which RDatabase, RSchema, RTable, RColumn, RView and RSequence share (filled from their own
-// files or entries, no fallbacks; §7.0a).
-RPackage     : QualifiedName ("Billing.Invoicing"), Parent, Children, Entities, ValueObjects, Enums, Relations
+// All of these but Name sit on RAnnotated, which RDatabase, RSchema, RTable, RColumn, RView and RSequence share (filled from their own
+// files or entries, no fallbacks; §7.0a). Package is the file's (next-phase-1-design.md 4.3); a table without one falls back to its
+// entity's or relation's, a seed to its target's and a scenario to its process's.
+RPackage     : QualifiedName ("Billing.Invoicing"), Parent, DependsOn, Children, Entities, ValueObjects, Enums, Relations
 REntity      : IsAbstract, Base, Derived, Attributes (flattened, §7.2), OwnAttributes, Key (RKey: Attributes, Strategy, Sequences (db name → RSequence)), AlternateKeys,
                Navigations, Relations, Mappings (IReadOnlyDictionary<string /*db name*/, REntityMapping>), IsPromoted, PromotedFrom (RRelation?),
                Lifecycle (RProcess?, phase 3), Bindings (db name → REntityBinding; erratum E43)
@@ -776,8 +777,8 @@ creating a synthesized table's overlay with just the edited column on its first 
 `IsStub`, `UsedBy`; an action also `Raises`), `RInvoke` (`Name`, `Type`, `Process`, `Actors`, `State`), `RGate` (`Name`, `Transition`,
 `Required`, `Signers`, `RequiredActors`, `AllowRepeatSigner`, `ReasonRequired`, `Meanings`, `AuditAttributes`, `Audit`), `RMeaning`
 (`Name`); `RAuditField : RObject` (`Name`, `Type`, `Required`, `Description`, `Values`, `Attribute`); `RActor : RElement` (`Type`,
-`Processes`, `Events`, `Gates`; no package); `RScenario : RElement` (`Process`, `Start` (`RScenarioStart`: `Context`, `At`), `Steps`,
-`Outcome`; its package is its process's) with `RStep : RObject` (`Index`, `Input`, `Event`, `Invoke`, `After`, `AfterMs`,
+`Processes`, `Events`, `Gates`; its file's package); `RScenario : RElement` (`Process`, `Start` (`RScenarioStart`: `Context`, `At`), `Steps`,
+`Outcome`; its file's package, else its process's) with `RStep : RObject` (`Index`, `Input`, `Event`, `Invoke`, `After`, `AfterMs`,
 `AfterTicks`, `Actor`, `Signer`, `Meaning`, `Reason`, `Payload` (event payload and gate audit attributes by name), `Assume`, `Expect`
 (`RExpectation`: `Accepted`, `States`, `StatePaths`, `Context`), `Description`, `Trace` (`RStepTrace`: `Accepted`, `Refusal`, `Audit`
 outcomes, `StatePaths`, `Final`: the engine interpreter's replay of the scenario, run once per scenario on first read through a

@@ -212,6 +212,14 @@ public sealed partial class AgentTools
                 .Where(e => e.AppliesTo.Kinds.Contains(elementKind.Name, StringComparer.Ordinal))
                 .Select(e => new { e.Name, e.Description, e.AppliesTo, e.Properties, e.Required, e.SchemaPath });
             result["extensions"] = JsonSerializer.SerializeToNode(extensions.ToList(), JsonOptions);
+            // The typed parameters of the stereotypes that may apply to the kind (next-phase-1-design.md section 4.2): they constrain
+            // `properties` on the elements that carry them, implied ones included.
+            var parameters = snapshot.All<Stereotype>()
+                .Where(s => s.Parameters is not null && (s.AppliesTo.Count == 0 || s.AppliesTo.Contains(elementKind.Name, StringComparer.Ordinal))
+                    && ReferenceEquals(snapshot.GetStereotype(s.Key), s))
+                .OrderBy(s => s.Key, StringComparer.Ordinal)
+                .Select(s => new JsonObject { ["stereotype"] = s.Key, ["parameters"] = JsonSerializer.SerializeToNode(s.Parameters, JsonOptions) });
+            result["stereotypeParameters"] = new JsonArray([.. parameters]);
         }
 
         return Text(result.ToJsonString(JsonOptions), isError: false);

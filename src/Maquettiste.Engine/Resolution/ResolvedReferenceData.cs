@@ -20,10 +20,10 @@ public sealed class RReferenceType : RElement
     /// <summary>The user fields, stereotype virtual attributes included, stably sorted by order.</summary>
     public RList<RAttribute> Attributes { get; internal set; } = RList<RAttribute>.Empty;
 
-    /// <summary>The rows of every seed of the type, in (seed name, seed id, file order).</summary>
+    /// <summary>The rows of every seed of the type: seed by seed in merge order (<see cref="RSeed"/>s by package qualified name with none first, name, id), each in file order.</summary>
     public RList<RRow> Rows { get; internal set; } = RList<RRow>.Empty;
 
-    /// <summary>The seeds whose target is the type, by (name, id).</summary>
+    /// <summary>The seeds whose target is the type, in merge order (package qualified name with none first, name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 
     /// <summary>Every declared attribute whose type is this type (inherited copies excluded), by (owner id, order).</summary>

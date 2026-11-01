@@ -4,6 +4,17 @@ using System.Text.Json.Serialization;
 
 namespace Maquettiste.Engine.Model;
 
+/// <summary>
+/// An element that may belong to a package through its <c>package</c> key (next-phase-1-design.md section 4.3). Every kind with
+/// that key implements it; a package states its place through <see cref="Package.Parent"/>, and a migration fact has no package.
+/// On a tag vocabulary or a category tree the key is the vocabulary's scope.
+/// </summary>
+public interface IPackaged
+{
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root.</summary>
+    string? Package { get; }
+}
+
 /// <summary>A namespace that groups elements and drives folders and namespaces in output (<c>model/packages/</c>).</summary>
 public sealed record Package : Element
 {
@@ -14,10 +25,17 @@ public sealed record Package : Element
     /// <summary>The id of the parent package, or <see langword="null"/> for a root package.</summary>
     [ElementRef(ElementKind.Package)]
     public string? Parent { get; init; }
+
+    /// <summary>
+    /// The packages this package's elements may reference (next-phase-1-design.md section 4.3), or <see langword="null"/> when the
+    /// file does not declare the key. A package is checked when it or a parent declares the key, even as an empty list.
+    /// </summary>
+    [ElementRef(ElementKind.Package)]
+    public IReadOnlyList<string>? DependsOn { get; init; }
 }
 
 /// <summary>A business object with identity (SPEC section 6; <c>model/entities/</c>).</summary>
-public sealed record Entity : Element
+public sealed record Entity : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
@@ -199,7 +217,7 @@ public sealed record AttributeValidation
 }
 
 /// <summary>A composite type without identity (Address, Money; <c>model/types/</c>).</summary>
-public sealed record ValueObject : Element
+public sealed record ValueObject : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
@@ -214,7 +232,7 @@ public sealed record ValueObject : Element
 }
 
 /// <summary>A named restriction of a built-in type (Email = string, max 254, pattern; <c>model/types/</c>).</summary>
-public sealed record ScalarType : Element
+public sealed record ScalarType : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
@@ -248,7 +266,7 @@ public sealed record ScalarType : Element
 }
 
 /// <summary>A closed set of named members (<c>model/enums/</c>).</summary>
-public sealed record EnumType : Element
+public sealed record EnumType : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]

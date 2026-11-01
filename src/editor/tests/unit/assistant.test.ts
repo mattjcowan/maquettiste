@@ -123,9 +123,9 @@ describe("the proposal card", () => {
     const row = (id: string, name: string, hash: string) => ({ id, name, hash }) as unknown as ElementSummary;
     const p = proposal([{ op: "update" }], {
       files: [
-        { path: "a.json", action: "changed", id: "A", kind: "entity", name: "A", beforeHash: "h1", before: "{}", after: "{}" },
-        { path: "b.json", action: "deleted", id: "B", kind: "entity", name: "B", beforeHash: "h2", before: "{}", after: null },
-        { path: "c.json", action: "created", id: "C", kind: "entity", name: "C", beforeHash: null, before: null, after: "{}" },
+        { path: "a.json", action: "changed", id: "A", kind: "entity", name: "A", beforeHash: "h1", before: "{}", after: "{}", diff: null },
+        { path: "b.json", action: "deleted", id: "B", kind: "entity", name: "B", beforeHash: "h2", before: "{}", after: null, diff: null },
+        { path: "c.json", action: "created", id: "C", kind: "entity", name: "C", beforeHash: null, before: null, after: "{}", diff: null },
       ],
     });
     expect(staleElements(p, new Map([["A", row("A", "Invoice", "h1")]]))).toEqual([]);
@@ -268,6 +268,7 @@ describe("the mock assistant", () => {
           beforeHash: "0".repeat(64),
           before: "{}",
           after: "{}",
+          diff: null,
         },
       ],
     };

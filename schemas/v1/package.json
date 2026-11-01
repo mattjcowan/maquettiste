@@ -11,7 +11,11 @@
     "displayName",
     "pluralName",
     "parent",
+    "dependsOn",
     "description",
+    "rationale",
+    "decision",
+    "status",
     "stereotypes",
     "tags",
     "category",
@@ -42,8 +46,27 @@
     "parent": {
       "$ref": "common.json#/$defs/id"
     },
+    "dependsOn": {
+      "description": "The packages this package's elements may reference. Declared, even as [], it makes the package and the packages under it checked; absent, the package is unchecked unless a parent declares it.",
+      "$ref": "common.json#/$defs/idList",
+      "uniqueItems": true
+    },
     "description": {
       "$ref": "common.json#/$defs/description"
+    },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
     },
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",

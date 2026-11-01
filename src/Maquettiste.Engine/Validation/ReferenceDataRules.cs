@@ -533,9 +533,9 @@ internal static class ReferenceDataRules
         var k = Array.FindIndex(columns, c => c?.Kind == ColumnKind.Code);
         if (k < 0)
             return;
-        // Earlier occurrences: rows of the seeds before this one (in (name, id) order), then earlier rows of this seed.
-        var ordinal = new Dictionary<string, (string Seed, string Row)>(StringComparer.Ordinal);
-        var folded = new Dictionary<string, (string Code, string Seed, string Row)>(StringComparer.OrdinalIgnoreCase);
+        // Earlier occurrences: rows of the seeds before this one (in merge order), then earlier rows of this seed.
+        var ordinal = new Dictionary<string, (Seed Seed, string Row)>(StringComparer.Ordinal);
+        var folded = new Dictionary<string, (string Code, string Row)>(StringComparer.OrdinalIgnoreCase);
         foreach (var other in context.SeedsOf(type.Id))
         {
             var otherK = IndexOf(other.Columns, "code");
@@ -549,7 +549,7 @@ internal static class ReferenceDataRules
                     var pointer = "/rows/" + Str(r) + "/values/" + Str(otherK);
                     if (ordinal.TryGetValue(code, out var first))
                     {
-                        report.Add("MQ7001", $"Code '{code}' of reference type {type.Name} is already used by row {first.Row}{(first.Seed == seed.Name ? "" : " in seed '" + first.Seed + "'")}.", pointer, row.Id);
+                        report.Add("MQ7001", $"Code '{code}' of reference type {type.Name} is already used by row {first.Row}{InSeed(context, seed, first.Seed)}.", pointer, row.Id);
                         continue;
                     }
 
@@ -557,13 +557,35 @@ internal static class ReferenceDataRules
                         report.Add("MQ7002", $"Code '{code}' of reference type {type.Name} differs only by case from '{near.Code}' (row {near.Row}).", pointer, row.Id);
                 }
 
-                ordinal.TryAdd(code, (other.Name, row.Id));
-                folded.TryAdd(code, (code, other.Name, row.Id));
+                ordinal.TryAdd(code, (other, row.Id));
+                folded.TryAdd(code, (code, row.Id));
             }
 
             if (other.Id == seed.Id)
                 break;
         }
+    }
+
+    /// <summary>Where an earlier row of a duplicate is, for a message: nothing in the same seed, else the other seed, with both packages
+    /// when they differ.</summary>
+    private static string InSeed(ValidationContext context, Seed seed, Seed other) =>
+        other.Id == seed.Id ? "" : $" in seed '{other.Name}'{BothPackages(context, seed, other)}";
+
+    /// <summary>
+    /// The words that name the packages of two seeds of one target when they differ (next-phase-1-design.md section 4.3: a duplicate
+    /// across packages names both), for example <c> (seed 'base' is in package 'Billing', this seed in package 'Billing.Catalog')</c>;
+    /// empty when both seeds are in one package or in none.
+    /// </summary>
+    /// <param name="context">The validation context.</param>
+    /// <param name="seed">The seed the finding goes on.</param>
+    /// <param name="other">The other seed.</param>
+    /// <returns>The words, with a leading space, or empty.</returns>
+    internal static string BothPackages(ValidationContext context, Seed seed, Seed other)
+    {
+        var (mine, theirs) = (context.SeedOrder.PackageOf(seed), context.SeedOrder.PackageOf(other));
+        return string.Equals(mine, theirs, StringComparison.Ordinal) ? "" : $" (seed '{other.Name}' is {In(theirs)}, this seed {In(mine)})";
+
+        static string In(string? package) => package is null ? "in no package" : $"in package '{package}'";
     }
 
     private static void CheckKeys(ValidationContext context, Seed seed, Entity entity, SeedColumn?[] columns, Report report)
@@ -586,7 +608,7 @@ internal static class ReferenceDataRules
 
             if (indexes.Any(i => i < 0))
                 continue;
-            var seen = new Dictionary<string, (string Seed, string Row)>(StringComparer.Ordinal);
+            var seen = new Dictionary<string, (Seed Seed, string Row)>(StringComparer.Ordinal);
             foreach (var other in context.SeedsOf(seed.Target))
             {
                 var otherIndexes = attributes.Select(a => IndexOf(other.Columns, a)).ToArray();
@@ -605,13 +627,13 @@ internal static class ReferenceDataRules
 
                         if (!missing && seen.TryGetValue(tuple!, out var first))
                         {
-                            report.Add("MQ7102", $"Row {row.Id} repeats the {name} value of row {first.Row}{(first.Seed == seed.Name ? "" : " in seed '" + first.Seed + "'")}.", "/rows/" + Str(r), row.Id);
+                            report.Add("MQ7102", $"Row {row.Id} repeats the {name} value of row {first.Row}{InSeed(context, seed, first.Seed)}.", "/rows/" + Str(r), row.Id);
                             continue;
                         }
                     }
 
                     if (!missing)
-                        seen.TryAdd(tuple!, (other.Name, row.Id));
+                        seen.TryAdd(tuple!, (other, row.Id));
                 }
 
                 if (other.Id == seed.Id)

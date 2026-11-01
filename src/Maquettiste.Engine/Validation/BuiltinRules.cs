@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
@@ -100,13 +101,20 @@ internal static partial class BuiltinRules
                 "/membership");
     }
 
-    // ---- MQ2001, MQ2002, MQ2005: references ----
+    // ---- MQ2001, MQ2002, MQ2005, MQ2010, MQ2011: references ----
 
     private static void CheckReferences(ValidationContext context, Report report)
     {
         var model = context.Model;
-        foreach (var site in context.Walker.Walk(report.Document.Element))
+        HashSet<(string Rule, string Pointer, string Message)>? xrefFindings = null;
+        foreach (var site in context.Walker.Walk(report.Document.Element, model.PropertySchemas))
         {
+            if (site.XRef is { } xref)
+            {
+                CheckXRef(context, xref, report, xrefFindings ??= []);
+                continue;
+            }
+
             var reference = site.Reference;
             if (reference.Keyed)
                 continue; // physical keys: MQ4007, MQ4008 and the referenced-table check in PhysicalRules
@@ -134,6 +142,143 @@ internal static partial class BuiltinRules
             }
         }
     }
+
+    /// <summary>
+    /// One value an <c>x-ref</c> types (next-phase-1-design.md section 4.1), judged per schema: MQ2010 when it is a name or other
+    /// text, else MQ2001 for each id that does not exist (a reserved kind's values all dangle until the kind arrives) and MQ2002
+    /// when the id (the last of a keyed id) is of another kind, else MQ2011 when it is out of scope. A finding two schemas share is
+    /// reported once.
+    /// </summary>
+    private static void CheckXRef(ValidationContext context, XRefSite site, Report report, HashSet<(string Rule, string Pointer, string Message)> seen)
+    {
+        var model = context.Model;
+        var xref = site.Ref;
+        var kinds = string.Join(" or ", xref.Kinds);
+        void Add(string rule, string message)
+        {
+            if (seen.Add((rule, site.Pointer, message)))
+                report.Add(rule, message, site.Pointer, site.Host.Id);
+        }
+
+        if (XRefIds(site.Value) is not { } ids)
+        {
+            Add("MQ2010", $"'{site.Field}' holds '{site.Value}', which is a name or other text, not an id: its schema ({site.Source.Schema}) types it "
+                + $"as the id of {Article(kinds)} {kinds}. Write the id, or run the batch operation names-to-ids "
+                + "({\"op\":\"names-to-ids\"}), which turns each such name into the one id it finds.");
+            return;
+        }
+
+        var dangling = false;
+        foreach (var id in ids)
+        {
+            if (model.TryGetEntry(id, out _))
+                continue;
+            var note = ReservedKindsNote(xref);
+            Add("MQ2001", $"'{site.Field}' references '{id}', which does not exist." + (note.Length > 0 ? $" ({note}.)" : ""));
+            dangling = true;
+        }
+
+        if (dangling || !model.TryGetEntry(ids[^1], out var entry))
+            return;
+        if (!xref.Kinds.Contains(entry.Kind, StringComparer.Ordinal))
+        {
+            Add("MQ2002", $"'{site.Field}' references '{ids[^1]}', {Article(entry.Kind)} {entry.Kind}; its schema ({site.Source.Schema}) expects {Article(kinds)} {kinds}.");
+            return;
+        }
+
+        if (XRefScopeProblem(context, report.Document.Element, site, entry) is { } problem)
+            Add("MQ2011", $"'{site.Field}' references '{ids[^1]}', {problem}.");
+    }
+
+    /// <summary>
+    /// The note an MQ2001 message adds when an <c>x-ref</c> allows reserved kinds, whose values all dangle until the
+    /// kinds arrive, or <c>""</c> when it allows none.
+    /// </summary>
+    /// <param name="xref">The keyword.</param>
+    /// <returns>The note, without brackets or a final full stop.</returns>
+    internal static string ReservedKindsNote(XRef xref)
+    {
+        var later = xref.Kinds.Where(XRef.IsReserved).ToList();
+        return later.Count switch
+        {
+            0 => "",
+            1 => $"{later[0]} arrives in a later phase, so no value of that kind exists yet",
+            _ => $"{string.Join(", ", later)} arrive in a later phase, so no value of those kinds exists yet",
+        };
+    }
+
+    /// <summary>The ids of an <c>x-ref</c> value: one id, or the ids a keyed id joins with <c>.</c>; <see langword="null"/> for text.</summary>
+    /// <param name="value">The value.</param>
+    /// <returns>The ids, in order, or <see langword="null"/>.</returns>
+    internal static string[]? XRefIds(string value)
+    {
+        if (IdFormat.IsValid(value))
+            return [value];
+        if (!value.Contains('.', StringComparison.Ordinal))
+            return null;
+        var segments = value.Split('.');
+        return segments.All(IdFormat.IsValid) ? segments : null;
+    }
+
+    /// <summary>Why an <c>x-ref</c> target is out of scope (MQ2011), or <see langword="null"/>.</summary>
+    private static string? XRefScopeProblem(ValidationContext context, Element element, XRefSite site, IndexEntry entry)
+    {
+        var xref = site.Ref;
+        var model = context.Model;
+        if (xref.Of == XRef.ElementScope)
+        {
+            if (site.Default)
+                return "but a stereotype default cannot use of \"$element\": a default serves many elements, so \"this element\" names none";
+            // The host's top-level element, its base chain and the stereotypes it carries own the members in scope.
+            var scope = new HashSet<string>(StringComparer.Ordinal) { element.Id };
+            if (element is Entity entity)
+                scope.UnionWith(context.Ancestors(entity).Select(a => a.Id));
+            scope.UnionWith(context.StereotypesOf(element).Select(s => s.Id));
+            if (!scope.Contains(entry.OwnerId))
+                return $"a member of {Describe(model, entry.OwnerId)}; of \"$element\" takes a member of {element.KindName} {element.Name}, its base entities or its stereotypes";
+        }
+        else if (xref.Of is { } listId)
+        {
+            if (entry.Kind != "row" || context.SeedOfRow(entry.Id) is not { } seed || seed.Target != listId)
+                return $"which is not a row of a seed of {Describe(model, listId)} (of {listId})";
+        }
+
+        if (!xref.SameDatabase)
+            return null;
+        if (site.Default)
+            return "but a stereotype default cannot use sameDatabase: a default serves many elements, which need not share a database";
+        if (XRefDatabaseOf(element) is not { } hostDatabase)
+            return $"but {element.KindName} {element.Name} has no single database for sameDatabase to compare with";
+        var targetDatabase = model.Get<Element>(entry.OwnerId) is { } owner ? XRefDatabaseOf(owner) : null;
+        return targetDatabase == hostDatabase
+            ? null
+            : $"which is in {(targetDatabase is null ? "no database" : Describe(model, targetDatabase))}, not in {Describe(model, hostDatabase)} (sameDatabase)";
+    }
+
+    /// <summary>
+    /// The one database of an element for <c>sameDatabase</c>: a database itself, the database of a physical object, mapping or
+    /// migration fact, or the database of an entity's bindings when they all name one; <see langword="null"/> otherwise. The batch
+    /// operation <c>names-to-ids</c> narrows <c>sameDatabase</c> candidates with it.
+    /// </summary>
+    /// <param name="element">The element that holds the value, or the target's top-level element.</param>
+    /// <returns>The database id, or <see langword="null"/>.</returns>
+    internal static string? XRefDatabaseOf(Element element) => element switch
+    {
+        Database d => d.Id,
+        Table t => t.Database,
+        View v => v.Database,
+        Sequence q => q.Database,
+        Routine r => r.Database,
+        DatabaseType t => t.Database,
+        SqlObject o => o.Database,
+        Query q => q.Database,
+        Mapping m => m.Database,
+        Migration f => f.Database,
+        Entity { Bindings.Count: > 0 } e when e.Bindings.Select(b => b.Database).Distinct(StringComparer.Ordinal).Count() == 1 => e.Bindings[0].Database,
+        _ => null,
+    };
+
+    private static string Describe(ModelSnapshot model, string id) => model.Get<Element>(id) is { } e ? $"{e.KindName} {e.Name}" : id;
 
     private static void CheckCategoryReference(ValidationContext context, ReferenceSite site, Report report)
     {
@@ -207,7 +352,13 @@ internal static partial class BuiltinRules
         }
     }
 
-    /// <summary>Checks the stereotype keys of an element, a sub-element or a process node (MQ2003, MQ2004).</summary>
+    /// <summary>
+    /// Checks the stereotypes of an element, a sub-element or a process node (MQ2003, MQ2004, MQ2013 to MQ2015) on its effective set
+    /// (<see cref="ModelSnapshot.EffectiveStereotypes"/>: implied first, then own; next-phase-1-design.md section 4.2). An unknown own
+    /// key is MQ2003 at its entry; a stereotype that does not apply to the kind is MQ2004 at its entry (for an implied one, the entry
+    /// of the stereotype that implies it). Two of one group (MQ2013), a missing required one (MQ2014) and two that conflict (MQ2015)
+    /// are reported at the later stereotype's entry.
+    /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="id">The id of the item.</param>
     /// <param name="stereotypes">Its stereotype keys.</param>
@@ -216,14 +367,47 @@ internal static partial class BuiltinRules
     /// <param name="report">The report.</param>
     public static void CheckStereotypes(ValidationContext context, string? id, IReadOnlyList<string> stereotypes, string pointer, string kindName, Report report)
     {
+        if (stereotypes.Count == 0)
+            return;
         for (var i = 0; i < stereotypes.Count; i++)
         {
-            var key = stereotypes[i];
-            var at = Ptr.At(pointer + "/stereotypes", i);
-            if (context.Model.GetStereotype(key) is not { } stereotype)
-                report.Add("MQ2003", $"Stereotype '{key}' is not defined in model/vocabularies/stereotypes.", at, id);
-            else if (stereotype.AppliesTo.Count > 0 && !stereotype.AppliesTo.Contains(kindName, StringComparer.Ordinal))
-                report.Add("MQ2004", $"Stereotype '{key}' applies to {string.Join(", ", stereotype.AppliesTo)}, not to {Article(kindName)} {kindName}.", at, id);
+            if (context.Model.GetStereotype(stereotypes[i]) is null)
+                report.Add("MQ2003", $"Stereotype '{stereotypes[i]}' is not defined in model/vocabularies/stereotypes.", Ptr.At(pointer + "/stereotypes", i), id);
+        }
+
+        var effective = context.Model.EffectiveStereotypes(stereotypes);
+        string At(AppliedStereotype applied) => Ptr.At(pointer + "/stereotypes", applied.Entry);
+        static string Name(AppliedStereotype applied) =>
+            applied.ImpliedBy is { } by ? $"'{applied.Stereotype.Key}' (implied by '{by}')" : $"'{applied.Stereotype.Key}'";
+        var keys = effective.Select(s => s.Stereotype.Key).ToHashSet(StringComparer.Ordinal);
+        var groups = new Dictionary<string, AppliedStereotype>(StringComparer.Ordinal);
+        for (var i = 0; i < effective.Count; i++)
+        {
+            var applied = effective[i];
+            var stereotype = applied.Stereotype;
+            if (stereotype.AppliesTo.Count > 0 && !stereotype.AppliesTo.Contains(kindName, StringComparer.Ordinal))
+                report.Add("MQ2004", $"Stereotype {Name(applied)} applies to {string.Join(", ", stereotype.AppliesTo)}, not to {Article(kindName)} {kindName}.", At(applied), id);
+            if (stereotype.Group is { } group && !groups.TryAdd(group, applied))
+            {
+                report.Add("MQ2013", $"Stereotype {Name(applied)} is in group '{group}', and {Article(kindName)} {kindName} carries at most one stereotype of a group: {Name(groups[group])} is in it too.",
+                    At(applied), id);
+            }
+
+            foreach (var required in stereotype.Requires)
+            {
+                if (!keys.Contains(required))
+                    report.Add("MQ2014", $"Stereotype {Name(applied)} requires stereotype '{required}', which the {kindName} does not carry.", At(applied), id);
+            }
+
+            for (var j = 0; j < i; j++)
+            {
+                var earlier = effective[j];
+                if (stereotype.Conflicts.Contains(earlier.Stereotype.Key, StringComparer.Ordinal)
+                    || earlier.Stereotype.Conflicts.Contains(stereotype.Key, StringComparer.Ordinal))
+                {
+                    report.Add("MQ2015", $"Stereotypes {Name(earlier)} and {Name(applied)} conflict: {Article(kindName)} {kindName} carries one or the other.", At(applied), id);
+                }
+            }
         }
     }
 
@@ -761,5 +945,121 @@ internal static partial class BuiltinRules
         CheckFlatDuplicates(stereotype, flat, report);
         CheckAttributes(context, stereotype.Attributes, report);
         PhysicalRules.CheckStereotypeStorage(stereotype, report);
+        CheckStereotypeLinks(context.Model, stereotype, report);
+        CheckStereotypeParameters(context.Model, stereotype, report);
     }
+
+    /// <summary>
+    /// The links of a stereotype (next-phase-1-design.md section 4.2): MQ2016 for a <c>requires</c>, <c>conflicts</c> or
+    /// <c>implies</c> entry that names an unknown key or the stereotype itself, a conflict with a stereotype it requires or implies, and
+    /// an implied stereotype of its own group; MQ2017 for an implied stereotype that implies others (implication is one level, which
+    /// also refuses cycles).
+    /// </summary>
+    private static void CheckStereotypeLinks(ModelSnapshot model, Stereotype stereotype, Report report)
+    {
+        foreach (var (field, keys) in new[] { ("requires", stereotype.Requires), ("conflicts", stereotype.Conflicts), ("implies", stereotype.Implies) })
+        {
+            for (var i = 0; i < keys.Count; i++)
+            {
+                var key = keys[i];
+                var at = Ptr.At("/" + field, i);
+                if (key == stereotype.Key)
+                {
+                    report.Add("MQ2016", $"'{field}' names the stereotype itself ('{key}').", at);
+                    continue;
+                }
+
+                if (model.GetStereotype(key) is not { } other)
+                {
+                    report.Add("MQ2016", $"'{field}' names stereotype '{key}', which is not defined in model/vocabularies/stereotypes.", at);
+                    continue;
+                }
+
+                switch (field)
+                {
+                    case "conflicts" when stereotype.Requires.Contains(key, StringComparer.Ordinal) || stereotype.Implies.Contains(key, StringComparer.Ordinal):
+                        report.Add("MQ2016",
+                            $"'conflicts' names '{key}', which the stereotype also {(stereotype.Implies.Contains(key, StringComparer.Ordinal) ? "implies" : "requires")}: no element could carry it.",
+                            at);
+                        break;
+                    case "implies":
+                        if (stereotype.Group is { } group && other.Group == group)
+                            report.Add("MQ2016", $"'implies' names '{key}', which is in the stereotype's own group '{group}': no element could carry both.", at);
+                        if (other.Implies.Count > 0)
+                        {
+                            report.Add("MQ2017",
+                                $"'implies' names '{key}', which implies {string.Join(", ", other.Implies.Select(k => "'" + k + "'"))}: implication is one level, so imply each directly.",
+                                at);
+                        }
+
+                        break;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The typed parameters of a stereotype (next-phase-1-design.md section 4.2): MQ2019 when <c>parameters</c> does not compile or
+    /// <c>required</c> names an undeclared parameter, MQ2009 for a malformed or misplaced <c>x-ref</c> in it (and an <c>of</c> that
+    /// names no element), MQ7212 and MQ7213 for a misplaced <c>x-translatable</c>, and MQ2018 for a default that fails its own property
+    /// schema. Defaults are checked without <c>required</c>:
+    /// a stereotype may leave a required parameter to its hosts, whose merged values are judged (<see cref="ExtensionSet"/>).
+    /// </summary>
+    private static void CheckStereotypeParameters(ModelSnapshot model, Stereotype stereotype, Report report)
+    {
+        if (stereotype.Parameters is not { } parameters)
+            return;
+        var document = report.Document;
+        var source = model.PropertySchemas.SourceOf(document.Path) is { } own && own.StereotypeKey == stereotype.Key && own.Hash == document.Hash
+            ? own
+            : PropertySchemaSource.OfStereotype(stereotype, parameters, document.Path, document.Hash);
+        PropertySchemaSet.Read(parameters.Properties, "/parameters/properties", (pointer, message) => report.Add("MQ2009", message, pointer));
+        foreach (var (rule, pointer, message) in PropertySchemaSet.TranslatableFindings(parameters.Properties, "/parameters/properties", stereotype.AppliesTo))
+            report.Add(rule, message, pointer); // MQ7212, MQ7213 (next-phase-1-design.md section 4.4)
+        foreach (var (pointer, xref) in source.Keywords)
+        {
+            if (xref.Of is { } of && of != XRef.ElementScope && !(model.TryGetEntry(of, out var entry) && entry.OwnerId == of))
+                report.Add("MQ2009", $"x-ref of names {of}, which is no element of the model.", pointer + "/of");
+        }
+
+        for (var i = 0; i < parameters.Required.Count; i++)
+        {
+            if (parameters.Properties.ValueKind != JsonValueKind.Object || !parameters.Properties.TryGetProperty(parameters.Required[i], out _))
+                report.Add("MQ2019", $"'required' names '{parameters.Required[i]}', which 'properties' does not declare.", Ptr.At("/parameters/required", i));
+        }
+
+        if (source.CompiledWithoutRequired is not { Schema: { } lenient })
+        {
+            report.Add("MQ2019", $"'parameters' is not a valid JSON Schema: {source.CompiledWithoutRequired.Error}", "/parameters/properties");
+            return;
+        }
+
+        if (stereotype.DefaultProperties.Count == 0)
+            return;
+        var defaults = JsonSerializer.SerializeToElement(new SortedDictionary<string, JsonElement>(stereotype.DefaultProperties.ToDictionary(), StringComparer.Ordinal));
+        var results = lenient.Evaluate(defaults, DefaultsEvaluation);
+        if (results.IsValid)
+            return;
+        var any = false;
+        foreach (var detail in results.Details ?? [])
+        {
+            if (detail.Errors is null || ExtensionSet.InsideDiscardedBranch(detail))
+                continue;
+            foreach (var (keyword, message) in detail.Errors.OrderBy(e => e.Key, StringComparer.Ordinal))
+            {
+                if (ExtensionSet.ApplicatorKeywords.Contains(keyword))
+                    continue;
+                var location = detail.InstanceLocation.ToString();
+                report.Add("MQ2018", $"The default {location.TrimStart('/')} fails its parameter schema: {(keyword.Length == 0 ? message : keyword + ": " + message)}",
+                    "/defaultProperties" + location);
+                any = true;
+            }
+        }
+
+        if (!any)
+            report.Add("MQ2018", "The defaults do not match their parameter schemas.", "/defaultProperties");
+    }
+
+    private static readonly global::Json.Schema.EvaluationOptions DefaultsEvaluation =
+        new() { OutputFormat = global::Json.Schema.OutputFormat.List, Culture = CultureInfo.InvariantCulture };
 }

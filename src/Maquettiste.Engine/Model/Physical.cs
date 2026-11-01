@@ -5,11 +5,16 @@ using System.Text.Json.Serialization;
 namespace Maquettiste.Engine.Model;
 
 /// <summary>A physical store with a dialect (<c>model/databases/&lt;db&gt;/database.json</c>; SPEC section 9).</summary>
-public sealed record Database : Element
+public sealed record Database : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Database;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it routes no table
+    /// (<see cref="Packages"/> does that).</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The SQL dialect.</summary>
     public required Dialect Dialect { get; init; }
@@ -177,11 +182,16 @@ public enum Quoting
 /// A physical table (<c>model/databases/&lt;db&gt;/tables/</c>). A synthesized table's file holds only overrides (D9);
 /// designed and imported tables hold their full definition.
 /// </summary>
-public sealed record Table : Element
+public sealed record Table : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Table;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the database.</summary>
     [ElementRef(ElementKind.Database)]
@@ -694,11 +704,16 @@ public enum IndexMethod
 }
 
 /// <summary>A view with per-dialect SQL bodies (<c>model/databases/&lt;db&gt;/views/</c>).</summary>
-public sealed record View : Element
+public sealed record View : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.View;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the database.</summary>
     [ElementRef(ElementKind.Database)]
@@ -751,11 +766,16 @@ public sealed record ViewColumn
 }
 
 /// <summary>A database sequence (<c>model/databases/&lt;db&gt;/sequences/</c>).</summary>
-public sealed record Sequence : Element
+public sealed record Sequence : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Sequence;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the database.</summary>
     [ElementRef(ElementKind.Database)]
@@ -788,11 +808,16 @@ public sealed record Sequence : Element
 }
 
 /// <summary>A stored function or procedure of a database (<c>model/databases/&lt;db&gt;/routines/</c>).</summary>
-public sealed record Routine : Element
+public sealed record Routine : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Routine;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the database.</summary>
     [ElementRef(ElementKind.Database)]
@@ -966,11 +991,16 @@ public sealed record RoutineColumn
 }
 
 /// <summary>A type a database owns: a domain, composite, enumeration or range (<c>model/databases/&lt;db&gt;/types/</c>).</summary>
-public sealed record DatabaseType : Element
+public sealed record DatabaseType : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.DatabaseType;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the database.</summary>
     [ElementRef(ElementKind.Database)]
@@ -1058,11 +1088,16 @@ public sealed record DatabaseTypeField
 }
 
 /// <summary>A named database object the model does not type: SQL statements per dialect (<c>model/databases/&lt;db&gt;/objects/</c>).</summary>
-public sealed record SqlObject : Element
+public sealed record SqlObject : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.SqlObject;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the database.</summary>
     [ElementRef(ElementKind.Database)]

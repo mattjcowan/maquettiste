@@ -84,6 +84,49 @@ public sealed class McpSurfaceTests
     }
 
     [Fact]
+    public async Task Apply_batch_by_name_previews_then_applies()
+    {
+        await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
+        var operations = JsonNode.Parse(ModelApplyTests.PaymentMethods)!;
+        var before = session.Repo.Tree(".maquettiste");
+
+        var preview = await session.OkAsync("apply_batch", new { operations, dryRun = true });
+
+        Assert.Equal("saved", (string)preview["outcome"]!);
+        var files = preview["files"]!.AsArray();
+        Assert.Equal(3, files.Count);
+        Assert.All(files, f =>
+        {
+            Assert.Null(f!["after"]);
+            Assert.StartsWith("--- a/" + (string)f["path"]!, (string)f["diff"]!, StringComparison.Ordinal);
+        });
+        Assert.Equal(10, preview["ids"]!["minted"]!.AsArray().Count);
+        Assert.Equal(["$pm", "$type", "@column:billing.payment_method.code", "@database:main", "@schema:billing"],
+            preview["ids"]!["names"]!.AsObject().Select(p => p.Key));
+        Assert.NotNull(preview["diagnosticsAdded"]);
+        Assert.NotNull(preview["diagnosticsRemoved"]);
+        Assert.Equal(before, session.Repo.Tree(".maquettiste"));
+
+        var applied = await session.OkAsync("apply_batch", new { operations });
+
+        Assert.Equal("saved", (string)applied["outcome"]!);
+        var table = (string)applied["ids"]!["names"]!["$pm"]!;
+        Assert.Equal(table, (string)applied["items"]![0]!["id"]!);
+        Assert.Equal(10, applied["ids"]!["minted"]!.AsArray().Count);
+        Assert.NotNull(applied["facts"]);
+        var written = await session.OkAsync("get_element", new { id = table });
+        Assert.Equal("payment_method", (string)written["json"]!["name"]!);
+        Assert.DoesNotContain("\"@", written["json"]!.ToJsonString(), StringComparison.Ordinal);
+
+        // A name that finds nothing fails the batch with MQ1012 and writes nothing, in a dry run as in an apply.
+        var unknown = new[] { new { op = "update", id = "@entity:Nobody", expectedHash = new string('0', 64), element = new { kind = "entity", name = "Nobody" } } };
+        var failed = await session.ErrorAsync("apply_batch", new { operations = unknown, dryRun = true });
+        Assert.Equal("invalid", failed.Code);
+        Assert.Contains("MQ1012", failed.Json["items"]!.ToJsonString(), StringComparison.Ordinal);
+        Assert.Empty(failed.Json["files"]!.AsArray());
+    }
+
+    [Fact]
     public async Task The_server_refreshes_stale_schema_copies_before_it_serves()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -260,6 +303,82 @@ public sealed class McpReadTests
     }
 
     [Fact]
+    public async Task Get_references_shows_an_xref_with_schema_and_optional()
+    {
+        // next-phase-1-design.md section 4.1: an id an x-ref types in a custom property is a reference, and its row says which
+        // schema types it and whether remove-references may clear it.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        repo.Write(".maquettiste/extensions/links.json", """
+            {
+              "name": "links",
+              "appliesTo": {
+                "kinds": [
+                  "entity"
+                ]
+              },
+              "properties": {
+                "billedTo": {
+                  "type": "string",
+                  "x-ref": {
+                    "kind": "entity"
+                  }
+                },
+                "watchers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "x-ref": {
+                      "kind": "entity",
+                      "optional": true
+                    }
+                  }
+                }
+              }
+            }
+
+            """);
+        repo.Replace(".maquettiste/model/entities/invoice.json", "    \"retentionDays\": 3650\n",
+            $"    \"billedTo\": \"{McpSession.Customer}\",\n    \"retentionDays\": 3650,\n    \"watchers\": [\"{McpSession.Customer}\", \"Ann\"]\n");
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var references = (await session.OkAsync("get_references", new { id = McpSession.Customer })).AsArray();
+
+        const string invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
+        var billedTo = references.Single(r => (string?)r!["jsonPointer"] == "/properties/billedTo")!;
+        Assert.Equal((invoice, invoice, "billedTo", "extension:links"), ((string)billedTo["fromElementId"]!, (string)billedTo["fromId"]!, (string)billedTo["field"]!, (string)billedTo["schema"]!));
+        Assert.Null(billedTo["optional"]); // left out when false
+        var watcher = references.Single(r => (string?)r!["jsonPointer"] == "/properties/watchers/0")!;
+        Assert.True((bool)watcher["optional"]!);
+        Assert.Equal("extension:links", (string)watcher["schema"]!);
+        Assert.DoesNotContain(references, r => (string?)r!["jsonPointer"] == "/properties/watchers/1");
+        // Every other reference carries neither key.
+        Assert.All(references.Where(r => !((string)r!["jsonPointer"]!).StartsWith("/properties/", StringComparison.Ordinal)),
+            r => Assert.False(r!.AsObject().ContainsKey("schema") || r.AsObject().ContainsKey("optional")));
+    }
+
+    [Fact]
+    public async Task Get_element_returns_rationale_decision_and_status()
+    {
+        // next-phase-1-design.md section 4.5: get_element returns the whole document, so the three keys come back as written.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        repo.Replace(McpSession.CustomerPath, "  \"description\": \"Someone we bill.\",\n",
+            "  \"description\": \"Someone we bill.\",\n  \"rationale\": \"One row per **billed** party.\",\n  \"decision\": \"https://example.com/adr/0042\",\n  \"status\": \"approved\",\n");
+        repo.Replace(McpSession.CustomerPath, "      \"name\": \"customerSince\",\n      \"type\": \"date\"\n",
+            "      \"name\": \"customerSince\",\n      \"type\": \"date\",\n      \"status\": \"deprecated\"\n");
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var element = await session.OkAsync("get_element", new { id = McpSession.Customer });
+
+        var json = element["json"]!;
+        Assert.Equal(("One row per **billed** party.", "https://example.com/adr/0042", "approved"),
+            ((string)json["rationale"]!, (string)json["decision"]!, (string)json["status"]!));
+        Assert.Equal("deprecated", (string)json["attributes"]!.AsArray().Single(a => (string)a!["name"]! == "customerSince")!["status"]!);
+        Assert.Empty((await session.OkAsync("validate", new { elementIds = new[] { McpSession.Customer } }))["diagnostics"]!.AsArray());
+    }
+
+    [Fact]
     public async Task Get_ledger_ddl_returns_the_contract_version_schema_and_ddl()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -411,6 +530,38 @@ public sealed class McpWriteTests
         // The fact reads back like any element.
         var read = await session.OkAsync("get_element", new { id = (string)fact["id"]! });
         Assert.Equal(("migration", "rename"), ((string)read["json"]!["kind"]!, (string)read["json"]!["fact"]!));
+    }
+
+    [Fact]
+    public async Task Names_to_ids_previews_then_applies_through_apply_batch()
+    {
+        using var repo = CliRepo.Billing();
+        ModelApplyTests.TypeTheCustomersOwner(repo);
+        await using var session = await McpSession.StartAsync(repo, TestContext.Current.CancellationToken);
+        var operations = new[] { new { op = "names-to-ids" } };
+        var before = session.Repo.Tree(".maquettiste");
+
+        var preview = await session.OkAsync("apply_batch", new { operations, dryRun = true });
+
+        Assert.Equal("saved", (string)preview["outcome"]!);
+        var file = Assert.Single(preview["files"]!.AsArray())!;
+        Assert.Equal((McpSession.CustomerPath, "changed"), ((string)file["path"]!, (string)file["action"]!));
+        Assert.Contains("+    \"owner\": \"" + ModelApplyTests.Invoice + "\"", (string)file["diff"]!, StringComparison.Ordinal);
+        Assert.Contains(preview["diagnosticsRemoved"]!.AsArray(), d => (string)d!["rule"]! == "MQ2010");
+        Assert.Equal(before, session.Repo.Tree(".maquettiste"));
+
+        var applied = await session.OkAsync("apply_batch", new { operations });
+
+        Assert.Equal("saved", (string)applied["outcome"]!);
+        var customer = await session.OkAsync("get_element", new { id = McpSession.Customer });
+        Assert.Equal(ModelApplyTests.Invoice, (string)customer["json"]!["properties"]!["owner"]!);
+        var references = (await session.OkAsync("get_references", new { id = ModelApplyTests.Invoice })).AsArray();
+        Assert.Contains(references, r => (string)r!["jsonPointer"]! == "/properties/owner" && (string)r["schema"]! == "extension:links");
+
+        // Nothing is left to convert: a second run writes nothing.
+        var again = await session.OkAsync("apply_batch", new { operations });
+        Assert.Equal("saved", (string)again["outcome"]!);
+        Assert.Empty(again["items"]!.AsArray());
     }
 
     [Fact]

@@ -7311,8 +7311,9 @@ components:
                 type: [string, 'null']
                 description: The text the fallback chain gives.
               field:
+                description: A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.
                 type: string
-                enum: [displayName, pluralName, label, description]
+                pattern: '^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$'
               source:
                 type: [string, 'null']
               translation:
@@ -7341,8 +7342,9 @@ components:
               id:
                 $ref: '#/components/schemas/Ulid'
               field:
+                description: A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.
                 type: string
-                enum: [displayName, pluralName, label, description]
+                pattern: '^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$'
               value:
                 description: 'The text, `{ "file": "<sidecar>" }`, or `null` to remove.'
               confirm:
@@ -7754,6 +7756,17 @@ components:
           description: |
             The referrer belongs to the referenced element (a seed's `target`): the reference never refuses the target's delete,
             which deletes the referrer in the same save, so a delete confirmation lists these as deleted with it. Left out when false.
+        optional:
+          type: boolean
+          default: false
+          description: |
+            For a custom property value an `x-ref` types: every schema that types it says `optional`, so a delete with
+            `remove-references` may clear it. Left out when false.
+        schema:
+          type: string
+          description: |
+            For a custom property value an `x-ref` types: the schema that types it, `extension:<name>` (an extension file) or
+            `stereotype:<key>` (a stereotype's parameters). Left out for every other reference.
     ElementChange:
       x-engine-record: Maquettiste.Engine.ElementChange
       x-engine-addition: E5d adds `summary` on `model.changed`
@@ -8105,15 +8118,45 @@ components:
         bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left
         to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at
         `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`.
-      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, set-lifecycle, set-initial, refresh-scenario, retag]
+        `tags-to-property` (next-phase-1-design.md section 4.4) moves the tags that start with `prefix` into the custom property
+        `name` of each element and sub-element with properties that holds them, in the scope `retag` would change, limited to
+        `elementIds`: the schema that declares the property converts the suffixes (a string takes one, a string array all of them
+        in list order, an integer, number or boolean one parsed with the invariant culture, an `enum` one member, an `x-ref` the
+        one id the suffix finds as `names-to-ids` resolves it); the tags leave their holders and, without `elementIds`, their
+        declarations leave the vocabulary, except a tag that something without properties (a relation end, for example) still
+        uses, whose declaration stays. It expands the same way and takes `expectedHashes`; no matching tag is MQ1002 at
+        `/operations/<n>`, and each holder whose property no schema declares, whose suffix does not fit or that already holds
+        another value is one MQ5001 at its file and `/properties/<name>`. `names-to-ids` (section 4.1) turns every custom property
+        value an `x-ref` types that is a name, not an id, into the one id it finds among the in-scope candidates of the keyword's
+        kinds (elements by their qualified-name forms, stereotypes by key; within `of` sub-elements by name, columns by physical
+        name, rows by code), in the elements `elementIds` lists or in every document with `x-ref` sites, stereotype defaults
+        included. It expands the same way and takes `expectedHashes`; each value that finds nothing or several is one MQ2010 at
+        its file and pointer, and nothing to convert writes nothing.
+      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, set-lifecycle, set-initial, refresh-scenario, retag, tags-to-property, names-to-ids]
     BatchOperation:
       x-engine-record: Maquettiste.Engine.BatchOperation
+      description: |
+        One batch operation. Every id field (`id`, `database`, `package`, `schema`, `target`, `default`, the items of
+        `entities`, `tables` and `elementIds`, an `attributes` item that starts with `@` or `$`, the keys of
+        `expectedHashes`) and every reference inside `element` takes an id, a qualified name (`@kind:path`, the name as
+        stored: `@table:billing.notes`) or a placeholder (`$name`, declared with `as`); the engine resolves them to ids before
+        the batch is planned and mints every missing id (next-phase-1-design.md section 5.1). A name that finds nothing is
+        MQ1012, several MQ1013; a misused identity is MQ1014 and a malformed or misplaced name MQ1015.
       type: object
       required: [op, id, expectedHash, element]
       properties:
         op:
           $ref: '#/components/schemas/BatchOp'
         id:
+          description: >-
+            An id, a qualified name or a placeholder. A create's `id` must be an id; an update's or delete's names an element
+            that exists before the batch, never a placeholder.
+          type: [string, 'null']
+        as:
+          description: >-
+            Create and update: the placeholder (`$name`) that names the operation's element for the whole batch, so other
+            operations write it where the element's id goes. An object inside `element` whose schema requires an `id` may carry
+            `as` too, naming that sub-element.
           type: [string, 'null']
         expectedHash:
           type: [string, 'null']
@@ -8132,32 +8175,32 @@ components:
         value:
           description: 'The translated text, `{ "file": "<sidecar>" }`, or `null` to remove the translation (`translate`).'
         schema:
-          description: The database schema id (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`).
+          description: The database schema (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`) as an id, a qualified name or a placeholder.
           type: [string, 'null']
         name:
-          description: The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`).
+          description: The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`); the custom property the tags move to (`tags-to-property`).
           type: [string, 'null']
         target:
-          description: The schema id that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`).
+          description: The schema that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`). An id, a qualified name or a placeholder.
           type: [string, 'null']
         default:
-          description: The schema id that becomes the default when the removed schema is the default (`remove-schema`).
+          description: The schema that becomes the default when the removed schema is the default (`remove-schema`). An id, a qualified name or a placeholder.
           type: [string, 'null']
         database:
-          description: The database id (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`).
+          description: The database (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`). An id, a qualified name or a placeholder.
           type: [string, 'null']
         entities:
-          description: The entity ids (`materialize-tables`, `materialize-attributes`, `materialize-columns`).
+          description: The entities (`materialize-tables`, `materialize-attributes`, `materialize-columns`), each an id, a qualified name or a placeholder.
           type: [array, 'null']
           items:
             type: string
         tables:
-          description: The table and view ids (`materialize-entities`).
+          description: The tables and views (`materialize-entities`), each an id, a qualified name or a placeholder.
           type: [array, 'null']
           items:
             type: string
         package:
-          description: The package id the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, absent for the global one).
+          description: The package the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, `tags-to-property`; absent for the global one). An id, a qualified name or a placeholder.
           type: [string, 'null']
         columns:
           description: The source columns, as keys or physical names (`materialize-attributes`, one entity); absent means every column nothing in the binding names.
@@ -8165,7 +8208,7 @@ components:
           items:
             type: string
         attributes:
-          description: The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped.
+          description: The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped. An item that starts with `@` or `$` is one attribute or end by name or placeholder; the composite `attributeId.memberId` stays ids.
           type: [array, 'null']
           items:
             type: string
@@ -8174,11 +8217,22 @@ components:
           type: [array, 'null']
           items:
             type: string
+        elementIds:
+          description: >-
+            The elements `names-to-ids` and `tags-to-property` act on, each an id, a qualified name or a placeholder; absent means
+            every element they apply to.
+          type: [array, 'null']
+          items:
+            type: string
+        prefix:
+          description: The prefix of the tags that move into the property `name` (`tags-to-property`).
+          type: [string, 'null']
         expectedHashes:
           description: |
-            Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's
+            Materialize, `retag`, `tags-to-property` and `names-to-ids`: the hash the caller read of each element it expects the operation to change or delete (the preview's
             updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
-            a conflict and nothing is written.
+            a conflict and nothing is written. A key may be an id or a qualified name; a placeholder key is MQ1015, two keys for
+            one element are MQ1014.
           type: [object, 'null']
           additionalProperties:
             type: string
@@ -8226,6 +8280,50 @@ components:
               items:
                 $ref: '#/components/schemas/RecordedFact'
             - type: 'null'
+        ids:
+          description: When saved, the names the batch resolved, the placeholders it declared and the ids it minted; empty otherwise.
+          allOf:
+            - $ref: '#/components/schemas/BatchIds'
+    BatchIds:
+      x-engine-record: Maquettiste.Engine.BatchIds
+      description: The names a batch resolved and the ids it minted (next-phase-1-design.md section 5.1).
+      type: object
+      required: [names, minted]
+      properties:
+        names:
+          description: Each placeholder declared and each qualified name used, to its id, ordinal by key.
+          type: object
+          additionalProperties:
+            type: string
+        minted:
+          description: The ids the engine minted, in operation and document order.
+          type: array
+          items:
+            $ref: '#/components/schemas/MintedId'
+    MintedId:
+      x-engine-record: Maquettiste.Engine.MintedId
+      description: An id the engine minted for a batch.
+      type: object
+      required: [operation, pointer, kind, id, name, placeholder]
+      properties:
+        operation:
+          description: The operation's index in the batch.
+          type: integer
+          minimum: 0
+        pointer:
+          description: The JSON pointer into the operation's element (`""` for its root).
+          type: string
+        kind:
+          description: The element kind, else the index kind of the sub-element, else `sub-element`.
+          type: string
+        id:
+          type: string
+        name:
+          description: The longest qualified form (`@column:main.billing.payment_method.code`) when the kind has names.
+          type: [string, 'null']
+        placeholder:
+          description: The placeholder the batch declared on the object with `as`, if any.
+          type: [string, 'null']
 
     # ---------------------------------------------------------------- diagnostics
     DiagnosticSeverity:
@@ -13472,10 +13570,10 @@ components:
             - type: 'null'
             - $ref: '#/components/schemas/AssistContext'
     AssistProposalFile:
-      description: A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files).
+      description: A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files) and the change as a unified diff.
       x-engine-record: BatchPreviewFile
       type: object
-      required: [path, action, id, kind, name, beforeHash, before, after]
+      required: [path, action, id, kind, name, beforeHash, before, after, diff]
       properties:
         path:
           type: string
@@ -13493,6 +13591,9 @@ components:
         before:
           type: [string, 'null']
         after:
+          type: [string, 'null']
+        diff:
+          description: The change as a unified diff with three lines of context (`--- a/<path>`, `+++ b/<path>`, then hunks).
           type: [string, 'null']
     AssistProposal:
       description: |

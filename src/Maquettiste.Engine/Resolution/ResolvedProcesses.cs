@@ -363,7 +363,7 @@ public sealed class RAuditField : RObject
     public RAttribute? Attribute { get; internal set; }
 }
 
-/// <summary>A resolved actor (phase-3-design.md section 2.5): a person, a role or an external system; in no package.</summary>
+/// <summary>A resolved actor (phase-3-design.md section 2.5): a person, a role or an external system.</summary>
 public sealed class RActor : RElement
 {
     /// <inheritdoc/>

@@ -212,6 +212,11 @@ internal sealed class SchemaRegistry : ISchemaRegistry
     {
         private readonly Dictionary<string, ObjectLayout> _byRef = new(StringComparer.Ordinal);
 
+        // Layouts whose merged keywords require "id", and those whose "id" property is common.json#/$defs/id: RequiresId needs both,
+        // which may come from different combinator branches.
+        private readonly HashSet<ObjectLayout> _idRequired = new(ReferenceEqualityComparer.Instance);
+        private readonly HashSet<ObjectLayout> _idCommon = new(ReferenceEqualityComparer.Instance);
+
         public ObjectLayout BuildRoot(string file) => BuildRef(file, "");
 
         private ObjectLayout BuildRef(string file, string pointer)
@@ -264,8 +269,14 @@ internal sealed class SchemaRegistry : ISchemaRegistry
                         ? u.GetString()
                         : null;
                     layout.AddProperty(new LayoutProperty(name, Build(file, propertySchema), DefaultOf(file, propertySchema)) { DefaultUnless = unless });
+                    if (name == "id" && IsCommonId(file, propertySchema))
+                        _idCommon.Add(layout);
                 }
             }
+
+            if (node.TryGetProperty("required", out var required) && required.ValueKind == JsonValueKind.Array
+                && required.EnumerateArray().Any(r => r.ValueKind == JsonValueKind.String && r.ValueEquals("id")))
+                _idRequired.Add(layout);
 
             if (node.TryGetProperty("additionalProperties", out var additional) && additional.ValueKind == JsonValueKind.Object)
                 layout.MapValues ??= Build(file, additional);
@@ -293,7 +304,14 @@ internal sealed class SchemaRegistry : ISchemaRegistry
                         Fill(layout, file, branch);
                 }
             }
+
+            // "if"/"then" are conditions, not merged: a batch operation's conditional "required": ["id"] never makes it a mint site.
+            layout.RequiresId |= _idRequired.Contains(layout) && _idCommon.Contains(layout);
         }
+
+        private static bool IsCommonId(string file, JsonElement schema) =>
+            schema.ValueKind == JsonValueKind.Object && schema.TryGetProperty("$ref", out var reference) && reference.ValueKind == JsonValueKind.String
+            && SplitRef(file, reference.GetString()!) is ("common.json", "/$defs/id");
 
         private JsonElement? DefaultOf(string file, JsonElement schema)
         {

@@ -38,8 +38,8 @@ internal sealed partial class ResolveRun
         var pending = new Dictionary<RTable, Pending>(ReferenceEqualityComparer.Instance);
         Pending Of(RTable table) => pending.TryGetValue(table, out var p) ? p : pending[table] = new Pending(table);
 
-        // The rows of the reference types bound to a table of the database come first (2026-10-11), then the table seeds, by seed
-        // name (the seeds come in name order).
+        // The rows of the reference types bound to a table of the database come first (2026-10-11), then the table seeds, in merge
+        // order (the seeds come in SeedOrder: package, name, id).
         foreach (var seed in seeds)
         {
             if (seed.Target is not RReferenceType type || !type.Bindings.TryGetValue(database.Name, out var binding) || !tables.Contains(binding.Table))
@@ -54,7 +54,7 @@ internal sealed partial class ResolveRun
             if (seed.Target is not RTable table || !tables.Contains(table))
                 continue;
             var p = Of(table);
-            p.Key ??= KeyOfTableSeed(table, seed);
+            p.Key ??= KeyOfTableSeed(table, seed); // the first seed's key; seeds that key rows differently are MQ7121
             Add(p, seed, "table", seed.Rows.Select(row => Cells(seed.Columns
                 .Where(c => c.Column is not null)
                 .Select(c => (c.Column!, row.Values.GetValueOrDefault(c.Name))))));

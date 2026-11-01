@@ -2645,8 +2645,8 @@ export interface components {
                 owner?: components["schemas"]["Ulid"];
                 /** @description The text the fallback chain gives. */
                 effective?: string | null;
-                /** @enum {string} */
-                field: "displayName" | "pluralName" | "label" | "description";
+                /** @description A standard field, or `properties/<name>` for the text of an `x-translatable` custom property. */
+                field: string;
                 source: string | null;
                 translation: string | null;
                 /** @enum {string} */
@@ -2659,8 +2659,8 @@ export interface components {
         TranslationWrite: {
             entries: {
                 id: components["schemas"]["Ulid"];
-                /** @enum {string} */
-                field: "displayName" | "pluralName" | "label" | "description";
+                /** @description A standard field, or `properties/<name>` for the text of an `x-translatable` custom property. */
+                field: string;
                 /** @description The text, `{ "file": "<sidecar>" }`, or `null` to remove. */
                 value: unknown;
                 confirm?: boolean;
@@ -2873,6 +2873,17 @@ export interface components {
              * @default false
              */
             owning?: boolean;
+            /**
+             * @description For a custom property value an `x-ref` types: every schema that types it says `optional`, so a delete with
+             *     `remove-references` may clear it. Left out when false.
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * @description For a custom property value an `x-ref` types: the schema that types it, `extension:<name>` (an extension file) or
+             *     `stereotype:<key>` (a stereotype's parameters). Left out for every other reference.
+             */
+            schema?: string;
         };
         ElementChange: {
             id: components["schemas"]["Ulid"];
@@ -3029,13 +3040,24 @@ export interface components {
             path: string;
         };
         /**
-         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`.
+         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`. `tags-to-property` (next-phase-1-design.md section 4.4) moves the tags that start with `prefix` into the custom property `name` of each element and sub-element with properties that holds them, in the scope `retag` would change, limited to `elementIds`: the schema that declares the property converts the suffixes (a string takes one, a string array all of them in list order, an integer, number or boolean one parsed with the invariant culture, an `enum` one member, an `x-ref` the one id the suffix finds as `names-to-ids` resolves it); the tags leave their holders and, without `elementIds`, their declarations leave the vocabulary, except a tag that something without properties (a relation end, for example) still uses, whose declaration stays. It expands the same way and takes `expectedHashes`; no matching tag is MQ1002 at `/operations/<n>`, and each holder whose property no schema declares, whose suffix does not fit or that already holds another value is one MQ5001 at its file and `/properties/<name>`. `names-to-ids` (section 4.1) turns every custom property value an `x-ref` types that is a name, not an id, into the one id it finds among the in-scope candidates of the keyword's kinds (elements by their qualified-name forms, stereotypes by key; within `of` sub-elements by name, columns by physical name, rows by code), in the elements `elementIds` lists or in every document with `x-ref` sites, stereotype defaults included. It expands the same way and takes `expectedHashes`; each value that finds nothing or several is one MQ2010 at its file and pointer, and nothing to convert writes nothing.
          * @enum {string}
          */
-        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag";
+        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag" | "tags-to-property" | "names-to-ids";
+        /**
+         * @description One batch operation. Every id field (`id`, `database`, `package`, `schema`, `target`, `default`, the items of
+         *     `entities`, `tables` and `elementIds`, an `attributes` item that starts with `@` or `$`, the keys of
+         *     `expectedHashes`) and every reference inside `element` takes an id, a qualified name (`@kind:path`, the name as
+         *     stored: `@table:billing.notes`) or a placeholder (`$name`, declared with `as`); the engine resolves them to ids before
+         *     the batch is planned and mints every missing id (next-phase-1-design.md section 5.1). A name that finds nothing is
+         *     MQ1012, several MQ1013; a misused identity is MQ1014 and a malformed or misplaced name MQ1015.
+         */
         BatchOperation: {
             op: components["schemas"]["BatchOp"];
+            /** @description An id, a qualified name or a placeholder. A create's `id` must be an id; an update's or delete's names an element that exists before the batch, never a placeholder. */
             id: string | null;
+            /** @description Create and update: the placeholder (`$name`) that names the operation's element for the whole batch, so other operations write it where the element's id goes. An object inside `element` whose schema requires an `id` may carry `as` too, naming that sub-element. */
+            as?: string | null;
             expectedHash: string | null;
             element: {
                 [key: string]: unknown;
@@ -3046,32 +3068,37 @@ export interface components {
             field?: ("displayName" | "pluralName" | "label" | "description") | null;
             /** @description The translated text, `{ "file": "<sidecar>" }`, or `null` to remove the translation (`translate`). */
             value?: unknown;
-            /** @description The database schema id (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`). */
+            /** @description The database schema (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`) as an id, a qualified name or a placeholder. */
             schema?: string | null;
-            /** @description The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`). */
+            /** @description The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`); the custom property the tags move to (`tags-to-property`). */
             name?: string | null;
-            /** @description The schema id that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`). */
+            /** @description The schema that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`). An id, a qualified name or a placeholder. */
             target?: string | null;
-            /** @description The schema id that becomes the default when the removed schema is the default (`remove-schema`). */
+            /** @description The schema that becomes the default when the removed schema is the default (`remove-schema`). An id, a qualified name or a placeholder. */
             default?: string | null;
-            /** @description The database id (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`). */
+            /** @description The database (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`). An id, a qualified name or a placeholder. */
             database?: string | null;
-            /** @description The entity ids (`materialize-tables`, `materialize-attributes`, `materialize-columns`). */
+            /** @description The entities (`materialize-tables`, `materialize-attributes`, `materialize-columns`), each an id, a qualified name or a placeholder. */
             entities?: string[] | null;
-            /** @description The table and view ids (`materialize-entities`). */
+            /** @description The tables and views (`materialize-entities`), each an id, a qualified name or a placeholder. */
             tables?: string[] | null;
-            /** @description The package id the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, absent for the global one). */
+            /** @description The package the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, `tags-to-property`; absent for the global one). An id, a qualified name or a placeholder. */
             package?: string | null;
             /** @description The source columns, as keys or physical names (`materialize-attributes`, one entity); absent means every column nothing in the binding names. */
             columns?: string[] | null;
-            /** @description The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped. */
+            /** @description The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped. An item that starts with `@` or `$` is one attribute or end by name or placeholder; the composite `attributeId.memberId` stays ids. */
             attributes?: string[] | null;
             /** @description The tag keys (`retag`). */
             tags?: string[] | null;
+            /** @description The elements `names-to-ids` and `tags-to-property` act on, each an id, a qualified name or a placeholder; absent means every element they apply to. */
+            elementIds?: string[] | null;
+            /** @description The prefix of the tags that move into the property `name` (`tags-to-property`). */
+            prefix?: string | null;
             /**
-             * @description Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's
+             * @description Materialize, `retag`, `tags-to-property` and `names-to-ids`: the hash the caller read of each element it expects the operation to change or delete (the preview's
              *     updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
-             *     a conflict and nothing is written.
+             *     a conflict and nothing is written. A key may be an id or a qualified name; a placeholder key is MQ1015, two keys for
+             *     one element are MQ1014.
              */
             expectedHashes?: {
                 [key: string]: string;
@@ -3090,6 +3117,31 @@ export interface components {
             changes: components["schemas"]["ChangeSet"] | null;
             /** @description The migration facts the batch created or updated (its items carry none); `null` when nothing was written. */
             facts?: components["schemas"]["RecordedFact"][] | null;
+            /** @description When saved, the names the batch resolved, the placeholders it declared and the ids it minted; empty otherwise. */
+            ids?: components["schemas"]["BatchIds"];
+        };
+        /** @description The names a batch resolved and the ids it minted (next-phase-1-design.md section 5.1). */
+        BatchIds: {
+            /** @description Each placeholder declared and each qualified name used, to its id, ordinal by key. */
+            names: {
+                [key: string]: string;
+            };
+            /** @description The ids the engine minted, in operation and document order. */
+            minted: components["schemas"]["MintedId"][];
+        };
+        /** @description An id the engine minted for a batch. */
+        MintedId: {
+            /** @description The operation's index in the batch. */
+            operation: number;
+            /** @description The JSON pointer into the operation's element (`""` for its root). */
+            pointer: string;
+            /** @description The element kind, else the index kind of the sub-element, else `sub-element`. */
+            kind: string;
+            id: string;
+            /** @description The longest qualified form (`@column:main.billing.payment_method.code`) when the kind has names. */
+            name: string | null;
+            /** @description The placeholder the batch declared on the object with `as`, if any. */
+            placeholder: string | null;
         };
         /** @enum {string} */
         DiagnosticSeverity: "error" | "warning" | "info";
@@ -5705,7 +5757,7 @@ export interface components {
             message: string;
             context?: null | components["schemas"]["AssistContext"];
         };
-        /** @description A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files). */
+        /** @description A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files) and the change as a unified diff. */
         AssistProposalFile: {
             path: string;
             /** @enum {string} */
@@ -5716,6 +5768,8 @@ export interface components {
             beforeHash: string | null;
             before: string | null;
             after: string | null;
+            /** @description The change as a unified diff with three lines of context (`--- a/<path>`, `+++ b/<path>`, then hunks). */
+            diff: string | null;
         };
         /**
          * @description A model change the assistant proposed (`propose_changes`), checked by a dry run and pinned: created and updated
@@ -6397,10 +6451,16 @@ export interface components {
         id: string;
         /** @description A conceptual name: letters, digits and underscores, not starting with a digit. */
         identifier: string;
+        idList: components["schemas"]["id"][];
         /** @description Markdown text, or a sidecar Markdown file beside the element's file. */
         description: string | {
             file: string;
         };
+        /**
+         * @description The status of an element or sub-element: proposed, approved, deprecated or retired. It has no default. A reference to a retired element warns (MQ2022).
+         * @enum {unknown}
+         */
+        status: "proposed" | "approved" | "deprecated" | "retired";
         /** @description A kebab-case key (stereotype keys). */
         key: string;
         keyList: components["schemas"]["key"][];
@@ -6449,7 +6509,14 @@ export interface components {
             displayName?: string;
             pluralName?: string;
             parent?: components["schemas"]["id"];
+            /** @description The packages this package's elements may reference. Declared, even as [], it makes the package and the packages under it checked; absent, the package is unchecked unless a parent declares it. */
+            dependsOn?: components["schemas"]["idList"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6461,7 +6528,6 @@ export interface components {
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
         };
-        idList: components["schemas"]["id"][];
         /**
          * @description A built-in scalar type keyword.
          * @enum {unknown}
@@ -6520,6 +6586,11 @@ export interface components {
             validation?: components["schemas"]["validation"];
             order?: number;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6551,6 +6622,11 @@ export interface components {
             /** @description The process that is this entity's lifecycle. */
             lifecycle?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6653,6 +6729,11 @@ export interface components {
             pluralName?: string;
             package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6681,6 +6762,11 @@ export interface components {
             pluralName?: string;
             package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6721,6 +6807,11 @@ export interface components {
             /** @default false */
             flags?: boolean;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6736,6 +6827,11 @@ export interface components {
                 value?: number;
                 code?: string;
                 description?: components["schemas"]["description"];
+                /** @description Markdown text: why the element is shaped this way. */
+                rationale?: string;
+                /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                decision?: string;
+                status?: components["schemas"]["status"];
                 /** @default [] */
                 stereotypes?: components["schemas"]["keyList"];
                 /** @default [] */
@@ -6776,6 +6872,11 @@ export interface components {
              */
             relationKind?: "association" | "aggregation" | "composition" | "n-ary";
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6834,12 +6935,19 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: packages routes the tables. */
+            package?: components["schemas"]["id"];
             /** @enum {unknown} */
             dialect: "postgresql" | "sqlserver" | "mysql" | "sqlite" | "oracle";
             version?: string;
             /** @description The name of the schema that tables, views and sequences without a schema go to; absent means the dialect's (PostgreSQL public, SQL Server dbo). */
             defaultSchema?: string;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6853,6 +6961,11 @@ export interface components {
                 displayName?: string;
                 pluralName?: string;
                 description?: components["schemas"]["description"];
+                /** @description Markdown text: why the element is shaped this way. */
+                rationale?: string;
+                /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                decision?: string;
+                status?: components["schemas"]["status"];
                 /** @default [] */
                 stereotypes?: components["schemas"]["keyList"];
                 /** @default [] */
@@ -6922,6 +7035,8 @@ export interface components {
             name?: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             /**
@@ -6936,6 +7051,11 @@ export interface components {
             /** @description Synthesized junction table: the relation. */
             relation?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6990,6 +7110,11 @@ export interface components {
                 collation?: string;
                 comment?: string;
                 description?: components["schemas"]["description"];
+                /** @description Markdown text: why the element is shaped this way. */
+                rationale?: string;
+                /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                decision?: string;
+                status?: components["schemas"]["status"];
                 /** @default [] */
                 stereotypes?: components["schemas"]["keyList"];
                 /** @default [] */
@@ -7181,9 +7306,16 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -7247,9 +7379,16 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -7290,9 +7429,16 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -7393,9 +7539,16 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -7459,9 +7612,16 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -7653,8 +7813,15 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -7847,6 +8014,8 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             entity?: components["schemas"]["id"];
             relation?: components["schemas"]["id"];
@@ -7854,6 +8023,11 @@ export interface components {
             /** @description For an entity mapping: the id of the database schema the entity's conventional table goes to; it wins over the database's convention package entry and its default schema. */
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -7918,6 +8092,11 @@ export interface components {
              */
             membership?: "explicit" | "package";
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -7965,6 +8144,11 @@ export interface components {
             displayName?: string;
             pluralName?: string;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -8000,6 +8184,11 @@ export interface components {
             displayName?: string;
             pluralName?: string;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -8015,6 +8204,11 @@ export interface components {
                 parent?: components["schemas"]["id"];
                 order?: number;
                 description?: components["schemas"]["description"];
+                /** @description Markdown text: why the element is shaped this way. */
+                rationale?: string;
+                /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                decision?: string;
+                status?: components["schemas"]["status"];
                 /** @default [] */
                 stereotypes?: components["schemas"]["keyList"];
                 /** @default [] */
@@ -8047,7 +8241,13 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -8055,9 +8255,39 @@ export interface components {
             category?: components["schemas"]["id"];
             /** @default [] */
             appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event")[];
+            /** @description A label, not a link: an element carries at most one stereotype of a group, its own and implied ones together (MQ2013). */
+            group?: components["schemas"]["key"];
+            /**
+             * @description Stereotype keys an element that carries this one must also carry (MQ2014).
+             * @default []
+             */
+            requires?: components["schemas"]["keyList"];
+            /**
+             * @description Stereotype keys an element that carries this one must not carry (MQ2015).
+             * @default []
+             */
+            conflicts?: components["schemas"]["keyList"];
+            /**
+             * @description Stereotype keys applied with this one, one level deep: an element that carries it carries them too, before its own stereotypes (MQ2017 refuses a stereotype that implies one that implies others).
+             * @default []
+             */
+            implies?: components["schemas"]["keyList"];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
-            /** @default {} */
+            /** @description Typed parameters, shaped like an extension file: a JSON Schema per property name (x-ref and x-translatable included) and the names each carrier must have. Values stay in the element's properties; defaults live in defaultProperties (MQ2018, MQ2019). */
+            parameters?: {
+                /** @description A JSON Schema properties object: one schema per parameter name. */
+                properties: Record<string, never>;
+                /**
+                 * @description The parameters each carrier must have, judged on its merged values (the stereotype's defaults count).
+                 * @default []
+                 */
+                required?: string[];
+            };
+            /**
+             * @description Default property values, merged under each carrier's own properties; each is checked against its own schema in parameters, without required (MQ2018).
+             * @default {}
+             */
             defaultProperties?: Record<string, never>;
             /** @description Table storage parameters the stereotype gives every table that carries it (a reusable tuning profile such as high-churn), per dialect; a table's own storage overrides a parameter, and a later stereotype overrides an earlier one. */
             storage?: components["schemas"]["storage"];
@@ -8082,7 +8312,13 @@ export interface components {
             name: components["schemas"]["identifier"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -8174,7 +8410,13 @@ export interface components {
             name: components["schemas"]["identifier"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -8459,6 +8701,11 @@ export interface components {
             /** @description An enum-typed attribute of the subject that holds the state (lifecycle only). */
             boundAttribute?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -8719,9 +8966,15 @@ export interface components {
             name: components["schemas"]["identifier"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             /** @enum {unknown} */
             type: "person" | "role" | "external-system";
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -8802,9 +9055,15 @@ export interface components {
             name: components["schemas"]["identifier"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             /** @description The process; the scenario belongs to it. */
             process: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -8981,6 +9240,11 @@ export interface components {
              */
             after?: components["schemas"]["idList"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -9142,54 +9406,76 @@ export interface components {
                 };
             };
         } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown);
+        /** @description A name a batch declares with as and uses anywhere in the batch. */
+        placeholder: string;
+        /** @description An element or sub-element by kind and stored name: @kind:path, its segments separated by dots, a segment with a dot, quote or white space written in double quotes. */
+        qualifiedName: string;
+        /** @description An id, a qualified name or a placeholder. */
+        idOrName: components["schemas"]["id"] | components["schemas"]["placeholder"] | components["schemas"]["qualifiedName"];
         /**
          * Model batch
-         * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations and process operations, from the editor, a refactoring or an AI proposal.
+         * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, process operations, tag operations and the names-to-ids refactor, from the editor, a refactoring or an AI proposal.
          */
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag";
-                id?: components["schemas"]["id"];
+                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag" | "tags-to-property" | "names-to-ids";
+                /** @description The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder. */
+                id?: components["schemas"]["idOrName"];
+                /** @description Create and update: a placeholder that names the operation's element for the whole batch. */
+                as?: components["schemas"]["placeholder"];
                 expectedHash?: string;
                 /**
                  * @description What a delete does with references to the element: refuse (the default) while anything references it, remove-references to clear optional references, or delete-dependents to also remove or delete what cannot exist without it (delete only).
                  * @enum {unknown}
                  */
                 resolution?: "refuse" | "remove-references" | "delete-dependents";
+                /** @description The element document. Its references may be qualified names or placeholders, and an object whose schema requires an id may carry as; the engine mints every missing id below the root. */
                 element?: Record<string, never>;
                 locale?: components["schemas"]["locale"];
                 /** @enum {unknown} */
                 field?: "displayName" | "pluralName" | "label" | "description";
                 /** @description The translated text, a sidecar reference, or null to remove the translation. */
                 value?: components["schemas"]["description"] | null;
-                /** @description The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns). */
-                database?: components["schemas"]["id"];
-                /** @description The entities that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns). */
-                entities?: components["schemas"]["idList"];
-                /** @description The designed or imported tables and the views that get an entity and a binding (materialize-entities). */
-                tables?: components["schemas"]["idList"];
-                /** @description The package the new entities go to (materialize-entities); the domain whose tag vocabulary it is (retag; absent for the global one). */
-                package?: components["schemas"]["id"];
+                /** @description The database: an id, a qualified name or a placeholder (materialize-tables, materialize-entities, materialize-attributes, materialize-columns). */
+                database?: components["schemas"]["idOrName"];
+                /** @description The entities, each an id, a qualified name or a placeholder, that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns). */
+                entities?: components["schemas"]["idOrName"][];
+                /** @description The designed or imported tables and the views, each an id, a qualified name or a placeholder, that get an entity and a binding (materialize-entities). */
+                tables?: components["schemas"]["idOrName"][];
+                /** @description The package the new entities go to (materialize-entities); the domain whose tag vocabulary it is (retag, tags-to-property; absent for the global one). An id, a qualified name or a placeholder. */
+                package?: components["schemas"]["idOrName"];
                 /** @description The columns of the source, as keys or physical names, that get an attribute mapped to them (materialize-attributes, one entity only); absent means every column nothing in the binding names. */
                 columns?: string[];
-                /** @description The binding field references (attribute ids, attributeId.memberId for a value object member, to-one end ids) that get a column of the entity's table mapped to them (materialize-columns, one entity only); absent means every attribute the binding leaves unmapped. */
+                /** @description The binding field references (attribute ids, attributeId.memberId for a value object member, to-one end ids) that get a column of the entity's table mapped to them (materialize-columns, one entity only); absent means every attribute the binding leaves unmapped. An item that starts with @ or $ names one attribute or end; the composite attributeId.memberId stays ids. */
                 attributes?: string[];
+                /** @description The elements names-to-ids and tags-to-property act on, each an id, a qualified name or a placeholder; absent means every element they apply to (names-to-ids: every document with x-ref sites; tags-to-property: every holder the vocabulary governs, and the moved tags' declarations leave the vocabulary). */
+                elementIds?: components["schemas"]["idOrName"][];
                 /** @description The tag keys to remove, or the one to rename (retag). */
                 tags?: components["schemas"]["tagList"];
-                /** @description Materialize and retag: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. */
+                /** @description The prefix of the tags that move into the property name (tags-to-property): each tag that starts with it and leaves a non-empty suffix. */
+                prefix?: string;
+                /** @description Materialize, retag, tags-to-property and names-to-ids: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. A key may be a qualified name, never a placeholder. */
                 expectedHashes?: {
                     [key: string]: string;
                 };
-                /** @description The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own). */
-                schema?: components["schemas"]["id"];
-                /** @description The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags). */
+                /** @description The database schema: an id, a qualified name or a placeholder (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own). */
+                schema?: components["schemas"]["idOrName"];
+                /** @description The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags); the custom property the tags move to (tags-to-property). */
                 name?: string;
-                /** @description The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial). */
-                target?: components["schemas"]["id"];
-                /** @description The schema id that becomes the default when the removed schema is the default (remove-schema). */
-                default?: components["schemas"]["id"];
-            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
+                /** @description The schema that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial). An id, a qualified name or a placeholder. */
+                target?: components["schemas"]["idOrName"];
+                /** @description The schema that becomes the default when the removed schema is the default (remove-schema): an id, a qualified name or a placeholder. */
+                default?: components["schemas"]["idOrName"];
+            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
+            $defs: {
+                /** @description A name a batch declares with as and uses anywhere in the batch. */
+                placeholder: string;
+                /** @description An element or sub-element by kind and stored name: @kind:path, its segments separated by dots, a segment with a dot, quote or white space written in double quotes. */
+                qualifiedName: string;
+                /** @description An id, a qualified name or a placeholder. */
+                idOrName: components["schemas"]["id"] | components["schemas"]["placeholder"] | components["schemas"]["qualifiedName"];
+            };
         };
         /**
          * Template pack
@@ -9203,7 +9489,7 @@ export interface components {
             description?: string;
             /** @default {} */
             parameters?: Record<string, never>;
-            /** @description The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters. */
+            /** @description The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters. On a string, or an array's items, x-ref types the value as the id of an element or sub-element (MQ2009). */
             parameterSchema?: {
                 properties?: {
                     [key: string]: Record<string, never>;

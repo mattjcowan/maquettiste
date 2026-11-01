@@ -404,7 +404,7 @@
     {
       "name": "get_references",
       "title": "Where used",
-      "description": "Every reference to an element: the referring element id, the referring (sub-)element id, the JSON pointer and field in the referring document, and the referenced id.",
+      "description": "Every reference to an element: the referring element id, the referring (sub-)element id, the JSON pointer and field in the referring document, and the referenced id. A custom property value an x-ref types is a reference too: its row carries schema (extension:<name> or stereotype:<key>) and, when every schema that types it allows remove-references to clear it, optional: true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -467,7 +467,7 @@
     {
       "name": "get_schema",
       "title": "JSON schema",
-      "description": "The JSON schema (draft 2020-12) of an element kind or document, with the schema files it references (common.json) and, for an element kind, the project's extension schemas that apply to it (extensions: each constrains the element's properties object), so documents built for create_element, save_element, apply_batch or save_settings are valid.",
+      "description": "The JSON schema (draft 2020-12) of an element kind or document, with the schema files it references (common.json) and, for an element kind, the project's extension schemas that apply to it (extensions: each constrains the element's properties object) and the typed parameters of the stereotypes that may apply to it (stereotypeParameters: [{stereotype, parameters}], each constraining the properties of the elements that carry the stereotype, implied ones included), so documents built for create_element, save_element, apply_batch or save_settings are valid.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -558,7 +558,7 @@
     {
       "name": "localization_status",
       "title": "Localization status",
-      "description": "The default locale, the declared locales and, per translated locale, its fallback chain and per shard the expected, translated, missing and stale counts (as GET /api/localization).",
+      "description": "The default locale, the declared locales and, per translated locale, its fallback chain and per shard the expected, translated, missing and stale counts (as GET /api/localization). The counts cover the standard fields and the texts of x-translatable custom properties (properties/<name>).",
       "inputSchema": {
         "type": "object",
         "properties": {}

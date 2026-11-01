@@ -313,6 +313,7 @@ internal sealed partial class ResolveRun
             FillCommon(r, package, deps);
             r.Parent = package.Parent is null ? null : _packages.GetValueOrDefault(package.Parent);
             r.Package = r.Parent;
+            r.DependsOn = package.DependsOn is { } dependsOn ? [.. dependsOn.Select(id => _packages.GetValueOrDefault(id)).OfType<RPackage>()] : [];
             var names = new List<string>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
             for (var current = package; current is not null && seen.Add(current.Id); current = current.Parent is null ? null : Model.Get<Package>(current.Parent))
@@ -738,13 +739,28 @@ internal sealed partial class ResolveRun
 
     internal RPackage? PackageOf(string? id) => id is null ? null : _packages.GetValueOrDefault(id);
 
-    internal IEnumerable<Stereotype> StereotypesOf(ElementBase element)
+    /// <summary>
+    /// The stereotypes an element carries, as resolution applies them: its effective set (<see cref="ModelSnapshot.EffectiveStereotypes"/>,
+    /// implied first, then own), so implied stereotypes give virtual attributes, storage and defaults as own ones do, and a later
+    /// entry wins a merge.
+    /// </summary>
+    internal IEnumerable<Stereotype> StereotypesOf(ElementBase element) => StereotypesOf(element.Stereotypes).Select(s => s.Stereotype);
+
+    /// <summary>The effective set of a list of stereotype keys (an element's, or a process node's).</summary>
+    internal IReadOnlyList<AppliedStereotype> StereotypesOf(IReadOnlyList<string> keys) => Model.EffectiveStereotypes(keys);
+
+    /// <summary>The summary of an applied stereotype an annotated object or a process node carries.</summary>
+    internal static RStereotype Summary(AppliedStereotype applied)
     {
-        foreach (var key in element.Stereotypes)
+        var stereotype = applied.Stereotype;
+        return new RStereotype
         {
-            if (Model.GetStereotype(key) is { } stereotype)
-                yield return stereotype;
-        }
+            Key = stereotype.Key,
+            Name = stereotype.DisplayName ?? (stereotype.Name.Length > 0 ? stereotype.Name : stereotype.Key),
+            Icon = stereotype.Icon,
+            Color = stereotype.Color,
+            ImpliedBy = applied.ImpliedBy,
+        };
     }
 
     private static IEnumerable<T> StableByOrder<T>(IEnumerable<T> items, Func<T, int?> order) => items.OrderBy(x => order(x) ?? 0);
@@ -794,6 +810,8 @@ internal sealed partial class ResolveRun
         if (file is null)
             return;
         FillPhysicalAnnotations(r, file, Model.GetDocument(file.Id)?.SidecarText, deps);
+        if (file is IPackaged { Package: { } package })
+            r.Package = PackageOf(package);
     }
 
     /// <summary>
@@ -813,10 +831,15 @@ internal sealed partial class ResolveRun
         FillAnnotations(r, part, sidecar, deps);
     }
 
-    /// <summary>Fills description, tags, category, stereotypes, merged properties and generation hints from a file.</summary>
+    /// <summary>
+    /// Fills description, rationale, decision, status, tags, category, stereotypes, merged properties and generation hints from a file.
+    /// </summary>
     private void FillAnnotations(RAnnotated r, ElementBase element, string? sidecar, DependencySet deps)
     {
         r.Description = element.Description is { } description ? description.Text ?? (description.File is null ? null : sidecar) : null;
+        r.Rationale = element.Rationale;
+        r.Decision = element.Decision;
+        r.Status = StatusName(element.Status);
         r.Tags = [.. element.Tags];
         if (element.Category is { } category && _categories.TryGetValue(category, out var rc))
         {
@@ -826,22 +849,26 @@ internal sealed partial class ResolveRun
         }
 
         var stereotypes = new List<RStereotype>();
-        foreach (var stereotype in StereotypesOf(element))
+        foreach (var applied in StereotypesOf(element.Stereotypes))
         {
-            stereotypes.Add(new RStereotype
-            {
-                Key = stereotype.Key,
-                Name = stereotype.DisplayName ?? (stereotype.Name.Length > 0 ? stereotype.Name : stereotype.Key),
-                Icon = stereotype.Icon,
-                Color = stereotype.Color,
-            });
-            deps.Element(stereotype.Id);
+            stereotypes.Add(Summary(applied));
+            deps.Element(applied.Stereotype.Id);
         }
 
         r.Stereotypes = stereotypes;
         r.Properties = MergedProperties(element);
         r.Generation = element.Generation.Count == 0 ? ImmutableSortedDictionary<string, GenerationHints>.Empty : SortedMap(element.Generation);
     }
+
+    /// <summary>The JSON value of a status (next-phase-1-design.md section 4.5), or <see langword="null"/>.</summary>
+    private static string? StatusName(ElementStatus? status) => status switch
+    {
+        ElementStatus.Proposed => "proposed",
+        ElementStatus.Approved => "approved",
+        ElementStatus.Deprecated => "deprecated",
+        ElementStatus.Retired => "retired",
+        _ => null,
+    };
 
     /// <summary>Stereotype default properties (stereotype order, later wins) under the element's own properties.</summary>
     private IReadOnlyDictionary<string, object?> MergedProperties(ElementBase element)

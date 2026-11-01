@@ -65,7 +65,8 @@ internal sealed partial class ResolveRun
         {
             Ct.ThrowIfCancellationRequested();
             var r = new RActor();
-            FillCommon(r, actor, DepsOf(r)); // an actor is in no package
+            FillCommon(r, actor, DepsOf(r));
+            r.Package = PackageOf(actor.Package);
             r.Type = ResolutionValues.Kebab(actor.Type);
             _actors.TryAdd(actor.Id, r);
             Register(r);
@@ -435,19 +436,12 @@ internal sealed partial class ResolveRun
         var deps = DepsOf(node);
         var stereotypes = new List<RStereotype>();
         var merged = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        foreach (var key in stereotypeKeys)
+        // The effective set, as for every annotated object: implied stereotypes first, own ones after (a later default wins).
+        foreach (var applied in StereotypesOf(stereotypeKeys))
         {
-            if (Model.GetStereotype(key) is not { } stereotype)
-                continue;
-            stereotypes.Add(new RStereotype
-            {
-                Key = stereotype.Key,
-                Name = stereotype.DisplayName ?? (stereotype.Name.Length > 0 ? stereotype.Name : stereotype.Key),
-                Icon = stereotype.Icon,
-                Color = stereotype.Color,
-            });
-            deps.Element(stereotype.Id);
-            foreach (var pair in stereotype.DefaultProperties)
+            stereotypes.Add(Summary(applied));
+            deps.Element(applied.Stereotype.Id);
+            foreach (var pair in applied.Stereotype.DefaultProperties)
                 merged[pair.Key] = pair.Value;
         }
 
@@ -473,7 +467,7 @@ internal sealed partial class ResolveRun
             var deps = DepsOf(s);
             FillCommon(s, scenario, deps);
             deps.Element(process.Id);
-            s.Package = process.Package; // a scenario's package is its process's
+            s.Package = PackageOf(scenario.Package) ?? process.Package; // its own file's package, else its process's
             s.Process = process;
             s.Outcome = ResolutionValues.Kebab(scenario.Outcome);
             s.Start = new RScenarioStart

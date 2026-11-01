@@ -63,6 +63,50 @@ one.
   `defaultStringLength` when the column has none). A `json` column's default must be a string of JSON text: an object,
   array, number or boolean, which the DDL could not write, is now MQ3019; use a string or `defaultSql`. A column with a
   `nativeType` is checked for the kind of value only.
+- **Batches by name.** A batch (MCP `apply_batch`, the new `maquettiste model apply <batch.json>`, the editor's
+  assistant) can name what it touches instead of carrying ids: `@kind:path` with the names as written in the files
+  (`@table:billing.notes`, `@entity:Billing.Invoice`, `@column:billing.notes.body`), and placeholders declared with
+  `"as": "$name"` for elements the same batch creates. The engine mints every missing id, a sub-element's included, and
+  the answer lists the names it resolved and the ids it minted (`ids`). Files stay id-based. `apply_batch` takes
+  `dryRun`, and `model apply` takes `--dry-run`: nothing is written, and the answer has a unified diff per file and the
+  diagnostics the change would add and remove. New rules MQ1012 to MQ1015 (a name that finds nothing, a name that finds
+  several, a misused identity, a malformed or misplaced name); an update that drops a sub-element and adds a same-named
+  one without its id is refused (MQ1014: keep its id). See [batches by name](mcp.md#batches-by-name).
+- The assistant's proposals resolve names the same way and no longer retry to fill in missing ids; each proposed file
+  carries its diff (`diff` on `AssistProposalFile`). `BatchResult` gains `ids`, and `BatchOperation` gains `as`.
+- **Typed links in custom properties.** A property schema (an extension file, a stereotype's `parameters`, a pack's
+  `parameterSchema`) can type a value as the id of an element or sub-element with `x-ref`: `kind`, `of` (`$element` for
+  a member of the holder, or an element whose seed rows it names), `sameDatabase` and `optional`. Validation checks the
+  values (MQ2010: a name where the id belongs; MQ2011: a target out of scope; MQ2009: a malformed `x-ref`), deletes and
+  saves treat them as references (cleared by `remove-references` when optional), and `get_references` rows carry
+  `optional` and `schema`. The batch operation `names-to-ids` turns the values still written as names into ids, for the
+  whole model or the `elementIds` given.
+- **Stereotype rules and parameters.** A stereotype can declare a `group` (one per element), `requires`, `conflicts`
+  and `implies` (one level), and typed `parameters` for the custom properties of the elements that carry it. Implied
+  stereotypes act as listed ones, and templates see them with `implied_by`. New rules MQ2013 to MQ2019; MCP
+  `get_schema` returns `stereotypeParameters`.
+- **Packages on every kind, and layers.** Tables, views, sequences, routines, database types, SQL objects, queries,
+  databases, mappings, stereotypes, reference types, seeds, actors and scenarios can join a package (`package`), which
+  groups them without changing any database. A package's `dependsOn` lists the packages its elements may reference;
+  any other reference from a checked package is MQ2020, and a `dependsOn` that names its own package or forms a cycle
+  is MQ2021. A model without `dependsOn` behaves as before. The seeds of one target merge in a fixed order, and two
+  seeds of one table that key their rows differently are MQ7121.
+- **Translatable custom properties.** `"x-translatable": true` on a top-level string property of an extension file or
+  of stereotype parameters makes its text translatable per locale, as the field `properties/<name>` in the translation
+  screens, `get_translations`, `set_translations`, `localization_status`, the `l10n` verbs and their exports; templates
+  read it with `translate(entity, "properties/<name>")`. New rules MQ7212 (a misplaced keyword) and MQ7213 (a keyword
+  on kinds that have no translations).
+- **Tags into a property.** The batch operation `tags-to-property` moves the tags that start with a prefix
+  (`status:draft`) into a custom property (`status`), converted by the schema that declares it, and removes them from
+  the vocabulary.
+- **Rationale, decision and status.** Every element, attribute, enum member, column, database schema and category can
+  carry `rationale` (Markdown), `decision` (a URL or a decision record reference) and `status` (`proposed`,
+  `approved`, `deprecated`, `retired`). A reference to a retired element is MQ2022, a warning, so retiring something
+  lists its last users. Templates read the three fields on entities, tables, databases and most other resolved
+  elements; editing them records no migration fact.
+- The editor's forms do not show the new keys yet: edit them on the inspector's **JSON** tab. The new guide [Typed
+  properties and layers](guides/typed-properties-and-layers.md) walks through all of them, and the modeling skill
+  (`maquettiste init --skill` refreshes it) teaches agents to use them.
 
 ## 0.10.1 (2026-10-08)
 

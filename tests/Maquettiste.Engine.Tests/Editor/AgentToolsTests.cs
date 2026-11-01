@@ -61,6 +61,30 @@ public sealed partial class AgentToolsTests
     }
 
     [Fact]
+    public async Task Get_schema_lists_stereotype_parameters()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        var audited = (await r.Store.GetElementAsync("01J92P0V25BX5TMQ8N9F6AJE61", Ct))!;
+        var json = JsonNode.Parse(audited.Json.GetRawText())!.AsObject();
+        json["parameters"] = JsonNode.Parse("""{ "properties": { "retentionDays": { "type": "integer", "minimum": 1 } }, "required": ["retentionDays"] }""");
+        var saved = await r.Store.SaveAsync(audited.Element.Id, Encoding.UTF8.GetBytes(json.ToJsonString()), audited.Hash, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
+        var catalog = Catalog(r);
+
+        var table = JsonNode.Parse((await catalog.CallAsync("get_schema", JsonSerializer.SerializeToElement(new { kind = "table" }), Ct)).Text)!;
+        var package = JsonNode.Parse((await catalog.CallAsync("get_schema", JsonSerializer.SerializeToElement(new { kind = "package" }), Ct)).Text)!;
+        var document = JsonNode.Parse((await catalog.CallAsync("get_schema", JsonSerializer.SerializeToElement(new { kind = "batch" }), Ct)).Text)!;
+
+        // audited applies to entities, tables and columns: listed for a table, not for a package; a document has no stereotypes.
+        var entry = Assert.Single(table["stereotypeParameters"]!.AsArray());
+        Assert.Equal("audited", (string?)entry!["stereotype"]);
+        Assert.Equal("integer", (string?)entry["parameters"]!["properties"]!["retentionDays"]!["type"]);
+        Assert.Equal(["retentionDays"], entry["parameters"]!["required"]!.AsArray().Select(n => (string?)n));
+        Assert.Empty(package["stereotypeParameters"]!.AsArray());
+        Assert.Null(document["stereotypeParameters"]);
+    }
+
+    [Fact]
     public async Task A_batch_preview_writes_nothing_and_lists_the_files_with_their_text_before_and_after()
     {
         await using var r = EditorRepo.Create(packs: false);
@@ -124,6 +148,67 @@ public sealed partial class AgentToolsTests
         Assert.Contains("MQ1002", invalid, StringComparison.Ordinal);
         var (_, empty) = await AssistantProposals.PrepareAsync(r.Store, ids, JsonSerializer.SerializeToElement(new { summary = "", operations = Array.Empty<object>() }), Ct);
         Assert.Contains("summary is required", empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_proposal_by_name_is_pinned_to_ids()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        var invoice = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
+        var json = JsonNode.Parse(invoice.Json.GetRawText())!.AsObject();
+        json["description"] = "Pinned by name.";
+        json.Remove("$schema");
+        var args = JsonSerializer.SerializeToElement(new JsonObject
+        {
+            ["summary"] = "Add an enum and describe Invoice",
+            ["operations"] = new JsonArray(
+                new JsonObject
+                {
+                    ["op"] = "create",
+                    ["as"] = "$kinds",
+                    ["element"] = new JsonObject
+                    {
+                        ["kind"] = "enum", ["name"] = "PinnedKinds", ["package"] = "@package:Billing",
+                        ["members"] = new JsonArray(new JsonObject { ["name"] = "One", ["value"] = 0 }),
+                    },
+                },
+                new JsonObject { ["op"] = "update", ["id"] = "@entity:Invoice", ["element"] = json }),
+        });
+
+        var (draft, error) = await AssistantProposals.PrepareAsync(r.Store, new UlidIdGenerator(), args, Ct);
+
+        Assert.True(error is null, error);
+        var create = draft!.Operations[0]!.AsObject();
+        Assert.False(create.ContainsKey("as"));
+        var enumId = (string)create["id"]!;
+        var element = create["element"]!;
+        Assert.Equal(enumId, (string)element["id"]!);
+        Assert.Equal(EditorRepo.BillingPackageId, (string)element["package"]!);
+        Assert.NotNull(element["members"]![0]!["id"]);
+        var created = Assert.Single(draft.Files, f => f.Action == "created");
+        Assert.Equal(enumId, created.Id);
+        Assert.StartsWith("--- a/", created.Diff, StringComparison.Ordinal);
+        var update = draft.Operations[1]!.AsObject();
+        Assert.Equal(EditorRepo.InvoiceId, (string)update["id"]!);
+        Assert.Equal(invoice.Hash, (string)update["expectedHash"]!);
+        Assert.Equal("Pinned by name.", (string)update["element"]!["description"]!);
+
+        // Applying the pinned operations writes exactly what was previewed, with the ids the proposal shows.
+        var applied = await r.Store.ApplyBatchAsync(r.Store.ParseBatch(Encoding.UTF8.GetBytes(new JsonObject { ["operations"] = draft.Operations.DeepClone() }.ToJsonString())).Batch!,
+            ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, applied.Outcome);
+        Assert.Empty(applied.Ids.Minted);
+        Assert.Equal(created.After, r.Repo.ReadFile(created.Path).Replace("\r\n", "\n", StringComparison.Ordinal));
+
+        // A target name that finds nothing is refused like a parse failure, with its diagnostic.
+        var unknown = JsonSerializer.SerializeToElement(new JsonObject
+        {
+            ["summary"] = "Delete nobody",
+            ["operations"] = new JsonArray(new JsonObject { ["op"] = "delete", ["id"] = "@entity:Nobody" }),
+        });
+        var (none, refused) = await AssistantProposals.PrepareAsync(r.Store, new UlidIdGenerator(), unknown, Ct);
+        Assert.Null(none);
+        Assert.Contains("MQ1012", refused, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -177,6 +177,39 @@ public sealed class ModelSnapshotTests
     }
 
     [Fact]
+    public void Requires_conflicts_and_implies_are_indexed_as_references()
+    {
+        var b = new ModelBuilder(seed: 6);
+        var audited = b.Stereotype("audited");
+        var softDelete = b.Stereotype("soft-delete").Group("deletion");
+        var hardDelete = b.Stereotype("hard-delete").Group("deletion");
+        var tracked = b.Stereotype("tracked").Requires("audited").Conflicts("hard-delete", "missing").Implies("soft-delete");
+        b.Entity("Invoice").Key("id", "uuid").Stereotype("tracked");
+
+        var model = b.Build();
+
+        Assert.Equal(
+            [
+                (hardDelete.Id, "/conflicts/0", "conflicts"),
+                (softDelete.Id, "/implies/0", "implies"),
+                (audited.Id, "/requires/0", "requires"),
+            ],
+            model.ReferencesFrom(tracked.Id).Select(r => (r.ToId, r.JsonPointer, r.Field)).OrderBy(r => r.JsonPointer, StringComparer.Ordinal));
+        // An unknown key is no reference (validation reports it); the group is a label, not a link.
+        Assert.DoesNotContain(model.ReferencesFrom(tracked.Id), r => r.JsonPointer == "/conflicts/1");
+        Assert.Empty(model.ReferencesFrom(softDelete.Id));
+        // The referrers keep a named stereotype from a plain delete.
+        Assert.Contains(model.ReferencesTo(softDelete.Id), r => r.FromElementId == tracked.Id);
+        // The effective set: implied first (at the implying entry), then own.
+        Assert.Equal(
+            [("soft-delete", 0, "tracked"), ("tracked", 0, null)],
+            model.EffectiveStereotypes(["tracked", "missing"]).Select(s => (s.Stereotype.Key, s.Entry, s.ImpliedBy)));
+        Assert.Equal(
+            [("tracked", 0, null), ("soft-delete", 1, null)],
+            model.EffectiveStereotypes(["tracked", "soft-delete"]).Select(s => (s.Stereotype.Key, s.Entry, s.ImpliedBy)));
+    }
+
+    [Fact]
     public void A_second_tag_vocabulary_or_category_tree_is_reported()
     {
         var b = new ModelBuilder(seed: 4);

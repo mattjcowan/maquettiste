@@ -73,8 +73,8 @@ public abstract class RObject : IResolvedObject
 }
 
 /// <summary>
-/// The annotations a model file carries besides its structure: display names, description, tags, category, stereotypes, custom
-/// properties and generation hints. Every conceptual object (<see cref="RElement"/>) has them, and so does every physical object
+/// The annotations a model file carries besides its structure: display names, description, rationale, decision and status, tags,
+/// category, stereotypes, custom properties and generation hints. Every conceptual object (<see cref="RElement"/>) has them, and so does every physical object
 /// (<see cref="RDatabase"/>, <see cref="RSchema"/>, <see cref="RTable"/>, <see cref="RColumn"/>, <see cref="RView"/>,
 /// <see cref="RSequence"/>): a physical object reads them from its own file or entry (the database file and its schema entries, a
 /// designed or imported table, a synthesized table's overlay and its column entries, a view or sequence file) and never from the
@@ -95,8 +95,27 @@ public abstract class RAnnotated : RObject
     /// </summary>
     public string PluralName { get; internal set; } = "";
 
+    /// <summary>
+    /// The owning package, or <see langword="null"/> for the root (for a package: its parent). A conceptual object holds its own; a
+    /// physical object its file's, where a table without one falls back to its entity's or relation's; a seed falls back to its
+    /// target's and a scenario to its process's. Membership never changes where a table goes in a database.
+    /// </summary>
+    public RPackage? Package { get; internal set; }
+
     /// <summary>The description text, with a sidecar file loaded; <see langword="null"/> when there is none.</summary>
     public string? Description { get; internal set; }
+
+    /// <summary>Markdown text: why the object is shaped this way, from its own file or entry; <see langword="null"/> when there is none.</summary>
+    public string? Rationale { get; internal set; }
+
+    /// <summary>A URL or a reference (such as <c>ADR-0042</c>) of the decision record; <see langword="null"/> when there is none.</summary>
+    public string? Decision { get; internal set; }
+
+    /// <summary>
+    /// The status as its JSON value (<c>proposed</c>, <c>approved</c>, <c>deprecated</c> or <c>retired</c>); <see langword="null"/> when
+    /// none is written.
+    /// </summary>
+    public string? Status { get; internal set; }
 
     /// <summary>Tag keys.</summary>
     public IReadOnlyList<string> Tags { get; internal set; } = [];
@@ -129,9 +148,6 @@ public abstract class RElement : RAnnotated
 {
     /// <summary>The name.</summary>
     public string Name { get; internal set; } = "";
-
-    /// <summary>The owning package, or <see langword="null"/> for the root (for a package: its parent).</summary>
-    public RPackage? Package { get; internal set; }
 }
 
 /// <summary>A resolved category.</summary>
@@ -161,6 +177,12 @@ public sealed class RStereotype
 
     /// <summary>The display color.</summary>
     public string? Color { get; internal set; }
+
+    /// <summary>
+    /// The key of the stereotype the object carries that implies this one (next-phase-1-design.md section 4.2), or
+    /// <see langword="null"/> when the object lists it itself.
+    /// </summary>
+    public string? ImpliedBy { get; internal set; }
 }
 
 /// <summary>
@@ -195,13 +217,13 @@ public sealed class ResolvedModel
     /// <summary>Reference types, by (name, id).</summary>
     public RList<RReferenceType> ReferenceTypes { get; internal init; } = RList<RReferenceType>.Empty;
 
-    /// <summary>Seeds, by (name, id).</summary>
+    /// <summary>Seeds in merge order: by the qualified name of the package the seed's file states (none first), then name, then id.</summary>
     public RList<RSeed> Seeds { get; internal init; } = RList<RSeed>.Empty;
 
     private RList<RSeed>? _seedsInOrder;
 
     /// <summary>
-    /// Seeds in insert order: a seed whose rows another seed's rows name comes first; ties by (dependency depth, name, id). Ordered on
+    /// Seeds in insert order: a seed whose rows another seed's rows name comes first; ties by dependency depth, then merge order. Ordered on
     /// first read (it reads the rows of every seed whose cells name other rows).
     /// </summary>
     public RList<RSeed> SeedsInOrder

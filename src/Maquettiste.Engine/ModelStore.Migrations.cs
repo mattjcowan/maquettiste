@@ -33,8 +33,10 @@ public sealed record RecordedFact(string Id, string Database, string Fact, strin
 /// </summary>
 /// <remarks>
 /// <para>Nothing runs when <c>migrations.record</c> is <c>off</c> after the change, when only <c>migration</c> elements change, or
-/// when the changes touch only annotations (<c>description</c>, <c>displayName</c>, <c>tags</c>, <c>category</c>, and at the top
-/// level <c>generation</c> and <c>source</c>): those reach a capture only as comments, which never need a fact.</para>
+/// when the changes touch only annotations (<c>description</c>, <c>displayName</c>, <c>tags</c>, <c>category</c>, <c>rationale</c>,
+/// <c>decision</c> and <c>status</c>, and at the top level <c>generation</c>, <c>source</c> and, on a physical object or another kind
+/// whose package is membership only, <c>package</c>): those reach a capture only as comments, or not at all, which never need a
+/// fact.</para>
 /// <para>The capture cache holds one entry per database of the current snapshot: its capture and its footprint (the element ids of
 /// its resolved objects' <c>e:</c> keys). A write hands the new snapshot its after entries and the untouched ones; any other change of
 /// snapshot (a disk reload, a restore, a settings save that records nothing, any default-locale change) leaves the cache behind. A
@@ -46,8 +48,10 @@ public sealed record RecordedFact(string Id, string Database, string Fact, strin
 /// </remarks>
 public sealed partial class ModelStore
 {
-    private static readonly string[] TopAnnotations = ["description", "displayName", "tags", "category", "generation", "source"];
-    private static readonly string[] NestedAnnotations = ["description", "displayName", "tags", "category"];
+    private static readonly string[] TopAnnotations =
+        ["description", "displayName", "tags", "category", "rationale", "decision", "status", "generation", "source"];
+
+    private static readonly string[] NestedAnnotations = ["description", "displayName", "tags", "category", "rationale", "decision", "status"];
 
     private readonly Lock _capturesGate = new();
     private CaptureCache? _captures;
@@ -348,8 +352,23 @@ public sealed partial class ModelStore
         var b = JsonNode.Parse(after.Json.GetRawText());
         StripAnnotations(a, top: true);
         StripAnnotations(b, top: true);
+        if (PackageIsMembership(before.Element) && PackageIsMembership(after.Element))
+        {
+            a!.AsObject().Remove("package");
+            b!.AsObject().Remove("package");
+        }
+
         return !JsonNode.DeepEquals(a, b);
     }
+
+    /// <summary>
+    /// Whether the kind's top-level <c>package</c> is membership only (next-phase-1-design.md section 4.3): the 14 kinds that gained
+    /// it, whose package never routes a table, so a change of it never reshapes a database. An entity's, value object's, scalar
+    /// type's, enum's or relation's package can (a database's <c>packages</c> convention), so it still counts.
+    /// </summary>
+    private static bool PackageIsMembership(Element element) =>
+        element is Table or View or Sequence or Routine or DatabaseType or SqlObject or Query or Database or Mapping or Stereotype
+            or ReferenceType or Seed or Actor or Scenario;
 
     /// <summary>Removes the annotation keys of an element and of each sub-element (an object with an <c>id</c>), recursively.</summary>
     private static void StripAnnotations(JsonNode? node, bool top)
@@ -383,7 +402,8 @@ public sealed partial class ModelStore
     /// a physical element or mapping, its database before and after; a database, itself; an entity, value object, scalar type, enum,
     /// relation or reference type, the databases whose footprint (or reach) holds it before, those its new package's convention or its
     /// new base or ends reach after, and the databases of the physical elements it references; a package, the databases whose
-    /// convention entries name it or an ancestor, before or after; a stereotype, the databases of what carries it.
+    /// convention entries name it or an ancestor, before or after; a stereotype, the databases of what carries it, implying stereotypes'
+    /// carriers included.
     /// </summary>
     private static IEnumerable<string> ChooseDatabases(string id, ModelSnapshot before, ModelSnapshot candidate, IReadOnlyList<Database> databases,
         Func<string, IReadOnlySet<string>> footprint)
@@ -452,20 +472,48 @@ public sealed partial class ModelStore
             case Stereotype:
                 foreach (var model in new[] { before, candidate })
                 {
-                    foreach (var reference in model.ReferencesTo(id))
+                    foreach (var carrierId in Carriers(model, id))
                     {
-                        var carrier = model.GetDocument(reference.FromElementId)?.Element;
+                        var carrier = model.GetDocument(carrierId)?.Element;
                         if (PhysicalDatabase(carrier) is { } physical)
                             yield return physical;
                         else
                         {
-                            foreach (var databaseId in Holding(reference.FromElementId))
+                            foreach (var databaseId in Holding(carrierId))
                                 yield return databaseId;
                         }
                     }
                 }
 
                 break;
+        }
+    }
+
+    /// <summary>
+    /// The elements that carry a stereotype in a model, through its effective set (next-phase-1-design.md section 4.2): the files whose
+    /// stereotype lists name it, and the carriers of each stereotype whose <c>implies</c> names it. A stereotype that only requires
+    /// or conflicts with it is no carrier (those change no database). Duplicates are possible.
+    /// </summary>
+    private static IEnumerable<string> Carriers(ModelSnapshot model, string stereotypeId)
+    {
+        foreach (var reference in model.ReferencesTo(stereotypeId))
+        {
+            switch (reference.Field)
+            {
+                case "requires" or "conflicts" when model.GetDocument(reference.FromElementId)?.Element is Stereotype:
+                    break;
+                case "implies" when model.GetDocument(reference.FromElementId)?.Element is Stereotype implying:
+                    foreach (var carrier in model.ReferencesTo(implying.Id))
+                    {
+                        if (carrier.Field == "stereotypes")
+                            yield return carrier.FromElementId;
+                    }
+
+                    break;
+                default:
+                    yield return reference.FromElementId;
+                    break;
+            }
         }
     }
 

@@ -16,6 +16,8 @@ internal sealed partial class DatabaseRun
     {
         foreach (var t in _tableOrder)
         {
+            // A table file's own package wins; a table without one is in its entity's or relation's (next-phase-1-design.md 4.3).
+            t.Table.Package ??= t.Table.Entity?.Package ?? t.Table.Relation?.Package;
             AddOverlayExtraColumns(t);
             for (var i = 0; i < t.Columns.Count; i++)
                 t.Columns[i].Position = i;

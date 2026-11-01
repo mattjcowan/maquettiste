@@ -2,6 +2,7 @@
 // contract's record; engine outcomes (SaveResult, BatchResult, SettingsSaveResult) come back at any
 // status, and every other failure is a thrown ApiProblem (client.ts).
 import { api, ApiProblem, etagHash } from "./client";
+import type { components } from "./schema";
 import type {
   BatchParseResult,
   BatchRequest,
@@ -184,7 +185,7 @@ export async function getBulkDeletePlan(ids: string[], resolution: DeleteResolut
 }
 
 export async function applyBatch(batch: BatchRequest): Promise<BatchResult | BatchParseResult> {
-  const { data, error, response } = await api().POST("/api/model/batch", { body: batch });
+  const { data, error, response } = await api().POST("/api/model/batch", { body: batch as components["schemas"]["batch"] });
   return record<BatchResult | BatchParseResult>(data, error, response);
 }
 

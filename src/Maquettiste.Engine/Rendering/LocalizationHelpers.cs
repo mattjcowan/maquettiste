@@ -33,9 +33,10 @@ internal static class LocalizationHelpers
     private static string Field(object? value)
     {
         var field = BuiltinHelpers.AsText(value);
-        return LocalizationIndex.Fields.Contains(field, StringComparer.Ordinal)
+        return LocalizationIndex.IsField(field)
             ? field
-            : throw new RenderHelperException("MQ6006", $"'{field}' is not a translatable field: use displayName, pluralName, label or description.");
+            : throw new RenderHelperException("MQ6006",
+                $"'{field}' is not a translatable field: use displayName, pluralName, label, description or {LocalizationIndex.PropertyFieldPrefix}<name> for an x-translatable property.");
     }
 
     private static string? Translate(TrackingTemplateContext context, object? target, string field, string? locale)
@@ -80,6 +81,8 @@ internal static class LocalizationHelpers
     {
         var nodes = context.Unit.Run.Context.Model.Source.Localization.Nodes;
         string? Source(string id) => nodes.TryGetValue(id, out var n) ? n.Source(field) : null;
+        if (LocalizationIndex.PropertyNameOf(field) is { } name)
+            return PropertyNode(context, value, name, field, helper);
         return value switch
         {
             null => (null, null),
@@ -121,5 +124,35 @@ internal static class LocalizationHelpers
             RObject other => (other.Id, Source(other.Id)),
             _ => throw new RenderHelperException("MQ6006", $"`{helper}` takes a model element, sub-element, row or id, not a {TemplateValues.TypeName(value)}."),
         };
+    }
+
+    /// <summary>
+    /// The node id and default text of a property field (next-phase-1-design.md section 4.4): the holder's own text, else the resolved
+    /// value (a stereotype default, which is not translated: the object's dependencies are recorded with it).
+    /// </summary>
+    private static (string? Id, string? Default) PropertyNode(TrackingTemplateContext context, object? value, string name, string field, string helper)
+    {
+        var model = context.Unit.Run.Context.Model;
+        switch (value)
+        {
+            case null:
+                return (null, null);
+            case string id when model.Find(id) is { } found:
+                return PropertyNode(context, found, name, field, helper);
+            case string id:
+                return (id, model.Source.Localization.Nodes.TryGetValue(id, out var byId) ? byId.Source(field) : null);
+            case RObject target:
+                if (model.Source.Localization.Nodes.TryGetValue(target.Id, out var node) && node.Source(field) is { } own)
+                    return (target.Id, own);
+                if (target is RAnnotated annotated && annotated.Properties.TryGetValue(name, out var resolved) && resolved is string text)
+                {
+                    context.RecordRead(annotated);
+                    return (target.Id, text);
+                }
+
+                return (target.Id, null);
+            default:
+                throw new RenderHelperException("MQ6006", $"`{helper}` takes a model element, sub-element, row or id, not a {TemplateValues.TypeName(value)}.");
+        }
     }
 }

@@ -66,6 +66,41 @@ editor, which reads the same files.
 
 Questions work too: "Which entities reference `Bike`?", or "Why does MQ4047 fire on `Rental`?"
 
+A change that spans several elements goes in one batch, written by name: the agent does not look up or invent ids. Ask
+for a list of tool kinds the workshop can pick from, and the agent can send one `apply_batch` that creates the table
+`workshop.tool_kinds`, the reference type `ToolKind` bound to it and its seed:
+
+```json
+{ "operations": [
+  { "op": "create", "as": "$table", "element": { "kind": "table", "name": "tool_kinds",
+      "database": "@database:main", "schema": "@schema:workshop",
+      "columns": [ { "name": "code", "type": "string", "length": 16, "nullable": false },
+                   { "name": "label", "type": "string", "length": 64, "nullable": false } ],
+      "primaryKey": { "columns": [ "@column:workshop.tool_kinds.code" ] } } },
+  { "op": "create", "as": "$type", "element": { "kind": "reference-type", "name": "ToolKind",
+      "package": "@package:Workshop", "code": { "length": 16 }, "label": { "length": 64 },
+      "bindings": [ { "database": "@database:main", "table": "$table",
+                      "fields": [ { "attribute": "code", "column": "code" },
+                                  { "attribute": "label", "column": "label" } ] } ] } },
+  { "op": "create", "element": { "kind": "seed", "name": "ToolKinds", "package": "@package:Workshop",
+      "target": "$type", "columns": [ "code", "label" ],
+      "rows": [ { "values": [ "wrench", "Wrench" ] }, { "values": [ "truing-stand", "Truing stand" ] } ] } }
+] }
+```
+
+1. `@database:main`, `@schema:workshop` and `@package:Workshop` name existing elements as their files name them;
+   `@column:workshop.tool_kinds.code` names a column the same operation creates.
+2. `"as": "$table"` names the new table for the whole batch, so the reference type's binding writes `$table` where the
+   table's id goes; `$type` does the same for the seed's target.
+3. The engine mints the ten ids the batch needs (the table, its columns, the reference type's fields and binding, the
+   seed and its rows) and writes only ids into the files. The answer's `ids` lists each name with the id it found.
+4. With `dryRun: true` nothing is written: the answer shows each file as a diff and the diagnostics the change would add
+   or remove. Ask the agent to show you that first.
+
+Without an agent, save the same batch as `tool-kinds.json` and run `maquettiste model apply tool-kinds.json --dry-run`,
+then without `--dry-run`. When an update sends a document back, the agent keeps the ids of the parts it does not change:
+an attribute or column sent without its id is a new one, and replacing one with a same-named copy is refused (MQ1014).
+
 ## 5. Let the agent generate
 
 The agent can plan and apply generation as you would on the Generate screen. It runs a plan, reads the diff of the files
@@ -115,8 +150,8 @@ references to be cleared or the dependents removed, and a dry run shows that pla
 ## See also
 
 - [Maquettiste over MCP](../mcp.md): [Running it](../mcp.md#running-it), every [tool](../mcp.md#tools), the
-  [semantics](../mcp.md#semantics) of hashes, conflicts and batches, and the
-  [conventions resource and prompt](../mcp.md#conventions-resource-and-prompt).
+  [semantics](../mcp.md#semantics) of hashes, conflicts and batches, [batches by name](../mcp.md#batches-by-name), and
+  the [conventions resource and prompt](../mcp.md#conventions-resource-and-prompt).
 - [The assistant](../user-guide.md#the-assistant): provider setup, house rules, budgets and privacy.
 - [The command line](../user-guide.md#the-command-line), for `init --mcp`, `--skill` and `--agent-setup`.
 - [Snapshots](../user-guide.md#snapshots).
