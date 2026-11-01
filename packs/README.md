@@ -162,7 +162,9 @@ pair's first end comes first, ends matching items by identity or value; ties kee
 earliest item left) and `json <value> [<fields>]` (with fields, the named member paths such as `["name",
 "columns.name"]` as an object, a path through a list applied per item; a path ending on a resolved object or naming no
 member is MQ6006). These names, and the template variables `database` and `attribute`, are taken: a pack helper
-registered under one of them is MQ6013.
+registered under one of them is MQ6013. A function a template defines with `func` is not checked: it takes the name in
+that template only, so the template keeps working when a built-in of the same name arrives, and every other template
+still sees the built-in.
 Partials are templates included with
 `{{ include "_name.scriban" arg }}` (paths relative to the pack folder); a partial that only defines functions is a good home for
 shared logic.

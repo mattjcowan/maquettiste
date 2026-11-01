@@ -2208,7 +2208,8 @@ items edges` orders a list so that, for each `[before, after]` pair in `edges`, 
 order where no pair decides, and a cycle lets the earliest item left go first. `json value ["name", "columns.name"]`
 writes the named members as JSON, so a table or an entity can be written without a script: a path through a list applies
 to each item, and a path must end on a value, not on a table or column (MQ6006). Pack helpers may not take these names,
-nor `database` and `attribute` (MQ6013).
+nor `database` and `attribute` (MQ6013). A function a template defines with `func` may: it takes the name in that
+template only, and every other template still sees the built-in.
 
 The model also lists its definitions. `model.stereotypes` has one stereotype per key, by key: `key`, its label as
 `name`, `applies_to`, the `attributes` it adds (each with the stereotype as `owner`), `default_properties`, `icon`,

@@ -57,8 +57,9 @@ outside Maquettiste since the model read it (held or completed in a text editor)
 first: the edit stays, and the new change records a fact of its own after it.
 
 A dry run (the assistant's proposals) lists the facts the change would record. When the change reaches every
-database (a settings change, or a type or stereotype every database uses), the dry run lists none and the save
-computes them.
+database (a settings change, a type or stereotype every database uses, or any change in a project with one database),
+the dry run lists none, its `facts` is null, and the save computes them: read the save's `facts`, and complete a
+pending one before you generate. A pending fact never stops the save itself.
 
 Objects whose elements have errors are left out of the comparison: MQ4110 (an information) says so, and no fact is
 recorded for them.
