@@ -914,8 +914,9 @@ JavaScript rules in `.maquettiste/extensions/rules/` receive an element and the 
 **Template pack distribution**
 
 - Local packs live in `.maquettiste/templates/`.
-- Shared packs are referenced by git URL, tag and path, and pinned by commit hash in `packs.lock.json`. Git works for every language community; npm and NuGet packaging can follow.
-- Layering: a local pack can extend a shared pack and override single templates, partials or type maps, so teams customize without forking.
+- A pack can use other packs: `uses` in its `pack.json` names each one with a version range, checked against the used pack's version. A pack with no units is a library of partials and helpers that other packs include (`include "<pack>:<path>"`) and call (`<namespace>.<helper>`).
+- Packs are shared by copying their folder into another project; the version range reports a copy that is too old or too new. There is no registry, download, lock file or reference into version control, so packs work the same in a repository, in CI and in a hosted project.
+- A pack does not override another pack's templates or partials; it includes its own partial instead.
 
 **Importers and exporters**
 
@@ -951,7 +952,7 @@ Rendering runs with loop and recursion limits and no import of arbitrary .NET me
 
 **Template packs from elsewhere**
 
-Shared packs are pinned by commit hash, and the Generate workspace shows which pack produced each file. Adding or updating a pack is an explicit, reviewable change to `packs.lock.json`.
+The Generate workspace shows which pack produced each file. Adding or updating a pack is an explicit, reviewable change to the project's `.maquettiste/templates/` folder, and a pack's `uses` ranges report a used pack whose version does not match.
 
 **Host**
 
