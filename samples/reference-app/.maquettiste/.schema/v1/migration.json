@@ -388,8 +388,7 @@
       },
       "then": {
         "description": "Objects, collections and values may be empty (a type rename maps names only); MQ4106 judges the rest.",
-        "required": ["referenceType"],
-        "x-order": ["referenceType", "values"]
+        "required": ["referenceType"]
       }
     },
     {

@@ -282,6 +282,9 @@ internal static partial class BuiltinRules
         var what = $"a member of stereotype '{stereotype.Key}'";
         if (ids.Length == 1)
         {
+            // The keyed id is worth suggesting only when the table inherits the member; else it is out of scope too.
+            if (NotInherited() is { } problem)
+                return problem;
             return table.Origin == TableOrigin.Synthesized
                 ? $"{what}; of \"$element\" takes a member a table inherits by its keyed id, and the keyed id of an overlay's inherited member ('{keyed}') holds the synthesized table key, which an x-ref value cannot hold"
                 : $"{what}; of \"$element\" takes a member a table inherits by its keyed id: write '{keyed}'";
@@ -289,11 +292,16 @@ internal static partial class BuiltinRules
 
         if (ids.Length != 2 || !string.Equals(ids[0], tableKey, StringComparison.Ordinal))
             return $"{what} as {Describe(model, ids[0])} inherits it; of \"$element\" takes a member of table {table.Name}, by its keyed id '{keyed}'";
-        var set = TableMembers.Of(model, table);
-        bool Has<T>(IReadOnlyList<InheritedMember<T>> members) where T : class => members.Any(m => string.Equals(m.Key, keyed, StringComparison.Ordinal));
-        return Has(set.Columns) || Has(set.PrimaryKeys) || Has(set.Uniques) || Has(set.ForeignKeys) || Has(set.Indexes) || Has(set.Checks)
-            ? null
-            : $"{what} that table {table.Name} does not inherit{(set.Inheritable.ContainsKey(memberId) ? " (it excludes the member)" : "")}";
+        return NotInherited();
+
+        string? NotInherited()
+        {
+            var set = TableMembers.Of(model, table);
+            bool Has<T>(IReadOnlyList<InheritedMember<T>> members) where T : class => members.Any(m => string.Equals(m.Key, keyed, StringComparison.Ordinal));
+            return Has(set.Columns) || Has(set.PrimaryKeys) || Has(set.Uniques) || Has(set.ForeignKeys) || Has(set.Indexes) || Has(set.Checks)
+                ? null
+                : $"{what} that table {table.Name} does not inherit{(set.Inheritable.ContainsKey(memberId) ? " (it excludes the member)" : "")}";
+        }
     }
 
     /// <summary>
@@ -601,7 +609,7 @@ internal static partial class BuiltinRules
     };
 
     /// <summary>How a message names the holder of a default stereotype: <c>schema 'billing'</c> or <c>package 'Billing'</c>.</summary>
-    private static string DefaultHolderName(ModelSnapshot model, StereotypeSource source, string holderId)
+    internal static string DefaultHolderName(ModelSnapshot model, StereotypeSource source, string holderId)
     {
         if (source == StereotypeSource.SchemaDefault)
         {

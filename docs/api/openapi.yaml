@@ -3378,6 +3378,12 @@ paths:
             text/csv:
               schema:
                 type: string
+        '422':
+          description: The seed's rows script (`rowsFrom.script`) fails, so there are no rows to export; the report holds its MQ7127.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationReport'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':

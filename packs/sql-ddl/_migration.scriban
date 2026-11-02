@@ -820,7 +820,7 @@ func column_change_statements(tc, cc, out)
     $rt = $c.reference_type
     if $rt
       emit(out, "-- " + $t.name + "." + $name + " now holds codes of " + $rt.name + " (" + realization_words($rt, $db) + "): its reference objects are dropped and created again.")
-      $rows = ref_rows_exist_sql($rt, $db)
+      $rows = ref_rows_exist_sql($rt, $db, null)
       if $rows != ""
         emit(out, $rows)
       end
@@ -1353,9 +1353,11 @@ func view_recreates(oc)
 end
 
 # DROP VIEW, or DROP MATERIALIZED VIEW for one that was materialized (PostgreSQL, Oracle), of a view by its schema and name.
+# IF EXISTS when idempotent, and on PostgreSQL once a value map dropped the views before its retype (value_map_drop_views).
 func view_drop_sql(db, schema, name, was_materialized)
   $mat = was_materialized && (db.dialect == "postgresql" || db.dialect == "oracle")
-  ret "DROP " + ($mat ? "MATERIALIZED VIEW" : "VIEW") + (idem() && db.dialect != "oracle" ? " IF EXISTS" : "") + " " + qn(schema, name, db) + ";"
+  $exists = (idem() || (mq_vm_views && mq_vm_views.dropped)) && db.dialect != "oracle"
+  ret "DROP " + ($mat ? "MATERIALIZED VIEW" : "VIEW") + ($exists ? " IF EXISTS" : "") + " " + qn(schema, name, db) + ";"
 end
 
 func view_drop(db, oc)
@@ -2173,6 +2175,9 @@ func value_map_words(f)
   if f.values.size == 0 && f.from_reference_type
     ret "merges " + ($from ?? "?") + " into " + ($to ?? "?")
   end
+  if f.values.size == 0 && $from == $to && f.from && f.to && f.from.plural_name != f.to.plural_name
+    ret "renames reference type " + ($from ?? "?") + " plural " + (f.from.plural_name ?? "(default)") + " to " + (f.to.plural_name ?? "(default)")
+  end
   if f.values.size == 0
     ret "renames reference type " + ($from ?? "?") + " to " + ($to ?? "?")
   end
@@ -2272,6 +2277,47 @@ func value_map_enum_guard(f, enum, from, db)
   ret "SELECT string_agg(DISTINCT v.m, ', ' ORDER BY v.m) INTO missing FROM (" + from + ") AS v WHERE v.m IS NOT NULL AND NOT " + pg_enum_has(enum, "v.m", db) + ";\nIF missing IS NOT NULL THEN RAISE EXCEPTION " + lit($message, db) + ", missing; END IF;"
 end
 
+# The schema a view or table was in before the migration's schema renames: the old name of the schema renamed to it, else the same.
+func pre_schema(diff, schema)
+  for sc in diff.schemas
+    if sc.kind == "renamed" && sc.new_name == schema
+      ret sc.old_name
+    end
+  end
+  ret schema
+end
+
+# PostgreSQL cannot retype a column a view reads, and the model does not say which views read which columns: before the first
+# retype of a value map (value_map_column, value_map_collection), every view of the model that exists before the migration is
+# dropped, by the name the database knows it by, each before the views it reads. mq_vm_views.dropped then makes the migration drop
+# (IF EXISTS) and create every view again at its end (mq_all_views, see migration.scriban), after the schema statements, so a view
+# is created for the shape the model gives it. A view the model does not know about still stops the retype (see the README).
+func value_map_drop_views(db, diff, out)
+  if !mq_vm_views || mq_vm_views.dropped || (db.views.size == 0 && diff.views.size == 0)
+    ret
+  end
+  mq_vm_views.dropped = true
+  $items = []
+  for oc in diff.views
+    if oc.kind != "added"
+      $deps = oc.old_depends_on
+      if $deps.size == 0 && oc.kind != "dropped"
+        $deps = view_dependency_keys(find_named(db.views, oc.new_name ?? oc.old_name))
+      end
+      $items[$items.size] = { key: oc.key, deps: $deps, sql: view_drop_sql(db, oc.old_schema, oc.old_name ?? oc.key, oc.old_materialized) }
+    end
+  end
+  for v in db.views
+    if !find_change(diff.views, v.id)
+      $items[$items.size] = { key: v.id, deps: view_dependency_keys(v), sql: view_drop_sql(db, pre_schema(diff, v.schema), v.name, v.materialized) }
+    end
+  end
+  emit(out, "-- PostgreSQL cannot retype a column a view reads: the model's views are dropped here and created again at the end of the migration.")
+  for x in views_in_drop_order($items)
+    emit(out, x.sql)
+  end
+end
+
 # One column of a value map, named as the database knows it before the migration's statements: its strategy objects dropped by name,
 # its stored codes mapped, then its objects created again for the type that holds the codes now. A column of an enum type is mapped
 # through text: in place while it keeps the enum type, else retyped (a merge's other enum type, or a type that is no enum).
@@ -2298,6 +2344,7 @@ func value_map_column(db, diff, f, rt, o, out)
   end
   if $enum_before && $enum_before != $enum_after
     # Retyped through text: a USING expression cannot hold a subquery, so the guard reads the mapped values first.
+    value_map_drop_views(db, diff, out)
     $type = $enum_after ? q($enum_after, db) : column_type($c)
     $mapped = value_map_case(f, $col + "::text", $col + "::text", db)
     $s = "DO $mq$ DECLARE missing text; BEGIN\nIF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(" + lit($tq, db) + ") AND attname = " + lit($name, db) + " AND atttypid = " + pg_enum_type($enum_before, db) + ") THEN\n"
@@ -2363,6 +2410,7 @@ func value_map_collection(db, diff, f, rt, x, out)
       $kept = "ARRAY(SELECT (k.m)::" + $enum + " FROM (SELECT " + $mapped + " AS m, min(u.o) AS o FROM unnest(" + $col + ") WITH ORDINALITY AS u(x, o) GROUP BY 1) AS k ORDER BY k.o)"
       emit(out, "DO $mq$ DECLARE missing text; BEGIN\nIF " + pg_column_exists($t, $name, db) + " THEN\n" + value_map_enum_guard(f, $enum_after, "SELECT " + $mapped + " AS m FROM " + $tq + ", unnest(" + $col + ") AS u(x) WHERE u.x::text IN (" + $froms + ")", db) + "\nUPDATE " + $tq + " SET " + $col + " = " + $kept + " WHERE " + $col + "::text[] && ARRAY[" + $froms + "]::text[];\nEND IF;\nEND $mq$;")
     else
+      value_map_drop_views(db, diff, out)
       $enum = q($enum_after, db)
       $kept = "ARRAY(SELECT k.m FROM (SELECT " + value_map_case(f, "u.x", "u.x", db) + " AS m, min(u.o) AS o FROM unnest(" + $col + ") WITH ORDINALITY AS u(x, o) GROUP BY 1) AS k ORDER BY k.o)"
       $s = "DO $mq$ DECLARE missing text; BEGIN\nIF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(" + lit($tq, db) + ") AND attname = " + lit($name, db) + " AND atttypid = to_regtype(" + lit(q($enum_before, db) + "[]", db) + ")) THEN\n"
@@ -2395,9 +2443,10 @@ end
 
 # A value-map fact's data step on PostgreSQL (next-phase-2-design.md section 3.5), in the fact's applied order before the schema
 # statements and the native type prelude: a type rename renames the lookup table or enum type named after the type; with codes to map,
-# the rows of the type that holds them are made to exist (ref_rows_exist_sql), each code of an enum type that was not merged is
-# renamed in place where it is a label and its replacement is not, and each holder column and collection has its stored codes mapped;
-# then the fact's row. Every part can run twice. A value map whose type the model no longer has is a TODO line.
+# the rows of the type that holds them that the codes map to (every row for a merge) are made to exist (ref_rows_exist_sql), each
+# code of an enum type that was not merged is renamed in place where it is a label and its replacement is not, and each holder column
+# and collection has its stored codes mapped, the model's views dropped first when one is retyped (value_map_drop_views); then the
+# fact's row. Every part can run twice. A value map whose type the model no longer has is a TODO line.
 func value_map_step(db, diff, f, out)
   $rt = reference_type_by_id(f.reference_type)
   if !$rt
@@ -2407,7 +2456,15 @@ func value_map_step(db, diff, f, out)
   emit(out, "-- Migration fact " + f.id + " (value-map): " + value_map_words(f) + ".")
   value_map_rename_type(db, f, $rt, out)
   if (f.values.size > 0 || f.from_reference_type) && (f.objects.size > 0 || f.collections.size > 0)
-    $rows = ref_rows_exist_sql($rt, db)
+    # The codes the map moves stored codes to; a merge also keeps the codes it does not map, which the model no longer lists.
+    $codes = null
+    if !f.from_reference_type
+      $codes = []
+      for v in f.values
+        $codes[$codes.size] = v.to
+      end
+    end
+    $rows = ref_rows_exist_sql($rt, db, $codes)
     if $rows != ""
       emit(out, $rows)
     end

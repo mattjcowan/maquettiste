@@ -1,8 +1,10 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Editor;
 
 namespace Maquettiste.Engine.Tests.Store;
@@ -337,9 +339,95 @@ public sealed class StereotypeFoldTests
         Assert.Equal(SaveOutcome.Invalid, result.Outcome);
         var refusal = Assert.Single(result.Items[1].Diagnostics);
         Assert.Equal("MQ4077", refusal.Rule);
-        Assert.Contains("another operation of this batch", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("another operation of this batch (/operations/0)", refusal.Message, StringComparison.Ordinal);
         Assert.Equal("/operations/1", refusal.JsonPointer);
         Assert.Equal(files, r.Files());
+    }
+
+    [Fact]
+    public async Task Fold_refuses_when_another_operation_writes_a_document_it_rewrites()
+    {
+        // invoiceNote's binding names notes' created_at: the fold rewrites it, so an update of it in the same batch refuses the fold at
+        // the fold, naming the clash, and not with the planner's MQ1002 about two operations.
+        await using var r = EditorRepo.Create(packs: false);
+        Members(r, CreatedAtColumn);
+        var document = (await r.Store.GetElementAsync(InvoiceNote, Ct))!;
+        var entity = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
+        entity["description"] = "A note on an invoice.";
+        var files = r.Files();
+
+        var result = await ApplyAsync(r,
+            $$"""{"op": "update", "id": "{{InvoiceNote}}", "expectedHash": "{{document.Hash}}", "element": {{entity.ToJsonString()}}}""",
+            Fold());
+
+        Assert.Equal(SaveOutcome.Invalid, result.Outcome);
+        Assert.Empty(result.Items[0].Diagnostics);
+        var refusal = Assert.Single(result.Items[1].Diagnostics);
+        Assert.Equal(("MQ4077", "/operations/1"), (refusal.Rule, refusal.JsonPointer));
+        Assert.Contains("The fold rewrites entity", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("also written by another operation of this batch (/operations/0)", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(files, r.Files());
+    }
+
+    [Fact]
+    public async Task Fold_refuses_a_primary_key_whose_columns_differ_with_MQ4077()
+    {
+        // audited keys on row_key, which notes lacks: excludeMissing excludes it, the own key matches the stereotype's, and the
+        // inherited key then names an excluded column, so the folded key is not the own one.
+        await using var r = EditorRepo.Create(packs: false);
+        Members(r, """{"id": "01JC7AVD1TC0000000000000C9", "name": "row_key", "type": "uuid", "nullable": false}""");
+        EditOnDisk(r, AuditedPath, s => s["primaryKey"] = JsonNode.Parse("""{"id": "01JC7AVD1TC0000000000000K9", "columns": ["01JC7AVD1TC0000000000000C9"]}"""));
+        var files = r.Files();
+
+        var refused = Assert.Single(Refusals(await ApplyAsync(r, Fold(excludeMissing: true))));
+
+        Assert.Equal("Table 'notes': the primary key does not resolve on both sides.", refused);
+        Assert.Equal(files, r.Files());
+    }
+
+    [Fact]
+    public async Task Fold_refuses_with_MQ4077_when_its_candidate_cannot_be_verified()
+    {
+        // A fold whose candidate does not resolve cannot be compared with the database as it is: it adds no change it has not verified.
+        await using var r = EditorRepo.Create(packs: false);
+        Members(r, CreatedAtColumn);
+        var services = EngineServices.Create(r.Repo.Options);
+        await using var store = new ModelStore(r.Repo.Options, services with { Resolver = new CandidateFailingResolver(services.Resolver) });
+        var parsed = store.ParseBatch(Encoding.UTF8.GetBytes("{\"operations\":[" + Fold() + "]}"));
+        Assert.Empty(parsed.Diagnostics);
+        var files = r.Files();
+
+        var refused = Assert.Single(Refusals(await store.ApplyBatchAsync(parsed.Batch!, ChangeSource.Editor, Ct)));
+
+        Assert.Equal(
+            "The fold cannot be held to changing nothing in the database: the databases of the target tables do not resolve once folded. Nothing is written.",
+            refused);
+        Assert.Equal(files, r.Files());
+        // The same fold applies with a resolver that takes the candidate.
+        AssertSaved(await ApplyAsync(r, Fold()));
+    }
+
+    /// <summary>A resolver that cannot take a model where notes carries audited: the fold's candidate.</summary>
+    private sealed class CandidateFailingResolver(IModelResolver inner) : IModelResolver, IDatabaseResolver
+    {
+        public Task<ResolvedModel> ResolveAsync(ModelSnapshot model, IProgress<ProgressUpdate>? progress, CancellationToken ct)
+        {
+            Check(model);
+            return inner.ResolveAsync(model, progress, ct);
+        }
+
+        public Task<(IReadOnlyList<RDatabase?> Databases, IReadOnlyList<Diagnostic> Diagnostics)> ResolveDatabasesAsync(ModelSnapshot model,
+            IReadOnlyList<string> databaseIds, bool freeze, CancellationToken ct)
+        {
+            Check(model);
+            return ((IDatabaseResolver)inner).ResolveDatabasesAsync(model, databaseIds, freeze, ct);
+        }
+
+        private static void Check(ModelSnapshot model)
+        {
+            if (model.Get<Table>(Notes)?.Stereotypes.Contains("audited", StringComparer.Ordinal) == true)
+                throw new InvalidOperationException("The candidate does not resolve.");
+        }
     }
 
     [Fact]

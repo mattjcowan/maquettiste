@@ -61,8 +61,17 @@ public sealed partial class ModelStore
             var o = batch.Operations[i];
             if (o.Op != BatchOp.FoldIntoStereotype || invalid[i] is not null)
                 continue;
-            var written = changes.Select(c => c.Id).Concat(materialized.Select(c => c.Id)).Concat(work.Changes().Select(c => c.Id))
-                .Concat(processWork.Changes().Select(c => c.Id)).OfType<string>().ToHashSet(StringComparer.Ordinal);
+            var written = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var id in changes.Select(c => c.Id).Concat(materialized.Select(c => c.Id)).Concat(work.Changes().Select(c => c.Id))
+                .Concat(processWork.Changes().Select(c => c.Id)).OfType<string>())
+                written.TryAdd(id, null);
+            // An update or a delete names the element it writes, so a refusal can point at that operation.
+            for (var j = 0; j < batch.Operations.Count; j++)
+            {
+                if (batch.Operations[j] is { Op: BatchOp.Update or BatchOp.Delete, Id: { } target } && written.TryGetValue(target, out var by) && by is null)
+                    written[target] = "/operations/" + j.ToString(CultureInfo.InvariantCulture);
+            }
+
             var refusals = await FoldIntoStereotypeAsync(snapshot, o, written, materialized, foldKeyMaps, "/operations/" + i.ToString(CultureInfo.InvariantCulture), ct)
                 .ConfigureAwait(false);
             if (refusals is { Count: > 0 })

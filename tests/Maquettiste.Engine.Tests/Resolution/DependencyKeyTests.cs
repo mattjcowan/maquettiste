@@ -151,6 +151,57 @@ public sealed class DependencyKeyTests
     }
 
     [Fact]
+    public void An_attribute_borrowing_from_a_column_replans_for_the_column_not_for_the_rest_of_the_table()
+    {
+        // next-phase-2-design.md section 3.2: a borrowing attribute depends on what states its column's entry (the table's file), not on
+        // everything the table reads, such as another entity bound to it or a type a column holds. Editing those leaves the input hash
+        // of a unit reading the attribute alone; a sensitive added to the column changes it.
+        var f = Create();
+        var notes = f.B.Table("notes", f.Db).Column("id", "uuid", nullable: false).Column("body", "text").Column("status", "string")
+            .PrimaryKey("id")
+            .Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "status" ? c with { TypeRef = new TypeRef { Ref = f.Status.Id } } : c)] });
+        var note = f.B.Entity("Note").Key("id", "uuid").Attr("body", "text");
+        var other = f.B.Entity("OtherNote").Key("id", "uuid").Attr("body", "text", a => a.Description("Kept elsewhere."));
+        foreach (var entity in new[] { note, other })
+        {
+            entity.Bind(new EntityBinding
+            {
+                Id = "", Database = f.Db.Id, Source = notes.Id,
+                Fields =
+                [
+                    new BindingField { Attribute = entity.AttrId("id"), Column = notes.ColumnId("id") },
+                    new BindingField { Attribute = entity.AttrId("body"), Column = notes.ColumnId("body") },
+                ],
+            });
+        }
+
+        var before = f.B.Build();
+        var resolved = ResolutionKit.Resolve(before);
+        var body = resolved.Entity("Note").Attributes.Single(a => a.Name == "body");
+        var table = resolved.Db("main").Table("notes");
+        Assert.Contains($"e:{notes.Id}", body.Dependencies);
+        foreach (var unrelated in new[] { $"e:{other.Id}", $"e:{f.Status.Id}" })
+        {
+            Assert.Contains(unrelated, table.Dependencies);
+            Assert.DoesNotContain(unrelated, body.Dependencies);
+        }
+
+        var none = new Dictionary<string, SchemaDiffResult>();
+        var unit = new DependencyHasher(before, resolved, new PackSet([], []), none).InputHash("unit", body.Dependencies);
+        string After(Func<Element, Element> edit)
+        {
+            var after = Tests.Model.StereotypeDefaultsTests.Rebuild(f.B, edit);
+            return new DependencyHasher(after, ResolutionKit.Resolve(after), new PackSet([], []), none).InputHash("unit", body.Dependencies);
+        }
+
+        Assert.Equal(unit, After(e => e is Entity x && x.Id == other.Id ? x with { Tags = ["edited"] } : e));
+        Assert.Equal(unit, After(e => e is EnumType x && x.Id == f.Status.Id ? x with { Tags = ["edited"] } : e));
+        Assert.NotEqual(unit, After(e => e is Table t && t.Id == notes.Id
+            ? t with { Columns = [.. t.Columns.Select(c => c.Name == "body" ? c with { Sensitive = Sensitivity.Pii } : c)] }
+            : e));
+    }
+
+    [Fact]
     public void An_attribute_without_a_description_depends_on_its_bound_column_table()
     {
         // next-phase-2-design.md section 3.3, decision 12 (D34): an attribute with no description of its own shows its bound column's

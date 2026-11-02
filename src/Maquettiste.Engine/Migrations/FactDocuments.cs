@@ -84,23 +84,31 @@ internal static class FactDocuments
         return sb.ToString();
     }
 
-    /// <summary>A value map's summary: its type's codes and the columns and collections that hold them, or the type's rename.</summary>
+    /// <summary>
+    /// A value map's summary: its type's codes and the columns and collections that hold them. With no codes it is a merge whose codes
+    /// all match (<see cref="Migration.FromReferenceType"/> set: "merges A into B in n columns"), or the type's rename, of its name or
+    /// of its plural name alone ("renames reference type A plural As to AList"), worded as the sql-ddl migration words them.
+    /// </summary>
     private static string ValueMapSummary(Migration fact)
     {
         var to = fact.To?.Name ?? fact.From?.Name ?? fact.ReferenceType ?? "";
         var from = fact.From?.Name ?? to;
         var renamed = !string.Equals(from, to, StringComparison.Ordinal);
+        if (fact.Values.Count == 0 && fact.FromReferenceType is not null)
+            return "merges " + from + " into " + to + Holders(fact);
         if (fact.Values.Count == 0 && renamed)
             return "renames reference type " + from + " to " + to;
+        if (fact.Values.Count == 0 && fact.From is not null && fact.To is not null
+            && !string.Equals(fact.From.PluralName, fact.To.PluralName, StringComparison.Ordinal))
+            return "renames reference type " + from + " plural " + (fact.From.PluralName ?? "(default)") + " to " + (fact.To.PluralName ?? "(default)");
         var sb = new StringBuilder("maps ").Append(from).Append(" codes ");
         sb.Append(fact.Values.Count == 0 ? "(none)" : string.Join(", ", fact.Values.Select(v => v.From + " -> " + v.To)));
         if (renamed)
             sb.Append(" into ").Append(to);
-        sb.Append(" in ").Append(Count(fact.Objects.Count, "column"));
-        if (fact.Collections.Count > 0)
-            sb.Append(" and ").Append(Count(fact.Collections.Count, "collection"));
-        return sb.ToString();
+        return sb.Append(Holders(fact)).ToString();
 
+        static string Holders(Migration fact) => " in " + Count(fact.Objects.Count, "column")
+            + (fact.Collections.Count > 0 ? " and " + Count(fact.Collections.Count, "collection") : "");
         static string Count(int n, string noun) => n.ToString(CultureInfo.InvariantCulture) + " " + noun + (n == 1 ? "" : "s");
     }
 

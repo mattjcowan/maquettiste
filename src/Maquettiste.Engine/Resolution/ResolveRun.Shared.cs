@@ -5,15 +5,17 @@ namespace Maquettiste.Engine.Resolution;
 /// every database is resolved. Sensitivity is said once, on a column or on an attribute (decision 9). A column shows its own value, else
 /// a projected column's attribute's own, else the strongest own value of the attributes bound to it (set in each database run, after its
 /// bindings). Here an entity attribute that states none shows the strongest own value of the columns its entity's bindings map it to
-/// (read from and written to), and depends on those columns' tables whether or not they state one, so a later <c>sensitive</c> on a
-/// column replans what reads the attribute. Each side reads only the other's own value, so nothing cycles. A value object member a
+/// (read from and written to), and depends on what states those columns' entries whether or not they state one (a designed or
+/// imported table's <see cref="RTable.EntryKeys"/>: its file, database, stereotypes and package chain, not the other entities bound
+/// to it or the types it reads; a table without such a file, its whole dependency set), so a later <c>sensitive</c> on a column replans
+/// what reads the attribute. Each side reads only the other's own value, so nothing cycles. A value object member a
 /// field maps is shared by every embedding of its value object and is left alone. One-database runs skip this pass: nothing they show
 /// reads attributes.
 /// <para>
 /// The same pass gives an attribute with no description of its own the comment of the column its entity's bindings map it to (section
 /// 3.3, decision 12, D34): the first column with a comment, bindings in database name order (the order of
-/// <see cref="REntity.Bindings"/>), the read column before the write column. Such an attribute depends on those columns' tables whether
-/// or not they carry a comment, so a comment added later replans what reads it. A projected column's comment was set in its database
+/// <see cref="REntity.Bindings"/>), the read column before the write column. Such an attribute depends on those columns' entries, as
+/// above, whether or not they carry a comment, so a comment added later replans what reads it. A projected column's comment was set in its database
 /// run from its attribute's own description, before this pass, so nothing cycles. Value object members and relation keys are left out.
 /// </para>
 /// </summary>
@@ -54,7 +56,7 @@ internal sealed partial class ResolveRun
                     {
                         if (column is null)
                             continue;
-                        deps.AddRange(column.Table.Dependencies);
+                        deps.AddRange(column.Table.EntryKeys ?? column.Table.Dependencies);
                         if (borrowsSensitivity)
                             value = Stronger(value, column.OwnSensitive);
                         if (borrowsDescription && commented is null && !string.IsNullOrEmpty(column.Comment))

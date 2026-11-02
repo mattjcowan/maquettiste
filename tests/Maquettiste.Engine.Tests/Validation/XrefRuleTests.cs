@@ -249,6 +249,8 @@ public sealed class XrefRuleTests
         excluding.Property("sortBy", excluding.Id + "." + updated).Edit(t => t with { Excludes = [updated] });
         var product = b.Entity("Product").Key("id", "uuid");
         var overlay = b.Table("products", main).OverlayFor(product).Stereotype("audited").Property("sortBy", created);
+        var bareExcluded = Audited("bare_excluded", main).Property("sortBy", created).Edit(t => t with { Excludes = [created] });
+        var plain = b.Table("plain", main).Column("id", "uuid", nullable: false).PrimaryKey("id").Property("sortBy", created);
         var extension = PropertySchemaSetTests.Extension("""
             { "sortBy": { "type": "string", "x-ref": { "kind": "column", "of": "$element" } },
               "sameBase": { "type": "string", "x-ref": { "kind": "column", "sameDatabase": true } } }
@@ -260,10 +262,12 @@ public sealed class XrefRuleTests
             new[]
             {
                 (bare.Id, "/properties/sortBy"),
+                (bareExcluded.Id, "/properties/sortBy"),
                 (excluding.Id, "/properties/sortBy"),
                 (other.Id, "/properties/sameBase"),
                 (other.Id, "/properties/sortBy"),
                 (overlay.Id, "/properties/sortBy"),
+                (plain.Id, "/properties/sortBy"),
             }.Order(),
             found.Select(d => (d.ElementId!, d.JsonPointer!)).Order());
         Assert.All(found, d => Assert.Equal("MQ2011", d.Rule));
@@ -275,6 +279,13 @@ public sealed class XrefRuleTests
         Assert.Contains("that table excluding does not inherit (it excludes the member)", Message(excluding.Id, "/properties/sortBy"), StringComparison.Ordinal);
         Assert.Contains("which is in database reporting, not in database main (sameDatabase)", Message(other.Id, "/properties/sameBase"), StringComparison.Ordinal);
         Assert.Contains("holds the synthesized table key, which an x-ref value cannot hold", Message(overlay.Id, "/properties/sortBy"), StringComparison.Ordinal);
+        // A bare id of a member the table does not inherit is not told to write a keyed id, which would be out of scope as well.
+        Assert.Contains("a member of stereotype 'audited' that table bare_excluded does not inherit (it excludes the member)",
+            Message(bareExcluded.Id, "/properties/sortBy"), StringComparison.Ordinal);
+        Assert.Contains("a member of stereotype 'audited' that table plain does not inherit", Message(plain.Id, "/properties/sortBy"), StringComparison.Ordinal);
+        Assert.All(new[] { Message(bareExcluded.Id, "/properties/sortBy"), Message(plain.Id, "/properties/sortBy") },
+            m => Assert.DoesNotContain("write '", m, StringComparison.Ordinal));
+        Assert.DoesNotContain("excludes", Message(plain.Id, "/properties/sortBy"), StringComparison.Ordinal);
     }
 
     private static SeedRow Row(string id, string code) => new() { Id = id, Values = [JsonSerializer.SerializeToElement(code)] };

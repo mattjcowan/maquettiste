@@ -122,12 +122,12 @@ internal sealed class ExtensionSet
         {
             // The element's set holds its defaults (next-phase-2-design.md section 3.1); a sub-element's is its own list's.
             var effective = host.Pointer.Length == 0 ? context.Model.EffectiveStereotypes(element) : context.Model.EffectiveStereotypes(host.Stereotypes);
-            CheckItem(host.Id, effective, host.Stereotypes.Count > 0, host.Properties, host.Pointer, host.KindName, report);
+            CheckItem(context.Model, host.Id, effective, host.Stereotypes.Count > 0, host.Properties, host.Pointer, host.KindName, report);
         }
     }
 
-    private void CheckItem(string? id, IReadOnlyList<AppliedStereotype> effective, bool hasList, IReadOnlyDictionary<string, JsonElement> properties,
-        string pointer, string kind, Report report)
+    private void CheckItem(ModelSnapshot model, string? id, IReadOnlyList<AppliedStereotype> effective, bool hasList,
+        IReadOnlyDictionary<string, JsonElement> properties, string pointer, string kind, Report report)
     {
         if (properties.Count == 0 && effective.Count == 0 && _extensions.Count == 0)
             return;
@@ -180,7 +180,7 @@ internal sealed class ExtensionSet
                         continue;
                     var location = detail.InstanceLocation.ToString();
                     var text = keyword.Length == 0 ? message : keyword + ": " + message;
-                    var (at, origin) = Locate(effective, hasList, properties, pointer, location, stereotypeKey);
+                    var (at, origin) = Locate(model, effective, hasList, properties, pointer, location, stereotypeKey);
                     report.Add(rule, $"{what}: properties{location} {text}{origin}", at, id);
                     any = true;
                 }
@@ -196,9 +196,10 @@ internal sealed class ExtensionSet
     /// <c>defaultProperties</c>, that stereotype's entry in the item's <c>stereotypes</c> list (for an implied stereotype, the entry
     /// of the stereotype that implies it): the file has no value to point at. A missing value a stereotype's parameters require
     /// (<paramref name="stereotypeKey"/>) points at that stereotype's entry too. A default stereotype has no entry: it points at the
-    /// <c>stereotypes</c> list, or at the item when its file has none (next-phase-2-design.md section 3.1).
+    /// <c>stereotypes</c> list, or at the item when its file has none (next-phase-2-design.md section 3.1); the origin names its
+    /// holder (<c>schema 'billing'</c>, <c>package 'Billing'</c>).
     /// </summary>
-    private static (string Pointer, string Origin) Locate(IReadOnlyList<AppliedStereotype> effective, bool hasList,
+    private static (string Pointer, string Origin) Locate(ModelSnapshot model, IReadOnlyList<AppliedStereotype> effective, bool hasList,
         IReadOnlyDictionary<string, JsonElement> properties, string pointer, string location, string? stereotypeKey)
     {
         var segments = Ptr.Split(location);
@@ -223,13 +224,9 @@ internal sealed class ExtensionSet
         string EntryPointer(AppliedStereotype applied) =>
             applied.Entry >= 0 ? Ptr.At(pointer + "/stereotypes", applied.Entry) : hasList ? pointer + "/stereotypes" : pointer;
 
-        static string Implied(AppliedStereotype applied) =>
-            (applied.ImpliedBy is { } by ? $", which '{by}' implies" : "") + applied.Source switch
-            {
-                StereotypeSource.SchemaDefault => $", a default of database schema {applied.DefaultHolder}",
-                StereotypeSource.PackageDefault => $", a default of package {applied.DefaultHolder}",
-                _ => "",
-            };
+        string Implied(AppliedStereotype applied) =>
+            (applied.ImpliedBy is { } by ? $", which '{by}' implies" : "")
+            + (applied.DefaultHolder is { } holder ? ", a default of " + BuiltinRules.DefaultHolderName(model, applied.Source, holder) : "");
     }
 
     /// <summary>

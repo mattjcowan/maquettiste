@@ -47,6 +47,12 @@ if diff && !diff.is_empty
   mq_rows_done = {}
   mq_ledger_state = { rows: 0, once: 0 }
   mq_after_steps = []
+  # Set when a value map's step dropped the model's views before it retyped a column (value_map_drop_views): every view is then
+  # dropped (IF EXISTS) and created again below.
+  mq_vm_views = { dropped: false }
+  # The lookup tables, enum types, bound types and lookup rows (by "<type id>:<code>") a step of this migration made exist already
+  # (ref_rows_exist_sql), so each is written once.
+  mq_ref_rows = {}
   mq_from_nothing = diff.from_state == ""
   if !mq_from_nothing
     for f in db.migrations
@@ -110,9 +116,10 @@ if diff && !diff.is_empty
   end
   schema_first_statements(db, diff, statements)
   # PostgreSQL refuses to retype or drop a column a view reads, and the diff cannot tell which views read which columns: when a
-  # column is retyped or dropped, every view is dropped here and created again at the end (mq_all_views). A range column change
-  # that keeps its native type retypes nothing (range_same_native).
-  mq_all_views = false
+  # column is retyped or dropped, every view is dropped here and created again at the end (mq_all_views); so it is when a value
+  # map's step retyped a column and dropped the views before it (mq_vm_views). A range column change that keeps its native type
+  # retypes nothing (range_same_native).
+  mq_all_views = mq_vm_views.dropped
   unchanged_views = []
   if d == "postgresql" && db.views.size > 0
     for tc in diff.tables

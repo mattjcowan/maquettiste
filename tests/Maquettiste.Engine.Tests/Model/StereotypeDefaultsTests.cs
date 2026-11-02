@@ -102,6 +102,11 @@ public sealed class StereotypeDefaultsTests
         var stray = b.Table("stray", main).Column("id", "uuid").Edit(t => t with { Schema = b.NewId() });
         var child = new Table { Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = invoice.Id, Attribute = invoice.AttrId("notes") };
         b.Add(child);
+        var archive = main.Schema("archive");
+        var holds = b.Relation("holds", invoice, customer);
+        var pays = b.Relation("pays", customer, invoice);
+        var holdsOverlay = new Table { Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Relation = holds.Id, Schema = archive };
+        b.Add(holdsOverlay);
         var model = Rebuild(b, e => SchemaDefaults(e, sales, "audited"));
 
         // The entity's convention package routes its overlay; a mapping's schema wins; a child table follows its owner's table.
@@ -115,6 +120,13 @@ public sealed class StereotypeDefaultsTests
         Assert.Equal(sales, model.StereotypeDefaults.SchemaOf(main.Id, null, invoice.Id));
         Assert.Equal(sales, model.StereotypeDefaults.SchemaOf(main.Id, null, invoice.Id, invoice.AttrId("notes")));
         Assert.Equal(common, model.StereotypeDefaults.SchemaOf(main.Id, null, customer.Id));
+        // A relation's table (junction or promoted) is in the schema its overlay states, and a child table it owns (which has no file)
+        // follows it there, as the resolver puts it; a relation without an overlay, and its child tables, are in the default schema's entry.
+        Assert.Equal(archive, model.HolderOf(model.Get<Table>(holdsOverlay.Id)!).Schema);
+        Assert.Equal(archive, model.StereotypeDefaults.SchemaOf(main.Id, null, relation: holds.Id));
+        Assert.Equal(archive, model.StereotypeDefaults.SchemaOf(main.Id, null, attribute: "tags", relation: holds.Id));
+        Assert.Equal(common, model.StereotypeDefaults.SchemaOf(main.Id, null, relation: pays.Id));
+        Assert.Equal(common, model.StereotypeDefaults.SchemaOf(main.Id, null, attribute: "tags", relation: pays.Id));
 
         // The overlay's package falls back to its entity's, and the schema's default reaches it.
         var overlay = model.Get<Table>(invoices.Id)!;

@@ -110,8 +110,9 @@ internal sealed partial class Materializer
     /// <summary>
     /// Plans <c>resync-binding</c> (decision 8) for each entity whose binding to the database reads a table file: renames an own attribute
     /// that followed its column's old name (unless <paramref name="keepNames"/>), retypes an own attribute whose column was retyped (it
-    /// keeps an enum, reference type or scalar type the column still holds), maps by name, adds an attribute per added column still free,
-    /// removes the fields of removed columns (the attributes stay) and records the provenance of every column. With
+    /// keeps an enum, reference type or scalar type the column still holds), removes the fields of removed columns (the attributes stay),
+    /// maps by name (so an attribute whose column was dropped and re-added under its name follows the new column), adds an attribute per
+    /// added column still free and records the provenance of every column. With
     /// <paramref name="columns"/> (one entity), it works on those columns only and updates only their entries. A binding without
     /// provenance (or with one that describes another source) re-syncs from scratch: map by name, the columns nothing accounts for, and
     /// provenance. A binding in step is skipped with a note; the operation is refused when every binding it names is in step.
@@ -259,13 +260,42 @@ internal sealed partial class Materializer
             }
         }
 
-        // 3. Map by name: the attributes the binding does not map and the free columns.
-        var matches = MatchByName(entity, binding, columns, named);
+        // 3. Removed: a field whose column is gone goes; its attribute stays. This runs before map by name, which then sees the attribute
+        // as free: a column dropped and re-added under the same name (a new id) maps the attribute that followed the old one instead of
+        // getting a second attribute in step 5. With columns named, only the gone columns recorded under the name of a named one (the
+        // column dropped and re-added): their fields go and their provenance entries with them.
+        var kept = binding;
+        HashSet<string> removed = [];
+        if (drift.Reads && drift.Removed.Count > 0)
+        {
+            var recorded = binding.Provenance?.Columns;
+            var namedParts = named is { } set
+                ? columns.Where(c => set.Contains(c.Id)).Select(c => ColumnShapeHash.NamePartOf(c.Shape)).ToHashSet(StringComparer.Ordinal)
+                : null;
+            removed = drift.Removed.Where(id => namedParts is null
+                || (recorded is not null && recorded.TryGetValue(id, out var was) && namedParts.Contains(ColumnShapeHash.NamePartOf(was))))
+                .ToHashSet(StringComparer.Ordinal);
+        }
+
+        if (removed.Count > 0)
+        {
+            bool Gone(string column) => removed.Contains(column) && BindingDrift.Find(columns, column) < 0;
+            foreach (var field in fields.OfType<JsonObject>().Where(f => f["column"]?.GetValue<string>() is { } c && Gone(c)).ToList())
+            {
+                fields.Remove(field);
+                notes.Add($"Column '{field["column"]!.GetValue<string>()}' is gone from table '{table.Name}': the field that mapped '{BindingDrift.AttributeName(snapshot, entity, field["attribute"]?.GetValue<string>() ?? "")}' goes, and the attribute stays.");
+            }
+
+            kept = binding with { Fields = [.. binding.Fields.Where(f => !Gone(f.Column))] };
+        }
+
+        // 4. Map by name: the attributes the binding does not map (after step 3) and the free columns.
+        var matches = MatchByName(entity, kept, columns, named);
         var matched = matches.Select(m => m.Column.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var (candidate, column) in matches)
             fields.Add(new JsonObject { ["attribute"] = candidate.Ref, ["column"] = column.Id });
 
-        // 4. Added: an attribute per added column still free, mapped to it.
+        // 5. Added: an attribute per added column still free, mapped to it.
         foreach (var added in drift.Added.Where(a => In(a.Column) && !matched.Contains(a.Column)))
         {
             var column = columns.First(c => string.Equals(c.Id, added.Column, StringComparison.Ordinal));
@@ -274,19 +304,8 @@ internal sealed partial class Materializer
             fields.Add(new JsonObject { ["attribute"] = attribute["id"]!.GetValue<string>(), ["column"] = column.Id });
         }
 
-        // 5. Removed: a field whose column is gone goes; its attribute stays.
-        if (drift.Reads && named is null && drift.Removed.Count > 0)
-        {
-            var removed = drift.Removed.ToHashSet(StringComparer.Ordinal);
-            foreach (var field in fields.OfType<JsonObject>().Where(f => f["column"]?.GetValue<string>() is { } c && removed.Contains(c) && BindingDrift.Find(columns, c) < 0).ToList())
-            {
-                fields.Remove(field);
-                notes.Add($"Column '{field["column"]!.GetValue<string>()}' is gone from table '{table.Name}': the field that mapped '{BindingDrift.AttributeName(snapshot, entity, field["attribute"]?.GetValue<string>() ?? "")}' goes, and the attribute stays.");
-            }
-        }
-
         // 6. Provenance: every column of the source, or with columns the entries of those (every column while the binding has none).
-        RecordProvenance(bindingNode, columns, named is not null && drift.Reads ? named : null);
+        RecordProvenance(bindingNode, columns, named is not null && drift.Reads ? [.. named, .. removed] : null);
 
         if (attributes.Count > 0)
             node["attributes"] = attributes;

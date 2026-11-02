@@ -18,7 +18,7 @@ public sealed partial class ModelStore
     /// moves, for the write's <c>rekey</c>). Answers the refusals, MQ4077 at the operation and one per refused table, or
     /// <see langword="null"/> when the fold applies (a fold where nothing matches changes nothing).
     /// </summary>
-    private async Task<IReadOnlyList<Diagnostic>?> FoldIntoStereotypeAsync(ModelSnapshot snapshot, BatchOperation o, IReadOnlySet<string> written,
+    private async Task<IReadOnlyList<Diagnostic>?> FoldIntoStereotypeAsync(ModelSnapshot snapshot, BatchOperation o, IReadOnlyDictionary<string, string?> written,
         List<PlannedChange> changes, List<MaterializeResult> keyMaps, string pointer, CancellationToken ct)
     {
         IReadOnlyList<Diagnostic> Refused(IEnumerable<string> messages) => [.. messages.Select(m => RuleCatalog.Create("MQ4077", m, o.Id, null, pointer))];
@@ -35,20 +35,24 @@ public sealed partial class ModelStore
         if (fold.Refusals.Count > 0)
             return Refused(fold.Refusals);
 
-        // Step 5: resolve the candidate, compare each folded member with the own one, and confirm once more after redefinitions.
-        var after = await CandidateAsync(snapshot, fold, databases, ct).ConfigureAwait(false);
-        if (after is not null)
+        // Step 5: resolve the candidate, compare each folded member with the own one, and confirm once more after redefinitions. A
+        // candidate that does not plan or resolve cannot be compared, so the fold adds no change it has not verified.
+        var (after, failure) = await CandidateAsync(snapshot, fold, databases, ct).ConfigureAwait(false);
+        if (after is null)
+            return Refused([$"The fold cannot be held to changing nothing in the database: {failure}. Nothing is written."]);
+        fold.Verify(before, after);
+        if (fold.Refusals.Count > 0)
+            return Refused(fold.Refusals);
+        if (fold.Redefined)
         {
-            fold.Verify(before, after);
-            if (fold.Refusals.Count > 0)
-                return Refused(fold.Refusals);
-            if (fold.Redefined)
-                after = await CandidateAsync(snapshot, fold, databases, ct).ConfigureAwait(false);
-            if (after is not null)
-                fold.Confirm(before, after);
-            if (fold.Refusals.Count > 0)
-                return Refused(fold.Refusals);
+            (after, failure) = await CandidateAsync(snapshot, fold, databases, ct).ConfigureAwait(false);
+            if (after is null)
+                return Refused([$"The fold cannot be held to changing nothing in the database after its redefinitions: {failure}. Nothing is written."]);
         }
+
+        fold.Confirm(before, after);
+        if (fold.Refusals.Count > 0)
+            return Refused(fold.Refusals);
 
         var (result, maps) = fold.Result();
         changes.AddRange(ToChanges(result, o.ExpectedHashes));
@@ -57,14 +61,22 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
-    /// The target databases resolved on the fold's candidate, or <see langword="null"/> when the candidate cannot be planned: the batch's
-    /// own planning then reports why, and nothing is written.
+    /// The target databases resolved on the fold's candidate, or <see langword="null"/> and why when the candidate does not plan (its
+    /// first error) or its databases do not resolve.
     /// </summary>
-    private async Task<IReadOnlyDictionary<string, RDatabase>?> CandidateAsync(ModelSnapshot snapshot, StereotypeFold fold, IReadOnlyList<string> databases,
-        CancellationToken ct)
+    private async Task<(IReadOnlyDictionary<string, RDatabase>? Databases, string? Failure)> CandidateAsync(ModelSnapshot snapshot, StereotypeFold fold,
+        IReadOnlyList<string> databases, CancellationToken ct)
     {
         var plan = Plan(snapshot, [.. ToChanges(fold.Result().Changes)], ct);
-        return plan.Failed || plan.Candidate is not { } candidate ? null : await FoldDatabasesAsync(candidate, databases, ct).ConfigureAwait(false);
+        if (plan.Failed || plan.Candidate is not { } candidate)
+        {
+            var first = plan.Outcomes.SelectMany(o => o.Diagnostics).FirstOrDefault(d => d.Severity == DiagnosticSeverity.Error);
+            return (null, first is null ? "the folded files do not plan" : $"the folded files do not plan ({first.Rule} {first.Message})");
+        }
+
+        return await FoldDatabasesAsync(candidate, databases, ct).ConfigureAwait(false) is { } resolved
+            ? (resolved, null)
+            : (null, "the databases of the target tables do not resolve once folded");
     }
 
     /// <summary>The given databases of a model, resolved (one conceptual run), by id; <see langword="null"/> when one does not resolve.</summary>

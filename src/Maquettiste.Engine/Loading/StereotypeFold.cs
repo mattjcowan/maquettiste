@@ -29,6 +29,7 @@ internal sealed class StereotypeFold
     private readonly bool _redefine;
     private readonly bool _excludeMissing;
     private readonly IReadOnlyList<Table> _targets;
+    private readonly IReadOnlyDictionary<string, string?> _written;
     private readonly Dictionary<string, TableFold> _folds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _refusals = new(StringComparer.Ordinal);
     private readonly List<string> _refusalOrder = [];
@@ -37,9 +38,11 @@ internal sealed class StereotypeFold
     private readonly HashSet<string> _memberColumns;
     private readonly Dictionary<string, JsonObject> _parsed = new(StringComparer.Ordinal);
 
-    private StereotypeFold(ModelSnapshot snapshot, Stereotype stereotype, IReadOnlyList<Table> targets, bool redefine, bool excludeMissing)
+    private StereotypeFold(ModelSnapshot snapshot, Stereotype stereotype, IReadOnlyList<Table> targets, bool redefine, bool excludeMissing,
+        IReadOnlyDictionary<string, string?> written)
     {
         _snapshot = snapshot;
+        _written = written;
         _stereotype = stereotype;
         _targets = targets;
         _redefine = redefine;
@@ -59,14 +62,18 @@ internal sealed class StereotypeFold
     /// <summary>
     /// Reads the operation: the stereotype (it applies to tables and has members) and exactly one of the tables (designed or imported
     /// table files) and the schema (every designed or imported table file of its database whose stated schema is it, or none stated when it
-    /// is the default). A target that another operation of the batch writes, or the stereotype itself written so, refuses the operation.
+    /// is the default). A target that another operation of the batch writes, or the stereotype itself written so, refuses the operation;
+    /// so does, once planned, a document whose references the fold rewrites (<see cref="Plan"/>).
     /// </summary>
     /// <param name="snapshot">The model as loaded.</param>
     /// <param name="o">The operation, its id fields resolved to ids.</param>
-    /// <param name="written">The ids the batch's other operations write.</param>
+    /// <param name="written">
+    /// The ids the batch's other operations write, each with the pointer of the operation that names it (an update or a delete), or
+    /// <see langword="null"/> when an expanded operation writes it.
+    /// </param>
     /// <param name="refusals">Why the operation is refused, one message per refused table; empty when the fold can be planned.</param>
     /// <returns>The fold, or <see langword="null"/> when refused.</returns>
-    public static StereotypeFold? Read(ModelSnapshot snapshot, BatchOperation o, IReadOnlySet<string> written, out IReadOnlyList<string> refusals)
+    public static StereotypeFold? Read(ModelSnapshot snapshot, BatchOperation o, IReadOnlyDictionary<string, string?> written, out IReadOnlyList<string> refusals)
     {
         var problems = new List<string>();
         refusals = problems;
@@ -81,8 +88,8 @@ internal sealed class StereotypeFold
         else if (stereotype.Columns.Count == 0 && stereotype.PrimaryKey is null && stereotype.Uniques.Count == 0 && stereotype.ForeignKeys.Count == 0
             && stereotype.Checks.Count == 0 && stereotype.Indexes.Count == 0)
             problems.Add($"Stereotype '{stereotype.Key}' has no members (columns, keys, indexes or checks) to fold into; add them to the stereotype first.");
-        if (written.Contains(stereotype.Id))
-            problems.Add($"Stereotype '{stereotype.Key}' is also written by another operation of this batch; fold in a batch of its own.");
+        if (written.ContainsKey(stereotype.Id))
+            problems.Add($"Stereotype '{stereotype.Key}' is also written by {WrittenBy(written, stereotype.Id)}; fold in a batch of its own.");
         if ((o.Tables is null) == (o.Schema is null))
             problems.Add("Name exactly one of tables and schema: the tables to fold, or the schema whose tables are folded.");
         if (problems.Count > 0)
@@ -111,13 +118,17 @@ internal sealed class StereotypeFold
             problems.Add($"'{o.Schema}' is not a schema of a database.");
         }
 
-        foreach (var table in targets.Where(t => written.Contains(t.Id)))
-            problems.Add($"Table '{table.Name}' is also written by another operation of this batch; fold in a batch of its own.");
+        foreach (var table in targets.Where(t => written.ContainsKey(t.Id)))
+            problems.Add($"Table '{table.Name}' is also written by {WrittenBy(written, table.Id)}; fold in a batch of its own.");
         if (problems.Count > 0)
             return null;
         targets.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name) is var n and not 0 ? n : string.CompareOrdinal(a.Id, b.Id));
-        return new StereotypeFold(snapshot, stereotype, targets, o.Redefine == true, o.ExcludeMissing == true);
+        return new StereotypeFold(snapshot, stereotype, targets, o.Redefine == true, o.ExcludeMissing == true, written);
     }
+
+    /// <summary>Names the other operation that writes an id: its pointer when it names the element, else the batch's other operations.</summary>
+    private static string WrittenBy(IReadOnlyDictionary<string, string?> written, string id) =>
+        written.GetValueOrDefault(id) is { } pointer ? $"another operation of this batch ({pointer})" : "another operation of this batch";
 
     // ---- steps 1 to 4 -----------------------------------------------------------------------------------------------------------
 
@@ -853,12 +864,21 @@ internal sealed class StereotypeFold
     private static JsonObject? Entry(JsonObject? node, string list, string id) =>
         (node?[list] as JsonArray)?.OfType<JsonObject>().FirstOrDefault(e => e["id"]?.GetValue<string>() == id);
 
-    /// <summary>The working copy of an existing element, read once.</summary>
+    /// <summary>
+    /// The working copy of an existing element, read once. A document another operation of the batch writes refuses the fold, which
+    /// would rewrite it too (the targets and the stereotype are refused when the operation is read).
+    /// </summary>
     private JsonObject Node(string id, string because)
     {
         if (_work.TryGetValue(id, out var working))
             return working.Node;
         var document = _snapshot.GetDocument(id)!;
+        if (_written.ContainsKey(id))
+        {
+            RefuseKey(id, $"The fold rewrites {document.Element.KindName} '{ChangePlanner.ReadableName(_snapshot, document.Element)}' to name the "
+                + $"inherited members by their keyed ids, and it is also written by {WrittenBy(_written, id)}; fold in a batch of its own.");
+        }
+
         var node = Peek(id)!;
         _parsed.Remove(id);
         _work[id] = (document.Hash, node, because);

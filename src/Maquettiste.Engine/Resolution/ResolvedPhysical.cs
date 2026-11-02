@@ -244,6 +244,15 @@ public sealed class RTable : RAnnotated
     /// <summary>The comment.</summary>
     public string? Comment { get; internal set; }
 
+    /// <summary>
+    /// The keys of what states the own entries of a designed or imported table's columns (their sensitivity and comment): the table's
+    /// file, its database (schema defaults), its effective stereotypes (inherited columns) and its holder's package chain (package
+    /// defaults). An attribute that shows a bound column's sensitivity or comment depends on these, not on everything the table reads
+    /// (next-phase-2-design.md section 3.2). <see langword="null"/> for a table without a designed or imported file, whose columns
+    /// project attributes: such an attribute depends on the table's whole <see cref="RObject.Dependencies"/>.
+    /// </summary>
+    internal IReadOnlyList<string>? EntryKeys { get; set; }
+
     /// <summary>Whether the table is a relation's junction table.</summary>
     public bool IsJunction { get; internal set; }
 

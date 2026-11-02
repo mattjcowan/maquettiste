@@ -274,10 +274,16 @@ public sealed class ReferenceDataTests
     /// </summary>
     private sealed record Refactor(string Before, string Migration, string Seed, string? FactId);
 
-    /// <summary>Generates main with the setup, applies the operation (or the edit) through a model store and generates again.</summary>
-    private static async Task<Refactor> RefactorAsync(PackRepo repo, string? operation, bool collection = false, Func<PackRepo, Task>? edit = null)
+    /// <summary>
+    /// Generates main with the setup (and <paramref name="setup"/>'s additions), applies the operation (or the edit) through a model
+    /// store and generates again.
+    /// </summary>
+    private static async Task<Refactor> RefactorAsync(PackRepo repo, string? operation, bool collection = false, Func<PackRepo, Task>? edit = null,
+        Func<PackRepo, Task>? setup = null)
     {
         await PaymentTerms.AddAsync(repo, collection);
+        if (setup is not null)
+            await setup(repo);
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         var before = MigrationFiles.Read(repo, "main", 1) + repo.Read("db/main/seed.sql");
         string? fact = null;
@@ -541,6 +547,233 @@ public sealed class ReferenceDataTests
             + "SELECT 'type ' || format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'billing.customers'::regclass AND attname = 'credit_term';\n");
         Assert.Contains($"migration fact {refactor.FactId}: the enum type payment_term_t has no value for the codes n90; add them in an earlier migration", output, StringComparison.Ordinal);
         Assert.Contains("type credit_term_t", output, StringComparison.Ordinal);
+    }
+
+    private static string View(string id, string name, string body, string dependsOn) => $$"""
+        { "kind": "view", "id": "{{id}}", "name": "{{name}}", "database": "{{PaymentTerms.MainId}}", "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+          "body": { "*": "{{body}}" }, "dependsOn": [{{dependsOn}}],
+          "columns": [ { "name": "name", "type": "string", "nullable": false }, { "name": "credit_term", "type": "string", "nullable": true } ] }
+        """;
+
+    [Fact]
+    public async Task A_merge_retypes_an_enum_column_that_modeled_views_read()
+    {
+        // Under native the merge retypes customers.credit_term from credit_term_t to payment_term_t, which PostgreSQL refuses while a
+        // view reads the column: the step drops the model's views first (ada_terms before customer_terms, which it reads), and the
+        // migration creates them again at its end.
+        const string CustomerTerms = "01KACT00000000000000000041";
+        using var repo = PaymentTerms.Create("native");
+        var refactor = await RefactorAsync(repo, MergeCreditTerms(""", "codes": { "n90": "net60" }"""), setup: async r =>
+        {
+            await PaymentTerms.CreateAsync(r, View(CustomerTerms, "customer_terms", "select name, credit_term from billing.customers", ""));
+            await PaymentTerms.CreateAsync(r, View("01KACT00000000000000000042", "ada_terms", "select name, credit_term from billing.customer_terms where name = 'Ada'",
+                "\"" + CustomerTerms + "\""));
+        });
+
+        AssertBefore(refactor.Migration, "DROP VIEW IF EXISTS billing.ada_terms;", "DROP VIEW IF EXISTS billing.customer_terms;");
+        AssertBefore(refactor.Migration, "DROP VIEW IF EXISTS billing.customer_terms;", "ALTER COLUMN credit_term TYPE payment_term_t");
+        var db = DbServer.Postgres();
+        if (db is null)
+        {
+            Assert.Skip(RefactorSkip);
+            return;
+        }
+
+        var output = await RunTwiceAsync(db, "merge_views", refactor, TermRows("native", false), TermQuery(refactor.FactId)
+            + "SELECT 'view ' || name || ' ' || credit_term::text FROM billing.ada_terms;\n"
+            + "SELECT 'view type ' || format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'billing.customer_terms'::regclass AND attname = 'credit_term';\n");
+        Assert.Contains("customer Ada net60", output, StringComparison.Ordinal);
+        Assert.Contains("view Ada net60", output, StringComparison.Ordinal);
+        Assert.Contains("view type payment_term_t", output, StringComparison.Ordinal);
+        Assert.Contains("ledger 1", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_merge_retypes_an_enum_column_that_the_model_s_last_view_read_as_the_view_leaves()
+    {
+        // customer_terms is the model's only view and leaves it in the merge's generation: the model has no view now, but the step still
+        // drops it before the retype, and the migration's own drop of it then finds none.
+        const string OutstandingInvoices = "01J92P0V1YZ4YP352KD1A50FXS";
+        const string CustomerTerms = "01KACT00000000000000000041";
+        using var repo = PaymentTerms.Create("native");
+        var refactor = await RefactorAsync(repo, MergeCreditTerms(""", "codes": { "n90": "net60" }"""), setup: async r =>
+        {
+            await PaymentTerms.DeleteAsync(r, OutstandingInvoices);
+            await PaymentTerms.CreateAsync(r, View(CustomerTerms, "customer_terms", "select name, credit_term from billing.customers", ""));
+        }, edit: r => PaymentTerms.DeleteAsync(r, CustomerTerms));
+
+        AssertBefore(refactor.Migration, "DROP VIEW IF EXISTS billing.customer_terms;", "ALTER COLUMN credit_term TYPE payment_term_t");
+        var db = DbServer.Postgres();
+        if (db is null)
+        {
+            Assert.Skip(RefactorSkip);
+            return;
+        }
+
+        var output = await RunTwiceAsync(db, "merge_last_view", refactor, TermRows("native", false), TermQuery(refactor.FactId)
+            + "SELECT 'views ' || count(*) FROM pg_views WHERE schemaname = 'billing';\n");
+        Assert.Contains("customer Ada net60", output, StringComparison.Ordinal);
+        Assert.Contains("views 0", output, StringComparison.Ordinal);
+        Assert.Contains("ledger 1", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_map_upserts_the_rows_it_needs_after_the_rows_their_fields_name()
+    {
+        // PaymentTerm gets a field typed by TermCategory. The rename moves net30 to net-30, and the same generation gives TermCategory a
+        // new code that net-30 names: the step upserts that category row first and then the net-30 row alone, so the foreign key between
+        // the lookup tables holds although seed.sql adds the category's other rows later.
+        const string Category = "01KATC00000000000000000001";
+        const string CategorySeed = "01KATC00000000000000000010";
+        const string CategoryField = "01KATC00000000000000000004";
+        using var repo = PaymentTerms.Create("lookup-table");
+        var refactor = await RefactorAsync(repo, RenameNet30, setup: async r =>
+        {
+            await PaymentTerms.CreateAsync(r, $$"""
+                { "kind": "reference-type", "id": "{{Category}}", "name": "TermCategory",
+                  "code": { "id": "01KATC00000000000000000002", "length": 8 }, "label": { "id": "01KATC00000000000000000003", "length": 64 } }
+                """);
+            await PaymentTerms.CreateAsync(r, $$"""
+                { "kind": "seed", "id": "{{CategorySeed}}", "name": "TermCategories", "target": "{{Category}}", "columns": ["code", "label"],
+                  "rows": [ { "id": "01KATC00000000000000000011", "values": ["std", "Standard"] } ] }
+                """);
+            await PaymentTerms.EditAsync(r, PaymentTerms.PaymentTerm,
+                e => e["attributes"] = JsonNode.Parse($$"""[ { "id": "{{CategoryField}}", "name": "category", "type": { "ref": "{{Category}}" } } ]"""));
+            await PaymentTerms.EditAsync(r, PaymentTerms.PaymentTermSeed, e =>
+            {
+                e["columns"]!.AsArray().Add(CategoryField);
+                foreach (var row in e["rows"]!.AsArray())
+                    row!["values"]!.AsArray().Add("std");
+            });
+        }, edit: async r =>
+        {
+            await PaymentTerms.EditAsync(r, CategorySeed, e => e["rows"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01KATC00000000000000000012", "values": ["early", "Early"] }""")));
+            await PaymentTerms.EditAsync(r, PaymentTerms.PaymentTermSeed, e =>
+            {
+                foreach (var row in e["rows"]!.AsArray())
+                {
+                    if (row!["values"]![0]!.GetValue<string>() == "net-30")
+                        row["values"]![2] = "early";
+                }
+            });
+        });
+
+        var migration = refactor.Migration;
+        AssertBefore(migration, "INSERT INTO billing.term_categories (code, label) VALUES\n    ('early', 'Early')\nON CONFLICT",
+            "INSERT INTO billing.payment_terms (code, label, category) VALUES\n    ('net-30', 'Net 30', 'early')\nON CONFLICT");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(migration, "INSERT INTO billing.payment_terms "));
+        Assert.DoesNotContain("('std', 'Standard')", migration, StringComparison.Ordinal);
+        var db = DbServer.Postgres();
+        if (db is null)
+        {
+            Assert.Skip(RefactorSkip);
+            return;
+        }
+
+        var output = await RunTwiceAsync(db, "map_field_rows", refactor, TermRows("lookup-table", false), TermQuery(refactor.FactId)
+            + "SELECT 'term ' || code || ' ' || coalesce(category, '-') FROM billing.payment_terms ORDER BY code;\n");
+        Assert.Contains("invoice INV-1 net-30", output, StringComparison.Ordinal);
+        Assert.Contains("term net-30 early", output, StringComparison.Ordinal);
+        Assert.Contains("term net60 std", output, StringComparison.Ordinal);
+        Assert.Contains("ledger 1", output, StringComparison.Ordinal);
+    }
+
+    private const string SettlementTerm = "01KAST00000000000000000001";
+    private const string SettlementCategory = "01KAST00000000000000000005";
+
+    /// <summary>
+    /// Adds TermCategory (std) and SettlementTerm, whose field category is typed by it, with the rows net30 and n90: their category
+    /// std when <paramref name="categories"/>, else none.
+    /// </summary>
+    private static async Task AddSettlementTermsAsync(PackRepo r, bool categories)
+    {
+        await PaymentTerms.CreateAsync(r, $$"""
+            { "kind": "reference-type", "id": "{{SettlementCategory}}", "name": "TermCategory",
+              "code": { "id": "01KAST00000000000000000006", "length": 8 }, "label": { "id": "01KAST00000000000000000007", "length": 64 } }
+            """);
+        await PaymentTerms.CreateAsync(r, $$"""
+            { "kind": "seed", "id": "01KAST00000000000000000008", "name": "TermCategories", "target": "{{SettlementCategory}}", "columns": ["code", "label"],
+              "rows": [ { "id": "01KAST00000000000000000009", "values": ["std", "Standard"] } ] }
+            """);
+        await PaymentTerms.CreateAsync(r, $$"""
+            { "kind": "reference-type", "id": "{{SettlementTerm}}", "name": "SettlementTerm",
+              "code": { "id": "01KAST00000000000000000002", "length": 8 }, "label": { "id": "01KAST00000000000000000003", "length": 64 },
+              "attributes": [ { "id": "01KAST00000000000000000004", "name": "category", "type": { "ref": "{{SettlementCategory}}" } } ] }
+            """);
+        var columns = categories ? """["code", "label", "01KAST00000000000000000004"]""" : """["code", "label"]""";
+        var category = categories ? ", \"std\"" : "";
+        await PaymentTerms.CreateAsync(r, $$"""
+            { "kind": "seed", "id": "01KAST00000000000000000010", "name": "SettlementTerms", "target": "{{SettlementTerm}}", "columns": {{columns}},
+              "rows": [ { "id": "01KAST00000000000000000011", "values": ["net30", "Net 30"{{category}}] },
+                        { "id": "01KAST00000000000000000012", "values": ["n90", "Net 90"{{category}}] } ] }
+            """);
+    }
+
+    private static Task MoveCreditTermAsync(PackRepo r, string type) => PaymentTerms.EditAsync(r, PaymentTerms.CustomerId, e =>
+        e["attributes"]!.AsArray().Single(a => (string?)a!["name"] == "creditTerm")!["type"] = JsonNode.Parse($$"""{ "ref": "{{type}}" }"""));
+
+    [Fact]
+    public async Task A_column_moved_to_a_new_type_gets_every_lookup_table_its_fields_reference()
+    {
+        // Customer.creditTerm moves to SettlementTerm in a plain edit, and the same generation adds SettlementTerm with its field category
+        // typed by the new TermCategory. No SettlementTerm row names a category, but its lookup table has a foreign key to TermCategory's,
+        // so the column step creates TermCategory's table first (and writes none of its rows).
+        using var repo = PaymentTerms.Create("lookup-table");
+        var refactor = await RefactorAsync(repo, null, edit: async r =>
+        {
+            await AddSettlementTermsAsync(r, categories: false);
+            await MoveCreditTermAsync(r, SettlementTerm);
+        });
+
+        AssertBefore(refactor.Migration, "CREATE TABLE IF NOT EXISTS billing.term_categories ", "CREATE TABLE IF NOT EXISTS billing.settlement_terms ");
+        Assert.DoesNotContain("INSERT INTO billing.term_categories ", refactor.Migration, StringComparison.Ordinal);
+        var db = DbServer.Postgres();
+        if (db is null)
+        {
+            Assert.Skip(RefactorSkip);
+            return;
+        }
+
+        var output = await RunTwiceAsync(db, "moved_new_types", refactor, TermRows("lookup-table", false), TermQuery(null)
+            + "SELECT 'references ' || confrelid::regclass FROM pg_constraint WHERE conname = 'fk_customers_credit_term_ref';\n");
+        Assert.Contains("customer Ada n90", output, StringComparison.Ordinal);
+        Assert.Contains("customer Bob net30", output, StringComparison.Ordinal);
+        Assert.Contains("references billing.settlement_terms", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Two_columns_moved_to_one_type_write_each_type_s_rows_once()
+    {
+        // Customer.creditTerm and the notes' term move to SettlementTerm, whose rows name the category std: the first column step creates
+        // both lookup tables and upserts their rows, the second finds them written.
+        using var repo = PaymentTerms.Create("lookup-table");
+        var refactor = await RefactorAsync(repo, null, edit: async r =>
+        {
+            await AddSettlementTermsAsync(r, categories: true);
+            await MoveCreditTermAsync(r, SettlementTerm);
+            await PaymentTerms.EditAsync(r, PaymentTerms.NotesTable, e =>
+                e["columns"]!.AsArray().Single(c => (string?)c!["name"] == "term")!["typeRef"] = JsonNode.Parse($$"""{ "ref": "{{SettlementTerm}}" }"""));
+        });
+
+        var migration = refactor.Migration;
+        Assert.Contains("-- customers.credit_term now holds codes of SettlementTerm", migration, StringComparison.Ordinal);
+        Assert.Contains("-- notes.term now holds codes of SettlementTerm", migration, StringComparison.Ordinal);
+        foreach (var once in new[] { "CREATE TABLE IF NOT EXISTS billing.term_categories ", "CREATE TABLE IF NOT EXISTS billing.settlement_terms ",
+            "INSERT INTO billing.term_categories ", "INSERT INTO billing.settlement_terms " })
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(migration, System.Text.RegularExpressions.Regex.Escape(once)));
+        AssertBefore(migration, "INSERT INTO billing.term_categories ", "INSERT INTO billing.settlement_terms ");
+        var db = DbServer.Postgres();
+        if (db is null)
+        {
+            Assert.Skip(RefactorSkip);
+            return;
+        }
+
+        var output = await RunTwiceAsync(db, "moved_two_columns", refactor, TermRows("lookup-table", false), TermQuery(null)
+            + "SELECT 'term ' || code || ' ' || coalesce(category, '-') FROM billing.settlement_terms ORDER BY code;\n");
+        Assert.Contains("customer Ada n90", output, StringComparison.Ordinal);
+        Assert.Contains("note n90", output, StringComparison.Ordinal);
+        Assert.Contains("term n90 std", output, StringComparison.Ordinal);
     }
 
     [Theory]

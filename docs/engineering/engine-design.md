@@ -1287,24 +1287,23 @@ them at its designed table. Constants are SQL literals in the statements, not pa
 ## 10. Script sandbox (W4)
 
 ```csharp
-namespace Maquettiste.Engine.Scripting;
-public interface IScriptSandboxFactory { IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct); }
-public interface IScriptSandboxPool : IDisposable { IReadOnlyList<ScriptRegistration> Registrations { get; } IReadOnlyList<Diagnostic> Warnings { get; } IScriptSandboxLease Rent(); }
-public interface IScriptSandboxLease : IDisposable { IScriptSandbox Sandbox { get; } }
-public sealed record ScriptRegistration(ScriptRegistrationKind Kind, string Name, string DeclaredIn) { public bool WholeModel { get; init; } }   // scope "model"
-public enum ScriptRegistrationKind { Helper, Selector, Filter, Transform, Rule, Rows }   // Rows: a seed's rows script, named by its path
-public sealed record ScriptCallContext(IReadRecorder? Reads, string Seed, IReadOnlyDictionary<string, object?> Parameters, CancellationToken CancellationToken);
-public interface IScriptSandbox
-{
-    object? CallHelper(string name, IReadOnlyList<object?> args, ScriptCallContext ctx);
-    IReadOnlyList<string> Select(string name, ResolvedModel model, ScriptCallContext ctx);           // element ids
-    bool Filter(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx);
-    IReadOnlyDictionary<string, object?> Transform(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx);
-    IReadOnlyList<Diagnostic> RunRule(string ruleId, ElementDocument element, ModelSnapshot model, ScriptCallContext ctx);
-    IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model, ScriptCallContext ctx);   // a whole-model rule, once
-    JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx); // a rows script: its array
-}
-public sealed class ScriptLimitException : Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
+namespace Maquettiste.Engine.Scripting; public interface IScriptSandboxFactory { IScriptSandboxPool
+CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct); } public
+interface IScriptSandboxPool : IDisposable { IReadOnlyList<ScriptRegistration> Registrations { get; }
+IReadOnlyList<Diagnostic> Warnings { get; } IScriptSandboxLease Rent(); } public interface IScriptSandboxLease :
+IDisposable { IScriptSandbox Sandbox { get; } } public sealed record ScriptRegistration(ScriptRegistrationKind Kind,
+string Name, string DeclaredIn) { public bool WholeModel { get; init; } }   // scope "model" public enum
+ScriptRegistrationKind { Helper, Selector, Filter, Transform, Rule, Rows }   // Rows: a seed's rows script, named by its
+path public sealed record ScriptCallContext(IReadRecorder? Reads, string Seed, IReadOnlyDictionary<string, object?>
+Parameters, CancellationToken CancellationToken); public interface IScriptSandbox { object? CallHelper(string name,
+IReadOnlyList<object?> args, ScriptCallContext ctx); IReadOnlyList<string> Select(string name, ResolvedModel model,
+ScriptCallContext ctx);           // element ids bool Filter(string name, IResolvedObject element, ResolvedModel model,
+ScriptCallContext ctx); IReadOnlyDictionary<string, object?> Transform(string name, IResolvedObject element,
+ResolvedModel model, ScriptCallContext ctx); IReadOnlyList<Diagnostic> RunRule(string ruleId, ElementDocument element,
+ModelSnapshot model, ScriptCallContext ctx); IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model,
+ScriptCallContext ctx);   // a whole-model rule, once JsonElement RunRows(string script, ElementDocument seed,
+ModelSnapshot model, ScriptCallContext ctx); // a rows script: its array } public sealed class ScriptLimitException :
+Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
 ```
 
 - **Engine options** (Jint 4.16.4): `Strict()`, `Interop.Enabled = false`, `AllowGetType = false`, `AllowSystemReflection = false`, `DisableStringCompilation()` (no `eval`, no `Function`), no modules, `Culture(CultureInfo.InvariantCulture)`, `LocalTimeZone(TimeZoneInfo.Utc)`, `TimeSystem` = a fixed clock at 2000-01-01T00:00:00Z (so `Date.now()` and `new Date()` are constant), `LimitRecursion`, `LimitMemory`, `TimeoutInterval` (none when `scriptTimeoutMs` is 0: the wall clock is off and statements alone bound a call, so results do not depend on load), `MaxStatements` from `SandboxLimits` (clamped to 2,000,000,000, below `int.MaxValue`, which Jint reads as no limit), and `Options.CancellationToken(ct)` with the pool's run token, with `engine.Constraints.Reset()` before every top-level call. Pools live for one run (or one validation), so the run token fits; every call also checks `ScriptCallContext.CancellationToken` before it starts. A running script therefore stops within the one-second cancellation budget (host-contracts 26) although the script timeout (2 s by default) is longer. `Math.random` is replaced by xorshift128+ seeded from `ScriptCallContext.Seed` (the unit key or element id) at every top-level call.

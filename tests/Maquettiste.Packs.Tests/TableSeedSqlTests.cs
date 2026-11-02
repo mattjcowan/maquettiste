@@ -193,6 +193,46 @@ public sealed class TableSeedSqlTests
     }
 
     [Fact]
+    public async Task Outside_PostgreSQL_a_nested_lookup_stays_inside_one_comment()
+    {
+        using var repo = NaturalKeyRepo(identity: true, sqlite: true);
+        // Invoices take their ids from the database and are found by (customer, number), so a line naming an invoice looks up a row
+        // whose key holds a lookup itself. Outside PostgreSQL both lookups are TODOs: the inner one, and a key value, may hold comment
+        // markers, which must not open or close the outer comment (SQL Server nests block comments).
+        repo.EditJson(".maquettiste/model/databases/local/tables/sl_invoices.json", t =>
+        {
+            t["columns"]![0] = new JsonObject { ["id"] = N(11), ["name"] = "id", ["type"] = "int64", ["nullable"] = false, ["generated"] = "identity" };
+            t["uniques"]!.AsArray().Add(new JsonObject { ["id"] = N(17), ["name"] = "uq_invoices_customer_number", ["columns"] = new JsonArray(N(14), N(12)) });
+        });
+        repo.EditJson(".maquettiste/model/seeds/sales-invoices/invoices.json", s =>
+        {
+            s["key"] = N(17);
+            s["rows"]![0]!["values"]![0] = "INV/*1*/";
+        });
+        repo.Write(".maquettiste/model/databases/local/tables/sl_invoice_lines.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{N(60)}}","name":"sl_invoice_lines","database":"{{LocalId}}","columns":[
+              {"id":"{{N(61)}}","name":"line","type":"string","length":16,"nullable":false},
+              {"id":"{{N(62)}}","name":"invoice_id","type":"int64","nullable":false}],
+             "primaryKey":{"columns":["{{N(61)}}"]},
+             "foreignKeys":[{"id":"{{N(63)}}","name":"fk_invoice_lines_invoice","columns":["{{N(62)}}"],"referencesTable":"{{N(10)}}"}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/sales-invoice-lines/invoice-lines.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{N(64)}}","name":"invoiceLines","target":"{{N(60)}}","columns":["{{N(61)}}","{{N(63)}}"],
+             "rows":[{"id":"{{N(65)}}","values":["L-1",["ada@example.com","INV/*1*/"]]}]}
+            """);
+        var result = await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ4056" && d.Message.Contains("oreign key 'fk_invoice_lines_invoice'", StringComparison.Ordinal));
+
+        var seed = repo.Read("db/local/seed.sql");
+        Assert.Contains($"('L-1', NULL /* TODO: row {N(65)} names sl_invoices.id WHERE customer_id = NULL / * TODO: row {N(31)} names sl_customers.id"
+            + " WHERE email = 'ada@example.com' * / AND number = 'INV/ *1* /' */)", seed, StringComparison.Ordinal);
+        var line = seed[seed.IndexOf("('L-1', ", StringComparison.Ordinal)..];
+        line = line[..line.IndexOf('\n', StringComparison.Ordinal)];
+        Assert.Equal(1, line.Split("/*").Length - 1);
+        Assert.Equal(1, line.Split("*/").Length - 1);
+    }
+
+    [Fact]
     public async Task Rows_that_name_rows_of_their_own_table_insert_by_level()
     {
         using var repo = NaturalKeyRepo(identity: true);

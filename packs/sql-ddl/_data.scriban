@@ -86,7 +86,9 @@ func data_cell(r, c, t, db)
   if db.dialect == "postgresql"
     ret "(SELECT " + q($target.name, db) + " FROM " + qt($ref.table) + " WHERE " + $where + ")"
   end
-  ret "NULL /* TODO: " + (string.replace ("row " + r.id + " names " + qt($ref.table) + "." + $target.name + " WHERE " + $where) "*/" "* /") + " */"
+  # The comment holds no comment marker: a nested lookup's TODO and a key value may carry them, and SQL Server nests block comments.
+  $todo = "row " + r.id + " names " + qt($ref.table) + "." + $target.name + " WHERE " + $where
+  ret "NULL /* TODO: " + (string.replace (string.replace $todo "*/" "* /") "/*" "/ *") + " */"
 end
 
 func data_values(rows, columns, t, db)

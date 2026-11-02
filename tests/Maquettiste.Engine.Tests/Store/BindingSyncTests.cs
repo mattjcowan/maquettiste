@@ -393,6 +393,56 @@ public sealed class BindingSyncTests
     }
 
     [Fact]
+    public async Task Resync_after_a_column_is_dropped_and_re_added_moves_its_field_and_adds_no_attribute()
+    {
+        // A column dropped and re-added under its name has a new id: removed and added at once. The field of the removed column goes
+        // before map by name, so the attribute it freed follows the new column, and no second attribute ('memo2') is added.
+        const string NewMemoColumn = "01K7SYNC0000000000000000CD";
+        await using var r = EditorRepo.Create(packs: false);
+        await MappedLedgerAsync(r);
+        var attributes = Entity(r, LedgerEntry).Attributes.Select(a => (a.Id, a.Name)).ToList();
+        await EditLedgerOnDiskAsync(r, columns =>
+        {
+            columns.Remove(columns.OfType<JsonObject>().Single(c => c["id"]!.GetValue<string>() == MemoColumn));
+            columns.Add(JsonNode.Parse($$"""{ "id": "{{NewMemoColumn}}", "name": "memo", "type": "text" }"""));
+        });
+
+        AssertSaved(await ApplyAsync(r, Resync(LedgerEntry)));
+
+        Assert.Equal(attributes, Entity(r, LedgerEntry).Attributes.Select(a => (a.Id, a.Name)));
+        var fields = Fields(r, LedgerEntry);
+        Assert.Equal(NewMemoColumn, Assert.Single(fields, f => f.Attribute == MemoAttribute).Column);
+        Assert.DoesNotContain(fields, f => f.Column == MemoColumn);
+        Assert.Equal(Shapes(r), Binding(r, LedgerEntry).Provenance!.Columns);
+        Assert.Empty(await DriftAsync(r, LedgerEntry));
+    }
+
+    [Fact]
+    public async Task Resync_of_a_named_column_dropped_and_re_added_moves_its_field_and_adds_no_attribute()
+    {
+        // The same with the re-sync limited to the new column by name: the gone column was recorded under that name, so its field and
+        // its provenance entry go, and the attribute follows the new column.
+        const string NewMemoColumn = "01K7SYNC0000000000000000CD";
+        await using var r = EditorRepo.Create(packs: false);
+        await MappedLedgerAsync(r);
+        var attributes = Entity(r, LedgerEntry).Attributes.Select(a => (a.Id, a.Name)).ToList();
+        await EditLedgerOnDiskAsync(r, columns =>
+        {
+            columns.Remove(columns.OfType<JsonObject>().Single(c => c["id"]!.GetValue<string>() == MemoColumn));
+            columns.Add(JsonNode.Parse($$"""{ "id": "{{NewMemoColumn}}", "name": "memo", "type": "text" }"""));
+        });
+
+        AssertSaved(await ApplyAsync(r, Resync(LedgerEntry, """["memo"]""")));
+
+        Assert.Equal(attributes, Entity(r, LedgerEntry).Attributes.Select(a => (a.Id, a.Name)));
+        var fields = Fields(r, LedgerEntry);
+        Assert.Equal(NewMemoColumn, Assert.Single(fields, f => f.Attribute == MemoAttribute).Column);
+        Assert.DoesNotContain(fields, f => f.Column == MemoColumn);
+        Assert.Equal(Shapes(r), Binding(r, LedgerEntry).Provenance!.Columns);
+        Assert.Empty(await DriftAsync(r, LedgerEntry));
+    }
+
+    [Fact]
     public async Task Resync_with_columns_keeps_other_entries()
     {
         await using var r = EditorRepo.Create(packs: false);

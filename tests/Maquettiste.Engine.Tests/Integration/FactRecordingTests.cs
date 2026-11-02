@@ -1091,6 +1091,28 @@ public sealed class FactRecordingTests
     }
 
     [Fact]
+    public async Task Binding_the_reference_type_of_a_typed_column_records_a_conversion()
+    {
+        // next-phase-2-design.md section 3.2, decision 14: the type-side edit. A column typed by a reference type bound nowhere captures no
+        // reference table; saving the type with a binding to a table in main reaches the column's table through its e:<type> key, and
+        // the recording run links the binding, so the column's captured reference table changes: one change-type asking for a conversion.
+        await using var repo = E2ERepo.Create(demo: false);
+        var (typeId, columnId) = await AddStateColumnAndBoundTypeAsync(repo);
+        JsonNode? bindings = null;
+        Assert.Empty((await repo.EditAsync(typeId, e => { bindings = e["bindings"]!.DeepClone(); e.Remove("bindings"); })).Facts!);
+        Assert.Empty((await repo.EditAsync(NotesTableId, e => e["columns"]!.AsArray().First(c => (string?)c!["id"] == columnId)!["typeRef"] = new JsonObject { ["ref"] = typeId })).Facts!);
+
+        var bound = await repo.EditAsync(typeId, e => e["bindings"] = bindings!.DeepClone());
+
+        var fact = Assert.Single(bound.Facts!);
+        Assert.Equal(("change-type", "pending"), (fact.Fact, fact.State));
+        Assert.Equal(["conversion"], fact.Missing);
+        var recorded = Assert.IsType<Migration>((await repo.Store.GetElementAsync(fact.Id, Ct))!.Element);
+        Assert.Equal(("column", NotesTableId, columnId), (recorded.Object!.Kind, recorded.Object.Table, recorded.Object.Key));
+        Assert.Equal(((string?)null, "01K9X3B0000000000000000001"), (recorded.From!.ReferenceTable, recorded.To!.ReferenceTable));
+    }
+
+    [Fact]
     public async Task Retyping_between_types_with_one_storage_records_no_fact()
     {
         // next-phase-2-design.md section 3.2 (D21), decision 8: changing typeRef between two types the templates store alike (here no

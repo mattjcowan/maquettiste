@@ -252,6 +252,11 @@ end
 
 # The rows of a lookup table as one upsert by code: INSERT ... ON CONFLICT DO UPDATE on PostgreSQL and SQLite, MERGE on SQL Server.
 func lookup_rows_sql(rt, db)
+  ret lookup_rows_of_sql(rt, rt.rows, db)
+end
+
+# The upsert of some rows of a lookup table (lookup_rows_sql); the columns follow the type, whichever rows are written.
+func lookup_rows_of_sql(rt, rows, db)
   $d = db.dialect
   $cols = [q("code", db), q("label", db)]
   if has_row_descriptions(rt)
@@ -261,7 +266,7 @@ func lookup_rows_sql(rt, db)
     $cols[$cols.size] = q(snake f.name, db)
   end
   $values = ""
-  for r in rt.rows
+  for r in rows
     $v = lit(r.code, db) + ", " + lit(r.label, db)
     if has_row_descriptions(rt)
       $v = $v + ", " + cell_sql(r.description, db)
@@ -342,21 +347,113 @@ func reference_type_by_id(id)
   ret null
 end
 
-# PostgreSQL: what makes a type's rows exist in a database before a value map moves stored codes to them (a migration runs before
-# seed.sql): its lookup table, created when missing, and its rows, upserted by code; its enum type, created when missing; or the rows
-# of a bound type its table lacks, inserted as a seed applied once inserts them. "" for a CHECK, which keeps no rows.
-func ref_rows_exist_sql(rt, db)
+# PostgreSQL: what makes a type's rows exist in a database before a migration's step moves stored codes to them (a migration runs
+# before seed.sql); codes lists the codes the step needs, or is null for every row of the type. A lookup table is created when
+# missing and the rows named upserted by code, with the rows of other types their reference fields name (and the rows those name):
+# each lookup table after the ones it references (lookup_order), every lookup table its reference fields name created even when no
+# row names one of its codes, so every foreign key between lookup tables holds when the tables are created and the rows go in; the rows of a bound type so named are inserted as a seed applied once inserts them. An enum type is created when missing; a
+# bound type gets its missing rows. "" for a CHECK, which keeps no rows. Each table, type and row is written once per migration
+# (mq_ref_rows, see migration.scriban), however many steps need it.
+func ref_rows_exist_sql(rt, db, codes)
   $r = type_realization(rt, db)
-  if $r == "lookup-table"
-    $s = storage_option(rt, db, "schema") ? schema_sql(lookup_schema(rt, db), db) + "\n" : ""
-    $s = $s + lookup_table_sql(rt, db)
-    ret rt.rows.size == 0 ? $s : $s + "\n" + lookup_rows_sql(rt, db)
-  else if $r == "native"
-    ret native_type_create_sql(rt, db)
-  else if $r == "table"
-    ret bound_rows_sql(rt, db)
+  if $r == "native" || $r == "table"
+    if mq_ref_rows[rt.id]
+      ret ""
+    end
+    mq_ref_rows[rt.id] = true
+    ret $r == "native" ? native_type_create_sql(rt, db) : bound_rows_sql(rt, db)
+  else if $r != "lookup-table"
+    ret ""
   end
-  ret ""
+  $want = {}
+  if codes
+    for c in codes
+      $want["" + c] = true
+    end
+  end
+  $types = [rt]
+  $rows_of = {}
+  $rows_of[rt.id] = []
+  $known = {}
+  $known[rt.id] = true
+  $bound = []
+  $pending = []
+  for row in rt.rows
+    if codes == null || $want["" + row.code]
+      $pending[$pending.size] = { t: rt, r: row }
+    end
+  end
+  $seen = {}
+  $i = 0
+  while $i < $pending.size
+    $p = $pending[$i]
+    $i = $i + 1
+    $k = $p.t.id + ":" + $p.r.code
+    if $seen[$k]
+      continue
+    end
+    $seen[$k] = true
+    if !$known[$p.t.id]
+      $known[$p.t.id] = true
+      $rows_of[$p.t.id] = []
+      $types[$types.size] = $p.t
+    end
+    $list = $rows_of[$p.t.id]
+    $list[$list.size] = $p.r
+    for f in lookup_fields($p.t)
+      $v = f.type.kind == "reference" ? $p.r.values[f.name] : null
+      $b = $v == null ? null : reference_type_by_id(f.type.reference_type.id)
+      if $b && type_realization($b, db) == "lookup-table"
+        for br in $b.rows
+          if ("" + br.code) == ("" + $v)
+            $pending[$pending.size] = { t: $b, r: br }
+          end
+        end
+      else if $b && type_realization($b, db) == "table" && !mq_ref_rows[$b.id]
+        mq_ref_rows[$b.id] = true
+        $bound[$bound.size] = $b
+      end
+    end
+  end
+  # A lookup table is created with a foreign key per reference field, so every lookup table those name is created too (and the ones
+  # theirs name), whether or not a row names one of its codes: a type new in this generation has no table before seed.sql runs.
+  $j = 0
+  while $j < $types.size
+    $t = $types[$j]
+    $j = $j + 1
+    for f in lookup_fields($t)
+      $c = f.type.kind == "reference" ? reference_type_by_id(f.type.reference_type.id) : null
+      if $c && !$known[$c.id] && type_realization($c, db) == "lookup-table"
+        $known[$c.id] = true
+        $rows_of[$c.id] = []
+        $types[$types.size] = $c
+      end
+    end
+  end
+  $out = []
+  for b in $bound
+    $sql = bound_rows_sql(b, db)
+    if $sql != ""
+      $out[$out.size] = $sql
+    end
+  end
+  for t in lookup_order($types)
+    if !mq_ref_rows[t.id]
+      mq_ref_rows[t.id] = true
+      $out[$out.size] = (storage_option(t, db, "schema") ? schema_sql(lookup_schema(t, db), db) + "\n" : "") + lookup_table_sql(t, db)
+    end
+    $rows = []
+    for row in $rows_of[t.id]
+      if !mq_ref_rows[t.id + ":" + row.code]
+        mq_ref_rows[t.id + ":" + row.code] = true
+        $rows[$rows.size] = row
+      end
+    end
+    if $rows.size > 0
+      $out[$out.size] = lookup_rows_of_sql(t, $rows, db)
+    end
+  end
+  ret $out | array.join "\n"
 end
 
 # The rows of a type bound to a table of the database, for every environment, inserted when their key is missing (data_write_sql in

@@ -654,7 +654,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
     /// <summary>
     /// For an enum, a reference type or a seed of a reference type: the table files with a column whose <c>typeRef</c> names the type (own,
-    /// or through a stereotype the table lists), their table seeds, and the entities and reference types bound to them, whose constants
+    /// or through a stereotype the table lists or a stereotype it lists implies), their table seeds, and the entities and reference types bound to them, whose constants
     /// fill their columns (next-phase-2-design.md section 3.2). Nothing for any other document.
     /// </summary>
     private static IEnumerable<ElementDocument> TypedColumnPeers(ValidationContext context, Element element)
@@ -677,13 +677,26 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     tables.Add(table.Id);
                     break;
                 case Stereotype stereotype when stereotype.Columns.Any(c => string.Equals(c.TypeRef?.Ref, typeId, StringComparison.Ordinal)):
-                    foreach (var carrier in model.ReferencesTo(stereotype.Id))
+                {
+                    // A table carries the stereotype by listing it or a stereotype that implies it (as DefaultPeers follows implies).
+                    var carried = new List<string> { stereotype.Id };
+                    foreach (var implying in model.ReferencesTo(stereotype.Id))
                     {
-                        if (carrier.Field == "stereotypes" && model.Get<Table>(carrier.FromElementId) is not null)
-                            tables.Add(carrier.FromElementId);
+                        if (implying.Field == "implies" && model.GetDocument(implying.FromElementId)?.Element is Stereotype)
+                            carried.Add(implying.FromElementId);
+                    }
+
+                    foreach (var key in carried)
+                    {
+                        foreach (var carrier in model.ReferencesTo(key))
+                        {
+                            if (carrier.Field == "stereotypes" && model.Get<Table>(carrier.FromElementId) is not null)
+                                tables.Add(carrier.FromElementId);
+                        }
                     }
 
                     break;
+                }
             }
         }
 
@@ -788,7 +801,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 var tableSchema = doc.Element switch
                 {
                     Entity entity => model.StereotypeDefaults.SchemaOf(database.Id, null, entity.Id),
-                    Relation => model.StereotypeDefaults.SchemaOf(database.Id, null),
+                    Relation relation => model.StereotypeDefaults.SchemaOf(database.Id, null, relation: relation.Id),
                     _ => null,
                 };
                 if (tableSchema is not null && schemas.Contains(tableSchema))

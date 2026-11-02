@@ -116,14 +116,14 @@ Tests: `tests/Maquettiste.Engine.Tests/Validation/`; fixtures under `tests/fixtu
 
 ## Scripted rows (next-phase-2-design.md section 3.4, D43)
 
-- `ValidationContext.RowsOf(seed)` gives a seed's stored rows, or its scripted rows evaluated once per validation through
-  the engine's rows cache. A save (a scoped validation) evaluates only the scripted seeds in its scope
+- `ValidationContext.RowsOf(seed)` gives a seed's stored rows, or its scripted rows evaluated once per validation
+  through the engine's rows cache. A save (a scoped validation) evaluates only the scripted seeds in its scope
   (`ValidationContext.Judges`); a finding that needs the rows of a scripted seed outside it (a code no stored row holds,
   MQ3019, MQ7009, MQ7011, MQ7014; a natural key or foreign key no judged row holds, MQ7111) waits for whole-model
   validation, which judges stored and scripted rows.
 - The whole-model validation previews wait on (`ValidationScope.Previews`: the store's shared validation per snapshot,
   the SQL previews and the table lists) sets `ValidationContext.DeferScriptedRows` and judges no scripted seed, as a
   save judges none outside its scope; validate, plan and generate judge them all (decision 31).
-- `ReferenceDataRules.CheckSeed` reports a scripted seed's MQ7116, MQ7127, MQ7128 and MQ5005 first, then runs the row rules
-  on the scripted rows; their findings point at `/rowsFrom/script` and name the row by its key in seed terms, a string in
-  single quotes as written (`Scripted row 'R&D': ...`).
+- `ReferenceDataRules.CheckSeed` reports a scripted seed's MQ7116, MQ7127, MQ7128 and MQ5005 first, then runs the row
+  rules on the scripted rows; their findings point at `/rowsFrom/script` and name the row by its key in seed terms, a
+  string in single quotes as written (`Scripted row 'R&D': ...`).

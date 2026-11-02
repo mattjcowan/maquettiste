@@ -644,6 +644,31 @@ public sealed class FactClassifierTests
     }
 
     [Fact]
+    public void A_value_map_with_no_codes_reads_as_a_merge_or_a_plural_rename()
+    {
+        // A merge whose codes all match records no values: it still reads as a merge, with the columns it moves.
+        var merge = new Migration
+        {
+            Id = Existing, Database = Db, Fact = MigrationFact.ValueMap, ReferenceType = Terms, FromReferenceType = Credits,
+            From = new() { Name = "CreditTerm" }, To = new() { Name = "PaymentTerm" }, Objects = [BodyObject()],
+        };
+        Assert.Equal("merges CreditTerm into PaymentTerm in 1 column", FactDocuments.Summary(merge));
+
+        // A rename of the plural name alone reads as a rename, not as a code map with nothing in it.
+        var names = new MigrationState { Name = "PaymentTerm", PluralName = "PaymentTerms" };
+        var plural = merge with { FromReferenceType = null, Objects = [], From = names, To = names with { PluralName = "PaymentTermList" } };
+        Assert.Equal("renames reference type PaymentTerm plural PaymentTerms to PaymentTermList", FactDocuments.Summary(plural));
+        Assert.Equal("renames reference type PaymentTerm plural (default) to PaymentTermList",
+            FactDocuments.Summary(plural with { From = names with { PluralName = null } }));
+        Assert.Equal("renames reference type PaymentTerm to PaymentCondition",
+            FactDocuments.Summary(plural with { To = new() { Name = "PaymentCondition", PluralName = "PaymentConditions" } }));
+
+        // Without both states there is no plural to compare, as the migration template reads it: an empty code map.
+        Assert.Equal("maps PaymentTerm codes (none) in 0 columns", FactDocuments.Summary(plural with { To = null }));
+        Assert.Equal("maps PaymentTerm codes (none) in 0 columns", FactDocuments.Summary(plural with { From = null }));
+    }
+
+    [Fact]
     public void An_open_value_map_is_a_head_of_its_tables()
     {
         var open = new Migration

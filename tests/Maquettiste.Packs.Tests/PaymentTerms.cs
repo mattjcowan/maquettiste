@@ -101,6 +101,23 @@ internal static class PaymentTerms
         return await EditAsync(store, id, edit);
     }
 
+    /// <summary>Creates an element through a model store and asserts it saved.</summary>
+    public static async Task CreateAsync(PackRepo repo, string json)
+    {
+        await using var store = new ModelStore(repo.Repo.Options);
+        await CreateAsync(store, json);
+    }
+
+    /// <summary>Deletes an element through a model store and asserts it saved.</summary>
+    public static async Task DeleteAsync(PackRepo repo, string id)
+    {
+        await using var store = new ModelStore(repo.Repo.Options);
+        var document = await store.GetElementAsync(id, Ct);
+        Assert.NotNull(document);
+        var result = await store.DeleteAsync(id, document.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+        Assert.True(result.Outcome == SaveOutcome.Saved, result.Outcome + ": " + string.Join("; ", result.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+    }
+
     private static async Task CreateAsync(ModelStore store, string json)
     {
         var result = await store.CreateAsync(Encoding.UTF8.GetBytes(json), ChangeSource.Editor, Ct);

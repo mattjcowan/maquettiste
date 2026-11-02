@@ -467,19 +467,30 @@ order, and every part can run twice:
    `<old>_t` to `<new>_t`, while only the old one exists (a `DO` block over `to_regclass` or `to_regtype`). A
    `tableName` option keeps the table's name, so nothing is written.
 2. The rows of the type that holds the codes now are made to exist, since the migration runs before `seed.sql`: the
-   lookup table is created when missing and its rows upserted, the enum type created when missing, or a bound type's
-   missing rows inserted into its table as a seed applied `once` would.
+   lookup table is created when missing and the rows the codes map to upserted (every row after a merge, which keeps
+   the codes it does not map), the enum type created when missing, or a bound type's missing rows inserted into its
+   table as a seed applied `once` would. A row whose reference field names a row of another lookup table brings that
+   row along, its table created and upserted first, and every lookup table a created table's reference fields name is
+   created before it, whether or not a row names one of its codes, so the foreign keys between lookup tables hold even
+   for types and codes new in this generation. Each table and row is written once per migration, however many facts
+   and columns need it.
 3. On an enum type that was not merged, each mapped code that is a label of the type, while its replacement is not, is
    renamed in place (`ALTER TYPE ... RENAME VALUE`, inside a `DO` block that checks `pg_enum`): every column of the type
    follows its labels.
 4. Each column that holds the codes, named as the database knows it before the migration, has its check and foreign key
    dropped by name, its codes mapped (`UPDATE <t> SET <c> = CASE <c> WHEN 'net30' THEN 'net-30' ELSE <c> END WHERE <c>
    IN ('net30')`), then its objects created again for the type that holds the codes now. A column of an enum type is
-   mapped through text, and a `DO` block first stops the migration, naming the codes, when a mapped value is not a
-   label of the enum type: PostgreSQL cannot use an enum value in the transaction that adds it, so add such labels in
-   an earlier migration (a `raw` fact with `ALTER TYPE ... ADD VALUE`). After a merge, a column of the merged type's
-   enum type is retyped to the target's (`ALTER COLUMN ... TYPE <new>_t USING (CASE <c>::text WHEN ... ELSE
-   <c>::text END)::<new>_t`, its default dropped and set again).
+   mapped through text, and a `DO` block first stops the migration, naming the codes, when a mapped value is not a label
+   of the enum type: PostgreSQL cannot use an enum value in the transaction that adds it, so add such labels in an
+   earlier migration (a `raw` fact with `ALTER TYPE ... ADD VALUE`). After a merge, a column of the merged type's enum
+   type is retyped to the target's (`ALTER COLUMN ... TYPE <new>_t USING (CASE <c>::text WHEN ... ELSE <c>::text
+   END)::<new>_t`, its default dropped and set again). PostgreSQL refuses to retype a column a view reads, and the model
+   does not say which views read which columns, so before the first such retype the step drops every view of the model
+   and every view the migration removes (each before the views it reads, by the name the database knows it by) and the
+   migration creates the model's views again at its end, after the schema statements. A view the model does not know
+   about cannot be handled this way and still stops the retype (`cannot alter type of a column used by a view or rule`):
+   record a `raw` fact of phase `before` that drops it, listed in the value map's `after` so it runs first, and one of
+   phase `after` that creates it again; or model the view.
 5. Each collection: a junction table first deletes the rows the map would make twice for one owner, then maps its code
    column between the same drop and reconcile of its objects; an array column keeps the first position of each mapped
    code. Each runs only where `seed.sql` created the junction table or the array column.

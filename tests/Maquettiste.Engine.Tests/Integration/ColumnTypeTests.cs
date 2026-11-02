@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -167,7 +168,10 @@ public sealed class ColumnTypeTests
 
         // sql-ddl's default realization is a lookup table, and the typed column gets its key into the lookup table's code.
         var seed = repo.Repo.ReadFile("db/main/seed.sql");
-        Assert.Contains("ADD CONSTRAINT fk_invoice_events_status_ref FOREIGN KEY (status) REFERENCES", seed, StringComparison.Ordinal);
+        var link = Regex.Match(seed, @"ADD CONSTRAINT fk_invoice_events_status_ref FOREIGN KEY \(status\) REFERENCES (?<table>[\w.]+) \(code\);");
+        Assert.True(link.Success, seed);
+        Assert.Equal("billing.invoice_states", link.Groups["table"].Value);
+        Assert.Matches(@"CREATE TABLE (IF NOT EXISTS )?" + Regex.Escape(link.Groups["table"].Value) + @" \(", seed);
     }
 
     [Fact]

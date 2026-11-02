@@ -11,6 +11,8 @@ public sealed class BindingCommandTests
 {
     private const string Notes = ".maquettiste/model/databases/main/tables/notes.json";
     private const string InvoiceNote = ".maquettiste/model/entities/invoice-note.json";
+    private const string Invoices = ".maquettiste/model/databases/main/tables/invoices.json";
+    private const string Settings = ".maquettiste/maquettiste.json";
     private const string CreatedAt = "01K6BND0000000000000000006";
     private const string Body = "01K6BND0000000000000000013";
 
@@ -101,6 +103,34 @@ public sealed class BindingCommandTests
         var customer = await repo.RunAsync("binding", "drift", "--check", "--all", "CustomerNote");
         Assert.True(customer.ExitCode == 0, customer.ToString());
         Assert.Equal("CustomerNote in main (notes), no provenance\n  nothing to report\n", customer.Out);
+    }
+
+    [Fact]
+    public async Task A_new_invoice_column_is_drift_and_fails_validate_once_MQ4047_is_an_error()
+    {
+        // next-phase-2-design.md section 3.3, acceptance: materialize binds Invoice to its table with provenance; a column added to the
+        // table is listed by binding drift and is MQ4047, a warning, until the project makes it an error that makes validate exit 1.
+        using var repo = CliRepo.Billing();
+        var materialized = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice");
+        Assert.True(materialized.ExitCode == 0, materialized.ToString());
+        var table = JsonNode.Parse(repo.Read(Invoices))!.AsObject();
+        table["columns"]!.AsArray().Add(new JsonObject { ["id"] = "01K9D0E0000000000000000001", ["name"] = "due_on", ["type"] = "date" });
+        WriteJson(repo, Invoices, table);
+
+        var drift = await repo.RunAsync("binding", "drift", "--database", "main", "Invoice");
+        Assert.True(drift.ExitCode == 0, drift.ToString());
+        Assert.Equal("Invoice in main (invoices)\n  added due_on (unaccounted)\n", drift.Out);
+
+        var warned = await repo.RunAsync("validate");
+        Assert.True(warned.ExitCode == 0, warned.ToString());
+        Assert.Contains(Text.Lines(warned.Out), l => l.Contains(": warning MQ4047: ", StringComparison.Ordinal) && l.Contains("'due_on'", StringComparison.Ordinal));
+
+        var settings = JsonNode.Parse(repo.Read(Settings))!.AsObject();
+        settings["validation"] = new JsonObject { ["rules"] = new JsonObject { ["MQ4047"] = "error" } };
+        WriteJson(repo, Settings, settings);
+        var failed = await repo.RunAsync("validate");
+        Assert.True(failed.ExitCode == 1, failed.ToString());
+        Assert.Contains(Text.Lines(failed.Out), l => l.Contains(": error MQ4047: ", StringComparison.Ordinal) && l.Contains("'due_on'", StringComparison.Ordinal));
     }
 
     [Fact]

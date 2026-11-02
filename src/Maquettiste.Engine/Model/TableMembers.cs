@@ -130,8 +130,21 @@ internal static class TableMembers
             return cached.Matches(effective, redefines, excludes) ? cached.Set : Build(tableKey, effective, redefines, excludes, skip);
         }
 
-        var entry = new Entry(effective, redefines, excludes, Build(tableKey, effective, redefines, excludes, skip));
-        return sets.GetOrAdd(cacheKey, entry).Set;
+        return Store(sets, cacheKey, new Entry(effective, redefines, excludes, Build(tableKey, effective, redefines, excludes, skip)));
+    }
+
+    /// <summary>
+    /// Stores a built entry unless another caller stored one for the key first, and answers the built entry's inputs: the stored set
+    /// only when it is this entry or was built from the same inputs, else the built set (uncached), as a cache hit does.
+    /// </summary>
+    /// <param name="sets">The cache.</param>
+    /// <param name="key">The table key and skip key.</param>
+    /// <param name="entry">The entry just built.</param>
+    /// <returns>The member set for the entry's inputs.</returns>
+    internal static TableMemberSet Store(ConcurrentDictionary<(string TableKey, string Skip), Entry> sets, (string TableKey, string Skip) key, Entry entry)
+    {
+        var stored = sets.GetOrAdd(key, entry);
+        return ReferenceEquals(stored, entry) || stored.Matches(entry.Effective, entry.Redefines, entry.Excludes) ? stored.Set : entry.Set;
     }
 
     /// <summary>The table key of a table file: its id, or the synthesized key an overlay targets (engine-design.md section 7.3).</summary>
@@ -458,7 +471,8 @@ internal static class TableMembers
         public ConcurrentDictionary<(string TableKey, string Skip), Entry> Sets { get; } = new();
     }
 
-    private sealed record Entry(IReadOnlyList<AppliedStereotype> Effective, IReadOnlyList<TableRedefinition> Redefines, IReadOnlyList<string> Excludes,
+    /// <summary>A cached member set with the inputs it was built from.</summary>
+    internal sealed record Entry(IReadOnlyList<AppliedStereotype> Effective, IReadOnlyList<TableRedefinition> Redefines, IReadOnlyList<string> Excludes,
         TableMemberSet Set)
     {
         public bool Matches(IReadOnlyList<AppliedStereotype> effective, IReadOnlyList<TableRedefinition> redefines, IReadOnlyList<string> excludes) =>

@@ -11944,6 +11944,15 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            /** @description The seed's rows script (`rowsFrom.script`) fails, so there are no rows to export; the report holds its MQ7127. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationReport"];
+                };
+            };
         };
     };
     importSeedCsv: {

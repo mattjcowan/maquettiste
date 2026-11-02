@@ -1017,7 +1017,8 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
     /// Records provenance on a binding node: with <paramref name="written"/> <see langword="null"/>, or when the binding has none (or one
     /// none of whose ids is a column of the source, which is read as none), every column of the source; otherwise the entries of the
     /// columns whose fields the operation writes, the others left as they are, so an operation never refreshes an entry it does not
-    /// write. The keys are written in ordinal order, as the canonical writer sorts them.
+    /// write; a written id the source no longer has loses its entry. The keys are written in ordinal order, as the canonical writer
+    /// sorts them.
     /// </summary>
     /// <param name="binding">The binding node.</param>
     /// <param name="columns">The source's columns now.</param>
@@ -1041,6 +1042,8 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             {
                 if (byId.TryGetValue(id, out var shape))
                     map[id] = shape;
+                else
+                    map.Remove(id);
             }
         }
         else

@@ -1000,4 +1000,70 @@ public sealed class TableSeedTests
         await NaturalKeyTablesAsync(r, identity: true);
         Assert.DoesNotContain((await CreateAsync(r, InvoiceSeedJson(Natural, ("INV-1", "\"ada@example.com\"")))).Diagnostics, x => x.Rule == "MQ4056");
     }
+
+    [Fact]
+    public async Task A_lookup_through_a_lookup_is_MQ4056_outside_PostgreSQL_and_MQ7125_in_a_stable_id_key()
+    {
+        await using var r = await RepoAsync();
+        const string Edge = "01K6TSP0000000000000000099";
+        await CreateAsync(r, $$"""{"kind":"database","id":"{{Edge}}","name":"edge","dialect":"sqlite"}""");
+        await NaturalKeyTablesAsync(r, identity: true, database: Edge, prefix: OnSqlite);
+        await CreateAsync(r, InvoiceSeedJson(OnSqlite, ("INV-1", "\"ada@example.com\"")));
+        Assert.Equal(SaveOutcome.Saved, (await EditAsync(r, N(10, OnSqlite), node => node["uniques"]!.AsArray().Add(new JsonObject
+        {
+            ["id"] = N(18, OnSqlite), ["name"] = "uq_invoices_customer_number", ["columns"] = new JsonArray(N(14, OnSqlite), N(12, OnSqlite)),
+        }))).Outcome);
+
+        // invoice_lines references invoices (customer_id, number): an invoice's customer_id comes through its own entry from an
+        // identity of customers, so a line's customer_id is a lookup through a lookup, and its key (customer_id, invoice_number) holds it.
+        await CreateAsync(r, $$"""
+            {"kind":"table","id":"{{N(30, OnSqlite)}}","name":"invoice_lines","database":"{{Edge}}","columns":[
+              {"id":"{{N(31, OnSqlite)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
+              {"id":"{{N(32, OnSqlite)}}","name":"customer_id","type":"int64","nullable":false},
+              {"id":"{{N(33, OnSqlite)}}","name":"invoice_number","type":"string","length":32,"nullable":false}],
+             "primaryKey":{"columns":["{{N(31, OnSqlite)}}"]},"uniques":[{"id":"{{N(34, OnSqlite)}}","name":"uq_invoice_lines_invoice","columns":["{{N(32, OnSqlite)}}","{{N(33, OnSqlite)}}"]}],
+             "foreignKeys":[{"id":"{{N(35, OnSqlite)}}","name":"fk_invoice_lines_invoice","columns":["{{N(32, OnSqlite)}}","{{N(33, OnSqlite)}}"],
+               "referencesTable":"{{N(10, OnSqlite)}}","referencesColumns":["{{N(14, OnSqlite)}}","{{N(12, OnSqlite)}}"]}]}
+            """);
+        await WriteSeedAsync(r, N(36, OnSqlite), $$"""
+            {"kind":"seed","id":"{{N(36, OnSqlite)}}","name":"invoiceLines","target":"{{N(30, OnSqlite)}}","key":"{{N(34, OnSqlite)}}","columns":["{{N(35, OnSqlite)}}"],
+             "rows":[{"id":"{{N(37, OnSqlite)}}","values":["INV-1"]}]}
+            """);
+
+        var rules = await RulesOfAsync(r, N(36, OnSqlite), "MQ4056", "MQ7125");
+        var lookup = Assert.Single(rules, x => x.Rule == "MQ4056");
+        Assert.Equal((DiagnosticSeverity.Warning, "/columns/0"), (lookup.Severity, lookup.JsonPointer));
+        Assert.Contains("names rows of table 'invoices' whose column 'customer_id' comes through foreign key 'fk_invoices_customer' from rows of table"
+            + " 'customers' whose column 'id' the database fills (identity), which sqlite (database 'edge') cannot look up", lookup.Message, StringComparison.Ordinal);
+        var key = Assert.Single(rules, x => x.Rule == "MQ7125");
+        Assert.Equal((DiagnosticSeverity.Error, "/key"), (key.Severity, key.JsonPointer));
+        Assert.Contains("its row key holds column 'customer_id', which foreign key 'fk_invoice_lines_invoice' fills from rows of table 'invoices'"
+            + " whose column 'customer_id' comes through foreign key 'fk_invoices_customer'", key.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Lookups_that_lead_back_to_their_own_column_end_without_a_finding()
+    {
+        await using var r = await RepoAsync();
+        const string Edge = "01K6TSP0000000000000000099";
+        await CreateAsync(r, $$"""{"kind":"database","id":"{{Edge}}","name":"edge","dialect":"sqlite"}""");
+
+        // nodes.twin references nodes(twin) and the seed fills it through that foreign key, so judging what a row's twin holds leads
+        // back to twin itself: the judgement stops there instead of following the loop for ever.
+        await CreateAsync(r, $$"""
+            {"kind":"table","id":"{{N(40, OnSqlite)}}","name":"nodes","database":"{{Edge}}","columns":[
+              {"id":"{{N(41, OnSqlite)}}","name":"code","type":"string","length":16,"nullable":false},
+              {"id":"{{N(42, OnSqlite)}}","name":"twin","type":"string","length":16}],
+             "primaryKey":{"columns":["{{N(41, OnSqlite)}}"]},"uniques":[{"id":"{{N(43, OnSqlite)}}","name":"uq_nodes_twin","columns":["{{N(42, OnSqlite)}}"]}],
+             "foreignKeys":[{"id":"{{N(44, OnSqlite)}}","name":"fk_nodes_twin","columns":["{{N(42, OnSqlite)}}"],"referencesTable":"{{N(40, OnSqlite)}}",
+               "referencesColumns":["{{N(42, OnSqlite)}}"]}]}
+            """);
+        await WriteSeedAsync(r, N(45, OnSqlite), $$"""
+            {"kind":"seed","id":"{{N(45, OnSqlite)}}","name":"nodes","target":"{{N(40, OnSqlite)}}","columns":["{{N(41, OnSqlite)}}","{{N(44, OnSqlite)}}"],
+             "rows":[{"id":"{{N(46, OnSqlite)}}","values":["a","a"]}]}
+            """);
+
+        Assert.Empty(await RulesOfAsync(r, N(45, OnSqlite), "MQ4056", "MQ7125"));
+        Assert.DoesNotContain((await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ4056" && d.ElementId == N(45, OnSqlite));
+    }
 }

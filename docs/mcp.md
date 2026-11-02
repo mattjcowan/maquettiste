@@ -401,27 +401,28 @@ view, entity or attribute a query reads refuses with the query among the referre
 deleted whole.
 
 Bindings (added 2026-10-02, erratum E43) live in the entity's file, `bindings`, one per database: where the entity reads
-(`source`: a table, a view or a query of the database), its `constants` (a filter on every read and a value on every insert,
-several allowed, which is how several entities share one table through an `entity_type` column), its `fields` (attribute id,
-`attributeId.memberId` or a to-one relation end id, and the source column it reads, by key or name), the `columns` it accounts
-for without a field (`ignored`, `database`, `computed`), where it writes (`write`: `{ "table": id }` or `"none"`; the source
-when it is a table) and how it deletes (`delete`: `"key"`, `{ "soft": { "column", "value" } }` or `"none"`). An entity with a
-binding to a database is never projected into it. Bind entities explicitly: create the binding with `save_element`, or let
-`apply_batch` write it with `materialize-tables` (a designed table with the shape the entity's projection has, and the binding)
-or `materialize-entities` (an entity bound to each table), or give a bound entity attributes for its source's columns with
-`materialize-attributes` (an attribute per column nothing in the binding names, or per column named, mapped to it), or give its
-table columns for its unmapped attributes with `materialize-columns` (shaped as the projection would make them); `get_materialize_status` says what is left to bind and
-`preview_materialize` shows a plan first. The by-name operations record the binding's provenance (each column of its table file as
-two short hashes, name and type), so `get_binding_drift` lists what changed in the table since, `validate` reports a mapped column
-renamed or retyped (MQ4087) and provenance that does not describe the source (MQ4088), and `resync-binding` catches up in one
-batch; `map-by-name` maps unmapped attributes to free columns of the same loose name. `get_database_view` lists on each table, view and query its `boundBy` (the entities
-that read or write it, with their constants); `get_resolved_model` gives each entity record its resolved `bindings`;
-`preview_binding_sql` renders a binding's five statements for any dialect. `validate` reports MQ4044 to MQ4054 for them
-(MQ4047, a column nothing accounts for, is the "a mapping for every column" warning), and MQ4087 and MQ4088 for provenance.
-An attribute with no description of its own shows the comment of the column a binding maps it to, and its resolved record
-names that column in `descriptionColumn`. Deleting a table, view, query or
-database a binding names refuses with the entity among the referrers; with `remove-references` or `delete-dependents` the
-binding is removed and the entity stays.
+(`source`: a table, a view or a query of the database), its `constants` (a filter on every read and a value on every
+insert, several allowed, which is how several entities share one table through an `entity_type` column), its `fields`
+(attribute id, `attributeId.memberId` or a to-one relation end id, and the source column it reads, by key or name), the
+`columns` it accounts for without a field (`ignored`, `database`, `computed`), where it writes (`write`: `{ "table": id
+}` or `"none"`; the source when it is a table) and how it deletes (`delete`: `"key"`, `{ "soft": { "column", "value" }
+}` or `"none"`). An entity with a binding to a database is never projected into it. Bind entities explicitly: create the
+binding with `save_element`, or let `apply_batch` write it with `materialize-tables` (a designed table with the shape
+the entity's projection has, and the binding) or `materialize-entities` (an entity bound to each table), or give a bound
+entity attributes for its source's columns with `materialize-attributes` (an attribute per column nothing in the binding
+names, or per column named, mapped to it), or give its table columns for its unmapped attributes with
+`materialize-columns` (shaped as the projection would make them); `get_materialize_status` says what is left to bind and
+`preview_materialize` shows a plan first. The by-name operations record the binding's provenance (each column of its
+table file as two short hashes, name and type), so `get_binding_drift` lists what changed in the table since, `validate`
+reports a mapped column renamed or retyped (MQ4087) and provenance that does not describe the source (MQ4088), and
+`resync-binding` catches up in one batch; `map-by-name` maps unmapped attributes to free columns of the same loose name.
+`get_database_view` lists on each table, view and query its `boundBy` (the entities that read or write it, with their
+constants); `get_resolved_model` gives each entity record its resolved `bindings`; `preview_binding_sql` renders a
+binding's five statements for any dialect. `validate` reports MQ4044 to MQ4054 for them (MQ4047, a column nothing
+accounts for, is the "a mapping for every column" warning), and MQ4087 and MQ4088 for provenance. An attribute with no
+description of its own shows the comment of the column a binding maps it to, and its resolved record names that column
+in `descriptionColumn`. Deleting a table, view, query or database a binding names refuses with the entity among the
+referrers; with `remove-references` or `delete-dependents` the binding is removed and the entity stays.
 
 Reference types and seeds are elements: `get_element`, `create_element`, `save_element` and `apply_batch` handle them. Translations
 live in locale shards, not in element files: read them with `get_translations`, then pass the `shardHash` values you read as

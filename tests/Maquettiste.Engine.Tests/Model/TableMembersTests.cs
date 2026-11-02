@@ -164,6 +164,30 @@ public sealed class TableMembersTests
     }
 
     [Fact]
+    public void A_set_stored_first_by_another_caller_answers_only_its_own_inputs()
+    {
+        // The insert side of the cache (next-phase-2-design.md decision 25): when another caller stored an entry for the key between
+        // the lookup and the insert, the stored set answers only if it was built from the same inputs.
+        var f = Build();
+        var effective = f.Model.EffectiveStereotypes(f.Notes);
+        var key = (f.Notes.Id, "");
+        var sets = new System.Collections.Concurrent.ConcurrentDictionary<(string TableKey, string Skip), TableMembers.Entry>();
+        var racer = new TableMembers.Entry(effective, f.Notes.Redefines, [f.Audited.Columns[1].Id], TableMemberSet.Empty(f.Notes.Id));
+        sets[key] = racer;
+
+        var mine = new TableMembers.Entry(effective, f.Notes.Redefines, f.Notes.Excludes, TableMembers.Of(f.Model, f.Notes));
+        Assert.Same(mine.Set, TableMembers.Store(sets, key, mine));
+        Assert.Same(racer, sets[key]);
+        // A stored entry from the same inputs answers; an empty slot takes the built entry.
+        var same = mine with { Set = TableMemberSet.Empty(f.Notes.Id) };
+        sets[key] = mine;
+        Assert.Same(mine.Set, TableMembers.Store(sets, key, same));
+        sets.Clear();
+        Assert.Same(same.Set, TableMembers.Store(sets, key, same));
+        Assert.Same(same, sets[key]);
+    }
+
+    [Fact]
     public void The_design_examples_validate_against_the_schemas()
     {
         // next-phase-2-design.md section 3.1: the audited and child-row stereotypes, and the overlay and table entries of the examples.

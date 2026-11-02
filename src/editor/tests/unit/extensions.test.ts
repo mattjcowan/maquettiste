@@ -94,7 +94,10 @@ describe("extension files", () => {
     expect(extensionPathProblem("seeds/deep/rows.js", "seed-rows", [])).toMatch(/seeds\/<name>\.js/);
     expect(freePath("seed-rows", ["seeds/new-rows.js"])).toBe("seeds/new-rows-2.js");
     expect(extensionPathOf(finding("MQ7127", ".maquettiste/extensions/seeds/audited-records.js"))).toBe("seeds/audited-records.js");
-    const withRows: ExtensionFile[] = [...files, { path: "seeds/audited-records.js", kind: "seed-rows", size: 10, hash: "c".repeat(64), diagnostics: [], rules: [] }];
+    const withRows: ExtensionFile[] = [
+      ...files,
+      { path: "seeds/audited-records.js", kind: "seed-rows", size: 10, hash: "c".repeat(64), diagnostics: [], rules: [] },
+    ];
     const rows = extensionRows(withRows, new Set([EXTENSIONS_KEY]), 3, 3);
     expect(rows[0].detail).toBe("1 schema · 1 rule · 1 rows script");
     expect(rows.at(-1)).toMatchObject({ label: "seeds/audited-records.js", detail: "rows script" });

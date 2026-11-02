@@ -147,14 +147,24 @@ public static class LocalizationEndpoints
     /// <param name="context">The request.</param>
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
-    /// <returns>200 or 404.</returns>
+    /// <returns>200, 404, or 422 with the MQ7127 diagnostic when the seed's rows script fails.</returns>
     [HttpGet("/api/seeds/{id}/csv")]
     public static Task<IResult> ExportSeed(string id, string? bom, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
         var locales = context.Request.Query["locale"].Where(l => !string.IsNullOrEmpty(l)).Select(l => l!).ToList();
-        var text = await store.ExportSeedCsvAsync(id, bom == "true", locales, ct).ConfigureAwait(false);
+        string? text;
+        try
+        {
+            text = await store.ExportSeedCsvAsync(id, bom == "true", locales, ct).ConfigureAwait(false);
+        }
+        catch (Engine.Scripting.ScriptErrorException ex)
+        {
+            // A scripted seed whose rows script fails has no rows to export: its MQ7127, as a validation report.
+            return Api.Json(ValidationReport.From([ex.Diagnostic]), StatusCodes.Status422UnprocessableEntity);
+        }
+
         return text is null ? Api.NotFound("seed", id) : Results.Text(text, "text/csv; charset=utf-8");
     });
 

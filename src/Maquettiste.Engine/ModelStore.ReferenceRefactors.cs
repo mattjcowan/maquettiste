@@ -59,7 +59,7 @@ public sealed partial class ModelStore
     /// <returns>The refactors that apply; empty when the batch holds none or one is refused.</returns>
     private List<ReferenceRefactor> ExpandReferenceRefactors(ModelSnapshot snapshot, ModelBatch batch, SaveResult?[] invalid, List<PlannedChange> changes)
     {
-        var work = new RefactorWork(snapshot, new Lazy<PackParameterRefs>(() => PackParameterRefs.Read(Paths, snapshot.Settings)));
+        var work = new RefactorWork(snapshot, Paths, new Lazy<PackParameterRefs>(() => PackParameterRefs.Read(Paths, snapshot.Settings)));
         var refused = false;
         for (var i = 0; i < batch.Operations.Count; i++)
         {
@@ -116,8 +116,9 @@ public sealed partial class ModelStore
     /// columns remapped) wait in <see cref="_structural"/> until every refactor has written its values, so no pointer moves under another.
     /// </summary>
     /// <param name="snapshot">The model before the batch.</param>
+    /// <param name="paths">The project's model paths, to tell which seeds sit in their type's seed folder.</param>
     /// <param name="packs">The x-ref values and scopes of the project's pack parameters, read only when a refactor removes something.</param>
-    private sealed class RefactorWork(ModelSnapshot snapshot, Lazy<PackParameterRefs> packs)
+    private sealed class RefactorWork(ModelSnapshot snapshot, ModelPaths paths, Lazy<PackParameterRefs> packs)
     {
         private readonly ReferenceDataIndex _data = snapshot.Index.ReferenceData ?? ReferenceDataIndex.Build(snapshot.Documents.Select(d => d.Element));
         private readonly Dictionary<string, Working> _nodes = new(StringComparer.Ordinal);
@@ -461,9 +462,17 @@ public sealed partial class ModelStore
 
             Mark(type, index);
             Node(type.Id, index, o)["name"] = name;
-            // Its seeds are planned after it, so those in its seed folder follow the new name there.
-            foreach (var seed in SeedsOf(type.Id))
-                Node(seed.Id, index, o);
+            // The seeds in its seed folder are planned after it, so they follow the new name there. A seed elsewhere, or every seed when
+            // the folder keeps its name, does not move: it is not planned, so it needs no expected hash and another operation may change it.
+            if (!string.Equals(ModelPaths.Stem(type), ModelPaths.Stem(type with { Name = name }), StringComparison.Ordinal))
+            {
+                foreach (var seed in SeedsOf(type.Id))
+                {
+                    var seedFolder = ModelPaths.ConventionalFolder(seed, _ => null, _ => ModelPaths.Stem(type));
+                    if (string.Equals(ModelPaths.FolderOf(paths.FromRepoPath(snapshot.GetDocument(seed.Id)!.Path)), seedFolder, StringComparison.Ordinal))
+                        Node(seed.Id, index, o);
+                }
+            }
             Results.Add(new ReferenceRefactor(index, type.Id, type.Id, null, Names(type), Names(type) with { Name = name }, [], true, Usage([], 0, 0, 0)));
             return null;
         }

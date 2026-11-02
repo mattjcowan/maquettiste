@@ -72,9 +72,10 @@ Decisions taken after the section reviews (2026-11-01), each recorded in its sec
     it is.
 11. **Re-sync** renames an attribute only when its name followed the column's old name; `--keep-names` stops every
     rename, and the dry run lists the renames first (3.3).
-12. **Typing an existing column by a reference type** records a type-change fact that asks for a data check, as a
-    change of a reference type's storage already does (3.2). csharp-dapper keeps the code's plain type for such a
-    column and names the reference type in the summary, as it does for attributes.
+12. **Typing an existing column by a reference type** records a type-change fact that asks how values that are not
+    codes convert (`conversion`, MQ4101), and asks for a data check as well only when the column also narrows (3.2,
+    decision 15). csharp-dapper keeps the code's plain type for such a column and names the reference type in the
+    summary, as it does for attributes.
 13. **Value maps come from the four refactors only** (3.5). A plain edit of a code or a type name warns (MQ4114), and
     `validate --against` reports it (MQ4112). The classifier keeps comparing physical shapes only.
 14. **A stable id's namespace is the table id** (3.4). A shared namespace across table files waits until a team needs
@@ -581,8 +582,10 @@ stereotype: the project writes it and chooses where it applies; the engine only 
     overlay; a seed's target may be a table or a reference type).
 20. **Holders of tables without a file** (D3). An entity's table takes its entity's package and `SchemaOf` by the
     entity; a relation's table its relation's package and the default schema's entry; a child table without an overlay
-    takes its owner table's holder, which also covers the child of a relation's table, where routing by package would
-    differ from the resolver. `TableBuild.Holder` and `TableBuild.Effective` keep them for D7.
+    takes its owner table's package and schema, which also covers the child of a relation's table, where routing by
+    package would differ from the resolver. It does not take the owner's own `stereotypes` or `excludeStereotypes`: an
+    owner's exclusion of a default does not reach its child tables, and a child table that needs one gets a file of
+    its own. `TableBuild.Holder` and `TableBuild.Effective` keep them for D7.
 21. **Provenance on attributes and pointers** (D3). `RAttribute.FromStereotype.Source` says where the owner got the
     stereotype. MQ3007 for a virtual attribute of a default points at `/stereotypes`, or the file root without a list;
     MQ5001 and MQ2018 do the same and their messages name the schema entry or package that gives the default.
@@ -1553,10 +1556,11 @@ today it can only say so on attributes.
    columns whose `Type` is `reference`. Typing a designed column by a reference type stored as a lookup table, a CHECK,
    a native type or a bound table, or changing that storage, is then a conversion (`Migrations/Widening.cs:127`), as it
    is today for a projected column: rows already in the column may hold values that are not codes, so the fact asks how
-   they convert (decision 15). Typing it by a type the templates store (no strategy, no binding) changes no captured
-   state. Materializing a projected reference column keeps its reference state, so it records no conversion. Changing
-   `typeRef` between two types with the same storage records no fact; 3.5's value maps cover moving codes. The ledger
-   is unchanged.
+   they convert (decision 15). Typing it by a type the templates store (no strategy, no binding) changes only the
+   captured `referenceType`, which `Widening.SameReference` does not count as a storage change, so no fact is
+   recorded. Materializing a projected reference column keeps its reference state, so it records no conversion.
+   Changing `typeRef` between two types with the same storage records no fact; 3.5's value maps cover moving codes.
+   The ledger is unchanged.
 9. **`sensitive` on columns** takes `pii` or `secret`, like attributes, which keep theirs. It is said once, on either
    side, and the other side shows it. A projected column shows its overlay entry's own value, else its attribute's own.
    A designed, imported or extra column shows its own value, else the strongest own value of the attributes bindings
@@ -1599,8 +1603,8 @@ today it can only say so on attributes.
     MQ4084 judges the table's own foreign keys and the inherited ones that name `referencesTable`; one that names
     `referencesParameter` resolves per table and waits for a team that needs it. A `typeRef` naming a kind outside the
     model's type references (an entity, a table) stays MQ2002 and is not also MQ4082. The new conflict peers reach the
-    tables that list a stereotype with a typed column, not those that get it through a default list. A number or boolean in
-    a table seed cell of a text column stands for its text, as MQ7109 reads it, before the code check.
+    tables that list a stereotype with a typed column, not those that get it through a default list. A number or boolean
+    in a table seed cell of a text column stands for its text, as MQ7109 reads it, before the code check.
 18. **A value object member keeps its own sensitivity** (D23). The pass after every database sets only the entity's own
     attributes: a value object's member, which a field may map, is one object shared by every embedding, so it never
     borrows a column's value. The column still shows the member's own value. The column's own value is kept apart from
@@ -1666,8 +1670,10 @@ Example, in a billing copy (`InvoiceState` is an invented reference type with on
   imported or extra column that states none takes the strongest own value of the attributes its binding fields map; the
   table already depends on each entity bound to it (`DatabaseRun.Bindings.cs:63-71`). The pass after every database
   (`Resolution/ResolveRun.Shared.cs`, new, called after `FinishConceptual`) sets each bound attribute that states none
-  from the columns its bindings map; such an attribute depends on those columns' tables whether or not they state a
-  value, so a later `sensitive` on the column replans what reads it. One-database runs (`ResolveRun.cs:84-125`) skip
+  from the columns its bindings map; such an attribute depends on what states those columns' entries whether or not
+  they state a value, so a later `sensitive` on the column replans what reads it (`RTable.EntryKeys`: a designed or
+  imported table's file, database, stereotypes and package chain, not the other entities bound to the table; a table
+  without such a file, its whole dependency set). One-database runs (`ResolveRun.cs:84-125`) skip
   that pass: the explorer's one-database views show columns' values, not attributes' borrowed ones, and nothing there
   reads attributes.
 - **Snapshots.** `SnapshotCapture.cs:222-224` keys on `column.ReferenceType is not null`. No column has a `typeRef`
@@ -2106,15 +2112,17 @@ copying text.
     query is. A stale provenance is read as none, so an operation that adds fields replaces it with every column.
 19. **Re-sync details** (D33). Without a provenance, or with a stale one, step 4 adds the columns nothing accounts for
     (the drift's added list then), and step 6 records every column even with `columns`. Step 5 removes only fields that
-    name a removed recorded id. A binding is in step when the re-sync would change nothing in the entity's file. Whether
-    an attribute keeps its type is MQ4083's fit (`ColumnTypeRules.Holds`), and only while the column's own `typeRef`, if
-    any, names the same type.
+    name a removed recorded id, and runs before the match by name, so a column dropped and added again under the same
+    name moves its attribute to the new column instead of adding a second one, also when the re-sync names columns (the
+    gone column's provenance entry goes with its field). A binding is in step when the re-sync would change nothing in
+    the entity's file. Whether an attribute keeps its type is MQ4083's fit (`ColumnTypeRules.Holds`), and only while the
+    column's own `typeRef`, if any, names the same type.
 20. **The contract catches up with 3.1** (D33): `docs/api/openapi.yaml`'s `BatchOp` gains `fold-into-stereotype` beside
     `map-by-name` and `resync-binding`, and `BatchOperation` gains `redefine` and `excludeMissing` beside `keepNames`.
 21. **The description fallback reads the read column first** (D34): within one binding, a field's source column is read
     before its write column, fields in file order; bindings in database name order, the order of `REntity.Bindings`. The
-    fallback and 3.2's sensitivity share one walk of `ResolveRun.Shared.cs`, so an attribute that states a sensitivity but
-    no description now depends on its bound columns' tables too.
+    fallback and 3.2's sensitivity share one walk of `ResolveRun.Shared.cs`, so an attribute that states a sensitivity
+    but no description now depends on its bound columns' entries too (`RTable.EntryKeys`, as in 3.2).
 22. **The drift report takes a database by id or name** (D35): `BindingDriftQuery.Database` and `get_binding_drift`'s
     `database` accept either, as `list_migrations` does; an unknown database, an unknown entity id or a cursor no page
     returned is an `ArgumentException` or `FormatException`, which the tool answers as `bad-request`. The CLI resolves
@@ -2125,6 +2133,9 @@ copying text.
 24. **The stored table keeps the overlay's id, not its file name** (D36): `materialize-tables` writes Invoice's table to
     `tables/invoices.json`, the file named after the table; the acceptance tests check the id
     `01J92P0V1T0J6RH4MY9H81NYB4` and that path.
+25. **MQ4087 has no quick fix yet** (D31). The rules table gives it "Re-sync the binding", but a catalog quick fix is
+    one value of a closed contract enum the editor acts on, and `resync-binding` needs a database as well as the
+    finding's element. Both wait for the editor follow-ups below; until then `maquettiste binding resync` is the fix.
 
 #### Schema and files
 
@@ -2585,8 +2596,8 @@ some kind) is stated once.
     resolver derive the same rows without resolving: an attribute's name, an end's role, a table column's name, and for
     a foreign-key entry the foreign key's name in its table file, else its id, as CSV files head it. A name the
     conventions give an unnamed foreign key is not a key.
-27. **A scripted row without a row key is left out with MQ7128** (found in D43): a key the columns do not name, a key part
-    the row leaves null, or a seed of a reference type that does not list `code`. The rest of the rows stay.
+27. **A scripted row without a row key is left out with MQ7128** (found in D43): a key the columns do not name, a key
+    part the row leaves null, or a seed of a reference type that does not list `code`. The rest of the rows stay.
 28. **MQ7127 sits on the seed's file at `/rowsFrom/script`** (found in D43), its message naming the script's path, line
     and column; a write of the script reports it on the script's own file with its line and column, and MQ5005 stays on
     the script's file.
@@ -2611,9 +2622,11 @@ some kind) is stated once.
     referenced table's name, schema-qualified when it has a schema. The cursor holds a row's position, so pages keep the
     seed's order. With a database, a model whose errors stop resolution answers no rows and those errors.
 33. **Exports and imports of a scripted seed fail loudly** (found in D44). An export whose script fails throws its
-    MQ7127: `export_seed_csv` answers `invalid` with it, `seed export` prints it and exits 1. The store refuses an
-    import into a scripted seed, the batch import included, with a `FormatException`, which `import_seed_csv` and the
-    editor's API already answer as `bad-request` (400); `seed import` checks first and exits 4.
+    MQ7127 (`Scripting.ScriptErrorException`, public since public calls throw it): `export_seed_csv` answers `invalid`
+    with it, the editor API's CSV export answers 422 with it as a validation report, and `seed export` prints it and
+    exits 1. The store refuses an import into a scripted seed, the batch import included, with a `FormatException`,
+    which `import_seed_csv` and the editor's API already answer as `bad-request` (400); `seed import` checks first and
+    exits 4.
 
 #### Schema and files
 
@@ -3004,12 +3017,12 @@ and owns them; D41 and D43 follow D40 for that reason.
   `RowsOf`; MQ7127, MQ7128; the scoped code checks of decision 17), `ModelStore.Extensions.cs` (`seeds/*.js`, kind
   `seed-rows`), the validations previews wait on (decision 31: internal `ValidationScope.Previews` in
   `Diagnostics/Diagnostic.cs`, `ModelStore.ResolverFindings.cs`, `ModelStore.cs`, `GenerationService.cs`,
-  `Editor/DatabaseTables.cs`), `Diagnostics/RuleCatalog.cs` (MQ7127, MQ7128; the MQ7116 and MQ5005 texts), `CatalogTests.cs` (+2),
-  `ResolvedCoverageTests`. Tests: `ScriptedSeedTests` (all but the acceptance case), `RegistrationTests`,
-  `DependencyKeyTests`, `PlanCauseTests`, `ExtensionFilesTests`. Verify:
-  `E "~ScriptedSeedTests|~Scripting.|~DependencyKeyTests|~PlanCauseTests|~ExtensionFilesTests|~HashingAndStateTests"`;
-  `E "~ReferenceData|~CatalogTests|~ValidationFixtureTests|~ReadTrackingTests|~ResolvedCoverageTests"`;
-  `P "~GoldenTests"` (unchanged); `editor`; `copies`; `record`.
+  `Editor/DatabaseTables.cs`), `Diagnostics/RuleCatalog.cs` (MQ7127, MQ7128; the MQ7116 and MQ5005 texts),
+  `CatalogTests.cs` (+2), `ResolvedCoverageTests`. Tests: `ScriptedSeedTests` (all but the acceptance case),
+  `RegistrationTests`, `DependencyKeyTests`, `PlanCauseTests`, `ExtensionFilesTests`. Verify: `E
+  "~ScriptedSeedTests|~Scripting.|~DependencyKeyTests|~PlanCauseTests|~ExtensionFilesTests|~HashingAndStateTests"`; `E
+  "~ReferenceData|~CatalogTests|~ValidationFixtureTests|~ReadTrackingTests|~ResolvedCoverageTests"`; `P "~GoldenTests"`
+  (unchanged); `editor`; `copies`; `record`.
 - **D44. Seed preview, CSV and extension tools.** Runs after D43, D12 (`docs/mcp.md`), D34 (`docs/api/openapi.yaml`) and
   D35 (`Agent/tools.json`, `Agent/AgentTools.cs`, `src/Maquettiste.Cli/CliApp.cs`, the tool pins). Owns:
   `ModelStore.SeedPreview.cs` (new), `Agent/tools.json`, `Agent/AgentTools.cs`, `Agent/AgentTools.Handlers.cs`, the
@@ -3194,6 +3207,14 @@ records the database step once, as a migration fact that every environment appli
     (`ModelStore.ReferenceRefactors.cs`), as the merge acceptance expects; decision 9 still retargets a seed that keeps
     a moving row. The acceptance seed is `DemoInvoices` (a seed name is an identifier) with the `createdAt` cells
     `audited` requires, and the rename acceptance adds a database that stores no codes, so its dry run computes facts.
+21. **Taken during the review fixes (issue #2).** Step 2 upserts only the rows the map points to (every row after a
+    merge), each row a reference field of it names first, in foreign-key order, after creating every lookup table those
+    fields reference, and each table and row once per migration. Before the first enum retype the step drops every view
+    of the model, each before the views it reads, and the migration creates them all again at its end, after the schema
+    statements: the model does not say which views read which column, and a view created inside the step would use
+    definitions whose tables and columns are not renamed or added yet. A view outside the model needs `raw` facts
+    (`packs/sql-ddl/README.md`). A value map without values reads as a merge when it names a `fromReferenceType`, and as
+    a rename when only the plural changes. `rename-reference-type` plans only the seeds in the type's own seed folder.
 
 #### Schema and files
 

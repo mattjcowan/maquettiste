@@ -645,17 +645,24 @@ export class MockLocalization {
     }
     // Columns of table files whose own typeRef names the type (next-phase-2-design.md 3.2); the mock resolves no stereotype
     // members, so inherited columns are left out.
+    // Like the server, a row always carries domain, storage and boundTable, null when missing.
+    const refType = docs.get(id)!;
+    const storage = (refType.storage ?? {}) as Record<string, Json>;
+    const bindings = (Array.isArray(refType.bindings) ? refType.bindings : []) as Json[];
     const columns: Json[] = [];
     for (const [table, json] of docs) {
       if (json.kind !== "table") continue;
+      const database = json.database as string;
       for (const c of (Array.isArray(json.columns) ? json.columns : []) as Json[]) {
         if ((c.typeRef as Json | undefined)?.ref !== id) continue;
         columns.push({
           table,
           column: c.id,
-          database: json.database,
-          ...(typeof json.package === "string" ? { domain: json.package } : {}),
+          database,
+          domain: (json.package as string | undefined) ?? null,
           required: c.nullable === false,
+          storage: storage[database] ?? storage["*"] ?? null,
+          boundTable: (bindings.find((b) => b.database === database)?.table as string | undefined) ?? null,
         });
       }
     }

@@ -78,8 +78,8 @@ one.
   added columns get attributes, and removed columns lose their fields; a refused operation is MQ4089.
   `materialize-entities` and `materialize-attributes` type an attribute by its column's `typeRef`, and a foreign key
   into a reference type's bound table makes no relation. An attribute with no description of its own shows its bound
-  column's comment, named by `descriptionColumn` in the resolved model, so billing's `InvoiceNote.body` is documented
-  from the `notes.body` comment in generated code. The [bind entities
+  column's comment, named by `descriptionColumn` in the resolved model, so when billing's `notes.body` column carries a
+  comment, `InvoiceNote.body` is documented with it in generated code. The [bind entities
   guide](guides/bind-entities.md#7-keep-a-binding-in-step-with-its-table) walks through it.
 - **Seeds by natural key.** A table seed can list a foreign key of its table in `columns`, in place of the key's own
   columns, and give in each cell the referenced row's natural key: `"ada@example.com"`, or `["ACME", "EU"]` for a key of
@@ -140,10 +140,35 @@ one.
   step per storage strategy. The ledger is unchanged.
 - New rules check former codes: a live, repeated or ill-fitting one (MQ7017), a `replacedBy` that is not a row of the
   type (MQ7018), and a default, allowed value or seed cell that names one (MQ7019); MQ7020 refuses a refactor that
-  cannot apply. MQ4113 refuses an
-  open value map that maps away a live code, MQ4114 warns when a plain save changes a kept row's code or a type's name,
-  and `validate --against` reports such a change that no value map explains (MQ4112). MQ4106 and MQ4103 cover value
-  maps.
+  cannot apply. MQ4113 refuses an open value map that maps away a live code, MQ4114 warns when a plain save changes a
+  kept row's code or a type's name, and `validate --against` reports such a change that no value map explains
+  (MQ4112). MQ4106 and MQ4103 cover value maps.
+- **Fixes from the milestone D review.** The 37 notes of [issue #2](https://github.com/mattjcowan/maquettiste/issues/2)
+  are fixed before release. Those a user can see:
+  - On PostgreSQL, a value map that retypes an enum column first drops the views the model knows about, and those the
+    migration removes, and creates the model's views again at the end of the migration. A view outside the model needs a
+    `raw` fact before and after the step (see the sql-ddl pack's README).
+  - A value-map step upserts only the lookup rows it needs, after the rows their fields name, and creates the lookup
+    tables a new lookup table references before it, so a row that names a code, or a table, new in this generation no
+    longer fails. Each table and row is written once per migration.
+  - `list_migrations` and write answers summarize a merge whose codes all match as a merge, and a change of a type's
+    plural name alone as a rename.
+  - `rename-reference-type` plans only the seeds in the type's own seed folder, so other operations in the batch can
+    change the rest.
+  - Re-syncing a binding after a column was dropped and added again under the same name moves the attribute to the new
+    column instead of adding a second one, also when the re-sync names only some columns.
+  - An attribute that shows a bound column's sensitivity or comment is no longer planned again when another entity bound
+    to the same table changes.
+  - Seed validation follows a lookup through another lookup, as generation does (MQ4056, MQ7125). Outside PostgreSQL,
+    the seed script's TODO for such a lookup stays one comment.
+  - The editor API's CSV export of a seed whose rows script fails answers 422 with MQ7127 instead of 500. The engine's
+    `ScriptErrorException` is now public, so a host can catch that failure from `ModelStore.ExportSeedCsvAsync`.
+  - `fold-into-stereotype` refuses with MQ4077, naming the cause, when its result cannot be checked or when another
+    operation in the batch writes a document it rewrites.
+  - Findings about a default stereotype's parameters name the schema or package instead of its id, and MQ2011 suggests a
+    keyed id only when the table inherits the member.
+  - Changing an enum or reference type re-checks tables that get its typed column through an implied stereotype, and
+    changing a schema's defaults re-checks the relations whose overlay puts their table in that schema.
 
 ## 0.11.0 (unreleased)
 

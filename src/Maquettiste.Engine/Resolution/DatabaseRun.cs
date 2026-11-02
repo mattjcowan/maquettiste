@@ -471,7 +471,15 @@ internal sealed partial class DatabaseRun
 
         AddBinderKeys(t.Deps, t.Table.Key);
         if (t.Source is { } designedFile)
+        {
             AddBinderKeys(t.Deps, designedFile.Id);
+            var entries = new DependencySet(_run.Keys).Element(designedFile.Id).Element(_db.Id);
+            foreach (var applied in t.Effective)
+                entries.Element(applied.Stereotype.Id);
+            _run.AddPackageChain(entries, t.Holder.Package);
+            t.Table.EntryKeys = entries.ToList();
+        }
+
         if (t.Overlay is { } overlayFile)
             AddBinderKeys(t.Deps, overlayFile.Id);
         _tables.TryAdd(t.Table.Key, t);

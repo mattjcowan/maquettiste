@@ -230,5 +230,40 @@ public sealed class ScopedValidationTests
         await AssertEveryParticipantSees(model, "MQ7014", enumId, seedId);
     }
 
+    [Fact]
+    public async Task Removing_an_enum_member_rejudges_a_table_that_gets_the_typed_column_through_an_implied_stereotype()
+    {
+        // The table lists lifecycle, which implies stateful, whose column is typed by the enum; the enum's save brings the table seed.
+        static (ModelSnapshot Model, string EnumId, string SeedId) Build(bool withVoid)
+        {
+            const string statusColumn = "01K9X3S0000000000000000031";
+            var b = new ModelBuilder(seed: 3303);
+            var db = b.Database("main", Dialect.PostgreSql);
+            var status = b.Enum("Status").Member("Draft", 0).Member("Issued", 1);
+            if (withVoid)
+                status.Member("Void", 2);
+            b.Add(new Stereotype
+            {
+                Id = b.NewId(), Key = "stateful", Name = "Stateful", AppliesTo = ["table"],
+                Columns = [new Column { Id = statusColumn, Name = "status", Type = "int32", Nullable = false, TypeRef = new TypeRef { Ref = status.Id } }],
+            });
+            b.Stereotype("lifecycle").AppliesTo("table").Implies("stateful");
+            var events = b.Table("invoice_events", db).Column("id", "int32", nullable: false).PrimaryKey("id").Stereotype("lifecycle");
+            var seed = new Seed
+            {
+                Id = "01K9X3S0000000000000000030", Name = "events", Target = events.Id, Columns = [events.ColumnId("id"), events.Id + "." + statusColumn],
+                Rows = [new SeedRow { Id = "01K9X3S0000000000000000032", Values = [Json(1), Json(2)] }],
+            };
+            b.Add(seed);
+            return (b.Build(), status.Id, seed.Id);
+        }
+
+        Assert.DoesNotContain((await Validate(Build(withVoid: true).Model)).Diagnostics, d => d.Rule == "MQ7014");
+        var (model, enumId, seedId) = Build(withVoid: false);
+        var finding = Assert.Single((await Validate(model)).Diagnostics, d => d.Rule == "MQ7014");
+        Assert.Equal(("/rows/0/values/1", model.GetDocument(seedId)!.Path), (finding.JsonPointer, finding.FilePath));
+        await AssertEveryParticipantSees(model, "MQ7014", enumId, seedId);
+    }
+
     private static System.Text.Json.JsonElement Json(object value) => System.Text.Json.JsonSerializer.SerializeToElement(value);
 }

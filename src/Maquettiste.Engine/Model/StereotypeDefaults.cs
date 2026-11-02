@@ -78,16 +78,21 @@ internal sealed class StereotypeDefaults
     /// <summary>
     /// The schema entry whose defaults reach a physical object (tables, views, sequences, routines, database types and SQL objects),
     /// by ids: the stated schema; else, for an entity's table, the schema the database routes it to
-    /// (<see cref="DatabaseScope.SchemaFor(Func{string, string?}, Database, string?, Mapping?)"/>); for a child table, its owner
-    /// entity's table's; else the entry the database's default schema names. A stated or routed id that names no entry of the database
-    /// falls back to that entry too, as the resolver's schema name does. The resolver takes a table without a file through the same rule.
+    /// (<see cref="DatabaseScope.SchemaFor(Func{string, string?}, Database, string?, Mapping?)"/>); for a child table, its owner's
+    /// table's (an entity's table as above; a relation's table, junction or promoted, the schema its relation overlay states); else the
+    /// entry the database's default schema names. A stated or routed id that names no entry of the database falls back to that entry
+    /// too, as the resolver's schema name does. The resolver takes a table without a file through the same rule.
     /// </summary>
     /// <param name="databaseId">The object's database.</param>
     /// <param name="schema">The schema id the object's file states, or <see langword="null"/>.</param>
     /// <param name="entity">For a synthesized table: its entity (a child table's owner); else <see langword="null"/>.</param>
     /// <param name="attribute">For a synthesized child table: the owner's attribute; else <see langword="null"/>.</param>
+    /// <param name="relation">
+    /// For a relation's table (junction or promoted), or a child table without a file that it owns: the relation; else
+    /// <see langword="null"/>. (A table file cannot state an attribute without an entity, so such a child table never has a file.)
+    /// </param>
     /// <returns>The schema entry id, or <see langword="null"/> when the database has no such entry (or is unknown).</returns>
-    public string? SchemaOf(string databaseId, string? schema, string? entity = null, string? attribute = null)
+    public string? SchemaOf(string databaseId, string? schema, string? entity = null, string? attribute = null, string? relation = null)
     {
         var lookups = _lookups.Value;
         if (lookups.ElementById(databaseId) is not Database database)
@@ -98,6 +103,11 @@ internal sealed class StereotypeDefaults
                 return SchemaOf(databaseId, lookups.EntityOverlayOf(databaseId, entity)?.Schema, entity);
             schema = DatabaseScope.SchemaFor(id => (lookups.ElementById(id) as Package)?.Parent, database, OwnPackageOf(lookups.ElementById(entity)),
                 lookups.MappingOf(databaseId, entity));
+        }
+        else if (schema is null && relation is not null)
+        {
+            // A relation's table is in the schema its overlay states (the database does not route relations), its child tables with it.
+            schema = lookups.RelationOverlayOf(databaseId, relation)?.Schema;
         }
 
         if (schema is not null && Contains(database, schema))
@@ -287,6 +297,7 @@ internal sealed class StereotypeDefaults
         private readonly Dictionary<string, DbSchema> _schemas = new(StringComparer.Ordinal);
         private readonly Dictionary<(string Database, string Entity), Mapping> _mappings = [];
         private readonly Dictionary<(string Database, string Entity), Table> _entityOverlays = [];
+        private readonly Dictionary<(string Database, string Relation), Table> _relationOverlays = [];
 
         public Lookups(ImmutableArray<ElementDocument> documents)
         {
@@ -317,7 +328,7 @@ internal sealed class StereotypeDefaults
                     case Mapping { Entity: not null } mapping:
                         mappings.Add(mapping);
                         break;
-                    case Table { Origin: TableOrigin.Synthesized, Entity: not null, Attribute: null } overlay:
+                    case Table { Origin: TableOrigin.Synthesized, Attribute: null } overlay when overlay.Entity is not null || overlay.Relation is not null:
                         overlays.Add(overlay);
                         break;
                 }
@@ -327,7 +338,12 @@ internal sealed class StereotypeDefaults
             foreach (var mapping in mappings.OrderBy(m => m.Id, StringComparer.Ordinal))
                 _mappings.TryAdd((mapping.Database, mapping.Entity!), mapping);
             foreach (var overlay in overlays.OrderBy(t => t.Id, StringComparer.Ordinal))
-                _entityOverlays.TryAdd((overlay.Database, overlay.Entity!), overlay);
+            {
+                if (overlay.Entity is { } entity)
+                    _entityOverlays.TryAdd((overlay.Database, entity), overlay);
+                else
+                    _relationOverlays.TryAdd((overlay.Database, overlay.Relation!), overlay);
+            }
         }
 
         public bool HasDefaults { get; }
@@ -339,5 +355,7 @@ internal sealed class StereotypeDefaults
         public Mapping? MappingOf(string databaseId, string entityId) => _mappings.GetValueOrDefault((databaseId, entityId));
 
         public Table? EntityOverlayOf(string databaseId, string entityId) => _entityOverlays.GetValueOrDefault((databaseId, entityId));
+
+        public Table? RelationOverlayOf(string databaseId, string relationId) => _relationOverlays.GetValueOrDefault((databaseId, relationId));
     }
 }

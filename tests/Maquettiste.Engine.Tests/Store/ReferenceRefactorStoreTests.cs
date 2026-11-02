@@ -401,6 +401,42 @@ public sealed class ReferenceRefactorStoreTests
     }
 
     [Fact]
+    public async Task Rename_type_leaves_a_seed_outside_its_seed_folder_to_other_operations()
+    {
+        // A seed kept in another folder does not follow the type's name, so the rename does not plan it.
+        const string Outside = "01JRDV00000000000000000002";
+        const string SeedPath = "model/seeds/kitchen/metric-units.json";
+        string SeedJson(string rows) => $$"""
+            { "kind": "seed", "id": "{{Outside}}", "name": "MetricUnits", "target": "{{UnitOfMeasure}}", "columns": ["code", "label", "01JBNPZX45HY43KWJRP1XPA7Z3"],
+              "rows": [ {{rows}} ] }
+            """;
+        const string Mg = """{ "id": "01JRDV00000000000000000003", "values": ["mg", "Milligram", 0.001] }""";
+        var (h, store) = await OpenAsync(h => WriteDocument(h, SeedPath, "seed.json", SeedJson(Mg)));
+        using var _ = h;
+        await using var __ = store;
+        const string Rename = $$"""{ "op": "rename-reference-type", "id": "{{UnitOfMeasure}}", "name": "Unit" }""";
+
+        // The dry run lists the type and the seed in its folder; expected hashes taken from its files are all the write needs.
+        var preview = await store.PreviewBatchAsync(Parse(store, Rename), Ct);
+        Assert.Equal(SaveOutcome.Saved, preview.Outcome);
+        Assert.DoesNotContain(preview.Files, f => f.Id == Outside);
+        Assert.Contains(preview.Files, f => f.Id == UnitSeed);
+        var hashes = preview.Files.Where(f => f is { Id: not null, BeforeHash: not null }).DistinctBy(f => f.Id)
+            .Select(f => $"\"{f.Id}\": \"{f.BeforeHash}\"");
+        var seed = store.Current!.GetDocument(Outside)!;
+        const string Ug = """{ "id": "01JRDV00000000000000000004", "values": ["ug", "Microgram", 0.000001] }""";
+
+        // Another operation of the batch may change that seed.
+        var result = await ApplyAsync(store, Rename[..^1] + ", \"expectedHashes\": { " + string.Join(", ", hashes) + " } }, "
+            + $$"""{ "op": "update", "id": "{{Outside}}", "expectedHash": "{{seed.Hash}}", "element": {{SeedJson(Mg + ", " + Ug)}} }""");
+
+        Assert.True(result.Outcome == SaveOutcome.Saved, Failures(result));
+        Assert.True(h.Exists("model/seeds/unit/unit-of-measure.json"));
+        Assert.True(h.Exists(SeedPath));
+        Assert.Equal(["mg", "ug"], store.Current!.Get<Seed>(Outside)!.Rows.Select(r => r.Values[0].GetString()));
+    }
+
+    [Fact]
     public async Task Two_refactors_of_one_type_in_a_batch_are_MQ7020()
     {
         var (h, store) = await OpenAsync();

@@ -115,7 +115,7 @@ internal static class TableSeedRules
             if (rows.KeyIds.Count == 0)
                 report.Add("MQ7126", $"Foreign key '{name}' references table '{rows.Table.Name}', whose rows have no row key (no primary key, and no seed names a unique constraint), so a natural key cannot name one.", pointer);
             if (context.Model.GetDocument(table.Database)?.Element is Database { Dialect: not Dialect.PostgreSql } database
-                && FilledReferencedValue(rows, fk) is { } filled)
+                && FilledReferencedValue(context, rows, fk) is { } filled)
             {
                 report.Add("MQ4056", $"Foreign key '{name}' names rows of table '{rows.Table.Name}' whose {filled}, which {DialectInfo.Name(database.Dialect)} (database '{database.Name}') cannot look up in a seed script: the script writes NULL with a TODO comment for it.", pointer);
             }
@@ -293,7 +293,7 @@ internal static class TableSeedRules
         foreach (var id in seed.Columns)
         {
             if (table.ForeignKeys.FirstOrDefault(f => f.Id == id) is not { } fk || fk.Columns.FirstOrDefault(keyIds.Contains) is not { } held
-                || NaturalRowsOf(context, fk.ReferencesTable) is not { } rows || FilledReferencedValue(rows, fk) is not { } filled)
+                || NaturalRowsOf(context, fk.ReferencesTable) is not { } rows || FilledReferencedValue(context, rows, fk) is not { } filled)
                 continue;
             return $"its row key holds column '{table.Columns.FirstOrDefault(c => c.Id == held)?.Name ?? held}', which foreign key '{fk.Name ?? fk.Id}' fills from rows of table '{rows.Table.Name}' whose {filled} and the model never knows";
         }
@@ -480,23 +480,66 @@ internal static class TableSeedRules
 
     /// <summary>
     /// What the database fills among the values a foreign key references in a table's rows, in words ("column 'id' the database fills
-    /// (identity)"): a column it always fills, or a default the rows do not give; <see langword="null"/> when the model knows every one.
+    /// (identity)"): a column it always fills, a default the rows do not give, or a column the rows' own foreign-key entry fills from
+    /// such a value of another table, since lookups follow lookups (next-phase-2-design.md decision 24); <see langword="null"/> when
+    /// the model knows every one.
     /// </summary>
-    internal static string? FilledReferencedValue(NaturalRows rows, ForeignKey fk)
+    internal static string? FilledReferencedValue(ValidationContext context, NaturalRows rows, ForeignKey fk)
     {
-        var referenced = fk.ReferencesColumns.Count > 0 ? fk.ReferencesColumns : rows.Table.PrimaryKey?.Columns ?? [];
-        foreach (var id in referenced)
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in ReferencedColumns(rows, fk))
         {
-            if (rows.Table.Columns.FirstOrDefault(c => c.Id == id) is not { } column)
-                continue;
-            if (PhysicalRules.FilledBy(column) is { } how)
-                return $"column '{column.Name}' the database fills ({how})";
-            if ((column.Default is not null || column.DefaultSql.Count > 0) && !column.StableId && !rows.EntryFilled.Contains(column.Id)
-                && !rows.Keys.Any(h => h.Seed.Columns.Contains(column.Id, StringComparer.Ordinal)))
-                return $"column '{column.Name}' the database fills (its default)";
+            if (FilledValue(context, rows, id, visited) is { } filled)
+                return filled;
         }
 
         return null;
+    }
+
+    private static IReadOnlyList<string> ReferencedColumns(NaturalRows rows, ForeignKey fk) =>
+        fk.ReferencesColumns.Count > 0 ? fk.ReferencesColumns : rows.Table.PrimaryKey?.Columns ?? [];
+
+    /// <summary>
+    /// What the database fills of one column of a table's rows, following the foreign-key entries of the table's seeds that fill it to
+    /// the referenced table's rows, as the resolver does; <paramref name="visited"/> holds the columns judged, so entries that lead
+    /// back to a column already judged (a loop of lookups) stop there.
+    /// </summary>
+    private static string? FilledValue(ValidationContext context, NaturalRows rows, string columnId, HashSet<string> visited)
+    {
+        if (rows.Table.Columns.FirstOrDefault(c => c.Id == columnId) is not { } column || !visited.Add(rows.Table.Id + "/" + columnId))
+            return null;
+        if (PhysicalRules.FilledBy(column) is { } how)
+            return $"column '{column.Name}' the database fills ({how})";
+        if (rows.EntryFilled.Contains(column.Id))
+        {
+            foreach (var fk in context.SeedsOf(rows.Table.Id).SelectMany(s => s.Columns).Distinct(StringComparer.Ordinal)
+                .Select(id => rows.Table.ForeignKeys.FirstOrDefault(f => f.Id == id)).OfType<ForeignKey>())
+            {
+                var at = IndexOf(fk.Columns, column.Id);
+                if (at < 0 || NaturalRowsOf(context, fk.ReferencesTable) is not { } next || ReferencedColumns(next, fk) is not { } referenced
+                    || at >= referenced.Count || FilledValue(context, next, referenced[at], visited) is not { } filled)
+                    continue;
+                return $"column '{column.Name}' comes through foreign key '{fk.Name ?? fk.Id}' from rows of table '{next.Table.Name}' whose {filled}";
+            }
+
+            return null;
+        }
+
+        if ((column.Default is not null || column.DefaultSql.Count > 0) && !column.StableId
+            && !rows.Keys.Any(h => h.Seed.Columns.Contains(column.Id, StringComparer.Ordinal)))
+            return $"column '{column.Name}' the database fills (its default)";
+        return null;
+
+        static int IndexOf(IReadOnlyList<string> ids, string id)
+        {
+            for (var i = 0; i < ids.Count; i++)
+            {
+                if (string.Equals(ids[i], id, StringComparison.Ordinal))
+                    return i;
+            }
+
+            return -1;
+        }
     }
 
     /// <summary>A foreign key of another table that an id names, as (its name, its table's name); <see langword="null"/> otherwise.</summary>

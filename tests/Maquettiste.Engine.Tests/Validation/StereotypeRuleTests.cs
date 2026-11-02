@@ -456,6 +456,24 @@ public sealed class StereotypeRuleTests
         Assert.DoesNotContain(await FindingsOf(m.Model), d => d.ElementId == m.Ledger);
     }
 
+    [Fact]
+    public async Task A_parameter_finding_about_a_default_names_its_holder()
+    {
+        var m = WithDefaults(b =>
+        {
+            b.Stereotype("audited").Parameters("""{ "owner": { "type": "string" } }""", "owner");
+            b.Stereotype("retained").Parameters("""{ "retentionDays": { "type": "integer", "minimum": 1 } }""", "retentionDays");
+        }, ["audited"], ["retained"], []);
+
+        var found = (await FindingsOf(m.Model)).Where(d => d.Rule == "MQ2018" && d.ElementId == m.Ledger).ToList();
+
+        // The origin names the schema entry and the package by name, quoted, not by id.
+        Assert.Equal(2, found.Count);
+        Assert.Contains(found, d => d.Message.Contains(", a default of schema 'billing'", StringComparison.Ordinal));
+        Assert.Contains(found, d => d.Message.Contains(", a default of package 'Billing'", StringComparison.Ordinal));
+        Assert.DoesNotContain(found, d => d.Message.Contains(m.Schema, StringComparison.Ordinal) || d.Message.Contains(m.Billing, StringComparison.Ordinal));
+    }
+
     private static async Task<IReadOnlyList<Diagnostic>> FindingsOf(ModelSnapshot model)
     {
         var report = await ValidationFixture.Validator().ValidateAsync(model, ValidationScope.All, null, Ct);

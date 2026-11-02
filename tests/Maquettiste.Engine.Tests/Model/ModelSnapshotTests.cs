@@ -503,8 +503,10 @@ public sealed class ModelSnapshotTests
         var owned = model.GetStereotype("owned")!;
         var database = model.All<Database>().Single();
 
+        // Sales is the database's first schema entry.
+        Assert.Equal(sales, database.Schemas[0].Id);
         Assert.Contains(model.ReferencesTo(audited.Id),
-            r => r.FromElementId == database.Id && r.FromId == sales && r.JsonPointer.EndsWith("/defaultStereotypes/0", StringComparison.Ordinal) && r.Field == "defaultStereotypes");
+            r => r.FromElementId == database.Id && r.FromId == sales && r.JsonPointer == "/schemas/0/defaultStereotypes/0" && r.Field == "defaultStereotypes");
         Assert.DoesNotContain(model.ReferencesFrom(database.Id), r => r.JsonPointer.EndsWith("/defaultStereotypes/1", StringComparison.Ordinal));
         Assert.Equal(
             [(billing, "/defaultStereotypes/0", "defaultStereotypes"), (table.Id, "/excludeStereotypes/0", "excludeStereotypes")],

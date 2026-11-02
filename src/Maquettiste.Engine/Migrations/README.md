@@ -73,8 +73,8 @@ each database from the baseline's captures (`GenerationRun.BaselineDiffsAsync`).
   type before the write, moved through the write's key maps, named as the after capture names them, and only those still
   there; with none, only a type rename in a database without a binding of the type records one. It chains after every
   rename the write records and before its other facts, so a merge's change of strategy converts mapped codes.
-- MQ4114 (`ModelStore.PlainCodeEdits`) goes on a change that alters a kept row's code or a type's names while no code map
-  of the write covers the type; nothing is reported while `migrations.record` is `off`.
+- MQ4114 (`ModelStore.PlainCodeEdits`) goes on a change that alters a kept row's code or a type's names while no code
+  map of the write covers the type; nothing is reported while `migrations.record` is `off`.
 - `validate --against` reads the baseline's holders (`CaptureDatabasesAsync` with holders) for MQ4112, and passes the
   baseline's codes to the stale chains; `migration fold --against` passes them too, so it removes stale value maps.
   Without a baseline model (plain `validate`, fold against the committed snapshot) no value map is stale.

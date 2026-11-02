@@ -396,7 +396,7 @@ internal static class StaleFacts
 
 /// <summary>
 /// The reference codes of a baseline model (next-phase-2-design.md section 3.5): per reference type, the codes of its written rows there.
-/// A type that a seed fills with a rows script may have held any code, as may a type the baseline indexed none of. Value maps are judged
+/// A type that a seed fills with a rows script may have held any code. Value maps are judged
 /// stale against them (<see cref="StaleFacts.Chains"/>), and <c>validate --against</c> reads what a former code was (MQ4112).
 /// </summary>
 internal sealed class BaselineCodes

@@ -272,7 +272,8 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   `typeRef: {"ref": "<type id>"}` beside its `type`, which stays the physical keyword; facets it leaves out come from
   the type, and packs give it the same key or CHECK as an attribute of that type. A declared foreign key from such a
   column points at the code column of the type's bound table (MQ4084). A column holding personal data or a secret states
-  `sensitive` (`pii` or `secret`); say it on the column or on the attribute a binding maps to it, not both (MQ4085).
+  `sensitive` (`pii` or `secret`); say it once, on the column or on the attribute a binding maps to it (two different
+  values are MQ4085, a warning).
 - Codes that databases store change through a refactor, never by editing a seed cell or a type's name: `apply_batch`
   with `{"op":"rename-code","id":<type>,"code":"net30","to":"net-30"}`, `retire-code` (the same keys; `to` a live code),
   `merge-reference-types` (`id` the type that goes, `target`, optional `codes`) or `rename-reference-type` (`id`,

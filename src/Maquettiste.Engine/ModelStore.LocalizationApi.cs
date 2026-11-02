@@ -296,7 +296,7 @@ public sealed partial class ModelStore
     /// per requested locale. A foreign-key entry of a table seed is headed by the foreign key's name (its id when it has none) and a
     /// composite natural key is JSON array text (next-phase-2-design.md section 3.4). A seed with a rows script exports the rows its script
     /// returns, with their derived <c>@id</c>; only that seed's script runs (through the engine's rows cache), and a script that fails
-    /// throws its MQ7127 diagnostic (the internal <c>ScriptErrorException</c>).
+    /// throws its MQ7127 diagnostic (<see cref="Scripting.ScriptErrorException"/>).
     /// </summary>
     /// <param name="seedId">The seed id.</param>
     /// <param name="bom">Adds a byte order mark and CRLF line ends.</param>
