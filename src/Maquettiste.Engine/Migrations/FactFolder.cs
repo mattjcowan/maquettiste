@@ -44,8 +44,11 @@ internal static class FactFolder
     /// <param name="isCandidate">Whether a fact is a candidate (the baseline lacks it).</param>
     /// <param name="capture">The database's capture in the working model, for the stale chains.</param>
     /// <param name="dialect">The database's dialect (the widening table).</param>
+    /// <param name="baseline">The baseline model's reference codes, which judge value maps (next-phase-2-design.md section 3.5);
+    /// <see langword="null"/> without a baseline model, when no value map is stale.</param>
     /// <returns>What to write.</returns>
-    public static Plan Fold(IReadOnlyList<Migration> ordered, Func<Migration, bool> isCandidate, PhysicalSnapshot capture, Dialect dialect)
+    public static Plan Fold(IReadOnlyList<Migration> ordered, Func<Migration, bool> isCandidate, PhysicalSnapshot capture, Dialect dialect,
+        BaselineCodes? baseline = null)
     {
         ArgumentNullException.ThrowIfNull(ordered);
         ArgumentNullException.ThrowIfNull(isCandidate);
@@ -55,7 +58,7 @@ internal static class FactFolder
         var removed = new HashSet<string>(StringComparer.Ordinal);
 
         // Stale chains go first. A link to a removed fact is replaced by what that fact followed, so the order it gave stays.
-        var stale = StaleFacts.Chains(ordered, isCandidate, capture, dialect).Select(s => s.Fact.Id).ToList();
+        var stale = StaleFacts.Chains(ordered, isCandidate, capture, dialect, baseline).Select(s => s.Fact.Id).ToList();
         var staleSet = stale.ToHashSet(StringComparer.Ordinal);
         removed.UnionWith(stale);
         foreach (var id in stale)
@@ -168,8 +171,9 @@ internal static class FactFolder
     }
 
     /// <summary>
-    /// The tables (by key today) a fact changes: a member's table, a table, view, sequence or schema itself, every key a <c>rekey</c>
-    /// moves (a SQL object's as itself); <see langword="null"/> for a fact that may change any (a <c>raw</c> fact with no objects, a <c>baseline</c>).
+    /// The tables (by key today) a fact changes: a member's table, a table, view, sequence or schema itself, a value map's collection's
+    /// owner table, every key a <c>rekey</c> moves (a SQL object's as itself, a column or constraint entry's as its table);
+    /// <see langword="null"/> for a fact that may change any (a <c>raw</c> fact with no objects, a <c>baseline</c>).
     /// </summary>
     private static HashSet<string>? TablesOf(Migration fact, int position, FactKeys.KeyMoves moves)
     {
@@ -185,7 +189,7 @@ internal static class FactFolder
                 {
                     "sequence" => ("sequence", key.To),
                     "sql-object" => ("sql-object", key.To),
-                    "column" when key.Table is { } table => ("table", moved.GetValueOrDefault(table) ?? table),
+                    _ when key.Table is { } table && FactKeys.MemberKinds.Contains(key.Kind) => ("table", moved.GetValueOrDefault(table) ?? table),
                     _ => ("table", key.To),
                 };
                 result.Add(moves.Current(position, kind, null, now).Key);
@@ -200,6 +204,9 @@ internal static class FactFolder
             result.Add(FactKeys.MemberKinds.Contains(o.Kind) ? table ?? key : key);
         }
 
+        // A value map's collections change their owner tables (next-phase-2-design.md section 3.5).
+        foreach (var collection in fact.Collections)
+            result.Add(moves.Current(position, "table", null, collection.Table).Key);
         return result;
     }
 
@@ -260,7 +267,8 @@ internal static class FactFolder
 
     /// <summary>
     /// The keys of two <c>rekey</c> facts applied one after the other: each key from its value before the first to its value after
-    /// the second (a column under its table's key before the first); keys that end where they began are left out.
+    /// the second (a column or a constraint id under its table's key before the first); keys that end where they began are left out.
+    /// Each table's constraint entries follow its column entries, by kind then <c>from</c>.
     /// </summary>
     private static List<MigrationRekey> Compose(Migration a, Migration b)
     {
@@ -285,6 +293,22 @@ internal static class FactFolder
                 columns[back.GetValueOrDefault(from) ?? from] = to;
             tables[origin] = (t.NewKey, columns);
         }
+
+        // Constraint ids compose as columns do, under their table's key before the first fact (the key maps skip them).
+        var constraints = new Dictionary<(string Table, string Kind, string From), string>();
+        foreach (var key in a.Keys.Where(k => FactKeys.ConstraintKinds.Contains(k.Kind) && k.Table is not null))
+            constraints.TryAdd((key.Table!, key.Kind, key.From), key.To);
+        var constraintBack = constraints.GroupBy(c => (c.Key.Table, c.Key.Kind, c.Value)).ToDictionary(g => g.Key, g => g.First().Key.From);
+        foreach (var key in b.Keys.Where(k => FactKeys.ConstraintKinds.Contains(k.Kind) && k.Table is not null))
+        {
+            var origin = aBack.GetValueOrDefault(key.Table!) ?? key.Table!;
+            constraints[(origin, key.Kind, constraintBack.GetValueOrDefault((origin, key.Kind, key.From)) ?? key.From)] = key.To;
+        }
+
+        var constraintsByTable = constraints.GroupBy(c => c.Key.Table, StringComparer.Ordinal).ToDictionary(g => g.Key,
+            g => g.OrderBy(c => c.Key.Kind, StringComparer.Ordinal).ThenBy(c => c.Key.From, StringComparer.Ordinal).ToList(), StringComparer.Ordinal);
+        foreach (var origin in constraintsByTable.Keys)
+            tables.TryAdd(origin, (origin, new Dictionary<string, string>(StringComparer.Ordinal)));
 
         var sequences = new SortedDictionary<string, string>(aSequences.ToDictionary(StringComparer.Ordinal), StringComparer.Ordinal);
         var sequenceBack = aSequences.GroupBy(s => s.Value, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Key, StringComparer.Ordinal);
@@ -311,6 +335,12 @@ internal static class FactFolder
             {
                 if (!string.Equals(columnFrom, columnTo, StringComparison.Ordinal))
                     keys.Add(new MigrationRekey { Kind = "column", Table = from, From = columnFrom, To = columnTo, Name = NameOf("column", from, columnTo) });
+            }
+
+            foreach (var ((_, kind, constraintFrom), constraintTo) in constraintsByTable.GetValueOrDefault(from) ?? [])
+            {
+                if (!string.Equals(constraintFrom, constraintTo, StringComparison.Ordinal))
+                    keys.Add(new MigrationRekey { Kind = kind, Table = from, From = constraintFrom, To = constraintTo, Name = NameOf(kind, from, constraintTo) });
             }
         }
 

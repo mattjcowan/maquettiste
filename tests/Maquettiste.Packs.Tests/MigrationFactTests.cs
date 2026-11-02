@@ -41,7 +41,6 @@ public sealed partial class MigrationFactTests
     private const string DropReference = "01JFDA00000000000000000005";
     private const string RawStep = "01JFDA00000000000000000006";
     private const string HeldDrop = "01JFDA00000000000000000007";
-    private const string ValueMap = "01JFDA00000000000000000008";
     private const string Adopt = "01JFDA00000000000000000009";
     private const string Baseline = "01JFDA0000000000000000000A";
     private const string CastDuring = "01JFDA0000000000000000000B";
@@ -327,36 +326,13 @@ public sealed partial class MigrationFactTests
     }
 
     [Fact]
-    public async Task Value_maps_adopt_and_baseline_render_a_todo()
+    public async Task Adopt_and_baseline_render_a_todo()
     {
         using var repo = PackRepo.Billing();
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
-        AddFact(repo, ValueMap, $$"""
-              "database": "{{MainId}}",
-              "fact": "value-map",
-              "objects": [
-                {
-                  "kind": "column",
-                  "table": "{{Invoices}}",
-                  "key": "{{InvoiceStatus}}",
-                  "schema": "billing",
-                  "tableName": "invoices",
-                  "name": "status"
-                }
-              ],
-              "values": [
-                {
-                  "from": "P",
-                  "to": "I"
-                }
-              ]
-            """);
         AddFact(repo, Adopt, $$"""
               "database": "{{MainId}}",
               "fact": "adopt",
-              "after": [
-                "{{ValueMap}}"
-              ],
               "objects": [
                 {
                   "kind": "table",
@@ -376,13 +352,52 @@ public sealed partial class MigrationFactTests
             """);
         var migration = repo.Read(MigrationFiles.Added(await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]), "main"));
 
-        Assert.Equal($"{ValueMap}, {Adopt}, {Baseline}", Header(migration, "Facts"));
-        AssertBefore(migration, $"-- TODO: migration fact {ValueMap} replaces stored values of invoices.status (P -> I); this pack writes no value-map step yet",
-            $"-- TODO: migration fact {Adopt} adopts customers (environment production); this pack writes no adopt step or object rows yet.");
-        AssertBefore(migration, $"-- TODO: migration fact {Adopt} adopts", $"-- TODO: migration fact {Baseline} is a baseline");
-        // None of them reaches its end state here, so the migration writes no ledger at all.
+        Assert.Equal($"{Adopt}, {Baseline}", Header(migration, "Facts"));
+        AssertBefore(migration, $"-- TODO: migration fact {Adopt} adopts customers (environment production); this pack writes no adopt step or object rows yet.",
+            $"-- TODO: migration fact {Baseline} is a baseline");
+        // Neither reaches its end state here, so the migration writes no ledger at all.
         Assert.DoesNotContain("applied_fact", migration, StringComparison.Ordinal);
         Assert.DoesNotContain(LedgerContract.DefaultSchema, migration, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_value_map_writes_a_data_step_on_PostgreSQL_and_a_TODO_elsewhere()
+    {
+        // Renaming the PaymentMethod code card records a value map in each database that stores the codes (payments.method).
+        using var repo = PackRepo.BillingDialects();
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        await using (var store = new ModelStore(repo.Repo.Options))
+        {
+            var parsed = store.ParseBatch("""{ "operations": [ { "op": "rename-code", "id": "01J92P0V2F0000000000000001", "code": "card", "to": "credit" } ] }"""u8);
+            var applied = await store.ApplyBatchAsync(parsed.Batch!, ChangeSource.Editor, TestContext.Current.CancellationToken);
+            Assert.Equal(SaveOutcome.Saved, applied.Outcome);
+            Assert.Equal(3, applied.Facts!.Count);
+        }
+
+        var result = await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        var main = repo.Read(MigrationFiles.Added(result, "main"));
+        var id = Header(main, "Facts");
+
+        // PostgreSQL (a CHECK in main): the check is dropped, the stored codes mapped, the check created again, then the fact's row;
+        // all before the schema statements.
+        var step = $"-- Migration fact {id} (value-map): maps PaymentMethod codes card -> credit.\n\n"
+            + "ALTER TABLE billing.payments DROP CONSTRAINT IF EXISTS ck_payments_method_ref;\n"
+            + "ALTER TABLE billing.payments DROP CONSTRAINT IF EXISTS fk_payments_method_ref;\n\n"
+            + "UPDATE billing.payments SET method = CASE method WHEN 'card' THEN 'credit' ELSE method END WHERE method IN ('card');\n\n"
+            + "ALTER TABLE billing.payments ADD CONSTRAINT ck_payments_method_ref CHECK (method IN ('credit', 'transfer', 'cash'));\n\n"
+            + Row(repo, id);
+        Assert.Contains(step, main, StringComparison.Ordinal);
+        Assert.DoesNotContain("TODO: migration fact", main, StringComparison.Ordinal);
+
+        // SQL Server and SQLite have no step: a TODO line names the codes and the column, and no ledger row is written.
+        foreach (var (database, dialect) in new[] { ("reporting", "SQL Server"), ("local", "SQLite") })
+        {
+            var migration = repo.Read(MigrationFiles.Added(result, database));
+            var fact = Header(migration, "Facts");
+            Assert.Contains($"-- TODO: migration fact {fact} maps PaymentMethod codes card -> credit in payments.method; {dialect} has no value-map step in this pack: "
+                + "update the stored codes, and rename what is named after the type, by hand.", migration, StringComparison.Ordinal);
+            Assert.DoesNotContain("applied_fact", migration, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

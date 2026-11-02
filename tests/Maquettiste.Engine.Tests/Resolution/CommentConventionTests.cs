@@ -117,6 +117,50 @@ public sealed class CommentConventionTests
     }
 
     [Fact]
+    public void A_projected_column_comment_reads_the_attribute_own_description()
+    {
+        // next-phase-2-design.md section 3.3, decision 12 (D34): an attribute without a description shows the comment of the column a
+        // binding maps it to, but a projected column's comment reads only its attribute's own description, so nothing cycles. Contact
+        // is bound to people in legacy and projected into main by convention.
+        var b = new ModelBuilder(seed: 91);
+        var contact = b.Entity("Contact").Key("id", "uuid").Attr("email", "string").Attr("name", "string", a => a.Description("The full name."));
+        b.Database("main", Dialect.PostgreSql);
+        var legacy = b.Database("legacy", Dialect.PostgreSql);
+        var people = b.Table("people", legacy).Column("id", "uuid", nullable: false).Column("mail", "string").Column("full_name", "string").PrimaryKey("id")
+            .Edit(t => t with
+            {
+                Columns =
+                [
+                    .. t.Columns.Select(c => c.Name switch
+                    {
+                        "mail" => c with { Comment = "Where we write." },
+                        "full_name" => c with { Comment = "The legacy name." },
+                        _ => c,
+                    }),
+                ],
+            });
+        contact.Bind(new EntityBinding
+        {
+            Id = "", Database = legacy.Id, Source = people.Id,
+            Fields =
+            [
+                new BindingField { Attribute = contact.AttrId("id"), Column = people.ColumnId("id") },
+                new BindingField { Attribute = contact.AttrId("email"), Column = people.ColumnId("mail") },
+                new BindingField { Attribute = contact.AttrId("name"), Column = people.ColumnId("full_name") },
+            ],
+        });
+        var model = ResolutionKit.Resolve(b);
+
+        var attributes = model.Entity("Contact").Attributes;
+        Assert.Equal("Where we write.", attributes.Single(a => a.Name == "email").Description); // the bound column's comment
+        Assert.Equal("The full name.", attributes.Single(a => a.Name == "name").Description);   // its own wins
+
+        var contacts = model.Db("main").Table("contacts");
+        Assert.Null(contacts.Column("email").Comment);                    // the attribute states no description of its own
+        Assert.Equal("The full name.", contacts.Column("name").Comment);  // its own description, never the legacy comment
+    }
+
+    [Fact]
     public void The_settings_round_trip_the_comments_convention()
     {
         var json = TestServices.Json.Serialize(new ProjectSettings

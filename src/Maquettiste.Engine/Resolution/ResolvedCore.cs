@@ -102,7 +102,10 @@ public abstract class RAnnotated : RObject
     /// </summary>
     public RPackage? Package { get; internal set; }
 
-    /// <summary>The description text, with a sidecar file loaded; <see langword="null"/> when there is none.</summary>
+    /// <summary>
+    /// The description text, with a sidecar file loaded; <see langword="null"/> when there is none. An entity attribute with none of its own
+    /// shows the comment of the column its entity's bindings map it to (<see cref="RAttribute.DescriptionColumn"/>).
+    /// </summary>
     public string? Description { get; internal set; }
 
     /// <summary>Markdown text: why the object is shaped this way, from its own file or entry; <see langword="null"/> when there is none.</summary>
@@ -198,6 +201,13 @@ public sealed class RStereotype
     /// <see langword="null"/> when the object lists it itself.
     /// </summary>
     public string? ImpliedBy { get; internal set; }
+
+    /// <summary>
+    /// Where the object's stereotype comes from (next-phase-2-design.md section 3.1): <c>own</c> (its own list), <c>implied</c> (by an own
+    /// one), <c>schema-default</c> or <c>package-default</c> (a database schema's or a package's <c>defaultStereotypes</c>, or a
+    /// stereotype one of them implies). For an attribute's <see cref="RAttribute.FromStereotype"/>, where its owner got the stereotype.
+    /// </summary>
+    public string Source { get; internal set; } = "own";
 }
 
 /// <summary>

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
@@ -25,8 +26,11 @@ internal sealed record MaterializeOp(BatchOp Op, string Id, string? Hash, JsonOb
 /// <param name="Database">The database's name, for the snapshot's aliases.</param>
 /// <param name="Rekeys">The projected tables that became designed tables, with their keys before and after (the snapshot's aliases).</param>
 /// <param name="Sequences">The key sequences that became sequence files, by their synthesized key.</param>
+/// <param name="MemberRekeys">The constraint ids a fold into a stereotype moved (<c>index</c>, <c>unique</c>, <c>foreign-key</c> and
+/// <c>check</c> entries, each with its table's key), which the write's <c>rekey</c> lists after its table's columns.</param>
 internal sealed record MaterializeResult(string? Refusal, IReadOnlyList<MaterializeOp> Ops, IReadOnlyList<string> Notes, string? Database = null,
-    IReadOnlyList<SchemaDiff.TableRekey>? Rekeys = null, IReadOnlyDictionary<string, string>? Sequences = null);
+    IReadOnlyList<SchemaDiff.TableRekey>? Rekeys = null, IReadOnlyDictionary<string, string>? Sequences = null,
+    IReadOnlyList<MigrationRekey>? MemberRekeys = null);
 
 /// <summary>
 /// The two materialize operations (erratum E43, engine-design.md section 7, "Bindings and materialize"): <c>materialize-tables</c>
@@ -38,7 +42,7 @@ internal sealed record MaterializeResult(string? Refusal, IReadOnlyList<Material
 /// ids the committed snapshot's alias recorded for its projected key, whenever no file holds them now (<paramref name="aliases"/>):
 /// storing again then yields the same table, column and sequence ids, the alias stays as it is, and the next migration sees one table.
 /// </summary>
-internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolver, IIdGenerator ids, int parallelism, IReadOnlyList<SnapshotAlias>? aliases = null)
+internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolver resolver, IIdGenerator ids, int parallelism, IReadOnlyList<SnapshotAlias>? aliases = null)
 {
     private readonly Dictionary<string, (string? Hash, JsonObject Node, BatchOp Op, string Because)> _work = new(StringComparer.Ordinal);
     private readonly List<string> _order = [];
@@ -93,6 +97,13 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             var taken = new HashSet<string>(StringComparer.Ordinal);
             foreach (var column in table.Columns)
             {
+                // An inherited column stays inherited: its key moves with the table key (next-phase-2-design.md section 3.1, decision 15).
+                if (column.MemberOrigin.MemberId is { } memberId)
+                {
+                    columns[column.Key] = ContributedMembers.KeyOf(tableId, memberId);
+                    continue;
+                }
+
                 var id = overlay?.Columns.FirstOrDefault(c => c.Attribute == column.Key || (c.Attribute is null && c.Id == column.Key))?.Id;
                 if (id is null && known?.GetValueOrDefault(column.Key) is { } was && !taken.Contains(was)
                     && overlay?.Columns.Any(c => c.Id == was) != true)
@@ -124,7 +135,11 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             var entityNode = Node(entity.Id, BatchOp.Update, $"binds entity {entity.Name} to table {table.Name}");
             var bindings = entityNode["bindings"] as JsonArray ?? [];
             entityNode["bindings"] = bindings;
-            bindings.Add(BindingFor(db, entity, table, tableId, columns, resolved));
+            var binding = BindingFor(db, entity, table, tableId, columns, resolved);
+            // The binding records every column of the table it creates, hashed from the entries this operation writes (decision 4).
+            if (ShapesOf(node) is { } shapes)
+                RecordProvenance(binding, shapes, written: null);
+            bindings.Add(binding);
 
             foreach (var mapping in snapshot.All<Mapping>().Where(m => m.Database == db.Id && m.Entity == entity.Id))
                 Put(mapping.Id, snapshot.GetDocument(mapping.Id)!.Hash, null, BatchOp.Delete, $"entity {entity.Name} is bound now, so its mapping to database {db.Name} is no longer used");
@@ -173,9 +188,16 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
 
         documents.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));
         return ModelSnapshot.CreateAfter(null, documents, snapshot.Settings, snapshot.SettingsHash, snapshot.Extensions, snapshot.RuleScripts, snapshot.Version,
-            null, parallelism, CancellationToken.None);
+            null, parallelism, CancellationToken.None, seedScripts: snapshot.SeedScripts);
     }
 
+    /// <summary>
+    /// The designed table a projected table becomes: its own members with the projection's shape, the overlay's annotations, and the
+    /// members its stereotypes contribute left inherited (next-phase-2-design.md section 3.1, decision 15). The table file holds no
+    /// inherited column, key, index or check; the overlay's <c>redefines</c>, <c>excludes</c> and <c>excludeStereotypes</c> move in with
+    /// it (a redefinition's column list follows the column ids), and a stereotype the projected table realized through attributes, which
+    /// now reaches a designed table that holds those columns as its own, gets an <c>excludes</c> entry for each of its members.
+    /// </summary>
     private JsonObject TableNode(Database db, string? schemaId, Entity entity, RTable table, Table? overlay, string tableId, Dictionary<string, string> columns,
         Dictionary<string, (Entity Entity, RTable Table, Table? Overlay, string Id, Dictionary<string, string> Columns)> tables,
         EffectiveConventions conventions, IReadOnlyDictionary<string, string> typeMap, SortedDictionary<string, string> relationKeys)
@@ -184,25 +206,33 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
         var schema = schemaId ?? overlay?.Schema ?? db.Schemas.FirstOrDefault(s => s.Name == table.Schema)?.Id;
         if (schema is not null)
             node["schema"] = schema;
+        // The designed table keeps the package whose defaults reach the projected table: the overlay's own, else its entity's when that
+        // package's chain gives tables a default, since a designed table no longer falls back to its entity's package.
+        var package = overlay?.Package ?? (entity.Package is { } entityPackage
+            && snapshot.EffectiveStereotypes(new StereotypeHolder(ElementKind.Table, [], [], entityPackage, null)).Count > 0 ? entityPackage : null);
+        if (package is not null)
+            node["package"] = package;
+        var raw = overlay is null ? null : Raw(overlay.Id);
         if (overlay is not null)
-            CopyAnnotations(Raw(overlay.Id), node);
+            CopyAnnotations(raw, node);
         if (table.Comment is { Length: > 0 } comment)
             node["comment"] = comment;
+        CarryMemberLinks(db, table, overlay, raw, schema, package, columns, node);
 
         var columnArray = new JsonArray();
-        foreach (var column in table.Columns)
+        foreach (var column in table.Columns.Where(c => c.MemberOrigin.MemberId is null))
         {
             var entry = overlay?.Columns.FirstOrDefault(c => c.Attribute == column.Key || (c.Attribute is null && c.Id == column.Key));
             var c = ColumnNode(db, schema, column, columns[column.Key], entry, conventions, typeMap);
-            if (entry is not null && overlay is not null && Raw(overlay.Id)?["columns"] is JsonArray raw
-                && raw.OfType<JsonObject>().FirstOrDefault(x => x["id"]?.GetValue<string>() == entry.Id) is { } rawEntry)
+            if (entry is not null && raw?["columns"] is JsonArray rawColumns
+                && rawColumns.OfType<JsonObject>().FirstOrDefault(x => x["id"]?.GetValue<string>() == entry.Id) is { } rawEntry)
                 CopyAnnotations(rawEntry, c);
             columnArray.Add(c);
         }
 
         node["columns"] = columnArray;
         string Col(RColumn column) => columns[column.Key];
-        if (table.PrimaryKey is { } pk)
+        if (table.PrimaryKey is { MemberOrigin.MemberId: null } pk)
         {
             var key = new JsonObject { ["name"] = pk.Name, ["columns"] = new JsonArray([.. pk.Columns.Select(c => (JsonNode)Col(c))]) };
             if (pk.Clustered is { } clustered)
@@ -210,7 +240,7 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             node["primaryKey"] = key;
         }
 
-        node["uniques"] = new JsonArray([.. table.Uniques.Select(u =>
+        node["uniques"] = new JsonArray([.. table.Uniques.Where(u => u.MemberOrigin.MemberId is null).Select(u =>
         {
             var x = new JsonObject { ["id"] = u.Id ?? ids.NewId(), ["name"] = u.Name, ["columns"] = new JsonArray([.. u.Columns.Select(c => (JsonNode)Col(c))]) };
             if (u.NullsNotDistinct)
@@ -219,7 +249,7 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
         })]);
 
         var foreignKeys = new JsonArray();
-        foreach (var fk in table.ForeignKeys)
+        foreach (var fk in table.ForeignKeys.Where(f => f.MemberOrigin.MemberId is null))
         {
             var target = fk.ReferencedTable;
             var materialized = tables.TryGetValue(target.Key, out var other) ? other : default;
@@ -247,7 +277,7 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
 
         node["foreignKeys"] = foreignKeys;
         var checks = new JsonArray();
-        foreach (var check in table.Checks)
+        foreach (var check in table.Checks.Where(c => c.MemberOrigin.MemberId is null))
         {
             var file = overlay?.Checks.FirstOrDefault(x => x.Id == check.Id);
             var checkNode = new JsonObject
@@ -273,7 +303,7 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             return x;
         }
 
-        node["indexes"] = new JsonArray([.. table.Indexes.Select(index =>
+        node["indexes"] = new JsonArray([.. table.Indexes.Where(i => i.MemberOrigin.MemberId is null).Select(index =>
         {
             var x = new JsonObject
             {
@@ -292,9 +322,94 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
     }
 
     /// <summary>
+    /// Moves the overlay's member links into the designed table (<c>excludeStereotypes</c>, <c>redefines</c> with their column lists
+    /// following the column ids, <c>excludes</c>), and excludes every member of a stereotype the projected table skipped because it
+    /// stores the stereotype's attributes as columns (decision 1) when that stereotype reaches the designed table: the table now holds
+    /// those columns as its own, so the database sees nothing, and a later fold adopts the members.
+    /// </summary>
+    private void CarryMemberLinks(Database db, RTable table, Table? overlay, JsonObject? raw, string? schema, string? package,
+        Dictionary<string, string> columns, JsonObject node)
+    {
+        if (raw?["excludeStereotypes"] is JsonArray excludeStereotypes)
+            node["excludeStereotypes"] = excludeStereotypes.DeepClone();
+
+        var skipped = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var column in table.Columns)
+        {
+            if (column.Attribute?.FromStereotype is { } from)
+                skipped.Add(from.Key);
+        }
+
+        var excludes = new SortedSet<string>(overlay?.Excludes ?? [], StringComparer.Ordinal);
+        var excluded = new HashSet<string>(StringComparer.Ordinal);
+        if (skipped.Count > 0)
+        {
+            var holder = new StereotypeHolder(ElementKind.Table, overlay?.Stereotypes ?? [], overlay?.ExcludeStereotypes ?? [], package,
+                snapshot.StereotypeDefaults.SchemaOf(db.Id, schema));
+            foreach (var applied in snapshot.EffectiveStereotypes(holder))
+            {
+                if (!skipped.Contains(applied.Stereotype.Key))
+                    continue;
+                foreach (var id in MemberIds(applied.Stereotype))
+                {
+                    excludes.Add(id);
+                    excluded.Add(id);
+                }
+            }
+        }
+
+        if (raw?["redefines"] is JsonArray redefines)
+        {
+            var kept = new JsonArray();
+            foreach (var entry in redefines.OfType<JsonObject>())
+            {
+                // A redefinition of a member the designed table now excludes would be MQ2028; it goes with the member.
+                if (entry["member"]?.GetValue<string>() is { } member && excluded.Contains(member))
+                    continue;
+                var copy = (JsonObject)entry.DeepClone();
+                foreach (var list in new[] { "columns", "onDeleteColumns" })
+                {
+                    if (copy[list] is not JsonArray keys)
+                        continue;
+                    for (var i = 0; i < keys.Count; i++)
+                    {
+                        if (keys[i]?.GetValue<string>() is { } key && columns.TryGetValue(key, out var id))
+                            keys[i] = id;
+                    }
+                }
+
+                kept.Add(copy);
+            }
+
+            if (kept.Count > 0)
+                node["redefines"] = kept;
+        }
+
+        if (excludes.Count > 0)
+            node["excludes"] = new JsonArray([.. excludes.Select(e => (JsonNode)e)]);
+    }
+
+    /// <summary>The ids of a stereotype's members, in member-kind then file order.</summary>
+    private static IEnumerable<string> MemberIds(Stereotype stereotype)
+    {
+        IEnumerable<string?> ids = [
+            .. stereotype.Columns.Select(c => c.Id),
+            stereotype.PrimaryKey?.Id,
+            .. stereotype.Uniques.Select(u => u.Id),
+            .. stereotype.ForeignKeys.Select(f => f.Id),
+            .. stereotype.Checks.Select(c => c.Id),
+            .. stereotype.Indexes.Select(i => i.Id),
+        ];
+        return ids.OfType<string>().Where(id => id.Length > 0);
+    }
+
+    /// <summary>
     /// A designed table's column with the shape a projected column has (materialize-tables, materialize-columns): its type and facets,
-    /// the native type when it is not the one the dialect map renders, nullability, defaults, identity or a key sequence (written as a
-    /// sequence file when it is synthesized), computed, collation and comment; an overlay entry's native type and SQL defaults win.
+    /// the logical type (<c>typeRef</c>) of the one attribute or member it stores when an enum, a reference type or a scalar type types
+    /// it, the native type when it is not the one the dialect map renders nor the one that scalar type gives, nullability, defaults,
+    /// identity or a key sequence (written as a sequence file when it is synthesized), computed, collation, comment and the overlay
+    /// entry's own sensitivity; an overlay entry's native type and SQL defaults win. The attribute's sensitivity is not written: the
+    /// attribute keeps saying it, and the bound column shows it (next-phase-2-design.md section 3.2, decision 12).
     /// </summary>
     private JsonObject ColumnNode(Database db, string? schema, RColumn column, string columnId, Column? entry, EffectiveConventions conventions,
         IReadOnlyDictionary<string, string> typeMap)
@@ -303,6 +418,9 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
         var c = new JsonObject { ["id"] = columnId, ["name"] = column.Name };
         var type = column.Type == "reference" ? column.CodeType ?? "string" : column.Type;
         c["type"] = type;
+        var logical = LogicalType(column, type);
+        if (logical.Id is { } typeId)
+            c["typeRef"] = new JsonObject { ["ref"] = typeId };
         if (column.Length is { } length)
             c["length"] = length;
         if (column.Precision is { } precision)
@@ -317,8 +435,9 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             c["fixedLength"] = true;
         if (entry?.NativeType is { } native)
             c["nativeType"] = native;
-        else if (column.NativeType is { } computedNative && !string.Equals(computedNative, rendered, StringComparison.Ordinal))
-            c["nativeType"] = computedNative;
+        else if (column.NativeType is { } computedNative && !string.Equals(computedNative, rendered, StringComparison.Ordinal)
+            && !(logical.Scalar is { } scalar && scalar.NativeTypes.ContainsKey(dialect)))
+            c["nativeType"] = computedNative; // a scalar type's own native type applies again through typeRef
         if (!column.Nullable)
             c["nullable"] = false;
         if (column.Default is { } value)
@@ -357,11 +476,33 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                 c["computedStored"] = true;
         }
 
+        if (column.StableId)
+            c["stableId"] = true; // an overlay entry's stable id stays (next-phase-2-design.md section 3.4)
         if (column.Collation is { } collation)
             c["collation"] = collation;
         if (column.Comment is { Length: > 0 } columnComment)
             c["comment"] = columnComment;
+        if (entry?.Sensitive is { } sensitive)
+            c["sensitive"] = JsonSerializer.SerializeToNode(sensitive);
         return c;
+    }
+
+    /// <summary>
+    /// The enum, reference type or scalar type of the one attribute or member a projected column stores (a single value, or a
+    /// collection's value in its child table), for its <c>typeRef</c>; a scalar type only when the column's physical type is its base,
+    /// the case where its facets and native type reach the column. A column's own <c>typeRef</c> wins.
+    /// </summary>
+    private static (string? Id, RScalarType? Scalar) LogicalType(RColumn column, string physicalType)
+    {
+        var type = column.TypeRef
+            ?? (column.Attribute is { } a && (!a.Collection || ReferenceEquals(column.Table.Attribute, a)) ? a.Type : null);
+        return type switch
+        {
+            { Enum: { } e } => (e.Id, null),
+            { ReferenceType: { } reference } => (reference.Id, null),
+            { Scalar: { } scalar } when string.Equals(physicalType, scalar.Base, StringComparison.Ordinal) => (scalar.Id, scalar),
+            _ => (null, null),
+        };
     }
 
     /// <summary>A sequence file for a key sequence the projection synthesized, which a bound entity no longer gets.</summary>
@@ -472,26 +613,9 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
         var byKey = tables.Values.DistinctBy(t => t.Id).ToDictionary(t => t.Table.Key, StringComparer.Ordinal);
         foreach (var query in rdb.Queries)
         {
-            var replace = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var source in Sources(query))
-            {
-                if (source.Table is { } t && byKey.TryGetValue(t.Key, out var hit) && source.Source != hit.Id)
-                    replace[source.Source] = hit.Id;
-            }
-
-            foreach (var e in Expressions(query))
-            {
-                if (e is { Node: "column", Column: { } text, TableColumn: { } column, Source.Table: { } t } && byKey.TryGetValue(t.Key, out var hit)
-                    && hit.Columns.TryGetValue(column.Key, out var newId))
-                {
-                    var dot = text.IndexOf('.', StringComparison.Ordinal);
-                    var rewritten = dot > 0 && e.Alias is { } alias && text[..dot] == alias ? alias + "." + newId : text;
-                    if (rewritten != text)
-                        replace[text] = rewritten;
-                }
-            }
-
-            if (replace.Count > 0 && Raw(query.Id) is { } raw && ReplaceStrings(raw, replace, ["source", "column"]))
+            var replace = QueryColumnRewrite.Replacements(query, t => byKey.TryGetValue(t.Key, out var hit) ? hit.Id : null,
+                (t, column) => byKey.TryGetValue(t.Key, out var hit) && hit.Columns.TryGetValue(column.Key, out var newId) ? newId : null);
+            if (replace.Count > 0 && Raw(query.Id) is { } raw && QueryColumnRewrite.Apply(raw, replace))
                 PutRewrite(query.Id, raw, $"query {query.Name} reads the designed table by its id");
         }
 
@@ -541,147 +665,12 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                 if (key is null || !byKey.TryGetValue(key, out var hit))
                     continue;
                 var map = new Dictionary<string, string>(hit.Columns, StringComparer.Ordinal) { [key] = hit.Id };
-                changed |= ReplaceStrings(binding, map, ["source", "table", "column"]);
+                changed |= QueryColumnRewrite.ReplaceStrings(binding, map, ["source", "table", "column"]);
             }
 
             if (changed && !_work.ContainsKey(entity.Id))
                 PutRewrite(entity.Id, raw, $"entity {entity.Name} binds to the designed table by its id");
         }
-    }
-
-    private static IEnumerable<RQuerySource> Sources(RQuery query)
-    {
-        yield return query.From;
-        foreach (var join in query.Joins)
-            yield return join;
-        foreach (var collection in query.Collections)
-        {
-            foreach (var source in Sources(collection.Query))
-                yield return source;
-        }
-
-        foreach (var nested in Predicates(query).Where(p => p.Exists is not null).Select(p => p.Exists!))
-        {
-            foreach (var source in Sources(nested))
-                yield return source;
-        }
-    }
-
-    private static IEnumerable<RQueryPredicate> Predicates(RQuery query)
-    {
-        var roots = new List<RQueryPredicate?> { query.Where, query.Having };
-        roots.AddRange(query.Joins.Select(j => j.On));
-        foreach (var root in roots.OfType<RQueryPredicate>())
-        {
-            foreach (var p in Walk(root))
-                yield return p;
-        }
-
-        static IEnumerable<RQueryPredicate> Walk(RQueryPredicate p)
-        {
-            yield return p;
-            foreach (var child in p.And.Concat(p.Or).Concat(p.Not is { } not ? [not] : []))
-            {
-                foreach (var x in Walk(child))
-                    yield return x;
-            }
-        }
-    }
-
-    private static IEnumerable<RQueryExpression> Expressions(RQuery query)
-    {
-        var roots = new List<RQueryExpression>();
-        roots.AddRange(query.Select.Select(f => f.Expression));
-        roots.AddRange(query.GroupBy);
-        roots.AddRange(query.OrderBy.Select(o => o.Expression));
-        foreach (var p in Predicates(query))
-        {
-            if (p.Left is { } left)
-                roots.Add(left);
-            if (p.Right is { } right)
-                roots.Add(right);
-            roots.AddRange(p.Values);
-        }
-
-        foreach (var root in roots)
-        {
-            foreach (var e in Walk(root))
-                yield return e;
-        }
-
-        foreach (var nested in query.Collections.Select(c => c.Query).Concat(Predicates(query).Where(p => p.Exists is not null).Select(p => p.Exists!)))
-        {
-            foreach (var e in Expressions(nested))
-                yield return e;
-        }
-
-        static IEnumerable<RQueryExpression> Walk(RQueryExpression e)
-        {
-            yield return e;
-            var children = e.Args.Concat(e.Case.SelectMany(w => new[] { w.Then })).Concat(e.Else is { } x ? [x] : []).Concat(e.Cast is { } c ? [c] : []);
-            foreach (var child in children)
-            {
-                foreach (var y in Walk(child))
-                    yield return y;
-            }
-
-            foreach (var when in e.Case)
-            {
-                foreach (var p in WalkPredicate(when.When))
-                {
-                    foreach (var operand in (p.Left is { } l ? new[] { l } : []).Concat(p.Right is { } r ? [r] : []).Concat(p.Values))
-                    {
-                        foreach (var y in Walk(operand))
-                            yield return y;
-                    }
-                }
-            }
-        }
-
-        static IEnumerable<RQueryPredicate> WalkPredicate(RQueryPredicate p)
-        {
-            yield return p;
-            foreach (var child in p.And.Concat(p.Or).Concat(p.Not is { } not ? [not] : []))
-            {
-                foreach (var x in WalkPredicate(child))
-                    yield return x;
-            }
-        }
-    }
-
-    /// <summary>Replaces string values of the named properties anywhere under a node; true when one changed.</summary>
-    private static bool ReplaceStrings(JsonNode node, IReadOnlyDictionary<string, string> map, string[] properties)
-    {
-        var changed = false;
-        switch (node)
-        {
-            case JsonObject obj:
-                foreach (var name in obj.Select(p => p.Key).ToList())
-                {
-                    var value = obj[name];
-                    if (value is JsonValue v && properties.Contains(name) && v.TryGetValue<string>(out var text) && map.TryGetValue(text, out var replacement))
-                    {
-                        obj[name] = replacement;
-                        changed = true;
-                    }
-                    else if (value is not null)
-                    {
-                        changed |= ReplaceStrings(value, map, properties);
-                    }
-                }
-
-                break;
-            case JsonArray array:
-                foreach (var item in array.ToList())
-                {
-                    if (item is not null)
-                        changed |= ReplaceStrings(item, map, properties);
-                }
-
-                break;
-        }
-
-        return changed;
     }
 
     // ---- materialize-entities ---------------------------------------------------------------------------------------------------
@@ -771,18 +760,29 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             if (key.Count > 0)
                 entity["key"] = strategy is null ? new JsonObject { ["attributes"] = key } : new JsonObject { ["attributes"] = key, ["strategy"] = strategy };
             entity["attributes"] = attributes;
-            entity["bindings"] = new JsonArray(new JsonObject { ["id"] = ids.NewId(), ["database"] = db.Id, ["source"] = element.Id, ["fields"] = fields });
+            var binding = new JsonObject { ["id"] = ids.NewId(), ["database"] = db.Id, ["source"] = element.Id, ["fields"] = fields };
+            if (element is Table file)
+                RecordProvenance(binding, BindingDrift.ColumnsOf(snapshot, file), written: null);
+            entity["bindings"] = new JsonArray(binding);
             made[element.Id] = (entityId, name, entity, byColumn);
             Put(entityId, null, entity, BatchOp.Create, $"an entity for {element.KindName} {element.Name}, bound to it");
         }
 
-        // Foreign keys between the selected tables, or towards a table an entity is already bound to, become many-to-one relations.
+        // Foreign keys between the selected tables, or towards a table an entity is already bound to, become many-to-one relations. A
+        // key into the rows of a reference type's bound table makes none: its column's attribute is typed by the type (decision 11).
         foreach (var element in selected.OfType<Table>())
         {
             var table = rdb.Tables.First(t => t.Key == element.Id);
             var dependent = made[element.Id];
             foreach (var fk in table.ForeignKeys.Where(f => f.Id is not null))
             {
+                if (IntoBoundRows(fk) is var (type, at))
+                {
+                    var typed = dependent.Attributes.TryGetValue(fk.Columns[at].Key, out var a) ? a.Name : fk.Columns[at].Name;
+                    _notes.Add($"Foreign key '{fk.Name}' of table '{table.Name}' points at the rows of reference type '{type.Name}' in table '{fk.ReferencedTable.Name}': attribute '{typed}' of entity '{dependent.Name}' is typed by '{type.Name}' instead, so no relation is made for it.");
+                    continue;
+                }
+
                 string principalId, principalName;
                 if (made.TryGetValue(fk.ReferencedTable.Key, out var principal))
                 {
@@ -833,7 +833,9 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
     /// naming and type conventions, as <c>materialize-tables</c> writes them), and a field mapping it. Without
     /// <paramref name="attributes"/>, every attribute a column can hold that no field maps; with them (one entity only), those, as
     /// binding field references (an attribute id, <c>attributeId.memberId</c>, or a to-one end id). A column whose name the table has
-    /// already is left out (map it instead), and a foreign key is not added (a note says so). Refused for an entity with no binding,
+    /// already is left out (map it instead), and a foreign key is not added (a note says so). An attribute whose column name a column
+    /// the table inherits from a stereotype has is mapped to that column's keyed id, with no column added (next-phase-2-design.md
+    /// section 3.1). Refused for an entity with no binding,
     /// a source that is not a designed or imported table, a binding that writes another table, an attribute already mapped or that no
     /// column holds, and when nothing is left to add.
     /// </summary>
@@ -883,7 +885,17 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                 .Where(c => c.Target is not null)
                 .ToList();
             var names = table.Columns.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            // A column the table inherits from a stereotype (next-phase-2-design.md section 3.1) is not added again: an attribute whose
+            // column would have its name maps to its keyed id instead (an own column of that name wins, as below).
+            var inherited = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var member in TableMembers.Of(snapshot, table).Columns)
+            {
+                if (!names.Contains(member.Member.Name))
+                    inherited.TryAdd(member.Member.Name, member.Key);
+            }
+
             var chosen = new List<(RColumn Column, string Target)>();
+            var toInherited = new List<(string Name, string Column, string Target)>();
             if (attributes is { Count: > 0 })
             {
                 foreach (var target in attributes.Distinct(StringComparer.Ordinal))
@@ -894,7 +906,10 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                         return Refused($"'{target}' is not an attribute of entity '{entity.Name}' that a column of table '{table.Name}' can hold.");
                     if (names.Contains(candidate.Column.Name))
                         return Refused($"Table '{table.Name}' already has a column named '{candidate.Column.Name}': map the attribute to it instead.");
-                    chosen.Add((candidate.Column, target));
+                    if (inherited.TryGetValue(candidate.Column.Name, out var keyed))
+                        toInherited.Add((candidate.Column.Name, keyed, target));
+                    else
+                        chosen.Add((candidate.Column, target));
                 }
             }
             else
@@ -903,70 +918,237 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                 {
                     if (names.Contains(column.Name))
                         _notes.Add($"Table '{table.Name}' already has a column named '{column.Name}': attribute '{target}' of entity '{entity.Name}' is left for you to map to it.");
+                    else if (inherited.TryGetValue(column.Name, out var keyed))
+                        toInherited.Add((column.Name, keyed, target!));
                     else
                         chosen.Add((column, target!));
                 }
 
-                if (chosen.Count == 0)
+                if (chosen.Count == 0 && toInherited.Count == 0)
                     return Refused($"Every attribute of entity '{entity.Name}' a column can hold is mapped, or table '{table.Name}' has its column already: nothing to add.");
             }
 
-            var tableNode = Node(table.Id, BatchOp.Update, $"columns for {chosen.Count} {(chosen.Count == 1 ? "attribute" : "attributes")} of entity {entity.Name}");
-            var columns = tableNode["columns"] as JsonArray ?? [];
-            tableNode["columns"] = columns;
-            var entityNode = Node(entity.Id, BatchOp.Update, $"maps {(chosen.Count == 1 ? "its new column" : "the new columns")} of table {table.Name}");
+            var columns = new JsonArray();
+            if (chosen.Count > 0)
+            {
+                var tableNode = Node(table.Id, BatchOp.Update, $"columns for {chosen.Count} {(chosen.Count == 1 ? "attribute" : "attributes")} of entity {entity.Name}");
+                columns = tableNode["columns"] as JsonArray ?? [];
+                tableNode["columns"] = columns;
+            }
+
+            var entityNode = Node(entity.Id, BatchOp.Update, chosen.Count > 0
+                ? $"maps {(chosen.Count == 1 ? "its new column" : "the new columns")} of table {table.Name}"
+                : $"maps {(toInherited.Count == 1 ? "an attribute to the column" : "attributes to the columns")} table {table.Name} inherits");
             var bindingNode = (JsonObject)entityNode["bindings"]![index]!;
             var fields = bindingNode["fields"] as JsonArray ?? [];
             bindingNode["fields"] = fields;
+            var written = new List<string>();
             foreach (var (column, target) in chosen)
             {
                 var columnId = ids.NewId();
                 columns.Add(ColumnNode(db, table.Schema, column, columnId, null, conventions, typeMap));
                 fields.Add(new JsonObject { ["attribute"] = target, ["column"] = columnId });
+                written.Add(columnId);
                 if (shape.ForeignKeys.Any(fk => fk.Columns.Any(c => c.Key == column.Key)))
                     _notes.Add($"Column '{column.Name}' of table '{table.Name}' holds a foreign key in the projection: add the foreign key in the table if you want one.");
             }
+
+            foreach (var (name, column, target) in toInherited)
+            {
+                fields.Add(new JsonObject { ["attribute"] = target, ["column"] = column });
+                written.Add(column);
+                _notes.Add($"Table '{table.Name}' inherits column '{name}' from a stereotype: attribute '{target}' of entity '{entity.Name}' maps to it ({column}), and no column is added.");
+            }
+
+            // The new columns are hashed from the entries this operation writes (decision 4).
+            var shapes = chosen.Count > 0 ? ShapesOf(_work[table.Id].Node) : BindingDrift.ColumnsOf(snapshot, table);
+            if (shapes is not null)
+                RecordProvenance(bindingNode, shapes, written);
         }
 
         return Result();
     }
 
+    /// <summary>
+    /// A column as materialize reads it. <paramref name="TypeRef"/> is the id of the enum, reference type or scalar type the column
+    /// holds (next-phase-2-design.md section 3.3, decision 11): its own <c>typeRef</c>, or the reference type of a projected reference
+    /// column; <see langword="null"/> when its physical type is all it says.
+    /// </summary>
     private sealed record SourceColumn(string Key, string Name, string? Type, string? NativeType, int? Length, int? Precision, int? Scale, bool Nullable,
-        bool IsKey, bool Identity);
+        bool IsKey, bool Identity, string? TypeRef = null);
 
     private static SourceColumn Source(RColumn c) =>
-        new(c.Key, c.Name, c.Type == "reference" ? c.CodeType : c.Type, c.NativeType, c.Length, c.Precision, c.Scale, c.Nullable, c.IsPrimaryKey, c.Identity);
+        new(c.Key, c.Name, c.Type == "reference" ? c.CodeType : c.Type, c.NativeType, c.Length, c.Precision, c.Scale, c.Nullable, c.IsPrimaryKey, c.Identity,
+            TypeRefOf(c));
 
     private static SourceColumn Source(RViewColumn c) => new(c.Name, c.Name, c.Type, c.NativeType, null, null, null, c.Nullable, false, false);
 
     /// <summary>
+    /// A column of a table file as materialize reads it, from the file alone (the binding operations never resolve the model): its own
+    /// type and facets, nullable when it does not say, its <c>typeRef</c>; <paramref name="key"/> is its id or an inherited column's
+    /// keyed id.
+    /// </summary>
+    private static SourceColumn Source(Column column, string key) =>
+        new(key, column.Name, column.Type, column.NativeType, column.Length, column.Precision, column.Scale, column.Nullable ?? true, IsKey: false,
+            column.Generated == ColumnGeneration.Identity, column.TypeRef?.Ref);
+
+    // ---- provenance (next-phase-2-design.md section 3.3, decision 4) --------------------------------------------------------------
+
+    /// <summary>
+    /// The columns of a table node this operation writes, as provenance sees them (<see cref="BindingDrift.ColumnsOf"/>: own entries in
+    /// order, then inherited members), so the parts hash the entries it writes; <see langword="null"/> when the node does not read as a
+    /// table.
+    /// </summary>
+    private IReadOnlyList<ShapeColumn>? ShapesOf(JsonObject tableNode)
+    {
+        try
+        {
+            return ElementReader.ReadElement(JsonElement.Parse(tableNode.ToJsonString(), DocumentReader.ParseOptions)) is Table table
+                ? BindingDrift.ColumnsOf(snapshot, table)
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Records provenance on a binding node: with <paramref name="written"/> <see langword="null"/>, or when the binding has none (or one
+    /// none of whose ids is a column of the source, which is read as none), every column of the source; otherwise the entries of the
+    /// columns whose fields the operation writes, the others left as they are, so an operation never refreshes an entry it does not
+    /// write. The keys are written in ordinal order, as the canonical writer sorts them.
+    /// </summary>
+    /// <param name="binding">The binding node.</param>
+    /// <param name="columns">The source's columns now.</param>
+    /// <param name="written">The column ids (keyed ids for inherited columns) whose fields the operation writes.</param>
+    private static void RecordProvenance(JsonObject binding, IReadOnlyList<ShapeColumn> columns, IReadOnlyCollection<string>? written)
+    {
+        var byId = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var column in columns)
+            byId.TryAdd(column.Id, column.Shape);
+        var map = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        if (written is not null && binding["provenance"]?["columns"] is JsonObject recorded
+            && (recorded.Count == 0 || recorded.Any(p => byId.ContainsKey(p.Key))))
+        {
+            foreach (var (id, value) in recorded)
+            {
+                if (value is JsonValue v && v.TryGetValue<string>(out var text))
+                    map[id] = text;
+            }
+
+            foreach (var id in written)
+            {
+                if (byId.TryGetValue(id, out var shape))
+                    map[id] = shape;
+            }
+        }
+        else
+        {
+            foreach (var (id, shape) in byId)
+                map[id] = shape;
+        }
+
+        var node = new JsonObject();
+        foreach (var (id, shape) in map)
+            node[id] = shape;
+        binding["provenance"] = new JsonObject { ["columns"] = node };
+    }
+
+    /// <summary>The id of the type a column holds: its own <c>typeRef</c>'s, or a projected reference column's reference type.</summary>
+    private static string? TypeRefOf(RColumn c) =>
+        c.TypeRef is { } typeRef ? typeRef.Enum?.Id ?? typeRef.ReferenceType?.Id ?? typeRef.Scalar?.Id
+        : c.Type == "reference" ? c.ReferenceType?.Id
+        : null;
+
+    /// <summary>
+    /// The reference type a foreign key points at the rows of (next-phase-2-design.md section 3.3, decision 11): the key pairs a column
+    /// typed by a reference type with the code column of the table that type is bound to in the column's database; else
+    /// <see langword="null"/>. The column's index in the key comes with it.
+    /// </summary>
+    private static (RReferenceType Type, int Index)? IntoBoundRows(RForeignKey fk)
+    {
+        for (var i = 0; i < fk.Columns.Count && i < fk.ReferencedColumns.Count; i++)
+        {
+            var column = fk.Columns[i];
+            if (column.TypeRef?.ReferenceType is { } type && column.ReferenceBinding is { CodeColumn: { } code } binding
+                && string.Equals(binding.Table.Key, fk.ReferencedTable.Key, StringComparison.Ordinal)
+                && string.Equals(fk.ReferencedColumns[i].Key, code.Key, StringComparison.Ordinal))
+                return (type, i);
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The attribute a column becomes (materialize-entities, materialize-attributes): its name the column's camel-cased (made unique
-    /// among <paramref name="taken"/>, which it joins), its type the column's built-in keyword or the dialect's keyword for its native
-    /// type (else string), with the column's length, precision and scale, required when the column is not nullable.
+    /// among <paramref name="taken"/>, which it joins), required when the column is not nullable. A column that holds an enum, a
+    /// reference type or a scalar type (<see cref="SourceColumn.TypeRef"/>) types the attribute by it, <c>{ "ref": id }</c>, with no
+    /// length, precision or scale, since the type states them (next-phase-2-design.md section 3.3, decision 11); otherwise its type is the
+    /// column's built-in keyword or the dialect's keyword for its native type (else string), with the column's length, precision and
+    /// scale.
     /// </summary>
     private JsonObject AttributeFor(SourceColumn column, IReadOnlyDictionary<string, string> dialectMap, HashSet<string> taken)
     {
-        var attributeName = Casing.Camel(column.Name);
+        var attribute = new JsonObject { ["id"] = ids.NewId(), ["name"] = AttributeName(column.Name, taken) };
+        TypeAttribute(attribute, column, dialectMap);
+        return attribute;
+    }
+
+    /// <summary>
+    /// The name materialize gives the attribute of a column: the column's name camel-cased (<c>c</c> and the Pascal-cased name when that
+    /// does not start with a letter or <c>_</c>), made unique among <paramref name="taken"/> with a number, and added to it.
+    /// </summary>
+    private static string AttributeName(string columnName, HashSet<string> taken)
+    {
+        var attributeName = Casing.Camel(columnName);
         if (attributeName.Length == 0 || !(char.IsAsciiLetter(attributeName[0]) || attributeName[0] == '_'))
-            attributeName = "c" + Casing.Pascal(column.Name);
+            attributeName = "c" + Casing.Pascal(columnName);
         var unique = attributeName;
         for (var n = 2; !taken.Add(unique); n++)
             unique = attributeName + n.ToString(CultureInfo.InvariantCulture);
-        var type = column.Type is not null && BuiltinTypes.All.Contains(column.Type) ? column.Type : Reverse(dialectMap, column.NativeType) ?? "string";
-        var attribute = new JsonObject { ["id"] = ids.NewId(), ["name"] = unique, ["type"] = type };
-        if (column.Length is { } l && type is "string" or "binary")
-            attribute["length"] = l;
-        if (type == "decimal")
+        return unique;
+    }
+
+    /// <summary>
+    /// Types an attribute node as materialize types the attribute of a column: by the column's enum, reference type or scalar type
+    /// (<c>{ "ref": id }</c>, no length, precision or scale), else by its built-in keyword (or the dialect's keyword for its native type,
+    /// else string) with its length, precision and scale; <c>required</c> when the column is not nullable. Keys it does not set are
+    /// removed, so a re-sync can retype an attribute in place.
+    /// </summary>
+    private static void TypeAttribute(JsonObject attribute, SourceColumn column, IReadOnlyDictionary<string, string> dialectMap)
+    {
+        foreach (var facet in new[] { "length", "precision", "scale" })
+            attribute.Remove(facet);
+        if (column.TypeRef is { } typeRef)
         {
-            if (column.Precision is { } p)
-                attribute["precision"] = p;
-            if (column.Scale is { } s)
-                attribute["scale"] = s;
+            attribute["type"] = new JsonObject { ["ref"] = typeRef };
+        }
+        else
+        {
+            var type = column.Type is not null && BuiltinTypes.All.Contains(column.Type) ? column.Type : Reverse(dialectMap, column.NativeType) ?? "string";
+            attribute["type"] = type;
+            if (column.Length is { } l && type is "string" or "binary")
+                attribute["length"] = l;
+            if (type == "decimal")
+            {
+                if (column.Precision is { } p)
+                    attribute["precision"] = p;
+                if (column.Scale is { } s)
+                    attribute["scale"] = s;
+            }
         }
 
+        Require(attribute, column);
+    }
+
+    /// <summary><c>required</c> follows the column: set when it is not nullable, else removed.</summary>
+    private static void Require(JsonObject attribute, SourceColumn column)
+    {
         if (!column.Nullable)
             attribute["required"] = true;
-        return attribute;
+        else
+            attribute.Remove("required");
     }
 
     // ---- materialize-attributes -------------------------------------------------------------------------------------------------
@@ -1033,6 +1215,7 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
             }
 
             var node = Node(entity.Id, BatchOp.Update, $"attributes for {chosen.Count} {(chosen.Count == 1 ? "column" : "columns")} of {binding.SourceKind} {binding.SourceName}, mapped in its binding");
+            var tableFile = BindingDrift.SourceOf(snapshot, entity.Bindings[index], out var sourceFile) == DriftSource.TableFile ? sourceFile : null;
             var attributes = node["attributes"] as JsonArray ?? [];
             node["attributes"] = attributes;
             var taken = new HashSet<string>(rentity.Attributes.Select(a => a.Name), StringComparer.Ordinal);
@@ -1054,6 +1237,9 @@ internal sealed class Materializer(ModelSnapshot snapshot, IModelResolver resolv
                         bindingNode.Remove("columns");
                 }
             }
+
+            if (tableFile is not null)
+                RecordProvenance(bindingNode, BindingDrift.ColumnsOf(snapshot, tableFile), [.. chosen.Select(c => c.Column.Key)]);
         }
 
         return Result();

@@ -217,21 +217,30 @@ public static class DatabaseEndpoints
                 new MaterializeRequest("materialize-attributes", id, entities, Columns: request.Columns is { Count: > 0 } columns ? columns : null),
             "materialize-columns" when request.Entities is { Count: > 0 } entities =>
                 new MaterializeRequest("materialize-columns", id, entities, Attributes: request.Attributes is { Count: > 0 } refs ? refs : null),
+            "map-by-name" when request.Entities is { Count: > 0 } entities =>
+                new MaterializeRequest("map-by-name", id, entities),
+            "resync-binding" when request.Entities is { Count: > 0 } entities =>
+                new MaterializeRequest("resync-binding", id, entities, Columns: request.Columns is { Count: > 0 } columns ? columns : null, KeepNames: request.KeepNames ?? false),
             _ => null,
         };
         if (plan is null)
-            return Api.BadRequest("The body is { \"op\": \"materialize-tables\", \"entities\": [ids], \"schema\"?: id } { \"op\": \"materialize-entities\", \"tables\": [ids], \"package\": id } { \"op\": \"materialize-attributes\", \"entities\": [ids], \"columns\"?: [keys or names] } or { \"op\": \"materialize-columns\", \"entities\": [ids], \"attributes\"?: [field references] }.");
+            return Api.BadRequest("The body is { \"op\": \"materialize-tables\", \"entities\": [ids], \"schema\"?: id } { \"op\": \"materialize-entities\", \"tables\": [ids], \"package\": id } { \"op\": \"materialize-attributes\", \"entities\": [ids], \"columns\"?: [keys or names] } { \"op\": \"materialize-columns\", \"entities\": [ids], \"attributes\"?: [field references] } { \"op\": \"map-by-name\", \"entities\": [ids] } or { \"op\": \"resync-binding\", \"entities\": [ids], \"columns\"?: [keys or names], \"keepNames\"?: boolean }.");
         return Api.Json(await store.PlanMaterializeAsync(plan, ct).ConfigureAwait(false));
     });
 }
 
-/// <summary>The body of <c>POST /api/model/databases/{id}/materialize/preview</c>: a materialize batch operation without its database.</summary>
-/// <param name="Op"><c>materialize-tables</c>, <c>materialize-entities</c>, <c>materialize-attributes</c> or <c>materialize-columns</c>.</param>
-/// <param name="Entities">The entities (materialize-tables, materialize-attributes, materialize-columns).</param>
+/// <summary>
+/// The body of <c>POST /api/model/databases/{id}/materialize/preview</c>: a materialize or binding batch operation without its database.
+/// </summary>
+/// <param name="Op"><c>materialize-tables</c>, <c>materialize-entities</c>, <c>materialize-attributes</c>, <c>materialize-columns</c>,
+/// <c>map-by-name</c> or <c>resync-binding</c>.</param>
+/// <param name="Entities">The entities (materialize-tables, materialize-attributes, materialize-columns, map-by-name, resync-binding).</param>
 /// <param name="Tables">The tables and views (materialize-entities).</param>
 /// <param name="Schema">The schema the tables go to (materialize-tables).</param>
 /// <param name="Package">The package the entities go to (materialize-entities).</param>
-/// <param name="Columns">The source columns (materialize-attributes, one entity); absent means every column nothing in the binding names.</param>
+/// <param name="Columns">The source columns (materialize-attributes and resync-binding, one entity); absent means every column nothing in the
+/// binding names (materialize-attributes) or every column of the source (resync-binding).</param>
 /// <param name="Attributes">The binding field references (materialize-columns, one entity); absent means every unmapped attribute.</param>
+/// <param name="KeepNames">resync-binding: keep every attribute's name; absent means false.</param>
 public sealed record MaterializeBody(string? Op, IReadOnlyList<string>? Entities, IReadOnlyList<string>? Tables, string? Schema, string? Package,
-    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null);
+    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null, bool? KeepNames = null);

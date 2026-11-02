@@ -225,6 +225,58 @@ public sealed class XrefRuleTests
         Assert.Contains("(custom:billing-run arrives in a later phase, so no value of that kind exists yet.)", found[2].Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Element_scope_takes_an_inherited_column_by_keyed_id_only()
+    {
+        // A table reaches a column a stereotype gives it by its keyed id <tableId>.<memberId> (next-phase-2-design.md section 3.1).
+        var b = new ModelBuilder(37);
+        var main = b.Database("main", Dialect.PostgreSql);
+        var reporting = b.Database("reporting", Dialect.PostgreSql);
+        string created = b.NewId(), updated = b.NewId();
+        b.Add(new Stereotype
+        {
+            Id = b.NewId(), Key = "audited", Name = "Audited", AppliesTo = ["entity", "table"],
+            Columns = [new Column { Id = created, Name = "created_at", Type = "datetimeoffset" }, new Column { Id = updated, Name = "updated_at", Type = "datetimeoffset" }],
+        });
+        TableBuilder Audited(string name, DatabaseBuilder database) =>
+            b.Table(name, database).Column("id", "uuid", nullable: false).PrimaryKey("id").Stereotype("audited");
+        var archive = Audited("archive", reporting);
+        var notes = Audited("notes", main);
+        notes.Property("sortBy", notes.Id + "." + created).Property("sameBase", notes.Id + "." + updated);
+        var bare = Audited("bare", main).Property("sortBy", created);
+        var other = Audited("other", main).Property("sortBy", notes.Id + "." + created).Property("sameBase", archive.Id + "." + created);
+        var excluding = Audited("excluding", main);
+        excluding.Property("sortBy", excluding.Id + "." + updated).Edit(t => t with { Excludes = [updated] });
+        var product = b.Entity("Product").Key("id", "uuid");
+        var overlay = b.Table("products", main).OverlayFor(product).Stereotype("audited").Property("sortBy", created);
+        var extension = PropertySchemaSetTests.Extension("""
+            { "sortBy": { "type": "string", "x-ref": { "kind": "column", "of": "$element" } },
+              "sameBase": { "type": "string", "x-ref": { "kind": "column", "sameDatabase": true } } }
+            """, "sorting", ["table"]);
+
+        var found = await Findings(b, extension);
+
+        Assert.Equal(
+            new[]
+            {
+                (bare.Id, "/properties/sortBy"),
+                (excluding.Id, "/properties/sortBy"),
+                (other.Id, "/properties/sameBase"),
+                (other.Id, "/properties/sortBy"),
+                (overlay.Id, "/properties/sortBy"),
+            }.Order(),
+            found.Select(d => (d.ElementId!, d.JsonPointer!)).Order());
+        Assert.All(found, d => Assert.Equal("MQ2011", d.Rule));
+        Assert.DoesNotContain(found, d => d.ElementId == notes.Id);
+        string Message(string id, string pointer) => found.Single(d => d.ElementId == id && d.JsonPointer == pointer).Message;
+        Assert.Contains($"a member of stereotype 'audited'; of \"$element\" takes a member a table inherits by its keyed id: write '{bare.Id}.{created}'",
+            Message(bare.Id, "/properties/sortBy"), StringComparison.Ordinal);
+        Assert.Contains("as table notes inherits it", Message(other.Id, "/properties/sortBy"), StringComparison.Ordinal);
+        Assert.Contains("that table excluding does not inherit (it excludes the member)", Message(excluding.Id, "/properties/sortBy"), StringComparison.Ordinal);
+        Assert.Contains("which is in database reporting, not in database main (sameDatabase)", Message(other.Id, "/properties/sameBase"), StringComparison.Ordinal);
+        Assert.Contains("holds the synthesized table key, which an x-ref value cannot hold", Message(overlay.Id, "/properties/sortBy"), StringComparison.Ordinal);
+    }
+
     private static SeedRow Row(string id, string code) => new() { Id = id, Values = [JsonSerializer.SerializeToElement(code)] };
 
     private static ImmutableDictionary<string, JsonElement> Props(params (string Key, string Value)[] values) =>

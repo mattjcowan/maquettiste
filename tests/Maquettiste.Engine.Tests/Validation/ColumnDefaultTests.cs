@@ -94,6 +94,26 @@ public sealed class ColumnDefaultTests
     }
 
     [Fact]
+    public async Task A_secret_column_default_is_MQ3017()
+    {
+        // A column's own secret sensitivity feeds the credential check on its literal default, as an attribute's does
+        // (next-phase-2-design.md section 3.2, decision 9).
+        static async Task<List<Diagnostic>> Credentials(Sensitivity? sensitivity)
+        {
+            var (b, table) = Model("string", "\"opening balance\"", length: 40);
+            table.Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { Sensitive = sensitivity }] });
+            var report = await ValidationFixture.Validator().ValidateAsync(b.Build(), ValidationScope.All, null, Ct);
+            return [.. report.Diagnostics.Where(d => d.Rule == "MQ3017")];
+        }
+
+        var finding = Assert.Single(await Credentials(Sensitivity.Secret));
+        Assert.Equal(("/columns/1/default", DiagnosticSeverity.Warning), (finding.JsonPointer, finding.Severity));
+        Assert.Equal("The default of column 'value' looks like a credential (a non-empty default on a secret column); secrets never belong in the model.", finding.Message);
+        Assert.Empty(await Credentials(Sensitivity.Pii));
+        Assert.Empty(await Credentials(null));
+    }
+
+    [Fact]
     public async Task A_range_default_is_a_string()
     {
         var finding = Assert.Single(await FindingsAsync(Model("range", "[1, 10]", subtype: "int32").Builder));

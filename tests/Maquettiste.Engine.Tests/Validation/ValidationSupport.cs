@@ -178,6 +178,10 @@ internal sealed class FakeSandboxFactory(params (string Name, Func<ElementDocume
 
         public IReadOnlyDictionary<string, object?> Transform(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx) =>
             throw new NotSupportedException();
+
+        // The fake registers no rows script, so nothing calls this.
+        public System.Text.Json.JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx) =>
+            throw new NotSupportedException();
     }
 }
 
@@ -248,5 +252,8 @@ internal sealed class CountingSandboxFactory : IScriptSandboxFactory
 
         public IReadOnlyDictionary<string, object?> Transform(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx) =>
             inner.Sandbox.Transform(name, element, model, ctx);
+
+        public System.Text.Json.JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx) =>
+            inner.Sandbox.RunRows(script, seed, model, ctx);
     }
 }

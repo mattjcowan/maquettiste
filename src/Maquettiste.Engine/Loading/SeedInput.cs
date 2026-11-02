@@ -89,8 +89,9 @@ internal static class SeedInput
     }
 
     /// <summary>
-    /// Turns each bare name in <c>columns</c> and <c>key</c> into the id of the target's child it names: a table's columns (and for
-    /// <c>key</c> its unique constraints) by stored name; an entity's attributes, own and inherited, and the roles of the to-one ends a
+    /// Turns each bare name in <c>columns</c> and <c>key</c> into the id of the target's child it names: a table's columns, then its
+    /// named foreign keys (a foreign-key entry, next-phase-2-design.md section 3.4; a name both match is MQ1002), and for <c>key</c> its
+    /// unique constraints, by stored name; an entity's attributes, own and inherited, and the roles of the to-one ends a
     /// seed of it may fill; a relation's end roles and attributes; a reference type's attributes (<c>code</c>, <c>label</c> and
     /// <c>description</c> stay keywords there). These are the names the seed CSV headers use. An entry that is an id, starts with
     /// <c>@</c> or <c>$</c>, or whose target the view does not hold is left as it is. No match, or several, is MQ1002 at
@@ -155,7 +156,7 @@ internal static class SeedInput
     /// <summary>What a column of a seed of the target is, for messages.</summary>
     private static string WhatOf(Element target) => target switch
     {
-        Table => "column",
+        Table => "column or foreign key",
         Entity => "attribute or to-one relation end",
         Relation => "end or attribute",
         _ => "attribute (code, label and description are built in)",
@@ -170,6 +171,7 @@ internal static class SeedInput
         {
             case Table table:
                 children.AddRange(table.Columns.Select(c => new Child(c.Name, c.Id, "column")));
+                children.AddRange(table.ForeignKeys.Where(f => f.Name is not null).Select(f => new Child(f.Name!, f.Id, "foreign key")));
                 break;
             case Entity entity:
             {
@@ -221,8 +223,11 @@ internal static class SeedInput
         return positions;
     }
 
-    /// <summary>A string that is not an id and not a qualified name or placeholder.</summary>
-    private static bool IsBareName(string value) => value.Length > 0 && !IdFormat.IsValid(value) && !QualifiedName.IsName(value);
+    /// <summary>
+    /// A string that is not an id, a keyed id (ids joined by <c>.</c>, an inherited member's <c>&lt;tableId&gt;.&lt;memberId&gt;</c>,
+    /// next-phase-2-design.md section 3.1), a qualified name or a placeholder.
+    /// </summary>
+    private static bool IsBareName(string value) => value.Length > 0 && Validation.BuiltinRules.XRefIds(value) is null && !QualifiedName.IsName(value);
 
     private static string? Text(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 

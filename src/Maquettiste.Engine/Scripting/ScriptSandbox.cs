@@ -2,6 +2,7 @@ using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Acornima;
 using Jint;
@@ -154,8 +155,9 @@ internal sealed record PreparedScript(ScriptSource Source, Prepared<AstScript> P
         var (at, col) = Map(found.Location.Start.Line, found.Location.Start.Column + 1);
         var name = found.Declarations.Count > 0 && found.Declarations[0].Id is Identifier id ? $" '{id.Name}'" : "";
         var keyword = found.Kind == VariableDeclarationKind.Var ? "var" : "let";
+        var (file, what) = ScriptSandbox.IsRowsScript(Source.Path) ? ("Rows script", "a rows script") : ("Rule file", "a rule");
         var warning = RuleCatalog.Create("MQ5005",
-            $"Rule file {Source.Path} declares{name} with {keyword} at its top level: a rule keeps no state between calls, so this file's " +
+            $"{file} {Source.Path} declares{name} with {keyword} at its top level: {what} keeps no state between calls, so this file's " +
             "results are never cached. Use const, or declare the variable inside the function that uses it.",
             null, Source.Path) with { Line = at, Column = col };
         return this with { Program = program, Warning = warning };
@@ -318,14 +320,22 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     public static uint MaxArraySize(SandboxLimits limits) => (uint)Math.Clamp(limits.ScriptMemoryBytes / 16, 1024, uint.MaxValue);
 
     /// <summary>
-    /// Whether a script path is a validation rule script, which decides MQ5002/MQ5003 versus MQ6016/MQ6007. Rule scripts are
-    /// the files directly in the model's <c>extensions/rules/</c> folder (engine-design.md section 5): the path's folder is
-    /// <c>extensions/rules</c> or ends with <c>.maquettiste/extensions/rules</c>. A pack script in a folder of that name deeper
-    /// in its pack is not a rule script.
+    /// Whether a script path is a model script, which decides MQ5002/MQ5003 versus MQ6016/MQ6007 and runs in a function scope of its
+    /// own: the validation rule scripts directly in the model's <c>extensions/rules/</c> folder (engine-design.md section 5), and the
+    /// rows scripts directly in <c>extensions/seeds/</c> (next-phase-2-design.md section 3.4), whose failures the seed rules report as
+    /// MQ7127. The path's folder is <c>extensions/rules</c> (or <c>seeds</c>) or ends with <c>.maquettiste/extensions/rules</c> (or
+    /// <c>seeds</c>). A pack script in a folder of that name deeper in its pack is not one.
     /// </summary>
     /// <param name="path">The script path.</param>
-    /// <returns><see langword="true"/> for rule scripts.</returns>
-    public static bool IsRuleScript(string path)
+    /// <returns><see langword="true"/> for rule and rows scripts.</returns>
+    public static bool IsRuleScript(string path) => InModelFolder(path, "rules") || InModelFolder(path, "seeds");
+
+    /// <summary>Whether a script path is a rows script: a file directly in the model's <c>extensions/seeds/</c> folder.</summary>
+    /// <param name="path">The script path.</param>
+    /// <returns><see langword="true"/> for rows scripts.</returns>
+    public static bool IsRowsScript(string path) => InModelFolder(path, "seeds");
+
+    private static bool InModelFolder(string path, string name)
     {
         ArgumentNullException.ThrowIfNull(path);
         var normalized = path.Replace('\\', '/');
@@ -333,9 +343,9 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         if (slash < 0)
             return false;
         var folder = normalized[..slash];
-        return string.Equals(folder, "extensions/rules", StringComparison.Ordinal)
-            || string.Equals(folder, ".maquettiste/extensions/rules", StringComparison.Ordinal)
-            || folder.EndsWith("/.maquettiste/extensions/rules", StringComparison.Ordinal);
+        return string.Equals(folder, "extensions/" + name, StringComparison.Ordinal)
+            || string.Equals(folder, ".maquettiste/extensions/" + name, StringComparison.Ordinal)
+            || folder.EndsWith("/.maquettiste/extensions/" + name, StringComparison.Ordinal);
     }
 
     /// <inheritdoc/>
@@ -585,6 +595,8 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
 
         api.FastSetProperty("rule", new PropertyDescriptor(
             new ClrFunction(_engine, "rule", (_, args) => RegisterRule(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
+        api.FastSetProperty("rows", new PropertyDescriptor(
+            new ClrFunction(_engine, "rows", (_, args) => RegisterRows(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
         var paramsGetter = new ClrFunction(_engine, "get params", (_, _) => CurrentParameters(), 0, PropertyFlag.Configurable);
         api.DefineOwnProperty("params", new GetSetPropertyDescriptor(paramsGetter, JsValue.Undefined, enumerable: true, configurable: false));
         return api;
@@ -610,6 +622,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     private JsValue Register(ScriptRegistrationKind kind, string api, JsValue[] args)
     {
         var path = _loadingPath ?? throw TypeError($"maquettiste.{api} can only be called while scripts load.");
+        RefuseInRowsScript(path, api);
         var name = args.Length > 0 && args[0] is JsString s ? s.ToString() : "";
         if (name.Length == 0)
             throw TypeError($"maquettiste.{api}(name, fn): name must be a non-empty string.");
@@ -648,9 +661,35 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         return plain;
     }
 
+    /// <summary>A rows script registers its rows and nothing else (next-phase-2-design.md section 3.4): any other call fails its load.</summary>
+    private void RefuseInRowsScript(string path, string api)
+    {
+        if (IsRowsScript(path))
+            throw TypeError($"maquettiste.{api} cannot be called by a rows script ({path}): a rows script registers its rows once with maquettiste.rows(fn).");
+    }
+
+    /// <summary>
+    /// <c>maquettiste.rows(fn)</c>: a rows script's function, <c>fn(model, seed)</c>, registered under the script's path. Only a script in
+    /// <c>extensions/seeds/</c> may call it, once; a rule or pack script that calls it fails to load.
+    /// </summary>
+    private JsValue RegisterRows(JsValue[] args)
+    {
+        var path = _loadingPath ?? throw TypeError("maquettiste.rows can only be called while scripts load.");
+        if (!IsRowsScript(path))
+            throw TypeError($"maquettiste.rows can only be called by a rows script in extensions/seeds/, not by {path}.");
+        if (args.Length == 0 || args[0] is not Function fn)
+            throw TypeError("maquettiste.rows(fn): fn must be a function that takes (model, seed) and returns the rows.");
+        if (_functions.ContainsKey((ScriptRegistrationKind.Rows, path)))
+            throw TypeError($"maquettiste.rows is called more than once by {path}: a rows script registers its rows exactly once.");
+        _functions.Add((ScriptRegistrationKind.Rows, path), new Registered(ScriptRegistrationKind.Rows, path, path, fn));
+        _registrations.Add(new ScriptRegistration(ScriptRegistrationKind.Rows, path, path));
+        return JsValue.Undefined;
+    }
+
     private JsValue RegisterRule(JsValue[] args)
     {
         var path = _loadingPath ?? throw TypeError("maquettiste.rule can only be called while scripts load.");
+        RefuseInRowsScript(path, "rule");
         if (args.Length == 0 || args[0] is not ObjectInstance spec)
             throw TypeError("maquettiste.rule({ id, severity, kinds, scope, check }): the argument must be an object.");
         var id = spec.Get("id") is JsString idValue ? idValue.ToString() : "";
@@ -867,6 +906,110 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         }
 
         return diagnostics;
+    }
+
+    /// <inheritdoc/>
+    public JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(script);
+        ArgumentNullException.ThrowIfNull(seed);
+        ArgumentNullException.ThrowIfNull(model);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_functions.TryGetValue((ScriptRegistrationKind.Rows, script), out var fn))
+        {
+            throw new ScriptErrorException(new Diagnostic("MQ5002", DiagnosticSeverity.Error,
+                $"Rows script {script} registers no rows: it calls maquettiste.rows(fn) exactly once.", seed.Element.Id, script, null, null, null));
+        }
+
+        return Run(new CallSite($"Rows script {script}", script, seed.Element.Id, true), ctx, () =>
+        {
+            var result = _engine.Call(fn.Function, JsValue.Undefined, [RuleModel(model), _values.FromJson(seed.Json)]);
+            return RowsJson(_values.FromJs(result, $"result of rows script {script}"), script);
+        });
+    }
+
+    private static readonly JsonWriterOptions RowsWriterOptions = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    /// <summary>
+    /// The value a rows function returned, as JSON: an array of plain objects whose values are JSON values (null, booleans, strings,
+    /// finite numbers, arrays and objects of them). Anything else is a <see cref="ScriptValueException"/>, which the call reports.
+    /// </summary>
+    private static JsonElement RowsJson(object? value, string script)
+    {
+        if (value is not IReadOnlyList<object?> rows || value is ScriptObjectMap)
+            throw new ScriptValueException($"Rows script {script} must return an array of row objects, not {Shape(value)}.");
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        // The model's canonical form (EngineJson): the raw text of a scripted cell is the text a stored cell of the same value has, so
+        // keys compared as raw JSON ('café', 'R&D') match.
+        using (var writer = new Utf8JsonWriter(buffer, RowsWriterOptions))
+        {
+            writer.WriteStartArray();
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (rows[i] is not ScriptObjectMap row)
+                    throw new ScriptValueException($"Rows script {script} returned {Shape(rows[i])} at index {i.ToString(CultureInfo.InvariantCulture)}; each row is a plain object.");
+                Write(writer, row, script, i);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        using var document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.Clone();
+
+        static void Write(Utf8JsonWriter writer, object? value, string script, int row)
+        {
+            switch (value)
+            {
+                case null:
+                    writer.WriteNullValue();
+                    break;
+                case bool b:
+                    writer.WriteBooleanValue(b);
+                    break;
+                case string s:
+                    writer.WriteStringValue(s);
+                    break;
+                case long l:
+                    writer.WriteNumberValue(l);
+                    break;
+                case double d when double.IsFinite(d):
+                    writer.WriteNumberValue(d);
+                    break;
+                case ScriptObjectMap map:
+                    writer.WriteStartObject();
+                    foreach (var (key, item) in map)
+                    {
+                        writer.WritePropertyName(key);
+                        Write(writer, item, script, row);
+                    }
+
+                    writer.WriteEndObject();
+                    break;
+                case IReadOnlyList<object?> list:
+                    writer.WriteStartArray();
+                    foreach (var item in list)
+                        Write(writer, item, script, row);
+                    writer.WriteEndArray();
+                    break;
+                default:
+                    throw new ScriptValueException(
+                        $"Rows script {script} returned {Shape(value)} in row {row.ToString(CultureInfo.InvariantCulture)}; a row holds JSON values only.");
+            }
+        }
+
+        static string Shape(object? value) => value switch
+        {
+            null => "nothing",
+            double => "a number that is not finite",
+            ScriptObjectMap => "an object",
+            IReadOnlyList<object?> => "an array",
+            string => "a string",
+            bool => "a boolean",
+            long => "a number",
+            IResolvedObject r => "a model object (" + r.Kind + ")",
+            _ => "a " + value.GetType().Name,
+        };
     }
 
     private Diagnostic CreateReport(RuleSpec rule, ElementDocument element, JsValue[] args)

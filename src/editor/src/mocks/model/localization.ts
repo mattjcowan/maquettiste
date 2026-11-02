@@ -643,6 +643,24 @@ export class MockLocalization {
           });
       }
     }
-    return { usages };
+    // Columns of table files whose own typeRef names the type (next-phase-2-design.md 3.2); the mock resolves no stereotype
+    // members, so inherited columns are left out.
+    const columns: Json[] = [];
+    for (const [table, json] of docs) {
+      if (json.kind !== "table") continue;
+      for (const c of (Array.isArray(json.columns) ? json.columns : []) as Json[]) {
+        if ((c.typeRef as Json | undefined)?.ref !== id) continue;
+        columns.push({
+          table,
+          column: c.id,
+          database: json.database,
+          ...(typeof json.package === "string" ? { domain: json.package } : {}),
+          required: c.nullable === false,
+        });
+      }
+    }
+    const ordinal = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    columns.sort((a, b) => ordinal(a.table as string, b.table as string) || ordinal(a.column as string, b.column as string));
+    return { usages, columns };
   }
 }

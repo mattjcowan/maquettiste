@@ -232,7 +232,8 @@ internal static class ModelCommand
 
     /// <summary>
     /// <c>model apply &lt;batch.json&gt;</c>: reads <c>{ "operations": [...] }</c> or the bare array, then applies it all or nothing, or with
-    /// <c>--dry-run</c> previews it. Text on stdout: the written and deleted paths (with <c>--dry-run</c>, the diffs), the names and
+    /// <c>--dry-run</c> previews it. Text on stdout: a usage line per reference-type refactor, the written and deleted paths (with
+    /// <c>--dry-run</c>, the diffs), the names and
     /// placeholders with their ids, and with <c>--dry-run</c> a <c>+ </c> or <c>- </c> line per diagnostic the change adds or removes;
     /// <c>--format json</c> prints the <c>apply_batch</c> answer. Exit 0 when saved, 3 on a conflict, 1 for anything else.
     /// </summary>
@@ -263,7 +264,7 @@ internal static class ModelCommand
             var preview = await store.PreviewBatchAsync(parsed.Batch, ct).ConfigureAwait(false);
             (outcome, items) = (preview.Outcome, preview.Items);
             await context.Out.WriteAsync(json ? JsonSerializer.Serialize(BatchOutput.Preview(preview), Options) + "\n"
-                : outcome == SaveOutcome.Saved ? BatchOutput.PreviewText(preview) : "").ConfigureAwait(false);
+                : outcome == SaveOutcome.Saved ? BatchOutput.PreviewText(preview, snapshot, parsed.Batch) : "").ConfigureAwait(false);
             if (outcome == SaveOutcome.Saved)
             {
                 context.Info(string.Create(CultureInfo.InvariantCulture,
@@ -275,7 +276,7 @@ internal static class ModelCommand
             var result = await store.ApplyBatchAsync(parsed.Batch, ChangeSource.Cli, ct).ConfigureAwait(false);
             (outcome, items) = (result.Outcome, result.Items);
             await context.Out.WriteAsync(json ? JsonSerializer.Serialize(result, Options) + "\n"
-                : outcome == SaveOutcome.Saved ? BatchOutput.AppliedText(result, snapshot) : "").ConfigureAwait(false);
+                : outcome == SaveOutcome.Saved ? BatchOutput.AppliedText(result, snapshot, parsed.Batch) : "").ConfigureAwait(false);
             if (outcome == SaveOutcome.Saved)
             {
                 var facts = result.Facts ?? [];
@@ -389,7 +390,7 @@ internal static class ModelCommand
     }
 
     /// <summary>The one element of a kind an id or name names (a table or view: of the database); a usage error otherwise.</summary>
-    private static string One(Engine.Model.ModelSnapshot snapshot, string kind, string wanted, string? database)
+    internal static string One(Engine.Model.ModelSnapshot snapshot, string kind, string wanted, string? database)
     {
         bool Fits(Engine.Model.Element e) => kind switch
         {
@@ -405,7 +406,7 @@ internal static class ModelCommand
     }
 
     /// <summary>A materialize plan as lines: what is created, changed and deleted, the notes, and what blocks it.</summary>
-    private static string MaterializeText(MaterializePlan plan, bool dryRun)
+    internal static string MaterializeText(MaterializePlan plan, bool dryRun)
     {
         var text = new StringBuilder();
         text.Append(plan.Operation).Append(plan.Valid ? (dryRun ? " would:\n" : ":\n") : " cannot go ahead:\n");

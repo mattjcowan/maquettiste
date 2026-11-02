@@ -184,10 +184,15 @@ public sealed class CliApp(CliEnvironment environment)
           l10n set-default <locale>
                                 Preview making a locale the default (texts swap between files and shards); --apply
           seed new <type>       Create a reference type's seed with the code, label and description columns
-          seed export <seed>    A seed's rows as CSV (seed id or name, or the id or name of the element it seeds)
+          seed export <seed>    A seed's rows as CSV (seed id or name, or the id or name of the element it seeds), a
+                                  scripted seed's rows as its script returns them
                                   --locale <tag> (repeatable: its label and description columns), --out <file>
           seed import <seed> <file>
-                                Preview a CSV import: --mode merge|replace; --apply writes it, --check, --format text|json
+                                Preview a CSV import: --mode merge|replace; --apply writes it, --check, --format text|json;
+                                  a seed whose rows a script computes takes none
+          seed preview <seed>   A seed's rows, written or scripted, one line per row (key, id, cells); --database
+                                  <name|id> gives them as that database receives them (stable ids, foreign-key values),
+                                  --format text|json
           process simulate <process>
                                 Run a process through inputs: --inputs <file|-> (an array of steps, or { start, steps }),
                                   --scenario <id|name> (its steps first), --from <index>, --format text|json
@@ -230,6 +235,18 @@ public sealed class CliApp(CliEnvironment environment)
                                 Add to each bound entity's table a column per attribute its binding leaves unmapped, shaped
                                   as the projection would make it, mapped to it: --attribute <id|name> (repeatable, one
                                   entity: those attributes), --dry-run, --format text|json
+          binding drift [<entity>...]
+                                What changed in each binding's table since its provenance was recorded (added, renamed,
+                                  retyped and removed columns): --database <id|name>, --all (also the bindings in step),
+                                  --check (exit 2 when a listed binding drifts), --format text|json
+          binding map --database <id|name> <entity...>
+                                Map every attribute a binding leaves unmapped to the free column of the same loose name and
+                                  record the binding's provenance: --dry-run, --format text|json
+          binding resync --database <id|name> <entity...>
+                                Bring each binding into step with its table in one batch: rename the attributes that followed
+                                  their column (--keep-names keeps every name), retype, map by name, add attributes for added
+                                  columns, drop the fields of removed ones: --column <key|name> (repeatable, one entity),
+                                  --dry-run, --format text|json
           snapshot create <name>
                                 Take a snapshot of the model (a zip under .maquettiste/model-snapshots/): --description,
                                   --packs (hold the template packs too), --format text|json
@@ -300,6 +317,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "seed" => await SeedCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "process" => await ProcessCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "model" => await ModelCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "binding" => await BindingCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "snapshot" => await SnapshotCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "mcp" => await McpCommand.RunAsync(context, ct).ConfigureAwait(false),
                 _ => throw new UsageException($"Unknown command '{command}'. Run 'maquettiste --help'."),

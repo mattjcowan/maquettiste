@@ -37,7 +37,9 @@ public sealed class ModelSnapshot
         ImmutableArray<ScriptSource> ruleScripts,
         PropertySchemaSet propertySchemas,
         ModelIndexer.Result index,
-        IReadOnlyList<LocaleShardDocument> shards)
+        IReadOnlyList<LocaleShardDocument> shards,
+        StereotypeDefaults stereotypeDefaults,
+        ImmutableArray<ScriptSource> seedScripts)
     {
         Version = version;
         Settings = settings;
@@ -46,6 +48,7 @@ public sealed class ModelSnapshot
         LoadDiagnostics = loadDiagnostics;
         Extensions = extensions;
         RuleScripts = ruleScripts;
+        SeedScripts = seedScripts;
         PropertySchemas = propertySchemas;
         _entries = index.Entries;
         _documentsById = index.DocumentsById;
@@ -60,6 +63,7 @@ public sealed class ModelSnapshot
         _tagVocabularies = index.TagVocabularies;
         _categoryTrees = index.CategoryTrees;
         Index = index;
+        StereotypeDefaults = stereotypeDefaults;
         LocaleShards = shards;
         _localization = new Lazy<LocalizationIndex>(() => new LocalizationIndex(this, shards), LazyThreadSafetyMode.ExecutionAndPublication);
         _names = new Lazy<NameIndexes>(() => new NameIndexes(this), LazyThreadSafetyMode.ExecutionAndPublication);
@@ -78,6 +82,14 @@ public sealed class ModelSnapshot
     internal ModelIndexer.Result Index { get; }
 
     /// <summary>
+    /// The holders and layered effective sets of default stereotypes (next-phase-2-design.md section 3.1), built from the documents
+    /// before the index.
+    /// </summary>
+    internal StereotypeDefaults StereotypeDefaults { get; }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, StereotypeHolder> _holders = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// Builds a snapshot and its indexes. Pure: no I/O. On duplicate ids the document with the ordinally first path wins; a second
     /// tag vocabulary or category tree is ignored and reported (MQ1009) in <see cref="LoadDiagnostics"/>.
     /// </summary>
@@ -89,6 +101,7 @@ public sealed class ModelSnapshot
     /// <param name="version">A number that increases with every snapshot a store produces.</param>
     /// <param name="loadDiagnostics">Diagnostics of files that failed to load, or loaded with warnings.</param>
     /// <param name="localeShards">The locale shards (reference-types-seeds-localization.md section 3.3).</param>
+    /// <param name="seedScripts">The rows scripts from <c>extensions/seeds/</c> (next-phase-2-design.md section 3.4).</param>
     /// <returns>The snapshot.</returns>
     public static ModelSnapshot Create(
         IEnumerable<ElementDocument> documents,
@@ -98,14 +111,16 @@ public sealed class ModelSnapshot
         IReadOnlyList<ScriptSource> ruleScripts,
         long version,
         IReadOnlyList<Diagnostic>? loadDiagnostics = null,
-        IReadOnlyList<LocaleShardDocument>? localeShards = null) =>
+        IReadOnlyList<LocaleShardDocument>? localeShards = null,
+        IReadOnlyList<ScriptSource>? seedScripts = null) =>
         CreateAfter(null, documents, settings, settingsHash, extensions, ruleScripts, version, loadDiagnostics, ModelIndexer.DefaultParallelism,
-            CancellationToken.None, localeShards);
+            CancellationToken.None, localeShards, seedScripts);
 
     /// <summary>
     /// <see cref="Create"/> after the store's previous snapshot, whose indexes are patched when few documents changed (the result
     /// is the same as without it), walking at most <paramref name="parallelism"/> documents at once and observing
-    /// <paramref name="ct"/> (the loader and the store pass <see cref="EngineOptions.EffectiveParallelism"/> and their token).
+    /// <paramref name="ct"/> (the loader and the store pass <see cref="EngineOptions.EffectiveParallelism"/> and their token). Without
+    /// <paramref name="localeShards"/> or <paramref name="seedScripts"/> the previous snapshot's are kept.
     /// </summary>
     internal static ModelSnapshot CreateAfter(
         ModelSnapshot? previous,
@@ -118,7 +133,8 @@ public sealed class ModelSnapshot
         IReadOnlyList<Diagnostic>? loadDiagnostics,
         int parallelism,
         CancellationToken ct,
-        IReadOnlyList<LocaleShardDocument>? localeShards = null)
+        IReadOnlyList<LocaleShardDocument>? localeShards = null,
+        IReadOnlyList<ScriptSource>? seedScripts = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(settings);
@@ -130,7 +146,8 @@ public sealed class ModelSnapshot
             docs = [.. docs.OrderBy(d => d.Path, StringComparer.Ordinal)];
         var sortedExtensions = extensions.OrderBy(e => e.Path, StringComparer.Ordinal).ToImmutableArray();
         var propertySchemas = PropertySchemaSet.Create(sortedExtensions, previous?.PropertySchemas, [.. docs.Where(d => d.Element is Stereotype)]);
-        var index = ModelIndexer.Build(docs, propertySchemas, previous?.Index, parallelism, ct);
+        var stereotypeDefaults = new StereotypeDefaults(docs);
+        var index = ModelIndexer.Build(docs, propertySchemas, stereotypeDefaults, previous?.Index, parallelism, ct);
         var diagnostics = (loadDiagnostics ?? []).ToImmutableArray();
         if (!index.Diagnostics.IsEmpty)
             diagnostics = [.. diagnostics.AddRange(index.Diagnostics).Order(Diagnostic.Order)];
@@ -144,7 +161,9 @@ public sealed class ModelSnapshot
             ruleScripts.OrderBy(s => s.Path, StringComparer.Ordinal).ToImmutableArray(),
             propertySchemas,
             index,
-            localeShards is null ? previous?.LocaleShards ?? [] : [.. localeShards.OrderBy(s => s.ModelPath, StringComparer.Ordinal)]);
+            localeShards is null ? previous?.LocaleShards ?? [] : [.. localeShards.OrderBy(s => s.ModelPath, StringComparer.Ordinal)],
+            stereotypeDefaults,
+            [.. (seedScripts ?? previous?.SeedScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)]);
     }
 
     /// <summary>The snapshot version.</summary>
@@ -167,6 +186,28 @@ public sealed class ModelSnapshot
 
     /// <summary>JavaScript rule scripts, ordinal by path.</summary>
     public IReadOnlyList<ScriptSource> RuleScripts { get; }
+
+    /// <summary>
+    /// The rows scripts of <c>extensions/seeds/*.js</c> (next-phase-2-design.md section 3.4), ordinal by path: read with the model, run
+    /// only when something reads the rows of a seed that names one (<c>rowsFrom.script</c>).
+    /// </summary>
+    public IReadOnlyList<ScriptSource> SeedScripts { get; }
+
+    /// <summary>The rows script a seed's <c>rowsFrom.script</c> names (a path under <c>extensions/</c>), or <see langword="null"/>.</summary>
+    /// <param name="path">The path under <c>extensions/</c>, such as <c>seeds/audited-records.js</c>.</param>
+    /// <returns>The script.</returns>
+    internal ScriptSource? SeedScript(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        var suffix = "extensions/" + path;
+        foreach (var script in SeedScripts)
+        {
+            if (string.Equals(script.Path, suffix, StringComparison.Ordinal) || script.Path.EndsWith("/" + suffix, StringComparison.Ordinal))
+                return script;
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// The custom property schemas (next-phase-1-design.md section 4.1): the extension files' property schemas with their
@@ -275,43 +316,61 @@ public sealed class ModelSnapshot
     /// <summary>
     /// The effective stereotypes of a list of keys (next-phase-1-design.md section 4.2). Implied first, then own; an own entry
     /// replaces an implied copy of the same key; unknown keys skipped. Implication is one level, in entry then <c>implies</c> order,
-    /// each key once. Rules judge this set, and resolution merges it in order, so an explicit choice beats an implied default.
+    /// each key once. Rules judge this set, and resolution merges it in order, so an explicit choice beats an implied default. Sub-elements
+    /// and process nodes use it; a top-level element's set, defaults included, is <see cref="EffectiveStereotypes(Element)"/>.
     /// </summary>
     /// <param name="keys">The element's stereotype keys, as its file lists them.</param>
-    /// <returns>The effective set.</returns>
-    public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(IReadOnlyList<string> keys)
+    /// <returns>The effective set: own entries with <see cref="StereotypeSource.Own"/>, implied ones with <see cref="StereotypeSource.Implied"/>.</returns>
+    public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(IReadOnlyList<string> keys) => StereotypeDefaults.Layer(keys, GetStereotype);
+
+    /// <summary>
+    /// What a top-level element's effective set is built from (next-phase-2-design.md section 3.1): its own and excluded keys, the
+    /// package whose chain gives package defaults (its own, else the phase 1 fallback: a table overlay's entity's or relation's, a
+    /// seed's target's, a scenario's process's), and, for a table, view, sequence, routine, database type or SQL object, the database
+    /// schema entry whose defaults reach it. Cached per element id for the snapshot's own elements.
+    /// </summary>
+    /// <param name="element">The element.</param>
+    /// <returns>The holder.</returns>
+    public StereotypeHolder HolderOf(Element element)
     {
-        ArgumentNullException.ThrowIfNull(keys);
-        if (keys.Count == 0)
-            return [];
-        var own = new List<AppliedStereotype>(keys.Count);
-        var implies = false;
-        for (var i = 0; i < keys.Count; i++)
-        {
-            if (GetStereotype(keys[i]) is not { } stereotype)
-                continue;
-            own.Add(new AppliedStereotype(stereotype, i, null));
-            implies |= stereotype.Implies.Count > 0;
-        }
-
-        if (!implies)
-            return own;
-        var result = new List<AppliedStereotype>(own.Count * 2);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var entry in own)
-            seen.Add(entry.Stereotype.Key);
-        foreach (var entry in own)
-        {
-            foreach (var key in entry.Stereotype.Implies)
-            {
-                if (seen.Add(key) && GetStereotype(key) is { } implied)
-                    result.Add(new AppliedStereotype(implied, entry.Entry, entry.Stereotype.Key));
-            }
-        }
-
-        result.AddRange(own);
-        return result;
+        ArgumentNullException.ThrowIfNull(element);
+        // Only the snapshot's own instance is cached: a candidate element with the same id (a save being judged) gets its own holder.
+        return ReferenceEquals(Get<Element>(element.Id), element)
+            ? _holders.GetOrAdd(element.Id, static (_, state) => state.Defaults.HolderOf(state.Element), (Defaults: StereotypeDefaults, Element: element))
+            : StereotypeDefaults.HolderOf(element);
     }
+
+    /// <summary>
+    /// The effective stereotypes of a top-level element (next-phase-2-design.md section 3.1): <see cref="EffectiveStereotypes(StereotypeHolder)"/>
+    /// of its <see cref="HolderOf"/>.
+    /// </summary>
+    /// <param name="element">The element.</param>
+    /// <returns>The effective set.</returns>
+    public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(Element element) => EffectiveStereotypes(HolderOf(element));
+
+    /// <summary>
+    /// The effective stereotypes of a holder, in layers (next-phase-2-design.md section 3.1, decision 5): the schema's defaults, then the
+    /// package defaults from the outermost package to the holder's own, then the own list. Within a layer the stereotypes its entries
+    /// imply come first, then the entries, as <see cref="EffectiveStereotypes(IReadOnlyList{string})"/> orders the own list. A default
+    /// that <c>excludeStereotypes</c> names, or that does not apply to the holder's kind, is left out with the copies it implies, so a
+    /// default never makes MQ2004. A key listed twice keeps its last place: a later layer beats an earlier one, and within a layer an
+    /// entry beats an implied copy. A default entry has <see cref="AppliedStereotype.Entry"/> -1, its source and its holder's id. With
+    /// no defaults the set is the own list's.
+    /// </summary>
+    /// <param name="holder">The holder.</param>
+    /// <returns>The effective set.</returns>
+    public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(StereotypeHolder holder) => StereotypeDefaults.Effective(holder, GetStereotype);
+
+    /// <summary>
+    /// The keys custom property schemas apply to a top-level element by (next-phase-2-design.md section 3.1): when the model declares a
+    /// default stereotype, <see cref="PropertySchemaSet.HostKeys"/> of its effective set, defaults included; otherwise
+    /// <see langword="null"/>, and the schemas apply by its own keys and the ones they imply, as in phase 1. Every walk over an
+    /// element's <c>properties</c> passes it to <see cref="PropertySchemaSet.Sites"/> or <see cref="PropertyHost.Of"/>.
+    /// </summary>
+    /// <param name="element">The element.</param>
+    /// <returns>The keys, or <see langword="null"/>.</returns>
+    internal IReadOnlyList<string>? PropertyKeys(Element element) =>
+        StereotypeDefaults.HasDefaults ? PropertySchemaSet.HostKeys(EffectiveStereotypes(element), element.Stereotypes) : null;
 
     /// <summary>
     /// Returns the current hash of the <c>r:&lt;id&gt;</c> dependency key (engine-design.md section 11): <c>H</c> over the sorted

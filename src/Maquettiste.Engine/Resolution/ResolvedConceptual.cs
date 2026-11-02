@@ -165,8 +165,18 @@ public sealed class RAttribute : RElement
     /// <summary>The derivation, when derived.</summary>
     public RDerived? Derived { get; internal set; }
 
-    /// <summary><c>pii</c>, <c>secret</c> or <see langword="null"/>.</summary>
+    /// <summary>
+    /// <c>pii</c>, <c>secret</c> or <see langword="null"/>: its own; else the strongest own value of the columns its entity's bindings map it
+    /// to (next-phase-2-design.md section 3.2, decision 9).
+    /// </summary>
     public string? Sensitive { get; internal set; }
+
+    /// <summary>
+    /// The column whose comment <see cref="RAnnotated.Description"/> shows, when the attribute has no description of its own; otherwise
+    /// <see langword="null"/> (next-phase-2-design.md section 3.3, decision 12): the first commented column its entity's bindings map
+    /// it to, bindings in database name order.
+    /// </summary>
+    public RColumn? DescriptionColumn { get; internal set; }
 
     /// <summary>Validation constraints (scalar type constraints merged).</summary>
     public RValidation? Validation { get; internal set; }

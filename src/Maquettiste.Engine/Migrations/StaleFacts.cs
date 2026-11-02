@@ -18,7 +18,10 @@ namespace Maquettiste.Engine.Migrations;
 /// same state, or a widening). Candidate <c>rekey</c> facts are stale together when their moves, composed, bring every key back
 /// (<see cref="Chains"/>).</description></item>
 /// </list>
-/// A chain whose object is gone (renamed, then dropped) is not stale: fold joins it. Facts in the baseline are never candidates.
+/// A chain whose object is gone (renamed, then dropped) is not stale: fold joins it. Facts in the baseline are never candidates. A
+/// candidate <c>value-map</c> is judged against a baseline model only (next-phase-2-design.md section 3.5, decision 11): it is stale
+/// when its type held none of its <c>from</c> codes there and its names did not change, so no database stores what it maps; with only a
+/// committed physical snapshot, which holds no rows, it is never stale.
 /// </summary>
 internal static class StaleFacts
 {
@@ -105,8 +108,11 @@ internal static class StaleFacts
     /// <param name="isCandidate">Whether a fact is a candidate (the baseline lacks it).</param>
     /// <param name="capture">The database's capture in the working model.</param>
     /// <param name="dialect">The database's dialect.</param>
+    /// <param name="baseline">The baseline model's reference codes, which judge value maps; <see langword="null"/> (no baseline model):
+    /// no value map is stale.</param>
     /// <returns>The stale facts, in applied order.</returns>
-    public static IReadOnlyList<StaleFact> Chains(IReadOnlyList<Migration> ordered, Func<Migration, bool> isCandidate, PhysicalSnapshot capture, Dialect dialect)
+    public static IReadOnlyList<StaleFact> Chains(IReadOnlyList<Migration> ordered, Func<Migration, bool> isCandidate, PhysicalSnapshot capture, Dialect dialect,
+        BaselineCodes? baseline = null)
     {
         ArgumentNullException.ThrowIfNull(ordered);
         ArgumentNullException.ThrowIfNull(isCandidate);
@@ -115,6 +121,7 @@ internal static class StaleFacts
         var chains = new Dictionary<(string Aspect, string Kind, string? Table, string Key), List<int>>();
         var order = new List<(string, string, string?, string)>();
         var rekeys = new List<int>();
+        var valueMaps = new SortedDictionary<int, StaleFact>();
         for (var position = 0; position < ordered.Count; position++)
         {
             var fact = ordered[position];
@@ -123,6 +130,13 @@ internal static class StaleFacts
             if (fact.Fact == MigrationFact.Rekey)
             {
                 rekeys.Add(position);
+                continue;
+            }
+
+            if (fact.Fact == MigrationFact.ValueMap)
+            {
+                if (baseline is not null && ValueMapStale(fact, baseline) is { } unstored)
+                    valueMaps[position] = unstored;
                 continue;
             }
 
@@ -164,6 +178,8 @@ internal static class StaleFacts
             }
         }
 
+        foreach (var (position, fact) in valueMaps)
+            stale[position] = fact;
         if (rekeys.Count > 0 && RekeysCancel(ordered, rekeys))
         {
             var ids = string.Join(", ", rekeys.Select(p => ordered[p].Id));
@@ -175,6 +191,23 @@ internal static class StaleFacts
         }
 
         return [.. stale.Values];
+    }
+
+    /// <summary>
+    /// A value map that maps nothing a database can store (section 3.5, decision 11): its names did not change, and the type whose codes it
+    /// maps (a merge's merged-away type, else its type) held none of its <c>from</c> codes in the baseline model; or <see langword="null"/>.
+    /// </summary>
+    private static StaleFact? ValueMapStale(Migration fact, BaselineCodes baseline)
+    {
+        if (!string.Equals(fact.From?.Name, fact.To?.Name, StringComparison.Ordinal)
+            || !string.Equals(fact.From?.PluralName, fact.To?.PluralName, StringComparison.Ordinal))
+            return null;
+        if ((fact.FromReferenceType ?? fact.ReferenceType) is not { } type || fact.Values.Any(v => baseline.MayHold(type, v.From)))
+            return null;
+        var name = fact.From?.Name ?? fact.To?.Name ?? type;
+        var codes = string.Join(", ", fact.Values.Select(v => "'" + v.From + "'"));
+        return new StaleFact(fact,
+            $"The value map of reference type '{name}' is stale: in the baseline model the type held none of the codes it maps ({codes}) and its names did not change, so no database stores them; migration fold removes it.");
     }
 
     /// <summary>Why a pending fact is stale, or <see langword="null"/> when it is not.</summary>
@@ -253,10 +286,15 @@ internal static class StaleFacts
                     tracked.Add((key.Kind, key.Table, key.From, key.Table, key.From));
             }
 
+            // The map moves tables, columns, sequences and SQL objects; a constraint id moves by its own entry, under its table's key
+            // before the fact (next-phase-2-design.md section 3.1), so a rekey that moves only constraint ids never reads as cancelled.
             var map = FactKeys.RekeyMap.Of(fact);
+            var constraints = fact.Keys.Where(k => k.Table is not null && FactKeys.ConstraintKinds.Contains(k.Kind))
+                .GroupBy(k => (k.Kind, Table: k.Table!, k.From)).ToDictionary(g => g.Key, g => g.First().To);
             for (var i = 0; i < tracked.Count; i++)
             {
-                var (table, moved) = map.Move(tracked[i].Kind, tracked[i].Table, tracked[i].Key);
+                var key = tracked[i].Table is { } at && constraints.TryGetValue((tracked[i].Kind, at, tracked[i].Key), out var to) ? to : tracked[i].Key;
+                var (table, moved) = map.Move(tracked[i].Kind, tracked[i].Table, key);
                 tracked[i] = tracked[i] with { Table = table, Key = moved };
             }
         }
@@ -354,4 +392,44 @@ internal static class StaleFacts
         /// <summary>A schema name recorded at <paramref name="position"/>, renamed by the schema renames after it in applied order.</summary>
         public string SchemaToday(string schema, int position) => StaleFacts.SchemaToday(_ordered, schema, position);
     }
+}
+
+/// <summary>
+/// The reference codes of a baseline model (next-phase-2-design.md section 3.5): per reference type, the codes of its written rows there.
+/// A type that a seed fills with a rows script may have held any code, as may a type the baseline indexed none of. Value maps are judged
+/// stale against them (<see cref="StaleFacts.Chains"/>), and <c>validate --against</c> reads what a former code was (MQ4112).
+/// </summary>
+internal sealed class BaselineCodes
+{
+    private readonly ReferenceDataIndex _data;
+    private readonly HashSet<string> _scripted;
+
+    private BaselineCodes(ReferenceDataIndex data, HashSet<string> scripted)
+    {
+        _data = data;
+        _scripted = scripted;
+    }
+
+    /// <summary>The codes of a baseline model.</summary>
+    /// <param name="baseline">The baseline model.</param>
+    /// <returns>Its codes.</returns>
+    public static BaselineCodes Of(ModelSnapshot baseline)
+    {
+        ArgumentNullException.ThrowIfNull(baseline);
+        var data = baseline.Index.ReferenceData ?? ReferenceDataIndex.Build(baseline.Documents.Select(d => d.Element));
+        var scripted = baseline.All<Seed>().Where(s => s.RowsFrom?.Script is not null).Select(s => s.Target).ToHashSet(StringComparer.Ordinal);
+        return new BaselineCodes(data, scripted);
+    }
+
+    /// <summary>Whether a written row of the type held the code in the baseline (its canonical text).</summary>
+    /// <param name="typeId">The reference type's id.</param>
+    /// <param name="code">The code.</param>
+    /// <returns>Whether it was a live code there.</returns>
+    public bool Held(string typeId, string code) => _data.Codes.TryGetValue(typeId, out var codes) && codes.ContainsKey(code);
+
+    /// <summary>Whether the type may have held the code in the baseline: a written row held it, or a rows script fills the type.</summary>
+    /// <param name="typeId">The reference type's id.</param>
+    /// <param name="code">The code.</param>
+    /// <returns>Whether a database built from the baseline may store it.</returns>
+    public bool MayHold(string typeId, string code) => _scripted.Contains(typeId) || Held(typeId, code);
 }

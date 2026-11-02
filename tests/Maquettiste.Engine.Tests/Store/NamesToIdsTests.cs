@@ -252,6 +252,33 @@ public sealed class NamesToIdsTests
     }
 
     [Fact]
+    public async Task A_former_code_converts_to_the_replacing_row()
+    {
+        // The reference-data fixture's allergens, where 'peanut' is a former code of the 'nut' row (next-phase-2-design.md section 3.5).
+        using var repo = new TempRepo();
+        Integration.E2ERepo.CopyTree(Fixtures.Path("models", "reference-data"), repo.RepoRoot);
+        const string AllergenPath = ".maquettiste/model/reference-types/allergen.json";
+        const string IngredientPath = ".maquettiste/model/entities/ingredient.json";
+        var allergen = JsonNode.Parse(repo.ReadFile(AllergenPath))!.AsObject();
+        allergen["formerCodes"] = new JsonArray(new JsonObject { ["code"] = "peanut", ["replacedBy"] = "01JRDA00000000000000000012" });
+        repo.WriteBytes(AllergenPath, TestServices.Json.Write(allergen, "reference-type.json", AllergenPath));
+        repo.WriteBytes(".maquettiste/extensions/allergens.json", TestServices.Json.Write(JsonNode.Parse("""
+            { "name": "allergens", "appliesTo": { "kinds": ["entity"] },
+              "properties": { "mainAllergen": { "type": "string", "x-ref": { "kind": "row", "of": "01JRDA00000000000000000001" } } } }
+            """)!, "extension.json", ".maquettiste/extensions/allergens.json"));
+        var ingredient = JsonNode.Parse(repo.ReadFile(IngredientPath))!.AsObject();
+        Property(ingredient, "mainAllergen", "peanut");
+        repo.WriteBytes(IngredientPath, TestServices.Json.Write(ingredient, "entity.json", IngredientPath));
+        await using var store = new ModelStore(repo.Options);
+        var parsed = store.ParseBatch(Encoding.UTF8.GetBytes("{\"operations\":[" + Convert + "]}"));
+
+        var rows = await store.ApplyBatchAsync(parsed.Batch!, ChangeSource.Editor, Ct);
+
+        Assert.True(rows.Outcome == SaveOutcome.Saved, string.Join("; ", Refusals(rows).Select(d => d.Rule + " " + d.Message)));
+        Assert.Equal("01JRDA00000000000000000012", store.Current!.Get<Entity>("01JRDE00000000000000000002")!.Properties["mainAllergen"].GetString());
+    }
+
+    [Fact]
     public async Task A_stereotype_is_matched_by_key_only()
     {
         await using var r = Repo(n => Property(n, "marker", "Audited"), customer: n => Property(n, "marker", "audited"));

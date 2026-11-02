@@ -18,6 +18,7 @@
     "decision",
     "status",
     "stereotypes",
+    "excludeStereotypes",
     "tags",
     "category",
     "routineKind",
@@ -85,6 +86,10 @@
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",
       "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
     },
     "tags": {
       "$ref": "common.json#/$defs/tagList",

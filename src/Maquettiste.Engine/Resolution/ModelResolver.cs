@@ -5,12 +5,38 @@ using Maquettiste.Engine.Text;
 
 namespace Maquettiste.Engine.Resolution;
 
+/// <summary>
+/// A resolver that resolves the conceptual layer and some databases without the rest of the model: what fact recording and the plans of
+/// the binding operations (next-phase-2-design.md section 3.3, decision 10) use, so they never resolve the whole model.
+/// </summary>
+internal interface IDatabaseResolver
+{
+    /// <summary>Resolves the conceptual layer once and then each database of <paramref name="databaseIds"/>.</summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="databaseIds">The database element ids.</param>
+    /// <param name="freeze">Whether to keep the dependency keys of the resolved objects.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>Per id, the resolved database (null when no database has it), and the diagnostics of that partial run.</returns>
+    Task<(IReadOnlyList<RDatabase?> Databases, IReadOnlyList<Diagnostic> Diagnostics)> ResolveDatabasesAsync(ModelSnapshot model, IReadOnlyList<string> databaseIds,
+        bool freeze, CancellationToken ct);
+}
+
 /// <summary>Stage 3: conventions, mappings and the resolved model (W3; engine-design.md section 7).</summary>
 /// <param name="options">The engine options.</param>
-internal sealed class ModelResolver(EngineOptions options) : IModelResolver
+/// <param name="scripts">The sandbox factory that runs seeds' rows scripts (next-phase-2-design.md section 3.4); a factory of its own
+/// when absent.</param>
+/// <param name="seedRows">The engine's rows cache; a cache of its own when absent.</param>
+internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSandboxFactory? scripts = null, SeedRowsCache? seedRows = null)
+    : IModelResolver, IDatabaseResolver
 {
     /// <summary>The engine options (the resolver needs none today; kept for the constructor contract of section 18).</summary>
     internal EngineOptions Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
+
+    /// <summary>The sandbox factory of rows scripts.</summary>
+    internal Scripting.IScriptSandboxFactory Scripts { get; } = scripts ?? new Scripting.ScriptSandboxFactory();
+
+    /// <summary>The rows cache: a seed's scripted rows are built on first read, through it (decision 15).</summary>
+    internal SeedRowsCache SeedRows { get; } = seedRows ?? new SeedRowsCache();
 
     /// <summary>The inflector of the last resolution and the settings it was made for (its plural cache carries over between runs).</summary>
     private InflectorEntry? _inflector;
@@ -50,7 +76,10 @@ internal sealed class ModelResolver(EngineOptions options) : IModelResolver
     {
         ArgumentNullException.ThrowIfNull(model);
         ct.ThrowIfCancellationRequested();
-        return Task.Run(() => new ResolveRun(model, progress, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count)).Run(), ct);
+        return Task.Run(() => new ResolveRun(model, progress, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count))
+        {
+            Scripts = Scripts, SeedRows = SeedRows,
+        }.Run(), ct);
     }
 
     /// <summary>Resolves the conceptual layer and one database only (<see cref="ResolveRun.RunOneDatabase"/>).</summary>
@@ -76,13 +105,15 @@ internal sealed class ModelResolver(EngineOptions options) : IModelResolver
     /// <param name="freeze">Whether to keep the dependency keys of the resolved objects.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>Per id, the resolved database (null when no database has it), and the diagnostics of that partial run.</returns>
-    internal Task<(IReadOnlyList<RDatabase?> Databases, IReadOnlyList<Diagnostic> Diagnostics)> ResolveDatabasesAsync(ModelSnapshot model, IReadOnlyList<string> databaseIds,
+    public Task<(IReadOnlyList<RDatabase?> Databases, IReadOnlyList<Diagnostic> Diagnostics)> ResolveDatabasesAsync(ModelSnapshot model, IReadOnlyList<string> databaseIds,
         bool freeze, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(databaseIds);
         ct.ThrowIfCancellationRequested();
         return Task.Run(() => new ResolveRun(model, null, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count))
-            .RunDatabases(databaseIds, freeze), ct);
+        {
+            Scripts = Scripts, SeedRows = SeedRows,
+        }.RunDatabases(databaseIds, freeze), ct);
     }
 }

@@ -20,7 +20,8 @@ public sealed class BindingTests
     /// </summary>
     private sealed class Shop
     {
-        public Shop(Dialect dialect = Dialect.PostgreSql, Func<Shop, string, EntityBinding, EntityBinding>? edit = null, bool mapInvoiceNote = false)
+        public Shop(Dialect dialect = Dialect.PostgreSql, Func<Shop, string, EntityBinding, EntityBinding>? edit = null, bool mapInvoiceNote = false,
+            Func<Table, Table>? changeNotes = null)
         {
             Builder = new ModelBuilder(seed: 43);
             var db = Builder.Database("main", dialect);
@@ -28,7 +29,7 @@ public sealed class BindingTests
             Customer = Builder.Entity("Customer").Key("id", "uuid").Attr("name", "string", a => a.Length(100).Required());
             Notes = Builder.NewId();
             (NoteId, NoteType, NoteEntity, NoteBody, NoteCreated) = (Builder.NewId(), Builder.NewId(), Builder.NewId(), Builder.NewId(), Builder.NewId());
-            Builder.Add(new Table
+            NotesFile = new Table
             {
                 Id = Notes, Name = "notes", Database = Main,
                 Columns =
@@ -40,7 +41,8 @@ public sealed class BindingTests
                     new Column { Id = NoteCreated, Name = "created_at", Type = "datetimeoffset", Nullable = false, DefaultSql = new Dictionary<string, string> { ["*"] = "CURRENT_TIMESTAMP" } },
                 ],
                 PrimaryKey = new PrimaryKey { Columns = [NoteId] },
-            });
+            };
+            Builder.Add(changeNotes is null ? NotesFile : changeNotes(NotesFile));
             Events = Builder.NewId();
             (EventId, EventName, EventDeleted) = (Builder.NewId(), Builder.NewId(), Builder.NewId());
             Builder.Add(new Table
@@ -114,6 +116,9 @@ public sealed class BindingTests
         public string Main { get; }
 
         public string Notes { get; }
+
+        /// <summary>The table <c>notes</c> as the shop defines it, before <c>changeNotes</c>.</summary>
+        public Table NotesFile { get; }
 
         public string NoteId { get; }
 
@@ -374,5 +379,328 @@ public sealed class BindingTests
         Assert.Equal(("foreign-key", "order_lines"), (mapping.Shape, mapping.ForeignKey?.Columns[0].Table.Name));
         Assert.Equal(["order_id"], mapping.ForeignKey!.Columns.Select(c => c.Name));
         Assert.Empty(model.Entity("OrderLine").Mappings);
+    }
+
+    // ---- sensitivity said once, shown on both sides (next-phase-2-design.md section 3.2, D23) ----
+
+    /// <summary>
+    /// A table <c>notes</c> (id, entity_type, body) shared by InvoiceNote and CustomerNote, each with a body attribute bound to the
+    /// body column; Customer projected with an email attribute, and its overlay entry for the email column. Each value is the
+    /// sensitivity that side states, or <see langword="null"/>.
+    /// </summary>
+    private static ResolvedModel SensitiveNotes(Sensitivity? body, Sensitivity? invoiceBody, Sensitivity? customerBody, Sensitivity? email = null,
+        Sensitivity? emailEntry = null)
+    {
+        var b = new ModelBuilder(seed: 45);
+        var db = b.Database("main", Dialect.PostgreSql);
+        var notes = b.Table("notes", db).Column("id", "uuid", nullable: false).Column("entity_type", "string", nullable: false, length: 32).Column("body", "text")
+            .PrimaryKey("id").Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "body" ? c with { Sensitive = body } : c)] });
+        foreach (var (name, type, sensitivity) in new[] { ("InvoiceNote", "invoice", invoiceBody), ("CustomerNote", "customer", customerBody) })
+        {
+            var note = b.Entity(name).Key("id", "uuid").Attr("body", "text", a => { if (sensitivity is { } s) a.Sensitive(s); });
+            note.Bind(new EntityBinding
+            {
+                Id = "", Database = db.Id, Source = notes.Id,
+                Constants = [new BindingConstant { Column = notes.ColumnId("entity_type"), Value = Shop.Json("\"" + type + "\"") }],
+                Fields = [Shop.Field(note, "id", notes.ColumnId("id")), Shop.Field(note, "body", notes.ColumnId("body"))],
+            });
+        }
+
+        var customer = b.Entity("Customer").Key("id", "uuid").Attr("email", "string", a => { a.Length(320); if (email is { } s) a.Sensitive(s); });
+        if (emailEntry is { } entry)
+            b.Table("customers", db).OverlayFor(customer).Overlay(customer.AttrId("email")).Edit(t => t with { Columns = [t.Columns[0] with { Sensitive = entry }] });
+        return ResolutionKit.Resolve(b);
+    }
+
+    [Fact]
+    public void A_designed_column_shows_the_strongest_sensitivity_of_its_bound_attributes()
+    {
+        Assert.Equal("secret", SensitiveNotes(null, Sensitivity.Pii, Sensitivity.Secret).Db("main").Table("notes").Column("body").Sensitive);
+        Assert.Equal("pii", SensitiveNotes(null, Sensitivity.Pii, null).Db("main").Table("notes").Column("body").Sensitive);
+        var model = SensitiveNotes(null, null, null);
+        Assert.Null(model.Db("main").Table("notes").Column("body").Sensitive);
+        Assert.Null(model.Db("main").Table("notes").Column("id").Sensitive);
+    }
+
+    [Fact]
+    public void A_bound_attribute_shows_its_column_sensitivity()
+    {
+        var model = SensitiveNotes(Sensitivity.Pii, null, null);
+
+        Assert.Equal("pii", model.Db("main").Table("notes").Column("body").Sensitive);
+        Assert.Equal("pii", model.Entity("InvoiceNote").Attributes.Single(a => a.Name == "body").Sensitive);
+        Assert.Equal("pii", model.Entity("CustomerNote").Attributes.Single(a => a.Name == "body").Sensitive);
+        Assert.Null(model.Entity("InvoiceNote").Attributes.Single(a => a.Name == "id").Sensitive);
+    }
+
+    [Fact]
+    public void A_projected_column_shows_its_attribute_sensitivity()
+    {
+        var model = SensitiveNotes(null, null, null, email: Sensitivity.Pii);
+        Assert.Equal("pii", model.Db("main").Table("customers").Column("email").Sensitive);
+        Assert.Null(model.Db("main").Table("customers").Column("id").Sensitive);
+
+        // The overlay entry's own value is the column's statement.
+        var overlaid = SensitiveNotes(null, null, null, email: Sensitivity.Pii, emailEntry: Sensitivity.Secret);
+        Assert.Equal("secret", overlaid.Db("main").Table("customers").Column("email").Sensitive);
+        Assert.Equal("pii", overlaid.Entity("Customer").Attributes.Single(a => a.Name == "email").Sensitive);
+    }
+
+    [Fact]
+    public void Own_sensitivity_wins_on_both_sides()
+    {
+        // Each side states its own: neither shows the other's (MQ4085 warns).
+        var both = SensitiveNotes(Sensitivity.Pii, Sensitivity.Secret, null);
+        Assert.Equal("pii", both.Db("main").Table("notes").Column("body").Sensitive);
+        Assert.Equal("secret", both.Entity("InvoiceNote").Attributes.Single(a => a.Name == "body").Sensitive);
+        Assert.Equal("pii", both.Entity("CustomerNote").Attributes.Single(a => a.Name == "body").Sensitive);
+
+        // A side reads only the other's own value: the column borrows InvoiceNote's, and CustomerNote does not borrow it back.
+        var borrowed = SensitiveNotes(null, Sensitivity.Secret, null);
+        Assert.Equal("secret", borrowed.Db("main").Table("notes").Column("body").Sensitive);
+        Assert.Null(borrowed.Entity("CustomerNote").Attributes.Single(a => a.Name == "body").Sensitive);
+    }
+
+    // ---- the description fallback (next-phase-2-design.md section 3.3, decision 12, D34) ----
+
+    /// <summary>
+    /// Note (id, body, title) bound to a table <c>notes</c> in <c>main</c> whose <c>body</c> column carries <paramref name="mainComment"/>
+    /// and whose <c>title</c> column carries <paramref name="titleDescription"/> as its own description; with
+    /// <paramref name="archived"/>, Note is also bound to <c>notes</c> in <c>archive</c>, a database created after <c>main</c> whose
+    /// <c>body</c> column carries <paramref name="archiveComment"/>. The body attribute states <paramref name="own"/> as its description,
+    /// when given.
+    /// </summary>
+    private static ResolvedModel CommentedNotes(string? mainComment, string? own = null, bool archived = false, string? archiveComment = null,
+        string? titleDescription = null)
+    {
+        var b = new ModelBuilder(seed: 46);
+        var note = b.Entity("Note").Key("id", "uuid").Attr("body", "text", a => { if (own is not null) a.Description(own); }).Attr("title", "string");
+        Bind(b.Database("main", Dialect.PostgreSql), mainComment);
+        if (archived)
+            Bind(b.Database("archive", Dialect.PostgreSql), archiveComment);
+        return ResolutionKit.Resolve(b);
+
+        void Bind(DatabaseBuilder db, string? comment)
+        {
+            var notes = b.Table("notes", db).Column("id", "uuid", nullable: false).Column("body", "text").Column("title", "string").PrimaryKey("id")
+                .Edit(t => t with
+                {
+                    Columns =
+                    [
+                        .. t.Columns.Select(c => c.Name switch
+                        {
+                            "body" => c with { Comment = comment },
+                            "title" when titleDescription is not null => c with { Description = new Description { Text = titleDescription } },
+                            _ => c,
+                        }),
+                    ],
+                });
+            note.Bind(new EntityBinding
+            {
+                Id = "", Database = db.Id, Source = notes.Id,
+                Fields =
+                [
+                    Shop.Field(note, "id", notes.ColumnId("id")),
+                    Shop.Field(note, "body", notes.ColumnId("body")),
+                    Shop.Field(note, "title", notes.ColumnId("title")),
+                ],
+            });
+        }
+    }
+
+    [Fact]
+    public void An_attribute_without_a_description_shows_its_column_comment()
+    {
+        var model = CommentedNotes("Text of the note, as typed.");
+        var note = model.Entity("Note");
+        var column = model.Db("main").Table("notes").Column("body");
+
+        var body = note.Attributes.Single(a => a.Name == "body");
+        Assert.Equal("Text of the note, as typed.", body.Description);
+        Assert.Same(column, body.DescriptionColumn);
+        Assert.Equal("Text of the note, as typed.", column.Comment);
+        Assert.Null(column.Description); // the column keeps its own text; nothing is copied back
+
+        // An attribute bound to a column with no comment has no description.
+        var id = note.Attributes.Single(a => a.Name == "id");
+        Assert.Null(id.Description);
+        Assert.Null(id.DescriptionColumn);
+
+        // The comment is the text the database gets: a designed column's own description fills it by convention.
+        var described = CommentedNotes(null, titleDescription: "The heading.").Entity("Note").Attributes.Single(a => a.Name == "title");
+        Assert.Equal("The heading.", described.Description);
+        Assert.Equal("title", described.DescriptionColumn!.Name);
+    }
+
+    [Fact]
+    public void An_own_description_wins()
+    {
+        var model = CommentedNotes("Text of the note, as typed.", own: "What the author wrote.");
+        var body = model.Entity("Note").Attributes.Single(a => a.Name == "body");
+        Assert.Equal("What the author wrote.", body.Description);
+        Assert.Null(body.DescriptionColumn);
+        Assert.Equal("Text of the note, as typed.", model.Db("main").Table("notes").Column("body").Comment);
+    }
+
+    [Fact]
+    public void The_first_database_by_name_gives_the_comment()
+    {
+        // archive sorts before main, although it was created after it.
+        var model = CommentedNotes("From main.", archived: true, archiveComment: "From archive.");
+        var body = model.Entity("Note").Attributes.Single(a => a.Name == "body");
+        Assert.Equal("From archive.", body.Description);
+        Assert.Same(model.Db("archive").Table("notes").Column("body"), body.DescriptionColumn);
+
+        // A binding whose column has no comment is passed over for the next one that has.
+        var later = CommentedNotes("From main.", archived: true).Entity("Note").Attributes.Single(a => a.Name == "body");
+        Assert.Equal("From main.", later.Description);
+        Assert.Equal("main", later.DescriptionColumn!.Table.Database.Name);
+    }
+
+    [Fact]
+    public void A_value_object_member_takes_no_fallback()
+    {
+        var b = new ModelBuilder(seed: 47);
+        var db = b.Database("main", Dialect.PostgreSql);
+        var money = b.ValueObject("Money").Attr("amount", "decimal").Attr("currency", "string");
+        var invoice = b.Entity("Invoice").Key("id", "uuid").Attr("total", money);
+        var invoices = b.Table("invoices", db).Column("id", "uuid", nullable: false).Column("total_amount", "decimal").Column("total_currency", "string")
+            .PrimaryKey("id")
+            .Edit(t => t with { Columns = [.. t.Columns.Select(c => c with { Comment = "Column " + c.Name + "." })] });
+        invoice.Bind(new EntityBinding
+        {
+            Id = "", Database = db.Id, Source = invoices.Id,
+            Fields =
+            [
+                Shop.Field(invoice, "id", invoices.ColumnId("id")),
+                new BindingField { Attribute = invoice.AttrId("total") + "." + money.AttrId("amount"), Column = invoices.ColumnId("total_amount") },
+                new BindingField { Attribute = invoice.AttrId("total") + "." + money.AttrId("currency"), Column = invoices.ColumnId("total_currency") },
+            ],
+        });
+        var model = ResolutionKit.Resolve(b);
+
+        // The member is shared by every entity that embeds the value object, and the embedding attribute maps no column of its own.
+        var total = model.Entity("Invoice").Attributes.Single(a => a.Name == "total");
+        Assert.Null(total.Description);
+        Assert.Null(total.DescriptionColumn);
+        Assert.All(model.ValueObjects.Single().Attributes, m => Assert.Null(m.Description));
+        Assert.Equal("Column id.", model.Entity("Invoice").Attributes.Single(a => a.Name == "id").Description);
+    }
+
+    // ---- drift against recorded provenance (next-phase-2-design.md section 3.3, decisions 5 and 6, D31) ----
+
+    /// <summary>The provenance a by-name operation records for the shop's <c>notes</c> table as it defines it.</summary>
+    private static BindingProvenance Recorded(Shop shop) =>
+        new() { Columns = shop.NotesFile.Columns.ToDictionary(c => c.Id, ColumnShapeHash.Of, StringComparer.Ordinal) };
+
+    /// <summary>
+    /// The shop with provenance on InvoiceNote's binding, recorded from <c>notes</c> as defined, and <paramref name="changeNotes"/> applied
+    /// to the table after; CustomerNote, bound to the same table, records none.
+    /// </summary>
+    private static Shop Drifted(Func<Table, Table>? changeNotes, Func<Shop, BindingProvenance>? provenance = null, string? severity = null)
+    {
+        var shop = new Shop(
+            edit: (s, entity, b) => entity == "InvoiceNote" ? b with { Provenance = provenance?.Invoke(s) ?? Recorded(s) } : b,
+            changeNotes: changeNotes);
+        if (severity is not null)
+            shop.Builder.Settings(s => s with { Validation = new ValidationSettings { Rules = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty.Add("MQ4087", severity) } });
+        return shop;
+    }
+
+    /// <summary>Renames <c>body</c> to <c>note_body</c> and makes <c>created_at</c> nullable.</summary>
+    private static Table RenameBodyAndRetypeCreated(Table t) =>
+        t with
+        {
+            Columns =
+            [
+                .. t.Columns.Select(c => c.Name switch
+                {
+                    "body" => c with { Name = "note_body" },
+                    "created_at" => c with { Nullable = true },
+                    _ => c,
+                }),
+            ],
+        };
+
+    [Fact]
+    public void A_renamed_column_is_MQ4087_at_the_binding()
+    {
+        var shop = Drifted(RenameBodyAndRetypeCreated);
+        var model = shop.Resolve();
+
+        var found = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4087");
+        Assert.Equal((DiagnosticSeverity.Warning, shop.InvoiceNote.Id, "/bindings/0"), (found.Severity, found.ElementId, found.JsonPointer));
+        Assert.Equal("The binding of entity 'InvoiceNote' to database 'main' maps columns that changed since its provenance was recorded: "
+            + "'note_body' renamed (attribute 'body'), 'created_at' retyped (attribute 'createdAt'). Re-sync the binding (resync-binding).", found.Message);
+        Assert.DoesNotContain(model.Diagnostics, d => d.Rule is "MQ4088" or "MQ4047");
+
+        // The binding still resolves by column id: nothing else breaks, and a table unchanged since it was recorded is not drift.
+        Assert.Equal("note_body", BindingOf(model, "InvoiceNote").Fields.Single(f => f.Name == "body").ColumnName);
+        Assert.DoesNotContain(Drifted(null).Resolve().Diagnostics, d => d.Rule is "MQ4087" or "MQ4088");
+
+        // A change of case or separators is not a rename.
+        var cased = Drifted(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "entity_id" ? c with { Name = "EntityID" } : c)] }).Resolve();
+        Assert.DoesNotContain(cased.Diagnostics, d => d.Rule == "MQ4087");
+    }
+
+    [Fact]
+    public void MQ4087_takes_the_project_severity()
+    {
+        var model = Drifted(RenameBodyAndRetypeCreated, severity: "error").Resolve();
+        Assert.Equal(DiagnosticSeverity.Error, Assert.Single(model.Diagnostics, d => d.Rule == "MQ4087").Severity);
+    }
+
+    [Fact]
+    public void MQ4087_off_reports_nothing()
+    {
+        var model = Drifted(RenameBodyAndRetypeCreated, severity: "off").Resolve();
+        Assert.DoesNotContain(model.Diagnostics, d => d.Rule is "MQ4087" or "MQ4088");
+    }
+
+    [Fact]
+    public void Stale_provenance_is_MQ4088()
+    {
+        // Every recorded id is a column of another table: the provenance describes another source and is read as none.
+        var shop = Drifted(RenameBodyAndRetypeCreated, provenance: s => new BindingProvenance
+        {
+            Columns = new Dictionary<string, string>(StringComparer.Ordinal) { [s.EventId] = "00000000:00000000", [s.EventName] = "00000000:00000000" },
+        });
+        var model = shop.Resolve();
+        var stale = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4088");
+        Assert.Equal((DiagnosticSeverity.Warning, shop.InvoiceNote.Id, "/bindings/0/provenance"), (stale.Severity, stale.ElementId, stale.JsonPointer));
+        Assert.Contains("records provenance for 2 columns, none of which is a column of table 'notes'", stale.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(model.Diagnostics, d => d.Rule == "MQ4087");
+
+        // A source that is not a table file (here a query) has no columns with ids.
+        var query = new Shop(edit: (s, entity, b) => entity == "NoteCount" ? b with { Provenance = Recorded(s) } : b).Resolve();
+        var notTable = Assert.Single(query.Diagnostics, d => d.Rule == "MQ4088");
+        Assert.Equal("/bindings/0/provenance", notTable.JsonPointer);
+        Assert.Contains("query 'NotesPerType' is not a designed or imported table file", notTable.Message, StringComparison.Ordinal);
+
+        // An empty provenance describes a source that had no columns: not stale.
+        var empty = Drifted(null, provenance: _ => new BindingProvenance { Columns = new Dictionary<string, string>(StringComparer.Ordinal) }).Resolve();
+        Assert.DoesNotContain(empty.Diagnostics, d => d.Rule is "MQ4087" or "MQ4088");
+    }
+
+    [Fact]
+    public void An_added_column_is_MQ4047_not_MQ4087()
+    {
+        var shop = Drifted(t => t with
+        {
+            Columns =
+            [
+                .. t.Columns,
+                new Column { Id = "01K6BNDADDED00000000000001", Name = "subject", Type = "string", Length = 80 },
+                new Column { Id = "01K6BNDADDED00000000000002", Name = "pinned", Type = "bool", Nullable = false, Default = Shop.Json("false") },
+            ],
+        });
+        var model = shop.Resolve();
+
+        // Both bindings miss the new column nothing fills (MQ4047, with or without provenance); the defaulted one is accounted for.
+        var unaccounted = model.Diagnostics.Where(d => d.Rule == "MQ4047").ToList();
+        Assert.Equal(new[] { shop.CustomerNote.Id, shop.InvoiceNote.Id }.Order(StringComparer.Ordinal), unaccounted.Select(d => d.ElementId!).Order(StringComparer.Ordinal));
+        Assert.All(unaccounted, d => Assert.Contains("'subject'", d.Message, StringComparison.Ordinal));
+        Assert.All(unaccounted, d => Assert.DoesNotContain("'pinned'", d.Message, StringComparison.Ordinal));
+        Assert.DoesNotContain(model.Diagnostics, d => d.Rule is "MQ4087" or "MQ4088");
     }
 }

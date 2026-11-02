@@ -84,6 +84,13 @@ Additions beyond section 10, all to keep the host process safe or the output det
   freeze after loading. The first `let` or `var` outside every function and class body of a rule script (a top-level
   block or loop head included) is MQ5005, a warning the factory passes to the pool (`IScriptSandboxPool.Warnings`,
   ordinal by path).
+- Rows scripts (next-phase-2-design.md section 3.4): a file directly in `extensions/seeds/` is a model script like a rule
+  script (`IsRuleScript` holds for both, `IsRowsScript` for this folder only), with the same scope, freeze, MQ5005 and
+  MQ5002/MQ5003 codes, which the seed rules and the extension file write report as MQ7127. It calls `maquettiste.rows(fn)`
+  exactly once and nothing else (any other registration is a `TypeError` while it loads); a rule or pack script that calls
+  `rows` fails to load. `RunRows` calls `fn(model, seed)` with the rule-script model view and a frozen copy of the seed's
+  JSON, seeds `Math.random` with the caller's seed (the seed id) and returns the array as JSON: plain objects of null,
+  booleans, strings, finite numbers, arrays and objects; anything else is a script error.
 
 A limit breach, a cancellation or a host failure marks the engine faulted, and the pool disposes it on return and builds a fresh
 one when needed.
@@ -98,6 +105,7 @@ Scripts run in load order against a global `maquettiste`:
 | `selector(name, fn)` | `fn(model)` | an array (or array-like) of model objects or id strings → `IReadOnlyList<string>` |
 | `filter(name, fn)` | `fn(element, model)` | truthy/falsy → `bool` |
 | `transform(name, fn)` | `fn(element, model)` | a plain object (or `null`/`undefined` for none) → `IReadOnlyDictionary<string, object?>` |
+| `rows(fn)` (rows scripts only, once) | `fn(model, seed)` | an array of plain objects of JSON values → `JsonElement` |
 | `rule({ id, severity, kinds, check })` | `check(element, model, report)` | nothing; `report(message, { pointer, severity })` |
 | `rule({ id, severity, scope: "model", check })` | `check(model, report)`, once per whole-model validation | nothing; `report(message, { element, pointer, severity })` |
 

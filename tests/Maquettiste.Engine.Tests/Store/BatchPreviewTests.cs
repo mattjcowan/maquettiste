@@ -218,4 +218,100 @@ public sealed class BatchPreviewTests
         Assert.All(pending, d => Assert.Equal((fact.Id, DiagnosticSeverity.Error), (d.ElementId, d.Severity)));
         Assert.Empty(preview.DiagnosticsRemoved);
     }
+
+    [Fact]
+    public async Task A_resync_dry_run_lists_the_facts_of_a_projected_entity()
+    {
+        await using var s = await BillingStore.OpenAsync(validate: true);
+        const string InvoiceNote = "01K6BND0000000000000000010", Notes = "01K6BND0000000000000000001", NotesBody = "01K6BND0000000000000000005";
+        // InvoiceNote is bound to notes in main and also projected into archive by a mapping element; a third database keeps the
+        // write's reach to some databases, so the dry run computes their facts.
+        string archive = "";
+        foreach (var name in new[] { "archive", "scratch" })
+        {
+            var created = await s.Store.CreateAsync(Encoding.UTF8.GetBytes($$"""
+                { "kind": "database", "name": "{{name}}", "dialect": "postgresql", "version": "16", "defaultSchema": "{{name}}", "schemas": [ { "name": "{{name}}" } ],
+                  "byConvention": "none" }
+                """), ChangeSource.Cli, Ct);
+            Assert.True(created.Outcome == SaveOutcome.Saved, string.Join("; ", created.Diagnostics.Select(d => d.Message)));
+            if (name == "archive")
+                archive = created.Id!;
+        }
+
+        var mapping = await s.Store.CreateAsync(Encoding.UTF8.GetBytes($$"""{ "kind": "mapping", "name": "notes in archive", "database": "{{archive}}", "entity": "{{InvoiceNote}}" }"""),
+            ChangeSource.Cli, Ct);
+        Assert.True(mapping.Outcome == SaveOutcome.Saved, string.Join("; ", mapping.Diagnostics.Select(d => d.Message)));
+        var resync = $$"""{ "operations": [ { "op": "resync-binding", "database": "01J92P0V1QRN2181XM2ZWE02W4", "entities": ["{{InvoiceNote}}"] } ] }""";
+        // A re-sync from scratch records the provenance of every column of notes; then the body column is renamed.
+        var recorded = await s.Store.ApplyBatchAsync(Parse(s, resync), ChangeSource.Cli, Ct);
+        Assert.True(recorded.Outcome == SaveOutcome.Saved, string.Join("; ", recorded.Items.SelectMany(i => i.Diagnostics).Select(d => d.Message)));
+        var notes = s.Model.GetDocument(Notes)!;
+        var renamed = await s.Store.SaveAsync(Notes, BillingStore.Edit(notes, t => t["columns"]!.AsArray().Single(c => c!["id"]!.GetValue<string>() == NotesBody)!["name"] = "note_text"),
+            notes.Hash, ChangeSource.Cli, Ct);
+        Assert.True(renamed.Outcome == SaveOutcome.Saved, string.Join("; ", renamed.Diagnostics.Select(d => d.Message)));
+        var files = s.Files();
+
+        var preview = await s.Store.PreviewBatchAsync(Parse(s, resync), Ct);
+
+        Assert.True(preview.Outcome == SaveOutcome.Saved, string.Join("; ", preview.Items.SelectMany(i => i.Diagnostics).Select(d => d.Message)));
+        Assert.Equal(files, s.Files());
+        var entity = Assert.Single(preview.Files, f => f.Id == InvoiceNote);
+        Assert.Contains("\"name\": \"noteText\"", entity.After, StringComparison.Ordinal);
+        // The attribute's new name renames the column InvoiceNote's projection has in archive: the dry run lists that fact.
+        var fact = Assert.Single(preview.Facts!);
+        Assert.Equal((archive, "rename"), (fact.Database, fact.Fact));
+        Assert.Contains(preview.Files, f => f.Path == fact.Path && f.Action == "created");
+    }
+
+    [Fact]
+    public async Task A_refactor_preview_carries_usage_and_facts()
+    {
+        // next-phase-2-design.md section 3.5: a code rename's dry run lists what it rewrites (a typed column's default and a table seed's
+        // cell, found through the index) on the type's item; a second database keeps the change's reach to some databases, so the dry
+        // run computes the facts the write would record.
+        await using var s = await BillingStore.OpenAsync(validate: true);
+        var archive = await s.Store.CreateAsync("""
+            { "kind": "database", "name": "archive", "dialect": "postgresql", "version": "16", "defaultSchema": "archive", "schemas": [ { "name": "archive" } ],
+              "byConvention": "none" }
+            """u8.ToArray(), ChangeSource.Cli, Ct);
+        Assert.True(archive.Outcome == SaveOutcome.Saved, string.Join("; ", archive.Diagnostics.Select(d => d.Message)));
+        const string Notes = "01K6BND0000000000000000001";
+        var notes = s.Model.GetDocument(Notes)!;
+        var term = Edited(notes, t => t["columns"]!.AsArray().Add(JsonNode.Parse("""
+            { "name": "term", "type": "string", "length": 8, "typeRef": { "ref": "$term" }, "default": "net30" }
+            """)));
+        var setup = await s.Store.ApplyBatchAsync(Parse(s, $$"""
+            { "operations": [
+              { "op": "create", "as": "$term", "element": { "kind": "reference-type", "name": "PaymentTerm", "code": { "length": 8 }, "label": { "length": 64 } } },
+              { "op": "create", "element": { "kind": "seed", "name": "PaymentTerms", "target": "$term", "columns": ["code", "label"],
+                  "rows": [ { "values": ["net30", "Net 30"] }, { "values": ["net60", "Net 60"] } ] } },
+              { "op": "update", "id": "{{Notes}}", "expectedHash": "{{notes.Hash}}", "element": {{term}} },
+              { "op": "create", "element": { "kind": "seed", "name": "WelcomeNotes", "target": "{{Notes}}", "columns": ["id", "entity_type", "entity_id", "body", "term"],
+                  "rows": [ { "values": ["0193a4b2-0000-7000-8000-000000000001", "invoice", "0193a4b2-0000-7000-8000-000000000002", "Welcome", "net30"] } ] } }
+            ] }
+            """), ChangeSource.Cli, Ct);
+        Assert.True(setup.Outcome == SaveOutcome.Saved, string.Join("; ", setup.Items.SelectMany(i => i.Diagnostics).Select(d => d.Message)));
+        var type = setup.Ids.Names["$term"];
+        var seed = s.Model.All<Seed>().Single(x => x.Name == "WelcomeNotes").Id;
+        var files = s.Files();
+
+        var preview = await s.Store.PreviewBatchAsync(Parse(s, """
+            { "operations": [ { "op": "rename-code", "id": "@reference-type:PaymentTerm", "code": "net30", "to": "net-30" } ] }
+            """), Ct);
+
+        Assert.True(preview.Outcome == SaveOutcome.Saved, string.Join("; ", preview.Items.SelectMany(i => i.Diagnostics).Select(d => d.Message)));
+        Assert.Equal(files, s.Files());
+        var usage = Assert.Single(preview.Items, i => i.Usage is not null);
+        Assert.Equal(type, usage.Id);
+        Assert.Equal(
+            new[] { (Notes, "/columns/5/default"), (seed, "/rows/0/values/4") }.OrderBy(u => u.Item1, StringComparer.Ordinal),
+            usage.Usage!.Uses.Select(u => (u.FromElementId, u.JsonPointer)));
+        Assert.Equal(2, usage.Usage.UseCount);
+        Assert.Contains("\"net-30\"", Assert.Single(preview.Files, f => f.Id == Notes).After, StringComparison.Ordinal);
+        // The write's code map becomes one value map in main, where notes.term holds the codes; archive holds none.
+        var fact = Assert.Single(preview.Facts!);
+        Assert.Equal(("value-map", "maps PaymentTerm codes net30 -> net-30 in 1 column"), (fact.Fact, fact.Summary));
+        Assert.Contains(preview.Files, f => f.Path == fact.Path);
+        Assert.Empty(preview.DiagnosticsAdded);
+    }
 }

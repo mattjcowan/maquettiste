@@ -89,7 +89,8 @@ public sealed class ObjectLayout
     /// For an array whose schema declares <c>"x-sort": "&lt;key&gt;"</c>: the integer item key the canonical writer stable-sorts the
     /// items by, a missing or non-integer value counting as 0 (SPEC section 11: attributes in <c>order</c>). A string key sorts
     /// ordinally after the integer ones (a migration fact's <c>values</c> by <c>from</c>), and <c>"."</c> sorts an array of strings by
-    /// the items themselves (its <c>after</c>; next-phase-1-design.md section 3.2).
+    /// the items themselves (its <c>after</c>; next-phase-1-design.md section 3.2). Keys joined by commas sort by each in turn, the next
+    /// one breaking ties of the one before (a value map's <c>collections</c> by <c>"table,attribute"</c>; next-phase-2-design.md section 3.5).
     /// </summary>
     public string? SortKey { get; internal set; }
 

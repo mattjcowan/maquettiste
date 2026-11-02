@@ -279,14 +279,14 @@ document schemas (`custom-kind.json`, `pack-case.json`, `declared-rules.json`).
 | `custom-kind.json` | New document schema for `extensions/kinds/<type>.json` | 4.2 |
 | `pack-case.json` | New document schema for a pack test case's `tests/<case>/case.json`: `description`, `model`, `parameters` | 5.4 |
 | `declared-rules.json` | New document schema for `extensions/rules/*.json` | 5.6 |
-| `common.json` | `$defs` `tableColumn`, `primaryKey` (optional `id`), `uniqueConstraint`, `foreignKey`, `checkConstraint` and `tableIndex`, moved from `table.json`; `columnTypeRef`, `sensitivity`, and `tableColumn`'s `typeRef` and `sensitive`; `operationError`; the `xRef` description (`custom:<type>`, `of` with `member`); `requirementIds`, and `satisfies` on the attribute and `tableColumn`; `suppressions` | 3.1, 3.2, 4.1, 4.2, 4.3, 5.6 |
-| `table.json` | Members by `$ref` to `common.json`; `excludeStereotypes`, `redefines`, `excludes`; column `stableId`; `satisfies`; `suppressions` | 3.1, 3.4, 4.3, 5.6 |
+| `common.json` | `$defs` `tableColumn`, `primaryKey` (optional `id`), `uniqueConstraint`, `foreignKey`, `checkConstraint` and `tableIndex`, moved from `table.json`; `columnTypeRef`, `sensitivity`, and `tableColumn`'s `typeRef` and `sensitive`; `tableColumn`'s `stableId`; `operationError`; the `xRef` description (`custom:<type>`, `of` with `member`); `requirementIds`, and `satisfies` on the attribute and `tableColumn`; `suppressions` | 3.1, 3.2, 3.4, 4.1, 4.2, 4.3, 5.6 |
+| `table.json` | Members by `$ref` to `common.json`; `excludeStereotypes`, `redefines`, `excludes`; `satisfies`; `suppressions` | 3.1, 4.3, 5.6 |
 | `stereotype.json` | `columns`, `primaryKey` (`id` required), `uniques`, `foreignKeys`, `checks`, `indexes`, `excludeStereotypes`; `errors`; `appliesTo` gains `operation`, `operation-member`, `outcome`, `error`, `custom`, `requirement`, `guard`, `action`, `invoke` and `gate`; `satisfies`; `suppressions` | 3.1, 4.1, 4.2, 4.3, 4.4, 5.6 |
 | `extension.json` | `appliesTo.kinds` gains the same ten kinds | 4.1, 4.2, 4.3, 4.4 |
 | `database.json` | Schema entries gain `defaultStereotypes`; `excludeStereotypes`; `satisfies` (the database, not its schemas); `suppressions` | 3.1, 4.3, 5.6 |
 | `package.json` | `defaultStereotypes`, `excludeStereotypes`; `satisfies`; `suppressions` | 3.1, 4.3, 5.6 |
 | `entity.json` | Binding `provenance` after `delete`; `satisfies`; `suppressions` | 3.3, 4.3, 5.6 |
-| `seed.json` | `columns` items also take foreign-key ids of a table target; `rowsFrom` is `{ file }` or `{ script }`; `satisfies`; `suppressions` | 3.4, 4.3, 5.6 |
+| `seed.json` | `columns` items and `key` also take keyed ids of inherited members; `columns` items also take foreign-key ids of a table target; `rowsFrom` is `{ file }` or `{ script }`; `satisfies`; `suppressions` | 3.1, 3.4, 4.3, 5.6 |
 | `reference-type.json` | `formerCodes`; `satisfies`; `suppressions` | 3.5, 4.3, 5.6 |
 | `migration.json` | The rekey item's `table` description covers constraint entries; `collections`, `fromReferenceType`, `migrationState.pluralName`, a `then` of its own for `value-map`; `suppressions` | 3.1, 3.5, 5.6 |
 | `batch.json` | `fold-into-stereotype` (`redefine`, `excludeMissing`); `map-by-name` and `resync-binding` (`keepNames`, `columns`); `rename-code`, `retire-code`, `merge-reference-types` and `rename-reference-type` (`code`, `to`, `codes`) | 3.1, 3.3, 3.5 |
@@ -561,6 +561,127 @@ stereotype: the project writes it and chooses where it applies; the engine only 
 15. **Materialize keeps inheritance.** `materialize-tables` writes the designed table with the projection's shape and
     leaves inherited members inherited; their keys move with the table key. Materialize never turns a member into an
     own column.
+16. **`Element.ExcludeStereotypes` is virtual** (found in D2). `Migration` overrides it with `[JsonIgnore]` and always
+    answers null, because `migration.json` has no such key. System.Text.Json leaves an ignored override out of a
+    record's contract, but not an ignored `new` property, and the schema and record keys must match.
+17. **Default layers, exactly** (D2). A layer drops an excluded entry, or one whose kind does not fit, before it adds
+    implied copies. A copy that another kept entry of the layer implies therefore stays. A copy whose own key is
+    excluded, or whose kind does not fit, leaves too. The schema entry a default schema names is found by the database's
+    `defaultSchema`, else the dialect's default name (`public`, `dbo`), as the resolver names it.
+18. **Property schemas by effective keys** (D3). The walks keep `PropertySchemaSet` stateless: `Sites` takes the
+    element's keys, `For(PropertyHost)` reads them from the host (`PropertyHost.EffectiveKeys`), and the internal
+    `ModelSnapshot.PropertyKeys` gives them (null while the model declares no default, so phase 1's applicability holds
+    exactly). The keys are the effective set's, then the own keys that name no stereotype; an excluded implied copy is
+    never added back. Every caller passes them: the index, the validator's reference walk, extension checks,
+    names-to-ids, localization, tags and the delete cascade.
+19. **The index's full build, widened** (D3). While either model declares a default, a patch builds in full when a
+    package, database or mapping is changed, added or removed, when an entity, relation, process, reference type or
+    table is added or removed or changes its package, and when a table changes its schema, entity, relation,
+    attribute, origin or database. Each can move the holder of a kept document (a child table follows its owner's
+    overlay; a seed's target may be a table or a reference type).
+20. **Holders of tables without a file** (D3). An entity's table takes its entity's package and `SchemaOf` by the
+    entity; a relation's table its relation's package and the default schema's entry; a child table without an overlay
+    takes its owner table's holder, which also covers the child of a relation's table, where routing by package would
+    differ from the resolver. `TableBuild.Holder` and `TableBuild.Effective` keep them for D7.
+21. **Provenance on attributes and pointers** (D3). `RAttribute.FromStereotype.Source` says where the owner got the
+    stereotype. MQ3007 for a virtual attribute of a default points at `/stereotypes`, or the file root without a list;
+    MQ5001 and MQ2018 do the same and their messages name the schema entry or package that gives the default.
+22. **Membership packages shape databases while defaults exist** (D4). A write's classifier counts a change of a
+    membership-only `package` as shaping while either model declares a default, and a package whose `parent` changes
+    then chooses what its defaults reach, as a change of its `defaultStereotypes` does.
+23. **The save scope sees the candidate only** (D4). `ConflictPeers` cannot tell that a list changed, so a package
+    brings its reach while the model declares any default, a database the reach of its schema entries that declare one,
+    and a stereotype the reach of every default list naming it or a stereotype implying it; the reach adds, for schemas,
+    the entities and relations whose tables without a file would be there. A save that removes the model's last default
+    list leaves the package's descendants' and fallback members to the next validate (its own members are its
+    referrers).
+24. **A redefined foreign key name has a home** (D6). `MemberForeignKey` has no `Name` in files, yet a table may
+    redefine `name`, and an inherited member is the stereotype's member with the redefinition applied. The record gains
+    an internal `Name` (outside the JSON contract and the public API) that only a member set fills. The redefinition's
+    `storage` is written through `allOf` around `common.json#/$defs/storage`, so its empty default does not apply:
+    absent means not redefined, and an empty map removes the inherited parameters.
+25. **What `TableMembers.CheckLinks` reads** (D6). `TableMemberSet` also carries `Inheritable`: every member before
+    `excludes` (after `skip`), by member id, column references keyed and no redefinition applied, which the facet fit,
+    MQ4078 and the generic link check need. Its findings carry the table's id and pointer but no file path, since the
+    validator and the resolver place them; their severity is the catalog's, else the rules table's until D7 adds MQ2027,
+    MQ2028 and MQ4078. A table file's set is also cached by file id, a candidate table (not the snapshot's instance) is
+    never cached, and a cached (table key, skip) entry answers only the inputs it was built from.
+26. **Exclusion and default-list checks** (D5). An unknown key in `excludeStereotypes` is MQ2003 at its entry, as in
+    a default list, and takes no MQ2030. MQ2031 judges a default list with the stereotypes its entries imply, as the
+    layer applies them, at the later entry (for an implied copy, the entry that implies it). A finding about a default
+    stays a message hint ("add `<key>` to its excludeStereotypes"); the catalog's quick fix names batch operations, and
+    none adds an exclusion.
+27. **Seeds name inherited columns by keyed id** (found in D10). `seed.json` took only plain ids in `columns` and
+    `key`, so no seed could name an inherited column or unique. Both now also take the keyed id `<tableId>.<memberId>`
+    (two ids joined by `.`); `Seed.Columns` and `Seed.Key` were already keyed references. D8 judges such a column
+    against the table's member set.
+28. **Member links on edit and delete** (D10). A save that removes a stereotype member drops the seed columns whose
+    keyed value's member part is that member, and removes the `redefines` and `excludes` entries naming it from every
+    table file the batch does not name. A plain delete of a stereotype changes nothing, so its carriers, member links
+    and keyed uses refuse it; the delete plan names the inherited copy each keyed use holds. `remove-references` and
+    `delete-dependents` remove a `redefines` entry whole and clear an `excludes` entry. `remove-references` refuses
+    every other keyed use of an inherited copy, a binding field included, although a deleted column's binding field
+    goes in both resolutions: deleting a stereotype never rewrites a binding silently. The delete plan lists the seed
+    columns it drops under `removes`, with the sub-kind `column`.
+29. **Findings of a table without a file** (D7). MQ2013 to MQ2015 for a table without a file reuse validation's judge
+    of an effective set (`BuiltinRules.JudgeEffectiveSet`, now internal) and go on its entity or relation at
+    `/stereotypes`, noting that an overlay holds the exclusion; a child table takes its owner's defaults and is judged
+    with its owner. MQ4003, MQ4076 and MQ4079 about an inherited member of such a table go on its entity or relation
+    without a pointer.
+30. **Relation mappings name file keys only** (D7). A relation mapping's `foreignKey` cannot name an inherited foreign
+    key: relations resolve before a table's members are added, as phase 1 resolves them before a table's own keys are
+    finished.
+31. **`$element` on an overlay** (D8). An `x-ref` value holds ids joined by `.`, so `of: "$element"` reaches the
+    inherited members of designed and imported tables by `<tableId>.<memberId>`. An overlay's inherited members are
+    keyed by the synthesized table key, which holds `@` and is no `x-ref` value (MQ2010), so on an overlay a bare member
+    id is MQ2011 and its message says why. Under `sameDatabase`, a keyed id takes its table's database.
+32. **Keyed ids in seed input are ids** (found in D8). The names-to-ids step of a seed body (`Loading/SeedInput.cs`)
+    read a keyed id in `columns` or `key` as a bare name and refused the create (MQ1002). It now leaves an id or a keyed
+    id as written, so decision 27's keyed ids reach the seed rules.
+33. **What validation reads of a table's members** (D8). The seed, binding and foreign-key lookups read a designed or
+    imported table file with its inherited columns, primary key (when it has none of its own), uniques and indexes
+    appended, keyed (`MemberRules.WithMembers`). Inherited foreign keys are not added there, since a carrier's parameter
+    can give their target, so MQ7111 through an inherited foreign key waits for a follow-up. A foreign key that
+    references a synthesized table without an overlay takes any `<tableKey>.<memberId>` whose member is a stereotype's
+    column; the resolver reports one the table does not inherit. A contributed foreign key's fixed `referencesTable`
+    that names no table is MQ2001 on the stereotype, as a table file's is.
+34. **The rekey back lists constraint entries too** (D17). Captures key constraints by their columns, so they cannot
+    tell that a constraint id came back. `ClassifierInput` gains the internal `ConstraintsBefore` and
+    `ConstraintsAfter`: the own and inherited (keyed) constraint ids of the table files that an open rekey's constraint
+    entries name, which the store reads from the documents. An entry whose `to` leaves its table and whose `from` comes
+    back is recorded back after the table's columns. Without it, `migration fold` would compose a fold and its undo
+    into a rekey that still moves the constraint ids.
+35. **Readers of constraint entries** (D17). `FactKeys.ConstraintKinds` names the four kinds. `StaleFacts` follows a
+    constraint entry when it judges whether rekeys cancel, so a rekey that moves only constraint ids is never stale by
+    itself. A rekey's summary counts them (`rekey 1 column, 1 index`, plural `indexes`). MQ4106's message for an
+    unknown kind names them as ids, not keys.
+36. **`memberOrigin` on the wire** (D9). Every column, key, foreign key and index view carries `memberOrigin`, null for
+    own members. The contract leaves it out of `required`, as it does `dbTypeId`, since recordings made before lack it.
+37. **Materialize keeps the holder** (D16). A designed table does not fall back to its entity's package, so the table
+    `materialize-tables` writes states the package whose defaults reached the projected table: the overlay's own (which
+    materialize used to drop), else the entity's when that package's chain gives tables a default. A carried
+    redefinition's `columns` and `onDeleteColumns` follow the new column ids, and a redefinition of a member the table
+    now excludes leaves with it (it would be MQ2028).
+38. **Folds expand last** (D11). A batch expands its folds after its other expanded operations, so a fold knows every
+    document the others write, later ones included, and refuses when one writes the stereotype or a target. A fold's key
+    maps go to the recording of facts only, never to the committed snapshot's aliases, which stay materialize's.
+39. **How the fold checks itself** (D11). `Loading/StereotypeFold.cs` matches on the target databases as resolved before
+    the fold: own constraints by their resolved columns, a member's in dialect terms. Step 5 compares each folded member
+    with the own one it replaces (columns on captures, constraints on the resolved objects, which carry ids) to choose
+    the redefinitions, then confirms that every table of the target databases captures as before, moved through the
+    key map, with column positions and derived constraint keys set aside. A redefinition never removes a value: an own
+    column without a default, comment, collation or default name, or an own key without clustering, beside a member
+    that states one, refuses the table.
+40. **Own primary keys and mapped foreign keys** (D11). An own primary key matches the stereotype's whenever both exist
+    (its capture key is `pk`), so different columns become a `columns` redefinition or a refusal. An own primary key
+    with an id moves its references to the keyed id but takes no rekey entry: rekey kinds have no primary key, and
+    capture keys follow columns. A foreign key that a relation mapping names stays own (decision 30).
+41. **What the fold rewrites** (D11). Only a value that equals a moved id; migration facts are history and never
+    change. A query's column text changes only where it names the column by key, aliased or bare
+    (`QueryColumnRewrite.Replacements` with `byKeyOnly`); a text that names it by physical name still finds it.
+    Materialize keeps rewriting every aliased text, as before.
+42. **A dry run's facts** (D11). As phase 1 decided, a dry run lists no facts when a change reaches every database, and
+    a model with one database is always that case; the dry-run test adds a second, empty database.
 
 #### The contributed-members mechanism
 
@@ -696,6 +817,8 @@ and `batch.json`, so every task that changes one regenerates the editor's types 
   that act on one element; the descriptions of `id`, `tables` and `schema` name the new use.
 - `migration.json`: the rekey item's `table` description says it is given for a column, index, unique, foreign-key or
   check entry. Nothing structural changes.
+- `seed.json` (D10, decision 27): `columns` items and `key` also take the keyed id `<tableId>.<memberId>` of an
+  inherited column or unique.
 
 Facets a redefinition may state, by member kind (MQ2027 refuses others):
 
@@ -789,7 +912,8 @@ Incremental keys:
   the previous or the new model declares any default, the index patch builds in full when a package, database or
   mapping file changes, or an entity, relation or process whose package changed, since each can move the holder of a
   document the patch would keep (an overlay, a seed, a scenario), as the stereotype case does
-  (`Model/ModelIndexer.cs:284-294`). `PropertySchemaSet` itself does not change: callers pass the keys.
+  (`Model/ModelIndexer.cs:284-294`); decision 19 gives the exact rule. `PropertySchemaSet` keeps no snapshot: callers
+  pass the keys (decision 18).
 
 #### Resolution and the resolved model
 
@@ -877,7 +1001,8 @@ Rekeys that move constraints, and undoing a fold:
   `RekeyMap` keep skipping them.
 - An open `rekey` whose column moves a write reverses (the `to` key leaves its table and the `from` key comes back in
   the same table) is a key map too, as a table moving back is today. Restoring the files from before a fold (a model
-  snapshot, say) then records the rekey back and no `drop`.
+  snapshot, say) then records the rekey back and no `drop`. Its constraint entries go back the same way, judged on the
+  table files' constraint ids (decision 34).
 
 Consequences in billing terms: adding a column to `audited` records nothing (added objects); removing one records a
 pending `drop` per carrying table; renaming one records a complete `rename` per carrying table; a widening records
@@ -890,7 +1015,8 @@ nothing; a narrowing records a pending `change-type` per table, and each follows
 
 - An inherited column maps to `<tableId>.<memberId>` in the materialize's key map (`TableRekey`) instead of taking a new
   id, and the table file leaves inherited columns, keys, indexes and checks out. The overlay's `redefines`, `excludes`
-  and `excludeStereotypes` move into the table with its annotations.
+  and `excludeStereotypes` move into the table with its annotations. The table states the package whose defaults
+  reached the projection (decision 37), so its effective set stays the same.
 - A stereotype the synthesized table skipped (decision 1) that reaches the designed table (the overlay listed it, or a
   default reaches the table) gets an `excludes` entry for each of its members, since the table now holds those
   attributes as own columns. The database sees nothing; a later fold adopts the members.
@@ -929,14 +1055,15 @@ Per target table:
    reference bindings, `x-ref` sites) gets the keyed id. Query column texts (`alias.<id>`) go through
    `Loading/QueryColumnRewrite.cs`, moved out of `Materializer.RewriteReferences` (`Loading/Materializer.cs:469`) so
    both share it. Then the own entries leave the table file.
-5. **Verify on captures.** The databases of the targets resolve on the candidate and are captured. Each target's
-   capture must equal its before capture moved through the fold's key map, column positions aside. A difference in a
-   type facet (type, length, precision, scale, native type, subtype, identity, generation, computed, sequence, a
-   reference column's storage) refuses the table. A difference in a redefinable facet writes a `redefines` entry with
-   the own value (the file's, or for a comment the text the `comments` convention gave it) when `redefine` is set,
-   else refuses the table; the fold then captures once more to confirm. An own column or constraint whose entry carries
-   annotations its member lacks (description, tags, category, stereotypes, properties, rationale, decision, status,
-   display names) is refused too, so the fold never drops documentation: move it to the stereotype first.
+5. **Verify on captures.** The databases of the targets resolve on the candidate and are captured. Each target's capture
+   must equal its before capture moved through the fold's key map, column positions aside. A difference in a type facet
+   (type, length, precision, scale, native type, subtype, identity, generation, computed, sequence, a reference column's
+   storage, and a stable id, compared on the resolved columns: 3.4, decision 22) refuses the table. A difference in a
+   redefinable facet writes a `redefines` entry with the own value (the file's, or for a comment the text the `comments`
+   convention gave it) when `redefine` is set, else refuses the table; the fold then captures once more to confirm. An
+   own column or constraint whose entry carries annotations its member lacks (description, tags, category, stereotypes,
+   properties, rationale, decision, status, display names) is refused too, so the fold never drops documentation: move
+   it to the stereotype first.
 
 Refusals are MQ4077 at the operation, one per refused table, and the batch writes nothing. The write hands the
 classifier the fold's key maps (`TableRekey` with an unchanged table key, and the constraint moves as `MemberRekeys`),
@@ -1005,7 +1132,9 @@ public sealed class ModelSnapshot
 {   public StereotypeHolder HolderOf(Element element);
     public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(Element element);
     public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(StereotypeHolder holder); }  // key-list one stays
-public abstract record Element { [StereotypeKeys] public IReadOnlyList<string>? ExcludeStereotypes { get; init; } }
+public abstract record Element
+{   [StereotypeKeys] public virtual IReadOnlyList<string>? ExcludeStereotypes { get; init; } }
+// Migration overrides ExcludeStereotypes with [JsonIgnore] (always null): a fact takes no defaults (decision 16).
 public sealed record Package { [StereotypeKeys] public IReadOnlyList<string> DefaultStereotypes { get; init; } = []; }
 public sealed record DbSchema { [StereotypeKeys] public IReadOnlyList<string> DefaultStereotypes { get; init; } = []; }
 public sealed record PrimaryKey { public string? Id { get; init; } }
@@ -1063,7 +1192,7 @@ public sealed record MemberOriginView(string Source, string? Stereotype, string?
 
 All new members carry XML documentation. `ModelIndexer.IdOf` and `SubElementKind` add `MemberForeignKey` and an
 id'd `PrimaryKey` as `key`. Internally, `MaterializeResult` gains `MemberRekeys` (the constraint moves a fold hands the
-classifier) and `ClassifierInput` gains `MemberRekeys`.
+classifier) and `ClassifierInput` gains `MemberRekeys`, `ConstraintsBefore` and `ConstraintsAfter` (decision 34).
 
 #### Editor follow-ups
 
@@ -1155,6 +1284,7 @@ READMEs of `Model/`, `Resolution/` and `Migrations/`.
 - `MaterializeTests`: `Materialize_tables_keeps_inherited_members_and_moves_their_keys`,
   `Materialize_tables_carries_the_overlays_redefines_and_excludes`,
   `Materialize_tables_excludes_the_members_a_stereotype_realizes_through_attributes`,
+  `Materialize_tables_keeps_the_package_whose_default_reaches_the_projected_table` (decision 37),
   `Materialize_columns_maps_an_attribute_to_an_inherited_column_of_its_name`; the rest unchanged (the query rewrite
   moved).
 - `DatabaseViewTests.Member_origin_is_null_for_own_members_and_set_for_inherited`,
@@ -1277,7 +1407,8 @@ runs after D6.
   `Validation/ModelValidator.cs`, the member checks (MQ2024 to MQ2026) and the `$element` scope in
   `Validation/BuiltinRules.cs`, `Validation/PhysicalRules.cs` (member sets in `Resolves` and MQ4003, the keyed-id hint),
   `Validation/TableSeedRules.cs`, `Validation/ReferenceBindingRules.cs`, `RuleCatalog.cs` (MQ2024 to MQ2026),
-  `CatalogTests.cs` (+3). Tests: `StereotypeMemberRuleTests`, `TableSeedTests`, `XrefRuleTests`. Verify:
+  `CatalogTests.cs` (+3); found in D8, `Loading/SeedInput.cs` (decision 32). Tests: `StereotypeMemberRuleTests`,
+  `TableSeedTests`, `XrefRuleTests`. Verify:
   `E "~CatalogTests|~Validation.|~TableSeedTests|~ReferenceBindingTests|~XrefRuleTests"`; `C "~McpSurfaceTests"`;
   `record`.
 - **D9. Views and the HTTP contract.** Runs after D7 and D17. Owns: `Editor/DatabaseViews.cs`, `docs/api/openapi.yaml`,
@@ -1287,8 +1418,9 @@ runs after D6.
   `C "~McpReadTests|~McpSurfaceTests"`; `editor`.
 - **D10. Planner links on edit and delete.** Runs after D6. Owns: `Loading/ChangePlanner.cs` (`DropSeedColumns` on
   keyed values, member links of removed members), `Loading/ChangePlanner.Cascade.cs` (the stereotype delete),
-  `DeletePlan.cs`, `ModelStore.DeletePlan.cs`. Tests: the `ReferenceDataStoreTests` case, `ModelStoreDeleteTests`,
-  `DeleteCascadeTests`. Verify: `E "~Store.|~DeleteCascadeTests"`.
+  `DeletePlan.cs`, `ModelStore.DeletePlan.cs`; found in D10, `schemas/v1/seed.json` with its copy and the regenerated
+  editor types and mocks (decision 27). Tests: the `ReferenceDataStoreTests` case, `ModelStoreDeleteTests`,
+  `DeleteCascadeTests`. Verify: `E "~Store.|~DeleteCascadeTests"`; `editor`; `copies`.
 - **D11. The fold.** Runs after D8, D9, D10, D16 and D17. Owns: `ModelStore.StereotypeFold.cs` (new),
   `Loading/StereotypeFold.cs` (new), `Loading/QueryColumnRewrite.cs` (new), `RewriteReferences` in
   `Loading/Materializer.cs` (calls it), `Loading/BatchParser.cs`, `ModelStore.cs` (`BatchOp`, `BatchOperation`,
@@ -1320,8 +1452,11 @@ runs after D6.
   `Migrations/FactFolder.cs` (`TablesOf`, `Compose`), `Validation/MigrationRules.cs` (`RekeyKinds`, a member entry's
   `table`), the classifier input in `ModelStore.Migrations.cs`, the `MaterializeResult` record in
   `Loading/Materializer.cs` (`MemberRekeys`), the `table` description in `schemas/v1/migration.json` with its copy, the
-  regenerated editor types and mocks. Tests: the `FactClassifierTests` cases, `MigrationRulesTests`, the D17
-  `FactRecordingTests` case. Verify:
+  regenerated editor types and mocks; found in D17 (decisions 34 and 35), `Migrations/FactKeys.cs` (`ConstraintKinds`),
+  `RekeysCancel` in `Migrations/StaleFacts.cs`, the rekey summary in `Migrations/FactDocuments.cs`, and the `Kind` and
+  `Table` comments of `MigrationRekey` and `RMigrationRekey`. Tests: the `FactClassifierTests` cases,
+  `MigrationRulesTests`, the D17 `FactRecordingTests` case and
+  `FactRecordingTests.Restoring_the_files_from_before_a_fold_records_its_column_and_index_back`. Verify:
   `E "~FactClassifierTests|~FactRecordingTests|~MigrationRulesTests|~SqlObjectRekeyTests|~ValidationFixtureTests"`;
   `editor`; `copies`.
 
@@ -1417,9 +1552,9 @@ today it can only say so on attributes.
 8. **Migration facts.** The snapshot captures the reference state of every column with a `ReferenceType`, not only of
    columns whose `Type` is `reference`. Typing a designed column by a reference type stored as a lookup table, a CHECK,
    a native type or a bound table, or changing that storage, is then a conversion (`Migrations/Widening.cs:127`), as it
-   is today for a projected column: rows already in the column may hold values that are not codes, so the fact asks for
-   a data check. Typing it by a type the templates store (no strategy, no binding) changes no captured state.
-   Materializing a projected reference column keeps its reference state, so it records no conversion. Changing
+   is today for a projected column: rows already in the column may hold values that are not codes, so the fact asks how
+   they convert (decision 15). Typing it by a type the templates store (no strategy, no binding) changes no captured
+   state. Materializing a projected reference column keeps its reference state, so it records no conversion. Changing
    `typeRef` between two types with the same storage records no fact; 3.5's value maps cover moving codes. The ledger
    is unchanged.
 9. **`sensitive` on columns** takes `pii` or `secret`, like attributes, which keep theirs. It is said once, on either
@@ -1447,6 +1582,42 @@ today it can only say so on attributes.
 13. **PostgreSQL first.** A designed column whose type's realization is `native` keeps its own SQL type and gets the
     CHECK the other dialects get, since an enum type would replace the type the column states. Every other object is
     one sql-ddl already renders for projected reference columns, so typed columns need no new dialect work.
+14. **Recording sees bound tables** (D21). The partial runs that record facts (`ResolveRun.RunDatabases`, and so the
+    explorer's one-database run) skipped what runs after the databases, reference bindings included, so a reference
+    column's bound table was captured as none there while validate and generate captured it. They now link the
+    bindings into the databases they resolve (`ResolveRun.LinkReferenceBindings`), so typing a column by a bound type,
+    or binding the type of a typed or projected column, records the conversion of decision 8.
+15. **What the fact asks for** (D21). A change of reference state alone is a conversion, so the recorded `change-type`
+    asks for its `conversion` (MQ4101), where the team says how values that are not codes are handled; it asks for a
+    `dataCheck` as well only when the step also narrows the column, as for any other `change-type`.
+16. **The view's sensitivity arrives with D23** (D21). D21 adds `ColumnView.TypeRef` and `ColumnView.Sensitive` and
+    their contract in one change, so the editor types are regenerated once; `ColumnView.Sensitive` reads `null` until
+    D23 adds `RColumn.Sensitive` and passes it in `DatabaseViews.Column`. D21 makes `ResolveRun.TypeOf` internal so
+    `TypeColumn` types a column as an attribute's type is resolved.
+17. **What the table rules reach** (D22). The inherited columns judged are those of designed and imported tables: an
+    overlay's member set is a candidate set that may hold members its synthesized table skips, which the resolver knows.
+    MQ4084 judges the table's own foreign keys and the inherited ones that name `referencesTable`; one that names
+    `referencesParameter` resolves per table and waits for a team that needs it. A `typeRef` naming a kind outside the
+    model's type references (an entity, a table) stays MQ2002 and is not also MQ4082. The new conflict peers reach the
+    tables that list a stereotype with a typed column, not those that get it through a default list. A number or boolean in
+    a table seed cell of a text column stands for its text, as MQ7109 reads it, before the code check.
+18. **A value object member keeps its own sensitivity** (D23). The pass after every database sets only the entity's own
+    attributes: a value object's member, which a field may map, is one object shared by every embedding, so it never
+    borrows a column's value. The column still shows the member's own value. The column's own value is kept apart from
+    the one it shows (`RColumn.OwnSensitive`, internal), so an attribute reads only what the column states.
+19. **What a usage row names** (D24). A column's `table` is the resolved table's id: the table file's id, or, for an
+    overlay's extra column and a column a synthesized table inherits, the synthesized table's key
+    (`<entityId>@<databaseId>`), as the database view and keyed ids name it. `domain` is the table's package; a
+    synthesized table without one of its own takes its entity's or relation's. A missing domain, storage choice or bound
+    table is written as null, as the attribute rows write theirs.
+20. **What materialize types** (D25). A column typed by a scalar type gets `typeRef` only when its physical type is the
+    scalar's base, the case where the scalar's facets and native type reach it; another physical type would fail MQ4083.
+    The native type left out is the scalar's own for the dialect; an overlay entry's `nativeType` is kept. A child
+    table's value column of a collection stores one value, so it is typed like a single attribute's column.
+21. **Pack details** (D26). A typed column in a declared foreign key gets no statement in `seed.sql`, not even drops of
+    `_ref` objects, as a column that stops holding codes gets none today. csharp-dapper types the fields of generated
+    collection item records as it types row records, and the summary sentence names the member plainly: "Status holds
+    a code of `<see cref="global::App.Model.InvoiceState"/>`."
 
 #### Schema and files
 
@@ -1500,7 +1671,8 @@ Example, in a billing copy (`InvoiceState` is an invented reference type with on
   that pass: the explorer's one-database views show columns' values, not attributes' borrowed ones, and nothing there
   reads attributes.
 - **Snapshots.** `SnapshotCapture.cs:222-224` keys on `column.ReferenceType is not null`. No column has a `typeRef`
-  today, so no existing snapshot or fact changes.
+  today, so no existing snapshot or fact changes. The partial runs that record facts link reference bindings into the
+  databases they resolve (decision 14), so they capture a bound table as validate and generate do.
 
 **Public API**
 
@@ -1723,10 +1895,12 @@ through `ColumnView`. No verb or tool is added. Rows change in `docs/mcp.md`; `d
   `Resolution/DatabaseRun.Columns.cs` and `Resolution/DatabaseRun.Members.cs`, `ColumnNativeType`,
   `Resolution/ResolvedPhysical.cs` (`RColumn` members and summaries), `SchemaDiff/SnapshotCapture.cs`,
   `Editor/DatabaseViews.cs` (`ColumnView`), `docs/api/openapi.yaml` (`ColumnView`), the regenerated editor types and
-  mocks, `ResolvedCoverageTests` (`typeRef` leaves `Pending`). Tests: `PhysicalFileTests`, the first
-  `DependencyKeyTests` case, `TemplateCacheAndHelperTests`, `SchemaDifferTests`, the first two `FactRecordingTests`
-  cases. Verify: `E "~Resolution.|~Rendering.|~SchemaDiff.|~Editor.|~FactRecordingTests"`; `P "~GoldenTests"` (no
-  change); `F "~ContractTests"`; `editor`.
+  mocks, `ResolvedCoverageTests` (`typeRef` leaves `Pending`), `LinkReferenceBindings` and its call in
+  `Resolution/ResolveRun.cs` and `TypeOf` made internal in `Resolution/ResolveRun.Conceptual.cs` (decisions 14 and 16).
+  Tests: `PhysicalFileTests`, the first `DependencyKeyTests` case, `TemplateCacheAndHelperTests`, `SchemaDifferTests`,
+  the first two `FactRecordingTests` cases, `DatabaseViewTests` (the column's keys and its `typeRef`). Verify:
+  `E "~Resolution.|~Rendering.|~SchemaDiff.|~Editor.|~FactRecordingTests"`; `P "~GoldenTests"` (no change);
+  `F "~ContractTests"`; `editor`.
 - **D22. Column type rules.** Runs after D20 (and so after 3.1's D4, D5, D7, D8 and D11, which own
   `Validation/BuiltinRules.cs`, `Validation/PhysicalRules.cs`, `Validation/TableSeedRules.cs`,
   `Validation/ReferenceBindingRules.cs`, `Validation/ModelValidator.cs`, `RuleCatalog.cs` and `CatalogTests.cs`). Owns:
@@ -1741,9 +1915,11 @@ through `ColumnView`. No verb or tool is added. Rows change in `docs/mcp.md`; `d
 - **D23. Sensitivity shown on both sides.** Runs after D21. Owns: the sensitivity lines of `ApplyColumnFile` and
   `AddColumn`, the column step after the bindings in `Resolution/DatabaseRun.Bindings.cs`,
   `Resolution/ResolveRun.Shared.cs` (new: the pass after every database) and its call in `Resolution/ResolveRun.cs`, the
-  `RAttribute.Sensitive` summary in `Resolution/ResolvedConceptual.cs`, `ResolvedCoverageTests` (`sensitive` leaves
-  `Pending`), `ResolvedNullContractTests` (`Derived`). Tests: the `BindingTests` cases, the second `DependencyKeyTests`
-  case. Verify: `E "~Resolution."`; `P "~GoldenTests"` (no change).
+  `RAttribute.Sensitive` summary in `Resolution/ResolvedConceptual.cs`, `RColumn.Sensitive` in
+  `Resolution/ResolvedPhysical.cs` and the `Sensitive` argument of `DatabaseViews.Column` in `Editor/DatabaseViews.cs`
+  (decision 16), `ResolvedCoverageTests` (`sensitive` leaves `Pending`), `ResolvedNullContractTests` (`Derived`).
+  Tests: the `BindingTests` cases, the second `DependencyKeyTests` case. Verify: `E "~Resolution.|~Editor."`;
+  `P "~GoldenTests"` (no change).
 - **D24. Usage lists columns.** Runs after D21 and D12 (3.1: `docs/mcp.md`; D9, before D20, owns `Agent/tools.json`).
   Owns: `ModelStore.LocalizationApi.cs` (`ReferenceTypeUsage`, `ReferenceTypeColumnUse`, the shared resolved
   snapshot), the `reference_type_usage` description in `Agent/tools.json`, its row in `docs/mcp.md`,
@@ -1908,6 +2084,47 @@ copying text.
     Materialize writes no description, as today (`Materializer.cs:947-973`), so the text stays in one place. The
     fallback runs in the pass 3.2 adds after every database (`Resolution/ResolveRun.Shared.cs`), so projected columns'
     comments (`DatabaseRun.Finish.cs:175-186`) keep reading the attribute's own description and nothing cycles.
+13. **`BindingProvenance.Columns` is `required`** (D30). The schema requires `columns`, and the house rule is that a
+    schema-required member is `required` in its record with no initializer (`SchemaConsistencyTests` compares the two):
+    an initialized `Columns` would need a schema default of `{}`, which the canonical writer would then drop from an
+    empty map, writing `"provenance": {}`, which the schema refuses.
+14. **An empty `provenance.columns` is not stale** (D30): it describes a source that had no columns, so every column
+    the binding does not name reads as added. Stale means at least one recorded id and none of them a column of the
+    source. The operations of D33 write no empty provenance.
+15. **A source that is nothing of the binding's database has no drift** (D30): a missing source, or an element of
+    another database, is MQ4044's finding; `BindingDrift` reads it as unresolved, neither stale nor drifted, so MQ4088
+    covers only a source that resolves to a view, a query, a projected table key or an overlay.
+16. **MQ4088 points at `/bindings/<i>/provenance`** (D31), the key to remove or re-sync; MQ4087 points at the binding,
+    as decision 6 says.
+17. **Plans that resolve one database say so through an internal interface** (D33). `IDatabaseResolver`
+    (`Resolution/ModelResolver.cs`) carries `ResolveDatabasesAsync`, which `ModelResolver` already had; fact recording
+    and the binding plans ask for it instead of the concrete `ModelResolver`, so a test resolver that counts whole-model
+    resolves can still answer one database. A resolver without it answers from a whole-model resolve, as before. No
+    public signature changes.
+18. **Map by name reads table files and views only** (D33). A projected table key or an overlay source has columns only
+    after resolution, which the operation never runs (decision 10), so it is refused as "a source it cannot read", as a
+    query is. A stale provenance is read as none, so an operation that adds fields replaces it with every column.
+19. **Re-sync details** (D33). Without a provenance, or with a stale one, step 4 adds the columns nothing accounts for
+    (the drift's added list then), and step 6 records every column even with `columns`. Step 5 removes only fields that
+    name a removed recorded id. A binding is in step when the re-sync would change nothing in the entity's file. Whether
+    an attribute keeps its type is MQ4083's fit (`ColumnTypeRules.Holds`), and only while the column's own `typeRef`, if
+    any, names the same type.
+20. **The contract catches up with 3.1** (D33): `docs/api/openapi.yaml`'s `BatchOp` gains `fold-into-stereotype` beside
+    `map-by-name` and `resync-binding`, and `BatchOperation` gains `redefine` and `excludeMissing` beside `keepNames`.
+21. **The description fallback reads the read column first** (D34): within one binding, a field's source column is read
+    before its write column, fields in file order; bindings in database name order, the order of `REntity.Bindings`. The
+    fallback and 3.2's sensitivity share one walk of `ResolveRun.Shared.cs`, so an attribute that states a sensitivity but
+    no description now depends on its bound columns' tables too.
+22. **The drift report takes a database by id or name** (D35): `BindingDriftQuery.Database` and `get_binding_drift`'s
+    `database` accept either, as `list_migrations` does; an unknown database, an unknown entity id or a cursor no page
+    returned is an `ArgumentException` or `FormatException`, which the tool answers as `bad-request`. The CLI resolves
+    entity and database names first, so an unknown one is a usage error (exit 4), as in `model materialize`.
+23. **`binding map` and `binding resync` print as `model materialize` does** (D35): `ModelCommand.One` and
+    `ModelCommand.MaterializeText` become internal so `BindingCommand` shares them; `--column` with more than one entity
+    is a usage error (exit 4) before the engine is asked, as `--attribute` is for `materialize columns`.
+24. **The stored table keeps the overlay's id, not its file name** (D36): `materialize-tables` writes Invoice's table to
+    `tables/invoices.json`, the file named after the table; the acceptance tests check the id
+    `01J92P0V1T0J6RH4MY9H81NYB4` and that path.
 
 #### Schema and files
 
@@ -2027,7 +2244,7 @@ public sealed record EntityBinding
 }
 public sealed record BindingProvenance
 {   /// <summary>Column id to "&lt;name part&gt;:&lt;type part&gt;", 8 hex digits each. Ids here are records, not references.</summary>
-    public IReadOnlyDictionary<string, string> Columns { get; init; } = ImmutableDictionary<string, string>.Empty;
+    public required IReadOnlyDictionary<string, string> Columns { get; init; }   // required: decision 13
 }
 
 namespace Maquettiste.Engine;
@@ -2335,12 +2552,74 @@ some kind) is stated once.
     of 3.5 refuse such codes.
 18. **PostgreSQL first.** Stable ids and natural-key values are the same on every dialect; only the lookup subquery is
     PostgreSQL's.
+19. **`stableId` sits on `common.json`'s `tableColumn`** (found in D40): 3.1 moved the column definition there, so a
+    stereotype's column takes `stableId` too, every carrier inherits it, and MQ7124 checks the stereotype's columns as
+    it checks a table file's.
+20. **MQ7125's table case runs only when an entity's binding writes the table** (found in D40). A table nothing fills
+    yet has no rows to key, so a table file takes `stableId` before its seeds exist and its first seed then decides the
+    key; otherwise a table keyed by a unique constraint could not be created before the seed that names that key. A
+    binding writes the table as the resolver decides it: no `write` writes the source, `write.table` writes that table
+    and `write: "none"` writes nothing, so a binding that only reads the table does not bring MQ7125.
+21. **A reference type's binding never meets MQ7125, and MQ7120 skips a stable id column** (found in D40): the binding
+    keys its rows by columns it writes, and the engine fills the stable id.
+22. **A fold refuses a column whose `stableId` differs from its member's** (found in D40's review). The capture holds
+    no `stableId`, so step 5 of 3.1's fold compares the resolved columns' flags, and a difference refuses the table as a
+    type facet does. Taking the member's flag would add or drop the ids of rows already in databases, and `redefines`
+    does not take `stableId`.
+23. **The acceptance tables sit in schema `sales` of `main`** (found in D41). Billing projects its `Customer` and
+    `Invoice` entities into `billing.customers` and `billing.invoices`, so table files of those names in schema
+    `billing` break MQ4068 and render two files to one path (MQ6020). The tests add schema `sales` to `main` and keep
+    every other name; the lookup reads `(SELECT id FROM sales.customers WHERE email = 'ada@example.com')`, quoted as the
+    pack's `quoting` parameter says.
+24. **Lookups follow lookups, and only a named row has a ref** (found in D41). A ref's `unknown` also lists a column
+    whose referenced value is itself filled through the referenced row's own entry from a value the database fills, and
+    sql-ddl nests the lookup in the `WHERE`. A null cell names no row: the row has no ref for it and its columns are
+    null. A row depends on the keys of every seed of the tables its entries name, transitively, since a lookup reads
+    them all. MQ7125 also judges a key column an entry of the deciding seed fills from a value the database fills.
+25. **seed-data's `unresolved` is one list after `tables`**, written only when some cell needs it, so files of models
+    without lookups stay as they were (found in D42). Each entry also gives the `row` id, its `index` in the table's
+    rows (the CSV line, after the header), `schema`, `referencedSchema` and `referencedColumn`; `key` is the referenced
+    row's key in database terms. Outside PostgreSQL sql-ddl writes `NULL /* TODO: row <id> names <table>.<column> WHERE
+    <key column> = <value> */`.
+26. **Scripted rows are matched to columns by the names the model files give** (found in D43), so validation and the
+    resolver derive the same rows without resolving: an attribute's name, an end's role, a table column's name, and for
+    a foreign-key entry the foreign key's name in its table file, else its id, as CSV files head it. A name the
+    conventions give an unnamed foreign key is not a key.
+27. **A scripted row without a row key is left out with MQ7128** (found in D43): a key the columns do not name, a key part
+    the row leaves null, or a seed of a reference type that does not list `code`. The rest of the rows stay.
+28. **MQ7127 sits on the seed's file at `/rowsFrom/script`** (found in D43), its message naming the script's path, line
+    and column; a write of the script reports it on the script's own file with its line and column, and MQ5005 stays on
+    the script's file.
+29. **A reference type with a scripted seed builds all its rows on first read** (found in D43), its stored seeds' rows
+    too, so each row keeps its place among the type's rows. None of them is found by id in the resolved model, as
+    scripted rows are not. A failed script makes those reads fail with its MQ7127; the resolved model's records list
+    no rows instead.
+30. **A save judges only the scripted seeds in its scope** (found in D43). Decision 17's rule for codes also covers
+    natural keys and foreign keys: a save does not report a key no judged row holds when a seed of the referenced table
+    has a script outside the scope, and whole-model validation judges it.
+31. **The validation previews wait on leaves scripted seeds out** (found in D43). The store's shared validation per
+    snapshot, which previews, path listings and the resolved model's reader wait on, and the validation of the SQL
+    previews and table lists, treat every seed with a rows script as a save treats one outside its scope (decision
+    30): no script runs, and no code or key is reported missing for want of scripted rows. A preview runs a script only
+    when its unit reads the rows (decision 15), and a failed script fails that unit. Validate, plan and generate judge
+    every scripted seed; validate does so in a whole-model validation of its own per snapshot, run only when a seed has
+    a rows script, and the rows cache keeps the runs they share.
+32. **The seed preview names what it shows** (found in D44). `database` takes a database id or name, and
+    `SeedRowsPreview.Database` answers the id. Without a database, `Values` are keyed by the seed's column names in
+    column order, as written (a whole number as an integer, a fraction as a decimal); with one, by the table's column
+    names, ordinal, as `RDataRow.Values` holds them. A ref's `ForeignKey` is the foreign key's name and `Table` the
+    referenced table's name, schema-qualified when it has a schema. The cursor holds a row's position, so pages keep the
+    seed's order. With a database, a model whose errors stop resolution answers no rows and those errors.
+33. **Exports and imports of a scripted seed fail loudly** (found in D44). An export whose script fails throws its
+    MQ7127: `export_seed_csv` answers `invalid` with it, `seed export` prints it and exits 1. The store refuses an
+    import into a scripted seed, the batch import included, with a `FormatException`, which `import_seed_csv` and the
+    editor's API already answer as `bad-request` (400); `seed import` checks first and exits 4.
 
 #### Schema and files
 
 | File | Change |
 | --- | --- |
-| `table.json` | Column `stableId`: boolean, default `false`, after `computedStored` in the column's `x-order` |
+| `common.json` | `tableColumn` `stableId`: boolean, default `false`, after `computedStored` in its `x-order` (3.1 moved the column definition here, so stereotype columns take it too; decision 19) |
 | `seed.json` | `columns` items: also foreign-key ids of a table target (description). `rowsFrom` becomes `oneOf` `{ file }` and `{ script }`; `script` matches `^seeds/[A-Za-z0-9][A-Za-z0-9._-]*\.js$`, the store's extension path pattern |
 | `extensions/seeds/*.js` | New project script folder for rows scripts, loaded non-recursively, not a schema file |
 
@@ -2378,7 +2657,13 @@ row keyed `["ACME", "EU"]` gets `e2aa38bc-b70c-52f3-ac0e-c50c98d04b1e` (name `AC
 `select uuid_generate_v5('0193144a-0941-5898-3691-c579a078a249', 'ada@example.com')` with the `uuid-ossp` extension.
 
 - The value is derived for each row a table with a `stableId` column receives, from the row's key in database terms
-  (`RDataRow.Key`). It is never written to a seed file or a snapshot.
+  (`RDataRow.Key`). It is never written to a seed file or a snapshot. The resolver hands a `uuid` key part to
+  `StableIds` as a UUID, so a cell written in capitals or without hyphens names the id in lowercase with hyphens, as
+  the database stores it; the `stable_id` helper takes its key as given, in database terms. A key with a null part
+  (a value the database fills) derives nothing, and the column stays unset.
+- `StableIds.Of` and `RowId` also take a UUID text as namespace, so the RFC's own namespaces work in tests and hosts.
+  `RColumn.StableId` is set in `ApplyColumnFile` (`Resolution/DatabaseRun.cs`), which every column with an entry of
+  its own passes through (designed, imported, extra, inherited and overlay entries).
 - A key part that a foreign-key entry fills is the referenced row's value in database terms, which may itself be a
   stable id or a value filled through another foreign-key entry. Values are computed on demand per table and key,
   recursively and memoized for one build, so the result does not depend on the order tables or rows are built in. A
@@ -2509,8 +2794,9 @@ public sealed record SeedRowsPreviewRef(string ForeignKey, string Table, IReadOn
 | MQ5005 | W | Changed text: a rule or rows script declares top-level `let` or `var` variables; it keeps no state between calls, so its results are never cached. | |
 | MQ4056 | W | Changed text: also a seed cell that names a row whose referenced value the database fills, outside PostgreSQL (written as NULL with a TODO comment). | |
 
-MQ7125 is reported on the table seed that decides the key (at `/key`, or `/target` without one), else on the table at
-`/columns/<i>/stableId`. MQ6013 reserves the helper name `stable_id`. MQ7129 and MQ7130 stay reserved.
+MQ7125 is reported on the table seed that decides the key (at `/key`, or `/target` without one), else, when an entity's
+binding writes the table (decision 20), on the table at `/columns/<i>/stableId` (at the document for an inherited
+column). MQ6013 reserves the helper name `stable_id`. MQ7129 and MQ7130 stay reserved.
 
 #### CLI and MCP
 
@@ -2527,7 +2813,8 @@ MQ7125 is reported on the table seed that decides the key (at `/key`, or `/targe
   table seed's `columns` (`Loading/SeedInput.cs`: candidates are the target's columns, then its named foreign keys; a
   name both match is MQ1002), and `rowsFrom.script`.
 - `export_seed_csv` and `seed export` head a foreign-key entry with the foreign key's name (its id when it has none) and
-  write a composite key as JSON array text; a scripted seed exports its scripted rows with their derived `@id`.
+  write a composite key as JSON array text; import reads that text back, and a one-column key as its key column's type
+  (found in D41). A scripted seed exports its scripted rows with their derived `@id`.
   `import_seed_csv` refuses a seed with a rows script (`bad-request`), and `seed import` exits 4 for one.
 - `write_extension_file`, `read_extension_file`, `list_extension_files`, `move_extension_file` and
   `delete_extension_file` accept `seeds/*.js` (kind `seed-rows`). A write checks that the script loads and registers
@@ -2550,8 +2837,8 @@ MQ7125 is reported on the table seed that decides the key (at `/key`, or `/targe
   that name rows of the same table through such a subquery are written as one INSERT per dependency level, so each
   subquery sees the rows inserted before it. Elsewhere the cell is NULL with a TODO comment naming the row and key.
 - **seed-data.** Known values are written as today. A cell whose value the database fills is left empty and listed under
-  `unresolved` (table, column, referenced table, key columns, key): in `manifest.json` with `format` `csv`, in
-  `seed-data.json` with `json`.
+  `unresolved` (table, column, referenced table, key columns, key; decision 25): in `manifest.json` with `format` `csv`,
+  in `seed-data.json` with `json`.
 - No golden changes: no fixture has a foreign-key entry, a stable id column or a scripted seed.
 
 #### Editor follow-ups
@@ -2559,7 +2846,8 @@ MQ7125 is reported on the table seed that decides the key (at `/key`, or `/targe
 - Seed grid: foreign-key columns with a row picker by natural key; stable id columns shown, read-only, with their value
   from `preview_seed_rows`; scripted seeds read-only, with Preview rows and Open script.
 - Table editor: a Stable id checkbox on `uuid` columns, with `stableId` on `ColumnView`. Extensions screen: a seeds
-  group and a New rows script action (D44 only teaches its file list the `seed-rows` kind).
+  group and a New rows script action (D44 only teaches its file list the `seed-rows` kind: the Generate explorer lists
+  rows scripts and the Extensions tab opens one with JavaScript highlighting).
 - Until then the generic JSON form edits `stableId`, foreign-key entries and `rowsFrom.script`.
 
 #### Docs
@@ -2596,6 +2884,7 @@ tools take `seeds/*.js`), `packs/sql-ddl/README.md`, `packs/seed-data/README.md`
 - `TableSeedTests` (Store): `A_stable_id_column_is_filled_for_every_row_the_table_receives`,
   `A_value_a_binding_writes_is_kept`, `A_stable_id_on_a_text_column_is_MQ7124`,
   `A_row_key_holding_the_stable_id_column_is_MQ7125`, `A_table_only_a_bound_entity_fills_reports_MQ7125_on_the_table`,
+  `A_table_a_binding_only_reads_does_not_meet_MQ7125`,
   `A_seed_cell_for_a_stable_id_column_is_MQ7108`, `A_foreign_key_entry_fills_its_columns_from_the_referenced_row`,
   `A_foreign_key_entry_beside_its_own_column_is_MQ7126`, `A_natural_key_that_finds_no_row_is_MQ7111`,
   `A_composite_natural_key_must_be_an_array_in_key_order`, `A_natural_key_finds_the_rows_of_a_bound_reference_type`,
@@ -2631,22 +2920,22 @@ tools take `seeds/*.js`), `packs/sql-ddl/README.md`, `packs/seed-data/README.md`
   `PackLayoutTests` (Packs): `Unresolved_cells_are_listed_in_the_manifest`.
 - **Acceptance (scope "Done when"):**
   `Integration/SeedNaturalKeyTests.An_invoice_seed_names_its_customers_by_email_and_carries_no_ids` (new). Setup: a
-  billing copy gains two table files in schema `billing` of `main`. `customers` has `id uuid` primary key with
-  `stableId`, `name text not null` and `email varchar(254) not null`, unique as `uq_customers_email`. `invoices` has
-  `id uuid` primary key with `stableId`, `number varchar(32)` unique as `uq_invoices_number`, `issued_on date` and
-  `customer_id uuid not null` with `fk_invoices_customer` to `customers(id)`. Two seeds are created through the store
-  with every column and key by name: `customers` (Ada and Grace with their emails, keyed by `uq_customers_email`) and
-  `invoices` (`INV-1` and `INV-3` for `ada@example.com`, `INV-2` for `grace@example.com`, keyed by
-  `uq_invoices_number`). Expected: validation has no error; no seed cell is a UUID or a ULID; each invoice row of
-  `database.seed_tables` has `customer_id` equal to its customer row's `id`, which equals
+  billing copy gains schema `sales` in `main` and two table files there (decision 23). `customers` has `id uuid`
+  primary key with `stableId`, `name text not null` and `email varchar(254) not null`, unique as `uq_customers_email`.
+  `invoices` has `id uuid` primary key with `stableId`, `number varchar(32)` unique as `uq_invoices_number`,
+  `issued_on date` and `customer_id uuid not null` with `fk_invoices_customer` to `customers(id)`. Two seeds are
+  created through the store with every column and key by name: `customers` (Ada and Grace with their emails, keyed by
+  `uq_customers_email`) and `invoices` (`INV-1` and `INV-3` for `ada@example.com`, `INV-2` for `grace@example.com`,
+  keyed by `uq_invoices_number`). Expected: validation has no error; no seed cell is a UUID or a ULID; each invoice
+  row of `database.seed_tables` has `customer_id` equal to its customer row's `id`, which equals
   `StableIds.Of(<customers id>, ["ada@example.com"])` for Ada.
 - **Acceptance (same line, on PostgreSQL):** `TableSeedSqlTests.Natural_keys_and_stable_ids_apply_twice_with_no_change`.
   Setup: the model above; `schema.sql` and `seed.sql` applied twice. Expected: the join of `invoices` to `customers` on
   `customer_id` gives two invoices for `ada@example.com`; the second run changes no row.
 - **Acceptance (keys the database fills):** `TableSeedSqlTests.A_lookup_subquery_names_an_identity_keyed_row`. Setup: as
   above, but `customers.id` is `bigint` generated as identity, without `stableId`, and `invoices.customer_id` is
-  `bigint`. Expected: `seed.sql` writes `(SELECT "id" FROM "billing"."customers" WHERE "email" = 'ada@example.com')`,
-  and the join gives the same result.
+  `bigint`. Expected: `seed.sql` writes `(SELECT id FROM sales.customers WHERE email = 'ada@example.com')`, and the join
+  gives the same result.
 - **Acceptance (scripted rows):** `ScriptedSeedTests.A_rows_script_gives_a_reference_type_one_row_per_audited_entity`.
   Setup: a billing copy gains a reference type `AuditedRecordType` (string code), a seed whose rows come from the script
   above, and a test pack with one unit that loops over `reference_type.rows` and one that does not read them.
@@ -2663,15 +2952,21 @@ editor's types. D40, D41 and D43 change `table.json` or `seed.json`, so each reg
 and owns them; D41 and D43 follow D40 for that reason.
 
 - **D40. Stable ids.** Runs after D8, D22, D33 and D34 (both regenerate the editor's types). Owns: `Model/StableIds.cs`
-  (new), `Column.StableId` in `Model/Physical.cs`, `schemas/v1/table.json` and its copy, the regenerated editor types
-  and mocks (`src/editor/src/api/schema.d.ts`, `src/editor/src/mocks/openapi.json`), MQ7124 and the table case of MQ7125
-  in `Validation/PhysicalRules.cs`, the seed case of MQ7125 and MQ7108's stable id case in
-  `Validation/TableSeedRules.cs`, `RColumn.StableId` in `Resolution/ResolvedPhysical.cs` and where columns resolve
-  (`Resolution/DatabaseRun.Columns.cs`), the stable id values in `Resolution/ResolveRun.TableSeeds.cs`, `stable_id` and
-  its reserved name in `Rendering/BuiltinHelpers.cs`, `Diagnostics/RuleCatalog.cs` (MQ7124, MQ7125, MQ7108's text),
-  `CatalogTests.cs` (+2), `ResolvedCoverageTests` (`stableId` covered). Tests: `StableIdTests`, the stable id cases of
-  `TableSeedTests` and `ReferenceDataResolutionTests`, `SeedHelperTests.Stable_id_matches_the_resolved_value`. Verify:
-  `E "~StableIdTests|~TableSeedTests|~ReferenceDataResolution|~SeedHelperTests"`;
+  (new), `Column.StableId` in `Model/Physical.cs`, `tableColumn` in `schemas/v1/common.json` and its copy (decision
+  19), the regenerated editor types and mocks (`src/editor/src/api/schema.d.ts`, `src/editor/src/mocks/openapi.json`),
+  MQ7124 and the table case of MQ7125 in `Validation/PhysicalRules.cs`, MQ7124 on a stereotype's columns in
+  `Validation/BuiltinRules.cs`, MQ7120's skip of a stable id column in `Validation/ReferenceBindingRules.cs`, the seed
+  case of MQ7125 and MQ7108's stable id case in `Validation/TableSeedRules.cs`, `RColumn.StableId` in
+  `Resolution/ResolvedPhysical.cs` and where columns resolve (`ApplyColumnFile` in `Resolution/DatabaseRun.cs`), the
+  stable id values in `Resolution/ResolveRun.TableSeeds.cs`, `stable_id` and its reserved name in
+  `Rendering/BuiltinHelpers.cs` and the helper list in `packs/README.md`, `stableId` in `Loading/Materializer.cs` (an
+  overlay entry's stays), the stable id comparison in `Loading/StereotypeFold.cs` (decision 22),
+  `Diagnostics/RuleCatalog.cs` (MQ7124, MQ7125, MQ7108's text), `CatalogTests.cs` (+2), `ResolvedCoverageTests`
+  (`stableId` covered). Tests: `StableIdTests`, the stable id cases of `TableSeedTests`,
+  `ReferenceDataResolutionTests.Stable_ids_follow_the_row_key_in_database_terms`,
+  `SeedHelperTests.Stable_id_matches_the_resolved_value`,
+  `StereotypeFoldTests.Fold_refuses_a_stable_id_difference_with_MQ4077`. Verify:
+  `E "~StableIdTests|~TableSeedTests|~ReferenceDataResolution|~SeedHelperTests|~StereotypeFoldTests"`;
   `E "~CatalogTests|~ResolvedCoverageTests|~ValidationFixtureTests"`; `P "~GoldenTests"` (unchanged); `editor`;
   `copies`; `record`.
 - **D41. Foreign keys by natural key.** Runs after D40 (both regenerate the editor's types) and D24
@@ -2684,8 +2979,10 @@ and owns them; D41 and D43 follow D40 for that reason.
   the per-seed builder, `OrderBySelfReferences`), `SeedOrdering` in `Resolution/ResolveRun.ReferenceData.cs`,
   `Loading/SeedInput.cs`, the foreign-key column of the CSV export and import in `ModelStore.LocalizationApi.cs`,
   `Diagnostics/RuleCatalog.cs` (MQ7126; the MQ7107, MQ7109, MQ7111 and MQ4056 texts), `CatalogTests.cs` (+1),
-  `ResolvedCoverageTests`. Tests: the foreign-key cases of `TableSeedTests`, `ReferenceDataResolutionTests` and
-  `SeedInputTests`, `L10nAndSeedCommandTests.Seed_export_heads_a_foreign_key_entry_with_its_name`. Verify:
+  `ResolvedCoverageTests`. Tests: the foreign-key cases of `TableSeedTests`, `ReferenceDataResolutionTests` (with
+  `A_stable_id_in_a_key_part_comes_from_the_referenced_row` and `Stable_ids_do_not_depend_on_table_order`, which need
+  foreign-key entries) and `SeedInputTests`,
+  `L10nAndSeedCommandTests.Seed_export_heads_a_foreign_key_entry_with_its_name`. Verify:
   `E "~TableSeedTests|~ReferenceDataResolution|~SeedInputTests|~ReferenceBinding|~ResolvedCoverageTests"`;
   `E "~CatalogTests|~ValidationFixtureTests"`; `C "~L10nAndSeedCommandTests"`; `P "~GoldenTests"` (unchanged); `editor`;
   `copies`; `record`.
@@ -2705,7 +3002,9 @@ and owns them; D41 and D43 follow D40 for that reason.
   (lazy rows, `RSeed.RowsScript`), `Planning/DependencyHasher.cs`, `Generation/PlanExplainer.cs`,
   `Validation/ValidationContext.cs`, `Validation/ReferenceDataRules.cs` and `Validation/TableSeedRules.cs` (rows through
   `RowsOf`; MQ7127, MQ7128; the scoped code checks of decision 17), `ModelStore.Extensions.cs` (`seeds/*.js`, kind
-  `seed-rows`), `Diagnostics/RuleCatalog.cs` (MQ7127, MQ7128; the MQ7116 and MQ5005 texts), `CatalogTests.cs` (+2),
+  `seed-rows`), the validations previews wait on (decision 31: internal `ValidationScope.Previews` in
+  `Diagnostics/Diagnostic.cs`, `ModelStore.ResolverFindings.cs`, `ModelStore.cs`, `GenerationService.cs`,
+  `Editor/DatabaseTables.cs`), `Diagnostics/RuleCatalog.cs` (MQ7127, MQ7128; the MQ7116 and MQ5005 texts), `CatalogTests.cs` (+2),
   `ResolvedCoverageTests`. Tests: `ScriptedSeedTests` (all but the acceptance case), `RegistrationTests`,
   `DependencyKeyTests`, `PlanCauseTests`, `ExtensionFilesTests`. Verify:
   `E "~ScriptedSeedTests|~Scripting.|~DependencyKeyTests|~PlanCauseTests|~ExtensionFilesTests|~HashingAndStateTests"`;
@@ -2832,6 +3131,69 @@ records the database step once, as a migration fact that every environment appli
     keeps the old code as a former code, records a value map per database, refuses a code that would come back, and is
     an operation of the batch contract that MCP and the CLI call, not an editor action. "Replace with" on a row delete
     becomes `retire-code`. Both paragraphs are rewritten in D56.
+15. **Taken during the build of D50.** MQ7019 replaces MQ7014 for a typed column's default and a table seed's cell
+    through `ColumnTypeRules.FormerCodeProblem`; a binding constant that names a former code stays MQ7014, whose message
+    then names the code to write, since the rule names defaults, `allowedValues` entries and cells only. A seed of a
+    reference type brings the type (MQ7017) and the type's value maps (MQ4113, D51) into a save's validation as conflict
+    peers (`Validation/ModelValidator.cs`). An import line skipped for a former code marks the row that replaced it as
+    kept, so `replace` does not remove that row, and `seed import` lists MQ7019 without refusing the dry run
+    (`src/Maquettiste.Cli/Commands/SeedCommand.cs`). An `RFormerCode`'s id is `<type id>:<code>`.
+16. **Taken during the build of D51.** The canonical writer sorts by several keys when `x-sort` joins them with commas:
+    `collections` is `"x-sort": "table,attribute"`, and `ObjectLayout.SortKey` keeps its one string, so no signature
+    changes (`Json/CanonicalJson.cs`, `Json/CanonicalCheck.cs`). The value-map summary is `FactDocuments.Summary`
+    (`Migrations/FactDocuments.cs`), which `ModelStore.MigrationTools.cs` and a write's answer both call; a merge reads
+    `maps CreditTerm codes n90 -> net60 into PaymentTerm in 2 columns`. MQ4106 also reports a collection listed twice,
+    as it reports an object listed twice.
+17. **Taken during the build of D52.** `usage` goes on the item whose id is the type the operation names (the
+    merged-away type's delete for a merge): an expanded batch answers one item per element it writes, so no item is the
+    operation's own. `ModelStore.ReferenceRefactor` (internal) carries the code map's parts for D53's handoff. Besides
+    the index's code uses, a code that moves rewrites what 3.2 lets a typed column hold: its literal default, the table
+    seed cells that list it and the binding constants that name it by id, found through the column's `typeRef` reference
+    and the references to the column; without them the rename leaves MQ7019 behind. The refactors of one batch share
+    their working copies, so two refactors of different types may rewrite one document: values land first at the index's
+    pointers, the structural edits after. MQ7020 also refuses a `codes` key the target holds itself or keeps as a former
+    code, a merged-away former code that is a code or former code of the target, a target seed with a rows script that a
+    seed would join, and a retire or merge whose removed row or type an `x-ref` `of` of an extension file or a local
+    pack, or a pack parameter value in `maquettiste.json`, names: a batch writes model documents only, and a delete only
+    warns about those. A diagram that shows both types keeps the target's member. `rename-reference-type` compares names
+    case-insensitively and rewrites no use. The planner gains three things (`Loading/ChangePlanner.cs`,
+    `Loading/ChangePlanner.Translations.cs`): a seed in its target's folder as the snapshot had it follows the target
+    the plan renames when the plan updates it after the target, its CSV rows file with it (the refactor plans every seed
+    of the type after the type); and a sub-element that moves to another element of the plan, such as a row a merge
+    moves into a joined seed, keeps its translations and does not count as deleted in the delete check.
+18. **Taken during the build of D53.** A partial run publishes no entity's or relation's mappings, so `RDatabase` gains
+    an internal `TemplateCollections` list, filled where `ResolveRun` records a mapping
+    (`Resolution/ResolvedPhysical.cs`, `Resolution/ResolveRun.Conceptual.cs`); `CodeHolders.Of` reads it in both runs.
+    `ClassifierInput` gains `CodeMaps`, `Holders` and `BoundTypes` (the renamed types bound in its database). A holder
+    is moved through the write's key maps and named as the after capture names it; a holder the write drops is left out.
+    Value maps chain after every rename the write records and before its other facts; a write without value maps keeps
+    its order. A code map chooses the databases whose footprint or reach holds the type whose codes move or an element
+    that references it, and for a type rename every database without a binding. `ModelStore.Schemas.cs` hands the
+    refactors' code maps to the write. MQ4114 is not reported while `migrations.record` is `off`; a `pluralName` change
+    has no refactor, so its MQ4114 asks for a value map written by hand.
+19. **Taken during the build of D54.** MQ4112 reads where the baseline stored codes from the baseline's own resolve
+    (`CaptureDatabasesAsync` and `BaselineCheck.CapturesAsync` take `holders`). Only value maps the baseline lacks
+    explain a change, as for MQ4102. A row's changed code and the former code it leaves are one finding, on the cell. An
+    added former code needs a value map only when a type held the code in the baseline: the type itself, or a type the
+    working model no longer has (a merge); a former code a merge moved over, or one born after the baseline, needs none.
+    A rename needs its fact in the databases that held the type in the baseline and in those without a binding of it; a
+    name and a plural name changed together are one finding, on `/name`. `StaleFacts.Chains` and `FactFolder.Fold` take
+    the baseline's codes (`BaselineCodes`, in `StaleFacts.cs`); a type that a rows script fills may have held any code,
+    so its value maps are never stale. Fold counts a value map's collections as changes of their owner tables
+    (`Migrations/FactFolder.cs`).
+20. **Taken during the build of D55 and D56.** The step's guard on an enum type reads the codes a column holds after the
+    map and names those that are no label, instead of every `to`: a `to` no stored value needs never stops the
+    migration. A column whose enum type changes (a merge, or a strategy that stops being `native`) is retyped through
+    text inside one `DO` block guarded by its current type, its default dropped and set again; a merged native array
+    goes through `text[]`, since a `USING` expression cannot hold a subquery. The `UPDATE` carries `ELSE <c>`, so the
+    `CASE` takes the column's type for integer and UUID codes. A merge whose codes all match records a value map without
+    values; its step still retypes and reconciles the columns. `column_objects_sql` splits into
+    `column_objects_drop_sql` and `column_objects_add_sql` (output unchanged), `migration.scriban` includes
+    `_data.scriban` for a bound type's rows, and outside PostgreSQL `value_map_todos` writes the TODO line, which no
+    dialect but PostgreSQL wrote before. A merged-away seed whose rows all matched or mapped is deleted with its type
+    (`ModelStore.ReferenceRefactors.cs`), as the merge acceptance expects; decision 9 still retargets a seed that keeps
+    a moving row. The acceptance seed is `DemoInvoices` (a seed name is an identifier) with the `createdAt` cells
+    `audited` requires, and the rename acceptance adds a database that stores no codes, so its dry run computes facts.
 
 #### Schema and files
 
@@ -3162,7 +3524,7 @@ batch files, so 3.5 meets no shared file in parallel.
   and `Resolution/ResolvedPhysical.cs` too). Owns: `schemas/v1/migration.json` and its copy, `Model/Migrations.cs`,
   `RMigration`, `RMigrationCollection` and `RMigrationState` in `Resolution/ResolvedPhysical.cs`,
   `Resolution/ResolveRun.Migrations.cs`, the MQ4106 cases and MQ4113 in `Validation/MigrationRules.cs`, the value-map
-  summary in `ModelStore.MigrationTools.cs`, `MigrationRecordState` in `docs/api/openapi.yaml`,
+  summary in `Migrations/FactDocuments.cs` (decision 16), `MigrationRecordState` in `docs/api/openapi.yaml`,
   `Diagnostics/RuleCatalog.cs` (MQ4113, MQ4106's text), `CatalogTests.cs` (+1), `ResolvedCoverageTests` (the
   `migration collection` target). Tests: the value-map cases of `MigrationRulesTests`, `FactHashTests` and
   `MigrationResolutionTests`, `MigrationTests.Migration_list_summarizes_a_value_map`. Verify:

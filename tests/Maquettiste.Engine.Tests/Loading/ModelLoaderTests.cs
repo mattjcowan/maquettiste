@@ -192,6 +192,39 @@ public sealed class ModelLoaderTests
     }
 
     [Fact]
+    public async Task A_column_typeRef_and_sensitive_round_trip_in_canonical_form()
+    {
+        // next-phase-2-design.md section 3.2 (D20): a column's typeRef is the object form only and follows type; sensitive follows comment.
+        using var h = new LoaderHarness();
+        var b = new ModelBuilder(5);
+        var state = b.Enum("InvoiceState").Member("Draft", code: "D").Member("Issued", code: "I");
+        var db = b.Database("main", Dialect.PostgreSql);
+        var events = b.Table("invoice_events", db).Column("id", "uuid", nullable: false).Column("status", "string", nullable: false, length: 1)
+            .Edit(t => t with
+            {
+                Columns =
+                [
+                    t.Columns[0],
+                    t.Columns[1] with { TypeRef = new TypeRef { Ref = state.Id }, Comment = "The invoice state code.", Sensitive = Sensitivity.Pii },
+                ],
+            });
+        await b.WriteToAsync(h.Repo.ModelRoot, Ct);
+
+        var model = (await LoadAsync(h.NewLoader())).Snapshot;
+
+        Assert.Empty(model.LoadDiagnostics);
+        var status = model.Get<Table>(events.Id)!.Columns[1];
+        Assert.Equal(new TypeRef { Ref = state.Id }, status.TypeRef);
+        Assert.Equal(Sensitivity.Pii, status.Sensitive);
+        var text = h.Read("model/databases/main/tables/invoice-events.json");
+        var keys = new[] { "\"type\": \"string\"", "\"typeRef\": {", $"\"ref\": \"{state.Id}\"", "\"length\": 1", "\"comment\":", "\"sensitive\": \"pii\"" }
+            .Select(k => text.IndexOf(k, StringComparison.Ordinal)).ToList();
+        Assert.DoesNotContain(-1, keys);
+        Assert.Equal(keys.Order(), keys);
+        Assert.Equal(text, Canonical(model.Get<Table>(events.Id)!, "model/databases/main/tables/invoice-events.json"));
+    }
+
+    [Fact]
     public async Task An_unsupported_format_version_is_MQ1007()
     {
         using var h = new LoaderHarness();

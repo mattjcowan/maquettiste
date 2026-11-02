@@ -1,4 +1,6 @@
+using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Tests.Loading;
 using Maquettiste.Testing;
 
@@ -57,6 +59,45 @@ public sealed class ValidateResolverFindingsTests
         // The same snapshot again: the same single finding (computed once and kept with the snapshot).
         var again = await store.ValidateAsync(ValidationScope.All, Ct);
         Assert.Equal(report.Diagnostics, again.Diagnostics);
+    }
+
+    [Fact]
+    public async Task Validate_reports_binding_drift()
+    {
+        // InvoiceNote's binding records the notes table as it is (what a by-name operation writes), then the body column is renamed.
+        using var h = new LoaderHarness();
+        h.CopyFixture("models", "billing");
+        const string Entity = "model/entities/invoice-note.json";
+        const string Notes = "model/databases/main/tables/notes.json";
+        await using (var before = new ModelStore(h.Options))
+        {
+            var snapshot = await before.GetSnapshotAsync(Ct);
+            var columns = BindingDrift.ColumnsOf(snapshot, snapshot.Get<Table>("01K6BND0000000000000000001")!);
+            var entity = JsonNode.Parse(h.Read(Entity))!;
+            var provenance = new JsonObject();
+            foreach (var column in columns)
+                provenance[column.Id] = column.Shape;
+            entity["bindings"]![0]!["provenance"] = new JsonObject { ["columns"] = provenance };
+            h.Write(Entity, entity.ToJsonString());
+        }
+
+        await using (var inStep = new ModelStore(h.Options))
+        {
+            var clean = await inStep.ValidateAsync(ValidationScope.All, Ct);
+            Assert.DoesNotContain(clean.Diagnostics, d => d.Rule is "MQ4087" or "MQ4088");
+        }
+
+        h.Write(Notes, h.Read(Notes).Replace("\"name\": \"body\"", "\"name\": \"note_body\"", StringComparison.Ordinal));
+        await using var store = new ModelStore(h.Options);
+        var report = await store.ValidateAsync(ValidationScope.All, Ct);
+        var d = Assert.Single(report.Diagnostics, x => x.Rule == "MQ4087");
+        Assert.Equal(DiagnosticSeverity.Warning, d.Severity);
+        Assert.Equal("01K6BND0000000000000000010", d.ElementId);
+        Assert.Equal(".maquettiste/" + Entity, d.FilePath);
+        Assert.Equal("/bindings/0", d.JsonPointer);
+        Assert.True(d.Line > 0);
+        Assert.Contains("'note_body' renamed (attribute 'body')", d.Message, StringComparison.Ordinal);
+        Assert.False(report.HasErrors);
     }
 
     [Fact]

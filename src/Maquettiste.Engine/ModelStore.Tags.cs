@@ -250,7 +250,7 @@ public sealed partial class ModelStore
         {
             var node = (JsonObject)JsonNode.Parse(document.Json.GetRawText())!;
             var changed = false;
-            foreach (var host in PropertyHost.Of(document.Element))
+            foreach (var host in PropertyHost.Of(document.Element, snapshot.PropertyKeys(document.Element)))
             {
                 if (NodeAt(node, host.Pointer) is not JsonObject holder || holder["tags"] is not JsonArray list)
                     continue;
@@ -259,7 +259,7 @@ public sealed partial class ModelStore
                 if (matched.Count == 0)
                     continue;
                 var at = host.Pointer + "/properties/" + JsonPointer.Escape(name);
-                var source = snapshot.PropertySchemas.For(host.KindName, host.Stereotypes)
+                var source = snapshot.PropertySchemas.For(host)
                     .FirstOrDefault(s => s.Properties.ValueKind == JsonValueKind.Object && s.Properties.TryGetProperty(name, out _));
                 string? why;
                 JsonNode? value = null;

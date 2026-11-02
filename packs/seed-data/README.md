@@ -31,6 +31,14 @@ The manifest (and the JSON file) holds:
   per seed, its `seed` name, `source` (`table`, `entity`, `relation`, or `list` for a reference type bound to the table, whose rows come first), `environments` (empty: every environment), `apply`
   (`once`: insert the rows whose key is missing; `converge`: also update changed rows), `delete` (with converge: remove the
   table's rows the seed does not hold), the `columns` it gives, and its rows as `firstRow` and `rowCount`.
+- `unresolved`, only when some cell needs it: the cells whose value the database fills in another row. A table seed may
+  name a foreign key in its `columns` and give the referenced row's key (an email, an invoice number) in each row; the
+  engine fills the key's columns with that row's values, and a `stableId` column with the UUID it derives from the table
+  and the row key. Where the referenced value is one the database fills (an identity, a sequence, a default), the cell
+  is left empty (`null` in JSON) and listed here with `table`, `schema`, the `row` id and its `index` in the table's
+  rows, the `column`, `referencedTable`, `referencedSchema`, `referencedColumn`, `keyColumns` and the referenced row's
+  `key`, so a loader looks the value up once the referenced rows are in: `SELECT id FROM sales.customers WHERE email =
+  'ada@example.com'`.
 
 ## Parameters
 

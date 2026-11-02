@@ -1,5 +1,8 @@
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Planning;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.SchemaDiff;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Resolution;
@@ -77,6 +80,110 @@ public sealed class DependencyKeyTests
     }
 
     [Fact]
+    public void A_typed_column_table_depends_on_the_type_and_reference_data()
+    {
+        // next-phase-2-design.md section 3.2 (D21): a designed column's typeRef adds the type's keys to its table as a projected column's
+        // do: the element key, s:referenceData for a reference type, and the enum's and scalar type's keys.
+        var f = Create();
+        var state = new ReferenceType
+        {
+            Id = f.B.NewId(), Name = "InvoiceState",
+            Code = new ReferenceCode { Id = f.B.NewId(), Length = 1 }, Label = new ReferenceLabel { Id = f.B.NewId() },
+        };
+        f.B.Add(state);
+        var money = f.B.ScalarType("Money", "decimal").Decimal(12, 2);
+        var plain = f.B.Table("plain_events", f.Db).Column("id", "uuid");
+        var events = f.B.Table("invoice_events", f.Db).Column("status", "string").Column("kind", "string").Column("amount", "decimal")
+            .Edit(t => t with
+            {
+                Columns =
+                [
+                    t.Columns[0] with { TypeRef = new TypeRef { Ref = state.Id } },
+                    t.Columns[1] with { TypeRef = new TypeRef { Ref = f.Status.Id } },
+                    t.Columns[2] with { TypeRef = new TypeRef { Ref = money.Id } },
+                ],
+            });
+        var db = ResolutionKit.Resolve(f.B).Db("main");
+
+        var table = db.Table("invoice_events");
+        Assert.Contains($"e:{state.Id}", table.Dependencies);
+        Assert.Contains("s:referenceData", table.Dependencies);
+        Assert.Contains($"e:{f.Status.Id}", table.Dependencies);
+        Assert.Contains($"e:{money.Id}", table.Dependencies);
+        Assert.All(table.Columns, c => Assert.Same(table.Dependencies, c.Dependencies));
+        var untyped = db.Table("plain_events");
+        Assert.DoesNotContain("s:referenceData", untyped.Dependencies);
+        Assert.DoesNotContain($"e:{state.Id}", untyped.Dependencies);
+        Assert.Equal(plain.Id, untyped.Id);
+        Assert.Equal(events.Id, table.Id);
+    }
+
+    [Fact]
+    public void An_attribute_borrowing_sensitivity_depends_on_the_column_table()
+    {
+        // next-phase-2-design.md section 3.2 (D23): a bound attribute that states no sensitivity shows its columns' and depends on their
+        // tables whether or not a column states one, so a later sensitive on the column replans what reads the attribute.
+        var f = Create();
+        var notes = f.B.Table("notes", f.Db).Column("id", "uuid", nullable: false).Column("body", "text").Column("author", "string").PrimaryKey("id");
+        // Both attributes state a description, so only the sensitivity makes the dependency (section 3.3, decision 12).
+        var note = f.B.Entity("Note").Key("id", "uuid").Attr("body", "text", a => a.Description("What was written."))
+            .Attr("author", "string", a => a.Sensitive(Sensitivity.Pii).Description("Who wrote it."));
+        note.Bind(new EntityBinding
+        {
+            Id = "", Database = f.Db.Id, Source = notes.Id,
+            Fields =
+            [
+                new BindingField { Attribute = note.AttrId("id"), Column = notes.ColumnId("id") },
+                new BindingField { Attribute = note.AttrId("body"), Column = notes.ColumnId("body") },
+                new BindingField { Attribute = note.AttrId("author"), Column = notes.ColumnId("author") },
+            ],
+        });
+
+        var entity = ResolutionKit.Resolve(f.B).Entity("Note");
+
+        var body = entity.Attributes.Single(a => a.Name == "body");
+        Assert.Null(body.Sensitive);
+        Assert.Contains($"e:{notes.Id}", body.Dependencies);
+        Assert.Equal(body.Dependencies.Order(StringComparer.Ordinal), body.Dependencies);
+        var author = entity.Attributes.Single(a => a.Name == "author");
+        Assert.Equal("pii", author.Sensitive);
+        Assert.DoesNotContain($"e:{notes.Id}", author.Dependencies); // it states its own, so the column cannot change it
+    }
+
+    [Fact]
+    public void An_attribute_without_a_description_depends_on_its_bound_column_table()
+    {
+        // next-phase-2-design.md section 3.3, decision 12 (D34): an attribute with no description of its own shows its bound column's
+        // comment and depends on the column's table whether or not the column carries one, so a comment added later replans what reads
+        // it. Both attributes state a sensitivity here, so only the description makes the dependency.
+        var f = Create();
+        var notes = f.B.Table("notes", f.Db).Column("id", "uuid", nullable: false).Column("body", "text").Column("author", "string").PrimaryKey("id");
+        var note = f.B.Entity("Note").Key("id", "uuid")
+            .Attr("body", "text", a => a.Sensitive(Sensitivity.Pii))
+            .Attr("author", "string", a => a.Sensitive(Sensitivity.Pii).Description("Who wrote it."));
+        note.Bind(new EntityBinding
+        {
+            Id = "", Database = f.Db.Id, Source = notes.Id,
+            Fields =
+            [
+                new BindingField { Attribute = note.AttrId("id"), Column = notes.ColumnId("id") },
+                new BindingField { Attribute = note.AttrId("body"), Column = notes.ColumnId("body") },
+                new BindingField { Attribute = note.AttrId("author"), Column = notes.ColumnId("author") },
+            ],
+        });
+
+        var entity = ResolutionKit.Resolve(f.B).Entity("Note");
+
+        var body = entity.Attributes.Single(a => a.Name == "body");
+        Assert.Null(body.Description);
+        Assert.Contains($"e:{notes.Id}", body.Dependencies);
+        Assert.Equal(body.Dependencies.Order(StringComparer.Ordinal), body.Dependencies);
+        var author = entity.Attributes.Single(a => a.Name == "author");
+        Assert.Equal("Who wrote it.", author.Description);
+        Assert.DoesNotContain($"e:{notes.Id}", author.Dependencies); // its own text and sensitivity: the column cannot change it
+    }
+
+    [Fact]
     public void A_mapping_overlay_or_relation_created_later_changes_the_referrer_hash_the_resolved_objects_list()
     {
         var f = Create();
@@ -109,6 +216,94 @@ public sealed class DependencyKeyTests
         var promoted = model.Entities.Single(e => e.IsPromoted);
         Assert.Contains($"r:{f.Tags.Id}", promoted.Dependencies);
         Assert.Contains($"r:{f.Tags.Id}", promoted.Mappings["main"].Table.Dependencies);
+    }
+
+    [Fact]
+    public void A_package_that_gains_a_default_list_re_renders_its_members()
+    {
+        // next-phase-2-design.md section 3.1: a resolved object whose holder has a package lists the e: key of every package on that
+        // package's chain, own first, so a package that gains its first default list changes the input hash of its members' units,
+        // a table without a file included (its holder's package is its entity's).
+        var b = new ModelBuilder(seed: 71);
+        b.Stereotype("audited");
+        var billing = b.Package("Billing");
+        var invoices = b.Package("Invoices", billing);
+        var invoice = b.Entity("Invoice", invoices).Key("id", "uuid");
+        b.Database("main", Dialect.PostgreSql);
+        var before = b.Build();
+        var resolved = ResolutionKit.Resolve(before);
+        var entity = resolved.Entity("Invoice");
+        var table = resolved.Db("main").Table("invoices");
+        foreach (var dependencies in new[] { entity.Dependencies, table.Dependencies })
+        {
+            Assert.Contains($"e:{invoices.Id}", dependencies);
+            Assert.Contains($"e:{billing.Id}", dependencies);
+        }
+
+        Assert.Contains($"e:{billing.Id}", resolved.Packages.Single(p => p.Name == "Invoices").Dependencies);
+        Assert.DoesNotContain(resolved.Packages.Single(p => p.Name == "Billing").Dependencies, k => k == $"e:{invoices.Id}");
+
+        var after = Tests.Model.StereotypeDefaultsTests.Rebuild(b, e => e is Package p && p.Id == billing.Id ? p with { DefaultStereotypes = ["audited"] } : e);
+        var resolvedAfter = ResolutionKit.Resolve(after);
+        Assert.Equal([("audited", "package-default")], resolvedAfter.Entity("Invoice").Stereotypes.Select(s => (s.Key, s.Source)));
+        var none = new Dictionary<string, SchemaDiffResult>();
+        var hashBefore = new DependencyHasher(before, resolved, new PackSet([], []), none);
+        var hashAfter = new DependencyHasher(after, resolvedAfter, new PackSet([], []), none);
+        Assert.Equal(hashBefore.CurrentHash($"e:{invoice.Id}"), hashAfter.CurrentHash($"e:{invoice.Id}"));
+        Assert.NotEqual(hashBefore.InputHash("unit", entity.Dependencies), hashAfter.InputHash("unit", entity.Dependencies));
+        Assert.NotEqual(hashBefore.InputHash("unit", table.Dependencies), hashAfter.InputHash("unit", table.Dependencies));
+    }
+
+    [Fact]
+    public void An_x_key_hashes_the_extension_file()
+    {
+        // next-phase-2-design.md section 3.4: x:<path under extensions> is the content hash of the file, or absent.
+        var b = new ModelBuilder(seed: 72);
+        b.Entity("Customer").Key("id", "uuid");
+        var built = b.Build();
+        ModelSnapshot With(string hash) => ModelSnapshot.Create(built.Documents, built.Settings, built.SettingsHash, [],
+            [new ScriptSource(".maquettiste/extensions/rules/naming.js", "", "rule-hash")], 1,
+            seedScripts: [new ScriptSource(".maquettiste/extensions/seeds/audited-records.js", "maquettiste.rows(() => []);", hash)]);
+        var none = new Dictionary<string, SchemaDiffResult>();
+        var first = With("one");
+        var resolved = ResolutionKit.Resolve(first);
+        var hasher = new DependencyHasher(first, resolved, new PackSet([], []), none);
+
+        Assert.Equal("one", hasher.CurrentHash("x:seeds/audited-records.js"));
+        Assert.Equal("rule-hash", hasher.CurrentHash("x:rules/naming.js"));
+        Assert.Equal(DependencyHasher.Absent, hasher.CurrentHash("x:seeds/missing.js"));
+        var second = With("two");
+        Assert.Equal("two", new DependencyHasher(second, resolved, new PackSet([], []), none).CurrentHash("x:seeds/audited-records.js"));
+        Assert.NotEqual(hasher.InputHash("unit", ["x:seeds/audited-records.js"]),
+            new DependencyHasher(second, resolved, new PackSet([], []), none).InputHash("unit", ["x:seeds/audited-records.js"]));
+    }
+
+    [Fact]
+    public void Rule_view_keys_hash_as_the_rule_cache_hashes_them()
+    {
+        // The rule view's ix: and rt: reads (a rows script's, section 3.4) hash in planning as the rule result cache hashes them, so a
+        // unit that read scripted rows renders again exactly when one of those reads changes.
+        var b = new ModelBuilder(seed: 73);
+        b.Stereotype("audited");
+        var customer = b.Entity("Customer").Key("id", "uuid");
+        var invoice = b.Entity("Invoice").Key("id", "uuid");
+        b.Relation("places", customer, invoice, fromMax: MaxCardinality.One, fromRole: "customer", toRole: "invoice");
+        var before = b.Build();
+        var after = Tests.Model.StereotypeDefaultsTests.Rebuild(b, e => e is Entity entity && entity.Id == invoice.Id ? entity with { Stereotypes = ["audited"] } : e);
+        var none = new Dictionary<string, SchemaDiffResult>();
+        var index = Engine.Validation.RuleModelIndex.Key(Engine.Validation.RuleModelIndex.Stereotype, "audited");
+        var references = "rt:" + customer.Id;
+
+        foreach (var model in new[] { before, after })
+        {
+            var hasher = new DependencyHasher(model, ResolutionKit.Resolve(model), new PackSet([], []), none);
+            var rules = Engine.Validation.RuleKeyHasher.Of(model);
+            Assert.Equal(rules.CurrentHash(index), hasher.CurrentHash(index));
+            Assert.Equal(rules.CurrentHash(references), hasher.CurrentHash(references));
+            Assert.NotEqual(DependencyHasher.Absent, hasher.CurrentHash(references));
+        }
+
+        Assert.NotEqual(Engine.Validation.RuleKeyHasher.Of(before).CurrentHash(index), Engine.Validation.RuleKeyHasher.Of(after).CurrentHash(index));
     }
 
     [Fact]

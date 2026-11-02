@@ -23,7 +23,7 @@ public sealed partial class AgentToolsTests
     {
         await using var r = EditorRepo.Create(packs: false);
         var catalog = Catalog(r);
-        Assert.Equal(27, AgentTools.All.Count);
+        Assert.Equal(29, AgentTools.All.Count);
         Assert.Equal(AgentTools.All.Select(t => t.Name).Order(StringComparer.Ordinal), AgentTools.All.Select(t => t.Name));
         foreach (var tool in AgentTools.All.Append(AssistantProposals.Tool))
         {
@@ -58,6 +58,53 @@ public sealed partial class AgentToolsTests
         Assert.Equal("bad-request", (string?)JsonNode.Parse(missing.Text)!["code"]);
         var notObject = await catalog.CallAsync("get_element", JsonSerializer.SerializeToElement("x"), Ct);
         Assert.True(notObject.IsError);
+    }
+
+    [Fact]
+    public async Task Preview_seed_rows_gives_database_terms_for_one_seed()
+    {
+        // next-phase-2-design.md section 3.4 (D44): an invoice names its customer by email; in main's terms the row carries the stable
+        // ids and the customer's id the natural key finds, and its ref says which row that is.
+        await using var r = Store.SeedPreviewTests.NaturalKeyRepo();
+        var catalog = Catalog(r);
+        async Task<JsonNode> OkAsync(object args)
+        {
+            var answer = await catalog.CallAsync("preview_seed_rows", JsonSerializer.SerializeToElement(args), Ct);
+            Assert.False(answer.IsError, answer.Text);
+            return JsonNode.Parse(answer.Text)!;
+        }
+
+        var preview = await OkAsync(new { seed = Store.SeedPreviewTests.InvoiceSeed, database = "main" });
+
+        Assert.Equal((EditorRepo.MainDatabaseId, 2), ((string)preview["database"]!, (int)preview["total"]!));
+        Assert.Null(preview["next"]);
+        Assert.Empty(preview["diagnostics"]!.AsArray());
+        var row = preview["rows"]![0]!;
+        Assert.Equal(new JsonArray("INV-1").ToJsonString(), row["key"]!.ToJsonString());
+        Assert.Equal(Maquettiste.Engine.Model.StableIds.Of(Store.SeedPreviewTests.Invoices, ["INV-1"]), (string)row["values"]!["id"]!);
+        Assert.Equal(Maquettiste.Engine.Model.StableIds.Of(Store.SeedPreviewTests.Customers, ["ada@example.com"]), (string)row["values"]!["customer_id"]!);
+        Assert.Equal(
+            new JsonObject
+            {
+                ["foreignKey"] = "fk_invoices_customer", ["table"] = "sales.customers", ["key"] = new JsonArray("ada@example.com"), ["found"] = true,
+                ["unknown"] = new JsonArray(),
+            }.ToJsonString(),
+            Assert.Single(row["refs"]!.AsArray())!.ToJsonString());
+
+        // Without a database: the cells as written, one page at a time.
+        var written = await OkAsync(new { seed = Store.SeedPreviewTests.CustomerSeed, limit = 2 });
+        Assert.Null(written["database"]);
+        Assert.Equal("{\"name\":\"Ada\",\"email\":\"ada@example.com\"}", written["rows"]![0]!["values"]!.ToJsonString());
+        var rest = await OkAsync(new { seed = Store.SeedPreviewTests.CustomerSeed, cursor = (string)written["next"]! });
+        Assert.Equal("edsger@example.com", (string)Assert.Single(rest["rows"]!.AsArray())!["key"]![0]!);
+
+        async Task<string?> CodeAsync(object args) =>
+            (string?)JsonNode.Parse((await catalog.CallAsync("preview_seed_rows", JsonSerializer.SerializeToElement(args), Ct)).Text)!["code"];
+        Assert.Equal("not-found", await CodeAsync(new { seed = EditorRepo.InvoiceId }));
+        Assert.Equal("bad-request", await CodeAsync(new { seed = Store.SeedPreviewTests.InvoiceSeed, database = "nowhere" }));
+        Assert.Equal("bad-request", await CodeAsync(new { seed = Store.SeedPreviewTests.InvoiceSeed, cursor = "nope" }));
+        Assert.Equal("bad-request", await CodeAsync(new { seed = Store.SeedPreviewTests.InvoiceSeed, limit = 0 }));
+        Assert.Equal("bad-request", await CodeAsync(new { }));
     }
 
     [Fact]
@@ -209,6 +256,101 @@ public sealed partial class AgentToolsTests
         Assert.Equal("not-found", (string?)JsonNode.Parse(notDomain.Text)!["code"]);
         var badCursor = await catalog.CallAsync("tag_usage", JsonSerializer.SerializeToElement(new { tag = "billing", cursor = "nope" }), Ct);
         Assert.Equal("bad-request", (string?)JsonNode.Parse(badCursor.Text)!["code"]);
+    }
+
+    [Fact]
+    public async Task Reference_type_usage_lists_columns()
+    {
+        // next-phase-2-design.md section 3.2 (D24): the assistant's reference_type_usage answers columns beside usages: the designed
+        // column invoice_events.status typed by InvoiceState, required, with no storage choice (the billing project states none) and
+        // the table its binding names in main; the bound table's own code column states no typeRef, so it is not listed.
+        const string state = "01K9X3A0000000000000000001", states = "01K9X3B0000000000000000001", events = "01K9X3C0000000000000000001";
+        const string status = "01K9X3C0000000000000000003";
+        await using var r = EditorRepo.Create(packs: false);
+        async Task CreateAsync(string json)
+        {
+            var saved = await r.Store.CreateAsync(Encoding.UTF8.GetBytes(JsonNode.Parse(json)!.ToJsonString()), ChangeSource.Editor, Ct);
+            Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join("; ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        }
+
+        await CreateAsync($$"""
+            {"kind":"table","id":"{{states}}","name":"invoice_states","database":"{{EditorRepo.MainDatabaseId}}","columns":[
+              {"id":"01K9X3B0000000000000000002","name":"code","type":"string","length":1,"nullable":false},
+              {"id":"01K9X3B0000000000000000003","name":"label","type":"string","length":40,"nullable":false}],
+             "primaryKey":{"columns":["01K9X3B0000000000000000002"]} }
+            """);
+        await CreateAsync($$"""
+            {"kind":"reference-type","id":"{{state}}","name":"InvoiceState","package":"{{EditorRepo.BillingPackageId}}",
+             "code":{"id":"01K9X3A0000000000000000002","length":1},"label":{"id":"01K9X3A0000000000000000003","length":40},
+             "bindings":[{"id":"01K9X3A0000000000000000004","database":"{{EditorRepo.MainDatabaseId}}","table":"{{states}}",
+               "fields":[{"attribute":"code","column":"01K9X3B0000000000000000002"},{"attribute":"label","column":"01K9X3B0000000000000000003"}]}]}
+            """);
+        await CreateAsync($$"""
+            {"kind":"table","id":"{{events}}","name":"invoice_events","database":"{{EditorRepo.MainDatabaseId}}",
+             "package":"{{EditorRepo.BillingPackageId}}","columns":[
+              {"id":"01K9X3C0000000000000000002","name":"id","type":"uuid","nullable":false},
+              {"id":"{{status}}","name":"status","type":"string","typeRef":{"ref":"{{state}}"},"length":1,"nullable":false}],
+             "primaryKey":{"columns":["01K9X3C0000000000000000002"]} }
+            """);
+
+        var answer = await Catalog(r).CallAsync("reference_type_usage", JsonSerializer.SerializeToElement(new { id = state }), Ct);
+
+        Assert.False(answer.IsError, answer.Text);
+        var usage = JsonNode.Parse(answer.Text)!;
+        Assert.Empty(usage["usages"]!.AsArray());
+        var column = Assert.Single(usage["columns"]!.AsArray())!;
+        Assert.Equal(
+            new JsonObject
+            {
+                ["table"] = events, ["column"] = status, ["database"] = EditorRepo.MainDatabaseId, ["domain"] = EditorRepo.BillingPackageId,
+                ["required"] = true, ["storage"] = null, ["boundTable"] = states,
+            }.ToJsonString(),
+            column.ToJsonString());
+    }
+
+    [Fact]
+    public async Task Get_binding_drift_lists_and_pages()
+    {
+        // next-phase-2-design.md section 3.3 (D35): both notes entities record provenance through one re-sync; renaming the notes
+        // table's body column is drift for both. Pages follow entity name, then database; all also lists RevenueMonth, in step.
+        const string notes = "01K6BND0000000000000000001", invoiceNote = "01K6BND0000000000000000010", customerNote = "01K6BND0000000000000000020";
+        await using var r = EditorRepo.Create(packs: false);
+        var batch = r.Store.ParseBatch(Encoding.UTF8.GetBytes($$"""
+            {"operations":[{"op":"resync-binding","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{invoiceNote}}","{{customerNote}}"]}]}
+            """));
+        Assert.Empty(batch.Diagnostics);
+        Assert.Equal(SaveOutcome.Saved, (await r.Store.ApplyBatchAsync(batch.Batch!, ChangeSource.Editor, Ct)).Outcome);
+        var table = (await r.Store.GetElementAsync(notes, Ct))!;
+        var node = JsonNode.Parse(table.Json.GetRawText())!;
+        node["columns"]!.AsArray().Single(c => (string?)c!["name"] == "body")!["name"] = "note_body";
+        Assert.Equal(SaveOutcome.Saved, (await r.Store.SaveAsync(notes, Encoding.UTF8.GetBytes(node.ToJsonString()), table.Hash, ChangeSource.Editor, Ct)).Outcome);
+        var catalog = Catalog(r);
+        async Task<JsonNode> CallAsync(object arguments)
+        {
+            var answer = await catalog.CallAsync("get_binding_drift", JsonSerializer.SerializeToElement(arguments), Ct);
+            Assert.False(answer.IsError, answer.Text);
+            return JsonNode.Parse(answer.Text)!;
+        }
+
+        var first = await CallAsync(new { limit = 1 });
+        var customer = Assert.Single(first["bindings"]!.AsArray())!;
+        Assert.Equal(("CustomerNote", "main", "notes"), ((string?)customer["entityName"], (string?)customer["databaseName"], (string?)customer["sourceName"]));
+        Assert.Equal("body", (string?)Assert.Single(customer["renamed"]!.AsArray())!["attributeName"]);
+        var second = await CallAsync(new { limit = 1, cursor = (string?)first["next"] });
+        Assert.Equal("InvoiceNote", (string?)Assert.Single(second["bindings"]!.AsArray())!["entityName"]);
+        Assert.Null(second["next"]);
+
+        var all = await CallAsync(new { all = true, database = EditorRepo.MainDatabaseId });
+        Assert.Equal(["CustomerNote", "InvoiceNote", "RevenueMonth"], all["bindings"]!.AsArray().Select(b => (string?)b!["entityName"]));
+        Assert.Equal((false, false), ((bool)all["bindings"]![2]!["hasProvenance"]!, (bool)all["bindings"]![2]!["stale"]!));
+        var one = await CallAsync(new { entities = new[] { invoiceNote } });
+        Assert.Equal(invoiceNote, (string?)Assert.Single(one["bindings"]!.AsArray())!["entity"]);
+
+        foreach (var wrong in new object[] { new { database = "nowhere" }, new { entities = new[] { notes } }, new { cursor = "nope" }, new { limit = 0 } })
+        {
+            var answer = await catalog.CallAsync("get_binding_drift", JsonSerializer.SerializeToElement(wrong), Ct);
+            Assert.Equal("bad-request", (string?)JsonNode.Parse(answer.Text)!["code"]);
+        }
     }
 
     [Fact]

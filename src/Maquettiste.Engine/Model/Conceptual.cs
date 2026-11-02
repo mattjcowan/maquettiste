@@ -32,6 +32,14 @@ public sealed record Package : Element
     /// </summary>
     [ElementRef(ElementKind.Package)]
     public IReadOnlyList<string>? DependsOn { get; init; }
+
+    /// <summary>
+    /// Stereotype keys every element of the package and of the packages under it carries, applied before their own stereotypes,
+    /// outermost package first (next-phase-2-design.md section 3.1). A default skips an element whose kind it does not apply to; an
+    /// element leaves one out with <see cref="Element.ExcludeStereotypes"/>. The package itself takes its parent's.
+    /// </summary>
+    [StereotypeKeys]
+    public IReadOnlyList<string> DefaultStereotypes { get; init; } = [];
 }
 
 /// <summary>A business object with identity (SPEC section 6; <c>model/entities/</c>).</summary>
@@ -186,7 +194,7 @@ public sealed record DerivedSpec
     public bool Stored { get; init; }
 }
 
-/// <summary>The sensitivity of an attribute's value.</summary>
+/// <summary>The sensitivity of an attribute's or a column's value.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<Sensitivity>))]
 public enum Sensitivity
 {

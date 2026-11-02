@@ -271,6 +271,33 @@ public sealed class SchemaDifferTests
     }
 
     [Fact]
+    public void Typing_a_designed_column_by_a_lookup_type_changes_its_reference_state()
+    {
+        // next-phase-2-design.md section 3.2 (D21), decision 8: the snapshot captures the reference state of every column with a
+        // reference type, not only of a projected reference column; the column keeps its physical type, so only that state changes.
+        const string StateId = "01JB2Q0M8X4T5V6W7Y8Z9A0B1F";
+        var state = new RReferenceType { Id = StateId, Name = "CustomerState", Code = new RReferenceField { Id = "01JB2Q0M8X4T5V6W7Y8Z9A0B1G", Length = 1 } };
+        var typed = Model((customer, _, _, _) =>
+        {
+            var name = customer.Col("a-name");
+            name.TypeRef = new RType { Kind = "reference", Name = state.Name, Builtin = "string", ReferenceType = state };
+            name.ReferenceType = state;
+            name.CodeType = "string";
+            name.Strategy = "lookup-table";
+        });
+
+        var snapshot = _differ.Capture(typed, 4);
+        var captured = snapshot.Tables.Single(t => t.Key == CustomerKey).Columns.Single(c => c.Key == "a-name");
+        Assert.Equal(("string", StateId, "lookup-table", (string?)null), (captured.Type, captured.ReferenceType, captured.Strategy, captured.ReferenceTable));
+        var diff = _differ.Diff(Baseline(), typed);
+
+        var column = Assert.Single(Assert.Single(diff.Tables).Columns);
+        Assert.Equal((ChangeKind.Altered, "a-name"), (column.Kind, column.Key));
+        Assert.Equal([("referenceType", null, StateId), ("strategy", null, "lookup-table")], column.Changes.Select(c => (c.Property, c.Old, c.New)));
+        Assert.Empty(_differ.Diff(Baseline(), Model()).Tables);
+    }
+
+    [Fact]
     public void A_subtype_change_is_a_column_change()
     {
         static void Range(RTable customer, string subtype, string native)

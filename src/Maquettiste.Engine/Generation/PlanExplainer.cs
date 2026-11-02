@@ -248,8 +248,15 @@ internal static class PlanExplainer
         "template" => "Template " + key[2..],
         "schema-diff" => "The schema diff of " + key[2..],
         "translation" => "Texts " + key[2..],
-        _ => NamedInput(key) ?? "Input " + key,
+        _ => NamedInput(key) ?? ExtensionFile(key) ?? "Input " + key,
     };
+
+    /// <summary>
+    /// An <c>x:&lt;path under extensions&gt;</c> key's words (next-phase-2-design.md section 3.4): "The extension file seeds/audited-records.js".
+    /// Its cause kind stays <c>inputs</c>.
+    /// </summary>
+    private static string? ExtensionFile(string key) =>
+        key.StartsWith("x:", StringComparison.Ordinal) && key.Length > 2 ? "The extension file " + key[2..] : null;
 
     /// <summary>
     /// An <c>n:&lt;kind&gt;:&lt;form&gt;</c> key's words (next-phase-1-design.md sections 5.3 and 5.5): "The seeds named currencies",

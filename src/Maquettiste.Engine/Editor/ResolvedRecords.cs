@@ -119,11 +119,16 @@ public sealed record EntityRecord(string Id, string Kind, string Name, string? P
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+/// <param name="DescriptionColumn">
+/// The key of the column whose comment <paramref name="Description"/> shows, when the attribute has no description of its own; otherwise
+/// <see langword="null"/> (next-phase-2-design.md section 3.3, decision 12).
+/// </param>
 public sealed record AttributeRecord(string Id, string Name, string Owner, string? DeclaringEntity, TypeRecord Type, bool Required, object? Default,
     string? DefaultExpression, int? Length, int? Precision, int? Scale, bool Collection, bool Unique, bool Indexed, bool ReadOnly, bool Immutable,
     DerivedRecord? Derived, string? Sensitive, ValidationRecord? Validation, int Order, bool IsKey, bool IsInherited, bool IsVirtual, string? FromStereotype,
     ReferenceUsageRecord? Reference, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
-    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
+    string? DescriptionColumn);
 
 /// <summary>An attribute's resolved type.</summary>
 /// <param name="Kind"><c>builtin</c>, <c>enum</c>, <c>value-object</c>, <c>scalar</c> or <c>reference</c>.</param>
@@ -346,10 +351,18 @@ public sealed record ScalarTypeRecord(string Id, string Kind, string Name, strin
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+/// <param name="FormerCodes">The codes its rows used to have, ordinal by code, each with the row that replaced it (next-phase-2-design.md
+/// section 3.5).</param>
 public sealed record ReferenceTypeRecord(string Id, string Kind, string Name, string? Package, ReferenceFieldRecord Code, ReferenceFieldRecord Label,
     IReadOnlyList<AttributeRecord> Attributes, IReadOnlyList<RowRecord> Rows, IReadOnlyList<string> Seeds, IReadOnlyList<string> UsedBy,
     IReadOnlyList<StorageChoiceRecord> Storage, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
-    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
+    IReadOnlyList<FormerCodeRecord> FormerCodes);
+
+/// <summary>A code a row of a reference type used to have (next-phase-2-design.md section 3.5).</summary>
+/// <param name="Code">The former code: a string, or an integer for an integer code type.</param>
+/// <param name="ReplacedBy">The id of the row that replaced it.</param>
+public sealed record FormerCodeRecord(object? Code, string ReplacedBy);
 
 /// <summary>The code or label field of a reference type.</summary>
 /// <param name="Id">The field id.</param>
@@ -997,8 +1010,10 @@ public static class ResolvedRecords
             a.Required, Plain(a.Default), a.DefaultExpression, a.Length, a.Precision, a.Scale, a.Collection, a.Unique, a.Indexed, a.ReadOnly, a.Immutable,
             a.Derived is { } d ? new DerivedRecord(d.Expression, d.Stored) : null, a.Sensitive, Validation(a.Validation), a.Order,
             key is not null && key.Contains(a.Id), a.IsInherited, a.IsVirtual, a.FromStereotype?.Key,
-            a.Reference is { } r ? new ReferenceUsageRecord(r.Type.Id, r.IsCollection, r.Required, Ids(r.Allowed), r.DefaultRow?.Id, Storage(r.Storage)) : null,
-            a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);
+            a.Reference is { } r ? new ReferenceUsageRecord(r.Type.Id, r.IsCollection, r.Required, Ids(Scripted(() => r.Allowed, RList<RRow>.Empty)),
+                Scripted(() => r.DefaultRow, null)?.Id, Storage(r.Storage)) : null,
+            a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation,
+            a.DescriptionColumn?.Key);
 
         public RelationRecord Relation(RRelation r) => new(r.Id, "relation", r.Name, r.Package?.Id, r.InverseName, r.RelationKind, r.Cardinality, r.AllowDuplicates,
             [.. r.Ends.Select(e => new EndRecord(e.Id, e.Entity.Id, e.Role, e.Navigation, e.Min, e.Max, e.IsMany, e.OnDelete, e.Ordered, e.Opposite?.Id))],
@@ -1019,13 +1034,30 @@ public static class ResolvedRecords
 
         public ReferenceTypeRecord ReferenceType(RReferenceType t) => new(t.Id, "reference-type", t.Name, t.Package?.Id, Field(t.Code), Field(t.Label),
             [.. t.Attributes.Select(a => Attribute(a))],
-            [.. t.Rows.Select(r => new RowRecord(r.Id, Plain(r.Code), r.Label, r.Description, Plain(r.Values), r.Seed.Id, r.Order))],
+            [.. Scripted(() => t.Rows, RList<RRow>.Empty).Select(r => new RowRecord(r.Id, Plain(r.Code), r.Label, r.Description, Plain(r.Values), r.Seed.Id, r.Order))],
             Ids(t.Seeds), Ids(t.UsedBy), Storage(t.Storage),
-            t.DisplayName!, t.PluralName!, t.Description, t.Tags, t.Category?.Id, Keys(t.Stereotypes), Plain(t.Properties), t.Generation);
+            t.DisplayName!, t.PluralName!, t.Description, t.Tags, t.Category?.Id, Keys(t.Stereotypes), Plain(t.Properties), t.Generation,
+            [.. Scripted(() => t.FormerCodes, []).Select(f => new FormerCodeRecord(Plain(f.Code), f.ReplacedBy.Id))]);
+
+        /// <summary>
+        /// Rows a seed's rows script gives (next-phase-2-design.md section 3.4), or <paramref name="none"/> when the script failed: a record
+        /// lists what is there, and validation reports the failure (MQ7127).
+        /// </summary>
+        private static T Scripted<T>(Func<T> read, T none)
+        {
+            try
+            {
+                return read();
+            }
+            catch (Scripting.ScriptErrorException)
+            {
+                return none;
+            }
+        }
 
         public SeedRecord Seed(RSeed s) => new(s.Id, "seed", s.Name, s.Package?.Id, s.Target?.Id,
             [.. s.Columns.Select(c => new SeedColumnRecord(c.Name, c.Kind, c.Attribute?.Id, c.End?.Id))],
-            [.. s.Rows.Select(r => new SeedRowRecord(r.Id, r.Order, Plain(r.Values)))],
+            [.. s.RowsOrNone.Select(r => new SeedRowRecord(r.Id, r.Order, Plain(r.Values)))],
             s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
 
         public ProcessRecord Process(RProcess p) => new(p.Id, "process", p.Name, p.Package?.Id, p.Use, p.Subject?.Id, p.BoundAttribute?.Id, p.BoundEnum?.Id, p.Initial?.Id,

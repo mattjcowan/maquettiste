@@ -469,9 +469,10 @@ internal static partial class Credentials
     /// <summary>Returns why a default looks like a credential, or <see langword="null"/>.</summary>
     /// <param name="name">The attribute or column name.</param>
     /// <param name="value">The default literal.</param>
-    /// <param name="sensitivity">The attribute's sensitivity, when known.</param>
+    /// <param name="sensitivity">The attribute's or column's own sensitivity, when known (a column's since next-phase-2-design.md section 3.2).</param>
+    /// <param name="column">Whether the default is a column's, for the wording.</param>
     /// <returns>The reason.</returns>
-    public static string? LooksLikeCredential(string name, JsonElement value, Sensitivity? sensitivity)
+    public static string? LooksLikeCredential(string name, JsonElement value, Sensitivity? sensitivity, bool column = false)
     {
         if (value.ValueKind != JsonValueKind.String || value.GetString() is not { Length: > 0 } text)
             return null;
@@ -488,9 +489,9 @@ internal static partial class Credentials
         if (UrlCredentials().IsMatch(text))
             return "a URL with a user name and password";
         if (sensitivity == Sensitivity.Secret)
-            return "a non-empty default on a secret attribute";
+            return column ? "a non-empty default on a secret column" : "a non-empty default on a secret attribute";
         if (SecretName().IsMatch(name) && !Placeholder().IsMatch(text))
-            return "a non-empty default on an attribute named like a secret";
+            return column ? "a non-empty default on a column named like a secret" : "a non-empty default on an attribute named like a secret";
         return null;
     }
 

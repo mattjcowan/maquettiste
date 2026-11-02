@@ -334,11 +334,13 @@ func native_type_name(rt)
   ret (snake rt.name) + "_t"
 end
 
-# The SQL type of a column: the enum type for a reference-typed column realized as "native" on PostgreSQL (unless its type is
-# bound to a table of the database, whose code column it then holds), else type_of (for a reference-typed column, the code's type).
+# The SQL type of a column: the enum type for a projected reference column (type "reference") realized as "native" on
+# PostgreSQL (unless its type is bound to a table of the database, whose code column it then holds), else type_of (for a projected
+# reference column, the code's type). A column of a table file typed by a reference type (column.type_ref) keeps the type it
+# states, and gets a CHECK instead of the enum type (column_realization in _reference.scriban).
 func column_type(c)
   $d = c.table.database.dialect
-  if c.reference_type && $d == "postgresql" && !c.reference_binding && ref_realization(c.strategy) == "native"
+  if c.type == "reference" && c.reference_type && $d == "postgresql" && !c.reference_binding && ref_realization(c.strategy) == "native"
     ret q(native_type_name(c.reference_type), c.table.database)
   end
   ret type_of c $d

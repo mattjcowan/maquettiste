@@ -267,6 +267,85 @@ public sealed class RegistrationTests
         Assert.Equal(path, error.Diagnostic.FilePath);
     }
 
+    private const string RowsScript = ".maquettiste/extensions/seeds/statuses.js";
+
+    [Fact]
+    public void Rows_registers_once_per_file()
+    {
+        using var pool = Scripts.Pool(
+        [
+            Scripts.Source("maquettiste.rows(() => [{ code: 'a' }]);", RowsScript),
+            Scripts.Source("maquettiste.rows((model, seed) => []);", ".maquettiste/extensions/seeds/more.js"),
+        ]);
+
+        // A rows registration is named by its script's path (next-phase-2-design.md section 3.4).
+        Assert.Equal(
+        [
+            new ScriptRegistration(ScriptRegistrationKind.Rows, RowsScript, RowsScript),
+            new ScriptRegistration(ScriptRegistrationKind.Rows, ".maquettiste/extensions/seeds/more.js", ".maquettiste/extensions/seeds/more.js"),
+        ], pool.Registrations);
+        Assert.True(ScriptSandbox.IsRowsScript(RowsScript));
+        Assert.True(ScriptSandbox.IsRuleScript(RowsScript));
+        Assert.False(ScriptSandbox.IsRowsScript(".maquettiste/templates/acme/extensions/seeds/x.js"));
+    }
+
+    [Fact]
+    public void Rows_twice_fails_the_script()
+    {
+        var error = Assert.Throws<ScriptErrorException>(() => Scripts.Pool("maquettiste.rows(() => []);\nmaquettiste.rows(() => []);", path: RowsScript));
+
+        // A rows script is a model script: it fails as rule scripts do (MQ5002), which the seed rules report as MQ7127.
+        Assert.Equal(("MQ5002", RowsScript, 2), (error.Diagnostic.Rule, error.Diagnostic.FilePath, error.Diagnostic.Line));
+        Assert.Contains("more than once", error.Diagnostic.Message, StringComparison.Ordinal);
+        var helper = Assert.Throws<ScriptErrorException>(() => Scripts.Pool("maquettiste.helper('x', () => 1);", path: RowsScript));
+        Assert.Contains("cannot be called by a rows script", helper.Diagnostic.Message, StringComparison.Ordinal);
+        var rule = Assert.Throws<ScriptErrorException>(() => Scripts.Pool("maquettiste.rule({ id: 'r', check() {} });", path: RowsScript));
+        Assert.Contains("cannot be called by a rows script", rule.Diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_rule_script_that_calls_rows_fails_to_load()
+    {
+        var rule = Assert.Throws<ScriptErrorException>(() => Scripts.Pool("maquettiste.rows(() => []);", path: Scripts.RuleScript));
+        Assert.Equal(("MQ5002", Scripts.RuleScript), (rule.Diagnostic.Rule, rule.Diagnostic.FilePath));
+        Assert.Contains("can only be called by a rows script", rule.Diagnostic.Message, StringComparison.Ordinal);
+
+        var pack = Assert.Throws<ScriptErrorException>(() => Scripts.Pool("maquettiste.rows(() => []);"));
+        Assert.Equal(("MQ6016", Scripts.PackScript), (pack.Diagnostic.Rule, pack.Diagnostic.FilePath));
+    }
+
+    [Fact]
+    public void Run_rows_returns_the_array_and_records_its_reads()
+    {
+        var s = RuleModel();
+        using var pool = Scripts.Pool("""
+            maquettiste.rows((model, seed) => model.all("entity")
+              .map(e => ({ code: e.name, label: seed.name, size: e.attributes.length, ratio: 0.5, flag: true, none: null, list: [1, "x"] })));
+            """, path: RowsScript);
+        using var lease = pool.Rent();
+        var seed = s.Model.GetDocument(s.Status.Id)!; // the frozen copy the function gets: any document serves
+        var reads = new ListRecorder();
+
+        var rows = lease.Sandbox.RunRows(RowsScript, seed, s.Model, Scripts.Ctx(reads, seed: s.Status.Id));
+
+        Assert.Equal(
+            """[{"code":"Invoice","label":"InvoiceStatus","size":2,"ratio":0.5,"flag":true,"none":null,"list":[1,"x"]},{"code":"customer","label":"InvoiceStatus","size":2,"ratio":0.5,"flag":true,"none":null,"list":[1,"x"]}]""",
+            rows.GetRawText());
+        Assert.Contains("k:entity", reads.Keys);
+        Assert.Contains("e:" + s.Customer.Id, reads.Keys);
+
+        // Anything but an array of plain objects of JSON values is a script error.
+        using var bad = Scripts.Pool("""
+            maquettiste.rows((model, seed) => seed.name === "InvoiceStatus" ? [1] : [{ when: new Date(0) }]);
+            """, path: RowsScript);
+        using var badLease = bad.Rent();
+        var notObjects = Assert.Throws<ScriptErrorException>(() => badLease.Sandbox.RunRows(RowsScript, seed, s.Model, Scripts.Ctx()));
+        Assert.Equal("MQ5002", notObjects.Diagnostic.Rule);
+        Assert.Contains("each row is a plain object", notObjects.Diagnostic.Message, StringComparison.Ordinal);
+        var date = Assert.Throws<ScriptErrorException>(() => badLease.Sandbox.RunRows(RowsScript, s.Model.GetDocument(s.Customer.Id)!, s.Model, Scripts.Ctx()));
+        Assert.Contains("Date", date.Diagnostic.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Report_validates_its_options()
     {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Model batch",
-  "description": "An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, process operations, tag operations and the names-to-ids refactor, from the editor, a refactoring or an AI proposal.",
+  "description": "An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the fold into a stereotype and the reference-type refactors, from the editor, a refactoring or an AI proposal.",
   "type": "object",
   "x-order": ["operations"],
   "properties": {
@@ -10,13 +10,13 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "target", "default"],
+        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "to", "codes", "target", "default", "redefine", "excludeMissing", "keepNames"],
         "properties": {
           "op": {
-            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario", "retag", "tags-to-property", "names-to-ids"]
+            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type"]
           },
           "id": {
-            "description": "The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder.",
+            "description": "The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder. For fold-into-stereotype, the stereotype whose members the tables adopt; for rename-code, retire-code and rename-reference-type, the reference type; for merge-reference-types, the reference type merged away.",
             "$ref": "#/$defs/idOrName"
           },
           "as": {
@@ -54,11 +54,11 @@
             ]
           },
           "database": {
-            "description": "The database: an id, a qualified name or a placeholder (materialize-tables, materialize-entities, materialize-attributes, materialize-columns).",
+            "description": "The database: an id, a qualified name or a placeholder (materialize-tables, materialize-entities, materialize-attributes, materialize-columns, map-by-name, resync-binding).",
             "$ref": "#/$defs/idOrName"
           },
           "entities": {
-            "description": "The entities, each an id, a qualified name or a placeholder, that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns).",
+            "description": "The entities, each an id, a qualified name or a placeholder, that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns), or whose binding to the database is mapped by name (map-by-name) or brought into step with its table (resync-binding).",
             "type": "array",
             "items": {
               "$ref": "#/$defs/idOrName"
@@ -66,7 +66,7 @@
             "minItems": 1
           },
           "tables": {
-            "description": "The designed or imported tables and the views, each an id, a qualified name or a placeholder, that get an entity and a binding (materialize-entities).",
+            "description": "The designed or imported tables and the views, each an id, a qualified name or a placeholder, that get an entity and a binding (materialize-entities); the designed or imported tables whose own members the stereotype's replace (fold-into-stereotype).",
             "type": "array",
             "items": {
               "$ref": "#/$defs/idOrName"
@@ -78,7 +78,7 @@
             "$ref": "#/$defs/idOrName"
           },
           "columns": {
-            "description": "The columns of the source, as keys or physical names, that get an attribute mapped to them (materialize-attributes, one entity only); absent means every column nothing in the binding names.",
+            "description": "The columns of the source, as keys or physical names, that get an attribute mapped to them (materialize-attributes, one entity only; absent means every column nothing in the binding names), or that a re-sync brings into step, updating only their provenance entries (resync-binding, one entity only; absent means every column of the source).",
             "type": "array",
             "items": {
               "type": "string",
@@ -115,7 +115,7 @@
             "minLength": 1
           },
           "expectedHashes": {
-            "description": "Materialize, retag, tags-to-property and names-to-ids: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. A key may be a qualified name, never a placeholder.",
+            "description": "Materialize, map-by-name, resync-binding, retag, tags-to-property, names-to-ids, fold-into-stereotype and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. A key may be a qualified name, never a placeholder.",
             "type": "object",
             "additionalProperties": {
               "type": "string",
@@ -123,21 +123,54 @@
             }
           },
           "schema": {
-            "description": "The database schema: an id, a qualified name or a placeholder (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own).",
+            "description": "The database schema: an id, a qualified name or a placeholder (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own; for fold-into-stereotype, the schema whose designed and imported tables are folded: those that state it, or state none when it is the default).",
             "$ref": "#/$defs/idOrName"
           },
           "name": {
-            "description": "The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags); the custom property the tags move to (tags-to-property).",
+            "description": "The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags); the custom property the tags move to (tags-to-property); the reference type's new name (rename-reference-type).",
             "type": "string",
             "minLength": 1
           },
+          "code": {
+            "description": "The code a refactor acts on, as the code's canonical text (an integer in decimal digits, a uuid in lowercase): the code to rename (rename-code) or to retire (retire-code).",
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "description": "The code's new text (rename-code), or the live code whose row takes over the retired code's uses (retire-code).",
+            "type": "string",
+            "minLength": 1
+          },
+          "codes": {
+            "description": "merge-reference-types: codes of the merged-away type mapped to live codes of the target, for codes the target does not hold itself; every other code moves into the target as a row.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
           "target": {
-            "description": "The schema that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial). An id, a qualified name or a placeholder.",
+            "description": "The schema that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial); the reference type merged into (merge-reference-types). An id, a qualified name or a placeholder.",
             "$ref": "#/$defs/idOrName"
           },
           "default": {
             "description": "The schema that becomes the default when the removed schema is the default (remove-schema): an id, a qualified name or a placeholder.",
             "$ref": "#/$defs/idOrName"
+          },
+          "redefine": {
+            "description": "fold-into-stereotype: where an own member differs from the stereotype's in a facet a redefinition may state, write a redefines entry with the table's value instead of refusing the table.",
+            "type": "boolean",
+            "default": false
+          },
+          "excludeMissing": {
+            "description": "fold-into-stereotype: exclude each member of the stereotype a table lacks instead of refusing the table, so the fold adds nothing to the database.",
+            "type": "boolean",
+            "default": false
+          },
+          "keepNames": {
+            "description": "resync-binding: keep every attribute's name, even one that followed its column's name; the provenance entry still takes the column's new name.",
+            "type": "boolean",
+            "default": false
           }
         },
         "required": ["op"],
@@ -243,6 +276,18 @@
             "if": {
               "properties": {
                 "op": {
+                  "enum": ["map-by-name", "resync-binding"]
+                }
+              }
+            },
+            "then": {
+              "required": ["database", "entities"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
                   "const": "retag"
                 }
               }
@@ -261,6 +306,62 @@
             },
             "then": {
               "required": ["prefix", "name"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "fold-into-stereotype"
+                }
+              }
+            },
+            "then": {
+              "required": ["id"],
+              "oneOf": [
+                {
+                  "required": ["tables"]
+                },
+                {
+                  "required": ["schema"]
+                }
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "enum": ["rename-code", "retire-code"]
+                }
+              }
+            },
+            "then": {
+              "required": ["id", "code", "to"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "merge-reference-types"
+                }
+              }
+            },
+            "then": {
+              "required": ["id", "target"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "rename-reference-type"
+                }
+              }
+            },
+            "then": {
+              "required": ["id", "name"]
             }
           },
           {

@@ -4,12 +4,15 @@ using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
 /// Rules on reference types, their use as attribute types and seeds (reference-types-seeds-localization.md sections 1.7 and 2.4):
-/// MQ7001 to MQ7013, MQ7101 to MQ7106, and the MQ3019 extension (a default code outside the rows). Pure functions of the model;
+/// MQ7001 to MQ7013, MQ7101 to MQ7106, and the MQ3019 extension (a default code outside the rows); former codes (next-phase-2-design.md
+/// section 3.5): MQ7017 and MQ7018 on the type, MQ7019 where a default, an <c>allowedValues</c> entry or a seed cell names one, in place
+/// of MQ3019, MQ7011 and MQ7009 for that value. Pure functions of the model;
 /// each diagnostic lands in the file where the fix belongs, and a finding across seeds of one target on the later one in
 /// (seed name, seed id, file order).
 /// </summary>
@@ -71,6 +74,110 @@ internal static class ReferenceDataRules
         foreach (var (key, choice) in type.Storage.OrderBy(kv => kv.Key, StringComparer.Ordinal))
             CheckChoice(context.Model.Settings, choice, "/storage/" + Ptr.Escape(key), $"Reference type '{type.Name}'", report.Add);
         ReferenceBindingRules.Check(context, type, report);
+        CheckFormerCodes(context, type, report);
+    }
+
+    // ---- former codes: MQ7017, MQ7018 (next-phase-2-design.md section 3.5) ----
+
+    /// <summary>
+    /// Checks a type's former codes: each is listed once, fits the type's code (type, length, pattern, canonical text) and is no live code
+    /// of the type (MQ7017), and its <c>replacedBy</c> names a row of the type (MQ7018; a missing row is MQ2001, something else MQ2002).
+    /// </summary>
+    private static void CheckFormerCodes(ValidationContext context, ReferenceType type, Report report)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < type.FormerCodes.Count; i++)
+        {
+            var former = type.FormerCodes[i];
+            var pointer = "/formerCodes/" + Str(i);
+            if (!seen.Add(former.Code))
+                report.Add("MQ7017", $"Former code '{former.Code}' of reference type '{type.Name}' is listed twice; keep one entry.", pointer + "/code");
+            else if (FormerCodeValue(type, former.Code, out var problem) is not { } value)
+                report.Add("MQ7017", $"Former code '{former.Code}' of reference type '{type.Name}' does not fit the type's code: {problem}.", pointer + "/code");
+            else if (context.HasLiveCode(type.Id, value))
+                report.Add("MQ7017", $"Former code '{former.Code}' of reference type '{type.Name}' is a live code of its rows: a code never comes back. Remove the entry once no database stores the old code, or give the row another code.", pointer + "/code");
+
+            if (context.Model.TryGetEntry(former.ReplacedBy, out var entry) && entry.Kind == "row"
+                && context.Model.Get<Seed>(entry.OwnerId) is { } holder && !string.Equals(holder.Target, type.Id, StringComparison.Ordinal))
+            {
+                report.Add("MQ7018", $"Former code '{former.Code}' of reference type '{type.Name}' is replaced by row {former.ReplacedBy} of seed '{holder.Name}', which is not a seed of the type; point it at a row of the type.", pointer + "/replacedBy");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A former code's text as the value a cell of the type holds (a JSON string, or a JSON number for an integer code), or
+    /// <see langword="null"/> with the reason when it does not fit the type's code: an integer code in canonical decimal digits within its
+    /// range, a uuid code in canonical form, a string code within its length and pattern.
+    /// </summary>
+    /// <param name="type">The reference type.</param>
+    /// <param name="code">The former code's text.</param>
+    /// <param name="problem">Why it does not fit.</param>
+    /// <returns>The value, or <see langword="null"/>.</returns>
+    internal static JsonElement? FormerCodeValue(ReferenceType type, string code, out string? problem)
+    {
+        problem = null;
+        var keyword = CodeTypes.Contains(type.Code.Type, StringComparer.Ordinal) ? type.Code.Type : "string";
+        JsonElement value;
+        if (IsIntegerCode(keyword))
+        {
+            if (!long.TryParse(code, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number)
+                || !string.Equals(number.ToString(CultureInfo.InvariantCulture), code, StringComparison.Ordinal))
+            {
+                problem = $"'{code}' is not an integer in canonical decimal digits";
+                return null;
+            }
+
+            value = JsonSerializer.SerializeToElement(number);
+        }
+        else
+        {
+            if (keyword == "uuid" && UuidCodeProblem(code) is { } uuid)
+            {
+                problem = uuid;
+                return null;
+            }
+
+            value = JsonSerializer.SerializeToElement(code);
+        }
+
+        problem = AttributeRules.Fits(keyword, value, type.Code.Length, null, null);
+        if (problem is null && type.Code.Pattern is { } pattern && value.ValueKind == JsonValueKind.String && AttributeRules.MatchesPattern(code, pattern) == false)
+            problem = $"it does not match the pattern {pattern}";
+        return problem is null ? value : null;
+    }
+
+    /// <summary>
+    /// Why a value that is a former code of the type and no live code is written where a code belongs (MQ7019), naming the code of the row
+    /// that replaced it; <see langword="null"/> when the value is not one.
+    /// </summary>
+    /// <param name="context">The validation context.</param>
+    /// <param name="type">The reference type.</param>
+    /// <param name="value">The value as written.</param>
+    /// <returns>The problem, in words.</returns>
+    internal static string? FormerCodeProblem(ValidationContext context, ReferenceType type, JsonElement value)
+    {
+        var integer = IsIntegerCode(type.Code.Type);
+        if ((integer ? value.ValueKind != JsonValueKind.Number : value.ValueKind != JsonValueKind.String)
+            || context.ReferenceData.ReplacedByOf(type.Id, value) is not { } rowId || context.ReferenceData.RowOf(type.Id, value) is not null)
+        {
+            return null;
+        }
+
+        var code = ReferenceDataIndex.CodeKey(value);
+        return CodeOfRow(context, rowId) is { } current
+            ? $"'{code}' is a former code of reference type {type.Name}; write '{current}', the code of the row that replaced it"
+            : $"'{code}' is a former code of reference type {type.Name}; write the code of row {rowId}, which replaced it";
+    }
+
+    /// <summary>The code a stored row of a reference type's seed holds, as text, or <see langword="null"/>.</summary>
+    private static string? CodeOfRow(ValidationContext context, string rowId)
+    {
+        if (context.SeedOfRow(rowId) is not { } seed)
+            return null;
+        var at = IndexOf(seed.Columns, "code");
+        var row = seed.Rows.FirstOrDefault(r => string.Equals(r.Id, rowId, StringComparison.Ordinal));
+        return at >= 0 && row is not null && at < row.Values.Count ? ReferenceDataIndex.CodeKey(row.Values[at]) : null;
     }
 
     /// <summary>Checks one storage choice against the project's strategy declarations (MQ7007, MQ7008).</summary>
@@ -171,6 +278,12 @@ internal static class ReferenceDataRules
             var codes = attribute.Collection && literal.ValueKind == JsonValueKind.Array ? [.. literal.EnumerateArray()] : new[] { literal };
             foreach (var code in codes)
             {
+                if (FormerCodeProblem(context, type, code) is { } former)
+                {
+                    report.Add("MQ7019", $"The default of attribute '{attribute.Name}' names a former code: {former}.", pointer + "/default", attribute.Id);
+                    break;
+                }
+
                 if (CodeProblem(context, type, code) is { } problem)
                 {
                     report.Add("MQ3019", $"The default of attribute '{attribute.Name}' does not fit reference type {type.Name}: {problem}.", pointer + "/default", attribute.Id);
@@ -183,7 +296,9 @@ internal static class ReferenceDataRules
         {
             for (var j = 0; j < validation.AllowedValues.Count; j++)
             {
-                if (CodeProblem(context, type, validation.AllowedValues[j]) is { } problem)
+                if (FormerCodeProblem(context, type, validation.AllowedValues[j]) is { } former)
+                    report.Add("MQ7019", $"validation.allowedValues of attribute '{attribute.Name}' names a former code: {former}.", pointer + "/validation/allowedValues/" + Str(j), attribute.Id);
+                else if (CodeProblem(context, type, validation.AllowedValues[j]) is { } problem)
                     report.Add("MQ7011", $"validation.allowedValues of attribute '{attribute.Name}' names a code that reference type {type.Name} does not have: {problem}.", pointer + "/validation/allowedValues/" + Str(j), attribute.Id);
             }
         }
@@ -221,15 +336,16 @@ internal static class ReferenceDataRules
     }
 
     /// <summary>Why a value is not a code of a type's rows, or <see langword="null"/> when it is.</summary>
-    private static string? CodeProblem(ValidationContext context, ReferenceType type, JsonElement value)
+    internal static string? CodeProblem(ValidationContext context, ReferenceType type, JsonElement value)
     {
         var integer = IsIntegerCode(type.Code.Type);
         if (integer ? value.ValueKind != JsonValueKind.Number : value.ValueKind != JsonValueKind.String)
             return $"a code of {type.Name} is {(integer ? "an integer" : "a string")}, not {Describe(value)}";
-        if (context.ReferenceData.RowOf(type.Id, value) is null)
-            return type.Code.Type == "uuid" && UuidCodeProblem(value.GetString()!) is { } uuid
-                ? uuid
-                : $"'{ReferenceDataIndex.CodeKey(value)}' is not a code of its rows";
+        if (context.CodeMissing(type.Id, value))
+            return FormerCodeProblem(context, type, value)
+                ?? (type.Code.Type == "uuid" && UuidCodeProblem(value.GetString()!) is { } uuid
+                    ? uuid
+                    : $"'{ReferenceDataIndex.CodeKey(value)}' is not a code of its rows");
         return null;
     }
 
@@ -247,12 +363,72 @@ internal static class ReferenceDataRules
 
     // ---- seeds: MQ7001 to MQ7005, MQ7009, MQ7101 to MQ7106 ----
 
-    /// <summary>Checks a seed against its target.</summary>
+    /// <summary>
+    /// Checks a seed against its target. A seed with a rows script (next-phase-2-design.md section 3.4) is checked with its scripted rows
+    /// (<see cref="ValidationContext.Scripted"/>): the script's own findings (MQ7116, MQ7127, MQ7128, MQ5005) come first, then the row
+    /// rules, whose findings point at <c>/rowsFrom/script</c> and name the scripted row by its key. A validation that does not judge the
+    /// seed (<see cref="ValidationContext.Judges"/>: the one previews wait on) runs no script and reports only rows beside the script.
+    /// </summary>
     public static void CheckSeed(ValidationContext context, ElementDocument document, Seed seed, Report report)
     {
+        if (seed.RowsFrom?.Script is not { } script)
+        {
+            CheckSeedRows(context, document, seed, report);
+            return;
+        }
+
+        if (seed.Rows.Count > 0)
+            report.Add("MQ7116", $"Seed '{seed.Name}' has rows of its own and a rows script ({script}); keep one: remove the rows, or rowsFrom.", "/rows");
+        if (!context.Judges(seed))
+            return;
+        var scripted = context.Scripted(seed);
+        foreach (var diagnostic in scripted.Diagnostics)
+            report.Add(diagnostic);
+        var inner = new Report(document);
+        CheckSeedRows(context, document, seed with { Rows = scripted.Rows }, inner);
+        var keys = ScriptedRowKeys(context.Model, seed, scripted.Rows);
+        foreach (var diagnostic in inner.Items)
+        {
+            if (diagnostic.JsonPointer is not { } pointer || !(pointer == "/rows" || pointer.StartsWith("/rows/", StringComparison.Ordinal)))
+            {
+                report.Add(diagnostic);
+                continue;
+            }
+
+            var row = diagnostic.ElementId is { } id && keys.TryGetValue(id, out var key) ? $"Scripted row {key}: " : "";
+            report.Add(diagnostic with { JsonPointer = SeedScripts.Pointer, ElementId = seed.Id, Message = row + diagnostic.Message });
+        }
+    }
+
+    /// <summary>Each scripted row's key in seed terms, as findings name it (<c>'ada@example.com'</c>, <c>['ACME', 'EU']</c>), by row id.</summary>
+    private static Dictionary<string, string> ScriptedRowKeys(ModelSnapshot model, Seed seed, IReadOnlyList<SeedRow> rows)
+    {
+        var keys = new Dictionary<string, string>(StringComparer.Ordinal);
+        var positions = SeedScripts.KeyPositions(model, seed) ?? [];
+        foreach (var row in rows)
+        {
+            var parts = positions.Select(p => p < row.Values.Count ? KeyText(row.Values[p]) : "null").ToList();
+            keys.TryAdd(row.Id, parts.Count == 1 ? parts[0] : "[" + string.Join(", ", parts) + "]");
+        }
+
+        return keys;
+
+        // A string in single quotes as written, a list (a composite natural key) item by item, any other value as its JSON.
+        static string KeyText(JsonElement value) => value.ValueKind switch
+        {
+            JsonValueKind.String => "'" + value.GetString() + "'",
+            JsonValueKind.Array => "[" + string.Join(", ", value.EnumerateArray().Select(KeyText)) + "]",
+            _ => value.GetRawText(),
+        };
+    }
+
+    private static void CheckSeedRows(ValidationContext context, ElementDocument document, Seed seed, Report report)
+    {
         var model = context.Model;
-        // A seed whose rows live in a CSV file may hold many more (2026-10-07); an inline one stays small.
-        if (seed.RowsFrom is null && (seed.Rows.Count > MaxRows || (seed.Rows.Count > 1000 && document.Json.GetRawText().Length > MaxBytes)))
+        // A seed whose rows live in a CSV file may hold many more (2026-10-07); an inline one stays small, and so do scripted rows
+        // (counted, never measured in bytes).
+        var scripted = seed.RowsFrom?.Script is not null;
+        if (seed.RowsFrom?.File is null && (seed.Rows.Count > MaxRows || (!scripted && seed.Rows.Count > 1000 && document.Json.GetRawText().Length > MaxBytes)))
             report.Add("MQ7104", $"Seed '{seed.Name}' holds {seed.Rows.Count} rows; keep larger seeds in a rows file (rowsFrom), or they are not reference data (at most {MaxRows:N0} rows or 5 MB inline).", "/rows");
         if (seed.RowsProblem is { } rowsProblem)
             report.Add("MQ7116", rowsProblem, "/rowsFrom");
@@ -510,7 +686,9 @@ internal static class ReferenceDataRules
                 var integer = IsIntegerCode(referenceType.Code.Type);
                 if (integer ? code.ValueKind != JsonValueKind.Number : code.ValueKind != JsonValueKind.String)
                     return ("MQ7004", $"a code of {referenceType.Name} is {(integer ? "an integer" : "a string")}, not {Describe(code)}");
-                if (context.ReferenceData.RowOf(referenceType.Id, code) is null)
+                if (FormerCodeProblem(context, referenceType, code) is { } former)
+                    return ("MQ7019", former);
+                if (context.CodeMissing(referenceType.Id, code))
                     return ("MQ7009", $"'{ReferenceDataIndex.CodeKey(code)}' is not a code of reference type {referenceType.Name}");
                 if (attribute.Validation is { AllowedValues.Count: > 0 } validation && !validation.AllowedValues.Any(a => JsonElement.DeepEquals(a, code)))
                     return ("MQ7004", $"'{ReferenceDataIndex.CodeKey(code)}' is not one of validation.allowedValues");
@@ -539,9 +717,10 @@ internal static class ReferenceDataRules
         foreach (var other in context.SeedsOf(type.Id))
         {
             var otherK = IndexOf(other.Columns, "code");
-            for (var r = 0; r < other.Rows.Count; r++)
+            var otherRows = other.Id == seed.Id ? seed.Rows : context.RowsOf(other);
+            for (var r = 0; r < otherRows.Count; r++)
             {
-                var row = other.Rows[r];
+                var row = otherRows[r];
                 if (otherK < 0 || otherK >= row.Values.Count || ReferenceDataIndex.CodeKey(row.Values[otherK]) is not { } code)
                     continue;
                 if (other.Id == seed.Id)
@@ -612,9 +791,10 @@ internal static class ReferenceDataRules
             foreach (var other in context.SeedsOf(seed.Target))
             {
                 var otherIndexes = attributes.Select(a => IndexOf(other.Columns, a)).ToArray();
-                for (var r = 0; r < other.Rows.Count; r++)
+                var otherRows = other.Id == seed.Id ? seed.Rows : context.RowsOf(other);
+                for (var r = 0; r < otherRows.Count; r++)
                 {
-                    var row = other.Rows[r];
+                    var row = otherRows[r];
                     string? tuple = otherIndexes.Any(i => i < 0) ? null : string.Join("\u0000", otherIndexes.Select(i => i < row.Values.Count ? Normalize(row.Values[i]) : "null"));
                     var missing = tuple is null || otherIndexes.Any(i => i >= row.Values.Count || row.Values[i].ValueKind == JsonValueKind.Null);
                     if (other.Id == seed.Id)

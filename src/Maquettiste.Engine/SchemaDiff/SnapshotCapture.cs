@@ -219,9 +219,11 @@ internal static class SnapshotCapture
         ComputedStored = column.ComputedStored,
         Collation = column.Collation,
         Comment = column.Comment,
-        ReferenceType = column.Type == "reference" ? column.ReferenceType?.Id : null,
-        Strategy = column.Type == "reference" ? column.Strategy : null,
-        ReferenceTable = column.Type == "reference" ? column.ReferenceBinding?.Table.Key : null,
+        // Every column with a reference type: a projected reference column, or a designed, imported, extra or inherited column its
+        // typeRef types (next-phase-2-design.md section 3.2).
+        ReferenceType = column.ReferenceType?.Id,
+        Strategy = column.ReferenceType is not null ? column.Strategy : null,
+        ReferenceTable = column.ReferenceBinding?.Table.Key,
     };
 
     private static SnapshotSequence CaptureSequence(RSequence sequence) => new()

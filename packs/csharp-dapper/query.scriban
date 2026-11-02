@@ -110,6 +110,50 @@ func entity_assignments(e, fields)
   ret $result
 end
 
+# The type the table column a field reads states as its typeRef (next-phase-2-design.md section 3.2), or null: a field that is
+# not a plain column of a table, or a column of a table file that names no enum, reference type or scalar type.
+func column_type_ref(f)
+  $c = f.expression.table_column
+  ret $c ? $c.type_ref : null
+end
+
+# The C# type of a field's member in a generated row or item record: the enum a typed column holds (nullable as the field), else
+# the field's own type. A column typed by a reference type keeps its code's type (the record's summary names the type).
+func record_member_type(f)
+  $t = column_type_ref(f)
+  if $t && $t.kind == "enum"
+    ret qualified($t.enum) + (f.nullable ? "?" : "")
+  end
+  ret field_type(f)
+end
+
+# The C# expression that fills a record member from a row's field: an enum column's stored value converted as read_field converts
+# an enum attribute's (a code parsed, a number cast), else the field as read.
+func record_member_value(f, src)
+  $t = column_type_ref(f)
+  if !$t || $t.kind != "enum"
+    ret src
+  end
+  $en = qualified($t.enum)
+  if f.code_type == "string" || f.code_type == "text"
+    ret f.nullable ? src + " is null ? null : " + $en + "Codes.Parse(" + src + ")" : $en + "Codes.Parse(" + src + ")"
+  end
+  ret "(" + $en + (f.nullable ? "?" : "") + ")" + src
+end
+
+# The summary sentences of a generated record: one per field that reads a column typed by a reference type, naming the type's
+# record, which the reference-type unit declares in the root namespace.
+func record_code_notes(fields)
+  $s = ""
+  for f in fields
+    $t = column_type_ref(f)
+    if $t && $t.kind == "reference"
+      $s = $s + " " + (cs_ident (pascal f.name)) + " holds a code of <see cref=\"global::" + base_ns + "." + type_name($t.reference_type) + "\"/>."
+    end
+  end
+  ret $s
+end
+
 # The C# literal of a parameter default, or null when the type has no constant form.
 func default_literal(p)
   if p.default == null || p.collection
@@ -246,14 +290,14 @@ namespace {{ base_ns }}.Queries;
 }
 {{- if !entity }}
 
-/// <summary>One row of query {{ query.name }}.</summary>
-public sealed partial record {{ name }}Row({{ for f in query.select }}{{ field_type(f) }} {{ cs_ident (pascal f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
+/// <summary>One row of query {{ query.name }}.{{ record_code_notes(query.select) }}</summary>
+public sealed partial record {{ name }}Row({{ for f in query.select }}{{ record_member_type(f) }} {{ cs_ident (pascal f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
 {{- end }}
 {{- for c in query.collections }}
 {{- if !c.entity }}
 
-/// <summary>One element of collection {{ c.name }} of query {{ query.name }}.</summary>
-public sealed partial record {{ element_type(c) }}({{ for f in c.query.select }}{{ field_type(f) }} {{ cs_ident (pascal f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
+/// <summary>One element of collection {{ c.name }} of query {{ query.name }}.{{ record_code_notes(c.query.select) }}</summary>
+public sealed partial record {{ element_type(c) }}({{ for f in c.query.select }}{{ record_member_type(f) }} {{ cs_ident (pascal f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
 {{- end }}
 {{- end }}
 {{- if has_collections }}
@@ -351,7 +395,7 @@ public partial class {{ name }}Query(IDbConnection mq_connection, IDbTransaction
         };
 {{- else }}
 
-        public {{ item_type }} ToItem() => new({{ for f in query.select }}{{ cs_ident f.name }}{{ if !for.last }}, {{ end }}{{ end }});
+        public {{ item_type }} ToItem() => new({{ for f in query.select }}{{ record_member_value(f, cs_ident f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
 {{- end }}
     }
 {{- for c in query.collections }}
@@ -376,7 +420,7 @@ public partial class {{ name }}Query(IDbConnection mq_connection, IDbTransaction
         };
 {{- else }}
 
-        public {{ element_type(c) }} ToItem() => new({{ for f in c.query.select }}{{ cs_ident f.name }}{{ if !for.last }}, {{ end }}{{ end }});
+        public {{ element_type(c) }} ToItem() => new({{ for f in c.query.select }}{{ record_member_value(f, cs_ident f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
 {{- end }}
     }
 {{- end }}

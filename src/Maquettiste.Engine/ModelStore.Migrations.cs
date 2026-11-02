@@ -98,7 +98,9 @@ public sealed partial class ModelStore
     /// <summary>A database's capture and footprint.</summary>
     /// <param name="Capture">The capture, revision 0.</param>
     /// <param name="Footprint">The element ids of the <c>e:</c> keys of its resolved objects.</param>
-    private sealed record CaptureEntry(PhysicalSnapshot Capture, FrozenSet<string> Footprint);
+    /// <param name="Holders">Where it stores reference-type codes (next-phase-2-design.md section 3.5), read only for a write with code
+    /// maps: <see langword="null"/> until such a write needs them, when the database is resolved again.</param>
+    private sealed record CaptureEntry(PhysicalSnapshot Capture, FrozenSet<string> Footprint, CodeHolders? Holders = null);
 
     /// <summary>The capture cache of one snapshot.</summary>
     private sealed record CaptureCache(ModelSnapshot Snapshot, Dictionary<string, CaptureEntry> Entries);
@@ -132,8 +134,10 @@ public sealed partial class ModelStore
     /// <param name="Materialized">The materialize results of the write (their key maps).</param>
     /// <param name="Preview">A dry run: facts are listed, nothing is handed to the cache but the before entries.</param>
     /// <param name="Errors">The errors of the write's validation, before and after.</param>
+    /// <param name="CodeMaps">The code maps of the write's reference-type refactors (next-phase-2-design.md section 3.5), in operation
+    /// order; <see langword="null"/> or empty for any other write.</param>
     private sealed record RecordingRequest(ModelSnapshot Before, ModelSnapshot Candidate, IReadOnlyDictionary<string, int> Changed, bool EveryDatabase,
-        IReadOnlyList<MaterializeResult> Materialized, bool Preview, IReadOnlyList<Diagnostic> Errors);
+        IReadOnlyList<MaterializeResult> Materialized, bool Preview, IReadOnlyList<Diagnostic> Errors, IReadOnlyList<CodeMap>? CodeMaps = null);
 
     /// <summary>The facts a write records.</summary>
     /// <param name="Facts">The facts created and updated, or <see langword="null"/> for a dry run whose change reaches every database.</param>
@@ -200,11 +204,15 @@ public sealed partial class ModelStore
         if (candidate.Settings.Migrations.Record == MigrationRecording.Off)
             return FactRecording.Nothing(CacheHandoff.Clear);
 
+        // While either model declares a default stereotype, an element's package decides its effective set (next-phase-2-design.md
+        // section 3.1), so a membership package's change can reshape a database too.
+        var defaults = before.StereotypeDefaults.HasDefaults || candidate.StereotypeDefaults.HasDefaults;
         var relevant = request.Changed
-            .Where(kv => Shapes(before.GetDocument(kv.Key), candidate.GetDocument(kv.Key)))
+            .Where(kv => Shapes(before.GetDocument(kv.Key), candidate.GetDocument(kv.Key), defaults))
             .OrderBy(kv => kv.Key, StringComparer.Ordinal)
             .ToList();
-        if (relevant.Count == 0 && !request.EveryDatabase)
+        var codeMaps = request.CodeMaps ?? [];
+        if (relevant.Count == 0 && !request.EveryDatabase && codeMaps.Count == 0)
             return FactRecording.Nothing(CacheHandoff.Carry);
 
         // The databases the change can reshape: those of both models (a deleted database's facts go with it; a new one has nothing
@@ -242,6 +250,17 @@ public sealed partial class ModelStore
                 Choose(databaseId, change);
         }
 
+        // A code map reaches the databases that may hold its codes (section 3.5): those whose footprint (or reach) holds the type or an
+        // element that references it, and the databases of the physical elements that do (a typed column's table); a type rename
+        // reaches every database without a binding of the type too, where a pack may have named objects after it.
+        foreach (var map in codeMaps)
+        {
+            var change = request.Changed.TryGetValue(map.ReferenceType, out var at) ? at
+                : request.Changed.TryGetValue(map.HeldType, out at) ? at : 0;
+            foreach (var databaseId in CodeMapDatabases(map, before, candidate, databases, FootprintBefore))
+                Choose(databaseId, change);
+        }
+
         if (firstChange.Count == 0)
             return FactRecording.Nothing(CacheHandoff.Carry);
         var chosen = databases.Where(d => firstChange.ContainsKey(d.Id)).ToList();
@@ -251,7 +270,7 @@ public sealed partial class ModelStore
 
         var chosenIds = chosen.Select(d => d.Id).ToList();
         var after = await EntriesAsync(candidate, chosenIds, ct).ConfigureAwait(false);
-        var beforeEntries = await BeforeEntriesAsync(before, chosenIds, cached, ct).ConfigureAwait(false);
+        var beforeEntries = await BeforeEntriesAsync(before, chosenIds, cached, codeMaps.Count > 0, ct).ConfigureAwait(false);
         var failed = FailedOwners(before, candidate, request.Errors);
         var paths = _paths.Value;
         var facts = new List<RecordedFact>();
@@ -285,17 +304,27 @@ public sealed partial class ModelStore
             }
 
             var materialized = request.Materialized.Where(m => string.Equals(m.Database, database.Name, StringComparison.Ordinal)).ToList();
+            var openFacts = candidate.All<Migration>().Where(m => string.Equals(m.Database, database.Id, StringComparison.Ordinal)).ToList();
+            var (constraintsBefore, constraintsAfter) = UndoableConstraints(before, candidate, openFacts, written);
             var input = new ClassifierInput
             {
                 DatabaseId = database.Id,
                 Dialect = database.Dialect,
                 Before = beforeCapture,
                 After = afterCapture,
-                OpenFacts = [.. candidate.All<Migration>().Where(m => string.Equals(m.Database, database.Id, StringComparison.Ordinal))],
+                OpenFacts = openFacts,
                 WrittenFacts = written,
                 Rekeys = [.. materialized.SelectMany(m => m.Rekeys ?? [])],
                 SequenceRekeys = materialized.SelectMany(m => m.Sequences ?? FrozenDictionary<string, string>.Empty)
                     .GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Value, StringComparer.Ordinal),
+                MemberRekeys = [.. materialized.SelectMany(m => m.MemberRekeys ?? [])],
+                ConstraintsBefore = constraintsBefore,
+                ConstraintsAfter = constraintsAfter,
+                CodeMaps = codeMaps,
+                Holders = beforeEntry.Holders ?? CodeHolders.Empty,
+                BoundTypes = codeMaps.Count == 0 ? FrozenSet<string>.Empty : codeMaps.Where(m => m.Names).Select(m => m.ReferenceType)
+                    .Where(t => candidate.Get<ReferenceType>(t)?.Bindings.Any(b => string.Equals(b.Database, database.Id, StringComparison.Ordinal)) == true)
+                    .ToFrozenSet(StringComparer.Ordinal),
             };
             var result = FactClassifier.Classify(input, ids);
             foreach (var fact in result.Created.Concat(result.Updated))
@@ -329,6 +358,89 @@ public sealed partial class ModelStore
             owner);
     }
 
+    /// <summary>
+    /// The databases a code map can reach, chosen by ids alone (next-phase-2-design.md section 3.5): those whose footprint (or reach)
+    /// holds the type whose codes it changes or an element that references that type (an attribute, a typed column's table, a seed), and
+    /// the databases of the physical elements among them; for a type rename, also every database the type has no binding in after the
+    /// write.
+    /// </summary>
+    private static IEnumerable<string> CodeMapDatabases(CodeMap map, ModelSnapshot before, ModelSnapshot candidate, IReadOnlyList<Database> databases,
+        Func<string, IReadOnlySet<string>> footprint)
+    {
+        var users = new HashSet<string>(StringComparer.Ordinal) { map.HeldType, map.ReferenceType };
+        foreach (var reference in before.ReferencesTo(map.HeldType))
+            users.Add(reference.FromElementId);
+        foreach (var user in users.Order(StringComparer.Ordinal))
+        {
+            if (PhysicalDatabase(before.GetDocument(user)?.Element) is { } physical)
+                yield return physical;
+        }
+
+        foreach (var database in databases)
+        {
+            if (footprint(database.Id).Overlaps(users))
+                yield return database.Id;
+        }
+
+        if (!map.Names)
+            yield break;
+        var bound = candidate.Get<ReferenceType>(map.ReferenceType)?.Bindings.Select(b => b.Database).ToHashSet(StringComparer.Ordinal) ?? [];
+        foreach (var database in databases)
+        {
+            if (!bound.Contains(database.Id))
+                yield return database.Id;
+        }
+    }
+
+    /// <summary>
+    /// The constraint ids, own and inherited (by keyed id), before and after a write, of the table files whose constraint entries an
+    /// open <c>rekey</c> fact the write does not write lists (a fold's), under the table key the entry names and the key the fact
+    /// moved it to. The classifier records an entry back when its new id leaves the table and its old id comes back (an undo of a
+    /// fold, next-phase-2-design.md section 3.1); the captures cannot tell, since they key constraints by their columns. Empty when
+    /// no open fact has a constraint entry.
+    /// </summary>
+    private static (IReadOnlyDictionary<string, IReadOnlySet<string>> Before, IReadOnlyDictionary<string, IReadOnlySet<string>> After) UndoableConstraints(
+        ModelSnapshot before, ModelSnapshot candidate, IReadOnlyList<Migration> facts, IReadOnlySet<string> written)
+    {
+        var tableKeys = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var fact in facts)
+        {
+            if (fact.Fact != MigrationFact.Rekey || written.Contains(fact.Id))
+                continue;
+            FactKeys.RekeyMap? own = null;
+            foreach (var key in fact.Keys)
+            {
+                if (key.Table is not { } table || !FactKeys.ConstraintKinds.Contains(key.Kind))
+                    continue;
+                own ??= FactKeys.RekeyMap.Of(fact);
+                tableKeys.Add(table);
+                tableKeys.Add(own.Move("table", null, table).Key);
+            }
+        }
+
+        if (tableKeys.Count == 0)
+            return (FrozenDictionary<string, IReadOnlySet<string>>.Empty, FrozenDictionary<string, IReadOnlySet<string>>.Empty);
+        return (Of(before), Of(candidate));
+
+        Dictionary<string, IReadOnlySet<string>> Of(ModelSnapshot model)
+        {
+            var result = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+            foreach (var key in tableKeys)
+            {
+                if (model.GetDocument(key)?.Element is not Table file)
+                    continue;
+                var members = TableMembers.Of(model, file);
+                IEnumerable<string?> ids = [file.PrimaryKey?.Id, .. file.Uniques.Select(u => u.Id), .. file.ForeignKeys.Select(f => f.Id),
+                    .. file.Checks.Select(c => c.Id), .. file.Indexes.Select(i => i.Id), .. members.PrimaryKeys.Select(m => m.Key),
+                    .. members.Uniques.Select(m => m.Key), .. members.ForeignKeys.Select(m => m.Key), .. members.Checks.Select(m => m.Key),
+                    .. members.Indexes.Select(m => m.Key)];
+                result[key] = ids.OfType<string>().ToFrozenSet(StringComparer.Ordinal);
+            }
+
+            return result;
+        }
+    }
+
     /// <summary>A name for an element in an MQ4110 message.</summary>
     private static string Describe(ModelSnapshot candidate, ModelSnapshot before, string id)
     {
@@ -338,9 +450,10 @@ public sealed partial class ModelStore
 
     /// <summary>
     /// Whether a change of one element can reshape a database: a create or a delete, or an update that changes more than annotations.
-    /// Migration facts never do (facts never change a capture).
+    /// Migration facts never do (facts never change a capture). A membership package counts only while either model declares a
+    /// default stereotype (<paramref name="defaults"/>): then it decides which package defaults the element takes.
     /// </summary>
-    private static bool Shapes(ElementDocument? before, ElementDocument? after)
+    private static bool Shapes(ElementDocument? before, ElementDocument? after, bool defaults)
     {
         if (before is null && after is null)
             return false;
@@ -352,7 +465,7 @@ public sealed partial class ModelStore
         var b = JsonNode.Parse(after.Json.GetRawText());
         StripAnnotations(a, top: true);
         StripAnnotations(b, top: true);
-        if (PackageIsMembership(before.Element) && PackageIsMembership(after.Element))
+        if (!defaults && PackageIsMembership(before.Element) && PackageIsMembership(after.Element))
         {
             a!.AsObject().Remove("package");
             b!.AsObject().Remove("package");
@@ -402,8 +515,11 @@ public sealed partial class ModelStore
     /// a physical element or mapping, its database before and after; a database, itself; an entity, value object, scalar type, enum,
     /// relation or reference type, the databases whose footprint (or reach) holds it before, those its new package's convention or its
     /// new base or ends reach after, and the databases of the physical elements it references; a package, the databases whose
-    /// convention entries name it or an ancestor, before or after; a stereotype, the databases of what carries it, implying stereotypes'
-    /// carriers included.
+    /// convention entries name it or an ancestor, before or after, and, when its default stereotypes changed (or its parent, while
+    /// defaults exist), the databases its defaults reach (<see cref="PackageDefaultReach"/>); a stereotype, the databases of what
+    /// carries it, implying stereotypes' carriers included: an own carrier's, every database one of whose schemas lists it (or a
+    /// stereotype implying it) in <c>defaultStereotypes</c>, and what a change to each package that lists it chooses
+    /// (next-phase-2-design.md section 3.1).
     /// </summary>
     private static IEnumerable<string> ChooseDatabases(string id, ModelSnapshot before, ModelSnapshot candidate, IReadOnlyList<Database> databases,
         Func<string, IReadOnlySet<string>> footprint)
@@ -468,14 +584,33 @@ public sealed partial class ModelStore
                         yield return database.Id;
                 }
 
+                if (DefaultsMoved(b as Package, a as Package, before.StereotypeDefaults.HasDefaults || candidate.StereotypeDefaults.HasDefaults))
+                {
+                    foreach (var databaseId in PackageDefaultReach(id, before, candidate, databases, footprint))
+                        yield return databaseId;
+                }
+
                 break;
             case Stereotype:
                 foreach (var model in new[] { before, candidate })
                 {
-                    foreach (var carrierId in Carriers(model, id))
+                    foreach (var (carrierId, byDefault) in Carriers(model, id))
                     {
                         var carrier = model.GetDocument(carrierId)?.Element;
-                        if (PhysicalDatabase(carrier) is { } physical)
+                        if (byDefault)
+                        {
+                            // A schema entry's default list: its database; a package's: what a change to that package's defaults chooses.
+                            if (carrier is Database)
+                            {
+                                yield return carrierId;
+                            }
+                            else if (carrier is Package)
+                            {
+                                foreach (var databaseId in PackageDefaultReach(carrierId, before, candidate, databases, footprint))
+                                    yield return databaseId;
+                            }
+                        }
+                        else if (PhysicalDatabase(carrier) is { } physical)
                             yield return physical;
                         else
                         {
@@ -490,11 +625,13 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
-    /// The elements that carry a stereotype in a model, through its effective set (next-phase-1-design.md section 4.2): the files whose
-    /// stereotype lists name it, and the carriers of each stereotype whose <c>implies</c> names it. A stereotype that only requires
-    /// or conflicts with it is no carrier (those change no database). Duplicates are possible.
+    /// The elements that carry a stereotype in a model, through its effective set (next-phase-1-design.md section 4.2,
+    /// next-phase-2-design.md section 3.1): the files whose stereotype lists name it, and the carriers of each stereotype whose
+    /// <c>implies</c> names it. A <c>defaultStereotypes</c> list that names it (or a stereotype implying it) gives its database or package,
+    /// marked as a default holder. A stereotype that only requires or conflicts with it is no carrier (those change no database), nor
+    /// is an element whose <c>excludeStereotypes</c> names it. Duplicates are possible.
     /// </summary>
-    private static IEnumerable<string> Carriers(ModelSnapshot model, string stereotypeId)
+    private static IEnumerable<(string Id, bool Default)> Carriers(ModelSnapshot model, string stereotypeId)
     {
         foreach (var reference in model.ReferencesTo(stereotypeId))
         {
@@ -502,18 +639,88 @@ public sealed partial class ModelStore
             {
                 case "requires" or "conflicts" when model.GetDocument(reference.FromElementId)?.Element is Stereotype:
                     break;
+                case "excludeStereotypes":
+                    break;
+                case "defaultStereotypes":
+                    yield return (reference.FromElementId, true);
+                    break;
                 case "implies" when model.GetDocument(reference.FromElementId)?.Element is Stereotype implying:
                     foreach (var carrier in model.ReferencesTo(implying.Id))
                     {
                         if (carrier.Field == "stereotypes")
-                            yield return carrier.FromElementId;
+                            yield return (carrier.FromElementId, false);
+                        else if (carrier.Field == "defaultStereotypes")
+                            yield return (carrier.FromElementId, true);
                     }
 
                     break;
                 default:
-                    yield return reference.FromElementId;
+                    yield return (reference.FromElementId, false);
                     break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Whether a package change moves what its defaults reach (next-phase-2-design.md section 3.1): its <c>defaultStereotypes</c>
+    /// changed (a created or deleted package counts with its list), or, while either model declares a default, its <c>parent</c>
+    /// changed (its subtree then takes other packages' defaults).
+    /// </summary>
+    private static bool DefaultsMoved(Package? before, Package? after, bool defaults)
+    {
+        var was = before?.DefaultStereotypes ?? [];
+        var now = after?.DefaultStereotypes ?? [];
+        if (!was.SequenceEqual(now, StringComparer.Ordinal))
+            return true;
+        return defaults && before is not null && after is not null && !string.Equals(before.Parent, after.Parent, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The databases a change of a package's default stereotypes can reshape, chosen by ids in both models (next-phase-2-design.md
+    /// section 3.1): every database holding a physical element whose package (own or fallback, <see cref="ModelSnapshot.HolderOf"/>) is
+    /// in the package's subtree, and the databases whose footprint (or reach) holds the package or an element of that subtree.
+    /// </summary>
+    private static IEnumerable<string> PackageDefaultReach(string packageId, ModelSnapshot before, ModelSnapshot candidate, IReadOnlyList<Database> databases,
+        Func<string, IReadOnlySet<string>> footprint)
+    {
+        var members = new HashSet<string>(StringComparer.Ordinal) { packageId };
+        foreach (var model in new[] { before, candidate })
+        {
+            var subtree = Subtree(model, packageId);
+            foreach (var document in model.Documents)
+            {
+                var element = document.Element;
+                if (element is Migration || model.HolderOf(element).Package is not { } package || !subtree.Contains(package))
+                    continue;
+                members.Add(element.Id);
+                if (PhysicalDatabase(element) is { } database)
+                    yield return database;
+            }
+        }
+
+        foreach (var database in databases)
+        {
+            if (footprint(database.Id).Overlaps(members))
+                yield return database.Id;
+        }
+
+        static HashSet<string> Subtree(ModelSnapshot model, string root)
+        {
+            var subtree = new HashSet<string>(StringComparer.Ordinal) { root };
+            foreach (var package in model.All<Package>())
+            {
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                for (var id = package.Parent; id is not null && seen.Add(id); id = model.Get<Package>(id)?.Parent)
+                {
+                    if (string.Equals(id, root, StringComparison.Ordinal))
+                    {
+                        subtree.Add(package.Id);
+                        break;
+                    }
+                }
+            }
+
+            return subtree;
         }
     }
 
@@ -559,15 +766,17 @@ public sealed partial class ModelStore
     /// <summary>
     /// The before entries of the chosen databases: the cache's, else from the snapshot's cached whole-model resolve, else from one
     /// per-database resolve of the snapshot (the chosen databases missing an entry share one conceptual run). New entries join the cache.
+    /// With <paramref name="holders"/> (a write with code maps, next-phase-2-design.md section 3.5) every entry carries its code holders: a
+    /// cached entry without them is resolved again.
     /// </summary>
     private async Task<Dictionary<string, CaptureEntry>> BeforeEntriesAsync(ModelSnapshot snapshot, IReadOnlyList<string> databaseIds,
-        Dictionary<string, CaptureEntry> cached, CancellationToken ct)
+        Dictionary<string, CaptureEntry> cached, bool holders, CancellationToken ct)
     {
         var result = new Dictionary<string, CaptureEntry>(StringComparer.Ordinal);
         var missing = new List<string>();
         foreach (var id in databaseIds)
         {
-            if (cached.TryGetValue(id, out var entry))
+            if (cached.TryGetValue(id, out var entry) && (!holders || entry.Holders is not null))
                 result[id] = entry;
             else
                 missing.Add(id);
@@ -587,7 +796,7 @@ public sealed partial class ModelStore
         {
             foreach (var id in missing.ToList())
             {
-                if (whole.Databases.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.Ordinal)) is { } database && EntryOf(database, ct) is { } entry)
+                if (whole.Databases.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.Ordinal)) is { } database && EntryOf(database, ct, holders) is { } entry)
                 {
                     added[id] = entry;
                     missing.Remove(id);
@@ -597,7 +806,7 @@ public sealed partial class ModelStore
 
         if (missing.Count > 0)
         {
-            foreach (var (id, entry) in await EntriesAsync(snapshot, missing, ct).ConfigureAwait(false))
+            foreach (var (id, entry) in await EntriesAsync(snapshot, missing, ct, holders).ConfigureAwait(false))
                 added[id] = entry;
         }
 
@@ -623,7 +832,8 @@ public sealed partial class ModelStore
 
     /// <summary>Resolves the given databases of a model (one conceptual run, dependency keys kept) and captures each.</summary>
     /// <returns>The entries of the databases that resolved; a database that did not is left out.</returns>
-    private async Task<Dictionary<string, CaptureEntry>> EntriesAsync(ModelSnapshot model, IReadOnlyList<string> databaseIds, CancellationToken ct)
+    private async Task<Dictionary<string, CaptureEntry>> EntriesAsync(ModelSnapshot model, IReadOnlyList<string> databaseIds, CancellationToken ct,
+        bool holders = false)
     {
         var result = new Dictionary<string, CaptureEntry>(StringComparer.Ordinal);
         if (databaseIds.Count == 0)
@@ -645,7 +855,7 @@ public sealed partial class ModelStore
             return result;
         for (var i = 0; i < databaseIds.Count; i++)
         {
-            if (resolved[i] is { } database && EntryOf(database, ct) is { } entry)
+            if (resolved[i] is { } database && EntryOf(database, ct, holders) is { } entry)
                 result[databaseIds[i]] = entry;
         }
 
@@ -660,7 +870,7 @@ public sealed partial class ModelStore
     {
         try
         {
-            if (_services.Resolver is ModelResolver resolver)
+            if (_services.Resolver is IDatabaseResolver resolver)
                 return (await resolver.ResolveDatabasesAsync(model, databaseIds, freeze, ct).ConfigureAwait(false)).Databases;
             var whole = await _services.Resolver.ResolveAsync(model, null, ct).ConfigureAwait(false);
             return [.. databaseIds.Select(id => whole.Databases.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.Ordinal)))];
@@ -671,8 +881,11 @@ public sealed partial class ModelStore
         }
     }
 
-    /// <summary>A resolved database's capture and footprint, or <see langword="null"/> when it cannot be captured (no dialect).</summary>
-    private CaptureEntry? EntryOf(RDatabase database, CancellationToken ct)
+    /// <summary>
+    /// A resolved database's capture and footprint, with its code holders when <paramref name="holders"/> asks for them, or
+    /// <see langword="null"/> when it cannot be captured (no dialect).
+    /// </summary>
+    private CaptureEntry? EntryOf(RDatabase database, CancellationToken ct, bool holders = false)
     {
         PhysicalSnapshot capture;
         try
@@ -684,7 +897,7 @@ public sealed partial class ModelStore
             return null;
         }
 
-        return new CaptureEntry(capture, Footprint(database));
+        return new CaptureEntry(capture, Footprint(database), holders ? CodeHolders.Of(database) : null);
     }
 
     /// <summary>The element ids of the <c>e:</c> dependency keys of a database and of every object it resolved.</summary>
@@ -846,7 +1059,14 @@ public sealed partial class ModelStore
     /// <param name="Captures">Per database id that resolved and captured, its capture (revision 0).</param>
     /// <param name="FailedOwners">The top-level ids of the elements with errors (policy rules aside) and what their errors leave
     /// out; empty when the model's validation has no error but pending facts. Callers leave their objects out of both sides.</param>
-    internal sealed record DatabaseCaptures(IReadOnlyDictionary<string, PhysicalSnapshot> Captures, IReadOnlySet<string> FailedOwners);
+    internal sealed record DatabaseCaptures(IReadOnlyDictionary<string, PhysicalSnapshot> Captures, IReadOnlySet<string> FailedOwners)
+    {
+        /// <summary>
+        /// Per database id that resolved, where it stores reference-type codes (next-phase-2-design.md section 3.5); filled only when the
+        /// caller asks for them.
+        /// </summary>
+        public IReadOnlyDictionary<string, CodeHolders> Holders { get; init; } = FrozenDictionary<string, CodeHolders>.Empty;
+    }
 
     /// <summary>
     /// Validates the whole model, then compares it with a baseline model (next-phase-1-design.md section 3.2, <c>validate
@@ -878,8 +1098,10 @@ public sealed partial class ModelStore
     /// <param name="snapshot">The model (this store's).</param>
     /// <param name="databaseIds">The database ids.</param>
     /// <param name="ct">Cancellation.</param>
+    /// <param name="holders">Whether to read where each database stores reference-type codes too (<see cref="DatabaseCaptures.Holders"/>).</param>
     /// <returns>The captures.</returns>
-    internal async Task<DatabaseCaptures> CaptureDatabasesAsync(ModelSnapshot snapshot, IReadOnlyList<string> databaseIds, CancellationToken ct)
+    internal async Task<DatabaseCaptures> CaptureDatabasesAsync(ModelSnapshot snapshot, IReadOnlyList<string> databaseIds, CancellationToken ct,
+        bool holders = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(databaseIds);
@@ -909,6 +1131,16 @@ public sealed partial class ModelStore
             resolved = await ResolveDatabasesAsync(snapshot, databaseIds, freeze: false, ct).ConfigureAwait(false) ?? new RDatabase?[databaseIds.Count];
         }
 
+        var holderMap = new Dictionary<string, CodeHolders>(StringComparer.Ordinal);
+        if (holders)
+        {
+            for (var i = 0; i < databaseIds.Count; i++)
+            {
+                if ((resolved[i] ?? shared.Model?.Databases.FirstOrDefault(d => string.Equals(d.Id, databaseIds[i], StringComparison.Ordinal))) is { } database)
+                    holderMap[databaseIds[i]] = CodeHolders.Of(database);
+            }
+        }
+
         var added = new Dictionary<string, CaptureEntry>(StringComparer.Ordinal);
         for (var i = 0; i < databaseIds.Count; i++)
         {
@@ -933,7 +1165,7 @@ public sealed partial class ModelStore
         }
 
         JoinCache(snapshot, added);
-        return new DatabaseCaptures(captures, failed);
+        return new DatabaseCaptures(captures, failed) { Holders = holderMap };
     }
 
     /// <summary>
@@ -965,7 +1197,8 @@ public sealed partial class ModelStore
 
         var ids = databases.Select(d => d.Id).ToList();
         var working = await CaptureDatabasesAsync(snapshot, ids, ct).ConfigureAwait(false);
-        var based = await BaselineCheck.CapturesAsync(baseline, snapshot, ids, ct).ConfigureAwait(false);
+        var based = await BaselineCheck.CapturesAsync(baseline, snapshot, ids, ct, holders: true).ConfigureAwait(false);
+        var codes = BaselineCodes.Of(baseModel);
         var failed = working.FailedOwners.Union(based.FailedOwners, StringComparer.Ordinal).ToFrozenSet(StringComparer.Ordinal);
         foreach (var database in databases)
         {
@@ -1007,9 +1240,12 @@ public sealed partial class ModelStore
                     snapshot.GetDocument(elementId)?.Path, pointer));
             }
 
-            found.AddRange(StaleFindings(snapshot, database, ordered, Lacking, workToday));
+            found.AddRange(StaleFindings(snapshot, database, ordered, Lacking, workToday, codes));
         }
 
+        // Codes and names of reference types changed since the baseline need value maps in the databases that hold them (MQ4112).
+        found.AddRange(BaselineCheck.ValueMapFindings(snapshot, baseModel, codes, [.. databases.Where(d => based.Holders.ContainsKey(d.Id))], based.Holders,
+            f => !based.Facts.Contains(f.Id), baseline.Label));
         return await SettleAsync(snapshot, found, ct).ConfigureAwait(false);
 
         static string Shown(IReadOnlyList<string> names) =>
@@ -1021,9 +1257,9 @@ public sealed partial class ModelStore
     /// own): one finding per fact, on its <c>fact</c> key.
     /// </summary>
     private static IEnumerable<Diagnostic> StaleFindings(ModelSnapshot snapshot, Database database, IReadOnlyList<Migration> ordered,
-        Func<Migration, bool> candidate, PhysicalSnapshot capture)
+        Func<Migration, bool> candidate, PhysicalSnapshot capture, BaselineCodes? baseline = null)
     {
-        foreach (var stale in StaleFacts.Chains(ordered, candidate, capture, database.Dialect))
+        foreach (var stale in StaleFacts.Chains(ordered, candidate, capture, database.Dialect, baseline))
         {
             if (MigrationRules.State(stale.Fact, database.Dialect) == "pending")
                 continue;

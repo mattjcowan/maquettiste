@@ -100,6 +100,15 @@ public abstract record Element : ElementBase
     /// <summary>The element's kind.</summary>
     [JsonIgnore]
     public abstract ElementKind Kind { get; }
+
+    /// <summary>
+    /// Stereotype keys that a database schema's or a package's default stereotypes would give the element, left out of its
+    /// effective set with the stereotypes they imply (next-phase-2-design.md section 3.1). Only defaults can be excluded (MQ2029).
+    /// <see langword="null"/> when the file does not state the key. Virtual only so that <see cref="Migration"/>, whose file has no such
+    /// key, can leave it out of its JSON contract.
+    /// </summary>
+    [StereotypeKeys]
+    public virtual IReadOnlyList<string>? ExcludeStereotypes { get; init; }
 }
 
 /// <summary>Per-pack generation hints on an element (<c>generation.&lt;pack&gt;</c>).</summary>

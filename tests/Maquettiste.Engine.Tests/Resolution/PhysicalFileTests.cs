@@ -300,4 +300,141 @@ public sealed class PhysicalFileTests
         Assert.Equal("lines", child.Attribute!.Name);
         Assert.All(rdb.Sequences, s => Assert.Same(rdb, s.Database));
     }
+
+    /// <summary>A reference type with a string code of <paramref name="length"/> (next-phase-2-design.md section 3.2's tests).</summary>
+    private static ReferenceType CodeType(ModelBuilder b, string name, int? length, string codeType = "string",
+        IReadOnlyDictionary<string, StorageChoice>? storage = null, IReadOnlyList<ReferenceTypeBinding>? bindings = null)
+    {
+        var type = new ReferenceType
+        {
+            Id = b.NewId(), Name = name,
+            Code = new ReferenceCode { Id = b.NewId(), Type = codeType, Length = length },
+            Label = new ReferenceLabel { Id = b.NewId(), Length = 40 },
+            Storage = storage ?? ImmutableDictionary<string, StorageChoice>.Empty,
+            Bindings = bindings ?? [],
+        };
+        b.Add(type);
+        return type;
+    }
+
+    /// <summary>An attribute type by id, for a type the builders do not make (a reference type).</summary>
+    private sealed record TypeId(string Id) : ITypeSource;
+
+    /// <summary>Gives a built table's columns, by name, the typeRef of a type id.</summary>
+    private static Table Typed(Table table, params (string Column, string? TypeId)[] types) => table with
+    {
+        Columns = [.. table.Columns.Select(c => types.FirstOrDefault(t => t.Column == c.Name) is { Column: not null } t
+            ? c with { TypeRef = t.TypeId is null ? null : new TypeRef { Ref = t.TypeId } } : c)],
+    };
+
+    [Fact]
+    public void A_designed_column_typed_by_a_reference_type_is_a_reference_column()
+    {
+        // Section 3.2 (D21), decisions 4 and 5: the column keeps its physical keyword and becomes a reference column for templates,
+        // with the type's strategy in its database and, once the type is bound there, its binding.
+        var b = new ModelBuilder(seed: 90);
+        var db = b.Database("main", Dialect.PostgreSql);
+        var states = b.Table("invoice_states", db).Column("code", "string", nullable: false, length: 1).Column("label", "string", nullable: false, length: 40)
+            .PrimaryKey("code");
+        var state = CodeType(b, "InvoiceState", 1, storage: new Dictionary<string, StorageChoice> { ["*"] = new() { Strategy = "lookup-table" } });
+        var kind = CodeType(b, "EventKind", 8, bindings:
+        [
+            new ReferenceTypeBinding
+            {
+                Id = b.NewId(), Database = db.Id, Table = states.Id,
+                Fields = [new BindingField { Attribute = "code", Column = states.ColumnId("code") }, new BindingField { Attribute = "label", Column = states.ColumnId("label") }],
+            },
+        ]);
+        var events = b.Table("invoice_events", db).Column("id", "uuid", nullable: false).Column("status", "string", nullable: false, length: 1)
+            .Column("kind", "string", length: 1).Edit(t => Typed(t, ("status", state.Id), ("kind", kind.Id)));
+
+        var table = ResolutionKit.Resolve(b).Db("main").Table("invoice_events");
+
+        var status = table.Column("status");
+        Assert.Equal(("string", "varchar(1)", 1), (status.Type, status.NativeType, status.Length));
+        Assert.Equal(("reference", "InvoiceState", state.Id), (status.TypeRef!.Kind, status.TypeRef.Name, status.TypeRef.ReferenceType!.Id));
+        Assert.Same(status.TypeRef.ReferenceType, status.ReferenceType);
+        Assert.Equal(("string", "lookup-table"), (status.CodeType, status.Strategy));
+        Assert.Null(status.ReferenceBinding);
+        var bound = table.Column("kind");
+        Assert.Equal((kind.Id, (string?)null), (bound.ReferenceType!.Id, bound.Strategy));
+        Assert.Equal("invoice_states", bound.ReferenceBinding!.Table.Name);
+        Assert.Null(table.Column("id").TypeRef);
+        Assert.Null(table.Column("id").ReferenceType);
+    }
+
+    [Fact]
+    public void A_typed_column_takes_the_facets_it_leaves_out_from_its_type()
+    {
+        // Section 3.2 (D21), decision 2: what the column states wins; a facet it leaves out comes from its type: the code's length,
+        // the longest stored code of an enum in a string column, and a scalar type's length, precision and scale.
+        var b = new ModelBuilder(seed: 91);
+        var db = b.Database("main", Dialect.PostgreSql);
+        var state = CodeType(b, "InvoiceState", 2);
+        var status = b.Enum("Status").Member("Draft", 0, "draft").Member("Issued", 1, "issued").Member("Void", 2);
+        var money = b.ScalarType("Money", "decimal").Decimal(12, 2);
+        b.Table("invoice_events", db)
+            .Column("state", "string").Column("state_wide", "string", length: 5).Column("status", "string").Column("status_value", "int32")
+            .Column("amount", "decimal").Column("note", "text")
+            .Edit(t => Typed(t, ("state", state.Id), ("state_wide", state.Id), ("status", status.Id), ("status_value", status.Id), ("amount", money.Id),
+                ("note", state.Id)))
+            .Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "amount" ? c with { Scale = 4 } : c)] });
+
+        var table = ResolutionKit.Resolve(b).Db("main").Table("invoice_events");
+
+        Assert.Equal((2, "varchar(2)"), (table.Column("state").Length, table.Column("state").NativeType));
+        Assert.Equal(5, table.Column("state_wide").Length);
+        Assert.Equal((6, "varchar(6)"), (table.Column("status").Length, table.Column("status").NativeType));
+        Assert.Equal(("int32", (int?)null), (table.Column("status_value").Type, table.Column("status_value").Length));
+        Assert.Equal((12, 4, "numeric(12,4)"), (table.Column("amount").Precision, table.Column("amount").Scale, table.Column("amount").NativeType));
+        Assert.Equal(("text", (int?)null), (table.Column("note").Type, table.Column("note").Length));
+        Assert.Equal("enum", table.Column("status_value").TypeRef!.Kind);
+        Assert.Equal("scalar", table.Column("amount").TypeRef!.Kind);
+    }
+
+    [Fact]
+    public void A_designed_column_typed_by_a_scalar_type_takes_its_native_type()
+    {
+        // Section 3.2 (D21), decision 2: a scalar type's native type for the dialect applies when the column's type is the scalar's base
+        // and the column sets no nativeType, as on a projected column.
+        var b = new ModelBuilder(seed: 92);
+        var db = b.Database("main", Dialect.PostgreSql);
+        var email = b.ScalarType("EmailAddress", "string").Length(320).NativeType("postgresql", "citext");
+        b.Table("contacts", db).Column("email", "string").Column("email_text", "text").Column("email_pinned", "string", nativeType: "varchar(400)")
+            .Edit(t => Typed(t, ("email", email.Id), ("email_text", email.Id), ("email_pinned", email.Id)));
+
+        var table = ResolutionKit.Resolve(b).Db("main").Table("contacts");
+
+        Assert.Equal(("citext", 320), (table.Column("email").NativeType, table.Column("email").Length));
+        Assert.Equal("text", table.Column("email_text").NativeType);
+        Assert.Equal("varchar(400)", table.Column("email_pinned").NativeType);
+        Assert.All(new[] { "email", "email_text", "email_pinned" }, n => Assert.Equal(email.Id, table.Column(n).TypeRef!.Scalar!.Id));
+    }
+
+    [Fact]
+    public void An_extra_overlay_column_may_be_typed()
+    {
+        // Section 3.2 (D21), decision 3: an overlay's extra column is typed as a designed column is; a projected column keeps its
+        // attribute's type and no typeRef of its own.
+        var b = new ModelBuilder(seed: 93);
+        var state = CodeType(b, "InvoiceState", 1);
+        var invoice = b.Entity("Invoice").Key("id", "uuid").Attr("state", new TypeId(state.Id));
+        var db = b.Database("main", Dialect.PostgreSql);
+        var extraId = b.NewId();
+        b.Add(new Table
+        {
+            Id = b.NewId(), Database = db.Id, Origin = TableOrigin.Synthesized, Entity = invoice.Id, Name = "invoices",
+            Columns = [new Column { Id = extraId, Name = "legacy_state", Type = "string", TypeRef = new TypeRef { Ref = state.Id } }],
+        });
+
+        var table = ResolutionKit.Resolve(b).Db("main").Table("invoices");
+
+        var extra = table.Column("legacy_state");
+        Assert.Equal((extraId, "string", 1), (extra.Key, extra.Type, extra.Length));
+        Assert.Equal(state.Id, extra.TypeRef!.ReferenceType!.Id);
+        Assert.Same(extra.TypeRef.ReferenceType, extra.ReferenceType);
+        var projected = table.Column("state");
+        Assert.Equal(("reference", state.Id), (projected.Type, projected.ReferenceType!.Id));
+        Assert.Null(projected.TypeRef);
+    }
 }

@@ -118,8 +118,9 @@ public sealed partial class ModelStore
     /// <summary>
     /// Folds open migration facts (next-phase-1-design.md section 3.2, "Fold"; <see cref="FactFolder"/>): per chosen database, the
     /// open facts the baseline lacks are the candidates (the <see cref="FoldRequest.Against"/> model's facts, else the facts the
-    /// committed physical snapshot lists as rendered, else only pending facts); stale chains are removed first, then consecutive facts
-    /// on one object are joined into the last one. The writes go through one batch on the store's atomic path, which records no facts
+    /// committed physical snapshot lists as rendered, else only pending facts); stale chains are removed first (against a baseline model,
+    /// also the value maps whose codes the baseline's types never held, next-phase-2-design.md section 3.5), then consecutive facts
+    /// on one object are joined into the last one; value maps never join. The writes go through one batch on the store's atomic path, which records no facts
     /// (only facts change); a dry run writes nothing and returns the files.
     /// </summary>
     /// <param name="request">What to fold.</param>
@@ -142,8 +143,13 @@ public sealed partial class ModelStore
             return new FoldResult(SaveOutcome.Invalid, [], [], [], [], blocking);
 
         FrozenSet<string>? baselineFacts = null;
+        BaselineCodes? baselineCodes = null; // a value map is judged against a baseline model only (next-phase-2-design.md section 3.5)
         if (request.Against is { } against)
-            baselineFacts = (await against.Store.GetSnapshotAsync(ct).ConfigureAwait(false)).All<Migration>().Select(f => f.Id).ToFrozenSet(StringComparer.Ordinal);
+        {
+            var baseModel = await against.Store.GetSnapshotAsync(ct).ConfigureAwait(false);
+            baselineFacts = baseModel.All<Migration>().Select(f => f.Id).ToFrozenSet(StringComparer.Ordinal);
+            baselineCodes = BaselineCodes.Of(baseModel);
+        }
 
         var facts = snapshot.All<Migration>().ToLookup(f => f.Database, StringComparer.Ordinal);
         var chosen = databases.Where(d => facts[d.Id].Any()).ToList();
@@ -173,7 +179,7 @@ public sealed partial class ModelStore
                 candidate = f => MigrationRules.State(f, owner.Dialect) == "pending"; // a pending fact never reaches a migration
             }
 
-            var plan = FactFolder.Fold(FactKeys.Order(facts[owner.Id]), candidate, capture, owner.Dialect);
+            var plan = FactFolder.Fold(FactKeys.Order(facts[owner.Id]), candidate, capture, owner.Dialect, baselineCodes);
             joined.AddRange(plan.Joined);
             removedStale.AddRange(plan.RemovedStale);
             refused.AddRange(plan.Refused);

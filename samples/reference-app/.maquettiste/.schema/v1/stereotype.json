@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Stereotype",
-  "description": "A typed marker that adds virtual attributes and default property values.",
+  "description": "A typed marker that adds virtual attributes, default property values and, for tables, inherited columns, keys, indexes and checks.",
   "type": "object",
   "x-order": [
     "$schema",
@@ -17,6 +17,7 @@
     "decision",
     "status",
     "stereotypes",
+    "excludeStereotypes",
     "tags",
     "category",
     "appliesTo",
@@ -28,6 +29,12 @@
     "parameters",
     "defaultProperties",
     "storage",
+    "columns",
+    "primaryKey",
+    "uniques",
+    "foreignKeys",
+    "checks",
+    "indexes",
     "icon",
     "color",
     "properties",
@@ -81,6 +88,10 @@
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",
       "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
     },
     "tags": {
       "$ref": "common.json#/$defs/tagList",
@@ -185,6 +196,139 @@
     "storage": {
       "description": "Table storage parameters the stereotype gives every table that carries it (a reusable tuning profile such as high-churn), per dialect; a table's own storage overrides a parameter, and a later stereotype overrides an earlier one.",
       "$ref": "common.json#/$defs/storage"
+    },
+    "columns": {
+      "description": "Columns every table that carries the stereotype inherits (its members, with the keys, indexes and checks below), keyed <table key>.<member id> in each table. A synthesized table that already stores the stereotype's attributes as columns inherits no member. A contributed column takes no attribute or sequence (MQ2024).",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/tableColumn"
+      },
+      "default": []
+    },
+    "primaryKey": {
+      "description": "A primary key every carrier inherits, over the stereotype's own columns; no name, since every carrier would share it (MQ2024). A table with another primary key reports MQ4076.",
+      "$ref": "common.json#/$defs/primaryKey",
+      "required": ["id", "columns"]
+    },
+    "uniques": {
+      "description": "Unique constraints every carrier inherits, over the stereotype's own columns (MQ2025), without a name (MQ2024).",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/uniqueConstraint"
+      },
+      "default": []
+    },
+    "foreignKeys": {
+      "description": "Foreign keys every carrier inherits, from the stereotype's own columns. The target is one fixed table (referencesTable) or the table each carrier names in a parameter (referencesParameter: a required string parameter typed x-ref kind table with sameDatabase), never both (MQ2026).",
+      "type": "array",
+      "items": {
+        "title": "Contributed foreign key",
+        "type": "object",
+        "x-order": [
+          "id",
+          "columns",
+          "referencesTable",
+          "referencesParameter",
+          "referencesColumns",
+          "period",
+          "onDelete",
+          "onDeleteColumns",
+          "onUpdate",
+          "deferrable"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "columns": {
+            "description": "Ids of the stereotype's columns, in key order.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "referencesTable": {
+            "description": "The id of the one table every carrier references.",
+            "type": "string",
+            "minLength": 1
+          },
+          "referencesParameter": {
+            "description": "The name of the stereotype parameter in which each carrier names the table it references (a table of its own database).",
+            "type": "string",
+            "minLength": 1
+          },
+          "referencesColumns": {
+            "description": "With referencesTable: the referenced column ids; empty means the referenced primary key. Not with referencesParameter (MQ2026).",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "period": {
+            "type": "boolean",
+            "default": false
+          },
+          "onDelete": {
+            "enum": [
+              "no-action",
+              "restrict",
+              "cascade",
+              "set-null",
+              "set-default"
+            ],
+            "default": "no-action"
+          },
+          "onDeleteColumns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "onUpdate": {
+            "enum": [
+              "no-action",
+              "restrict",
+              "cascade",
+              "set-null",
+              "set-default"
+            ],
+            "default": "no-action"
+          },
+          "deferrable": {
+            "enum": [
+              "not-deferrable",
+              "initially-immediate",
+              "initially-deferred"
+            ],
+            "default": "not-deferrable"
+          }
+        },
+        "required": ["id", "columns"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "checks": {
+      "description": "Check constraints every carrier inherits, without a name (MQ2024). Their SQL names the stereotype's columns by their physical names, which a table cannot redefine.",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/checkConstraint"
+      },
+      "default": []
+    },
+    "indexes": {
+      "description": "Indexes every carrier inherits, over the stereotype's own columns (MQ2025), without a name (MQ2024).",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/tableIndex"
+      },
+      "default": []
     },
     "icon": {
       "type": "string"

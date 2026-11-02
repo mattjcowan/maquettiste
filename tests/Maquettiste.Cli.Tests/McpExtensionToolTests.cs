@@ -48,4 +48,40 @@ public sealed class McpExtensionToolTests
         await session.OkAsync("delete_extension_file", new { path = "rules/names.js", expectedHash = (string)moved["hash"]! });
         Assert.Equal("not-found", (await session.ErrorAsync("read_extension_file", new { path = "rules/names.js" })).Code);
     }
+
+    [Fact]
+    public async Task Write_extension_file_checks_a_rows_script()
+    {
+        // next-phase-2-design.md section 3.4 (D44): a seed's rows script lives in extensions/seeds/, kind seed-rows. A write loads it alone
+        // and never runs it: registering rows twice, or a rule, is MQ7127 with its line; a rows function that would throw is fine until
+        // something reads the rows.
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+
+        var twice = await session.OkAsync("write_extension_file", new
+        {
+            path = "seeds/kinds.js", text = "maquettiste.rows(() => []);\nmaquettiste.rows(() => []);\n", expectedHash = "new",
+        });
+        Assert.Equal("MQ7127", (string)Assert.Single(twice["diagnostics"]!.AsArray())!["rule"]!);
+
+        var rule = await session.OkAsync("write_extension_file", new
+        {
+            path = "seeds/kinds.js", text = "maquettiste.rule({ id: \"x\", check() {} });\n", expectedHash = (string)twice["hash"]!,
+        });
+        var refused = Assert.Single(rule["diagnostics"]!.AsArray())!;
+        Assert.Equal("MQ7127", (string)refused["rule"]!);
+        Assert.Equal(".maquettiste/extensions/seeds/kinds.js", (string)refused["filePath"]!);
+
+        var good = await session.OkAsync("write_extension_file", new
+        {
+            path = "seeds/kinds.js", text = "maquettiste.rows(() => { throw new Error('only when read'); });\n", expectedHash = (string)rule["hash"]!,
+        });
+        Assert.Empty(good["diagnostics"]!.AsArray());
+        var listed = (await session.OkAsync("list_extension_files"))["files"]!.AsArray().Single(f => (string)f!["path"]! == "seeds/kinds.js")!;
+        Assert.Equal("seed-rows", (string)listed["kind"]!);
+        Assert.Empty(listed["diagnostics"]!.AsArray());
+        Assert.Equal("seed-rows", (string)(await session.OkAsync("read_extension_file", new { path = "seeds/kinds.js" }))["kind"]!);
+        Assert.Equal("invalid", (await session.ErrorAsync("move_extension_file", new { from = "seeds/kinds.js", to = "rules/kinds.js", expectedHash = (string)good["hash"]! })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("write_extension_file", new { path = "seeds/deep/kinds.js", text = "//", expectedHash = "new" })).Code);
+    }
 }

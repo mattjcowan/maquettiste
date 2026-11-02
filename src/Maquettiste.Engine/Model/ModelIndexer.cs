@@ -63,6 +63,13 @@ internal static class ModelIndexer
         /// rebuilds in full, since every document's <c>x-ref</c> sites may change.
         /// </summary>
         internal string PropertySchemasHash { get; init; } = "";
+
+        /// <summary>
+        /// Whether the indexed model declares a default stereotype (next-phase-2-design.md section 3.1): the walks then typed each
+        /// element's properties by its effective keys, defaults included, so a patch from or to such a model rebuilds in full when a
+        /// change can move the holder of a document it would keep.
+        /// </summary>
+        internal bool HasDefaults { get; init; }
     }
 
     internal enum PropertyRole { Reference, KeyedReference, StereotypeKeys, TypeRef, Record, RecordList }
@@ -92,8 +99,8 @@ internal static class ModelIndexer
         _ when type == typeof(GateMeaning) => "meaning",
         _ when type == typeof(ScenarioStep) => "step",
         _ when type == typeof(EntityBinding) || type == typeof(ReferenceTypeBinding) => "binding",
-        _ when type == typeof(AlternateKey) || type == typeof(UniqueConstraint) || type == typeof(ForeignKey)
-            || type == typeof(CheckConstraint) || type == typeof(TableIndex) => "key",
+        _ when type == typeof(AlternateKey) || type == typeof(PrimaryKey) || type == typeof(UniqueConstraint) || type == typeof(ForeignKey)
+            || type == typeof(MemberForeignKey) || type == typeof(CheckConstraint) || type == typeof(TableIndex) => "key",
         _ => null,
     };
 
@@ -106,34 +113,40 @@ internal static class ModelIndexer
 
     /// <summary>
     /// Builds the indexes of the documents (sorted by path). With the previous snapshot's index, and when the change is small and
-    /// touches no stereotype, tag vocabulary or category tree, the previous indexes are patched instead of rebuilt; the result is
-    /// the same as a full build (<c>ModelIndexerTests</c> compares them on random edits), which runs whenever the patch cannot be sure.
+    /// touches no stereotype, tag vocabulary or category tree (nor, while either model declares a default stereotype, a document that
+    /// can move another one's stereotype holder), the previous indexes are patched instead of rebuilt; the result is the same as a full
+    /// build (<c>ModelIndexerTests</c> compares them on random edits), which runs whenever the patch cannot be sure.
     /// </summary>
     /// <param name="documents">The documents, in path order.</param>
     /// <param name="schemas">The custom property schemas, whose <c>x-ref</c> sites become references.</param>
+    /// <param name="defaults">The holders of default stereotypes of the documents: an element's properties are typed by its effective
+    /// keys, defaults included (next-phase-2-design.md section 3.1).</param>
     /// <param name="previous">The previous snapshot's index, or <see langword="null"/>.</param>
     /// <param name="parallelism">The most documents walked at once by a full build (the caller's
     /// <see cref="EngineOptions.EffectiveParallelism"/>; <see cref="DefaultParallelism"/> without one).</param>
     /// <param name="ct">Cancellation, observed between documents.</param>
     /// <returns>The index.</returns>
-    public static Result Build(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, Result? previous, int parallelism, CancellationToken ct)
+    public static Result Build(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, StereotypeDefaults defaults, Result? previous,
+        int parallelism, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(schemas);
+        ArgumentNullException.ThrowIfNull(defaults);
         ArgumentOutOfRangeException.ThrowIfLessThan(parallelism, 1);
         ct.ThrowIfCancellationRequested();
         if (previous is { Clean: true, Walks: not null } && string.Equals(previous.PropertySchemasHash, schemas.Hash, StringComparison.Ordinal)
-            && TryPatch(documents, schemas, previous) is { } patched)
+            && TryPatch(documents, schemas, defaults, previous) is { } patched)
         {
             return patched;
         }
 
-        return BuildFull(documents, schemas, parallelism, ct) with { Patched = false };
+        return BuildFull(documents, schemas, defaults, parallelism, ct) with { Patched = false };
     }
 
     /// <summary>The walk parallelism of a build whose caller has no engine options (the public <see cref="ModelSnapshot.Create"/>).</summary>
     internal static int DefaultParallelism => Math.Max(1, Math.Min(Environment.ProcessorCount, 8));
 
-    private static Result BuildFull(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, int parallelism, CancellationToken ct)
+    private static Result BuildFull(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, StereotypeDefaults defaults, int parallelism,
+        CancellationToken ct)
     {
         // Stereotype keys first, so every element's stereotypes[i] can be indexed as a reference to the stereotype's id.
         var stereotypes = new Dictionary<string, Stereotype>(StringComparer.Ordinal);
@@ -151,7 +164,7 @@ internal static class ModelIndexer
         var walks = new DocumentWalk[documents.Length];
         Parallel.For(0, documents.Length, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct }, i =>
         {
-            var walk = new DocumentWalk(stereotypes, metadata, referenceData, schemas);
+            var walk = new DocumentWalk(stereotypes, metadata, referenceData, schemas, defaults);
             walk.WalkElement(documents[i].Element);
             walks[i] = walk;
         });
@@ -241,6 +254,7 @@ internal static class ModelIndexer
             ReferenceData = referenceData,
             Retired = retired,
             PropertySchemasHash = schemas.Hash,
+            HasDefaults = defaults.HasDefaults,
         };
     }
 
@@ -254,7 +268,7 @@ internal static class ModelIndexer
     /// walks used (a changed set rebuilds in full, even when no document changed). Unchanged documents (the same <see cref="ElementDocument"/> instance at the same
     /// path) keep their walks; every map ends up with exactly the content and order a full build gives.
     /// </summary>
-    private static Result? TryPatch(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, Result previous)
+    private static Result? TryPatch(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, StereotypeDefaults defaults, Result previous)
     {
         var old = previous.Documents;
         var oldWalks = previous.Walks!;
@@ -280,7 +294,7 @@ internal static class ModelIndexer
         }
 
         if (removed.Count == 0 && added.Count == 0)
-            return previous with { Documents = documents, Walks = walks, Patched = true };
+            return previous with { Documents = documents, Walks = walks, Patched = true, HasDefaults = defaults.HasDefaults };
         foreach (var r in removed)
         {
             if (old[r].Element is Stereotype or TagVocabulary or CategoryTree)
@@ -292,6 +306,11 @@ internal static class ModelIndexer
             if (documents[a].Element is Stereotype or TagVocabulary or CategoryTree)
                 return null;
         }
+
+        // While either model declares a default stereotype, a kept document's walk typed its properties by a holder that a change to a
+        // package, database or mapping, or to the element its holder falls back to, can move (next-phase-2-design.md section 3.1).
+        if ((previous.HasDefaults || defaults.HasDefaults) && MovesHolders([.. removed.Select(r => old[r].Element)], [.. added.Select(a => documents[a].Element)]))
+            return null;
 
         // Seed cells become references through model-wide facts (reference-typed attributes, ends, codes): a change that could alter
         // them for a document the patch keeps needs the full build.
@@ -305,7 +324,7 @@ internal static class ModelIndexer
         var metadata = new MetadataCache();
         foreach (var a in added)
         {
-            var walk = new DocumentWalk(previous.Stereotypes, metadata, referenceData, schemas);
+            var walk = new DocumentWalk(previous.Stereotypes, metadata, referenceData, schemas, defaults);
             walk.WalkElement(documents[a].Element);
             walks[a] = walk;
         }
@@ -468,6 +487,7 @@ internal static class ModelIndexer
             Summaries = summaries.MoveToImmutable(),
             Documents = documents,
             Walks = walks,
+            HasDefaults = defaults.HasDefaults,
             Patched = true,
             Retired = retired,
         };
@@ -485,6 +505,52 @@ internal static class ModelIndexer
         }
 
         return element is Relation relation && relation.Ends.Any(e => referenceData.SeedColumns.Contains(e.Id));
+    }
+
+    /// <summary>
+    /// Whether a patch's change can move the stereotype holder of a document it does not walk again (next-phase-2-design.md section
+    /// 3.1): a package, database or mapping changed, added or removed (package chains, schema entries, routing); or an element a holder
+    /// falls back to (an entity, relation, process, reference type or table) added, removed, or changed in its package, or a table in
+    /// its schema, entity, relation, attribute or origin (an overlay's schema routes its child tables, a table is a seed's target).
+    /// </summary>
+    /// <param name="removed">The elements of the removed documents.</param>
+    /// <param name="added">The elements of the added documents.</param>
+    /// <returns><see langword="true"/> when the patch must build in full.</returns>
+    private static bool MovesHolders(IReadOnlyList<Element> removed, IReadOnlyList<Element> added)
+    {
+        var before = new Dictionary<string, Element>(StringComparer.Ordinal);
+        foreach (var element in removed)
+        {
+            if (element is Package or Database or Mapping)
+                return true;
+            if (element is Entity or Relation or Process or ReferenceType or Table)
+                before.TryAdd(element.Id, element);
+        }
+
+        var after = new Dictionary<string, Element>(StringComparer.Ordinal);
+        foreach (var element in added)
+        {
+            if (element is Package or Database or Mapping)
+                return true;
+            if (element is Entity or Relation or Process or ReferenceType or Table)
+                after.TryAdd(element.Id, element);
+        }
+
+        if (before.Count != after.Count)
+            return true;
+        foreach (var (id, old) in before)
+        {
+            if (!after.TryGetValue(id, out var now) || old.Kind != now.Kind || !string.Equals(PackageOf(old), PackageOf(now), StringComparison.Ordinal))
+                return true;
+            if (old is Table t && now is Table u && (t.Origin != u.Origin || !string.Equals(t.Schema, u.Schema, StringComparison.Ordinal)
+                || !string.Equals(t.Entity, u.Entity, StringComparison.Ordinal) || !string.Equals(t.Relation, u.Relation, StringComparison.Ordinal)
+                || !string.Equals(t.Attribute, u.Attribute, StringComparison.Ordinal) || !string.Equals(t.Database, u.Database, StringComparison.Ordinal)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The index row of an element (E4 and E5 members included).</summary>
@@ -611,7 +677,7 @@ internal static class ModelIndexer
 
     /// <summary>The walk of one document: its sub-element entries (in walk order) and its references.</summary>
     internal sealed class DocumentWalk(IReadOnlyDictionary<string, Stereotype> stereotypes, MetadataCache metadata, ReferenceDataIndex referenceData,
-        PropertySchemaSet schemas)
+        PropertySchemaSet schemas, StereotypeDefaults defaults)
     {
         public List<(string Id, IndexEntry Entry)> Entries { get; } = [];
 
@@ -706,7 +772,12 @@ internal static class ModelIndexer
             if (!schemas.HasRefs)
                 return;
             Dictionary<(string Pointer, string To), int>? seen = null;
-            foreach (var site in schemas.Sites(element))
+            // The element's properties are typed by its effective keys, defaults included (next-phase-2-design.md section 3.1), as
+            // ModelSnapshot.PropertyKeys gives them once the snapshot exists.
+            var keys = defaults.HasDefaults
+                ? PropertySchemaSet.HostKeys(defaults.Effective(defaults.HolderOf(element), key => stereotypes.GetValueOrDefault(key)), element.Stereotypes)
+                : null;
+            foreach (var site in schemas.Sites(element, keys))
             {
                 foreach (var id in IdsOf(site.Value))
                 {
@@ -871,8 +942,10 @@ internal static class ModelIndexer
         {
             ElementBase b => b.Id,
             AlternateKey k => k.Id,
+            PrimaryKey p => p.Id, // optional: a primary key without an id is no sub-element
             UniqueConstraint u => u.Id,
             ForeignKey f => f.Id,
+            MemberForeignKey f => f.Id,
             CheckConstraint c => c.Id,
             TableIndex x => x.Id,
             RelationEnd e => e.Id,

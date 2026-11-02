@@ -9,6 +9,7 @@ using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Loading;
+using Maquettiste.Engine.Migrations;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 
@@ -389,11 +390,12 @@ public sealed partial class ModelStore : IAsyncDisposable
     }
 
     /// <summary>
-    /// Whether an operation expands into updates (schema, process, materialize and tag operations, and <c>names-to-ids</c>) rather than
-    /// naming its element.
+    /// Whether an operation expands into updates (schema, process, materialize, binding and tag operations, <c>names-to-ids</c>,
+    /// <c>fold-into-stereotype</c> and the reference-type refactors) rather than naming its element.
     /// </summary>
     private static bool IsExpandedOperation(BatchOp op) =>
-        IsSchemaOperation(op) || IsProcessOperation(op) || IsMaterializeOperation(op) || IsTagOperation(op) || op == BatchOp.NamesToIds;
+        IsSchemaOperation(op) || IsProcessOperation(op) || IsMaterializeOperation(op) || IsBindingOperation(op) || IsTagOperation(op)
+        || IsReferenceRefactor(op) || op is BatchOp.NamesToIds or BatchOp.FoldIntoStereotype;
 
     /// <summary>Re-reads changed paths and updates the index (host-contracts requirement 17).</summary>
     /// <param name="paths">Repo-relative or absolute paths reported by a watcher.</param>
@@ -463,7 +465,8 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// migration facts (MQ4103), judged against each database's committed physical snapshot: those are not part of the resolver's
     /// once-per-snapshot findings, since generation rewrites a committed snapshot with no model change, so each call reads the
     /// committed snapshots again; the captures they are judged against are cached per snapshot, and so are the findings while the
-    /// committed snapshots list the same rendered facts.
+    /// committed snapshots list the same rendered facts. A whole-model report judges seeds with a rows script, which the shared
+    /// validation previews wait on leaves out (<see cref="WholeReportAsync"/>; next-phase-2-design.md section 3.4, decision 31).
     /// </remarks>
     public async Task<ValidationReport> ValidateAsync(ValidationScope scope, CancellationToken ct)
     {
@@ -478,11 +481,14 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// </summary>
     private async Task<ValidationReport> ValidateCoreAsync(ModelSnapshot snapshot, ValidationScope scope, bool committedStale, CancellationToken ct)
     {
-        // The whole model's report is the one the snapshot's shared resolution validated with (once per snapshot).
-        var whole = scope.ElementIds is null && scope.IncludeReferrers && scope.IncludeScriptRules;
-        var report = whole ? (await ResolvedAsync(snapshot, ct).ConfigureAwait(false)).Report
+        // The whole model's report is the one the snapshot's shared resolution validated with, or with seeds that have a rows script
+        // its own (once per snapshot either way). When that one has an error the shared one lacks, generation would stop before
+        // resolving, so the resolver's findings are left out.
+        var whole = scope.ElementIds is null && scope.IncludeReferrers && scope.IncludeScriptRules && !scope.DeferScriptedRows;
+        var report = whole ? await WholeReportAsync(snapshot, ct).ConfigureAwait(false)
             : await _services.Validator.ValidateAsync(snapshot, scope, null, ct).ConfigureAwait(false);
-        IReadOnlyList<Diagnostic> found = await ResolverFindingsAsync(snapshot, ct).ConfigureAwait(false);
+        IReadOnlyList<Diagnostic> found = whole && report.Diagnostics.Any(Generation.Outcomes.BlocksResolution) ? []
+            : await ResolverFindingsAsync(snapshot, ct).ConfigureAwait(false);
         if (committedStale && await CommittedStaleFindingsAsync(snapshot, ct).ConfigureAwait(false) is { Count: > 0 } stale)
             found = [.. found, .. stale];
         var seen = report.Diagnostics.Select(LoadKey).ToHashSet(StringComparer.Ordinal);
@@ -747,7 +753,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     }
 
     private async Task<BatchResult> ExecuteAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, CancellationToken ct, BatchPreviewSink? preview = null,
-        IReadOnlyList<MaterializeResult>? materialized = null)
+        IReadOnlyList<MaterializeResult>? materialized = null, IReadOnlyList<CodeMap>? codeMaps = null)
     {
         await LoadedAsync(ct).ConfigureAwait(false);
         var notifications = new List<ChangeSet>();
@@ -757,7 +763,7 @@ public sealed partial class ModelStore : IAsyncDisposable
             await _gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                result = await ExecuteCoreAsync(changes, source, notifications, preview, materialized ?? [], ct).ConfigureAwait(false);
+                result = await ExecuteCoreAsync(changes, source, notifications, preview, materialized ?? [], codeMaps ?? [], ct).ConfigureAwait(false);
             }
             finally
             {
@@ -779,7 +785,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     }
 
     private async Task<BatchResult> ExecuteCoreAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, List<ChangeSet> notifications,
-        BatchPreviewSink? preview, IReadOnlyList<MaterializeResult> materialized, CancellationToken ct)
+        BatchPreviewSink? preview, IReadOnlyList<MaterializeResult> materialized, IReadOnlyList<CodeMap> codeMaps, CancellationToken ct)
     {
         if (IsReadOnly && preview is null)
         {
@@ -840,6 +846,13 @@ public sealed partial class ModelStore : IAsyncDisposable
 
         foreach (var (change, diagnostic) in recording.Diagnostics)
             plan.Outcomes[Math.Clamp(change, 0, plan.Outcomes.Count - 1)].Diagnostics.Add(diagnostic);
+        if (plan is { IsNoOp: false, Candidate: { } changed } && changed.Settings.Migrations.Record != MigrationRecording.Off)
+        {
+            // A kept reference row's code or a type's names changed outside the refactors: no value map was recorded (MQ4114).
+            foreach (var (change, diagnostic) in PlainCodeEdits(snapshot, changed, plan.ChangeByElement, codeMaps))
+                plan.Outcomes[Math.Clamp(change, 0, plan.Outcomes.Count - 1)].Diagnostics.Add(diagnostic);
+        }
+
         var factWrites = recording.Writes.ToDictionary(w => w.Path, w => w.Bytes, StringComparer.Ordinal);
 
         if (preview is not null)
@@ -897,7 +910,89 @@ public sealed partial class ModelStore : IAsyncDisposable
 
         Task<FactRecording> RecordAsync() => plan.IsNoOp || plan.Candidate is null
             ? Task.FromResult(FactRecording.Nothing(CacheHandoff.Carry))
-            : RecordFactsAsync(new RecordingRequest(snapshot, plan.Candidate, plan.ChangeByElement, false, materialized, preview is not null, errors), ct);
+            : RecordFactsAsync(new RecordingRequest(snapshot, plan.Candidate, plan.ChangeByElement, false, materialized, preview is not null, errors, codeMaps), ct);
+    }
+
+    /// <summary>
+    /// MQ4114 (next-phase-2-design.md section 3.5, "Recording the value map"): a change that alters the code of a reference row it keeps
+    /// (the same row id in a seed of the same reference type, before and after), or a kept reference type's <c>name</c> or
+    /// <c>pluralName</c>, while no code map of the write covers the type, records no value map; each finding goes on the change of its
+    /// element, with the severity <c>validation.rules</c> gives it. Only the changed documents are read.
+    /// </summary>
+    private static IEnumerable<(int Change, Diagnostic Diagnostic)> PlainCodeEdits(ModelSnapshot before, ModelSnapshot after,
+        IReadOnlyDictionary<string, int> changed, IReadOnlyList<CodeMap> codeMaps)
+    {
+        var covered = codeMaps.SelectMany(m => new[] { m.ReferenceType, m.HeldType }).ToHashSet(StringComparer.Ordinal);
+        var found = new List<(int Change, Diagnostic Diagnostic)>();
+        foreach (var (id, change) in changed.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            var document = after.GetDocument(id);
+            switch (before.GetDocument(id)?.Element, document?.Element)
+            {
+                case (ReferenceType old, ReferenceType type) when !covered.Contains(type.Id):
+                    if (!string.Equals(old.Name, type.Name, StringComparison.Ordinal))
+                    {
+                        Add(change, $"Reference type '{old.Name}' was renamed to '{type.Name}' outside the refactor operations, so no value map was recorded and objects a pack named after '{old.Name}' keep that name; use rename-reference-type.",
+                            type.Id, document!.Path, "/name");
+                    }
+
+                    if (!string.Equals(old.PluralName, type.PluralName, StringComparison.Ordinal))
+                    {
+                        Add(change, $"The plural name of reference type '{type.Name}' changed from '{old.PluralName ?? "(inflected)"}' to '{type.PluralName ?? "(inflected)"}' outside the refactor operations, so no value map was recorded and objects a pack named after the old plural keep it; write a value-map fact whose from and to carry the two plural names.",
+                            type.Id, document!.Path, "/pluralName");
+                    }
+
+                    break;
+                case (Seed old, Seed seed) when string.Equals(old.Target, seed.Target, StringComparison.Ordinal) && !covered.Contains(seed.Target)
+                    && after.Get<ReferenceType>(seed.Target) is { } target:
+                    var was = Codes(old);
+                    var at = CodeColumn(seed);
+                    for (var r = 0; at >= 0 && r < seed.Rows.Count; r++)
+                    {
+                        var row = seed.Rows[r];
+                        if (at < row.Values.Count && ReferenceDataIndex.CodeKey(row.Values[at]) is { } code && was.TryGetValue(row.Id, out var previous)
+                            && !string.Equals(previous, code, StringComparison.Ordinal))
+                        {
+                            Add(change, $"The code of row {row.Id} of reference type '{target.Name}' changed from '{previous}' to '{code}' outside the refactor operations, so no value map was recorded and a database that stores '{previous}' keeps it; use rename-code (or retire-code to fold it into another code).",
+                                seed.Id, document!.Path, "/rows/" + r.ToString(CultureInfo.InvariantCulture) + "/values/" + at.ToString(CultureInfo.InvariantCulture));
+                        }
+                    }
+
+                    break;
+            }
+        }
+
+        return found;
+
+        void Add(int change, string message, string elementId, string path, string pointer)
+        {
+            foreach (var settled in Validation.ModelValidator.ApplySettings(after.Settings, [RuleCatalog.Create("MQ4114", message, elementId, path, pointer)]))
+                found.Add((change, settled));
+        }
+
+        static int CodeColumn(Seed seed)
+        {
+            for (var k = 0; k < seed.Columns.Count; k++)
+            {
+                if (string.Equals(seed.Columns[k], "code", StringComparison.Ordinal))
+                    return k;
+            }
+
+            return -1;
+        }
+
+        static Dictionary<string, string> Codes(Seed seed)
+        {
+            var codes = new Dictionary<string, string>(StringComparer.Ordinal);
+            var at = CodeColumn(seed);
+            foreach (var row in seed.Rows)
+            {
+                if (at >= 0 && at < row.Values.Count && ReferenceDataIndex.CodeKey(row.Values[at]) is { } code)
+                    codes.TryAdd(row.Id, code);
+            }
+
+            return codes;
+        }
     }
 
     /// <summary>The files a plan would write and delete (with the fact files it would record), ordered by path, with their text before and after.</summary>
@@ -1360,7 +1455,24 @@ public sealed record SaveResult(
     /// change was not saved. The pending ones' MQ4101 is in <see cref="Diagnostics"/>.
     /// </summary>
     public IReadOnlyList<RecordedFact>? Facts { get; init; }
+
+    /// <summary>
+    /// What a reference-type refactor (next-phase-2-design.md section 3.5) rewrites, read from the index: on the item of the type the
+    /// operation names (for a merge, the merged-away type's delete), in a dry run and on apply; <see langword="null"/> on every other
+    /// item.
+    /// </summary>
+    public RefactorUsage? Usage { get; init; }
 }
+
+/// <summary>What a reference-type refactor rewrites (next-phase-2-design.md section 3.5), found through the index, never a resolve.</summary>
+/// <param name="UseCount">The number of uses rewritten: codes in defaults, <c>allowedValues</c> entries and cells, ids that name a removed
+/// row, and references to a merged-away type.</param>
+/// <param name="Uses">The first 200 of them, ordinal by element id, then pointer; <see cref="ReferenceInfo.ToId"/> is the row or type
+/// the use named before the refactor.</param>
+/// <param name="RowsMoved">The rows a merge moves into the target type.</param>
+/// <param name="RowsRemoved">The rows removed: a retired code's row, a merged-away type's rows whose codes the target holds.</param>
+/// <param name="TranslationsRemoved">The translation entries removed with them (one per locale and node).</param>
+public sealed record RefactorUsage(int UseCount, IReadOnlyList<ReferenceInfo> Uses, int RowsMoved, int RowsRemoved, int TranslationsRemoved);
 
 /// <summary>What a delete does with references to the deleted element.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<DeleteResolution>))]
@@ -1492,11 +1604,73 @@ public enum BatchOp
     /// when no schema declares the property, a suffix does not fit or the holder already holds another value.
     /// </summary>
     [JsonStringEnumMemberName("tags-to-property")] TagsToProperty,
+
+    /// <summary>
+    /// <c>fold-into-stereotype</c> (next-phase-2-design.md section 3.1): stereotype <c>id</c>'s members replace the matching own members
+    /// of the designed and imported tables <c>tables</c> lists, or of every such table of schema <c>schema</c>. Each table carries the
+    /// stereotype; own columns match its columns by name and own keys, indexes and checks match its members structurally; what matched
+    /// leaves the table file and every reference to it names the inherited member's keyed id (<c>&lt;tableId&gt;.&lt;memberId&gt;</c>).
+    /// The database sees nothing: a redefinable facet that differs becomes a <c>redefines</c> entry with <c>redefine</c>, a member the
+    /// table lacks an <c>excludes</c> entry with <c>excludeMissing</c>; anything else refuses the table (MQ4077), and the batch writes
+    /// nothing. The write records one <c>rekey</c> fact per database. A table where nothing matches is skipped.
+    /// </summary>
+    [JsonStringEnumMemberName("fold-into-stereotype")] FoldIntoStereotype,
+
+    /// <summary>
+    /// <c>map-by-name</c> (next-phase-2-design.md section 3.3, decision 7): for each of <c>entities</c>, bound to <c>database</c>, maps
+    /// every attribute its binding does not map to a free column of the source with the same loose name (case and every character
+    /// that is not an ASCII letter or digit ignored): an attribute's name, <c>attributeMember</c> for a value object member, a to-one
+    /// navigation's name plus <c>Id</c> (or without it). Fields name a table file's columns by id and a view's by name; a table file's
+    /// binding records the provenance of the columns it maps. It writes no attribute and no column. Refused (MQ4089) for an entity with
+    /// no binding to the database, a source it cannot read (a query, a projected table), or when nothing matches for every entity.
+    /// </summary>
+    [JsonStringEnumMemberName("map-by-name")] MapByName,
+
+    /// <summary>
+    /// <c>resync-binding</c> (next-phase-2-design.md section 3.3, decision 8): brings the binding to <c>database</c> of each of
+    /// <c>entities</c>, whose source is a table file, into step with the table: renames an own attribute that followed its column's
+    /// name (unless <c>keepNames</c>), retypes an own attribute whose column was retyped, maps by name, adds an attribute per added
+    /// column still free, removes the fields of removed columns (never the attributes) and records the provenance of every column, or
+    /// with <c>columns</c> (one entity) works on those columns and updates only their entries. Refused (MQ4089) for an entity with no
+    /// binding, a source that is not a table file, <c>columns</c> misused, or when every binding it names is in step.
+    /// </summary>
+    [JsonStringEnumMemberName("resync-binding")] ResyncBinding,
+
+    /// <summary>
+    /// <c>rename-code</c> (next-phase-2-design.md section 3.5): gives the row of reference type <c>id</c> whose code is <c>code</c> the code
+    /// <c>to</c>, rewrites every default, <c>allowedValues</c> entry, seed cell and typed column's default, table seed cell or binding
+    /// constant that names <c>code</c>, and keeps <c>code</c> as a former code of the row. Refused (MQ7020) when <c>code</c> is no code
+    /// of a written row, or <c>to</c> equals it, is live, is a former code or does not fit the type's code.
+    /// </summary>
+    [JsonStringEnumMemberName("rename-code")] RenameCode,
+
+    /// <summary>
+    /// <c>retire-code</c>: removes the row of reference type <c>id</c> whose code is <c>code</c>, with its translations, rewrites the uses
+    /// of <c>code</c> to <c>to</c> and the ids that name the removed row (<c>x-ref</c> values, former codes) to the row of <c>to</c>, and
+    /// keeps <c>code</c> as a former code of that row. Refused (MQ7020) when either code is no code of a written row, or they are equal.
+    /// </summary>
+    [JsonStringEnumMemberName("retire-code")] RetireCode,
+
+    /// <summary>
+    /// <c>merge-reference-types</c>: merges reference type <c>id</c> (A) into <c>target</c> (B). An A code equal to a live B code maps to
+    /// it, <c>codes</c> maps others to B codes, and every other A row moves into B with its id, values and translations; A's seeds are
+    /// retargeted to B (one with the name of a B seed joins it), every reference to A names B, and B gains A's former codes and one per
+    /// mapped code; A is deleted. Refused (MQ7020) for mismatched code types, a binding or scripted rows on A, a code that is no live
+    /// code, a moving code B cannot take, a field B lacks, or two seeds of one name that differ in environments or apply.
+    /// </summary>
+    [JsonStringEnumMemberName("merge-reference-types")] MergeReferenceTypes,
+
+    /// <summary>
+    /// <c>rename-reference-type</c>: gives reference type <c>id</c> the name <c>name</c>; its file and the seeds in its seed folder move
+    /// as the name does. Refused (MQ7020) when the name is the current one, is not an element name or another reference type has it.
+    /// </summary>
+    [JsonStringEnumMemberName("rename-reference-type")] RenameReferenceType,
 }
 
 /// <summary>One batch operation.</summary>
 /// <param name="Op">The operation.</param>
-/// <param name="Id">The element id (update, delete; optional for create).</param>
+/// <param name="Id">The element id (update, delete; optional for create); the reference type a refactor acts on (rename-code, retire-code,
+/// rename-reference-type), the one merged away (merge-reference-types).</param>
 /// <param name="ExpectedHash">The ETag the caller loaded (update, delete).</param>
 /// <param name="Element">The element JSON (create, update).</param>
 /// <param name="Locale">The locale of a translation (translate).</param>
@@ -1504,22 +1678,24 @@ public enum BatchOp
 /// <param name="Value">The translated text, a sidecar reference, or null to remove it (translate).</param>
 /// <param name="Schema">The schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema).</param>
 /// <param name="Name">The schema name (add-schema, rename-schema); the new tag key (retag); the property the tags move to
-/// (tags-to-property).</param>
+/// (tags-to-property); the reference type's new name (rename-reference-type).</param>
 /// <param name="Target">The schema id that what lives in the removed schema moves to (remove-schema); the process (set-lifecycle); the
-/// child state (set-initial).</param>
+/// child state (set-initial); the reference type merged into (merge-reference-types).</param>
 /// <param name="Default">The schema id that becomes the default when the removed schema is the default (remove-schema).</param>
 /// <param name="Resolution">What a delete does with references to the element (delete); absent means <see cref="DeleteResolution.Refuse"/>.</param>
-/// <param name="Database">The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns).</param>
-/// <param name="Entities">The entity ids (materialize-tables, materialize-attributes, materialize-columns).</param>
+/// <param name="Database">The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns,
+/// map-by-name, resync-binding).</param>
+/// <param name="Entities">The entity ids (materialize-tables, materialize-attributes, materialize-columns, map-by-name,
+/// resync-binding).</param>
 /// <param name="Tables">The table and view ids (materialize-entities).</param>
 /// <param name="Package">The package id the entities go to (materialize-entities); the domain whose tag vocabulary it is (retag and
 /// tags-to-property; absent for the global one).</param>
-/// <param name="Columns">The source columns, as keys or physical names (materialize-attributes, one entity); absent means every column
-/// nothing in the binding names.</param>
+/// <param name="Columns">The source columns, as keys or physical names (materialize-attributes and resync-binding, one entity); absent
+/// means every column nothing in the binding names (materialize-attributes) or every column of the source (resync-binding).</param>
 /// <param name="Attributes">The binding field references, attribute ids among them (materialize-columns, one entity); absent means every
 /// attribute the binding leaves unmapped.</param>
 /// <param name="Tags">The tag keys (retag).</param>
-/// <param name="ExpectedHashes">Materialize, retag, tags-to-property and names-to-ids: the hash the caller read of each element it expects the operation to change or delete; given,
+/// <param name="ExpectedHashes">Materialize, retag, tags-to-property, names-to-ids and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete; given,
 /// an element that changed since, or that the operation changes but the map does not name, is a conflict.</param>
 /// <param name="As">Create and update: the placeholder (<c>$name</c>) that names the operation's element for the whole batch
 /// (next-phase-1-design.md section 5.1). Every id field of an operation may hold an id, a qualified name (<c>@kind:path</c>) or a
@@ -1527,12 +1703,22 @@ public enum BatchOp
 /// <param name="ElementIds">The elements <c>names-to-ids</c> and <c>tags-to-property</c> act on, each an id, a qualified name or a
 /// placeholder; absent means every element they apply to.</param>
 /// <param name="Prefix">The prefix of the tags that move into the property <c>name</c> (tags-to-property).</param>
+/// <param name="Redefine">fold-into-stereotype: write a <c>redefines</c> entry with the table's value for each redefinable facet in
+/// which an own member differs from the stereotype's, instead of refusing the table; absent means false.</param>
+/// <param name="ExcludeMissing">fold-into-stereotype: exclude each member the table lacks, instead of refusing the table; absent means
+/// false.</param>
+/// <param name="KeepNames">resync-binding: keep every attribute's name, even one that followed its column's name; absent means false.</param>
+/// <param name="Code">The code a refactor renames or retires, as the code's canonical text (rename-code, retire-code).</param>
+/// <param name="To">The new code (rename-code); the live code that replaces the retired one (retire-code).</param>
+/// <param name="Codes">merge-reference-types: codes of the merged-away type mapped to live codes of the target, for codes the target does
+/// not hold itself; absent maps none.</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
     string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
     string? Database = null, IReadOnlyList<string>? Entities = null, IReadOnlyList<string>? Tables = null, string? Package = null,
     IReadOnlyDictionary<string, string>? ExpectedHashes = null, IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null,
-    IReadOnlyList<string>? Tags = null, string? As = null, IReadOnlyList<string>? ElementIds = null, string? Prefix = null);
+    IReadOnlyList<string>? Tags = null, string? As = null, IReadOnlyList<string>? ElementIds = null, string? Prefix = null, bool? Redefine = null,
+    bool? ExcludeMissing = null, bool? KeepNames = null, string? Code = null, string? To = null, IReadOnlyDictionary<string, string>? Codes = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

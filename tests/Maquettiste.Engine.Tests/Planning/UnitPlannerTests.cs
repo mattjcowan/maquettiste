@@ -7,6 +7,7 @@ using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
 using Maquettiste.Testing;
 using static Maquettiste.Engine.Tests.Planning.PlanningKit;
+using Defaults = Maquettiste.Engine.Tests.Model.StereotypeDefaultsTests;
 
 namespace Maquettiste.Engine.Tests.Planning;
 
@@ -223,6 +224,34 @@ public sealed class UnitPlannerTests
         Assert.Equal(["clients", "legacy"], Tables("c"));
         Assert.Equal(["orders"], Tables("s"));
         Assert.Equal(["loose"], Tables("n"));
+    }
+
+    [Fact]
+    public async Task Where_stereotypes_matches_a_table_that_a_schema_default_reaches()
+    {
+        // next-phase-2-design.md section 3.1: the filter reads the resolved table's stereotypes, so a synthesized table without a file
+        // that a schema default reaches is selected, and a table the default does not reach is not.
+        var b = new ModelBuilder(seed: 7);
+        b.Stereotype("audited").AppliesTo("table");
+        var billing = b.Package("Billing");
+        b.Entity("Invoice", billing).Key("id", "uuid");
+        var customer = b.Entity("Customer", billing).Key("id", "uuid");
+        var main = b.Database("main", Dialect.PostgreSql);
+        var sales = main.Schema("sales");
+        var common = main.Schema("public");
+        main.Package(billing, sales);
+        b.Mapping(main, customer).Schema(common);
+        b.Table("ledger", main).Column("id", "uuid").Edit(t => t with { Schema = sales });
+        var model = Resolve(Defaults.Rebuild(b, e => Defaults.SchemaDefaults(e, sales, "audited")));
+
+        var packs = new PackSet([Pack("p", [Unit("a", "each table", new UnitWhere { Stereotypes = ["audited"] }),
+            Unit("n", "each table", new UnitWhere { NotStereotypes = ["audited"] })])], []);
+        var plan = await new UnitPlanner(Options).PlanAsync(model, packs, new ScriptSandboxFactory(), null, Ct);
+
+        Assert.Empty(plan.Diagnostics);
+        string[] Tables(string unit) => [.. plan.Units.Where(u => u.Unit.Id == unit).Select(u => ((RTable)u.Element!).Name).Order(StringComparer.Ordinal)];
+        Assert.Equal(["invoices", "ledger"], Tables("a"));
+        Assert.Equal(["customers"], Tables("n"));
     }
 
     [Fact]

@@ -22,6 +22,7 @@
     "decision",
     "status",
     "stereotypes",
+    "excludeStereotypes",
     "tags",
     "category",
     "columns",
@@ -31,6 +32,8 @@
     "checks",
     "exclusions",
     "indexes",
+    "redefines",
+    "excludes",
     "partitionBy",
     "partitions",
     "storage",
@@ -106,6 +109,10 @@
       "$ref": "common.json#/$defs/keyList",
       "default": []
     },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
+    },
     "tags": {
       "$ref": "common.json#/$defs/tagList",
       "default": []
@@ -116,357 +123,31 @@
     "columns": {
       "type": "array",
       "items": {
-        "title": "Column",
-        "type": "object",
-        "x-order": [
-          "id",
-          "name",
-          "displayName",
-          "pluralName",
-          "attribute",
-          "type",
-          "subtype",
-          "length",
-          "precision",
-          "scale",
-          "nativeType",
-          "unicode",
-          "fixedLength",
-          "nullable",
-          "default",
-          "defaultSql",
-          "defaultName",
-          "generated",
-          "identity",
-          "sequence",
-          "computed",
-          "computedStored",
-          "collation",
-          "comment",
-          "description",
-          "rationale",
-          "decision",
-          "status",
-          "stereotypes",
-          "tags",
-          "category",
-          "properties",
-          "generation",
-          "source"
-        ],
-        "properties": {
-          "id": {
-            "$ref": "common.json#/$defs/id"
-          },
-          "name": {
-            "$ref": "common.json#/$defs/label",
-            "default": ""
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "pluralName": {
-            "type": "string"
-          },
-          "attribute": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Overlay: the synthesized column key this column overrides."
-          },
-          "type": {
-            "$ref": "common.json#/$defs/columnType"
-          },
-          "subtype": {
-            "description": "The bound type of a range or multirange column, and only of one (MQ4057). A range column takes no length, precision or scale (MQ3013).",
-            "$ref": "common.json#/$defs/rangeSubtype"
-          },
-          "length": {
-            "$ref": "common.json#/$defs/length"
-          },
-          "precision": {
-            "$ref": "common.json#/$defs/precision"
-          },
-          "scale": {
-            "$ref": "common.json#/$defs/scale"
-          },
-          "nativeType": {
-            "type": "string",
-            "minLength": 1
-          },
-          "unicode": {
-            "description": "String and text columns: true stores Unicode text (SQL Server nvarchar and nchar, Oracle nvarchar2 and nchar, MySQL the utf8mb4 character set), false single-byte text (SQL Server varchar and char, Oracle varchar2 and char); absent takes the dialect's default, which is Unicode on SQL Server. PostgreSQL and SQLite keep every text in the database's encoding, so it changes nothing there. The type map's string:unicode, string:ansi and text:unicode entries decide the native types.",
-            "type": "boolean"
-          },
-          "fixedLength": {
-            "description": "String and binary columns: a fixed-length type of the column's length (char, nchar, binary) instead of a varying one; the type map's string:fixed and binary:fixed entries decide the native types.",
-            "type": "boolean",
-            "default": false
-          },
-          "nullable": {
-            "description": "Designed or extra column: true (the default) or false. Overlay (with attribute): omitted keeps the synthesized value.",
-            "type": "boolean",
-            "default": true,
-            "x-default-unless": "attribute"
-          },
-          "default": {},
-          "defaultSql": {
-            "$ref": "common.json#/$defs/dialectMap",
-            "default": {}
-          },
-          "defaultName": {
-            "description": "The name of the column's default constraint, where the dialect names defaults (SQL Server); absent names it df_<table>_<column>. Other dialects keep defaults in the column and ignore it.",
-            "$ref": "common.json#/$defs/label"
-          },
-          "generated": {
-            "enum": ["identity", "sequence"]
-          },
-          "identity": {
-            "description": "With generated identity: the identity's first value (seed), its step (increment) and whether the database always generates the value and refuses one an insert gives (always, GENERATED ALWAYS) instead of generating it only when none is given (GENERATED BY DEFAULT). PostgreSQL and Oracle write all three; SQL Server writes IDENTITY(seed, increment) and always generates; MySQL writes the seed as the table's AUTO_INCREMENT; what a dialect lacks is left out (MQ4056).",
-            "type": "object",
-            "x-order": ["seed", "increment", "always"],
-            "properties": {
-              "seed": {
-                "type": "integer"
-              },
-              "increment": {
-                "type": "integer",
-                "not": {
-                  "const": 0
-                }
-              },
-              "always": {
-                "type": "boolean",
-                "default": false
-              }
-            },
-            "additionalProperties": false
-          },
-          "sequence": {
-            "$ref": "common.json#/$defs/id"
-          },
-          "computed": {
-            "type": "string",
-            "minLength": 1
-          },
-          "computedStored": {
-            "type": "boolean",
-            "default": false
-          },
-          "collation": {
-            "type": "string",
-            "minLength": 1
-          },
-          "comment": {
-            "type": "string"
-          },
-          "description": {
-            "$ref": "common.json#/$defs/description"
-          },
-          "rationale": {
-            "description": "Markdown text: why the element is shaped this way.",
-            "type": "string",
-            "minLength": 1
-          },
-          "decision": {
-            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 2000
-          },
-          "status": {
-            "$ref": "common.json#/$defs/status"
-          },
-          "stereotypes": {
-            "$ref": "common.json#/$defs/keyList",
-            "default": []
-          },
-          "tags": {
-            "$ref": "common.json#/$defs/tagList",
-            "default": []
-          },
-          "category": {
-            "$ref": "common.json#/$defs/id"
-          },
-          "properties": {
-            "$ref": "common.json#/$defs/properties",
-            "default": {}
-          },
-          "generation": {
-            "$ref": "common.json#/$defs/generation",
-            "default": {}
-          },
-          "source": {
-            "$ref": "common.json#/$defs/source"
-          }
-        },
-        "required": ["id"],
-        "additionalProperties": false,
-        "if": {
-          "required": ["attribute"]
-        },
-        "then": {},
-        "else": {
-          "required": ["name", "type"]
-        }
+        "$ref": "common.json#/$defs/tableColumn"
       },
       "default": []
     },
     "primaryKey": {
-      "title": "Primary key",
-      "type": "object",
-      "x-order": ["name", "columns", "clustered", "withoutOverlaps"],
-      "properties": {
-        "name": {
-          "$ref": "common.json#/$defs/label"
-        },
-        "columns": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "minItems": 1
-        },
-        "clustered": {
-          "type": "boolean"
-        },
-        "withoutOverlaps": {
-          "description": "Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.",
-          "type": "boolean",
-          "default": false
-        }
-      },
-      "required": ["columns"],
-      "additionalProperties": false
+      "$ref": "common.json#/$defs/primaryKey"
     },
     "uniques": {
       "type": "array",
       "items": {
-        "title": "Unique constraint",
-        "type": "object",
-        "x-order": ["id", "name", "columns", "nullsNotDistinct", "withoutOverlaps"],
-        "properties": {
-          "id": {
-            "$ref": "common.json#/$defs/id"
-          },
-          "name": {
-            "$ref": "common.json#/$defs/label"
-          },
-          "columns": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
-            "minItems": 1
-          },
-          "nullsNotDistinct": {
-            "description": "Whether two rows with nulls in the columns conflict (NULLS NOT DISTINCT, PostgreSQL 15 and later); the other dialects leave it out (MQ4056).",
-            "type": "boolean",
-            "default": false
-          },
-          "withoutOverlaps": {
-            "description": "Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.",
-            "type": "boolean",
-            "default": false
-          }
-        },
-        "required": ["id", "columns"],
-        "additionalProperties": false
+        "$ref": "common.json#/$defs/uniqueConstraint"
       },
       "default": []
     },
     "foreignKeys": {
       "type": "array",
       "items": {
-        "title": "Foreign key",
-        "type": "object",
-        "x-order": ["id", "name", "columns", "referencesTable", "referencesColumns", "period", "onDelete", "onDeleteColumns", "onUpdate", "deferrable"],
-        "properties": {
-          "id": {
-            "$ref": "common.json#/$defs/id"
-          },
-          "name": {
-            "$ref": "common.json#/$defs/label"
-          },
-          "columns": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
-            "minItems": 1
-          },
-          "referencesTable": {
-            "type": "string",
-            "minLength": 1
-          },
-          "referencesColumns": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
-            "default": []
-          },
-          "period": {
-            "description": "Whether the last column pair is a period (PERIOD): each referencing row's period must be covered by referenced rows' periods, which a temporal key (withoutOverlaps) of the referenced table holds. PostgreSQL 18 and later; MQ4056 elsewhere.",
-            "type": "boolean",
-            "default": false
-          },
-          "onDelete": {
-            "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
-            "default": "no-action"
-          },
-          "onDeleteColumns": {
-            "description": "With onDelete set-null or set-default: the key's columns the action sets, a subset of columns (ON DELETE SET NULL (column, ...)). Empty sets every column of the key. Only PostgreSQL has a column list (MQ4056); on the other dialects the action sets every column.",
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
-            "default": []
-          },
-          "onUpdate": {
-            "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
-            "default": "no-action"
-          },
-          "deferrable": {
-            "description": "When the key is checked: not-deferrable (every statement), initially-immediate (every statement unless a transaction defers it with SET CONSTRAINTS) or initially-deferred (at commit). PostgreSQL, SQLite and Oracle have deferrable keys; SQL Server and MySQL check every statement and leave it out (MQ4056).",
-            "enum": ["not-deferrable", "initially-immediate", "initially-deferred"],
-            "default": "not-deferrable"
-          }
-        },
-        "required": ["id", "columns", "referencesTable"],
-        "additionalProperties": false
+        "$ref": "common.json#/$defs/foreignKey"
       },
       "default": []
     },
     "checks": {
       "type": "array",
       "items": {
-        "title": "Check constraint",
-        "type": "object",
-        "x-order": ["id", "name", "column", "expression"],
-        "properties": {
-          "id": {
-            "$ref": "common.json#/$defs/id"
-          },
-          "name": {
-            "$ref": "common.json#/$defs/label"
-          },
-          "column": {
-            "description": "A column check: the id or key of the column it constrains. The constraint is written in the table like any other check; a migration that drops the column drops the check first.",
-            "type": "string",
-            "minLength": 1
-          },
-          "expression": {
-            "$ref": "common.json#/$defs/dialectMap",
-            "minProperties": 1
-          }
-        },
-        "required": ["id", "expression"],
-        "additionalProperties": false
+        "$ref": "common.json#/$defs/checkConstraint"
       },
       "default": []
     },
@@ -546,91 +227,149 @@
     "indexes": {
       "type": "array",
       "items": {
-        "title": "Index",
+        "$ref": "common.json#/$defs/tableIndex"
+      },
+      "default": []
+    },
+    "redefines": {
+      "description": "Per-table exceptions to members (columns, keys, indexes and checks) the table inherits from its stereotypes: each entry names a stereotype member by its id and states only the facets it changes. The member keeps its keyed id (<table key>.<member id>). A column takes nullable, default, defaultSql, defaultName, comment and collation (default or defaultSql replaces the inherited default of either form); a primary key columns, name and clustered; a unique columns, name and nullsNotDistinct (columns lists the whole new list: own column ids and inherited keyed ids); a foreign key name, onDelete, onDeleteColumns, onUpdate and deferrable; an index name, where, method and storage (which replaces the inherited map); a check name. Type facets and a column's name are not redefinable: exclude the member and declare an own column (MQ2027).",
+      "type": "array",
+      "items": {
+        "title": "Redefinition",
         "type": "object",
-        "x-order": ["id", "name", "columns", "include", "where", "unique", "method", "storage"],
+        "x-order": [
+          "member",
+          "name",
+          "nullable",
+          "default",
+          "defaultSql",
+          "defaultName",
+          "comment",
+          "collation",
+          "columns",
+          "clustered",
+          "nullsNotDistinct",
+          "onDelete",
+          "onDeleteColumns",
+          "onUpdate",
+          "deferrable",
+          "where",
+          "method",
+          "storage"
+        ],
         "properties": {
-          "id": {
+          "member": {
+            "description": "The id of the stereotype member the entry redefines.",
             "$ref": "common.json#/$defs/id"
           },
           "name": {
+            "description": "A key's, index's or check's constraint name for this table, instead of the naming convention's.",
             "$ref": "common.json#/$defs/label"
           },
-          "columns": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "x-order": ["column", "expression", "operatorClass", "descending", "nulls", "length"],
-              "properties": {
-                "column": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "expression": {
-                  "description": "An expression indexed instead of a column (a functional index), per dialect name or \"*\": written in parentheses. A dialect without an entry leaves the index out; SQL Server indexes no expression (MQ4056: index a computed column instead), MySQL from 8.0.13 (not MariaDB).",
-                  "$ref": "common.json#/$defs/dialectMap",
-                  "minProperties": 1
-                },
-                "operatorClass": {
-                  "description": "The operator class the column or expression is indexed with (PostgreSQL), such as gin_trgm_ops for a trigram index or vector_cosine_ops for a vector index; written after it as it is, so it may carry parameters (gist_trgm_ops (siglen = 32)). MQ4056 elsewhere.",
-                  "type": "string",
-                  "minLength": 1
-                },
-                "descending": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "nulls": {
-                  "description": "Where nulls sort: PostgreSQL's NULLS FIRST or NULLS LAST. Unset keeps the direction's default (last ascending, first descending), and a value equal to it changes nothing. MQ4056 elsewhere.",
-                  "enum": ["first", "last"]
-                },
-                "length": {
-                  "description": "A key prefix length: only the first characters or bytes of the column are indexed (MySQL, which needs one for a text or blob column; the other dialects leave it out, MQ4056).",
-                  "type": "integer",
-                  "minimum": 1
-                }
-              },
-              "oneOf": [
-                {
-                  "required": ["column"]
-                },
-                {
-                  "required": ["expression"]
-                }
-              ],
-              "additionalProperties": false
-            },
-            "minItems": 1
+          "nullable": {
+            "type": "boolean"
           },
-          "include": {
+          "default": {},
+          "defaultSql": {
+            "$ref": "common.json#/$defs/dialectMap"
+          },
+          "defaultName": {
+            "$ref": "common.json#/$defs/label"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "collation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "columns": {
             "type": "array",
             "items": {
               "type": "string",
               "minLength": 1
             },
-            "default": []
+            "minItems": 1
+          },
+          "clustered": {
+            "type": "boolean"
+          },
+          "nullsNotDistinct": {
+            "type": "boolean"
+          },
+          "onDelete": {
+            "enum": [
+              "no-action",
+              "restrict",
+              "cascade",
+              "set-null",
+              "set-default"
+            ]
+          },
+          "onDeleteColumns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "onUpdate": {
+            "enum": [
+              "no-action",
+              "restrict",
+              "cascade",
+              "set-null",
+              "set-default"
+            ]
+          },
+          "deferrable": {
+            "enum": [
+              "not-deferrable",
+              "initially-immediate",
+              "initially-deferred"
+            ]
           },
           "where": {
             "type": "string",
             "minLength": 1
           },
-          "unique": {
-            "type": "boolean",
-            "default": false
-          },
           "method": {
-            "description": "The index method: btree and hash (PostgreSQL, MySQL); gin, gist, spgist and brin (PostgreSQL); hnsw and ivfflat (PostgreSQL with the vector extension, which a SQL object with phase before creates); clustered (SQL Server, and PostgreSQL CLUSTER). MQ4056 where the dialect lacks it.",
-            "enum": ["default", "btree", "hash", "gin", "gist", "spgist", "brin", "hnsw", "ivfflat", "clustered"],
-            "default": "default"
+            "enum": [
+              "default",
+              "btree",
+              "hash",
+              "gin",
+              "gist",
+              "spgist",
+              "brin",
+              "hnsw",
+              "ivfflat",
+              "clustered"
+            ]
           },
           "storage": {
-            "description": "Index storage parameters per dialect (PostgreSQL and SQL Server WITH (...), such as fillfactor, pages_per_range for brin, m and ef_construction for hnsw, lists for ivfflat). MySQL and Oracle leave them out (MQ4056).",
-            "$ref": "common.json#/$defs/storage"
+            "description": "Index storage parameters per dialect for this table: they replace the inherited map whole, and an empty map removes them.",
+            "allOf": [
+              {
+                "$ref": "common.json#/$defs/storage"
+              }
+            ]
           }
         },
-        "required": ["id", "columns"],
+        "required": [
+          "member"
+        ],
+        "minProperties": 2,
         "additionalProperties": false
       },
+      "x-sort": "member",
+      "default": []
+    },
+    "excludes": {
+      "description": "Ids of stereotype members (columns, keys, indexes and checks) the table does not inherit. A column that an inherited key, index or check the table keeps uses cannot be excluded alone (MQ2028).",
+      "$ref": "common.json#/$defs/idList",
+      "uniqueItems": true,
+      "x-sort": ".",
       "default": []
     },
     "partitionBy": {

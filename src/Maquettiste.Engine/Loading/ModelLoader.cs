@@ -430,6 +430,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         var extensions = new List<ExtensionDocument>();
         var scripts = new List<ScriptSource>();
+        var seedScripts = new List<ScriptSource>();
         var shards = new List<LocaleShardDocument>();
         foreach (var entry in entries.Values.OrderBy(e => e.ModelPath, StringComparer.Ordinal))
         {
@@ -455,12 +456,18 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                     if (entry.Parsed.Text is { } code)
                         scripts.Add(new ScriptSource(_paths.ToRepoPath(entry.ModelPath), code, entry.Hash));
                     break;
+                case ModelFileKind.SeedScript:
+                    // Rows scripts are read, never run: a seed runs its script when something reads its rows (section 3.4).
+                    diagnostics.AddRange(entry.Parsed.Diagnostics);
+                    if (entry.Parsed.Text is { } rows)
+                        seedScripts.Add(new ScriptSource(_paths.ToRepoPath(entry.ModelPath), rows, entry.Hash));
+                    break;
             }
         }
 
         diagnostics.Sort(Diagnostic.Order);
         var snapshot = ModelSnapshot.CreateAfter(previousSnapshot, documents, settings, settingsHash, extensions, scripts, version, diagnostics,
-            options.EffectiveParallelism, ct, shards);
+            options.EffectiveParallelism, ct, shards, seedScripts);
         return (snapshot, byPath);
     }
 
@@ -519,8 +526,8 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var dependencyHash = sidecarHash is null && entry.OwnDependencyHash is { } bytesOnly ? bytesOnly : HashBuilder.Of(entry.Hash, sidecarHash);
         if (previousDocuments.TryGetValue(repoPath, out var previous) && previous.Hash == entry.Hash && previous.DependencyHash == dependencyHash)
             return previous;
-        var (element, json) = entry.Parsed.Element is Seed { RowsFrom: { } rowsFrom } seed
-            ? WithCsvRows(seed, rowsFrom, entry.ModelPath, entry.Parsed.Json, entries)
+        var (element, json) = entry.Parsed.Element is Seed { RowsFrom.File: { } rowsFile } seed
+            ? WithCsvRows(seed, rowsFile, entry.ModelPath, entry.Parsed.Json, entries)
             : (entry.Parsed.Element!, entry.Parsed.Json);
         return new ElementDocument(element, repoPath, entry.Hash, dependencyHash, json, sidecarText);
     }
@@ -530,14 +537,14 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     /// the file held them, so validation, the editor and every write see the same rows; a change planner writes them back to the CSV.
     /// A missing or unreadable file, or rows in both places, is <see cref="Seed.RowsProblem"/> (MQ7116).
     /// </summary>
-    private static (Element Element, JsonElement Json) WithCsvRows(Seed seed, SeedRowsFile rowsFrom, string modelPath, JsonElement json,
+    private static (Element Element, JsonElement Json) WithCsvRows(Seed seed, string rowsFile, string modelPath, JsonElement json,
         Dictionary<string, FileEntry> entries)
     {
         if (seed.Rows.Count > 0)
-            return (seed with { RowsProblem = $"The seed has rows of its own and a rows file ({rowsFrom.File}); keep one." }, json);
-        var path = ModelPaths.ResolveSidecar(modelPath, rowsFrom.File);
+            return (seed with { RowsProblem = $"The seed has rows of its own and a rows file ({rowsFile}); keep one." }, json);
+        var path = ModelPaths.ResolveSidecar(modelPath, rowsFile);
         if (path is null || !entries.TryGetValue(path, out var file) || file.Kind != ModelFileKind.Sidecar || file.Parsed.Text is not { } text)
-            return (seed with { RowsProblem = $"The rows file {rowsFrom.File} is missing." }, json);
+            return (seed with { RowsProblem = $"The rows file {rowsFile} is missing." }, json);
         var rows = SeedCsv.Read(text, seed.Columns, out var problem);
         if (problem is not null)
             return (seed with { RowsProblem = problem }, json);
@@ -650,6 +657,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         result.UnionWith(EnumerateUnder("model"));
         result.UnionWith(EnumerateFiles("extensions", ".json", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/rules", ".js", recursive: false));
+        result.UnionWith(EnumerateFiles("extensions/seeds", ".js", recursive: false));
         return result;
     }
 

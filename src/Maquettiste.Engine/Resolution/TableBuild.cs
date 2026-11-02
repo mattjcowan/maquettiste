@@ -56,6 +56,12 @@ internal sealed class TableBuild
     /// <summary>Whether a table file makes the primary key temporal (WITHOUT OVERLAPS).</summary>
     public bool PrimaryKeyWithoutOverlaps { get; set; }
 
+    /// <summary>The primary key's id: the table file's, or the keyed id of an inherited key; <see langword="null"/> without one.</summary>
+    public string? PrimaryKeyId { get; set; }
+
+    /// <summary>Where the primary key comes from: <see langword="null"/> for the table's own, else the stereotype that contributes it.</summary>
+    public RMemberOrigin? PrimaryKeyOrigin { get; set; }
+
     public List<UniqueSpec> Uniques { get; } = [];
 
     public List<ForeignKeySpec> ForeignKeys { get; } = [];
@@ -78,17 +84,31 @@ internal sealed class TableBuild
 
     public DependencySet Deps { get; }
 
+    /// <summary>
+    /// What the table's effective stereotype set is built from (next-phase-2-design.md section 3.1): its file's holder
+    /// (<see cref="ModelSnapshot.HolderOf"/>), or for a table without a file the one the resolver builds by ids (its entity's or
+    /// relation's package, its schema by <c>StereotypeDefaults.SchemaOf</c>, a child table's from its owner's). Set by
+    /// <c>DatabaseRun.AddTable</c>.
+    /// </summary>
+    public StereotypeHolder Holder { get; set; } = null!;
+
+    /// <summary>The table's effective stereotype set: <see cref="ModelSnapshot.EffectiveStereotypes(StereotypeHolder)"/> of <see cref="Holder"/>.</summary>
+    public IReadOnlyList<AppliedStereotype> Effective { get; set; } = [];
+
     /// <summary>A column by key or id.</summary>
     public RColumn? Resolve(string key) => ByKey.GetValueOrDefault(key);
 }
 
-/// <summary>A unique constraint to resolve.</summary>
+/// <summary>A unique constraint to resolve; <paramref name="Origin"/> is <see langword="null"/> for the table's own, else the stereotype that
+/// contributes it (next-phase-2-design.md section 3.1).</summary>
 internal sealed record UniqueSpec(IReadOnlyList<string> Columns, string? Name, string? NameToken, string? Id = null, bool NullsNotDistinct = false,
-    bool WithoutOverlaps = false);
+    bool WithoutOverlaps = false, RMemberOrigin? Origin = null);
 
-/// <summary>An index to resolve.</summary>
+/// <summary>An index to resolve; <paramref name="Origin"/> is <see langword="null"/> for the table's own, else the stereotype that
+/// contributes it.</summary>
 internal sealed record IndexSpec(IReadOnlyList<IndexColumnSpec> Columns, IReadOnlyList<string> Include, string? Where, bool Unique,
-    string Method, string? Name, bool FromFile = false, string? Id = null, IReadOnlyList<RStorageParameter>? Storage = null);
+    string Method, string? Name, bool FromFile = false, string? Id = null, IReadOnlyList<RStorageParameter>? Storage = null,
+    RMemberOrigin? Origin = null);
 
 /// <summary>
 /// A column of an index to resolve: a column key, or an expression for the dialect (<paramref name="Column"/> is then
@@ -98,8 +118,9 @@ internal sealed record IndexSpec(IReadOnlyList<IndexColumnSpec> Columns, IReadOn
 internal sealed record IndexColumnSpec(string? Column, bool Descending, string? Expression = null, int? Length = null, string? OperatorClass = null,
     string? Nulls = null);
 
-/// <summary>A check constraint to resolve.</summary>
-internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, string? Id = null, string? Column = null);
+/// <summary>A check constraint to resolve; <paramref name="Origin"/> is <see langword="null"/> for the table's own, else the stereotype that
+/// contributes it.</summary>
+internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, string? Id = null, string? Column = null, RMemberOrigin? Origin = null);
 
 /// <summary>A foreign key to resolve; <see cref="Result"/> exists from the start so mappings can hold it.</summary>
 internal sealed class ForeignKeySpec(TableBuild host, IReadOnlyList<string> columns, TableBuild? target, string? targetKey,
@@ -124,8 +145,14 @@ internal sealed class ForeignKeySpec(TableBuild host, IReadOnlyList<string> colu
     /// <summary>The designed table or overlay file that declares the key; <see langword="null"/> for a synthesized key.</summary>
     public string? FileId { get; init; }
 
-    /// <summary>The key's id in its file; <see langword="null"/> for a synthesized key.</summary>
+    /// <summary>The key's id in its file, or an inherited key's keyed id; <see langword="null"/> for a synthesized key.</summary>
     public string? Id { get; init; }
+
+    /// <summary>
+    /// For a key a stereotype contributes (next-phase-2-design.md section 3.1): the member's id and the effective-set entry that gives
+    /// it, which place a finding about it; <see langword="null"/> for the table's own. Its origin is on <see cref="Result"/>.
+    /// </summary>
+    public (string MemberId, AppliedStereotype From)? Inherited { get; init; }
 }
 
 /// <summary>Where an entity's rows live in one database.</summary>

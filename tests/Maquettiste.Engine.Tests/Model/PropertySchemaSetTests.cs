@@ -126,6 +126,36 @@ public sealed class PropertySchemaSetTests
         Assert.Equal(PropertySchemaSet.Empty.Hash, PropertySchemaSet.Create([], null).Hash);
     }
 
+    [Fact]
+    public async Task A_package_default_types_the_properties_of_its_members()
+    {
+        // next-phase-2-design.md section 3.1: a stereotype a package default gives types its members' properties as an own one does:
+        // For and Sites take the element's effective keys, so the index records the link and the validator checks the parameters.
+        var b = new ModelBuilder(23);
+        b.Stereotype("owned").AppliesTo("entity").Parameters("""{ "owner": { "type": "string", "x-ref": { "kind": "entity" } } }""", "owner");
+        var billing = b.Package("Billing");
+        var customer = b.Entity("Customer").Key("id", "uuid");
+        var invoice = b.Entity("Invoice", billing).Key("id", "uuid").Property("owner", customer.Id);
+        var payment = b.Entity("Payment", billing).Key("id", "uuid");
+        var stray = b.Entity("Stray").Key("id", "uuid").Property("owner", customer.Id);
+        var model = StereotypeDefaultsTests.Rebuild(b, e => e is Package p && p.Id == billing.Id ? p with { DefaultStereotypes = ["owned"] } : e);
+
+        var element = model.Get<Entity>(invoice.Id)!;
+        var keys = model.PropertyKeys(element);
+        Assert.Equal(["owned"], keys);
+        Assert.Contains(model.PropertySchemas.For(PropertyHost.Of(element, keys).First()), s => s.StereotypeKey == "owned");
+        Assert.Equal(["/properties/owner"], model.PropertySchemas.Sites(element, keys).Select(site => site.Pointer));
+        Assert.Empty(model.PropertySchemas.Sites(element, null)); // its own list alone types nothing
+        Assert.Empty(model.PropertyKeys(model.Get<Entity>(stray.Id)!)!); // outside the package: no default
+
+        Assert.Contains(model.ReferencesTo(customer.Id), r => r is { Field: "owner", Schema: "stereotype:owned" } && r.FromElementId == invoice.Id);
+        Assert.DoesNotContain(model.ReferencesTo(customer.Id), r => r.FromElementId == stray.Id);
+
+        var report = await Validation.ValidationFixture.Validator().ValidateAsync(model, ValidationScope.All, null, TestContext.Current.CancellationToken);
+        var missing = Assert.Single(report.Diagnostics, d => d.Rule == "MQ2018");
+        Assert.Equal((payment.Id, ""), (missing.ElementId, missing.JsonPointer ?? ""));
+    }
+
     internal static ExtensionDocument Extension(string properties, string name = "links", IReadOnlyList<string>? kinds = null,
         IReadOnlyList<string>? stereotypes = null, string? path = null)
     {

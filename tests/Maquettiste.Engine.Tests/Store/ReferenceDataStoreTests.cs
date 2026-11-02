@@ -6,6 +6,7 @@ using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Tests.Loading;
 using Maquettiste.Engine.Validation;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
@@ -222,6 +223,168 @@ public sealed class ReferenceDataStoreTests
     }
 
     [Fact]
+    public async Task Removing_a_stereotype_column_drops_its_keyed_seed_columns_and_member_links()
+    {
+        // next-phase-2-design.md section 3.1 (D10): a seed names an inherited column by its keyed id <tableId>.<memberId>; removing the
+        // member from its stereotype drops that column with its cells, and the redefines and excludes entries that name the removed
+        // members, in the same save. Entries naming a member that stays are kept.
+        var (h, store) = await OpenAsync(StampedTables);
+        using var _ = h;
+        await using var __ = store;
+        var stamped = store.Current!.GetDocument(StampedId)!;
+
+        var saved = await store.SaveAsync(StampedId, Edit(store, StampedId, n =>
+        {
+            n["columns"]!.AsArray().RemoveAt(1);
+            n.Remove("indexes");
+        }), stamped.Hash, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
+        var model = store.Current!;
+        var seed = model.Get<Seed>(ShelfSeed)!;
+        Assert.Equal([ShelfId, ShelfLabelId], seed.Columns);
+        Assert.Equal(["[1,\"top\"]", "[2,\"bottom\"]"], seed.Rows.Select(r => System.Text.Json.JsonSerializer.Serialize(r.Values)));
+        var shelves = model.Get<Table>(ShelvesId)!;
+        Assert.Equal([StampedAtId], shelves.Redefines.Select(r => r.Member));
+        Assert.Empty(model.Get<Table>(RacksId)!.Excludes);
+        Assert.Equal([StampedAtId], model.Get<Table>(BinsId)!.Excludes);
+        Assert.Equal(
+            new[] { StampedId, ShelfSeed, ShelvesId, RacksId }.Order(StringComparer.Ordinal),
+            saved.Changes!.Changed.Where(c => c.Kind != "migration").Select(c => c.Id).Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(model.ReferencesTo(StampedById), r => true);
+    }
+
+    [Fact]
+    public async Task Usage_lists_designed_columns_typed_by_the_type()
+    {
+        // next-phase-2-design.md section 3.2 (D24): the usage lists the designed, extra and inherited columns whose own typeRef names the
+        // type, ordinal by table id then column id, with the effective storage choice in their database; the projected columns of
+        // attributes typed by it stay covered by their attributes, and a column typed by another type is not listed.
+        var (h, store) = await OpenAsync(TypedPantry);
+        using var _ = h;
+        await using var __ = store;
+        Assert.DoesNotContain((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+
+        var usage = (await store.GetReferenceTypeUsageAsync(UnitOfMeasure, Ct))!;
+
+        Assert.Contains(usage.Usages, u => u.Attribute == PreferredUnit && u.Owner == Ingredient);
+        var recipes = Recipe + "@" + PantryDatabaseId;
+        Assert.Equal(
+            new[]
+            {
+                (recipes, PantryStockUnitId, PantryDatabaseId, false),
+                (PantryItemsId, PantryItemsId + "." + MeasuredUnitId, PantryDatabaseId, false),
+                (PantryItemsId, PantryUnitId, PantryDatabaseId, true),
+            },
+            usage.Columns.Select(c => (c.Table, c.Column, c.Database, c.Required)));
+        Assert.All(usage.Columns, c =>
+        {
+            Assert.Null(c.Domain);
+            Assert.Equal("native", c.Storage?.Strategy);
+            Assert.Null(c.BoundTable);
+        });
+        var allergen = (await store.GetReferenceTypeUsageAsync(Allergen, Ct))!;
+        Assert.Equal([(PantryItemsId, PantryAllergenId)], allergen.Columns.Select(c => (c.Table, c.Column)));
+        Assert.Equal("lookup-table", Assert.Single(allergen.Columns).Storage?.Strategy);
+        Assert.Null(await store.GetReferenceTypeUsageAsync(PantryItemsId, Ct));
+    }
+
+    private const string PantryDatabaseId = "01JRDV00000000000000000001";
+    private const string MeasuredId = "01JRDV00000000000000000010";
+    private const string MeasuredUnitId = "01JRDV00000000000000000011";
+    private const string PantryItemsId = "01JRDV00000000000000000020";
+    private const string PantryUnitId = "01JRDV00000000000000000022";
+    private const string PantryAllergenId = "01JRDV00000000000000000023";
+    private const string RecipeOverlayId = "01JRDV00000000000000000030";
+    private const string PantryStockUnitId = "01JRDV00000000000000000031";
+
+    /// <summary>
+    /// A database <c>pantry</c> where the designed table pantry_items types its unit by UnitOfMeasure and its allergen by Allergen, and
+    /// inherits a nullable unit_code typed by UnitOfMeasure from the stereotype <c>measured</c>; Recipe alone maps there, and the overlay
+    /// of its table adds an extra column stock_unit typed by UnitOfMeasure. Allergen states no storage; the project's lookup-table choice
+    /// applies to it, and UnitOfMeasure's own <c>native</c> for the pantry to the other.
+    /// </summary>
+    private static void TypedPantry(LoaderHarness h)
+    {
+        h.Write("model/databases/pantry/database.json", $$"""
+            { "kind": "database", "id": "{{PantryDatabaseId}}", "name": "pantry", "dialect": "postgresql", "byConvention": "none" }
+            """);
+        h.Write("model/mappings/recipe-in-pantry.json", $$"""
+            { "kind": "mapping", "id": "01JRDV00000000000000000040", "name": "Recipe in pantry", "database": "{{PantryDatabaseId}}",
+              "entity": "{{Recipe}}" }
+            """);
+        // The pantry stores units natively, which holds Ingredient's collection of units there, so MQ7006 stays quiet.
+        var units = h.Model("model/reference-types/unit-of-measure.json");
+        File.WriteAllText(units, File.ReadAllText(units).Replace("\"storage\": {", $$"""
+            "storage": { "{{PantryDatabaseId}}": { "strategy": "native" },
+            """, StringComparison.Ordinal));
+        h.Write("model/vocabularies/stereotypes/measured.json", $$"""
+            { "kind": "stereotype", "id": "{{MeasuredId}}", "key": "measured", "name": "Measured", "appliesTo": ["table"],
+              "columns": [ { "id": "{{MeasuredUnitId}}", "name": "unit_code", "type": "string", "length": 8,
+                             "typeRef": { "ref": "{{UnitOfMeasure}}" } } ] }
+            """);
+        h.Write("model/databases/pantry/tables/pantry-items.json", $$"""
+            { "kind": "table", "id": "{{PantryItemsId}}", "name": "pantry_items", "database": "{{PantryDatabaseId}}", "stereotypes": ["measured"],
+              "columns": [ { "id": "01JRDV00000000000000000021", "name": "id", "type": "uuid", "nullable": false },
+                           { "id": "{{PantryUnitId}}", "name": "unit", "type": "string", "typeRef": { "ref": "{{UnitOfMeasure}}" }, "nullable": false },
+                           { "id": "{{PantryAllergenId}}", "name": "allergen", "type": "string", "typeRef": { "ref": "{{Allergen}}" } } ],
+              "primaryKey": { "columns": ["01JRDV00000000000000000021"] } }
+            """);
+        h.Write("model/databases/pantry/tables/recipes.json", $$"""
+            { "kind": "table", "id": "{{RecipeOverlayId}}", "database": "{{PantryDatabaseId}}", "origin": "synthesized", "entity": "{{Recipe}}",
+              "columns": [ { "id": "{{PantryStockUnitId}}", "name": "stock_unit", "type": "string", "length": 8,
+                             "typeRef": { "ref": "{{UnitOfMeasure}}" } } ] }
+            """);
+    }
+
+    private const string StoreDatabaseId = "01JRDT00000000000000000001";
+    private const string StampedId = "01JRDT00000000000000000010";
+    private const string StampedAtId = "01JRDT00000000000000000011";
+    private const string StampedById = "01JRDT00000000000000000012";
+    private const string StampedIndexId = "01JRDT00000000000000000013";
+    private const string ShelvesId = "01JRDT00000000000000000020";
+    private const string ShelfId = "01JRDT00000000000000000021";
+    private const string ShelfLabelId = "01JRDT00000000000000000022";
+    private const string RacksId = "01JRDT00000000000000000040";
+    private const string BinsId = "01JRDT00000000000000000050";
+    private const string ShelfSeed = "01JRDT00000000000000000030";
+
+    /// <summary>
+    /// A database <c>store</c> with a stereotype <c>stamped</c> (columns stamped_at and stamped_by, an index on stamped_by) carried by three
+    /// designed tables: shelves redefines both columns and has a seed naming its inherited stamped_by, racks excludes stamped_by and the
+    /// index, bins excludes stamped_at.
+    /// </summary>
+    private static void StampedTables(LoaderHarness h)
+    {
+        h.Write("model/databases/store/database.json", $$"""
+            { "kind": "database", "id": "{{StoreDatabaseId}}", "name": "store", "dialect": "postgresql" }
+            """);
+        h.Write("model/vocabularies/stereotypes/stamped.json", $$"""
+            { "kind": "stereotype", "id": "{{StampedId}}", "key": "stamped", "name": "Stamped", "appliesTo": ["table"],
+              "columns": [ { "id": "{{StampedAtId}}", "name": "stamped_at", "type": "datetimeoffset" },
+                           { "id": "{{StampedById}}", "name": "stamped_by", "type": "string", "length": 40 } ],
+              "indexes": [ { "id": "{{StampedIndexId}}", "columns": [ { "column": "{{StampedById}}" } ] } ] }
+            """);
+        string Table(string id, string name, string links) => $$"""
+            { "kind": "table", "id": "{{id}}", "name": "{{name}}", "database": "{{StoreDatabaseId}}", "stereotypes": ["stamped"],
+              "columns": [ { "id": "{{id[..^1]}}1", "name": "id", "type": "int32", "nullable": false },
+                           { "id": "{{id[..^1]}}2", "name": "label", "type": "string", "length": 40 } ],
+              "primaryKey": { "columns": ["{{id[..^1]}}1"] }{{links}} }
+            """;
+        h.Write("model/databases/store/tables/shelves.json", Table(ShelvesId, "shelves", $$"""
+            , "redefines": [ { "member": "{{StampedAtId}}", "comment": "When it was stamped." }, { "member": "{{StampedById}}", "comment": "Who stamped it." } ]
+            """));
+        h.Write("model/databases/store/tables/racks.json", Table(RacksId, "racks", $$""", "excludes": ["{{StampedById}}", "{{StampedIndexId}}"]"""));
+        h.Write("model/databases/store/tables/bins.json", Table(BinsId, "bins", $$""", "excludes": ["{{StampedAtId}}"]"""));
+        h.Write("model/seeds/shelves/shelves.json", $$"""
+            { "kind": "seed", "id": "{{ShelfSeed}}", "name": "Shelves", "target": "{{ShelvesId}}",
+              "columns": ["{{ShelfId}}", "{{ShelfLabelId}}", "{{ShelvesId}}.{{StampedById}}"],
+              "rows": [ { "id": "01JRDT00000000000000000031", "values": [1, "top", "ann"] },
+                        { "id": "01JRDT00000000000000000032", "values": [2, "bottom", "bo"] } ] }
+            """);
+    }
+
+    [Fact]
     public async Task Reference_types_and_seeds_are_created_and_saved_with_etags_in_batches()
     {
         var (h, store) = await OpenAsync();
@@ -363,6 +526,65 @@ public sealed class ReferenceDataStoreTests
         var upper = Assert.Single(report.Diagnostics, d => d.JsonPointer == "/rows/1/values/0");
         Assert.Contains("write it as '0190a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6c'", upper.Message, StringComparison.Ordinal);
         Assert.Equal("uuid", store.Current!.Get<ReferenceType>(Batch)!.Code.Type);
+    }
+
+    private const string PinchRow = "01JB5GQAPENECFSECZP11HYGCP";
+
+    /// <summary>Gives <c>UnitOfMeasure</c> former codes (next-phase-2-design.md section 3.5) in its file on disk.</summary>
+    private static void FormerCodes(LoaderHarness harness, params (string Code, string ReplacedBy)[] codes)
+    {
+        var path = harness.Model("model/reference-types/unit-of-measure.json");
+        var node = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node["formerCodes"] = new JsonArray([.. codes.Select(c => (JsonNode)new JsonObject { ["code"] = c.Code, ["replacedBy"] = c.ReplacedBy })]);
+        File.WriteAllBytes(path, TestServices.Json.Write(node, "reference-type.json", ".maquettiste/model/reference-types/unit-of-measure.json"));
+    }
+
+    [Fact]
+    public async Task Import_skips_a_row_whose_code_is_a_former_code()
+    {
+        var (h, store) = await OpenAsync(harness => FormerCodes(harness, ("gram", GramRow)));
+        using var _ = h;
+        await using var __ = store;
+        Assert.Empty(WithoutCompleteness(await store.ValidateAsync(ValidationScope.All, Ct)));
+        const string Csv = "@code,@label,factor,symbol\ngram,Gram again,1,g\noz,Ounce,28.35,oz\n";
+
+        var preview = (await store.ImportSeedCsvAsync(UnitSeed, Csv, false, true, null, ChangeSource.Cli, Ct))!.Preview;
+
+        Assert.Equal(1, preview.Added);
+        Assert.Empty(preview.Changed);
+        var skipped = Assert.Single(preview.Diagnostics);
+        Assert.Equal(("MQ7019", UnitSeed), (skipped.Rule, skipped.ElementId));
+        Assert.Contains("Line 2: 'gram' is a former code of reference type UnitOfMeasure", skipped.Message, StringComparison.Ordinal);
+
+        // Under replace, the row that replaced the former code counts as kept: only kg and pinch are left out.
+        var replace = (await store.ImportSeedCsvAsync(UnitSeed, Csv, true, true, null, ChangeSource.Cli, Ct))!.Preview;
+        Assert.Equal(2, replace.Removed + (replace.Blocked?.Count ?? 0));
+        Assert.DoesNotContain(replace.Blocked ?? [], b => (string?)b["id"] == GramRow);
+
+        var applied = await store.ImportSeedCsvAsync(UnitSeed, Csv, false, false, null, ChangeSource.Cli, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, applied!.Outcome);
+        var codes = store.Current!.Get<Seed>(UnitSeed)!.Rows.Select(r => r.Values[0].GetString()).ToList();
+        Assert.Equal(["kg", "g", "pinch", "oz"], codes);
+    }
+
+    [Fact]
+    public async Task Deleting_a_row_that_a_former_code_points_to_is_refused()
+    {
+        var (h, store) = await OpenAsync(harness => FormerCodes(harness, ("dash", PinchRow)));
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+        var reference = Assert.Single(model.ReferencesTo(PinchRow));
+        Assert.Equal((UnitOfMeasure, "/formerCodes/0/replacedBy", "replacedBy"), (reference.FromElementId, reference.JsonPointer, reference.Field));
+        var seed = model.GetDocument(UnitSeed)!;
+
+        var result = await store.SaveAsync(UnitSeed, Edit(store, UnitSeed, n => n["rows"]!.AsArray().RemoveAt(2)), seed.Hash, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Invalid, result.Outcome);
+        var dangling = Assert.Single(result.Diagnostics, d => d.Rule == "MQ2001");
+        Assert.Equal((UnitOfMeasure, "/formerCodes/0/replacedBy"), (dangling.ElementId, dangling.JsonPointer));
+        Assert.Equal(3, store.Current!.Get<Seed>(UnitSeed)!.Rows.Count);
     }
 
     /// <summary>The fixture translates a few texts only: its per-shard completeness infos (MQ7204, MQ7206) are left out here.</summary>

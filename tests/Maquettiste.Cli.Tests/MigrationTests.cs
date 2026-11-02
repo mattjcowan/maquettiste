@@ -79,6 +79,64 @@ public sealed class MigrationTests
         Assert.Equal(1, (await repo.RunAsync("migration", "fold", "--database", "nowhere")).ExitCode);
     }
 
+    [Fact]
+    public async Task Migration_list_summarizes_a_value_map()
+    {
+        // next-phase-2-design.md section 3.5: a value map names its type, codes and holders; a type rename names the two names.
+        const string Map = "01K9MGR0000000000000000003";
+        const string Rename = "01K9MGR0000000000000000004";
+        const string Term = "01JCB7P2N4Q6S8T0V2W4X6Y8Z0";
+        using var repo = CliRepo.Billing();
+        repo.Write(Folder + Map.ToLowerInvariant() + ".json", $$"""
+            {
+              "$schema": "../../../../../.schema/v1/migration.json",
+              "kind": "migration",
+              "id": "{{Map}}",
+              "database": "{{MainDatabaseId}}",
+              "fact": "value-map",
+              "objects": [
+                { "kind": "column", "table": "{{NotesTableId}}", "key": "01JCB7P4K5M6N7P8Q9R0S1T2V3", "schema": "billing", "tableName": "invoices", "name": "payment_term" }
+              ],
+              "collections": [
+                { "table": "{{NotesTableId}}", "schema": "billing", "tableName": "notes", "attribute": "01JCB7P4K5M6N7P8Q9R0S1T2V4", "name": "terms" }
+              ],
+              "from": { "name": "PaymentTerm" },
+              "to": { "name": "PaymentTerm" },
+              "referenceType": "{{Term}}",
+              "values": [ { "from": "due", "to": "net60" }, { "from": "net30", "to": "net-30" } ]
+            }
+
+            """);
+        repo.Write(Folder + Rename.ToLowerInvariant() + ".json", $$"""
+            {
+              "$schema": "../../../../../.schema/v1/migration.json",
+              "kind": "migration",
+              "id": "{{Rename}}",
+              "database": "{{MainDatabaseId}}",
+              "fact": "value-map",
+              "after": ["{{Map}}"],
+              "from": { "name": "PaymentTerm", "pluralName": "PaymentTerms" },
+              "to": { "name": "PaymentCondition", "pluralName": "PaymentConditions" },
+              "referenceType": "{{Term}}"
+            }
+
+            """);
+
+        var text = await repo.RunAsync("migration", "list");
+
+        Assert.True(text.ExitCode == 0, text.ToString());
+        Assert.Equal(
+            [
+                $"main 1 {Map} value-map complete: maps PaymentTerm codes due -> net60, net30 -> net-30 in 1 column and 1 collection",
+                $"main 2 {Rename} value-map complete: renames reference type PaymentTerm to PaymentCondition",
+            ],
+            Text.Lines(text.Out));
+        var json = JsonNode.Parse((await repo.RunAsync("migration", "list", "--format", "json")).Out)!;
+        Assert.Equal("renames reference type PaymentTerm to PaymentCondition", (string)json["facts"]![1]!["summary"]!);
+        var validate = await repo.RunAsync("validate");
+        Assert.DoesNotContain("MQ4106", validate.Out, StringComparison.Ordinal);
+    }
+
     private static void WriteFacts(CliRepo repo)
     {
         repo.Write(Folder + First.ToLowerInvariant() + ".json", Rename(First, "text", "content", null));

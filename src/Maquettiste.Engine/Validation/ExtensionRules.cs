@@ -13,7 +13,8 @@ namespace Maquettiste.Engine.Validation;
 /// <c>{ "type": "object", "properties": …, "required": … }</c>, compiled once per set of files by the snapshot's
 /// <see cref="PropertySchemaSet"/> under the base URI <c>https://maquettiste.invalid/extensions/&lt;file&gt;</c> (offline, D24).
 /// The holders of properties are <see cref="PropertyHost.Of"/>'s. A holder's stereotypes are its effective set
-/// (<see cref="ModelSnapshot.EffectiveStereotypes"/>, implied ones included): they decide which schemas apply, and their
+/// (<see cref="ModelSnapshot.EffectiveStereotypes(Element)"/> for the element, defaults included;
+/// <see cref="ModelSnapshot.EffectiveStereotypes(IReadOnlyList{string})"/> for a sub-element; implied ones included): they decide which schemas apply, and their
 /// <c>defaultProperties</c> are merged under the holder's own values (implied first, then own, later wins; the holder's own values
 /// win over all). Failures are leaf keyword failures only, as in <see cref="Json.ISchemaRegistry.Evaluate"/> (D34). Thread-safe
 /// after construction.
@@ -116,16 +117,20 @@ internal sealed class ExtensionSet
     {
         if (_extensions.Count == 0 && _parameters.Count == 0)
             return;
-        foreach (var host in PropertyHost.Of(report.Document.Element))
-            CheckItem(context, host.Id, host.Stereotypes, host.Properties, host.Pointer, host.KindName, report);
+        var element = report.Document.Element;
+        foreach (var host in PropertyHost.Of(element, null))
+        {
+            // The element's set holds its defaults (next-phase-2-design.md section 3.1); a sub-element's is its own list's.
+            var effective = host.Pointer.Length == 0 ? context.Model.EffectiveStereotypes(element) : context.Model.EffectiveStereotypes(host.Stereotypes);
+            CheckItem(host.Id, effective, host.Stereotypes.Count > 0, host.Properties, host.Pointer, host.KindName, report);
+        }
     }
 
-    private void CheckItem(ValidationContext context, string? id, IReadOnlyList<string> stereotypes, IReadOnlyDictionary<string, JsonElement> properties,
+    private void CheckItem(string? id, IReadOnlyList<AppliedStereotype> effective, bool hasList, IReadOnlyDictionary<string, JsonElement> properties,
         string pointer, string kind, Report report)
     {
-        if (properties.Count == 0 && stereotypes.Count == 0 && _extensions.Count == 0)
+        if (properties.Count == 0 && effective.Count == 0 && _extensions.Count == 0)
             return;
-        var effective = context.Model.EffectiveStereotypes(stereotypes);
         var keys = effective.Count == 0 ? [] : effective.Select(s => s.Stereotype.Key).ToList();
         JsonElement? merged = null;
         foreach (var (document, schema) in _extensions)
@@ -175,7 +180,7 @@ internal sealed class ExtensionSet
                         continue;
                     var location = detail.InstanceLocation.ToString();
                     var text = keyword.Length == 0 ? message : keyword + ": " + message;
-                    var (at, origin) = Locate(effective, properties, pointer, location, stereotypeKey);
+                    var (at, origin) = Locate(effective, hasList, properties, pointer, location, stereotypeKey);
                     report.Add(rule, $"{what}: properties{location} {text}{origin}", at, id);
                     any = true;
                 }
@@ -190,16 +195,17 @@ internal sealed class ExtensionSet
     /// The pointer of a failing property value: in the item's own <c>properties</c>, or, for a value that comes from a stereotype's
     /// <c>defaultProperties</c>, that stereotype's entry in the item's <c>stereotypes</c> list (for an implied stereotype, the entry
     /// of the stereotype that implies it): the file has no value to point at. A missing value a stereotype's parameters require
-    /// (<paramref name="stereotypeKey"/>) points at that stereotype's entry too.
+    /// (<paramref name="stereotypeKey"/>) points at that stereotype's entry too. A default stereotype has no entry: it points at the
+    /// <c>stereotypes</c> list, or at the item when its file has none (next-phase-2-design.md section 3.1).
     /// </summary>
-    private static (string Pointer, string Origin) Locate(IReadOnlyList<AppliedStereotype> effective, IReadOnlyDictionary<string, JsonElement> properties,
-        string pointer, string location, string? stereotypeKey)
+    private static (string Pointer, string Origin) Locate(IReadOnlyList<AppliedStereotype> effective, bool hasList,
+        IReadOnlyDictionary<string, JsonElement> properties, string pointer, string location, string? stereotypeKey)
     {
         var segments = Ptr.Split(location);
         if (segments.Length == 0)
         {
             if (stereotypeKey is not null && effective.FirstOrDefault(s => s.Stereotype.Key == stereotypeKey) is { } carrier)
-                return (Ptr.At(pointer + "/stereotypes", carrier.Entry), Implied(carrier));
+                return (EntryPointer(carrier), Implied(carrier));
             return (pointer + "/properties" + location, "");
         }
 
@@ -209,13 +215,21 @@ internal sealed class ExtensionSet
         {
             var applied = effective[i];
             if (applied.Stereotype.DefaultProperties.ContainsKey(segments[0]))
-                return (Ptr.At(pointer + "/stereotypes", applied.Entry), $" (the value comes from the defaultProperties of stereotype '{applied.Stereotype.Key}'{Implied(applied)})");
+                return (EntryPointer(applied), $" (the value comes from the defaultProperties of stereotype '{applied.Stereotype.Key}'{Implied(applied)})");
         }
 
         return (pointer + "/properties" + location, "");
 
+        string EntryPointer(AppliedStereotype applied) =>
+            applied.Entry >= 0 ? Ptr.At(pointer + "/stereotypes", applied.Entry) : hasList ? pointer + "/stereotypes" : pointer;
+
         static string Implied(AppliedStereotype applied) =>
-            applied.ImpliedBy is { } by ? $", which '{by}' implies" : "";
+            (applied.ImpliedBy is { } by ? $", which '{by}' implies" : "") + applied.Source switch
+            {
+                StereotypeSource.SchemaDefault => $", a default of database schema {applied.DefaultHolder}",
+                StereotypeSource.PackageDefault => $", a default of package {applied.DefaultHolder}",
+                _ => "",
+            };
     }
 
     /// <summary>
@@ -229,7 +243,8 @@ internal sealed class ExtensionSet
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(item);
-        return Merge(model.EffectiveStereotypes(item.Stereotypes), item.Properties);
+        // A top-level element's set holds its defaults (next-phase-2-design.md section 3.1).
+        return Merge(item is Element element ? model.EffectiveStereotypes(element) : model.EffectiveStereotypes(item.Stereotypes), item.Properties);
     }
 
     private static JsonElement Merge(IReadOnlyList<AppliedStereotype> effective, IReadOnlyDictionary<string, JsonElement> properties)

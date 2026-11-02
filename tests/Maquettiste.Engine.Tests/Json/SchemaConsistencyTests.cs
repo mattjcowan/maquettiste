@@ -106,6 +106,103 @@ public sealed class SchemaConsistencyTests
         Assert.False(ObjectLayout.FreeForm.RequiresId);
     }
 
+    [Fact]
+    public void Binding_provenance_maps_column_ids_to_two_hash_parts_and_writes_sorted()
+    {
+        // next-phase-2-design.md section 3.3 (D30): provenance follows delete in a binding; its columns map a column id or a keyed id to
+        // "<8 hex>:<8 hex>", and the canonical writer sorts the keys.
+        var binding = Schemas.GetLayout("entity.json").Properties["bindings"].Layout.Items!;
+        Assert.Equal(["id", "database", "source", "constants", "fields", "columns", "write", "delete", "provenance", "description", "tags", "properties"], binding.Keys);
+
+        const string Keyed = "01JAX3K9V2Q7M4T8W1Z5C6B0DE.01JAX3KB2C3D4E5F6G7H8J9KAM", Plain = "01JAX3KC3D4E5F6G7H8J9KAMBN";
+        string Entity(string provenance) =>
+            "{\"kind\":\"entity\",\"id\":\"01JAX3K9V2Q7M4T8W1Z5C6B0AA\",\"name\":\"Note\",\"bindings\":[{\"id\":\"01JAX3K9V2Q7M4T8W1Z5C6B0AB\","
+            + "\"database\":\"01JAX3JZ0H6N2P5R8S1T4V7W9Y\",\"source\":\"01JAX3K9V2Q7M4T8W1Z5C6B0DE\",\"provenance\":" + provenance + "}]}";
+        static IReadOnlyList<Maquettiste.Engine.Diagnostics.Diagnostic> Evaluate(string json)
+        {
+            using var doc = JsonDocument.Parse(json);
+            return Schemas.Evaluate("entity.json", doc.RootElement, "model/entities/note.json");
+        }
+
+        var valid = Entity($$$"""{"columns":{"{{{Plain}}}":"8a1f3c20:5be0d7a9","{{{Keyed}}}":"41d09e7b:77c2a015"}}""");
+        Assert.Empty(Evaluate(valid));
+        foreach (var bad in new[]
+        {
+            "{}",
+            """{"columns":{"not-an-id":"8a1f3c20:5be0d7a9"}}""",
+            $$$"""{"columns":{"{{{Plain}}}":"8A1F3C20:5be0d7a9"}}""",
+            $$$"""{"columns":{"{{{Plain}}}":"8a1f3c20"}}""",
+            """{"columns":{},"hash":"8a1f3c20"}""",
+        })
+        {
+            Assert.Contains(Evaluate(Entity(bad)), d => d.Rule == "MQ1002" && (d.JsonPointer ?? "").StartsWith("/bindings/0/provenance", StringComparison.Ordinal));
+        }
+
+        var written = System.Text.Encoding.UTF8.GetString(TestServices.Json.Write(JsonNode.Parse(valid)!.AsObject(), "entity.json", "model/entities/note.json"));
+        Assert.True(written.IndexOf(Keyed, StringComparison.Ordinal) < written.IndexOf(Plain, StringComparison.Ordinal), written);
+    }
+
+    [Fact]
+    public void Table_members_validate_alike_after_the_move_to_common()
+    {
+        // next-phase-2-design.md section 3.1 (D1): table.json's members are $refs to common.json $defs, so a stereotype can declare
+        // the same shapes. The layout reaches each def's keys, a valid table stays valid, and each member's failures keep their pointers.
+        var common = JsonNode.Parse(Schemas.GetFileBytes("common.json").Span)!["$defs"]!;
+        var table = Schemas.GetLayout("table.json");
+        foreach (var (property, def) in new[]
+        {
+            ("columns", "tableColumn"), ("uniques", "uniqueConstraint"), ("foreignKeys", "foreignKey"), ("checks", "checkConstraint"),
+            ("indexes", "tableIndex"), ("primaryKey", "primaryKey"),
+        })
+        {
+            var layout = table.Properties[property].Layout;
+            var member = layout.Items ?? layout;
+            Assert.Equal(common[def]!["x-order"]!.AsArray().Select(n => n!.GetValue<string>()), member.Keys);
+            Assert.Equal(common[def]!["required"]!.AsArray().Any(n => n!.GetValue<string>() == "id"), member.RequiresId);
+        }
+
+        const string head = "{\"kind\":\"table\",\"id\":\"01JAX3K9V2Q7M4T8W1Z5C6B0DE\",\"name\":\"t\",\"database\":\"01JAX3JZ0H6N2P5R8S1T4V7W9Y\"";
+        const string valid = head + """
+            ,"columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"id","type":"uuid","nullable":false},
+                       {"id":"01JAX3KC3D4E5F6G7H8J9KAMBN","name":"parent_id","type":"uuid"}],
+            "primaryKey":{"id":"01JAX3KD4E5F6G7H8J9KAMBNCP","columns":["01JAX3KB2C3D4E5F6G7H8J9KAM"]},
+            "uniques":[{"id":"01JAX3KE5F6G7H8J9KAMBNCPDQ","columns":["01JAX3KC3D4E5F6G7H8J9KAMBN"]}],
+            "foreignKeys":[{"id":"01JAX3KF6G7H8J9KAMBNCPDQER","columns":["01JAX3KC3D4E5F6G7H8J9KAMBN"],"referencesTable":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","onDelete":"cascade"}],
+            "checks":[{"id":"01JAX3KG7H8J9KAMBNCPDQERFS","expression":{"*":"parent_id <> id"}}],
+            "indexes":[{"id":"01JAX3KH8J9KAMBNCPDQERFSGT","columns":[{"column":"01JAX3KC3D4E5F6G7H8J9KAMBN"}],"where":"parent_id IS NOT NULL"}]}
+            """;
+        Assert.Empty(Evaluate(valid));
+        Assert.Empty(Evaluate(head + ""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"id","type":"uuid"}],"primaryKey":{"columns":["01JAX3KB2C3D4E5F6G7H8J9KAM"]}}"""));
+        // Section 3.2 (D20): a column's typeRef is the object form only, and sensitive takes pii or secret.
+        Assert.Empty(Evaluate(head + ""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"status","type":"string","typeRef":{"ref":"01JAX3KC3D4E5F6G7H8J9KAMBN"},"length":1,"sensitive":"pii"}]}"""));
+
+        foreach (var (json, pointer) in new[]
+        {
+            (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"id","type":"uuid","colour":"red"}]}""", "/columns/0/colour"),
+            (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"id","type":"int99"}]}""", "/columns/0/type"),
+            (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"s","type":"string","typeRef":"string"}]}""", "/columns/0/typeRef"),
+            (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"s","type":"string","typeRef":{"ref":"01JAX3KC3D4E5F6G7H8J9KAMBN","of":"x"}}]}""", "/columns/0/typeRef"),
+            (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"s","type":"string","sensitive":"public"}]}""", "/columns/0/sensitive"),
+            (""","primaryKey":{"id":"not-an-id","columns":["c"]}}""", "/primaryKey/id"),
+            (""","primaryKey":{"columns":[]}}""", "/primaryKey/columns"),
+            (""","uniques":[{"id":"01JAX3KE5F6G7H8J9KAMBNCPDQ","columns":["c"],"clustered":true}]}""", "/uniques/0/clustered"),
+            (""","foreignKeys":[{"id":"01JAX3KF6G7H8J9KAMBNCPDQER","columns":["c"],"referencesTable":"t","onDelete":"explode"}]}""", "/foreignKeys/0/onDelete"),
+            (""","checks":[{"id":"01JAX3KG7H8J9KAMBNCPDQERFS","expression":{"cobol":"x"}}]}""", "/checks/0/expression"),
+            (""","indexes":[{"id":"01JAX3KH8J9KAMBNCPDQERFSGT","columns":[{"column":"c"}],"method":"bitmap"}]}""", "/indexes/0/method"),
+        })
+        {
+            var diagnostics = Evaluate(head + json);
+            Assert.True(diagnostics.Any(d => d.Rule == "MQ1002" && (d.JsonPointer ?? "").StartsWith(pointer, StringComparison.Ordinal)),
+                $"{pointer}: {string.Join("; ", diagnostics.Select(d => d.JsonPointer + " " + d.Message))}");
+        }
+
+        static IReadOnlyList<Maquettiste.Engine.Diagnostics.Diagnostic> Evaluate(string json)
+        {
+            using var doc = JsonDocument.Parse(json);
+            return Schemas.Evaluate("table.json", doc.RootElement, "model/databases/main/tables/t.json");
+        }
+    }
+
     [Theory]
     [MemberData(nameof(Documents))]
     public void Record_properties_match_schema_properties_and_initializers_match_defaults(string file, Type type)

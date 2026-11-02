@@ -49,8 +49,9 @@ internal sealed class ReferenceWalker
     /// </summary>
     /// <param name="element">The element.</param>
     /// <param name="schemas">The custom property schemas of the model.</param>
+    /// <param name="effectiveKeys">The element's keys with defaults (<see cref="ModelSnapshot.PropertyKeys"/>), or <see langword="null"/>.</param>
     /// <returns>The references.</returns>
-    public List<ReferenceSite> Walk(Element element, PropertySchemaSet schemas)
+    public List<ReferenceSite> Walk(Element element, PropertySchemaSet schemas, IReadOnlyList<string>? effectiveKeys)
     {
         ArgumentNullException.ThrowIfNull(schemas);
         var sites = new List<ReferenceSite>();
@@ -66,7 +67,7 @@ internal sealed class ReferenceWalker
         }
 
         // Custom property values an x-ref types (section 4.1): each carries a synthesized attribute, like the storage keys, and its keyword.
-        foreach (var site in schemas.Sites(element))
+        foreach (var site in schemas.Sites(element, effectiveKeys))
             sites.Add(new ReferenceSite(site.Pointer, site.Host.Id, TargetOf(site.Ref), typeof(PropertyHost), site.Field, site.Value, site));
 
         return sites;

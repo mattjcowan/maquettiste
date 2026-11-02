@@ -54,9 +54,62 @@
       }
     },
     {
+      "name": "get_binding_drift",
+      "title": "Binding drift",
+      "description": "What changed in each binding's source table since the binding's provenance was recorded, from files only (the model is never resolved): {bindings, next}, each binding {entity, entityName, binding, database, databaseName, source, sourceName, hasProvenance, stale, added: [{column, name, status}], renamed: [{column, name, attribute, attributeName}], retyped: [{column, name, attribute, attributeName}], removed: [column ids]}, ordered by entity name, entity id, database name, then database id. A binding records provenance when map-by-name, resync-binding or a materialize operation writes it; only a designed or imported table file has it. added lists the source's columns not recorded that nothing in the binding names, with what fills them (unaccounted, identity, default, computed); without provenance it lists only the unaccounted ones (MQ4047). renamed and retyped are mapped columns whose name or type changed since they were recorded (MQ4087); a change of case or separators is not a rename. removed lists recorded ids the source no longer has. stale is provenance that does not describe the source (MQ4088), read as none. By default only bindings with something to report are listed; all lists every binding. Pass next as cursor until it is null. Catch up with apply_batch {\"op\":\"resync-binding\",\"database\":...,\"entities\":[...]} after preview_materialize with the same op. An unknown database, entity or cursor is bad-request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "description": "Only the bindings to this database, by id or name.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "entities": {
+            "description": "Only the bindings of these entities, by id.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "all": {
+            "description": "List every binding, also those with nothing to report (default false).",
+            "type": "boolean",
+            "default": false
+          },
+          "cursor": {
+            "description": "The next value of the previous page.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 1000 (default 100).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      }
+    },
+    {
       "name": "get_database_view",
       "title": "Database view",
-      "description": "The resolved physical view of one database: tables (from the entities mapped to it, by its byConvention setting or by mapping elements, their relations and overlays) with columns (dbTypeId when a column uses a database type), keys, indexes and foreign keys, views, sequences, routines (parameters and result with native types), database types (nativeName, isCreated), SQL objects (phase, dependsOn) and queries (parameters, sources, the select list with types, the trees as written, collections with their keys, and the SQL for the database's dialect), as generation sees them. Each table, view, sequence, routine, database type, SQL object and query carries its own file's annotations (displayName, pluralName, description, stereotypes, tags, category, properties, generation); a synthesized table without an overlay has none.",
+      "description": "The resolved physical view of one database: tables (from the entities mapped to it, by its byConvention setting or by mapping elements, their relations and overlays) with columns (dbTypeId when a column uses a database type), keys, indexes and foreign keys, views, sequences, routines (parameters and result with native types), database types (nativeName, isCreated), SQL objects (phase, dependsOn) and queries (parameters, sources, the select list with types, the trees as written, collections with their keys, and the SQL for the database's dialect), as generation sees them. Each table, view, sequence, routine, database type, SQL object and query carries its own file's annotations (displayName, pluralName, description, stereotypes, tags, category, properties, generation); a synthesized table without an overlay has none but the stereotypes its schema and package defaults give it, with their default properties. Columns, keys, foreign keys and indexes a stereotype contributes follow the table's own, keyed <tableKey>.<memberId>, and carry memberOrigin (source stereotype, schema-default or package-default; stereotype; memberId; the facets the table redefined), which own members leave null: name such a member by that keyed id, and change it on the stereotype or with the table's redefines and excludes, never by copying it as an own column.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -440,7 +493,7 @@
     {
       "name": "get_resolved_model",
       "title": "Resolved model",
-      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id. databases: the database view (tables with columns, keys, foreign keys and indexes, views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. migrations: one open migration fact per record, by database name then applied order, with its state, missing intent, after links, object, current key, from, to and content hash. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. A model with errors returns no items and the errors in diagnostics, unless its only errors are pending migration facts (MQ4101): those still return items.",
+      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's; an attribute without a description of its own shows the comment of the column a binding maps it to, and descriptionColumn names that column), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id. databases: the database view (tables with columns, keys, foreign keys and indexes, members a stereotype contributes keyed <tableKey>.<memberId> with their memberOrigin, and on a table without a file the stereotypes its schema and package defaults give it; views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. migrations: one open migration fact per record, by database name then applied order, with its state, missing intent, after links, object, current key, from, to and content hash. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. A model with errors returns no items and the errors in diagnostics, unless its only errors are pending migration facts (MQ4101): those still return items.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -675,7 +728,7 @@
     {
       "name": "preview_materialize",
       "title": "Preview materialize",
-      "description": "What a materialize operation would do, without writing: {operation, database, valid, creates, updates, deletes (each {id, kind, name, path, because, element}: element is the document that would be written), notes, diagnostics}. op materialize-tables with entities (and an optional schema id) writes, per entity, a designed table with exactly the shape its projection has (columns, keys, uniques, checks, indexes, foreign keys, comments; its overlay folds into the table, which keeps the overlay's id), binds the entity to it, deletes its mapping to the database and points relation mappings at the foreign keys; op materialize-entities with tables (designed or imported tables and views) and package writes, per table, an entity (one attribute per column, the key from the primary key) bound to it, and a many-to-one relation per foreign key between them; op materialize-attributes with entities (each bound to the database) and, for one entity, optional columns (keys or physical names) adds, per entity, an attribute per column of its binding's source (the columns named, else every column nothing in the binding names: unaccounted, identity, a default), named and typed from the column and mapped to it in the binding; op materialize-columns with entities (each bound to the database, reading a designed or imported table it writes) and, for one entity, optional attributes (binding field references: attribute ids, attributeId.memberId, to-one end ids) adds a column of that table per attribute the binding leaves unmapped, shaped as the entity's projection would make it (the project's naming and type conventions), mapped to it; a column whose name the table has is left out with a note, and no foreign key is added. An entity already bound, or a table an entity is bound to, is refused (MQ4055), as is an entity with no binding to the database, a query source or a column already mapped (materialize-attributes), or a source that is not a table file or an attribute already mapped (materialize-columns). Apply it with apply_batch: {\"op\":\"materialize-tables\",\"database\":...,\"entities\":[...]}, {\"op\":\"materialize-entities\",\"database\":...,\"tables\":[...],\"package\":...} {\"op\":\"materialize-attributes\",\"database\":...,\"entities\":[...],\"columns\":[...]} or {\"op\":\"materialize-columns\",\"database\":...,\"entities\":[...],\"attributes\":[...]}.",
+      "description": "What a materialize or binding operation would do, without writing: {operation, database, valid, creates, updates, deletes (each {id, kind, name, path, because, element}: element is the document that would be written), notes, diagnostics}. op materialize-tables with entities (and an optional schema id) writes, per entity, a designed table with exactly the shape its projection has (columns, keys, uniques, checks, indexes, foreign keys, comments; its overlay folds into the table, which keeps the overlay's id), binds the entity to it, deletes its mapping to the database and points relation mappings at the foreign keys; op materialize-entities with tables (designed or imported tables and views) and package writes, per table, an entity (one attribute per column, the key from the primary key) bound to it, and a many-to-one relation per foreign key between them; op materialize-attributes with entities (each bound to the database) and, for one entity, optional columns (keys or physical names) adds, per entity, an attribute per column of its binding's source (the columns named, else every column nothing in the binding names: unaccounted, identity, a default), named and typed from the column and mapped to it in the binding; op materialize-columns with entities (each bound to the database, reading a designed or imported table it writes) and, for one entity, optional attributes (binding field references: attribute ids, attributeId.memberId, to-one end ids) adds a column of that table per attribute the binding leaves unmapped, shaped as the entity's projection would make it (the project's naming and type conventions), mapped to it; a column whose name the table has is left out with a note, and no foreign key is added. op map-by-name with entities (each bound to the database) maps every attribute the binding leaves unmapped to a free column of the same loose name (case and every character but letters and digits ignored; an attribute's name, attributeMember for a value object member, a to-one navigation's name plus Id), writing column ids for a table file and names for a view, and records provenance for a table file; op resync-binding with entities (each bound to a table file), optional columns (one entity: keys or physical names) and keepNames brings each binding into step with its table in one batch: an attribute that followed its column's old name takes the new one (keepNames keeps every name), a retyped column retypes its attribute unless its reference type, enum or scalar type still fits, unmapped attributes map by name, an attribute is added per added column, fields of removed columns are removed (attributes stay), and provenance is recorded again; attribute ids never change. Both are refused (MQ4089) for an entity with no binding to the database, a source they cannot read, misused columns, or nothing to map or re-sync. They read files only, and their diagnostics come from resolving the named database alone. An entity already bound, or a table an entity is bound to, is refused (MQ4055), as is an entity with no binding to the database, a query source or a column already mapped (materialize-attributes), or a source that is not a table file or an attribute already mapped (materialize-columns). Apply it with apply_batch: {\"op\":\"materialize-tables\",\"database\":...,\"entities\":[...]}, {\"op\":\"materialize-entities\",\"database\":...,\"tables\":[...],\"package\":...}, {\"op\":\"materialize-attributes\",\"database\":...,\"entities\":[...],\"columns\":[...]}, {\"op\":\"materialize-columns\",\"database\":...,\"entities\":[...],\"attributes\":[...]}, {\"op\":\"map-by-name\",\"database\":...,\"entities\":[...]} or {\"op\":\"resync-binding\",\"database\":...,\"entities\":[...],\"keepNames\":true}.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -688,7 +741,7 @@
             "default": null
           },
           "op": {
-            "description": "materialize-tables, materialize-entities, materialize-attributes or materialize-columns; required.",
+            "description": "materialize-tables, materialize-entities, materialize-attributes, materialize-columns, map-by-name or resync-binding; required.",
             "type": [
               "string",
               "null"
@@ -696,7 +749,7 @@
             "default": null
           },
           "entities": {
-            "description": "The entity ids (materialize-tables, materialize-attributes, materialize-columns).",
+            "description": "The entity ids (materialize-tables, materialize-attributes, materialize-columns, map-by-name, resync-binding).",
             "type": [
               "array",
               "null"
@@ -740,7 +793,7 @@
             "default": null
           },
           "columns": {
-            "description": "The source columns, as keys or physical names, that get an attribute (materialize-attributes, one entity); omit for every column nothing in the binding names.",
+            "description": "The source columns, as keys or physical names (one entity): those that get an attribute (materialize-attributes; omit for every column nothing in the binding names), or those to bring into step (resync-binding; omit for every column of the source).",
             "type": [
               "array",
               "null"
@@ -766,6 +819,11 @@
               ]
             },
             "default": null
+          },
+          "keepNames": {
+            "description": "Keep every attribute's name, even one that followed its column's renamed name (resync-binding; default false).",
+            "type": "boolean",
+            "default": false
           }
         },
         "required": [
@@ -816,6 +874,51 @@
         },
         "required": [
           "id"
+        ]
+      }
+    },
+    {
+      "name": "preview_seed_rows",
+      "title": "Preview seed rows",
+      "description": "One seed's rows, one page at a time, never the whole model's: {seed, script, database, rows: [{id, key, values, refs}], total, next, diagnostics}. Without database, the rows as the seed writes them (inline or in its CSV rows file) or as its rows script (rowsFrom.script, extensions/seeds/*.js) returns them: values by the seed's column names, as written; key is the row key in seed terms (a reference type's code, a table seed's key columns, a foreign-key entry's natural key), empty when the target has none; a scripted row's id derives from the seed and its key, so it is the same on every call. With database (an id or name), the rows that database receives from the seed, in database terms: values by the table's column names with stable ids and the values foreign-key entries fill, key the row key there (null where the database fills a part), and refs: per foreign-key entry {foreignKey, table, key, found, unknown}, found false when no row has the natural key (MQ7111), unknown the columns whose referenced value the database fills (a pack looks them up). Only the seed's script and the scripts of the seeds its foreign-key entries name run. diagnostics holds the script's findings (MQ7116, MQ7127, MQ7128, MQ5005) or, with database, the errors that keep the model from resolving (no rows then). Pass next as cursor until it is null. An unknown seed is not-found; an unknown database or cursor is bad-request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "seed": {
+            "description": "The seed id; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "database": {
+            "description": "A database id or name: gives the rows in that database's terms; omit for the rows as written.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "cursor": {
+            "description": "The next value of the previous page.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 1000 (default 100).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "seed"
         ]
       }
     },
@@ -1116,7 +1219,7 @@
     {
       "name": "reference_type_usage",
       "title": "Reference type usage",
-      "description": "Every attribute typed by a reference type: attribute, owner, domain (the owner's package), collection, required and the effective storage choice per database.",
+      "description": "Every attribute typed by a reference type: attribute, owner, domain (the owner's package), collection, required and the effective storage choice per database; and in columns, every designed, imported, extra and inherited column whose typeRef names it: table, column (a keyed id when inherited), database, domain (the table's package), required, the effective storage choice there and the bound table.",
       "inputSchema": {
         "type": "object",
         "properties": {

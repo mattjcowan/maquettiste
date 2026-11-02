@@ -49,7 +49,8 @@ public sealed record DatabaseTableResult(TableView? Table, IReadOnlyList<Diagnos
 /// The table list of each database, without columns (E5c), and one table's detail (E5f), for the explorer. Unlike
 /// <see cref="GenerationService.GetDatabaseViewAsync"/> it answers on a model with errors: it resolves anyway (the resolver ends on
 /// invalid snapshots, Resolution/README.md) and leaves out the tables whose owning elements have errors. Per snapshot, the model is
-/// validated once, and each database asked for is resolved on its own (the conceptual layer and that database only,
+/// validated once (seeds with a rows script left unjudged, as for previews: <see cref="ValidationScope.Previews"/>), and each database
+/// asked for is resolved on its own (the conceptual layer and that database only,
 /// <c>ModelResolver.ResolveDatabaseAsync</c>), so a change costs one database's resolve rather than the whole model's; a resolver
 /// without that entry point falls back to one whole-model resolve that answers every database. One instance per host keeps the cache
 /// (the last snapshot's databases only; the resolved objects are projected and dropped).
@@ -123,7 +124,7 @@ public sealed class DatabaseTables
             else
             {
                 if (_validation is null || _validation.IsFaulted || _validation.IsCanceled)
-                    _validation = Shared(() => _generation.Services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, CancellationToken.None));
+                    _validation = Shared(() => _generation.Services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, CancellationToken.None));
                 var validation = _validation;
                 var resolver = _generation.Services.Resolver;
                 if (resolver is ModelResolver perDatabase)

@@ -88,6 +88,7 @@ internal sealed partial class ResolveRun
             Missing = state == "pending" ? MigrationRules.Missing(fact, database.Dialect) : [],
             Object = fact.Object is { } o ? MakeObject(o, position, moves) : null,
             Objects = [.. fact.Objects.Select(o => MakeObject(o, position, moves))],
+            Collections = [.. fact.Collections.Select(c => MakeCollection(c, position, moves))],
             From = MakeState(fact.From),
             To = MakeState(fact.To),
             Via = [.. fact.Via],
@@ -102,6 +103,7 @@ internal sealed partial class ResolveRun
             Phase = ResolutionValues.Kebab(fact.Phase),
             Environment = fact.Environment,
             ReferenceType = fact.ReferenceType,
+            FromReferenceType = fact.FromReferenceType,
             Process = fact.Process,
             Values = [.. fact.Values.Select(v => new RMigrationValue { From = v.From, To = v.To })],
             Held = fact.Held,
@@ -142,9 +144,21 @@ internal sealed partial class ResolveRun
         };
     }
 
+    /// <summary>A value map's collection, its owner table's key moved as a table key through the <c>rekey</c> facts after the fact.</summary>
+    private static RMigrationCollection MakeCollection(MigrationCollection c, int position, FactKeys.KeyMoves moves) => new()
+    {
+        Table = c.Table,
+        Schema = c.Schema,
+        TableName = c.TableName,
+        Attribute = c.Attribute,
+        Name = c.Name,
+        CurrentTable = moves.Current(position, "table", null, c.Table).Key,
+    };
+
     private static RMigrationState? MakeState(MigrationState? s) => s is null ? null : new RMigrationState
     {
         Name = s.Name,
+        PluralName = s.PluralName,
         Schema = s.Schema,
         Type = s.Type,
         Length = s.Length,

@@ -14,6 +14,24 @@ public sealed partial class AgentTools
     /// <summary>The sections <c>get_project</c> adds on request, in name order.</summary>
     private static readonly IReadOnlyList<string> ProjectSections = ["extensions", "packs", "settings"];
 
+    private async Task<AgentToolResult> GetBindingDriftAsync(ToolArguments args, CancellationToken ct)
+    {
+        var limit = args.Int("limit") ?? ModelPages.DefaultLimit;
+        if (limit is < 1 or > ModelPages.MaxLimit)
+            return BadRequest($"limit must be from 1 to {ModelPages.MaxLimit}.");
+        var query = new BindingDriftQuery(args.String("database") is { Length: > 0 } database ? database : null,
+            args.Strings("entities") is { Length: > 0 } entities ? entities : null, args.Bool("all") ?? false, args.String("cursor"), limit);
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return Ok(await _store.GetBindingDriftAsync(query, ct).ConfigureAwait(false));
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException)
+        {
+            return BadRequest(ex.Message); // an unknown database, entity or cursor
+        }
+    }
+
     private async Task<AgentToolResult> GetDatabaseViewAsync(ToolArguments args, CancellationToken ct)
     {
         var id = args.String("id");
@@ -320,10 +338,13 @@ public sealed partial class AgentTools
             "materialize-entities" when tables is { Length: > 0 } && !string.IsNullOrEmpty(package) => new MaterializeRequest(op, database, tables, null, package),
             "materialize-attributes" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, Columns: args.Strings("columns") is { Length: > 0 } columns ? columns : null),
             "materialize-columns" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, Attributes: args.Strings("attributes") is { Length: > 0 } refs ? refs : null),
+            "map-by-name" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities),
+            "resync-binding" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, Columns: args.Strings("columns") is { Length: > 0 } named ? named : null,
+                KeepNames: args.Bool("keepNames") ?? false),
             _ => null,
         };
         if (request is null)
-            return BadRequest("op is materialize-tables (with entities), materialize-entities (with tables and package), materialize-attributes (with entities, and columns for one) or materialize-columns (with entities, and attributes for one).");
+            return BadRequest("op is materialize-tables (with entities), materialize-entities (with tables and package), materialize-attributes (with entities, and columns for one), materialize-columns (with entities, and attributes for one), map-by-name (with entities) or resync-binding (with entities, columns for one, and keepNames).");
         await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         if (await _store.GetElementAsync(database, ct).ConfigureAwait(false) is not { } document || document.Element is not Database)
             return NotFound("database", database, "not-a-database");
@@ -382,6 +403,32 @@ public sealed partial class AgentTools
         catch (ArgumentException ex)
         {
             return BadRequest(ex.Message);
+        }
+    }
+
+    private async Task<AgentToolResult> PreviewSeedRowsAsync(ToolArguments args, CancellationToken ct)
+    {
+        var seed = args.String("seed");
+        if (string.IsNullOrEmpty(seed))
+            return BadRequest("seed is required.");
+        var limit = args.Int("limit");
+        if (limit is < 1 or > ModelPages.MaxLimit)
+            return BadRequest($"limit must be from 1 to {ModelPages.MaxLimit}.");
+        var database = args.String("database");
+        var cursor = args.String("cursor");
+        try
+        {
+            var preview = await _store.PreviewSeedRowsAsync(seed, string.IsNullOrEmpty(database) ? null : database, string.IsNullOrEmpty(cursor) ? null : cursor,
+                limit ?? ModelPages.DefaultLimit, ct).ConfigureAwait(false);
+            return preview is null ? NotFound("seed", seed) : Ok(preview);
+        }
+        catch (FormatException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message.Split(" (Parameter", 2)[0]);
         }
     }
 

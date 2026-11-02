@@ -48,6 +48,14 @@ internal sealed partial class ResolveRun
 
     public ProjectSettings Settings { get; }
 
+    /// <summary>The sandbox factory that runs seeds' rows scripts when their rows are first read (next-phase-2-design.md section 3.4).</summary>
+    public Scripting.IScriptSandboxFactory Scripts { get; init; } = DefaultScripts;
+
+    /// <summary>The rows cache those runs go through.</summary>
+    public SeedRowsCache SeedRows { get; init; } = new();
+
+    private static readonly Scripting.IScriptSandboxFactory DefaultScripts = new Scripting.ScriptSandboxFactory();
+
     public Inflector Inflector { get; }
 
     public CancellationToken Ct { get; }
@@ -76,8 +84,9 @@ internal sealed partial class ResolveRun
     /// Resolves the conceptual layer and one database only, for the explorer's table summaries and table detail (E5c, E5f;
     /// explorer-redesign.md section 4.1). The database's tables are those of <see cref="Run"/>: a database run reads the conceptual
     /// layer and its own files only; what an earlier database run adds (relation dependency keys, <c>FinishRelationMappings</c>) and
-    /// what runs after the databases (the conceptual finish, seeds, usages, the dependency freeze) do not shape tables and are
-    /// skipped, so dependency lists are not set. The diagnostics are the conceptual layer's and this database's.
+    /// what runs after the databases (the conceptual finish, the sensitivity bound attributes show, seeds, usages, the dependency freeze) do not shape tables and are
+    /// skipped, so dependency lists are not set; the reference type bindings into its tables are linked, since a reference column's
+    /// bound table is part of its shape. The diagnostics are the conceptual layer's and this database's.
     /// </summary>
     /// <param name="databaseId">The database element's id.</param>
     /// <returns>The resolved database, or <see langword="null"/> when no database has the id, and the sorted diagnostics.</returns>
@@ -114,6 +123,7 @@ internal sealed partial class ResolveRun
                 results[i] = resolved;
             }
 
+            LinkReferenceBindings(results);
             if (freeze)
                 FreezeDependencies();
             return (results, [.. Diagnostics.Order(Diagnostic.Order)]);
@@ -122,6 +132,23 @@ internal sealed partial class ResolveRun
         {
             _withDependencies.Clear();
         }
+    }
+
+    /// <summary>
+    /// Links the reference type bindings into the given databases' tables, as a full run does after every database: a reference
+    /// column's bound table (<see cref="RColumn.ReferenceBinding"/>) is part of its physical snapshot, so the databases a write records
+    /// facts for capture it as validate and generate do (next-phase-2-design.md section 3.2, decision 8).
+    /// </summary>
+    private void LinkReferenceBindings(IReadOnlyList<RDatabase?> databases)
+    {
+        var tablesByKey = new Dictionary<string, RTable>(StringComparer.Ordinal);
+        foreach (var database in databases)
+        {
+            foreach (var table in database?.Tables.Where(t => t.Origin != "synthesized") ?? [])
+                tablesByKey.TryAdd(table.Key, table);
+        }
+
+        ResolveReferenceBindings(tablesByKey);
     }
 
     private ResolvedModel RunCore()
@@ -144,6 +171,7 @@ internal sealed partial class ResolveRun
         }
 
         FinishConceptual();
+        ResolveShared();
         ResolveSeedsAndUsages(resolvedDatabases);
         ResolveProcesses();
         var (stereotypes, vocabularies, trees) = ResolveDefinitions();

@@ -16,6 +16,7 @@
     "decision",
     "status",
     "stereotypes",
+    "excludeStereotypes",
     "tags",
     "category",
     "target",
@@ -74,6 +75,10 @@
       "$ref": "common.json#/$defs/keyList",
       "default": []
     },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
+    },
     "tags": {
       "$ref": "common.json#/$defs/tagList",
       "default": []
@@ -86,7 +91,7 @@
       "$ref": "common.json#/$defs/id"
     },
     "columns": {
-      "description": "Built-in keywords (code, label, description) for a reference type, column ids for a table, else attribute or relation-end ids.",
+      "description": "Built-in keywords (code, label, description) for a reference type; column ids and foreign-key ids for a table (an inherited column or foreign key by its keyed id, <tableId>.<memberId>); else attribute or relation-end ids. A foreign-key entry stands for the key's own columns, which are then not listed: its cell names the referenced row by that table's row key, a value for a one-column key and an array in key order for a composite key.",
       "type": "array",
       "items": {
         "anyOf": [
@@ -95,6 +100,11 @@
           },
           {
             "enum": ["code", "label", "description"]
+          },
+          {
+            "description": "The keyed id of a column or foreign key a table target inherits from a stereotype: the table's id and the stereotype member's id joined by '.'.",
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}\\.[0-7][0-9A-HJKMNP-TV-Z]{25}$"
           }
         ]
       },
@@ -102,8 +112,16 @@
       "uniqueItems": true
     },
     "key": {
-      "description": "A table seed's row key: the id of the unique constraint whose columns find a row again on the next run; absent, the primary key.",
-      "$ref": "common.json#/$defs/id"
+      "description": "A table seed's row key: the id of the unique constraint whose columns find a row again on the next run (an inherited one by its keyed id, <tableId>.<memberId>); absent, the primary key.",
+      "anyOf": [
+        {
+          "$ref": "common.json#/$defs/id"
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}\\.[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+        }
+      ]
     },
     "environments": {
       "description": "The environments the rows belong to (free names such as dev, test, staging); empty means every environment.",
@@ -125,17 +143,34 @@
       "default": false
     },
     "rowsFrom": {
-      "description": "A CSV file beside the seed file that holds the rows instead of rows: a header of @id and the column ids, one row per line.",
-      "type": "object",
-      "x-order": ["file"],
-      "properties": {
-        "file": {
-          "type": "string",
-          "pattern": "^[^/\\\\]+\\.csv$"
+      "description": "Where the rows come from instead of rows: a CSV file beside the seed file (file: a header of @id and the column ids, one row per line), or a rows script under extensions/ (script: seeds/<name>.js, which calls maquettiste.rows(fn) once and computes the rows from the model when something reads them).",
+      "oneOf": [
+        {
+          "type": "object",
+          "x-order": ["file"],
+          "properties": {
+            "file": {
+              "type": "string",
+              "pattern": "^[^/\\\\]+\\.csv$"
+            }
+          },
+          "required": ["file"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "x-order": ["script"],
+          "properties": {
+            "script": {
+              "description": "The rows script, a path under extensions/: seeds/<name>.js.",
+              "type": "string",
+              "pattern": "^seeds/[A-Za-z0-9][A-Za-z0-9._-]*\\.js$"
+            }
+          },
+          "required": ["script"],
+          "additionalProperties": false
         }
-      },
-      "required": ["file"],
-      "additionalProperties": false
+      ]
     },
     "rows": {
       "type": "array",
@@ -152,7 +187,7 @@
             "description": "One cell per column, in column order; trailing nulls are dropped.",
             "type": "array",
             "items": {
-              "description": "A cell: a JSON literal of the column's type, an enum member name, a reference code or an array of codes, a row id for an end, an object for a value object, or null."
+              "description": "A cell: a JSON literal of the column's type, an enum member name, a reference code or an array of codes, a row id for an end, an object for a value object, the referenced row's key for a foreign-key entry (a value, or an array for a composite key), or null."
             },
             "x-trim": "trailing-nulls",
             "default": []

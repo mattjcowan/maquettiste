@@ -654,6 +654,120 @@ public sealed class FactRecordingTests
             && f.Summary == "rename column ledger.ledger_entries.deleted_at to removed_at");
     }
 
+    [Fact]
+    public async Task Selection_covers_the_databases_a_package_default_reshapes()
+    {
+        // next-phase-2-design.md section 3.1 (D4): a package default reaches LedgerEntry's tables in both databases (main takes every
+        // entity by convention, and a table without a file takes its entity's package), though no convention entry of main names the
+        // Ledger package; a change to the stereotype reaches them through the default; a schema default reaches its database.
+        await using var repo = E2ERepo.Create(demo: false);
+        await AddLedgerAsync(repo);
+        await repo.CreateElementAsync($$"""
+            { "kind": "stereotype", "id": "{{TunedId}}", "key": "tuned", "name": "Tuned", "appliesTo": ["table"],
+              "storage": { "postgresql": { "fillfactor": 70 } } }
+            """);
+        await repo.RestartAsync(); // no capture: the first write chooses by reach
+
+        var changes = new (string Id, Action<JsonObject> Edit)[]
+        {
+            (LedgerPackageId, e => e["defaultStereotypes"] = new JsonArray("tuned")),
+            (TunedId, e => e["storage"]!["postgresql"]!["fillfactor"] = 60),
+            (LedgerDatabaseId, e => e["schemas"]![0]!["defaultStereotypes"] = new JsonArray("tuned")),
+            (TunedId, e => e["storage"]!["postgresql"]!["fillfactor"] = 50),
+            (LedgerPackageId, e => e.Remove("defaultStereotypes")),
+        };
+        var reshapedMain = false;
+        foreach (var (id, edit) in changes)
+        {
+            var before = await CapturesAsync(repo);
+            var count = repo.Store.RecordingResolveCount;
+            await repo.EditAsync(id, edit);
+            var after = await CapturesAsync(repo);
+            var chosen = repo.Store.RecordingResolvesSince(count).ToHashSet(StringComparer.Ordinal);
+            foreach (var (database, capture) in before)
+            {
+                if (string.Equals(capture, after.GetValueOrDefault(database), StringComparison.Ordinal))
+                    continue;
+                reshapedMain |= database == E2ERepo.MainDatabaseId;
+                Assert.True(chosen.Contains(database), $"Changing {id} reshaped {database}, which was not chosen.");
+            }
+        }
+
+        Assert.True(reshapedMain, "the package default never reshaped the main database");
+
+        // With defaults, a database's reach still covers its footprint: the stereotype and package ids the defaults add included.
+        // Other databases' ids are left aside: an entity lists every database (its placement may move), and a database's own change
+        // chooses itself.
+        await repo.EditAsync(LedgerPackageId, e => e["defaultStereotypes"] = new JsonArray("tuned"));
+        var snapshot = await repo.Store.GetSnapshotAsync(Ct);
+        Assert.True(snapshot.StereotypeDefaults.HasDefaults);
+        var whole = await repo.Store.Services.Resolver.ResolveAsync(snapshot, null, Ct);
+        foreach (var database in whole.Databases)
+        {
+            var reach = DatabaseReach.Of(snapshot, snapshot.Get<Database>(database.Id)!);
+            var footprint = ModelStore.Footprint(database).Where(fid => fid == database.Id || snapshot.Get<Database>(fid) is null).ToList();
+            Assert.True(footprint.All(reach.Contains), database.Name + " misses " + string.Join(", ", footprint.Where(fid => !reach.Contains(fid))));
+            Assert.Contains(LedgerPackageId, footprint);
+            Assert.Contains(TunedId, footprint);
+        }
+    }
+
+    [Fact]
+    public async Task Renaming_a_stereotype_column_records_one_rename_per_carrier_and_writes_no_table_file()
+    {
+        // next-phase-2-design.md section 3.1 (D7, decision 11): an inherited column is a resolved column of each carrying table, so a
+        // rename on the stereotype records one complete rename per carrier, keyed <tableKey>.<memberId>, and changes no table file.
+        await using var repo = E2ERepo.Create(demo: false);
+        await AuditColumnsAsync(repo);
+
+        var saved = await repo.EditAsync(AuditedId, e => e["columns"]![0]!["name"] = "changed_by");
+
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
+        var facts = saved.Facts!;
+        Assert.All(facts, f => Assert.Equal(("rename", "complete", E2ERepo.MainDatabaseId), (f.Fact, f.State, f.Database)));
+        Assert.Equal(
+            ["billing.invoice_lines", "billing.notes", "billing.payment_invoice", "billing.products"],
+            facts.Select(f => f.Summary["rename column ".Length..f.Summary.IndexOf(".modified_by", StringComparison.Ordinal)]).Order(StringComparer.Ordinal));
+        Assert.All(facts, f => Assert.EndsWith(".modified_by to changed_by", f.Summary, StringComparison.Ordinal));
+        Assert.Equal(facts.Select(f => f.Id).Append(AuditedId).Order(StringComparer.Ordinal), saved.Changes!.Changed.Select(c => c.Id).Order(StringComparer.Ordinal));
+        foreach (var fact in facts)
+        {
+            var recorded = Assert.IsType<Migration>((await repo.Store.GetElementAsync(fact.Id, Ct))!.Element);
+            Assert.Equal(("column", recorded.Object!.Table + "." + AuditModifiedById), (recorded.Object.Kind, recorded.Object.Key));
+            Assert.Equal(("modified_by", "changed_by"), (recorded.From!.Name, recorded.To!.Name));
+        }
+
+        Assert.Contains(facts, f => f.Summary == "rename column billing.notes.modified_by to changed_by");
+        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
+    }
+
+    [Fact]
+    public async Task Excluding_a_member_records_a_drop_for_that_table()
+    {
+        // next-phase-2-design.md section 3.1 (D7): an excludes entry drops the inherited column from that one table.
+        await using var repo = E2ERepo.Create(demo: false);
+        await AuditColumnsAsync(repo);
+
+        var saved = await repo.EditAsync(NotesTableId, e => e["excludes"] = new JsonArray(AuditModifiedById));
+
+        var fact = Assert.Single(saved.Facts!);
+        Assert.Equal(("drop", "pending", "drop column billing.notes.modified_by"), (fact.Fact, fact.State, fact.Summary));
+        Assert.Equal(["acknowledge"], fact.Missing);
+        var recorded = Assert.IsType<Migration>((await repo.Store.GetElementAsync(fact.Id, Ct))!.Element);
+        Assert.Equal(("column", NotesTableId, NotesTableId + "." + AuditModifiedById), (recorded.Object!.Kind, recorded.Object.Table, recorded.Object.Key));
+    }
+
+    /// <summary>
+    /// The billing stereotype <c>audited</c> gains a nullable <c>modified_by</c> column and schema billing lists it as a default:
+    /// customers, invoices and payments store its attributes and skip it; products, invoice_lines, payment_invoice and notes inherit it.
+    /// </summary>
+    private static async Task AuditColumnsAsync(E2ERepo repo)
+    {
+        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(AuditedId, e => e["columns"] = new JsonArray(
+            new JsonObject { ["id"] = AuditModifiedById, ["name"] = "modified_by", ["type"] = "string", ["length"] = 64 }))).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(E2ERepo.MainDatabaseId, e => e["schemas"]![0]!["defaultStereotypes"] = new JsonArray("audited"))).Outcome);
+    }
+
     [Theory]
     [InlineData("models", "billing")]
     [InlineData("validation", "clean")]
@@ -925,6 +1039,105 @@ public sealed class FactRecordingTests
         Assert.Equal(SaveOutcome.Saved, (await repo.Store.DeleteAsync(fact.Id, document.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct)).Outcome);
         var unexplained = Assert.Single((await ValidateAgainstAsync(repo, against)).Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         Assert.Equal(("MQ4102", NotesTableId, "/columns/5"), (unexplained.Rule, unexplained.ElementId, unexplained.JsonPointer));
+    }
+
+    /// <summary>
+    /// Adds the column <c>state</c> (string(1), nullable) to the notes table, and a designed table <c>invoice_states</c> (code string(1)
+    /// primary key, label string(40)) with the reference type <c>InvoiceState</c> bound to it in main (next-phase-2-design.md section 3.2).
+    /// </summary>
+    /// <returns>The reference type's id and the new column's id.</returns>
+    private static async Task<(string StateType, string StateColumn)> AddStateColumnAndBoundTypeAsync(E2ERepo repo)
+    {
+        const string statesId = "01K9X3B0000000000000000001", codeId = "01K9X3B0000000000000000002", labelId = "01K9X3B0000000000000000003";
+        const string typeId = "01K9X3A0000000000000000001", stateColumnId = "01K6BND00000000000000000S1";
+        await repo.CreateElementAsync($$"""
+            { "kind": "table", "id": "{{statesId}}", "name": "invoice_states", "database": "{{E2ERepo.MainDatabaseId}}", "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+              "columns": [ { "id": "{{codeId}}", "name": "code", "type": "string", "length": 1, "nullable": false },
+                           { "id": "{{labelId}}", "name": "label", "type": "string", "length": 40, "nullable": false } ],
+              "primaryKey": { "columns": [ "{{codeId}}" ] } }
+            """);
+        await repo.CreateElementAsync($$"""
+            { "kind": "reference-type", "id": "{{typeId}}", "name": "InvoiceState",
+              "code": { "id": "01K9X3A0000000000000000002", "type": "string", "length": 1 }, "label": { "id": "01K9X3A0000000000000000003", "length": 40 },
+              "bindings": [ { "id": "01K9X3A0000000000000000004", "database": "{{E2ERepo.MainDatabaseId}}", "table": "{{statesId}}",
+                "fields": [ { "attribute": "code", "column": "{{codeId}}" }, { "attribute": "label", "column": "{{labelId}}" } ] } ] }
+            """);
+        var added = await repo.EditAsync(NotesTableId, e => e["columns"]!.AsArray().Add(new JsonObject
+        {
+            ["id"] = stateColumnId, ["name"] = "state", ["type"] = "string", ["length"] = 1,
+        }));
+        Assert.Empty(added.Facts!);
+        return (typeId, stateColumnId);
+    }
+
+    [Fact]
+    public async Task Typing_a_designed_column_by_a_bound_reference_type_records_a_conversion()
+    {
+        // next-phase-2-design.md section 3.2 (D21), decision 8: the snapshot captures the column's reference state once its typeRef names
+        // a reference type, so typing it by a type bound to a table changes that state: a change-type fact whose conversion says how
+        // values that are not codes are handled, as a change of a projected reference column's storage already records.
+        await using var repo = E2ERepo.Create(demo: false);
+        var (typeId, columnId) = await AddStateColumnAndBoundTypeAsync(repo);
+
+        var saved = await repo.EditAsync(NotesTableId, e => e["columns"]!.AsArray().First(c => (string?)c!["id"] == columnId)!["typeRef"] = new JsonObject { ["ref"] = typeId });
+
+        var fact = Assert.Single(saved.Facts!);
+        Assert.Equal(("change-type", "pending"), (fact.Fact, fact.State));
+        Assert.Equal(["conversion"], fact.Missing);
+        var recorded = Assert.IsType<Migration>((await repo.Store.GetElementAsync(fact.Id, Ct))!.Element);
+        Assert.Equal(("column", NotesTableId, columnId), (recorded.Object!.Kind, recorded.Object.Table, recorded.Object.Key));
+        Assert.Equal(((string?)null, "01K9X3B0000000000000000001"), (recorded.From!.ReferenceTable, recorded.To!.ReferenceTable));
+        Assert.Equal((recorded.From.Type, recorded.From.Length), (recorded.To.Type, recorded.To.Length));
+    }
+
+    [Fact]
+    public async Task Retyping_between_types_with_one_storage_records_no_fact()
+    {
+        // next-phase-2-design.md section 3.2 (D21), decision 8: changing typeRef between two types the templates store alike (here no
+        // strategy and no binding in main) changes no captured storage, so it records no fact; 3.5's value maps cover moving codes.
+        await using var repo = E2ERepo.Create(demo: false);
+        var (_, columnId) = await AddStateColumnAndBoundTypeAsync(repo);
+        const string draftId = "01K9X3C0000000000000000001", stageId = "01K9X3C0000000000000000004";
+        foreach (var (id, name, code, label) in new[]
+        {
+            (draftId, "DraftState", "01K9X3C0000000000000000002", "01K9X3C0000000000000000003"),
+            (stageId, "StageCode", "01K9X3C0000000000000000005", "01K9X3C0000000000000000006"),
+        })
+        {
+            await repo.CreateElementAsync($$"""
+                { "kind": "reference-type", "id": "{{id}}", "name": "{{name}}",
+                  "code": { "id": "{{code}}", "type": "string", "length": 1 }, "label": { "id": "{{label}}", "length": 40 } }
+                """);
+        }
+
+        Assert.Empty((await repo.EditAsync(NotesTableId, e => e["columns"]!.AsArray().First(c => (string?)c!["id"] == columnId)!["typeRef"] = new JsonObject { ["ref"] = draftId })).Facts!);
+        var retyped = await repo.EditAsync(NotesTableId, e => e["columns"]!.AsArray().First(c => (string?)c!["id"] == columnId)!["typeRef"] = new JsonObject { ["ref"] = stageId });
+
+        Assert.Empty(retyped.Facts!);
+        Assert.Empty(FactPaths(repo));
+    }
+
+    [Fact]
+    public async Task Materializing_a_projected_reference_column_records_no_conversion()
+    {
+        // next-phase-2-design.md section 3.2 (D25), decisions 8 and 12: materialize-tables writes the stored column's typeRef, so the
+        // column keeps the reference state its projection had (the bound table invoice_states): the write records its rekey and no
+        // change-type asking for a conversion.
+        await using var repo = E2ERepo.Create(demo: false);
+        var (typeId, _) = await AddStateColumnAndBoundTypeAsync(repo);
+        var added = await repo.EditAsync(E2ERepo.CustomerId, e => e["attributes"]!.AsArray().Add(new JsonObject
+        {
+            ["id"] = "01K9X3D0000000000000000001", ["name"] = "state", ["type"] = new JsonObject { ["ref"] = typeId },
+        }));
+        Assert.Empty(added.Facts!);
+
+        var result = await ApplyAsync(repo, Materialize(E2ERepo.CustomerId));
+
+        var fact = Assert.Single(result.Facts!);
+        Assert.Equal(("rekey", "complete"), (fact.Fact, fact.State));
+        var stored = (await repo.Store.GetSnapshotAsync(Ct)).All<Table>().Single(t => t.Database == E2ERepo.MainDatabaseId && t.Name == "customers");
+        Assert.Equal(typeId, stored.Columns.Single(c => c.Name == "state").TypeRef?.Ref);
+        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
     }
 
     [Fact]
@@ -1471,6 +1684,297 @@ public sealed class FactRecordingTests
         Assert.Equal([there.Id, back.Id], against.RemovedStale);
     }
 
+    [Fact]
+    public async Task Folding_two_rekeys_keeps_their_constraint_entries()
+    {
+        await using var repo = E2ERepo.Create(demo: false);
+        var against = await BaselineAsync(repo, null);
+
+        // Two folds' rekeys that move constraint ids only (written by hand): the second follows the first.
+        static string Fact(string keys, string? after) =>
+            $$"""{"kind": "migration", "database": "{{E2ERepo.MainDatabaseId}}", "fact": "rekey", "keys": [{{keys}}]{{(after is null ? "" : $", \"after\": [\"{after}\"]")}}}""";
+        static string Entry(string kind, string from, string member) =>
+            $$"""{"kind": "{{kind}}", "table": "{{NotesTableId}}", "from": "{{from}}", "to": "{{NotesTableId}}.{{member}}", "name": "{{kind}}_{{member[^2..]}}"}""";
+        var first = await repo.CreateElementAsync(Fact(Entry("unique", "01K6BND00000000000000000Q1", "01JC7AVD1TC00000000000000Q") + ", "
+            + Entry("index", "01K6BND00000000000000000X1", "01JC7AVD1TC00000000000000X"), null));
+        var second = await repo.CreateElementAsync(Fact(Entry("foreign-key", "01K6BND00000000000000000F1", "01JC7AVD1TC00000000000000F") + ", "
+            + Entry("check", "01K6BND00000000000000000K1", "01JC7AVD1TC00000000000000K"), first.Id));
+        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
+
+        // They join into the second, each entry under its table and after the table's columns by kind then from; none is stale.
+        var folded = await FoldAsync(repo, against);
+        Assert.Equal(SaveOutcome.Saved, folded.Outcome);
+        Assert.Empty(folded.RemovedStale);
+        var join = Assert.Single(folded.Joined);
+        Assert.Equal((second.Id, "rekey"), (join.Kept, join.Fact));
+        Assert.Equal([first.Id!], join.Removed);
+        var kept = await FactAsync(repo, second.Id!);
+        Assert.Equal(
+            [("check", "01K6BND00000000000000000K1", "K"), ("foreign-key", "01K6BND00000000000000000F1", "F"),
+                ("index", "01K6BND00000000000000000X1", "X"), ("unique", "01K6BND00000000000000000Q1", "Q")],
+            kept.Keys.Select(k => (k.Kind, k.From, k.To[^1..])));
+        Assert.All(kept.Keys, k => Assert.Equal(NotesTableId, k.Table));
+        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
+    }
+
+    [Fact]
+    public async Task Restoring_the_files_from_before_a_fold_records_its_column_and_index_back()
+    {
+        await using var repo = E2ERepo.Create(demo: false);
+        const string CreatedAt = "01K6BND0000000000000000006";
+        const string OwnIndex = "01K6BND0000000000000000008";
+        const string MemberColumn = "01JC7AVD1TC0000000000000C1";
+        const string MemberIndex = "01JC7AVD1TC0000000000000X1";
+        const string Audited = "01J92P0V25BX5TMQ8N9F6AJE61";
+        string[] notesEntities = ["01K6BND0000000000000000020", "01K6BND0000000000000000010"];
+        Assert.Empty((await repo.EditAsync(NotesTableId, e => e["indexes"]!.AsArray().Add(JsonNode.Parse(
+            $$"""{"id": "{{OwnIndex}}", "columns": [{"column": "{{CreatedAt}}"}]}""")))).Facts!); // an added index records nothing
+        var snapshot = await repo.Store.GetSnapshotAsync(Ct);
+        var originals = new[] { Audited, NotesTableId }.Concat(notesEntities)
+            .ToDictionary(id => id, id => snapshot.GetDocument(id)!.Json.GetRawText(), StringComparer.Ordinal);
+
+        // A fold by hand: audited gains created_at and its index, notes carries audited instead of its own, the bindings name the
+        // keyed id, and the batch writes the rekey (a written rekey is a key map, so nothing else is recorded).
+        JsonObject Update(string id, Func<JsonObject, JsonNode> edit) => new()
+        {
+            ["op"] = "update", ["id"] = id, ["expectedHash"] = snapshot.GetDocument(id)!.Hash,
+            ["element"] = edit(JsonNode.Parse(snapshot.GetDocument(id)!.Json.GetRawText())!.AsObject()),
+        };
+        var keyed = NotesTableId + "." + MemberColumn;
+        var fold = await ApplyAsync(repo,
+            Update(Audited, e =>
+            {
+                e["columns"] = JsonNode.Parse($$"""[{"id": "{{MemberColumn}}", "name": "created_at", "type": "datetimeoffset", "nullable": false, "defaultSql": {"*": "CURRENT_TIMESTAMP"} }]""");
+                e["indexes"] = JsonNode.Parse($$"""[{"id": "{{MemberIndex}}", "columns": [{"column": "{{MemberColumn}}"}]}]""");
+                return e;
+            }),
+            Update(NotesTableId, e =>
+            {
+                e["stereotypes"] = new JsonArray("audited");
+                e["columns"]!.AsArray().Remove(e["columns"]!.AsArray().Single(c => (string?)c!["id"] == CreatedAt));
+                e["indexes"]!.AsArray().Remove(e["indexes"]!.AsArray().Single(i => (string?)i!["id"] == OwnIndex));
+                return e;
+            }),
+            Update(notesEntities[0], e => JsonNode.Parse(e.ToJsonString().Replace(CreatedAt, keyed, StringComparison.Ordinal))!),
+            Update(notesEntities[1], e => JsonNode.Parse(e.ToJsonString().Replace(CreatedAt, keyed, StringComparison.Ordinal))!),
+            new JsonObject
+            {
+                ["op"] = "create",
+                ["element"] = JsonNode.Parse($$"""
+                    {"kind": "migration", "database": "{{E2ERepo.MainDatabaseId}}", "fact": "rekey", "keys": [
+                      {"kind": "column", "table": "{{NotesTableId}}", "from": "{{CreatedAt}}", "to": "{{keyed}}", "name": "created_at"},
+                      {"kind": "index", "table": "{{NotesTableId}}", "from": "{{OwnIndex}}", "to": "{{NotesTableId}}.{{MemberIndex}}", "name": "ix_notes_created_at"}]}
+                    """),
+            });
+        Assert.Empty(fold.Facts!);
+        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
+        var rekeyId = Assert.Single((await repo.Store.ListMigrationsAsync(null, null, 10, Ct)).Facts).Id;
+
+        // Restoring the four files: the column and the index come back under their own ids, so the rekey goes back, and nothing drops.
+        snapshot = await repo.Store.GetSnapshotAsync(Ct);
+        var undo = await ApplyAsync(repo, [.. originals.Select(o => Update(o.Key, _ => JsonNode.Parse(o.Value)!))]);
+        var back = Assert.Single(undo.Facts!);
+        Assert.Equal(("rekey", "complete"), (back.Fact, back.State));
+        var fact = await FactAsync(repo, back.Id);
+        Assert.Equal(
+            [("column", NotesTableId, keyed, CreatedAt), ("index", NotesTableId, NotesTableId + "." + MemberIndex, OwnIndex)],
+            fact.Keys.Select(k => (k.Kind, k.Table, k.From, k.To)));
+        Assert.Equal([rekeyId], fact.After);
+    }
+
+    // ---------------------------------------------------------------- value maps (next-phase-2-design.md section 3.5, D53)
+
+    private const string ArchiveDatabaseId = "01KAPD00000000000000000001";
+    private const string ArchiveSchemaId = "01KAPD00000000000000000002";
+    private const string ArchiveTermsId = "01KAPD00000000000000000003";
+    private const string ArchiveTermColumnId = "01KAPD00000000000000000005";
+    private const string EmptyDatabaseId = "01KAPD00000000000000000011";
+    private const string BoundDatabaseId = "01KAPD00000000000000000021";
+    private const string BoundTermsId = "01KAPD00000000000000000023";
+
+    /// <summary>
+    /// Adds <c>archive</c> (no convention), whose designed table <c>terms</c> has a column <c>term</c> typed by PaymentTerm, and
+    /// <c>empty</c>, a database with nothing in it; then restarts the store.
+    /// </summary>
+    private static async Task AddArchiveAndEmptyAsync(E2ERepo repo, bool holder = true)
+    {
+        await repo.CreateElementAsync($$"""
+            { "kind": "database", "id": "{{ArchiveDatabaseId}}", "name": "archive", "dialect": "postgresql", "version": "16", "defaultSchema": "archive",
+              "schemas": [ { "id": "{{ArchiveSchemaId}}", "name": "archive" } ], "byConvention": "none" }
+            """);
+        if (holder)
+        {
+            await repo.CreateElementAsync($$"""
+                { "kind": "table", "id": "{{ArchiveTermsId}}", "name": "terms", "database": "{{ArchiveDatabaseId}}", "schema": "{{ArchiveSchemaId}}",
+                  "columns": [ { "id": "01KAPD00000000000000000004", "name": "id", "type": "uuid", "nullable": false },
+                               { "id": "{{ArchiveTermColumnId}}", "name": "term", "type": "string", "length": 8, "typeRef": { "ref": "{{PaymentTerms.PaymentTerm}}" } } ],
+                  "primaryKey": { "columns": [ "01KAPD00000000000000000004" ] } }
+                """);
+        }
+
+        await repo.CreateElementAsync($$"""
+            { "kind": "database", "id": "{{EmptyDatabaseId}}", "name": "empty", "dialect": "postgresql", "version": "16", "defaultSchema": "empty",
+              "schemas": [ { "id": "01KAPD00000000000000000012", "name": "empty" } ], "byConvention": "none" }
+            """);
+        await repo.RestartAsync();
+    }
+
+    private static string RenameNet30 => $$"""{ "op": "rename-code", "id": "{{PaymentTerms.PaymentTerm}}", "code": "net30", "to": "net-30" }""";
+
+    [Fact]
+    public async Task Rename_code_records_one_value_map_per_database_holding_the_type()
+    {
+        await using var repo = PaymentTerms.Create();
+        await PaymentTerms.AddAsync(repo);
+        await AddArchiveAndEmptyAsync(repo);
+
+        var result = await PaymentTerms.ApplyAsync(repo, RenameNet30);
+
+        // main stores the codes in invoices.payment_term, archive in terms.term; empty stores none and gets no fact.
+        Assert.Equal([E2ERepo.MainDatabaseId, ArchiveDatabaseId], result.Facts!.Select(f => f.Database).Order(StringComparer.Ordinal));
+        Assert.All(result.Facts!, f => Assert.Equal(("value-map", "complete"), (f.Fact, f.State)));
+        Assert.Equal("maps PaymentTerm codes net30 -> net-30 in 1 column", result.Facts!.Single(f => f.Database == E2ERepo.MainDatabaseId).Summary);
+
+        var main = Assert.Single(await PaymentTerms.ValueMapsAsync(repo, E2ERepo.MainDatabaseId));
+        var column = Assert.Single(main.Objects);
+        Assert.Equal(("column", PaymentTerms.InvoicesTable, PaymentTerms.InvoicePaymentTerm, "billing", "invoices", "payment_term"),
+            (column.Kind, column.Table, column.Key, column.Schema, column.TableName, column.Name));
+        Assert.Equal((PaymentTerms.PaymentTerm, (string?)null), (main.ReferenceType, main.FromReferenceType));
+        Assert.Equal(("PaymentTerm", "PaymentTerm"), (main.From!.Name, main.To!.Name));
+        Assert.Equal([("net30", "net-30")], main.Values.Select(v => (v.From, v.To)));
+        Assert.Empty(main.Collections);
+        var archive = Assert.Single(await PaymentTerms.ValueMapsAsync(repo, ArchiveDatabaseId));
+        Assert.Equal((ArchiveTermsId, ArchiveTermColumnId, "terms"), (archive.Objects[0].Table, archive.Objects[0].Key, archive.Objects[0].TableName));
+        Assert.Empty(await PaymentTerms.ValueMapsAsync(repo, EmptyDatabaseId));
+        Assert.DoesNotContain(result.Items.SelectMany(i => i.Diagnostics), d => d.Rule == "MQ4114");
+        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
+    }
+
+    [Fact]
+    public async Task A_value_map_lists_collections_by_owner_table_and_attribute()
+    {
+        const string accepted = "01KAPT00000000000000000031";
+        await using var repo = PaymentTerms.Create();
+        await PaymentTerms.AddAsync(repo);
+        await repo.EditAsync(E2ERepo.CustomerId, e => e["attributes"]!.AsArray().Add(JsonNode.Parse($$"""
+            { "id": "{{accepted}}", "name": "acceptedTerms", "type": { "ref": "{{PaymentTerms.PaymentTerm}}" }, "collection": true }
+            """)));
+        await repo.RestartAsync();
+
+        var result = await PaymentTerms.ApplyAsync(repo, RenameNet30);
+
+        Assert.Equal("maps PaymentTerm codes net30 -> net-30 in 1 column and 1 collection", Assert.Single(result.Facts!).Summary);
+        var map = Assert.Single(await PaymentTerms.ValueMapsAsync(repo, E2ERepo.MainDatabaseId));
+        var collection = Assert.Single(map.Collections);
+        Assert.Equal((PaymentTerms.CustomersTable, "billing", "customers", accepted, "acceptedTerms"),
+            (collection.Table, collection.Schema, collection.TableName, collection.Attribute, collection.Name));
+        Assert.Equal(PaymentTerms.InvoicePaymentTerm, Assert.Single(map.Objects).Key);
+        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
+    }
+
+    [Fact]
+    public async Task Rename_type_records_names_in_every_database_without_a_binding()
+    {
+        await using var repo = PaymentTerms.Create();
+        await PaymentTerms.AddAsync(repo);
+        await AddArchiveAndEmptyAsync(repo, holder: false);
+        // bound: PaymentTerm keeps its rows in the table file payment_terms there, and nothing there holds its codes.
+        await repo.CreateElementAsync($$"""
+            { "kind": "database", "id": "{{BoundDatabaseId}}", "name": "bound", "dialect": "postgresql", "version": "16", "defaultSchema": "bound",
+              "schemas": [ { "id": "01KAPD00000000000000000022", "name": "bound" } ], "byConvention": "none" }
+            """);
+        await repo.CreateElementAsync($$"""
+            { "kind": "table", "id": "{{BoundTermsId}}", "name": "payment_terms", "database": "{{BoundDatabaseId}}", "schema": "01KAPD00000000000000000022",
+              "columns": [ { "id": "01KAPD00000000000000000024", "name": "code", "type": "string", "length": 8, "nullable": false },
+                           { "id": "01KAPD00000000000000000025", "name": "label", "type": "string", "length": 64, "nullable": false } ],
+              "primaryKey": { "columns": [ "01KAPD00000000000000000024" ] } }
+            """);
+        await repo.EditAsync(PaymentTerms.PaymentTerm, e => e["bindings"] = JsonNode.Parse($$"""
+            [ { "id": "01KAPD00000000000000000026", "database": "{{BoundDatabaseId}}", "table": "{{BoundTermsId}}",
+                "fields": [ { "attribute": "code", "column": "01KAPD00000000000000000024" }, { "attribute": "label", "column": "01KAPD00000000000000000025" } ] } ]
+            """));
+        await repo.RestartAsync();
+        var rename = $$"""{ "op": "rename-reference-type", "id": "{{PaymentTerms.PaymentTerm}}", "name": "PaymentCondition" }""";
+
+        // It reaches every database, so a dry run leaves its facts to the save.
+        Assert.Null((await repo.Store.PreviewBatchAsync(PaymentTerms.Batch(repo, rename), Ct)).Facts);
+        var result = await PaymentTerms.ApplyAsync(repo, rename);
+
+        Assert.Equal([E2ERepo.MainDatabaseId, ArchiveDatabaseId, EmptyDatabaseId], result.Facts!.Select(f => f.Database).Order(StringComparer.Ordinal));
+        Assert.All(result.Facts!, f => Assert.Equal("renames reference type PaymentTerm to PaymentCondition", f.Summary));
+        var main = Assert.Single(await PaymentTerms.ValueMapsAsync(repo, E2ERepo.MainDatabaseId));
+        Assert.Equal(PaymentTerms.InvoicePaymentTerm, Assert.Single(main.Objects).Key);
+        Assert.Empty(main.Values);
+        Assert.Equal(("PaymentTerm", "PaymentCondition"), (main.From!.Name, main.To!.Name));
+        Assert.Empty(Assert.Single(await PaymentTerms.ValueMapsAsync(repo, ArchiveDatabaseId)).Objects);
+        Assert.Empty(await PaymentTerms.ValueMapsAsync(repo, BoundDatabaseId));
+        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
+    }
+
+    [Fact]
+    public async Task A_merge_records_its_value_map_before_the_strategy_change_type()
+    {
+        // CreditTerm is stored with check in main, PaymentTerm with the project's lookup-table: the merged columns change strategy.
+        await using var repo = PaymentTerms.Create();
+        await PaymentTerms.AddAsync(repo, creditTerm: $$""", "storage": { "{{E2ERepo.MainDatabaseId}}": { "strategy": "check" } }""");
+
+        var result = await PaymentTerms.ApplyAsync(repo, $$"""
+            { "op": "merge-reference-types", "id": "{{PaymentTerms.CreditTerm}}", "target": "{{PaymentTerms.PaymentTerm}}", "codes": { "n90": "net60" } }
+            """);
+
+        var facts = (await repo.Store.GetSnapshotAsync(Ct)).All<Migration>().OrderBy(f => f.Id, StringComparer.Ordinal).ToList();
+        Assert.Equal([MigrationFact.ValueMap, MigrationFact.ChangeType, MigrationFact.ChangeType], facts.Select(f => f.Fact));
+        var map = facts[0];
+        Assert.Equal((PaymentTerms.PaymentTerm, PaymentTerms.CreditTerm), (map.ReferenceType, map.FromReferenceType));
+        Assert.Equal(("CreditTerm", "PaymentTerm"), (map.From!.Name, map.To!.Name));
+        Assert.Equal([("n90", "net60")], map.Values.Select(v => (v.From, v.To)));
+        Assert.Equal([("customers", "credit_term"), ("notes", "term")], map.Objects.Select(o => (o.TableName!, o.Name!)).Order());
+        Assert.Equal("maps CreditTerm codes n90 -> net60 into PaymentTerm in 2 columns", result.Facts!.Single(f => f.Fact == "value-map").Summary);
+        // Each strategy change converts mapped codes: it follows the value map on its table.
+        foreach (var change in facts.Skip(1))
+        {
+            Assert.Equal(("check", "lookup-table"), (change.From!.Strategy, change.To!.Strategy));
+            Assert.Equal([map.Id], change.After);
+        }
+    }
+
+    [Fact]
+    public async Task A_plain_code_edit_records_nothing_and_warns_MQ4114()
+    {
+        await using var repo = PaymentTerms.Create();
+        await PaymentTerms.AddAsync(repo);
+
+        var cell = await repo.EditAsync(PaymentTerms.PaymentTermSeed, e => e["rows"]![1]!["values"]![0] = "net-60");
+        Assert.Empty(cell.Facts!);
+        var warning = Assert.Single(cell.Diagnostics, d => d.Rule == "MQ4114");
+        Assert.Equal((DiagnosticSeverity.Warning, PaymentTerms.PaymentTermSeed, "/rows/1/values/0"), (warning.Severity, warning.ElementId, warning.JsonPointer));
+        Assert.Contains("'net60' to 'net-60'", warning.Message, StringComparison.Ordinal);
+
+        var renamed = await repo.EditAsync(PaymentTerms.PaymentTerm, e => e["name"] = "PaymentCondition");
+        Assert.Empty(renamed.Facts!);
+        Assert.Equal("/name", Assert.Single(renamed.Diagnostics, d => d.Rule == "MQ4114").JsonPointer);
+        Assert.Empty(FactPaths(repo));
+
+        // A refactor of the type is no plain edit.
+        var refactor = await PaymentTerms.ApplyAsync(repo, RenameNet30);
+        Assert.DoesNotContain(refactor.Items.SelectMany(i => i.Diagnostics), d => d.Rule == "MQ4114");
+    }
+
+    [Fact]
+    public async Task Recording_off_records_no_value_map()
+    {
+        await using var repo = PaymentTerms.Create(E2ERepo.RecordOff);
+        await PaymentTerms.AddAsync(repo);
+
+        var result = await PaymentTerms.ApplyAsync(repo, RenameNet30);
+
+        Assert.Empty(result.Facts!);
+        Assert.Empty(FactPaths(repo));
+        Assert.Contains("\"net30\"", repo.Repo.ReadFile(".maquettiste/model/reference-types/payment-term.json"), StringComparison.Ordinal); // the former code
+        var cell = await repo.EditAsync(PaymentTerms.PaymentTermSeed, e => e["rows"]![1]!["values"]![0] = "net-60");
+        Assert.DoesNotContain(cell.Diagnostics, d => d.Rule == "MQ4114");
+    }
+
     /// <summary>Renames Customer's name attribute, which renames its column.</summary>
     private static Task<SaveResult> RenameCustomerNameAsync(E2ERepo repo, string name) =>
         repo.EditAsync(E2ERepo.CustomerId, e => e["attributes"]![1]!["name"] = name);
@@ -1549,6 +2053,9 @@ public sealed class FactRecordingTests
     private const string JournalMemoColumnId = "01JFRD00000000000000000009";
     private const string LedgeredId = "01JFRD00000000000000000010";
     private const string SoftDeleteId = "01J92P0V28YYY43REGJ9RXZ662";
+    private const string TunedId = "01JFRD00000000000000000011";
+    private const string AuditedId = "01J92P0V25BX5TMQ8N9F6AJE61";
+    private const string AuditModifiedById = "01JFRD00000000000000000012";
 
     /// <summary>
     /// Adds a second database, <c>ledger</c>, that takes the Ledger package only (with one entity, which the main database also takes,

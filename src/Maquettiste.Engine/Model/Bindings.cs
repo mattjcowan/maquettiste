@@ -49,6 +49,12 @@ public sealed record EntityBinding
     [JsonConverter(typeof(BindingDeleteJsonConverter))]
     public BindingDelete? Delete { get; init; }
 
+    /// <summary>
+    /// The columns of a table-file source as the last by-name operation recorded them (next-phase-2-design.md section 3.3); written by
+    /// the engine only. <see langword="null"/> (absent): no operation recorded them, and only MQ4047 reports what the binding misses.
+    /// </summary>
+    public BindingProvenance? Provenance { get; init; }
+
     /// <summary>Markdown text, or a reference to a sidecar Markdown file beside the entity's file.</summary>
     public Description? Description { get; init; }
 
@@ -57,6 +63,21 @@ public sealed record EntityBinding
 
     /// <summary>Custom property values (the property bag).</summary>
     public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = System.Collections.Immutable.ImmutableDictionary<string, JsonElement>.Empty;
+}
+
+/// <summary>
+/// What a binding's source looked like when a by-name operation last followed it (next-phase-2-design.md section 3.3): one entry per
+/// column of a designed or imported table file, two short hashes that tell a rename and a retype apart (<see cref="ColumnShapeHash"/>).
+/// It is a record, not a link: nothing in it is an <see cref="ElementRefAttribute"/>, so the index does not walk it and a column delete
+/// never sees it; a recorded id the source no longer has reads as removed.
+/// </summary>
+public sealed record BindingProvenance
+{
+    /// <summary>
+    /// Column id (an inherited column by its keyed id, <c>&lt;tableId&gt;.&lt;memberId&gt;</c>) to <c>"&lt;name part&gt;:&lt;type part&gt;"</c>,
+    /// 8 hex digits each. Ids here are records, not references. The canonical writer sorts the keys.
+    /// </summary>
+    public required IReadOnlyDictionary<string, string> Columns { get; init; }
 }
 
 /// <summary>

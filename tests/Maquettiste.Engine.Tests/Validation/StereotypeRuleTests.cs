@@ -11,7 +11,8 @@ namespace Maquettiste.Engine.Tests.Validation;
 /// </summary>
 public sealed class StereotypeRuleTests
 {
-    private static readonly string[] Rules = ["MQ2003", "MQ2004", "MQ2009", "MQ2013", "MQ2014", "MQ2015", "MQ2016", "MQ2017", "MQ2018", "MQ2019"];
+    private static readonly string[] Rules =
+        ["MQ2003", "MQ2004", "MQ2009", "MQ2013", "MQ2014", "MQ2015", "MQ2016", "MQ2017", "MQ2018", "MQ2019", "MQ2029", "MQ2030", "MQ2031"];
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -283,6 +284,183 @@ public sealed class StereotypeRuleTests
 
         Assert.Equal([("MQ2004", invoice.Id, "/stereotypes/1")], Rows(found));
         Assert.Contains("'partitioned' (implied by 'aggregate-root') applies to table, not to an entity", found[0].Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A model for the default-stereotype rules (next-phase-2-design.md section 3.1, D5): package Billing, database main whose default
+    /// schema is billing, a designed table ledger in both, and a second table journal there without stereotypes of its own.
+    /// </summary>
+    private sealed record DefaultsModel(ModelSnapshot Model, string Ledger, string Journal, string Billing, string Database, string Schema);
+
+    private static DefaultsModel WithDefaults(Action<ModelBuilder> stereotypes, string[] schemaDefaults, string[] packageDefaults, string[] own,
+        string[]? excludes = null)
+    {
+        var b = new ModelBuilder(61);
+        stereotypes(b);
+        var billing = b.Package("Billing");
+        var main = b.Database("main", Dialect.PostgreSql).DefaultSchema("billing");
+        var schema = main.Schema("billing");
+        var ledger = b.Table("ledger", main).Column("id", "uuid", nullable: false).PrimaryKey("id");
+        foreach (var key in own)
+            ledger.Stereotype(key);
+        ledger.Edit(t => t with { Package = billing.Id, ExcludeStereotypes = excludes });
+        var journal = b.Table("journal", main).Column("id", "uuid", nullable: false).PrimaryKey("id").Edit(t => t with { Package = billing.Id });
+        var model = Model.StereotypeDefaultsTests.Rebuild(b, e => e is Package p && p.Id == billing.Id ? p with { DefaultStereotypes = packageDefaults }
+            : Model.StereotypeDefaultsTests.SchemaDefaults(e, schema, schemaDefaults));
+        return new DefaultsModel(model, ledger.Id, journal.Id, billing.Id, main.Id, schema);
+    }
+
+    [Fact]
+    public async Task Excluding_an_own_or_implied_stereotype_is_MQ2029()
+    {
+        var m = WithDefaults(b =>
+        {
+            b.Stereotype("audited");
+            b.Stereotype("tracked");
+            b.Stereotype("owned").Implies("tracked");
+        }, ["audited"], [], ["owned"], ["owned", "tracked"]);
+
+        var found = await FindingsOf(m.Model);
+
+        Assert.Equal([("MQ2029", m.Ledger, "/excludeStereotypes/0"), ("MQ2029", m.Ledger, "/excludeStereotypes/1")], Rows(found));
+        Assert.Contains("which the table lists in 'stereotypes'", found[0].Message, StringComparison.Ordinal);
+        Assert.Contains("which 'owned' in 'stereotypes' implies", found[1].Message, StringComparison.Ordinal);
+        Assert.All(found, d => Assert.Equal(DiagnosticSeverity.Error, d.Severity));
+    }
+
+    [Fact]
+    public async Task Excluding_a_default_is_clean()
+    {
+        var m = WithDefaults(b =>
+        {
+            b.Stereotype("audited");
+            b.Stereotype("tracked");
+            b.Stereotype("owned").Implies("tracked");
+        }, ["audited"], ["owned"], [], ["audited", "tracked"]);
+
+        Assert.Empty(await FindingsOf(m.Model));
+        Assert.Equal(["owned"], m.Model.EffectiveStereotypes(m.Model.Get<Table>(m.Ledger)!).Select(s => s.Stereotype.Key));
+    }
+
+    [Fact]
+    public async Task Excluding_what_no_default_gives_is_MQ2030()
+    {
+        var m = WithDefaults(b =>
+        {
+            b.Stereotype("audited");
+            b.Stereotype("entity-only").AppliesTo("entity");
+            b.Stereotype("unused");
+        }, ["audited"], ["entity-only"], [], ["unused", "entity-only", "missing"]);
+
+        var found = await FindingsOf(m.Model);
+
+        // A default that does not apply to a table gives it nothing; an unknown key is MQ2003.
+        Assert.Equal(
+            [("MQ2030", m.Ledger, "/excludeStereotypes/0"), ("MQ2030", m.Ledger, "/excludeStereotypes/1"), ("MQ2003", m.Ledger, "/excludeStereotypes/2")],
+            Rows(found));
+        Assert.Equal(DiagnosticSeverity.Warning, found[0].Severity);
+        Assert.Contains("so it excludes nothing", found[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Excluding_a_stereotype_a_default_implies_is_clean()
+    {
+        var m = WithDefaults(b =>
+        {
+            b.Stereotype("tracked");
+            b.Stereotype("owned").Implies("tracked");
+        }, [], ["owned"], [], ["tracked"]);
+
+        Assert.Empty(await FindingsOf(m.Model));
+    }
+
+    [Fact]
+    public async Task A_default_list_with_two_of_one_group_or_a_conflict_is_MQ2031()
+    {
+        var m = WithDefaults(b =>
+        {
+            b.Stereotype("soft-delete").Group("deletion");
+            b.Stereotype("hard-delete").Group("deletion");
+            b.Stereotype("cached");
+            b.Stereotype("live").Conflicts("cached");
+            b.Stereotype("aggregate-root").Implies("soft-delete");
+        }, ["cached", "live", "missing"], ["aggregate-root", "hard-delete"], []);
+
+        var found = await FindingsOf(m.Model);
+
+        // On the package (the implied soft-delete first, then the entries) and on the schema entry; an unknown key is MQ2003 at its
+        // entry. Every element the defaults reach is judged on its whole set too (MQ2013, MQ2015).
+        var lists = found.Where(d => d.ElementId == m.Billing || d.ElementId == m.Schema).ToList();
+        Assert.Equal(
+            [
+                ("MQ2031", m.Billing, "/defaultStereotypes/1"),
+                ("MQ2031", m.Schema, "/schemas/0/defaultStereotypes/1"),
+                ("MQ2003", m.Schema, "/schemas/0/defaultStereotypes/2"),
+            ],
+            Rows(lists).OrderBy(r => r.Item3, StringComparer.Ordinal).ThenBy(r => r.Item1, StringComparer.Ordinal));
+        Assert.Contains("'hard-delete' and 'soft-delete' (implied by 'aggregate-root'), both in group 'deletion'",
+            lists.Single(d => d.ElementId == m.Billing).Message, StringComparison.Ordinal);
+        Assert.Contains("'cached' and 'live', which conflict", lists.First(d => d.Rule == "MQ2031" && d.ElementId == m.Schema).Message, StringComparison.Ordinal);
+        Assert.Contains(found, d => d.Rule == "MQ2013" && d.ElementId == m.Journal);
+        Assert.Contains(found, d => d.Rule == "MQ2015" && d.ElementId == m.Journal);
+    }
+
+    [Fact]
+    public async Task A_default_list_without_a_clash_is_clean()
+    {
+        var m = WithDefaults(b =>
+        {
+            b.Stereotype("soft-delete").Group("deletion");
+            b.Stereotype("hard-delete").Group("deletion");
+            b.Stereotype("cached");
+            b.Stereotype("aggregate-root").Implies("soft-delete");
+        }, ["cached"], ["aggregate-root"], [], ["cached"]);
+
+        Assert.Empty(await FindingsOf(m.Model));
+    }
+
+    [Fact]
+    public async Task A_clash_with_a_default_names_its_holder_and_offers_an_exclusion()
+    {
+        var m = WithDefaults(b =>
+        {
+            b.Stereotype("soft-delete").Group("deletion");
+            b.Stereotype("hard-delete").Group("deletion");
+            b.Stereotype("audited");
+            b.Stereotype("tracked").Requires("audited");
+        }, ["soft-delete"], ["tracked"], ["hard-delete"]);
+
+        var found = await FindingsOf(m.Model);
+
+        // ledger lists hard-delete itself: the clash is at its own entry, naming the schema's default, and the package default that
+        // requires a missing stereotype is at its list. journal has no list: its finding about a default points at the file root.
+        // Each is told how to leave the default out.
+        Assert.Equal(
+            [("MQ2014", m.Journal, ""), ("MQ2013", m.Ledger, "/stereotypes/0"), ("MQ2014", m.Ledger, "/stereotypes")],
+            Rows(found).OrderBy(r => r.Item2 == m.Ledger).ThenBy(r => r.Item1, StringComparer.Ordinal));
+        var clash = found.Single(d => d.Rule == "MQ2013" && d.ElementId == m.Ledger);
+        Assert.Contains("'soft-delete' (a default of schema 'billing') is in it too", clash.Message, StringComparison.Ordinal);
+        Assert.Contains("add 'soft-delete' to its excludeStereotypes", clash.Message, StringComparison.Ordinal);
+        var missing = found.Single(d => d.Rule == "MQ2014" && d.ElementId == m.Ledger);
+        Assert.Contains("'tracked' (a default of package 'Billing') requires stereotype 'audited'", missing.Message, StringComparison.Ordinal);
+        Assert.Contains("add 'tracked' to its excludeStereotypes", missing.Message, StringComparison.Ordinal);
+
+        // The suggested exclusions clear the findings.
+        m = WithDefaults(b =>
+        {
+            b.Stereotype("soft-delete").Group("deletion");
+            b.Stereotype("hard-delete").Group("deletion");
+            b.Stereotype("audited");
+            b.Stereotype("tracked").Requires("audited");
+        }, ["soft-delete"], ["tracked"], ["hard-delete"], ["soft-delete", "tracked"]);
+        Assert.DoesNotContain(await FindingsOf(m.Model), d => d.ElementId == m.Ledger);
+    }
+
+    private static async Task<IReadOnlyList<Diagnostic>> FindingsOf(ModelSnapshot model)
+    {
+        var report = await ValidationFixture.Validator().ValidateAsync(model, ValidationScope.All, null, Ct);
+        Assert.DoesNotContain(report.Diagnostics, d => d.Rule is "MQ5001" or "MQ5004");
+        return [.. report.Diagnostics.Where(d => Rules.Contains(d.Rule))];
     }
 
     private static List<(string, string, string)> Rows(IEnumerable<Diagnostic> found) =>

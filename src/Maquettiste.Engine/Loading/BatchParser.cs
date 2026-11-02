@@ -66,6 +66,13 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "retag" => BatchOp.Retag,
                     "tags-to-property" => BatchOp.TagsToProperty,
                     "names-to-ids" => BatchOp.NamesToIds,
+                    "fold-into-stereotype" => BatchOp.FoldIntoStereotype,
+                    "map-by-name" => BatchOp.MapByName,
+                    "resync-binding" => BatchOp.ResyncBinding,
+                    "rename-code" => BatchOp.RenameCode,
+                    "retire-code" => BatchOp.RetireCode,
+                    "merge-reference-types" => BatchOp.MergeReferenceTypes,
+                    "rename-reference-type" => BatchOp.RenameReferenceType,
                     _ => BatchOp.Delete,
                 };
                 operations.Add(new BatchOperation(
@@ -94,7 +101,13 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     Tags: Texts(item, "tags"),
                     As: Text(item, "as"),
                     ElementIds: Texts(item, "elementIds"),
-                    Prefix: Text(item, "prefix")));
+                    Prefix: Text(item, "prefix"),
+                    Redefine: Flag(item, "redefine"),
+                    ExcludeMissing: Flag(item, "excludeMissing"),
+                    KeepNames: Flag(item, "keepNames"),
+                    Code: Text(item, "code"),
+                    To: Text(item, "to"),
+                    Codes: Map(item, "codes")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);
@@ -110,6 +123,9 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object
             ? value.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.Ordinal)
             : null;
+
+    private static bool? Flag(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : null;
 
     private static string? Text(JsonElement item, string name) =>
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

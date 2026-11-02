@@ -114,7 +114,7 @@ database main postgresql default-schema=public limit=63 schemas=public
     4 credit_limit decimal[18,2] native=numeric(18,2) not-null key=<SalesOrder:creditLimit> former_names=[] since=-
     pk pk_sales_orders (id)
 process PurchaseApproval display='Purchase approval' package=Purchasing use=orchestration subject=PurchaseRequest bound=- enum=- initial=Drafting
-  keys e:<PurchaseRequest> e:<PurchaseApproval> s:inflection
+  keys e:<PurchaseRequest> e:<Purchasing> e:<PurchaseApproval> s:inflection
   context 0 amount: builtin decimal default=0
   context 1 reminders: builtin int32 default=0
   event submit actors=Requester,BudgetHolder payload=- transitions=1
@@ -154,7 +154,7 @@ process PurchaseApproval display='Purchase approval' package=Purchasing use=orch
   actors Approver,BudgetHolder,ComplianceOfficer,FinanceController,ProcurementSystem,Requester membership e:<PurchaseRequest> e:<PurchaseApproval> k:actor
   scenarios BudgetRejected,ChangesRequested,ComplianceFirstThenBudget,HappyPath,RejectionWithReason,ReminderAfterFiveDays membership k:scenario r:<PurchaseApproval>
 process SalesOrderLifecycle display='Sales order lifecycle' package=Sales use=lifecycle subject=SalesOrder bound=status enum=SalesOrderStatus initial=Draft
-  keys e:<SalesOrderStatus> e:<SalesOrder> e:<SalesOrderLifecycle> s:inflection
+  keys e:<SalesOrderStatus> e:<SalesOrder> e:<Sales> e:<SalesOrderLifecycle> s:inflection
   context 0 total: builtin decimal default=0
   context 1 creditLimit: builtin decimal default=0
   event submit actors=- payload=- transitions=1
@@ -221,23 +221,23 @@ actor ProcurementSystem external-system package=- stereotypes=- processes=Purcha
 actor Requester role package=- stereotypes=- processes=PurchaseApproval events=submit,requestChanges gates=-
   keys e:<Requester> s:inflection lists r:<Requester>
 scenario BudgetRejected process=PurchaseApproval package=Purchasing outcome=active at=2000-01-01T00:00:00Z context={amount=25000}
-  keys e:<PurchaseApproval> e:<BudgetRejected> s:inflection
+  keys e:<Purchasing> e:<PurchaseApproval> e:<BudgetRejected> s:inflection
   step 0 event event=submit actor=BudgetHolder expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
   step 1 invoke-error invoke=checkBudget expect accepted=true states=Review.Budget.BudgetRejected,Review.Compliance.Pending
   step 2 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Review.Budget.BudgetRejected,Review.Compliance.Cleared
 scenario ChangesRequested process=PurchaseApproval package=Purchasing outcome=active at=2000-01-01T00:00:00Z context={amount=25000}
-  keys e:<PurchaseApproval> e:<ChangesRequested> s:inflection
+  keys e:<Purchasing> e:<PurchaseApproval> e:<ChangesRequested> s:inflection
   step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
   step 1 invoke-error invoke=checkBudget expect accepted=true states=Review.Budget.BudgetRejected,Review.Compliance.Pending
   step 2 event event=requestChanges actor=Requester expect accepted=true states=Drafting
   step 3 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
 scenario ComplianceFirstThenBudget process=PurchaseApproval package=Purchasing outcome=active at=2000-01-01T00:00:00Z context={amount=2500}
-  keys e:<PurchaseApproval> e:<ComplianceFirstThenBudget> s:inflection
+  keys e:<Purchasing> e:<PurchaseApproval> e:<ComplianceFirstThenBudget> s:inflection
   step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
   step 1 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Review.Budget.Checking,Review.Compliance.Cleared
   step 2 invoke-done invoke=checkBudget expect accepted=true states=Approval
 scenario HappyPath process=PurchaseApproval package=Purchasing outcome=final at=2000-01-01T00:00:00Z context={amount=2500}
-  keys e:<PurchaseApproval> e:<HappyPath> s:inflection
+  keys e:<Purchasing> e:<PurchaseApproval> e:<HappyPath> s:inflection
   step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
   step 1 invoke-done invoke=checkBudget expect accepted=true states=Review.Budget.BudgetOk,Review.Compliance.Pending
   step 2 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Approval
@@ -245,55 +245,55 @@ scenario HappyPath process=PurchaseApproval package=Purchasing outcome=final at=
   step 4 event event=approve actor=FinanceController signer=frank meaning=approved expect accepted=true states=Ordering
   step 5 invoke-done invoke=createPurchaseOrder actor=ProcurementSystem expect accepted=true states=Ordered
 scenario RejectionWithReason process=PurchaseApproval package=Purchasing outcome=final at=2000-01-01T00:00:00Z context={amount=2500}
-  keys e:<PurchaseApproval> e:<RejectionWithReason> s:inflection
+  keys e:<Purchasing> e:<PurchaseApproval> e:<RejectionWithReason> s:inflection
   step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
   step 1 invoke-done invoke=checkBudget expect accepted=true states=Review.Budget.BudgetOk,Review.Compliance.Pending
   step 2 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Approval
   step 3 event event=reject actor=Approver payload={reason='Over budget for the quarter'} expect accepted=true states=Rejected
 scenario ReminderAfterFiveDays process=PurchaseApproval package=Purchasing outcome=active at=2000-01-01T00:00:00Z context={amount=2500}
-  keys e:<PurchaseApproval> e:<ReminderAfterFiveDays> s:inflection
+  keys e:<Purchasing> e:<PurchaseApproval> e:<ReminderAfterFiveDays> s:inflection
   step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
   step 1 invoke-done invoke=checkBudget expect accepted=true states=Review.Budget.BudgetOk,Review.Compliance.Pending
   step 2 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Approval
   step 3 time after=P5D ms=432000000 expect accepted=true states=Approval context={reminders=1}
 scenario CancelBeforeShipping process=SalesOrderLifecycle package=Sales outcome=final at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
-  keys e:<SalesOrderLifecycle> e:<CancelBeforeShipping> s:inflection
+  keys e:<Sales> e:<SalesOrderLifecycle> e:<CancelBeforeShipping> s:inflection
   step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
   step 1 event event=cancel assume={notShipped=true} expect accepted=true states=Cancelled
 scenario CancelRefusedAfterShipping process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
-  keys e:<SalesOrderLifecycle> e:<CancelRefusedAfterShipping> s:inflection
+  keys e:<Sales> e:<SalesOrderLifecycle> e:<CancelRefusedAfterShipping> s:inflection
   step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
   step 1 event event=pick expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Packing
   step 2 event event=ship expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Shipped
   step 3 event event=cancel assume={notShipped=false} expect accepted=false states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Shipped
 scenario CreditApproved process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=5000}
-  keys e:<SalesOrderLifecycle> e:<CreditApproved> s:inflection
+  keys e:<Sales> e:<SalesOrderLifecycle> e:<CreditApproved> s:inflection
   step 0 event event=submit expect accepted=true states=CreditReview
   step 1 event event=approveCredit actor=CreditManager signer=carol meaning=creditApproved reason='Long-standing customer' expect accepted=true states=CreditReview
   step 2 event event=approveCredit actor=FinanceDirector signer=dan meaning=creditApproved reason='Within risk appetite' expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
 scenario CreditRejectedAndResubmitted process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=5000}
-  keys e:<SalesOrderLifecycle> e:<CreditRejectedAndResubmitted> s:inflection
+  keys e:<Sales> e:<SalesOrderLifecycle> e:<CreditRejectedAndResubmitted> s:inflection
   step 0 event event=submit expect accepted=true states=CreditReview
   step 1 event event=rejectCredit actor=CreditManager expect accepted=true states=Draft
   step 2 event event=submit expect accepted=true states=CreditReview
 scenario HoldAndRelease process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
-  keys e:<SalesOrderLifecycle> e:<HoldAndRelease> s:inflection
+  keys e:<Sales> e:<SalesOrderLifecycle> e:<HoldAndRelease> s:inflection
   step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
   step 1 event event=pick expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Packing
   step 2 event event=hold expect accepted=true states=OnHold
   step 3 event event=release expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Packing
 scenario PaymentOverdue process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
-  keys e:<SalesOrderLifecycle> e:<PaymentOverdue> s:inflection
+  keys e:<Sales> e:<SalesOrderLifecycle> e:<PaymentOverdue> s:inflection
   step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
   step 1 time after=P30D ms=2592000000 expect accepted=true states=Fulfilment.Processing.Payment.PaymentOverdue,Fulfilment.Processing.Shipping.Picking
   step 2 event event=paymentReceived expect accepted=true states=Fulfilment.Processing.Payment.Paid,Fulfilment.Processing.Shipping.Picking
 scenario RepeatSignerRefused process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=5000}
-  keys e:<SalesOrderLifecycle> e:<RepeatSignerRefused> s:inflection
+  keys e:<Sales> e:<SalesOrderLifecycle> e:<RepeatSignerRefused> s:inflection
   step 0 event event=submit expect accepted=true states=CreditReview
   step 1 event event=approveCredit actor=CreditManager signer=carol meaning=creditApproved reason='Long-standing customer' expect accepted=true states=CreditReview
   step 2 event event=approveCredit actor=FinanceDirector signer=carol meaning=creditApproved reason='Signing again' expect accepted=false states=CreditReview
 scenario SmallOrder process=SalesOrderLifecycle package=Sales outcome=final at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
-  keys e:<SalesOrderLifecycle> e:<SmallOrder> s:inflection
+  keys e:<Sales> e:<SalesOrderLifecycle> e:<SmallOrder> s:inflection
   step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
   step 1 event event=pick expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Packing
   step 2 event event=ship expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Shipped

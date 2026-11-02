@@ -209,8 +209,41 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "t" => TemplateHash(rest),
             "d" => resolved.Find(rest) is RDatabase database && schemaDiffs.TryGetValue(database.Name, out var diff) ? DiffHash(diff) : Absent,
             "n" => NameHash(rest),
+            "x" => ExtensionFileHash(rest),
+            // The rule view's index and reference reads (rows scripts, next-phase-2-design.md section 3.4) hash as the rule cache hashes
+            // them, so a unit that read scripted rows renders again exactly when one of those reads changes.
+            "ix" or "rt" => Validation.RuleKeyHasher.Of(model).CurrentHash(key),
             _ => Absent,
         };
+    }
+
+    /// <summary>
+    /// <c>x:&lt;path under extensions&gt;</c> (next-phase-2-design.md section 3.4): the content hash of a file under <c>extensions/</c> (a
+    /// rows script, a rule script or an extension schema), or absent when the model has none there.
+    /// </summary>
+    private string ExtensionFileHash(string path)
+    {
+        var suffix = "extensions/" + path;
+        bool At(string repoPath) => string.Equals(repoPath, suffix, StringComparison.Ordinal) || repoPath.EndsWith("/" + suffix, StringComparison.Ordinal);
+        foreach (var script in model.SeedScripts)
+        {
+            if (At(script.Path))
+                return script.Hash;
+        }
+
+        foreach (var script in model.RuleScripts)
+        {
+            if (At(script.Path))
+                return script.Hash;
+        }
+
+        foreach (var extension in model.Extensions)
+        {
+            if (At(extension.Path))
+                return extension.Hash;
+        }
+
+        return Absent;
     }
 
     /// <summary>

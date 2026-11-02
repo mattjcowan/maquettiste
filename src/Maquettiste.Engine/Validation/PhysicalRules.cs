@@ -5,8 +5,8 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// Physical rules on table, view and sequence files (MQ4001 to MQ4008, MQ4010, MQ4016, MQ4056, MQ4057, MQ4059, MQ4060, and MQ3013, MQ3017, MQ3019 on
-/// designed columns).
+/// Physical rules on table, view and sequence files (MQ4001 to MQ4008, MQ4010, MQ4016, MQ4056, MQ4057, MQ4059, MQ4060, MQ7124, the table case
+/// of MQ7125, and MQ3013, MQ3017, MQ3019 on designed columns).
 /// These rules see only what files state: names produced by conventions for synthesized tables, columns and constraints are not
 /// checked against the identifier limit here (they need the resolver's casing and inflection; see README, open contract gap).
 /// </summary>
@@ -108,42 +108,134 @@ internal static class PhysicalRules
             }
 
             CheckColumnValues(context, database, column, pointer, report);
+            CheckStableId(column, pointer, $"Column '{column.Name}'", report);
             if (column.Sequence is { } sequenceId && model.Get<Sequence>(sequenceId) is { } sequence && sequence.Database != table.Database)
                 report.Add("MQ2002", $"Column '{column.Name}' uses sequence '{sequence.Name}' of another database.", pointer + "/sequence", column.Id);
         }
 
-        // MQ4008: constraints and indexes name existing columns.
-        bool Resolves(string key) => columnIds.Contains(key) || overlayKeys.ContainsKey(key) || (overlay && IsValidColumnKey(context, table, key));
+        // The members the table inherits from its stereotypes (next-phase-2-design.md section 3.1): for an overlay the candidate set, since
+        // which stereotypes its synthesized table skips is the resolver's to know (it reports what an overlay names of those).
+        var members = TableMembers.Of(model, table);
+        if (!overlay)
+            CheckInheritedNames(table, members, names, report);
+
+        // MQ4008: constraints and indexes name existing columns, own or inherited (by keyed id); a bare member id gets the keyed form.
+        bool Resolves(string key) => columnIds.Contains(key) || overlayKeys.ContainsKey(key) || (overlay && IsValidColumnKey(context, table, key)) || members.HasColumn(key);
+        string Hint(string key) => MemberRules.KeyedHint(members, key);
 
         if (table.PrimaryKey is { } primaryKey)
-            CheckColumnList(primaryKey.Columns, "/primaryKey/columns", "Primary key", table.Id, Resolves, report);
+            CheckColumnList(primaryKey.Columns, "/primaryKey/columns", "Primary key", table.Id, Resolves, report, hint: Hint);
         CheckTemporalKeys(table, report);
         if (table.PartitionBy is { } partitionBy)
-            CheckColumnList(partitionBy.Columns, "/partitionBy/columns", "Partitioning", table.Id, Resolves, report);
+            CheckColumnList(partitionBy.Columns, "/partitionBy/columns", "Partitioning", table.Id, Resolves, report, hint: Hint);
         CheckPartitions(table, report);
         for (var i = 0; i < table.Uniques.Count; i++)
-            CheckColumnList(table.Uniques[i].Columns, Ptr.At("/uniques", i) + "/columns", "Unique constraint", table.Uniques[i].Id, Resolves, report);
+            CheckColumnList(table.Uniques[i].Columns, Ptr.At("/uniques", i) + "/columns", "Unique constraint", table.Uniques[i].Id, Resolves, report, hint: Hint);
         for (var i = 0; i < table.Indexes.Count; i++)
         {
             var index = table.Indexes[i];
             var pointer = Ptr.At("/indexes", i);
-            CheckColumnList(index.Columns.Select(c => c.Column).ToList(), pointer + "/columns", "Index", index.Id, Resolves, report, "/column");
-            CheckColumnList(index.Include, pointer + "/include", "Index", index.Id, Resolves, report);
+            CheckColumnList(index.Columns.Select(c => c.Column).ToList(), pointer + "/columns", "Index", index.Id, Resolves, report, "/column", Hint);
+            CheckColumnList(index.Include, pointer + "/include", "Index", index.Id, Resolves, report, hint: Hint);
         }
 
         for (var i = 0; i < table.Exclusions.Count; i++)
-            CheckColumnList(table.Exclusions[i].Elements.Select(e => e.Column).ToList(), Ptr.At("/exclusions", i) + "/elements", "Exclusion constraint", table.Exclusions[i].Id, Resolves, report, "/column");
+            CheckColumnList(table.Exclusions[i].Elements.Select(e => e.Column).ToList(), Ptr.At("/exclusions", i) + "/elements", "Exclusion constraint", table.Exclusions[i].Id, Resolves, report, "/column", Hint);
+        var withMembers = MemberRules.WithMembers(model, table);
         for (var i = 0; i < table.ForeignKeys.Count; i++)
-            CheckForeignKey(context, table, i, Resolves, report);
+            CheckForeignKey(context, table, withMembers, i, Resolves, Hint, report);
+        if (!overlay)
+            CheckStableIdKey(context, table, withMembers, report);
         for (var i = 0; i < table.Checks.Count; i++)
         {
             if (table.Checks[i].Column is { } checkColumn && !Resolves(checkColumn))
-                report.Add("MQ4008", $"Check constraint names column '{checkColumn}', which is not a column of this table.", Ptr.At("/checks", i) + "/column", table.Checks[i].Id);
+                report.Add("MQ4008", $"Check constraint names column '{checkColumn}', which is not a column of this table.{Hint(checkColumn)}", Ptr.At("/checks", i) + "/column", table.Checks[i].Id);
         }
 
         if (database is not null)
             CheckDialectFeatures(database, table, model.Settings, report);
     }
+
+    /// <summary>
+    /// MQ7124 (next-phase-2-design.md section 3.4): <c>stableId</c> on a column that is not of type <c>uuid</c>, or whose value the
+    /// database fills (identity, sequence, generated, computed). An overlay entry that states no type keeps its projected column's,
+    /// which a file does not show; the resolver gives such a column no stable id unless it is a uuid.
+    /// </summary>
+    /// <param name="column">The column: of a table file, or a stereotype's member.</param>
+    /// <param name="pointer">The column's pointer.</param>
+    /// <param name="what">The column in words, for the message (<c>Column 'id'</c>).</param>
+    /// <param name="report">The report.</param>
+    internal static void CheckStableId(Column column, string pointer, string what, Report report)
+    {
+        if (!column.StableId)
+            return;
+        var type = column.Type ?? (column.Attribute is null ? "string" : null);
+        if (type is not null and not "uuid")
+            report.Add("MQ7124", $"{what} takes a stable id but is a {type} column: a stable id is a uuid. Make the column uuid, or clear stableId.", pointer + "/stableId", column.Id);
+        else if (FilledBy(column) is { } how)
+            report.Add("MQ7124", $"{what} takes a stable id, but the database fills its value ({how}): clear stableId, or let the engine give the value instead.", pointer + "/stableId", column.Id);
+    }
+
+    /// <summary>How the database fills a column's value (identity, sequence, generated, computed), or <see langword="null"/>.</summary>
+    internal static string? FilledBy(Column column) =>
+        column.Computed is not null ? "computed"
+        : column.Identity is not null || column.Generated == ColumnGeneration.Identity ? "identity"
+        : column.Sequence is not null || column.Generated == ColumnGeneration.Sequence ? "sequence"
+        : column.Generated is not null ? "generated"
+        : null;
+
+    /// <summary>
+    /// Why a row key cannot derive a table's stable ids (MQ7125, next-phase-2-design.md section 3.4, decision 9), or
+    /// <see langword="null"/>: it holds a stable id column, or a column whose value the database fills.
+    /// </summary>
+    /// <param name="table">The table, with the members it inherits.</param>
+    /// <param name="keyIds">The key's column ids.</param>
+    internal static string? StableIdKeyProblem(Table table, IReadOnlyList<string> keyIds)
+    {
+        foreach (var id in keyIds)
+        {
+            if (table.Columns.FirstOrDefault(c => c.Id == id) is not { } column)
+                continue;
+            if (column.StableId)
+                return $"its row key holds the stable id column '{column.Name}' itself, so the id would depend on itself";
+            if (FilledBy(column) is { } how)
+                return $"its row key holds column '{column.Name}', whose value the database fills ({how}) and the model never knows";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// MQ7125 on a table file with a stable id column that an entity's binding writes and no table seed keys
+    /// (next-phase-2-design.md section 3.4): the key the resolver gives its rows is then the primary key, and it may hold neither a
+    /// stable id column nor a value the database fills. A table with seeds leaves the rule to its first seed in merge order, which
+    /// decides the key; a reference type bound to the table keys its rows by columns the binding writes; a table nothing fills yet
+    /// has no rows to key, so a table file can take a stable id before its seeds exist. Reported at each own stable id column's
+    /// <c>stableId</c>, else, for an inherited one, on the table.
+    /// </summary>
+    private static void CheckStableIdKey(ValidationContext context, Table table, Table withMembers, Report report)
+    {
+        if (!withMembers.Columns.Any(c => c.StableId) || withMembers.PrimaryKey is not { Columns.Count: > 0 } primaryKey
+            || context.SeedsOf(table.Id).Length > 0 || context.BoundTypesOf(table.Id).Length > 0
+            || !context.Model.All<Entity>().Any(e => e.Bindings.Any(b => Writes(b, table.Id)))
+            || StableIdKeyProblem(withMembers, primaryKey.Columns) is not { } problem)
+            return;
+        var pointers = table.Columns.Select((c, i) => (c, i)).Where(x => x.c.StableId).Select(x => (Ptr.At("/columns", x.i) + "/stableId", x.c.Id)).ToList();
+        if (pointers.Count == 0)
+            pointers.Add(("", table.Id));
+        foreach (var (pointer, id) in pointers)
+        {
+            report.Add("MQ7125", $"Table '{table.Name}' takes stable ids and receives the rows of a bound entity, but no seed names its row key, so the key is the primary key, and {problem}: name a unique constraint as the key of the table's seeds, or keep the stable id column out of the primary key.",
+                pointer, id);
+        }
+    }
+
+    /// <summary>
+    /// Whether an entity's binding puts rows into a table, as the resolver decides it: no <c>write</c> writes the source, <c>write.table</c>
+    /// writes that table, and <c>write: "none"</c> writes nothing.
+    /// </summary>
+    private static bool Writes(EntityBinding binding, string tableId) =>
+        binding.Write is not { None: true } && string.Equals(binding.Write?.Table ?? binding.Source, tableId, StringComparison.Ordinal);
 
     /// <summary>MQ4056: the DDL features of a table file its database's dialect does not have (the sql-ddl pack leaves them out).</summary>
     private static void CheckDialectFeatures(Database database, Table table, ProjectSettings settings, Report report)
@@ -416,7 +508,8 @@ internal static class PhysicalRules
         if (column.Default is { } literal && literal.ValueKind != JsonValueKind.Null && DefaultMisfit(context, database, column, keyword, literal) is { } misfit)
             report.Add("MQ3019", $"The default of column '{column.Name}' does not fit {misfit}.", pointer + "/default", column.Id);
 
-        if (column.Default is { } value && Credentials.LooksLikeCredential(column.Name, value, null) is { } why)
+        // A column's own secret sensitivity feeds the check as an attribute's does (next-phase-2-design.md section 3.2).
+        if (column.Default is { } value && Credentials.LooksLikeCredential(column.Name, value, column.Sensitive, column: true) is { } why)
             report.Add("MQ3017", $"The default of column '{column.Name}' looks like a credential ({why}); secrets never belong in the model.", pointer + "/default", column.Id);
     }
 
@@ -460,13 +553,43 @@ internal static class PhysicalRules
         }
     }
 
-    private static void CheckColumnList(IReadOnlyList<string?> columns, string pointer, string what, string elementId, Func<string, bool> resolves, Report report, string suffix = "")
+    private static void CheckColumnList(IReadOnlyList<string?> columns, string pointer, string what, string elementId, Func<string, bool> resolves, Report report, string suffix = "",
+        Func<string, string>? hint = null)
     {
         for (var i = 0; i < columns.Count; i++)
         {
             // An index expression has no column.
             if (columns[i] is { } column && !resolves(column))
-                report.Add("MQ4008", $"{what} names column '{columns[i]}', which is not a column of this table.", Ptr.At(pointer, i) + suffix, elementId);
+                report.Add("MQ4008", $"{what} names column '{columns[i]}', which is not a column of this table.{hint?.Invoke(column)}", Ptr.At(pointer, i) + suffix, elementId);
+        }
+    }
+
+    /// <summary>
+    /// MQ4003 on a designed or imported table file for an inherited column whose name an own column, or a column an earlier stereotype
+    /// gives, already uses; the finding goes where the member's fix belongs (<see cref="MemberRules.PointerOf"/>). A synthesized table's
+    /// names are the resolver's.
+    /// </summary>
+    private static void CheckInheritedNames(Table table, TableMemberSet members, Dictionary<string, int> own, Report report)
+    {
+        if (members.Columns.Count == 0)
+            return;
+        var inherited = new Dictionary<string, InheritedMember<Column>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in members.Columns)
+        {
+            var name = m.Member.Name;
+            if (name.Length == 0)
+                continue;
+            var by = own.TryGetValue(name, out var index) ? string.Create(CultureInfo.InvariantCulture, $"the column at index {index}")
+                : inherited.TryGetValue(name, out var earlier) ? $"column '{earlier.Member.Name}' of stereotype '{earlier.From.Stereotype.Key}'"
+                : null;
+            if (by is null)
+            {
+                inherited.Add(name, m);
+                continue;
+            }
+
+            report.Add("MQ4003", $"Column name '{name}' that stereotype '{m.From.Stereotype.Key}' gives this table is already used by {by}; exclude the member, or rename one of them.",
+                MemberRules.PointerOf(table, m.MemberId, m.From), table.Id);
         }
     }
 
@@ -562,17 +685,30 @@ internal static class PhysicalRules
         static bool SameSet(IReadOnlyList<string> a, IReadOnlyList<string> b) => a.Count == b.Count && a.All(b.Contains);
     }
 
-    private static void CheckForeignKey(ValidationContext context, Table table, int index, Func<string, bool> resolves, Report report)
+    /// <summary>
+    /// One foreign key of a table file: its columns (MQ4008), onDeleteColumns (MQ4060), period (MQ4065), the referenced table (MQ2001)
+    /// and columns (MQ4008), their types (MQ4005) and key (MQ4059).
+    /// </summary>
+    /// <param name="context">The validation context.</param>
+    /// <param name="table">The table file.</param>
+    /// <param name="withMembers">The table with its inherited members (<see cref="MemberRules.WithMembers"/>), for column types.</param>
+    /// <param name="index">The foreign key's index.</param>
+    /// <param name="resolves">Whether a value names a column of the table.</param>
+    /// <param name="hint">The keyed-id hint for a value that names none.</param>
+    /// <param name="report">The report.</param>
+    private static void CheckForeignKey(ValidationContext context, Table table, Table withMembers, int index, Func<string, bool> resolves, Func<string, string> hint,
+        Report report)
     {
         var model = context.Model;
         var fk = table.ForeignKeys[index];
         var pointer = Ptr.At("/foreignKeys", index);
-        CheckColumnList(fk.Columns, pointer + "/columns", "Foreign key", fk.Id, resolves, report);
+        CheckColumnList(fk.Columns, pointer + "/columns", "Foreign key", fk.Id, resolves, report, hint: hint);
         CheckOnDeleteColumns(fk, pointer, report);
-        CheckPeriod(fk, pointer, model.Get<Table>(fk.ReferencesTable), report);
 
-        // The referenced table: a table file id, or a synthesized table key.
-        var referenced = model.Get<Table>(fk.ReferencesTable);
+        // The referenced table: a table file id, or a synthesized table key. A designed or imported one is read with its inherited
+        // columns and keys, which a foreign key references by keyed id.
+        var referenced = model.Get<Table>(fk.ReferencesTable) is { } file ? MemberRules.WithMembers(model, file) : null;
+        CheckPeriod(fk, pointer, referenced, report);
         if (referenced is null && !IsSynthesizedTableKey(model, fk.ReferencesTable))
         {
             report.Add("MQ2001", $"Foreign key references table '{fk.ReferencesTable}', which is neither a table file nor a synthesized table key.", pointer + "/referencesTable", fk.Id);
@@ -586,11 +722,12 @@ internal static class PhysicalRules
             for (var i = 0; i < fk.ReferencesColumns.Count; i++)
             {
                 if (!ids.ContainsKey(fk.ReferencesColumns[i]))
-                    report.Add("MQ4008", $"Foreign key references column '{fk.ReferencesColumns[i]}', which is not a column of table '{referenced.Name}'.", Ptr.At(pointer + "/referencesColumns", i), fk.Id);
+                    report.Add("MQ4008", $"Foreign key references column '{fk.ReferencesColumns[i]}', which is not a column of table '{referenced.Name}'.{MemberRules.KeyedHint(TableMembers.Of(model, model.Get<Table>(referenced.Id)!), fk.ReferencesColumns[i])}",
+                        Ptr.At(pointer + "/referencesColumns", i), fk.Id);
             }
 
             if (table.Origin != TableOrigin.Synthesized)
-                CheckForeignKeyTypes(table, fk, pointer, referenced, ids, report);
+                CheckForeignKeyTypes(withMembers, fk, pointer, referenced, ids, report);
             if (fk.ReferencesColumns.All(ids.ContainsKey))
                 CheckReferencedKey(model, fk, pointer, referenced, ids, report);
         }
@@ -600,9 +737,11 @@ internal static class PhysicalRules
             for (var i = 0; i < fk.ReferencesColumns.Count; i++)
             {
                 var key = fk.ReferencesColumns[i];
+                // An inherited column of a synthesized table is named by its keyed id: the overlay's candidate members say whether it
+                // can be there; without an overlay, any stereotype's column can (the resolver reports one the table does not inherit).
                 var ok = target is not null
-                    ? target.Columns.Any(c => c.Id == key || c.Attribute == key) || IsValidColumnKey(context, target, key)
-                    : IsValidColumnKeySegments(model, key);
+                    ? target.Columns.Any(c => c.Id == key || c.Attribute == key) || IsValidColumnKey(context, target, key) || TableMembers.Of(model, target).HasColumn(key)
+                    : IsValidColumnKeySegments(model, key) || IsStereotypeColumnKey(model, fk.ReferencesTable, key);
                 if (!ok)
                     report.Add("MQ4008", $"Foreign key references column key '{key}', which does not name a column of the referenced table.", Ptr.At(pointer + "/referencesColumns", i), fk.Id);
             }
@@ -715,7 +854,17 @@ internal static class PhysicalRules
         return ids;
     }
 
-    private static bool IsSynthesizedTableKey(ModelSnapshot model, string key)
+    /// <summary>Whether a column key is <c>&lt;tableKey&gt;.&lt;memberId&gt;</c> where the member is a column of a stereotype.</summary>
+    private static bool IsStereotypeColumnKey(ModelSnapshot model, string tableKey, string key) =>
+        ContributedMembers.TryParse(key, out var holder, out var member) && string.Equals(holder, tableKey, StringComparison.Ordinal)
+        && model.TryGetEntry(member, out var entry) && entry.Kind == "column" && model.Get<Stereotype>(entry.OwnerId) is not null;
+
+    /// <summary>Whether a key is a synthesized table key: <c>&lt;entity, relation or enum id&gt;@&lt;database id&gt;</c>, or an entity's
+    /// child table <c>&lt;entity id&gt;.&lt;attribute id&gt;@&lt;database id&gt;</c>.</summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="key">The key.</param>
+    /// <returns><see langword="true"/> for a synthesized table key.</returns>
+    internal static bool IsSynthesizedTableKey(ModelSnapshot model, string key)
     {
         var at = key.IndexOf('@', StringComparison.Ordinal);
         if (at <= 0 || model.Get<Database>(key[(at + 1)..]) is null)

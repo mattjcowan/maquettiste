@@ -22,6 +22,7 @@
     "category",
     "object",
     "objects",
+    "collections",
     "from",
     "to",
     "via",
@@ -36,6 +37,7 @@
     "phase",
     "environment",
     "referenceType",
+    "fromReferenceType",
     "process",
     "values",
     "held",
@@ -113,11 +115,20 @@
       "$ref": "#/$defs/migrationObject"
     },
     "objects": {
-      "description": "The objects of an adopt, baseline, value-map or state-map; context for raw.",
+      "description": "The objects of an adopt, baseline, value-map or state-map; context for raw. A value map's objects are the columns that hold the codes.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/migrationObject"
       },
+      "default": []
+    },
+    "collections": {
+      "description": "A value map's template-defined collections that hold the codes: each by its owner table's key and attribute, both historical.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/collection"
+      },
+      "x-sort": "table,attribute",
       "default": []
     },
     "from": {
@@ -138,7 +149,7 @@
       "default": []
     },
     "keys": {
-      "description": "Every key a rekey moved; a column entry's table is its table's key before the fact.",
+      "description": "Every key a rekey moved; a column, index, unique, foreign-key or check entry's table is its table's key before the fact.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/rekey"
@@ -216,7 +227,11 @@
       "$ref": "common.json#/$defs/tagLabel"
     },
     "referenceType": {
-      "description": "A value-map's reference type: a historical id, not a reference.",
+      "description": "A value-map's reference type, the one that holds the codes after the fact: a historical id, not a reference.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "fromReferenceType": {
+      "description": "A value-map of a merge: the reference type merged away, whose codes the fact maps: a historical id, not a reference.",
       "$ref": "common.json#/$defs/id"
     },
     "process": {
@@ -366,22 +381,15 @@
       "if": {
         "properties": {
           "fact": {
-            "enum": ["value-map", "state-map"]
+            "const": "value-map"
           }
         },
         "required": ["fact"]
       },
       "then": {
-        "required": ["objects", "values"],
-        "x-order": ["objects", "values"],
-        "properties": {
-          "objects": {
-            "minItems": 1
-          },
-          "values": {
-            "minItems": 1
-          }
-        }
+        "description": "Objects, collections and values may be empty (a type rename maps names only); MQ4106 judges the rest.",
+        "required": ["referenceType"],
+        "x-order": ["referenceType", "values"]
       }
     },
     {
@@ -394,7 +402,16 @@
         "required": ["fact"]
       },
       "then": {
-        "required": ["process"]
+        "required": ["objects", "values", "process"],
+        "x-order": ["objects", "values"],
+        "properties": {
+          "objects": {
+            "minItems": 1
+          },
+          "values": {
+            "minItems": 1
+          }
+        }
       }
     }
   ],
@@ -450,11 +467,16 @@
       "additionalProperties": false
     },
     "migrationState": {
-      "description": "A side of a fact: names, or a column's type facets and, for a reference column, how its codes are stored.",
+      "description": "A side of a fact: names, or a column's type facets and, for a reference column, how its codes are stored. A value map's sides carry its reference type's name and plural name.",
       "type": "object",
-      "x-order": ["name", "schema", "type", "length", "precision", "scale", "nativeType", "strategy", "referenceTable", "nullable"],
+      "x-order": ["name", "pluralName", "schema", "type", "length", "precision", "scale", "nativeType", "strategy", "referenceTable", "nullable"],
       "properties": {
         "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pluralName": {
+          "description": "A value map's reference type's plural name, so a pack finds the objects it named after the type.",
           "type": "string",
           "minLength": 1
         },
@@ -498,6 +520,35 @@
       },
       "additionalProperties": false
     },
+    "collection": {
+      "description": "A template-defined collection of a value map: the codes it holds, by its owner table and attribute.",
+      "type": "object",
+      "x-order": ["table", "schema", "tableName", "attribute", "name"],
+      "properties": {
+        "table": {
+          "description": "The owner table's key at the time.",
+          "$ref": "#/$defs/factKey"
+        },
+        "schema": {
+          "description": "The owner table's database schema name at the time.",
+          "type": "string"
+        },
+        "tableName": {
+          "description": "The owner table's name at the time.",
+          "type": "string"
+        },
+        "attribute": {
+          "description": "The id of the collection attribute: a historical id, not a reference.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "description": "The attribute's name at the time.",
+          "type": "string"
+        }
+      },
+      "required": ["table", "attribute"],
+      "additionalProperties": false
+    },
     "rekey": {
       "description": "One key a rekey moved.",
       "type": "object",
@@ -507,7 +558,7 @@
           "$ref": "#/$defs/objectKind"
         },
         "table": {
-          "description": "A column entry's table key before the fact.",
+          "description": "A column, index, unique, foreign-key or check entry's table key before the fact. An index, unique, foreign-key or check entry moves the constraint's id (a fold into a stereotype); capture keys follow columns.",
           "$ref": "#/$defs/factKey"
         },
         "from": {

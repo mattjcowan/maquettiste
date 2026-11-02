@@ -30,6 +30,7 @@ internal sealed partial class ChangePlanner
     private readonly List<(int Index, PackParameterRef Value)> _packRemovals = [];
     private readonly List<DeletePlanRefusal> _packRefusals = [];
     private readonly HashSet<string> _packHandled = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _cascadeMembers = new(StringComparer.Ordinal);
     private bool _cascadePacksPlanned;
     private ProjectSettings? _candidateSettings;
     private string? _candidateSettingsHash;
@@ -68,6 +69,9 @@ internal sealed partial class ChangePlanner
         _cascadeDeleted[id] = (index, because);
         _cascadeOrder.Add(id);
         _cascadeOps.Remove(id);
+        // A deleted stereotype's members are named by keyed id where tables inherit them (next-phase-2-design.md section 3.1).
+        if (current.Element is Stereotype stereotype)
+            _cascadeMembers.UnionWith(MemberIds(stereotype).Where(m => !string.IsNullOrEmpty(m)));
         _cascadeQueue.Enqueue((index, id, mode));
         foreach (var sub in SubElementIds(id, current.Json))
             _cascadeQueue.Enqueue((index, sub, mode));
@@ -124,6 +128,28 @@ internal sealed partial class ChangePlanner
         {
             ResolveXRef(index, referrerId, referrer, reference, ops, mode);
             return;
+        }
+
+        // Links to a member of a deleted stereotype (next-phase-2-design.md section 3.1): a table's redefinition of it goes whole and an
+        // exclusion of it is cleared, in both resolutions; any other keyed use of an inherited copy (an index, a key, a binding field, a
+        // query) refuses remove-references, and delete-dependents removes it as it removes a deleted column's uses.
+        if (_cascadeMembers.Contains(target))
+        {
+            if (referrer.Element is Table && reference.Field == "member" && RedefinesEntry(reference.JsonPointer) is { } entry)
+            {
+                List<CascadeOp> next = [.. ops.Where(o => o.Pointer != entry && !IsUnder(o.Pointer, entry)), new CascadeOp(entry, true, reference, index)];
+                if (TryOps(referrer, next, narrow, out _) is null)
+                {
+                    Commit(referrerId, next);
+                    return;
+                }
+            }
+            else if (mode == DeleteResolution.RemoveReferences && !IsMemberLink(reference))
+            {
+                _cascadeRefused.Add((index, referrerId, reference,
+                    $"it names {Label(target)} where a table inherits it (a keyed id), and remove-references does not clear such a use; delete with delete-dependents to remove it."));
+                return;
+            }
         }
 
         // A reference from an entity's binding (erratum E43) or a reference type's (2026-10-11) never deletes its owner, in either
@@ -243,7 +269,7 @@ internal sealed partial class ChangePlanner
         {
             if (!TryGetCurrent(referrerId, null, out var current))
                 continue;
-            var cleared = schemas.Sites(current.Element)
+            var cleared = schemas.Sites(current.Element, _snapshot.PropertyKeys(current.Element))
                 .Where(site => Validation.BuiltinRules.XRefIds(site.Value) is { } ids && ids.Any(removed.Contains))
                 .GroupBy(site => site.Pointer, StringComparer.Ordinal)
                 .Where(group => group.All(site => site.Ref.Optional))
@@ -324,10 +350,10 @@ internal sealed partial class ChangePlanner
             }
             else
             {
-                var host = PropertyHost.Of(element).FirstOrDefault(h => h.Pointer == hostPointer);
+                var host = PropertyHost.Of(element, _snapshot.PropertyKeys(element)).FirstOrDefault(h => h.Pointer == hostPointer);
                 if (host.Id is null)
                     continue;
-                sources = _snapshot.PropertySchemas.For(host.KindName, host.Stereotypes);
+                sources = _snapshot.PropertySchemas.For(host);
             }
 
             JsonNode? value = null;
@@ -570,6 +596,10 @@ internal sealed partial class ChangePlanner
         return true;
     }
 
+    /// <summary>A table's <c>redefines</c> entry a reference at <c>/redefines/&lt;n&gt;/member</c> sits in, else <see langword="null"/>.</summary>
+    private static string? RedefinesEntry(string pointer) =>
+        JsonPointer.TryParse(pointer, out var segments) && segments is ["redefines", _, "member"] ? JsonPointer.Build(segments[..2]) : null;
+
     /// <summary>
     /// The part of an entity's binding a reference at <paramref name="pointer"/> takes with it: the field, constant or listed column
     /// entry it sits in, else the whole binding; <see langword="null"/> outside <c>bindings</c>.
@@ -729,7 +759,7 @@ internal sealed partial class ChangePlanner
         foreach (var (index, subIds) in removedSubIds.OrderBy(kv => kv.Key))
         {
             if (outcomes[index].Outcome == SaveOutcome.Saved && subIds.Count > 0)
-                DropSeedColumns(index, subIds, outcomes[index]);
+                DropSeedColumns(index, subIds, outcomes[index], _cascadeMembers);
         }
 
         RemoveDatabaseConventions(outcomes);
@@ -823,6 +853,8 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        removes.AddRange(SeedColumnsOfMembers());
+        removes.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id) is var c and not 0 ? c : PointerOrder.Instance.Compare(a.Pointer, b.Pointer));
         var refused = _cascadeRefused
             .Select(r =>
             {
@@ -843,6 +875,28 @@ internal sealed partial class ChangePlanner
         refused.AddRange(_packRefusals);
         var roots = _cascadeOrder.Where(id => _cascadeDeleted[id].Because is null).ToList();
         return new DeletePlanReport(roots, deletes, clears, removes, refused, settings);
+    }
+
+    /// <summary>
+    /// The seed columns that name an inherited copy of a deleted stereotype's member by keyed id, which the plan drops with their cells
+    /// (next-phase-2-design.md section 3.1); seeds deleted with the cascade or named by the batch are left out.
+    /// </summary>
+    private IEnumerable<DeletePlanRemove> SeedColumnsOfMembers()
+    {
+        foreach (var member in _cascadeMembers.Order(StringComparer.Ordinal))
+        {
+            foreach (var reference in _snapshot.ReferencesTo(member)
+                         .Where(r => r.Field == "columns" && !_cascadeDeleted.ContainsKey(r.FromElementId) && !_deleted.Contains(r.FromElementId)
+                             && !_batchIds.Contains(r.FromElementId))
+                         .OrderBy(r => r.FromElementId, StringComparer.Ordinal).ThenBy(r => r.JsonPointer, PointerOrder.Instance))
+            {
+                if (_snapshot.GetDocument(reference.FromElementId) is not { Element: Seed seed } document
+                    || !JsonPointer.TryGet(document.Json, reference.JsonPointer, out var value) || value.ValueKind != JsonValueKind.String)
+                    continue;
+                yield return new DeletePlanRemove(seed.Id, seed.KindName, NameOf(seed), reference.JsonPointer, "column " + value.GetString(), null, "column",
+                    "names " + Label(member) + " where a table inherits it; its cells go with it");
+            }
+        }
     }
 
     private string NameOrId(string id) => _snapshot.GetDocument(id) is { } document && document.Element.Id == id ? NameOf(document.Element) : id;
@@ -920,6 +974,7 @@ internal sealed partial class ChangePlanner
     private static string Noun(string property) => property switch
     {
         "attributes" => "attribute",
+        "redefines" => "redefinition",
         "ends" => "end",
         "members" => "member",
         "columns" => "column",

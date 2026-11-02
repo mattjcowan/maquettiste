@@ -38,6 +38,28 @@ public sealed class RDatabase : RAnnotated
 
     internal Func<RList<RSeedTable>, string>? SeedHashFactory { get; set; }
 
+    internal Func<RSeed, IReadOnlyList<RDataRow>>? DataRowsFactory { get; set; }
+
+    /// <summary>
+    /// The rows one seed gives this database, in database terms, as <see cref="SeedTables"/> holds them (next-phase-2-design.md
+    /// section 3.4): stable ids, the values of foreign-key entries and their <see cref="RDataRow.Refs"/>. Built on each call by the
+    /// per-seed builder that <see cref="SeedTables"/> shares, which reads only the seed and, transitively, the seeds of the tables its
+    /// foreign-key entries name; empty when the seed's rows do not reach this database. <see cref="SeedTables"/> orders a table's
+    /// rows by their self-references, this list keeps the seed's own order.
+    /// </summary>
+    /// <param name="seed">The seed.</param>
+    /// <returns>The rows.</returns>
+    internal IReadOnlyList<RDataRow> DataRowsOf(RSeed seed) => DataRowsFactory?.Invoke(seed) ?? [];
+
+    /// <summary>
+    /// The template-defined collections of this database's mappings, each with its owner table: the <see cref="REntityMapping.TemplateDefined"/>
+    /// attributes of every entity mapping (its table) and the <see cref="RRelationMapping.TemplateDefined"/> attributes of every
+    /// junction-mapped relation (its junction table), in the order the mappings were recorded. A partial run (one database resolved to
+    /// record migration facts) publishes no entity's or relation's mappings, so the value-map holders (<c>Migrations/CodeHolders.cs</c>,
+    /// next-phase-2-design.md section 3.5) read them here.
+    /// </summary>
+    internal List<(RTable Owner, RAttribute Attribute)> TemplateCollections { get; } = [];
+
     /// <inheritdoc/>
     public override string Kind => "database";
 
@@ -250,6 +272,12 @@ public sealed class RTable : RAnnotated
 /// <summary>A resolved primary key.</summary>
 public sealed class RPrimaryKey
 {
+    /// <summary>
+    /// The id the table file gives the key, the keyed id (<c>&lt;tableKey&gt;.&lt;memberId&gt;</c>) of a key a stereotype contributes, or
+    /// <see langword="null"/> for a key without one (next-phase-2-design.md section 3.1).
+    /// </summary>
+    public string? Id { get; internal set; }
+
     /// <summary>The constraint name.</summary>
     public string Name { get; internal set; } = "";
 
@@ -262,6 +290,12 @@ public sealed class RPrimaryKey
 
     /// <summary>Whether the last column is a period (PostgreSQL 18 <c>WITHOUT OVERLAPS</c>).</summary>
     public bool WithoutOverlaps { get; internal set; }
+
+    /// <summary>
+    /// Where the key comes from (next-phase-2-design.md section 3.1): the table's own (<see cref="RMemberOrigin.Source"/> <c>own</c>, one
+    /// shared instance), or a stereotype of its effective set that contributes it, with the facets the table redefined.
+    /// </summary>
+    public RMemberOrigin MemberOrigin { get; internal set; } = RMemberOrigin.Own;
 }
 
 /// <summary>A resolved unique constraint.</summary>
@@ -281,6 +315,12 @@ public sealed class RUnique
 
     /// <summary>Whether the last column is a period (PostgreSQL 18 <c>WITHOUT OVERLAPS</c>).</summary>
     public bool WithoutOverlaps { get; internal set; }
+
+    /// <summary>
+    /// Where the constraint comes from (next-phase-2-design.md section 3.1): the table's own (<see cref="RMemberOrigin.Source"/> <c>own</c>, one
+    /// shared instance), or a stereotype of its effective set that contributes it, with the facets the table redefined.
+    /// </summary>
+    public RMemberOrigin MemberOrigin { get; internal set; } = RMemberOrigin.Own;
 }
 
 /// <summary>A resolved foreign key.</summary>
@@ -324,6 +364,12 @@ public sealed class RForeignKey
 
     /// <summary>The relation end whose table holds the key, if any.</summary>
     public REnd? End { get; internal set; }
+
+    /// <summary>
+    /// Where the key comes from (next-phase-2-design.md section 3.1): the table's own (<see cref="RMemberOrigin.Source"/> <c>own</c>, one
+    /// shared instance), or a stereotype of its effective set that contributes it, with the facets the table redefined.
+    /// </summary>
+    public RMemberOrigin MemberOrigin { get; internal set; } = RMemberOrigin.Own;
 }
 
 /// <summary>A resolved check constraint.</summary>
@@ -340,6 +386,12 @@ public sealed class RCheck
 
     /// <summary>For a column check: the column it constrains; <see langword="null"/> for a table check.</summary>
     public RColumn? Column { get; internal set; }
+
+    /// <summary>
+    /// Where the check comes from (next-phase-2-design.md section 3.1): the table's own (<see cref="RMemberOrigin.Source"/> <c>own</c>, one
+    /// shared instance), or a stereotype of its effective set that contributes it, with the facets the table redefined.
+    /// </summary>
+    public RMemberOrigin MemberOrigin { get; internal set; } = RMemberOrigin.Own;
 }
 
 /// <summary>A resolved index.</summary>
@@ -368,6 +420,38 @@ public sealed class RIndex
 
     /// <summary>The storage parameters for the database's dialect, by name in ordinal order.</summary>
     public IReadOnlyList<RStorageParameter> Storage { get; internal set; } = [];
+
+    /// <summary>
+    /// Where the index comes from (next-phase-2-design.md section 3.1): the table's own (<see cref="RMemberOrigin.Source"/> <c>own</c>, one
+    /// shared instance), or a stereotype of its effective set that contributes it, with the facets the table redefined.
+    /// </summary>
+    public RMemberOrigin MemberOrigin { get; internal set; } = RMemberOrigin.Own;
+}
+
+/// <summary>
+/// Where a member of a resolved table comes from (next-phase-2-design.md section 3.1): a column, primary key, unique, foreign key, check
+/// or index is the table's own, or a stereotype of the table's effective set contributes it, keyed <c>&lt;tableKey&gt;.&lt;memberId&gt;</c>.
+/// Every own member shares one instance (<see cref="Source"/> <c>own</c>).
+/// </summary>
+public sealed class RMemberOrigin
+{
+    /// <summary>The instance every own member shares.</summary>
+    internal static RMemberOrigin Own { get; } = new();
+
+    /// <summary>
+    /// <c>own</c>, <c>stereotype</c> (a stereotype the table lists or one it implies), <c>schema-default</c> or <c>package-default</c>
+    /// (a stereotype a database schema's or a package's <c>defaultStereotypes</c> gives the table, or one such a stereotype implies).
+    /// </summary>
+    public string Source { get; internal set; } = "own";
+
+    /// <summary>The table's entry of the contributing stereotype (<see cref="RAnnotated.Stereotypes"/>); <see langword="null"/> for own.</summary>
+    public RStereotype? Stereotype { get; internal set; }
+
+    /// <summary>The stereotype member's id; <see langword="null"/> for own. The member's id in the table is <c>&lt;tableKey&gt;.&lt;MemberId&gt;</c>.</summary>
+    public string? MemberId { get; internal set; }
+
+    /// <summary>The facets the table's <c>redefines</c> entry states for the member (their JSON names, ordinal); empty when none.</summary>
+    public IReadOnlyList<string> Redefined { get; internal set; } = [];
 }
 
 /// <summary>How a resolved table is partitioned.</summary>
@@ -474,15 +558,19 @@ public sealed class RIndexColumn
 
 /// <summary>
 /// A resolved column. Its annotations (<see cref="RAnnotated"/>) come from its own entry in a table file: a designed or imported
-/// column, an overlay's extra column, or the overlay entry of a synthesized column. A synthesized column without an overlay entry has
-/// none, and never takes its attribute's, which templates reach through <see cref="Attribute"/>.
+/// column, an overlay's extra column, or the overlay entry of a synthesized column; an inherited column's come from its stereotype's
+/// member entry. A synthesized column without an overlay entry has none, and never takes its attribute's, which templates reach through
+/// <see cref="Attribute"/>.
 /// </summary>
 public sealed class RColumn : RAnnotated
 {
     /// <inheritdoc/>
     public override string Kind => "column";
 
-    /// <summary>The column key: an attribute path, <c>discriminator</c>, <c>position</c>, <c>id</c>, or a column id (engine-design.md section 7.3).</summary>
+    /// <summary>
+    /// The column key: an attribute path, <c>discriminator</c>, <c>position</c>, <c>id</c>, a column id, or an inherited column's keyed id
+    /// <c>&lt;tableKey&gt;.&lt;memberId&gt;</c> (engine-design.md section 7.3, next-phase-2-design.md section 3.1).
+    /// </summary>
     public string Key { get; internal set; } = "";
 
     /// <summary>The physical name.</summary>
@@ -493,9 +581,17 @@ public sealed class RColumn : RAnnotated
 
     /// <summary>
     /// The column type keyword: a built-in keyword, <c>range</c> or <c>multirange</c> (a designed or extra column only), or
-    /// <c>reference</c>.
+    /// <c>reference</c> (a projected column of an attribute typed by a reference type only). A designed column typed by a reference
+    /// type (<see cref="TypeRef"/>) keeps its physical keyword; templates test <see cref="ReferenceType"/> for "holds codes".
     /// </summary>
     public string Type { get; internal set; } = "";
+
+    /// <summary>
+    /// The type the column's own entry names (its <c>typeRef</c>: an enum, a reference type or a scalar type; next-phase-2-design.md
+    /// section 3.2), for a designed, imported, extra or inherited column; <see langword="null"/> for a projected column (its
+    /// attribute's type) and for a column whose entry names none.
+    /// </summary>
+    public RType? TypeRef { get; internal set; }
 
     /// <summary>The bound type of a range or multirange column (<c>int32</c>, ..., <c>datetimeoffset</c>); otherwise <see langword="null"/>.</summary>
     public string? Subtype { get; internal set; }
@@ -560,11 +656,31 @@ public sealed class RColumn : RAnnotated
     /// <summary>Whether the computed value is stored.</summary>
     public bool ComputedStored { get; internal set; }
 
+    /// <summary>
+    /// Whether the column takes a stable id (next-phase-2-design.md section 3.4): each row the database receives into the table
+    /// (<see cref="RDatabase.SeedTables"/>) gets <see cref="Model.StableIds.Of"/> of the table id and its row key here, unless the
+    /// row's source writes the column. Its own entry's <c>stableId</c> (a designed, imported, extra or inherited column, or an
+    /// overlay entry).
+    /// </summary>
+    public bool StableId { get; internal set; }
+
     /// <summary>The collation.</summary>
     public string? Collation { get; internal set; }
 
     /// <summary>The comment.</summary>
     public string? Comment { get; internal set; }
+
+    /// <summary>
+    /// <c>pii</c> or <c>secret</c>: its own; else a projected column's attribute's own; else the strongest own value of the attributes
+    /// bindings map to it (next-phase-2-design.md section 3.2, decision 9); <see langword="null"/> when none says.
+    /// </summary>
+    public string? Sensitive { get; internal set; }
+
+    /// <summary>
+    /// The sensitivity the column's own entry states (a designed, imported or extra column, an overlay entry, or an inherited column's
+    /// member entry), which a bound attribute that states none shows; <see langword="null"/> when its entry states none.
+    /// </summary>
+    internal string? OwnSensitive { get; set; }
 
     /// <summary>The attribute the column stores, if any.</summary>
     public RAttribute? Attribute { get; internal set; }
@@ -585,8 +701,10 @@ public sealed class RColumn : RAnnotated
     public int Position { get; internal set; }
 
     /// <summary>
-    /// For a column typed by a reference type (<see cref="Type"/> <c>reference</c>): the reference type. The code's facets ride
-    /// along in <see cref="Length"/>, and <see cref="CodeType"/> is the code's logical type.
+    /// For a column typed by a reference type: the reference type. A projected reference column (<see cref="Type"/>
+    /// <c>reference</c>) and a designed, imported, extra or inherited column whose <see cref="TypeRef"/> names a reference type both
+    /// have it, with <see cref="CodeType"/>, <see cref="Strategy"/> and <see cref="ReferenceBinding"/>, so packs render the same
+    /// objects for both. The code's length rides along in <see cref="Length"/> when the column states none.
     /// </summary>
     public RReferenceType? ReferenceType { get; internal set; }
 
@@ -616,6 +734,12 @@ public sealed class RColumn : RAnnotated
 
     /// <summary>The id of the column's first open migration fact in applied order, or <see langword="null"/> when none names it.</summary>
     public string? Since { get; internal set; }
+
+    /// <summary>
+    /// Where the column comes from (next-phase-2-design.md section 3.1): the table's own (<see cref="RMemberOrigin.Source"/> <c>own</c>, one
+    /// shared instance), or a stereotype of its effective set that contributes it, with the facets the table redefined.
+    /// </summary>
+    public RMemberOrigin MemberOrigin { get; internal set; } = RMemberOrigin.Own;
 }
 
 /// <summary>A resolved view, with the annotations (<see cref="RAnnotated"/>) of its file.</summary>
@@ -1073,6 +1197,13 @@ public sealed class RDataRow : RObject
     /// <summary>The row's key values, in <see cref="RSeedTable.KeyColumns"/> order (null where the row gives none).</summary>
     public IReadOnlyList<object?> Key { get; internal set; } = [];
 
+    /// <summary>
+    /// The rows the seed's foreign-key entries name, by foreign key name (next-phase-2-design.md section 3.4): one per entry whose
+    /// cell is not null, whether or not every value is known. A column of the key whose referenced value the database fills is null
+    /// in <see cref="Values"/> and listed in the ref's <see cref="RDataRef.Unknown"/>, so a pack writes a lookup.
+    /// </summary>
+    public IReadOnlyDictionary<string, RDataRef> Refs { get; internal set; } = System.Collections.Frozen.FrozenDictionary<string, RDataRef>.Empty;
+
     /// <summary>The seed's environments; empty means every environment.</summary>
     public IReadOnlyList<string> Environments => Seed.Environments;
 
@@ -1081,6 +1212,37 @@ public sealed class RDataRow : RObject
 
     /// <summary>The seed's delete flag (with converge).</summary>
     public bool Delete => Seed.Delete;
+}
+
+/// <summary>
+/// The row a table seed's foreign-key entry names (next-phase-2-design.md section 3.4; <see cref="RDataRow.Refs"/>): the referenced
+/// table, its row key and the entry's cell in seed terms, and the row that key finds.
+/// </summary>
+public sealed class RDataRef : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "data-ref";
+
+    /// <summary>The foreign key.</summary>
+    public RForeignKey ForeignKey { get; internal set; } = null!;
+
+    /// <summary>The referenced table.</summary>
+    public RTable Table { get; internal set; } = null!;
+
+    /// <summary>The referenced table's row key: its table seeds' key, else the key of the reference type bound to it, else its primary key.</summary>
+    public IReadOnlyList<RColumn> KeyColumns { get; internal set; } = [];
+
+    /// <summary>The entry's cell in seed terms, one value per column of <see cref="KeyColumns"/>.</summary>
+    public IReadOnlyList<object?> Key { get; internal set; } = [];
+
+    /// <summary>The referenced row: a table seed's row or a bound reference type's; <see langword="null"/> when no row has the key (MQ7111).</summary>
+    public RDataRow? Row { get; internal set; }
+
+    /// <summary>
+    /// The foreign key's columns whose referenced value the database fills (identity, sequence, a default), directly or through the
+    /// referenced row's own foreign-key entries: their values are null, and a pack looks them up by <see cref="KeyColumns"/>.
+    /// </summary>
+    public IReadOnlyList<RColumn> Unknown { get; internal set; } = [];
 }
 
 /// <summary>
@@ -1123,6 +1285,12 @@ public sealed class RMigration : RAnnotated
     /// <summary>The objects of an <c>adopt</c>, <c>baseline</c>, <c>value-map</c> or <c>state-map</c>; context for <c>raw</c>.</summary>
     public IReadOnlyList<RMigrationObject> Objects { get; internal set; } = [];
 
+    /// <summary>
+    /// A <c>value-map</c>'s template-defined collections that hold the codes (next-phase-2-design.md section 3.5), as recorded (by owner
+    /// table key, then attribute id), each with its owner table's key moved through the <c>rekey</c> facts after it.
+    /// </summary>
+    public IReadOnlyList<RMigrationCollection> Collections { get; internal set; } = [];
+
     /// <summary>The state before: a rename's name and schema, a change-type's type facets.</summary>
     public RMigrationState? From { get; internal set; }
 
@@ -1162,8 +1330,11 @@ public sealed class RMigration : RAnnotated
     /// <summary>The environment of an <c>adopt</c>.</summary>
     public string? Environment { get; internal set; }
 
-    /// <summary>The historical id of a <c>value-map</c>'s reference type; not a reference.</summary>
+    /// <summary>The historical id of a <c>value-map</c>'s reference type, the one that holds the codes after the fact; not a reference.</summary>
     public string? ReferenceType { get; internal set; }
+
+    /// <summary>The historical id of the reference type a merge's <c>value-map</c> maps away; not a reference.</summary>
+    public string? FromReferenceType { get; internal set; }
 
     /// <summary>The historical id of a <c>state-map</c>'s process; not a reference.</summary>
     public string? Process { get; internal set; }
@@ -1230,13 +1401,41 @@ public sealed class RMigrationObject
 }
 
 /// <summary>
+/// A template-defined collection a <c>value-map</c> maps codes in (next-phase-2-design.md section 3.5): its owner table as recorded and as
+/// it reads today, and the collection attribute.
+/// </summary>
+public sealed class RMigrationCollection
+{
+    /// <summary>The owner table's key, as recorded.</summary>
+    public string Table { get; internal set; } = "";
+
+    /// <summary>The owner table's database schema name at the time.</summary>
+    public string? Schema { get; internal set; }
+
+    /// <summary>The owner table's name at the time.</summary>
+    public string? TableName { get; internal set; }
+
+    /// <summary>The id of the collection attribute, as recorded (historical; not a reference).</summary>
+    public string Attribute { get; internal set; } = "";
+
+    /// <summary>The attribute's name at the time.</summary>
+    public string? Name { get; internal set; }
+
+    /// <summary><see cref="Table"/> moved through the <c>rekey</c> facts after the fact in applied order: the key the table has today.</summary>
+    public string CurrentTable { get; internal set; } = "";
+}
+
+/// <summary>
 /// A side of a migration fact: names for a <c>rename</c>; type facets for a <c>change-type</c>, with a reference column's strategy and
-/// bound table.
+/// bound table; a <c>value-map</c>'s reference type name and plural name.
 /// </summary>
 public sealed class RMigrationState
 {
-    /// <summary>The object's name.</summary>
+    /// <summary>The object's name (a <c>value-map</c>'s reference type name).</summary>
     public string? Name { get; internal set; }
+
+    /// <summary>A <c>value-map</c>'s reference type plural name.</summary>
+    public string? PluralName { get; internal set; }
 
     /// <summary>The object's database schema name.</summary>
     public string? Schema { get; internal set; }
@@ -1269,10 +1468,10 @@ public sealed class RMigrationState
 /// <summary>One key a <c>rekey</c> fact moved.</summary>
 public sealed class RMigrationRekey
 {
-    /// <summary><c>table</c>, <c>column</c>, <c>sequence</c> or <c>sql-object</c>.</summary>
+    /// <summary><c>table</c>, <c>column</c>, <c>sequence</c> or <c>sql-object</c>, or the id of an <c>index</c>, <c>unique</c>, <c>foreign-key</c> or <c>check</c>.</summary>
     public string Kind { get; internal set; } = "";
 
-    /// <summary>A column entry's table key before the fact.</summary>
+    /// <summary>A column, index, unique, foreign-key or check entry's table key before the fact.</summary>
     public string? Table { get; internal set; }
 
     /// <summary>The key before.</summary>

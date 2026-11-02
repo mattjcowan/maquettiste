@@ -4,6 +4,10 @@
 # writes the rows for every environment, seed.<env>.sql an environment's own. A seed applied once inserts the rows whose key is
 # missing; a converging seed also updates the rows whose other columns changed (an upsert on the row key), and with delete it
 # removes the table's rows it does not hold. Entity seeds of a database that projects the entity are written by seed_statements.
+# A table seed's foreign-key entry names its row by that row's key; where the database fills the referenced value (identity,
+# sequence, a default), the column is written as a lookup of that row on PostgreSQL, and rows of one table that look up rows of the
+# same table go in one INSERT per dependency level, so each lookup sees the rows before it. Elsewhere such a cell is NULL with a
+# TODO comment (MQ4056).
 
 # Whether a row is written here: a table seed's, an entity seed's that reaches the table through a binding, or a bound reference
 # type's (source list; such a type gets no lookup table, check or enum type in this database, _reference.scriban), for this
@@ -36,14 +40,109 @@ func data_columns(st, rows)
   ret $out
 end
 
-func data_values(rows, columns, db)
+# The ref of a row whose foreign-key column c the database fills in the referenced row (listed in the ref's unknown), or null.
+func data_ref_of(r, c, t)
+  for fk in t.foreign_keys
+    if !(object.has_key r.refs fk.name)
+      continue
+    end
+    $ref = r.refs[fk.name]
+    for u in $ref.unknown
+      if u.name == c.name
+        ret $ref
+      end
+    end
+  end
+  ret null
+end
+
+# The referenced column a foreign key's column c points at.
+func data_referenced_column(fk, c)
+  for k in fk.columns
+    if k.name == c.name
+      ret fk.referenced_columns[for.index]
+    end
+  end
+  ret null
+end
+
+# The SQL of a row's cell in table t: its literal; for a column whose referenced value the database fills, a lookup of the referenced
+# row by its key on PostgreSQL (a key part that is a lookup itself nests), else NULL with a TODO comment naming the row and key.
+func data_cell(r, c, t, db)
+  $v = r.values[c.name]
+  if $v != null
+    ret cell_sql($v, db)
+  end
+  $ref = data_ref_of(r, c, t)
+  if $ref == null
+    ret "NULL"
+  end
+  $target = data_referenced_column($ref.foreign_key, c)
+  $where = ""
+  for k in $ref.key_columns
+    $part = data_cell($ref.row, k, $ref.table, db)
+    $where = $where + (for.first ? "" : " AND ") + q(k.name, db) + " = " + $part
+  end
+  if db.dialect == "postgresql"
+    ret "(SELECT " + q($target.name, db) + " FROM " + qt($ref.table) + " WHERE " + $where + ")"
+  end
+  ret "NULL /* TODO: " + (string.replace ("row " + r.id + " names " + qt($ref.table) + "." + $target.name + " WHERE " + $where) "*/" "* /") + " */"
+end
+
+func data_values(rows, columns, t, db)
   $out = []
   for r in rows
     $v = ""
     for c in columns
-      $v = $v + (for.first ? "" : ", ") + cell_sql(r.values[c.name], db)
+      $v = $v + (for.first ? "" : ", ") + data_cell(r, c, t, db)
     end
     $out[$out.size] = "(" + $v + ")"
+  end
+  ret $out
+end
+
+# The rows of one statement split by dependency level (PostgreSQL): a row that looks up a row of the same table among them comes one
+# level after it, so each INSERT's lookups see the rows inserted before; rows come parents first, so one pass sets every level.
+func data_levels(rows, t, db)
+  if db.dialect != "postgresql"
+    ret [rows]
+  end
+  $level = {}
+  $ids = {}
+  for r in rows
+    $ids[r.id] = true
+  end
+  $max = 0
+  for r in rows
+    $n = 0
+    for fk in t.foreign_keys
+      if !(object.has_key r.refs fk.name)
+        continue
+      end
+      $ref = r.refs[fk.name]
+      if $ref.unknown.size > 0 && $ref.row && $ref.table.key == t.key && (object.has_key $ids $ref.row.id) && (object.has_key $level $ref.row.id)
+        if $level[$ref.row.id] + 1 > $n
+          $n = $level[$ref.row.id] + 1
+        end
+      end
+    end
+    $level[r.id] = $n
+    if $n > $max
+      $max = $n
+    end
+  end
+  if $max == 0
+    ret [rows]
+  end
+  $out = []
+  for i in 0..$max
+    $part = []
+    for r in rows
+      if $level[r.id] == i
+        $part[$part.size] = r
+      end
+    end
+    $out[$out.size] = $part
   end
   ret $out
 end
@@ -59,7 +158,7 @@ end
 # INSERT the rows whose key is missing (update false), or upsert them (update true), in the database's dialect.
 func data_write_sql(t, keys, columns, rows, update, db)
   $list = cols(columns, db)
-  $values = data_values(rows, columns, db)
+  $values = data_values(rows, columns, t, db)
   $rest = []
   for c in columns
     $is_key = false
@@ -110,7 +209,7 @@ func data_write_sql(t, keys, columns, rows, update, db)
     for r in rows
       $v = ""
       for c in columns
-        $v = $v + (for.first ? "" : ", ") + cell_sql(r.values[c.name], db) + " AS " + q(c.name, db)
+        $v = $v + (for.first ? "" : ", ") + data_cell(r, c, t, db) + " AS " + q(c.name, db)
       end
       $selects[$selects.size] = "SELECT " + $v + " FROM dual"
     end
@@ -150,7 +249,7 @@ func data_delete_sql(t, keys, rows, db)
   if keys.size == 1
     $in = ""
     for r in rows
-      $in = $in + (for.first ? "" : ", ") + cell_sql(r.values[keys[0].name], db)
+      $in = $in + (for.first ? "" : ", ") + data_cell(r, keys[0], t, db)
     end
     ret "DELETE FROM " + qt(t) + "\nWHERE " + q(keys[0].name, db) + " NOT IN (" + $in + ");"
   end
@@ -158,7 +257,7 @@ func data_delete_sql(t, keys, rows, db)
   for r in rows
     $one = ""
     for k in keys
-      $one = $one + (for.first ? "" : " AND ") + q(k.name, db) + " = " + cell_sql(r.values[k.name], db)
+      $one = $one + (for.first ? "" : " AND ") + q(k.name, db) + " = " + data_cell(r, k, t, db)
     end
     $any = $any + (for.first ? "" : "\n    OR ") + "(" + $one + ")"
   end
@@ -184,7 +283,9 @@ func data_statements(db, env, out)
       end
       $converge = seed.apply == "converge"
       $s = "-- " + $rows.size + ($rows.size == 1 ? " row" : " rows") + " into " + st.table.name + ($converge ? ", kept as the model has them." : ", inserted when missing.")
-      $s = $s + "\n" + data_write_sql(st.table, st.key_columns, $cols, $rows, $converge, db)
+      for part in data_levels($rows, st.table, db)
+        $s = $s + "\n" + data_write_sql(st.table, st.key_columns, $cols, part, $converge, db)
+      end
       if $converge && seed.delete
         $s = $s + "\n" + data_delete_sql(st.table, st.key_columns, $rows, db)
       end

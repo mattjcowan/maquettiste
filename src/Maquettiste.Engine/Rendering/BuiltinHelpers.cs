@@ -118,7 +118,7 @@ internal static class BuiltinHelpers
     public static readonly FrozenSet<string> Names = FrozenSet.Create(StringComparer.Ordinal,
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_tag", "in_category", "lookup",
-        "banner", "file", "row", "row_uuid", "seed_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
+        "banner", "file", "row", "row_uuid", "stable_id", "seed_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
         "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
         "binding_sql", "binding_sql_parameters", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort");
 
@@ -206,6 +206,7 @@ internal static class BuiltinHelpers
         Add(builtins, "lookup", 1, 1, (c, a) => Lookup(c, AsText(a[0])));
         Add(builtins, "row", 2, 2, (c, a) => Row(c, a[0], a[1]));
         Add(builtins, "row_uuid", 1, 1, (c, a) => RowUuid(c, a[0]));
+        Add(builtins, "stable_id", 2, 2, (c, a) => StableId(c, a[0], a[1]));
         Add(builtins, "seed_named", 1, 1, (c, a) => SeedNamed(c, a[0]));
         Add(builtins, "seed_row", 2, 2, (c, a) => SeedRow(c, a[0], a[1]));
         Add(builtins, "state_path", 1, 1, (c, a) => StatePath(c, a[0]));
@@ -1673,6 +1674,35 @@ internal static class BuiltinHelpers
             throw new RenderHelperException("MQ6006", $"`row_uuid`: '{id}' is not a ULID.");
         var hex = Convert.ToHexStringLower(ulid.ToByteArray());
         return hex[..8] + "-" + hex[8..12] + "-" + hex[12..16] + "-" + hex[16..20] + "-" + hex[20..];
+    }
+
+    /// <summary>
+    /// <c>stable_id &lt;table&gt; &lt;key&gt;</c> (next-phase-2-design.md section 3.4): the stable id of a row key in a table, as the
+    /// resolver gives a stable id column of the table's rows (<see cref="StableIds.Of"/> with the table id as namespace), for packs that
+    /// emit constants for seeded rows. The key is a value, or a list of values in key order, in database terms (a uuid in lowercase
+    /// with hyphens). Records <c>e:&lt;table id&gt;</c>. A table without a stable id column, or a key with a null part, is MQ6006.
+    /// </summary>
+    private static string StableId(TrackingTemplateContext context, object? table, object? key)
+    {
+        if (TrackingTemplateContext.Unwrap(table) is not RTable t)
+            throw new RenderHelperException("MQ6006", $"`stable_id` takes a table, not a {TemplateValues.TypeName(TrackingTemplateContext.Unwrap(table))}.");
+        context.Recorder.Record("e:" + t.Id);
+        if (!t.Columns.Any(c => c.StableId) || !StableIds.IsNamespace(t.Id))
+            throw new RenderHelperException("MQ6006", $"`stable_id`: table '{t.Name}' has no stable id column; set stableId on a uuid column of a table file.");
+        var unwrapped = TrackingTemplateContext.Unwrap(key);
+        if (unwrapped is IResolvedObject or ITemplateView or ScriptObject or IDictionary)
+            throw new RenderHelperException("MQ6006", $"`stable_id` takes a row key (a value, or a list of values in key order), not a {TemplateValues.TypeName(unwrapped)}.");
+        var parts = KeyParts(unwrapped);
+        if (parts.Count == 0 || parts.Any(p => p is null))
+            throw new RenderHelperException("MQ6006", $"`stable_id`: the key for table '{t.Name}' has no value in some part; a stable id needs every part of its key.");
+        try
+        {
+            return StableIds.Of(t.Id, parts);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new RenderHelperException("MQ6006", "`stable_id`: " + ex.Message);
+        }
     }
 
     private static string File(TrackingTemplateContext context, object? path, object? content)

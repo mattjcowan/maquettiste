@@ -105,7 +105,8 @@ clobber a concurrent edit or leave a dangling id.
    save. Read with `model.withStereotype`, `withTag`, `withProperty` or `byQualifiedName` rather than scanning
    `model.all`. For CI, set `limits.scriptTimeoutMs` to 0 so findings do not depend on the machine's load.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
-   per database; `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as
+   per database, and in `columns` the table columns whose `typeRef` names it;
+   `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as
    CSV; `localization_status`, `get_translations` and `set_translations` (with the `shardHash` values you read as
    `expected`) read and write translations, which never go in element files. From a terminal, `maquettiste l10n status`,
    `l10n export|import <locale>`, `l10n prune`, `l10n set-default <locale>` and `maquettiste seed new|export|import` do
@@ -200,10 +201,33 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   table columns for its unmapped attributes, `{"op":"materialize-columns","database":...,"entities":[...]}` (`"attributes":[...]`
   for some). From a terminal: `maquettiste model materialize tables|entities|attributes|columns ... --dry-run`. Which
   tables to materialize, and when, is the user's decision.
+- Bindings record their `provenance` (two short hashes per column of a table file); the engine writes it, so never write
+  or copy it by hand. When a bound table changes, `get_binding_drift` lists per binding the columns added, renamed,
+  retyped and removed since (MQ4087 is a mapped column renamed or retyped, MQ4088 provenance that does not describe the
+  source). Catch up with `preview_materialize` and then `apply_batch`
+  `{"op":"resync-binding","database":...,"entities":[...]}`: attributes that followed their column are renamed (ids
+  kept; add `"keepNames":true` to keep every name), retyped columns retype their attribute, added columns get
+  attributes, removed columns lose their fields; `"columns":[...]` limits it to some of one entity's.
+  `{"op":"map-by-name","database":...,"entities":[...]}` maps unmapped attributes to free columns of the same name. From
+  a terminal: `maquettiste binding drift|map|resync`. An attribute without a description shows its bound column's
+  comment, so do not copy a comment into a description.
 - Seeds: a seed's `target` is an entity, a relation, a reference type, or a table file (a table seed: rows the database needs
   without an entity, columns by column id, cells as column values, `key` a unique constraint id). `environments` (empty: every
   environment), `apply` (`once` default, or `converge`) and `delete` say how rows are applied; `rowsFrom: {"file": "<name>.csv"}`
   keeps large rows in a CSV beside the seed (send rows as usual; the engine writes the CSV).
+- Natural keys and stable ids: a table seed may list a foreign key of its table in `columns` (by id, or by name when you
+  write it), instead of the key's own columns, and give the referenced row's natural key in the cell
+  (`"ada@example.com"`, or `["ACME", "EU"]` for a composite key); never copy a referenced row's id or UUID into a cell.
+  A `uuid` column the database does not fill may say `"stableId": true`: the engine derives its value from the table and
+  the row key (UUID version 5), so leave it out of seeds (MQ7108) and key such a table's seeds by a unique constraint,
+  not by that column (MQ7125). Changing `stableId` or a seed's `key` changes the ids of rows already in databases: ask
+  first.
+- Scripted rows: a seed may take its rows from `rowsFrom: {"script": "seeds/<name>.js"}`, a file under
+  `.maquettiste/extensions/seeds/` written with `write_extension_file`, which calls
+  `maquettiste.rows((model, seed) => [{ <column name>: value }])` once and reads the model like a script rule. Such a
+  seed has no `rows` of its own and takes no CSV import. Check the result with `preview_seed_rows` (one seed, written
+  or scripted; `database` gives the values that database receives) rather than reading generated output, and fix
+  MQ7127 (the script failed) and MQ7128 (a key no column has, or no row key) at the script.
 - Seeds by name: when you write a seed, `columns` and `key` may hold names instead of ids (a table's column and unique
   constraint names, an entity's attribute names and to-one end roles, a relation's end roles and attributes, a reference
   type's attribute names, where `code`, `label` and `description` stay keywords), and a row may give
@@ -222,6 +246,15 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   every element that carries it, implied stereotypes included (MQ2013 to MQ2017); its `parameters` type the
   `properties` of its carriers, with `defaultProperties` as defaults (MQ2018). Read the stereotype before adding or
   removing one on an element.
+- Stereotype members: a stereotype that applies to tables may carry `columns`, `primaryKey`, `uniques`, `foreignKeys`,
+  `checks` and `indexes`, which every table that carries it inherits, also through a database schema's or a package's
+  `defaultStereotypes`. Write an inherited member as `<tableKey>.<memberId>` wherever its id goes (seeds, keys,
+  indexes, binding fields, queries): the table file's id, or the synthesized key (`<entityId>@<databaseId>`) for a
+  table without one; `get_database_view` shows each keyed id with its `memberOrigin`. Change a member on the
+  stereotype, or for one table with `redefines` (facets only; the id stays) and `excludes` (member ids); a table drops
+  a default with `excludeStereotypes`. Never copy an inherited member into a table as an own column. To turn own copies
+  into inherited members, use `apply_batch` `{"op":"fold-into-stereotype","id":<stereotype>,"tables":[...]}` with
+  `dryRun` first; it records one `rekey` and the database does not change.
 - Layers: a package's `dependsOn` lists the packages its elements may reference (with their sub-packages; a parent's
   list applies to its subtree). A reference to any other package is MQ2020: when you add one, check the layers first,
   and never add a `dependsOn` entry just to silence it, since the direction of the layers is the user's decision.
@@ -235,6 +268,18 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   storage strategy the project declares. When a table file already holds a reference type's rows, the type's optional
   `bindings` say so per database (`database`, `table`, `fields` mapping `code`, `label`, `description` or a field id to a
   column, `constants` for a table several types share); its rows then count as the table's rows in validation and seed data. Stereotypes and their meaning are the project's own, not built in.
+- A table column that holds an enum's values, a reference type's codes or a scalar type's values says so with
+  `typeRef: {"ref": "<type id>"}` beside its `type`, which stays the physical keyword; facets it leaves out come from
+  the type, and packs give it the same key or CHECK as an attribute of that type. A declared foreign key from such a
+  column points at the code column of the type's bound table (MQ4084). A column holding personal data or a secret states
+  `sensitive` (`pii` or `secret`); say it on the column or on the attribute a binding maps to it, not both (MQ4085).
+- Codes that databases store change through a refactor, never by editing a seed cell or a type's name: `apply_batch`
+  with `{"op":"rename-code","id":<type>,"code":"net30","to":"net-30"}`, `retire-code` (the same keys; `to` a live code),
+  `merge-reference-types` (`id` the type that goes, `target`, optional `codes`) or `rename-reference-type` (`id`,
+  `name`), with `dryRun` first to read the item's `usage` and the facts. Each keeps the old code in the type's
+  `formerCodes` and records a `value-map` fact per database, so each environment's migration moves the stored values.
+  Write the replacing row's code, never a former code (MQ7019), and never bring a code back (MQ7020, MQ4113). A plain
+  edit of a kept row's code warns MQ4114: undo it and use the refactor. Retiring or merging rows is the user's decision.
 - Tag, stereotype or typed field: a tag is a label for grouping and search that no generation depends on
   (`domain:billing`); a stereotype is a named, reusable meaning that changes what is generated or validated (`audited`,
   `tenant-scoped`, a `high-churn` table storage profile); the values a feature needs are typed fields (a table's or

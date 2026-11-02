@@ -65,11 +65,12 @@ internal sealed partial class ResolveRun
         foreach (var type in sources)
         {
             var r = _referenceTypes[type.Id];
-            var raw = type.Attributes.Select(a => (Attribute: a, Stereotype: (Stereotype?)null)).ToList();
-            foreach (var stereotype in StereotypesOf(type))
-                raw.AddRange(stereotype.Attributes.Select(a => (Attribute: a, Stereotype: (Stereotype?)stereotype)));
+            // The type's effective set, defaults included (next-phase-2-design.md section 3.1).
+            var raw = type.Attributes.Select(a => (Attribute: a, Applied: (AppliedStereotype?)null)).ToList();
+            foreach (var applied in AppliedOf(type))
+                raw.AddRange(applied.Stereotype.Attributes.Select(a => (Attribute: a, Applied: (AppliedStereotype?)applied)));
             var attributes = StableByOrder(raw.DistinctBy(x => x.Attribute.Id, StringComparer.Ordinal), x => x.Attribute.Order)
-                .Select(x => MakeAttribute(x.Attribute, r, r.Package, null, false, x.Stereotype, x.Stereotype?.Id ?? type.Id))
+                .Select(x => MakeAttribute(x.Attribute, r, r.Package, null, false, x.Applied?.Stereotype, x.Applied?.Stereotype.Id ?? type.Id, x.Applied?.Source))
                 .ToList();
             SetOrder(attributes);
             r.Attributes = new RList<RAttribute>(attributes, DepsOf(r).ToList());
@@ -78,6 +79,36 @@ internal sealed partial class ResolveRun
         }
 
         _referenceTypeOrder = [.. _referenceTypes.Values.OrderBy(t => t.Name, StringComparer.Ordinal).ThenBy(t => t.Id, StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// A type's former codes (next-phase-2-design.md section 3.5), ordinal by code text, each with the row of the type its
+    /// <c>replacedBy</c> names; an entry naming no row of the type (MQ7018, MQ2001) or listed again (MQ7017) is left out. An integer
+    /// code type's former code reads as a long, as its rows' codes do. Each depends on the type's document and on the row.
+    /// </summary>
+    private IReadOnlyList<RFormerCode> FormerCodes(RReferenceType type, IReadOnlyList<FormerCode> former, IReadOnlyList<RRow> rows)
+    {
+        var byId = new Dictionary<string, RRow>(StringComparer.Ordinal);
+        foreach (var row in rows)
+            byId.TryAdd(row.Id, row);
+        var integer = ReferenceDataRules.IsIntegerCode(type.Code.Type);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var list = new List<RFormerCode>();
+        foreach (var entry in former.OrderBy(f => f.Code, StringComparer.Ordinal))
+        {
+            if (!seen.Add(entry.Code) || !byId.TryGetValue(entry.ReplacedBy, out var row))
+                continue;
+            object code = integer && long.TryParse(entry.Code, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number) ? number : entry.Code;
+            list.Add(new RFormerCode
+            {
+                Id = type.Id + ":" + entry.Code,
+                Code = code,
+                ReplacedBy = row,
+                Dependencies = new DependencySet(Keys).Element(type.Id).AddRange(row.Dependencies).ToList(),
+            });
+        }
+
+        return list;
     }
 
     /// <summary>
@@ -146,6 +177,10 @@ internal sealed partial class ResolveRun
         var rowsByType = new Dictionary<string, List<RRow>>(StringComparer.Ordinal);
         // The packages whose names order each target's seeds: no seed file holds them, so they join the lists' membership keys.
         var orderKeysByTarget = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        // A reference type with a seed whose rows come from a script builds all its rows on first read (next-phase-2-design.md section 3.4):
+        // its stored rows too, so every row keeps its place among the type's rows.
+        var scriptedTypes = sources.Where(s => s.RowsFrom?.Script is not null && _referenceTypes.ContainsKey(s.Target)).Select(s => s.Target)
+            .ToHashSet(StringComparer.Ordinal);
         foreach (var seed in sources)
         {
             Ct.ThrowIfCancellationRequested();
@@ -177,8 +212,24 @@ internal sealed partial class ResolveRun
             s.Delete = seed.Delete;
             s.Key = seed.Key;
             s.RowsFrom = seed.RowsFrom?.File;
+            s.RowsScript = seed.RowsFrom?.Script;
             s.Columns = SeedColumns(seed, target, endOwners, deps);
             var seedKeys = deps.ToList();
+            if (s.RowsScript is not null)
+            {
+                // Built on first read (decision 15): by a template, a preview or a lookup that reads them; never while resolving.
+                var model = Model;
+                var (scripts, cache) = (Scripts, SeedRows);
+                var source = seed;
+                var built = new Lazy<RList<RSeedRow>>(() => ScriptedSeedRows(model, source, s, scripts, cache, seedKeys, seedRowsById),
+                    LazyThreadSafetyMode.ExecutionAndPublication);
+                s.SetRows(() => built.Value);
+                ListOf(seedsByTarget, seed.Target).Add(s);
+                _seedOrder.Add(s);
+                Register(s);
+                continue;
+            }
+
             var rows = new List<RSeedRow>(seed.Rows.Count);
             for (var i = 0; i < seed.Rows.Count; i++)
             {
@@ -195,7 +246,11 @@ internal sealed partial class ResolveRun
             }
 
             s.Rows = new RList<RSeedRow>(rows, seedKeys);
-            if (rt is not null)
+            if (rt is not null && scriptedTypes.Contains(rt.Id))
+            {
+                // Its rows are built with the scripted seed's, on first read.
+            }
+            else if (rt is not null)
             {
                 var typeRows = ListOf(rowsByType, rt.Id);
                 foreach (var row in rows)
@@ -230,24 +285,44 @@ internal sealed partial class ResolveRun
         // Rows by code, then the lazy refs (they read any type's rows).
         foreach (var type in _referenceTypeOrder)
         {
+            var seeds = seedsByTarget.GetValueOrDefault(type.Id) ?? [];
+            var membership = new DependencySet(Keys).Add("k:seed").Referrers(type.Id).AddRange(OrderKeys(type.Id));
+            foreach (var seed in seeds)
+            {
+                membership.Element(seed.Id);
+                if (seed.RowsScript is { } script)
+                    membership.Add(SeedScripts.Key(script));
+            }
+
+            type.Seeds = new RList<RSeed>(seeds, [Keys.Referrers(type.Id), "k:seed", .. OrderKeys(type.Id)]);
+            var fields = type.Attributes.Where(a => a.Type.ReferenceType is not null).ToList();
+            type.RowKeys = membership.ToList();
+            var former = Model.Get<ReferenceType>(type.Id)?.FormerCodes ?? [];
+            if (scriptedTypes.Contains(type.Id))
+            {
+                var (target, keys) = (type, type.RowKeys);
+                type.SetRows(() => ScriptedTypeRows(target, keys, fields));
+                if (former.Count > 0)
+                    type.SetFormerCodes(() => FormerCodes(target, former, target.Rows));
+                continue;
+            }
+
             var rows = rowsByType.GetValueOrDefault(type.Id) ?? [];
             var byCode = new Dictionary<string, RRow>(StringComparer.Ordinal);
             foreach (var row in rows)
                 byCode.TryAdd(row.CodeKey, row); // a duplicate code is MQ7001: the first row wins
             type.RowsByCode = byCode;
-            var seeds = seedsByTarget.GetValueOrDefault(type.Id) ?? [];
-            var membership = new DependencySet(Keys).Add("k:seed").Referrers(type.Id).AddRange(OrderKeys(type.Id));
-            foreach (var seed in seeds)
-                membership.Element(seed.Id);
-            type.Rows = new RList<RRow>(rows, membership.ToList());
-            type.Seeds = new RList<RSeed>(seeds, [Keys.Referrers(type.Id), "k:seed", .. OrderKeys(type.Id)]);
-            var fields = type.Attributes.Where(a => a.Type.ReferenceType is not null).ToList();
+            type.Rows = new RList<RRow>(rows, type.RowKeys);
             foreach (var row in rows)
                 row.SetRefs(r => RowRefs(fields, r.Values));
+            if (former.Count > 0)
+                type.FormerCodes = FormerCodes(type, former, rows);
         }
 
         foreach (var seed in _seedOrder)
         {
+            if (seed.RowsScript is not null)
+                continue; // its rows set their refs when they are built
             foreach (var row in seed.Rows)
                 row.SetRefs(r => SeedRowRefs(r.Seed.Columns, r.Values, seedRowsById));
         }
@@ -259,12 +334,76 @@ internal sealed partial class ResolveRun
         foreach (var table in tablesByKey.Values)
             table.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(table.Key) ?? [], [Keys.Referrers(table.Key), "k:seed", .. OrderKeys(table.Key)]);
 
-        OrderSeeds(seedRowsById);
+        var ordering = OrderSeeds(seedRowsById);
         foreach (var database in databases)
-            PrepareSeedTables(database, [.. _seedOrder], seedRowsById);
+            PrepareSeedTables(database, [.. _seedOrder], seedRowsById, ordering);
         ResolveUsages();
 
         IEnumerable<string> OrderKeys(string target) => orderKeysByTarget.GetValueOrDefault(target) ?? (IEnumerable<string>)[];
+    }
+
+    /// <summary>
+    /// A seed's scripted rows (next-phase-2-design.md section 3.4), built on first read: the script runs through the engine's rows cache
+    /// (<see cref="SeedScripts.Evaluate"/>), and each row carries the seed's keys, the script's <c>x:</c> key and the keys the run read,
+    /// as the list does. A script that fails throws its MQ7127, so the reader (a unit) fails with it.
+    /// </summary>
+    private static RList<RSeedRow> ScriptedSeedRows(ModelSnapshot model, Seed seed, RSeed s, Scripting.IScriptSandboxFactory scripts, SeedRowsCache cache,
+        IReadOnlyList<string> seedKeys, Dictionary<string, RSeedRow> seedRowsById)
+    {
+        var result = SeedScripts.Evaluate(model, seed, scripts, cache, CancellationToken.None);
+        if (result.Failure is { } failure)
+            throw new Scripting.ScriptErrorException(failure);
+        IReadOnlyList<string> keys = [.. seedKeys.Concat(result.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        var rows = new List<RSeedRow>(result.Rows.Length);
+        for (var i = 0; i < result.Rows.Length; i++)
+        {
+            var source = result.Rows[i];
+            var row = new RSeedRow { Id = source.Id, Seed = s, Order = i, Dependencies = keys };
+            row.Values = CellValues(s.Columns, source);
+            row.SetRefs(r => SeedRowRefs(r.Seed.Columns, r.Values, seedRowsById));
+            rows.Add(row);
+        }
+
+        return new RList<RSeedRow>(rows, keys);
+    }
+
+    /// <summary>
+    /// The rows of a reference type with a scripted seed, built on first read: every seed's rows in merge order (a scripted seed's run its
+    /// script), with the rows' index by code. The list carries the type's keys and those of its scripted seeds' rows.
+    /// </summary>
+    private static (RList<RRow> Rows, IReadOnlyDictionary<string, RRow> ByCode) ScriptedTypeRows(RReferenceType type, IReadOnlyList<string> typeKeys,
+        IReadOnlyList<RAttribute> fields)
+    {
+        var rows = new List<RRow>();
+        var keys = new SortedSet<string>(typeKeys, StringComparer.Ordinal);
+        foreach (var seed in type.Seeds)
+        {
+            var seedRows = seed.Rows;
+            if (seed.RowsScript is not null)
+                keys.UnionWith(seedRows.MembershipKeys);
+            foreach (var row in seedRows)
+            {
+                var r = new RRow
+                {
+                    Id = row.Id,
+                    Seed = seed,
+                    Type = type,
+                    Order = rows.Count,
+                    Code = row.Values.GetValueOrDefault("code"),
+                    Label = row.Values.GetValueOrDefault("label") as string,
+                    Description = row.Values.GetValueOrDefault("description") as string,
+                    Values = FieldValues(seed.Columns, row.Values),
+                    Dependencies = row.Dependencies,
+                };
+                r.SetRefs(x => RowRefs(fields, x.Values));
+                rows.Add(r);
+            }
+        }
+
+        var byCode = new Dictionary<string, RRow>(StringComparer.Ordinal);
+        foreach (var row in rows)
+            byCode.TryAdd(row.CodeKey, row); // a duplicate code is MQ7001: the first row wins
+        return (new RList<RRow>(rows, keys), byCode);
     }
 
     /// <summary>
@@ -354,8 +493,11 @@ internal sealed partial class ResolveRun
         {
             foreach (var column in seed.Columns)
             {
+                // A column by its key, else a foreign-key entry by the key's id (next-phase-2-design.md section 3.4).
                 columns.Add(table.Columns.FirstOrDefault(c => string.Equals(c.Key, column, StringComparison.Ordinal)) is { } found
                     ? new RSeedColumn { Name = found.Name, Kind = "column", Column = found }
+                    : table.ForeignKeys.FirstOrDefault(f => string.Equals(f.Id, column, StringComparison.Ordinal)) is { } key
+                    ? new RSeedColumn { Name = key.Name, Kind = "foreign-key", ForeignKey = key }
                     : new RSeedColumn { Name = column, Kind = "column" }); // an unknown column is MQ7107
             }
 
@@ -503,9 +645,10 @@ internal sealed partial class ResolveRun
     /// is broken at its first row in file order), and <see cref="ResolvedModel.SeedsInOrder"/> by dependency depth, then
     /// seed order (<see cref="SeedOrder"/>). Both
     /// are computed on first read (<see cref="SeedOrdering"/>), so the rows of a seed nothing reads are never ordered; only the
-    /// dependency keys of the insert order are set here, since they do not depend on the rows.
+    /// dependency keys of the insert order are set here, since they do not depend on the rows. Returns the ordering, whose natural-key
+    /// index the database's rows share (<see cref="PrepareSeedTables"/>).
     /// </summary>
-    private void OrderSeeds(Dictionary<string, RSeedRow> seedRowsById)
+    private SeedOrdering OrderSeeds(Dictionary<string, RSeedRow> seedRowsById)
     {
         var ordering = new SeedOrdering([.. _seedOrder], seedRowsById);
         for (var i = 0; i < _seedOrder.Count; i++)
@@ -518,6 +661,8 @@ internal sealed partial class ResolveRun
         foreach (var seed in _seedOrder)
         {
             keys.Element(seed.Id);
+            if (seed.RowsScript is { } script)
+                keys.Add(SeedScripts.Key(script)); // its rows can name rows of other seeds
             if (seed.Target is RTable table)
                 keys.Element(table.Key); // its foreign keys order table seeds
         }
@@ -532,17 +677,21 @@ internal sealed partial class ResolveRun
         _seedsInOrderKeys = keys.ToList();
         var frozen = _seedsInOrderKeys;
         _seedsInOrder = () => new RList<RSeed>(ordering.InsertOrder(), frozen);
+        return ordering;
     }
 
     /// <summary>
     /// The row and seed order of one resolution, computed on demand and shared by every reader (thread-safe). It holds only what
-    /// ordering needs (the seeds and the row index), never the resolve run.
+    /// ordering needs (the seeds and the row index), never the resolve run. It also keeps each table's rows by their row key in seed
+    /// terms (<see cref="NaturalRows"/>), which foreign-key entries name (next-phase-2-design.md section 3.4).
     /// </summary>
     private sealed class SeedOrdering(IReadOnlyList<RSeed> seeds, Dictionary<string, RSeedRow> seedRowsById)
     {
         private readonly Lazy<(RList<RSeedRow> Ordered, SortedSet<int> Across)>?[] _perSeed = new Lazy<(RList<RSeedRow>, SortedSet<int>)>?[seeds.Count];
         private Dictionary<RSeed, int>? _index;
         private readonly Dictionary<string, Dictionary<string, List<RSeedRow>>> _rowsByKey = new(StringComparer.Ordinal);
+        private readonly Dictionary<RTable, Dictionary<string, List<RSeedRow>>> _naturalRows = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<RTable, IReadOnlyList<RColumn>> _naturalKeys = new(ReferenceEqualityComparer.Instance);
         private Dictionary<RTable, List<RSeed>>? _seedsByTable;
 
         private Dictionary<RSeed, int> Index => LazyInitializer.EnsureInitialized(ref _index, () =>
@@ -570,9 +719,10 @@ internal sealed partial class ResolveRun
         {
             var rows = seed.Rows;
             var foreignKeys = ForeignKeysGiven(seed);
-            // A seed whose columns name no other row (no end, no reference type, no foreign key) keeps its file order and depends on no
-            // seed: the general pass below would find no edge, so its cells are not read.
-            if (foreignKeys.Count == 0 && !seed.Columns.Any(c => c.End is not null || c.Attribute?.Type.ReferenceType is not null))
+            var entries = seed.Columns.Where(c => c.ForeignKey is not null).ToList();
+            // A seed whose columns name no other row (no end, no reference type, no foreign key or foreign-key entry) keeps its file
+            // order and depends on no seed: the general pass below would find no edge, so its cells are not read.
+            if (foreignKeys.Count == 0 && entries.Count == 0 && !seed.Columns.Any(c => c.End is not null || c.Attribute?.Type.ReferenceType is not null))
                 return (new RList<RSeedRow>(rows, rows.MembershipKeys), []);
             var position = new Dictionary<string, int>(rows.Count, StringComparer.Ordinal);
             for (var i = 0; i < rows.Count; i++)
@@ -582,7 +732,8 @@ internal sealed partial class ResolveRun
             var across = new SortedSet<int>();
             for (var i = 0; i < rows.Count; i++)
             {
-                foreach (var (id, owner) in Named(rows[i], seedRowsById).Concat(NamedByKeys(seed, rows[i], foreignKeys)).Distinct())
+                foreach (var (id, owner) in Named(rows[i], seedRowsById).Concat(NamedByKeys(seed, rows[i], foreignKeys))
+                    .Concat(NamedByEntries(seed, rows[i], entries)).Distinct())
                 {
                     if (ReferenceEquals(owner, seed) && position.TryGetValue(id, out var p))
                     {
@@ -651,9 +802,11 @@ internal sealed partial class ResolveRun
 
         /// <summary>
         /// How a seed's row gives each of some columns of a table: a table seed's cell, or for a seed of a reference type bound to the
-        /// table its field's cell or a constant (2026-10-11); <see langword="null"/> when the seed gives not every column.
+        /// table its field's cell or a constant (2026-10-11); <see langword="null"/> when the seed gives not every column. With
+        /// <paramref name="entries"/>, a column a table seed's foreign-key entry fills gives that entry's cell, its row key in seed
+        /// terms (next-phase-2-design.md section 3.4, decision 2).
         /// </summary>
-        private static Func<RSeedRow, object?>[]? CellsOf(RSeed seed, RTable table, IReadOnlyList<RColumn> columns)
+        private static Func<RSeedRow, object?>[]? CellsOf(RSeed seed, RTable table, IReadOnlyList<RColumn> columns, bool entries = false)
         {
             var binding = seed.Target is RReferenceType type && type.Bindings.TryGetValue(table.Database.Name, out var b) && ReferenceEquals(b.Table, table) ? b : null;
             if (binding is null && !ReferenceEquals(seed.Target, table))
@@ -664,7 +817,8 @@ internal sealed partial class ResolveRun
                 var column = columns[i];
                 if (binding is null)
                 {
-                    if (seed.Columns.FirstOrDefault(c => ReferenceEquals(c.Column, column)) is not { } cell)
+                    if ((seed.Columns.FirstOrDefault(c => ReferenceEquals(c.Column, column))
+                        ?? (entries ? seed.Columns.FirstOrDefault(c => c.ForeignKey?.Columns.Contains(column) == true) : null)) is not { } cell)
                         return null;
                     var name = cell.Name;
                     cells[i] = row => row.Values.GetValueOrDefault(name);
@@ -717,6 +871,141 @@ internal sealed partial class ResolveRun
                     if (target.Seed is not { } holder || LoadedTogether(seed, holder))
                         yield return (target.Id, target.Seed);
                 }
+            }
+        }
+
+        /// <summary>
+        /// The rows of the referenced tables that a seed row's foreign-key entries name by their row key in seed terms: every holder of
+        /// that key whose seed is loaded with <paramref name="seed"/> somewhere.
+        /// </summary>
+        private IEnumerable<(string Id, RSeed? Seed)> NamedByEntries(RSeed seed, RSeedRow row, List<RSeedColumn> entries)
+        {
+            foreach (var entry in entries)
+            {
+                foreach (var target in Holders(entry.ForeignKey!.ReferencedTable, row.Values.GetValueOrDefault(entry.Name)))
+                {
+                    if (LoadedTogether(seed, target.Seed))
+                        yield return (target.Id, target.Seed);
+                }
+            }
+        }
+
+        /// <summary>
+        /// The row key a table's rows are found by in seed terms (decision 2): its first table seed's key (the unique constraint it names,
+        /// else the primary key), else the key the first binding of a reference type bound to it gives its rows, else its primary key;
+        /// empty when it has none. The order is the seed order, as <see cref="RDatabase.SeedTables"/> takes it.
+        /// </summary>
+        public IReadOnlyList<RColumn> NaturalKeyOf(RTable table)
+        {
+            lock (_rowsByKey)
+            {
+                if (_naturalKeys.TryGetValue(table, out var known))
+                    return known;
+                var holders = SeedsOf(table);
+                IReadOnlyList<RColumn>? found = null;
+                foreach (var seed in holders)
+                {
+                    if (seed.Target is RTable && KeyOfTableSeed(table, seed) is { } key)
+                    {
+                        found = key;
+                        break;
+                    }
+                }
+
+                foreach (var seed in found is null ? holders : [])
+                {
+                    if (seed.Target is RReferenceType type && type.Bindings.TryGetValue(table.Database.Name, out var binding) && ReferenceEquals(binding.Table, table)
+                        && KeyOfReferenceBinding(binding) is { } key)
+                    {
+                        found = key;
+                        break;
+                    }
+                }
+
+                return _naturalKeys[table] = found ?? table.PrimaryKey?.Columns ?? [];
+            }
+        }
+
+        /// <summary>
+        /// The rows of a table that a foreign-key entry's cell names (decision 2): the rows of its table seeds and of the reference types
+        /// bound to it whose row key in seed terms (<see cref="NaturalKeyOf"/>; a key column a foreign-key entry fills takes that entry's
+        /// cell) equals the cell, a value for a one-column key or a list in key order, in seed order; empty when none does.
+        /// </summary>
+        public IReadOnlyList<RSeedRow> Holders(RTable table, object? cell)
+        {
+            var key = NaturalKeyOf(table);
+            if (key.Count == 0 || NaturalText(cell, key.Count) is not { } text)
+                return [];
+            return NaturalRows(table, key).TryGetValue(text, out var rows) ? rows : [];
+        }
+
+        /// <summary>The seeds that put rows in a table, in seed order: its table seeds and the seeds of the reference types bound to it.</summary>
+        public List<RSeed> HolderSeeds(RTable table)
+        {
+            lock (_rowsByKey)
+                return [.. SeedsOf(table)];
+        }
+
+        private Dictionary<string, List<RSeedRow>> NaturalRows(RTable table, IReadOnlyList<RColumn> key)
+        {
+            lock (_rowsByKey)
+            {
+                if (_naturalRows.TryGetValue(table, out var found))
+                    return found;
+                var rows = new Dictionary<string, List<RSeedRow>>(StringComparer.Ordinal);
+                foreach (var seed in SeedsOf(table))
+                {
+                    if (CellsOf(seed, table, key, entries: true) is not { } cells)
+                        continue;
+                    foreach (var row in seed.Rows)
+                    {
+                        var parts = new object?[cells.Length];
+                        for (var i = 0; i < cells.Length; i++)
+                            parts[i] = cells[i](row);
+                        if (NaturalText(parts.Length == 1 ? parts[0] : parts.ToImmutableArray(), parts.Length) is { } text)
+                            ListOf(rows, text).Add(row);
+                    }
+                }
+
+                return _naturalRows[table] = rows;
+            }
+        }
+
+        /// <summary>
+        /// The lookup text of a row key in seed terms: one value for a one-column key, a list of <paramref name="count"/> values otherwise,
+        /// each as <see cref="RRow.KeyOf"/> writes a code (a list among them, an entry's composite key, in brackets);
+        /// <see langword="null"/> when a part is null or the shape does not fit.
+        /// </summary>
+        internal static string? NaturalText(object? cell, int count)
+        {
+            IReadOnlyList<object?> parts = count == 1 ? [cell] : cell is ImmutableArray<object?> list && list.Length == count ? list : [];
+            if (parts.Count == 0)
+                return null;
+            var text = new System.Text.StringBuilder();
+            foreach (var part in parts)
+            {
+                if (Part(part) is not { } one)
+                    return null;
+                text.Append(one.Length.ToString(CultureInfo.InvariantCulture)).Append(':').Append(one);
+            }
+
+            return text.ToString();
+
+            static string? Part(object? value)
+            {
+                if (value is null)
+                    return null;
+                if (value is not ImmutableArray<object?> items)
+                    return RRow.KeyOf(value is REnumMember member ? member.Name : value);
+                var inner = new System.Text.StringBuilder("[");
+                foreach (var item in items)
+                {
+                    if (Part(item) is not { } one)
+                        return null;
+                    inner.Append(one.Length.ToString(CultureInfo.InvariantCulture)).Append(':').Append(one);
+                }
+
+                return inner.Append(']').ToString();
             }
         }
 
@@ -849,12 +1138,24 @@ internal sealed partial class ResolveRun
             Required = attribute.Required,
             Storage = type.Storage,
         };
-        var deps = DepsOf(usage).AddRange(DepsOf(attribute).ToList()).AddRange(type.Rows.MembershipKeys);
+        var deps = DepsOf(usage).AddRange(DepsOf(attribute).ToList()).AddRange(type.RowKeys);
         var allowed = attribute.Validation?.AllowedValues is { Count: > 0 } codes
             ? codes.Select(c => RRow.KeyOf(c)).ToHashSet(StringComparer.Ordinal)
             : null;
+        var defaultCode = attribute.Default is ImmutableArray<object?> list ? list.FirstOrDefault() : attribute.Default;
+        if (type.HasScriptedRows)
+        {
+            // The type's rows come from a script: built on first read, with the keys the run read (next-phase-2-design.md section 3.4).
+            var keys = deps.ToList();
+            usage.SetRows(() => (
+                new RList<RRow>(allowed is null ? type.Rows : type.Rows.Where(r => allowed.Contains(r.CodeKey)),
+                    [.. keys.Concat(type.Rows.MembershipKeys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]),
+                type.RowOf(defaultCode)));
+            return usage;
+        }
+
         usage.Allowed = new RList<RRow>(allowed is null ? type.Rows : type.Rows.Where(r => allowed.Contains(r.CodeKey)), deps.ToList());
-        usage.DefaultRow = type.RowOf(attribute.Default is ImmutableArray<object?> list ? list.FirstOrDefault() : attribute.Default);
+        usage.DefaultRow = type.RowOf(defaultCode);
         return usage;
     }
 

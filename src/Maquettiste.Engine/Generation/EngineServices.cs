@@ -57,6 +57,12 @@ internal sealed record EngineServices
     /// <summary>The script sandbox factory.</summary>
     public required IScriptSandboxFactory Scripts { get; init; }
 
+    /// <summary>
+    /// The cache of seeds' rows script runs (next-phase-2-design.md section 3.4), shared by the resolver and the validator, so a
+    /// long-lived host runs a seed's script again only when its inputs changed.
+    /// </summary>
+    public SeedRowsCache SeedRows { get; init; } = new();
+
     /// <summary>Part of stage 4: the pack loader.</summary>
     public required IPackLoader Packs { get; init; }
 
@@ -136,7 +142,8 @@ internal sealed record EngineServices
         var json = new CanonicalJson(schemas);
         var scripts = new ScriptSandboxFactory();
         var formatters = new FormatterRunner(options);
-        var resolver = new ModelResolver(options);
+        var seedRows = new SeedRowsCache();
+        var resolver = new ModelResolver(options, scripts, seedRows);
         var services = new EngineServices
         {
             Options = options,
@@ -144,9 +151,10 @@ internal sealed record EngineServices
             Schemas = schemas,
             Json = json,
             Loader = new ModelLoader(options, schemas, json, enginePaths, documents),
-            Validator = new ModelValidator(options, schemas, scripts, resolver),
+            Validator = new ModelValidator(options, schemas, scripts, resolver, seedRows),
             Resolver = resolver,
             Scripts = scripts,
+            SeedRows = seedRows,
             Packs = new PackLoader(options, schemas),
             Planner = new UnitPlanner(options),
             ChangeDetector = new ChangeDetector(options),

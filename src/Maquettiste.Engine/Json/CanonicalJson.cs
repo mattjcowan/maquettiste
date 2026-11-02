@@ -200,7 +200,15 @@ internal sealed class CanonicalJson(ISchemaRegistry schemas) : ICanonicalJson
                 var itemLayout = layout.Items ?? ObjectLayout.FreeForm;
                 var items = array.Select(item => Normalize(item, itemLayout));
                 if (layout.SortKey is { } sortKey)
-                    items = items.OrderBy(item => SortValue(item, sortKey), SortOrder.Instance); // OrderBy is stable: equal positions keep array order
+                {
+                    // OrderBy is stable: equal positions keep array order. Keys joined by commas sort by each in turn (a value map's
+                    // collections by table, then attribute; next-phase-2-design.md section 3.5).
+                    var keys = sortKey.Split(SortKeySeparator);
+                    var ordered = items.OrderBy(item => SortValue(item, keys[0]), SortOrder.Instance);
+                    foreach (var key in keys.Skip(1))
+                        ordered = ordered.ThenBy(item => SortValue(item, key), SortOrder.Instance);
+                    items = ordered;
+                }
                 var list = items.ToList();
                 if (layout.TrimTrailingNulls)
                 {
@@ -373,6 +381,9 @@ internal sealed class CanonicalJson(ISchemaRegistry schemas) : ICanonicalJson
 
     /// <summary>The <c>x-sort</c> value that sorts an array of scalars by the items themselves (a migration fact's <c>after</c>).</summary>
     internal const string SelfSortKey = ".";
+
+    /// <summary>Separates the keys of an <c>x-sort</c> that sorts by several item keys in turn (<c>"table,attribute"</c>).</summary>
+    internal const char SortKeySeparator = ',';
 
     /// <summary>
     /// An array item's <c>x-sort</c> position: the integer item key (a missing or non-integer value counting as 0), or a string key,

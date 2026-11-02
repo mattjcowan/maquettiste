@@ -230,6 +230,22 @@
         }
       ]
     },
+    "columnTypeRef": {
+      "description": "The logical type of a column: an enum, a reference type or a scalar type, beside the column's physical type keyword.",
+      "type": "object",
+      "x-order": ["ref"],
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": ["ref"],
+      "additionalProperties": false
+    },
+    "sensitivity": {
+      "description": "Whether a value is personal data (pii) or a secret.",
+      "enum": ["pii", "secret"]
+    },
     "dbTypeRef": {
       "description": "A built-in type keyword, or the id of a database type of the same database (routine parameters and results, composite type fields).",
       "anyOf": [
@@ -442,7 +458,7 @@
           "$ref": "#/$defs/derived"
         },
         "sensitive": {
-          "enum": ["pii", "secret"]
+          "$ref": "#/$defs/sensitivity"
         },
         "validation": {
           "$ref": "#/$defs/validation"
@@ -491,6 +507,453 @@
         }
       },
       "required": ["id", "name", "type"],
+      "additionalProperties": false
+    },
+    "tableColumn": {
+      "title": "Column",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "pluralName",
+        "attribute",
+        "type",
+        "typeRef",
+        "subtype",
+        "length",
+        "precision",
+        "scale",
+        "nativeType",
+        "unicode",
+        "fixedLength",
+        "nullable",
+        "default",
+        "defaultSql",
+        "defaultName",
+        "generated",
+        "identity",
+        "sequence",
+        "computed",
+        "computedStored",
+        "stableId",
+        "collation",
+        "comment",
+        "sensitive",
+        "description",
+        "rationale",
+        "decision",
+        "status",
+        "stereotypes",
+        "tags",
+        "category",
+        "properties",
+        "generation",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/label",
+          "default": ""
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "pluralName": {
+          "type": "string"
+        },
+        "attribute": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Overlay: the synthesized column key this column overrides."
+        },
+        "type": {
+          "$ref": "#/$defs/columnType"
+        },
+        "typeRef": {
+          "description": "Designed, imported, extra and contributed columns: the enum, reference type or scalar type whose values the column holds. Not on an overlay entry of a projected column, whose attribute types it, nor on a column a reference type's binding fills with a field (MQ4082).",
+          "$ref": "#/$defs/columnTypeRef"
+        },
+        "subtype": {
+          "description": "The bound type of a range or multirange column, and only of one (MQ4057). A range column takes no length, precision or scale (MQ3013).",
+          "$ref": "#/$defs/rangeSubtype"
+        },
+        "length": {
+          "$ref": "#/$defs/length"
+        },
+        "precision": {
+          "$ref": "#/$defs/precision"
+        },
+        "scale": {
+          "$ref": "#/$defs/scale"
+        },
+        "nativeType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unicode": {
+          "description": "String and text columns: true stores Unicode text (SQL Server nvarchar and nchar, Oracle nvarchar2 and nchar, MySQL the utf8mb4 character set), false single-byte text (SQL Server varchar and char, Oracle varchar2 and char); absent takes the dialect's default, which is Unicode on SQL Server. PostgreSQL and SQLite keep every text in the database's encoding, so it changes nothing there. The type map's string:unicode, string:ansi and text:unicode entries decide the native types.",
+          "type": "boolean"
+        },
+        "fixedLength": {
+          "description": "String and binary columns: a fixed-length type of the column's length (char, nchar, binary) instead of a varying one; the type map's string:fixed and binary:fixed entries decide the native types.",
+          "type": "boolean",
+          "default": false
+        },
+        "nullable": {
+          "description": "Designed or extra column: true (the default) or false. Overlay (with attribute): omitted keeps the synthesized value.",
+          "type": "boolean",
+          "default": true,
+          "x-default-unless": "attribute"
+        },
+        "default": {},
+        "defaultSql": {
+          "$ref": "#/$defs/dialectMap",
+          "default": {}
+        },
+        "defaultName": {
+          "description": "The name of the column's default constraint, where the dialect names defaults (SQL Server); absent names it df_<table>_<column>. Other dialects keep defaults in the column and ignore it.",
+          "$ref": "#/$defs/label"
+        },
+        "generated": {
+          "enum": ["identity", "sequence"]
+        },
+        "identity": {
+          "description": "With generated identity: the identity's first value (seed), its step (increment) and whether the database always generates the value and refuses one an insert gives (always, GENERATED ALWAYS) instead of generating it only when none is given (GENERATED BY DEFAULT). PostgreSQL and Oracle write all three; SQL Server writes IDENTITY(seed, increment) and always generates; MySQL writes the seed as the table's AUTO_INCREMENT; what a dialect lacks is left out (MQ4056).",
+          "type": "object",
+          "x-order": ["seed", "increment", "always"],
+          "properties": {
+            "seed": {
+              "type": "integer"
+            },
+            "increment": {
+              "type": "integer",
+              "not": {
+                "const": 0
+              }
+            },
+            "always": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "sequence": {
+          "$ref": "#/$defs/id"
+        },
+        "computed": {
+          "type": "string",
+          "minLength": 1
+        },
+        "computedStored": {
+          "type": "boolean",
+          "default": false
+        },
+        "stableId": {
+          "description": "A uuid column the database does not fill (no identity, sequence, generation or computation; MQ7124): every row a database receives into the table gets a stable id there, RFC 9562 UUID version 5 with the table id as namespace and the row key's values as name, unless the row's source writes the column (a binding's field or constant). The row key may hold neither this column nor a value the database fills (MQ7125). A table seed gives no cell for it (MQ7108).",
+          "type": "boolean",
+          "default": false
+        },
+        "collation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "comment": {
+          "type": "string"
+        },
+        "sensitive": {
+          "description": "Whether the column holds personal data or a secret. An overlay entry states it for its projected column.",
+          "$ref": "#/$defs/sensitivity"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "rationale": {
+          "description": "Markdown text: why the element is shaped this way.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "stereotypes": {
+          "$ref": "#/$defs/keyList",
+          "default": []
+        },
+        "tags": {
+          "$ref": "#/$defs/tagList",
+          "default": []
+        },
+        "category": {
+          "$ref": "#/$defs/id"
+        },
+        "properties": {
+          "$ref": "#/$defs/properties",
+          "default": {}
+        },
+        "generation": {
+          "$ref": "#/$defs/generation",
+          "default": {}
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": false,
+      "if": {
+        "required": ["attribute"]
+      },
+      "then": {},
+      "else": {
+        "required": ["name", "type"]
+      }
+    },
+    "primaryKey": {
+      "title": "Primary key",
+      "type": "object",
+      "x-order": ["id", "name", "columns", "clustered", "withoutOverlaps"],
+      "properties": {
+        "id": {
+          "description": "The key's id. Optional on a table; a key with an id is a sub-element that other elements can name.",
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/label"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "clustered": {
+          "type": "boolean"
+        },
+        "withoutOverlaps": {
+          "description": "Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": ["columns"],
+      "additionalProperties": false
+    },
+    "uniqueConstraint": {
+      "title": "Unique constraint",
+      "type": "object",
+      "x-order": ["id", "name", "columns", "nullsNotDistinct", "withoutOverlaps"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/label"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "nullsNotDistinct": {
+          "description": "Whether two rows with nulls in the columns conflict (NULLS NOT DISTINCT, PostgreSQL 15 and later); the other dialects leave it out (MQ4056).",
+          "type": "boolean",
+          "default": false
+        },
+        "withoutOverlaps": {
+          "description": "Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": ["id", "columns"],
+      "additionalProperties": false
+    },
+    "foreignKey": {
+      "title": "Foreign key",
+      "type": "object",
+      "x-order": ["id", "name", "columns", "referencesTable", "referencesColumns", "period", "onDelete", "onDeleteColumns", "onUpdate", "deferrable"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/label"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "referencesTable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "referencesColumns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        },
+        "period": {
+          "description": "Whether the last column pair is a period (PERIOD): each referencing row's period must be covered by referenced rows' periods, which a temporal key (withoutOverlaps) of the referenced table holds. PostgreSQL 18 and later; MQ4056 elsewhere.",
+          "type": "boolean",
+          "default": false
+        },
+        "onDelete": {
+          "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
+          "default": "no-action"
+        },
+        "onDeleteColumns": {
+          "description": "With onDelete set-null or set-default: the key's columns the action sets, a subset of columns (ON DELETE SET NULL (column, ...)). Empty sets every column of the key. Only PostgreSQL has a column list (MQ4056); on the other dialects the action sets every column.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        },
+        "onUpdate": {
+          "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
+          "default": "no-action"
+        },
+        "deferrable": {
+          "description": "When the key is checked: not-deferrable (every statement), initially-immediate (every statement unless a transaction defers it with SET CONSTRAINTS) or initially-deferred (at commit). PostgreSQL, SQLite and Oracle have deferrable keys; SQL Server and MySQL check every statement and leave it out (MQ4056).",
+          "enum": ["not-deferrable", "initially-immediate", "initially-deferred"],
+          "default": "not-deferrable"
+        }
+      },
+      "required": ["id", "columns", "referencesTable"],
+      "additionalProperties": false
+    },
+    "checkConstraint": {
+      "title": "Check constraint",
+      "type": "object",
+      "x-order": ["id", "name", "column", "expression"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/label"
+        },
+        "column": {
+          "description": "A column check: the id or key of the column it constrains. The constraint is written in the table like any other check; a migration that drops the column drops the check first.",
+          "type": "string",
+          "minLength": 1
+        },
+        "expression": {
+          "$ref": "#/$defs/dialectMap",
+          "minProperties": 1
+        }
+      },
+      "required": ["id", "expression"],
+      "additionalProperties": false
+    },
+    "tableIndex": {
+      "title": "Index",
+      "type": "object",
+      "x-order": ["id", "name", "columns", "include", "where", "unique", "method", "storage"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/label"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "x-order": ["column", "expression", "operatorClass", "descending", "nulls", "length"],
+            "properties": {
+              "column": {
+                "type": "string",
+                "minLength": 1
+              },
+              "expression": {
+                "description": "An expression indexed instead of a column (a functional index), per dialect name or \"*\": written in parentheses. A dialect without an entry leaves the index out; SQL Server indexes no expression (MQ4056: index a computed column instead), MySQL from 8.0.13 (not MariaDB).",
+                "$ref": "#/$defs/dialectMap",
+                "minProperties": 1
+              },
+              "operatorClass": {
+                "description": "The operator class the column or expression is indexed with (PostgreSQL), such as gin_trgm_ops for a trigram index or vector_cosine_ops for a vector index; written after it as it is, so it may carry parameters (gist_trgm_ops (siglen = 32)). MQ4056 elsewhere.",
+                "type": "string",
+                "minLength": 1
+              },
+              "descending": {
+                "type": "boolean",
+                "default": false
+              },
+              "nulls": {
+                "description": "Where nulls sort: PostgreSQL's NULLS FIRST or NULLS LAST. Unset keeps the direction's default (last ascending, first descending), and a value equal to it changes nothing. MQ4056 elsewhere.",
+                "enum": ["first", "last"]
+              },
+              "length": {
+                "description": "A key prefix length: only the first characters or bytes of the column are indexed (MySQL, which needs one for a text or blob column; the other dialects leave it out, MQ4056).",
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "oneOf": [
+              {
+                "required": ["column"]
+              },
+              {
+                "required": ["expression"]
+              }
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        },
+        "where": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unique": {
+          "type": "boolean",
+          "default": false
+        },
+        "method": {
+          "description": "The index method: btree and hash (PostgreSQL, MySQL); gin, gist, spgist and brin (PostgreSQL); hnsw and ivfflat (PostgreSQL with the vector extension, which a SQL object with phase before creates); clustered (SQL Server, and PostgreSQL CLUSTER). MQ4056 where the dialect lacks it.",
+          "enum": ["default", "btree", "hash", "gin", "gist", "spgist", "brin", "hnsw", "ivfflat", "clustered"],
+          "default": "default"
+        },
+        "storage": {
+          "description": "Index storage parameters per dialect (PostgreSQL and SQL Server WITH (...), such as fillfactor, pages_per_range for brin, m and ef_construction for hnsw, lists for ivfflat). MySQL and Oracle leave them out (MQ4056).",
+          "$ref": "#/$defs/storage"
+        }
+      },
+      "required": ["id", "columns"],
       "additionalProperties": false
     }
   }

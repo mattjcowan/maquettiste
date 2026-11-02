@@ -218,7 +218,7 @@
   {
     "id": "MQ2013",
     "defaultSeverity": "error",
-    "description": "An element carries two stereotypes of one group, own or implied.",
+    "description": "An element carries two stereotypes of one group, own, implied or from a schema or package default.",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -291,6 +291,70 @@
     "id": "MQ2022",
     "defaultSeverity": "warning",
     "description": "A reference to a retired element or sub-element from one that is not retired (membership, owning references and diagrams excepted).",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2024",
+    "defaultSeverity": "error",
+    "description": "A stereotype's members do not fit: members on a stereotype whose appliesTo leaves out table, a contributed column with attribute or sequence, or a contributed key, index or check with a name.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2025",
+    "defaultSeverity": "error",
+    "description": "A stereotype's key, index or check names a column the stereotype does not declare.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2026",
+    "defaultSeverity": "error",
+    "description": "A contributed foreign key's target is invalid: both or neither of referencesTable and referencesParameter; a referencesParameter that is not a required string parameter with x-ref kind table and sameDatabase; or referencesColumns beside referencesParameter.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2027",
+    "defaultSeverity": "error",
+    "description": "A redefines entry is invalid: it names a member the element does not inherit, names one twice, states no facet, or states a facet its member's kind does not take.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2028",
+    "defaultSeverity": "error",
+    "description": "An excludes entry names a member the element does not inherit or also redefines, or excludes a column that an inherited key, index or check the element keeps uses.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2029",
+    "defaultSeverity": "error",
+    "description": "excludeStereotypes names a stereotype the element lists in stereotypes, or one a listed stereotype implies; only defaults can be excluded.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2030",
+    "defaultSeverity": "warning",
+    "description": "excludeStereotypes names a stereotype no schema or package default gives the element, so it excludes nothing.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2031",
+    "defaultSeverity": "error",
+    "description": "A defaultStereotypes list names two stereotypes of one group, or two that conflict.",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -914,7 +978,7 @@
   {
     "id": "MQ4056",
     "defaultSeverity": "warning",
-    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a routine's volatility or settings on SQL Server, a temporal key (withoutOverlaps, a foreign key's period) an exclusion constraint or partitioning outside PostgreSQL, an index operator class outside PostgreSQL, index storage parameters on MySQL, SQLite and Oracle, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL; also migration facts outside PostgreSQL (a fact's migration keeps TODO comments where its steps would go, a rekey writes no DDL on any dialect, and no ledger rows are written), index column nulls outside PostgreSQL, a range or multirange column outside PostgreSQL (stored as the dialect's text type), and a run-once SQL object outside PostgreSQL (the scripts leave it out: its guard needs the migration ledger).",
+    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a routine's volatility or settings on SQL Server, a temporal key (withoutOverlaps, a foreign key's period) an exclusion constraint or partitioning outside PostgreSQL, an index operator class outside PostgreSQL, index storage parameters on MySQL, SQLite and Oracle, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL; also migration facts outside PostgreSQL (a fact's migration keeps TODO comments where its steps would go, a rekey writes no DDL on any dialect, and no ledger rows are written), index column nulls outside PostgreSQL, a range or multirange column outside PostgreSQL (stored as the dialect's text type), and a run-once SQL object outside PostgreSQL (the scripts leave it out: its guard needs the migration ledger); also a seed cell that names a row whose referenced value the database fills, outside PostgreSQL (written as NULL with a TODO comment).",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1024,6 +1088,94 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4076",
+    "defaultSeverity": "error",
+    "description": "A table gets two primary keys: an inherited one beside its own, its entity's key, or another stereotype's.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4077",
+    "defaultSeverity": "error",
+    "description": "A fold into a stereotype is refused: the stereotype does not apply to tables or has no members; a target is not a designed or imported table file, excludes the stereotype or is written by another operation of the batch; or a matched column differs in a type facet, in another facet without `redefine`, or carries annotations its member lacks, or the stereotype would add a member the table lacks without `excludeMissing`.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4078",
+    "defaultSeverity": "warning",
+    "description": "A redefinition states a facet equal to the value the member inherits, so the table stops following the stereotype for that facet.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4079",
+    "defaultSeverity": "warning",
+    "description": "A synthesized table inherits a NOT NULL column with no default, identity or generation, which rows written through its entity or relation cannot fill.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4082",
+    "defaultSeverity": "error",
+    "description": "A column's `typeRef` is misplaced: it names no enum, reference type or scalar type, it sits on an overlay entry of a projected column, or a reference type's binding fills the column with a field.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4083",
+    "defaultSeverity": "error",
+    "description": "A typed column's type or a facet it states cannot hold its type's values: a reference type's codes, an enum's stored values, or a scalar type's base and facets.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4084",
+    "defaultSeverity": "error",
+    "description": "A foreign key that includes a column typed by a reference type does not point where the type's rows are: the type has no binding in the column's database, or the key does not pair the column with the code column of the bound table.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4085",
+    "defaultSeverity": "warning",
+    "description": "A column and an attribute it stores, or that a binding maps to it, state different sensitivities.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4087",
+    "defaultSeverity": "warning",
+    "description": "A column a binding maps was renamed or retyped since its provenance was recorded, so the attribute may no longer follow it.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4088",
+    "defaultSeverity": "warning",
+    "description": "A binding's provenance does not describe its source: the source is not a table file, or none of the columns it records belongs to the source.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4089",
+    "defaultSeverity": "error",
+    "description": "A map-by-name or resync-binding operation is refused: an entity with no binding to the database, a source it cannot read, columns for more than one entity or naming a column the source lacks, or nothing to map or re-sync.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
     "id": "MQ4101",
     "defaultSeverity": "error",
     "description": "A migration fact lacks the intent its change needs: a conversion, a data check for a narrowing, a drop's acknowledgement, a backfill's value or data check, a raw step's skipWhen guard; complete it or hold it.",
@@ -1042,7 +1194,7 @@
   {
     "id": "MQ4103",
     "defaultSeverity": "warning",
-    "description": "An open fact the baseline lacks is stale: the model no longer shows its combined effect (a change made and undone, a pending change reverted or widened back); migration fold removes it.",
+    "description": "An open fact the baseline lacks is stale: the model no longer shows its combined effect (a change made and undone, a pending change reverted or widened back), or a value map's codes were not codes of its type in the baseline model and its names did not change; migration fold removes it.",
     "family": "MQ41xx",
     "familyLabel": "Migrations",
     "canBeOff": true
@@ -1066,7 +1218,7 @@
   {
     "id": "MQ4106",
     "defaultSeverity": "error",
-    "description": "A fact's fields do not fit its type: from equal to to, a conversion or data check with both forms or neither, released without held, a key or object listed twice, a values code listed twice or mapped to itself, an object kind the type does not take.",
+    "description": "A fact's fields do not fit its type: from equal to to, a conversion or data check with both forms or neither, released without held, a key or object listed twice, a values code listed twice or mapped to itself, an object kind the type does not take, or a value map that maps codes in no column or collection and changes no name, or whose to is also a from.",
     "family": "MQ41xx",
     "familyLabel": "Migrations",
     "canBeOff": true
@@ -1112,6 +1264,30 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4112",
+    "defaultSeverity": "error",
+    "description": "Since the baseline, a kept row's code changed, a former code was added, or a type's name or plural name changed, and no open value-map fact of a database holding the type records it.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4113",
+    "defaultSeverity": "error",
+    "description": "An open value-map fact maps away a code that is a live code of its reference type.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4114",
+    "defaultSeverity": "warning",
+    "description": "A write changed a kept reference row's code, or a reference type's name or plural name, outside the refactor operations, so no value map was recorded.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",
@@ -1146,7 +1322,7 @@
   {
     "id": "MQ5005",
     "defaultSeverity": "warning",
-    "description": "A rule file declares top-level let or var variables; a rule keeps no state between calls, so its results are never cached.",
+    "description": "A rule or rows script declares top-level let or var variables; it keeps no state between calls, so its results are never cached.",
     "family": "MQ50xx",
     "familyLabel": "Extensions and script rules",
     "canBeOff": true
@@ -1520,6 +1696,46 @@
     "canBeOff": true
   },
   {
+    "id": "MQ7014",
+    "defaultSeverity": "error",
+    "description": "A value written into a column typed by an enum or a reference type is not one of its stored values or codes: a table seed cell, the column's literal default, or a binding constant.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7017",
+    "defaultSeverity": "error",
+    "description": "A former code is a live code of its type, is listed twice, or does not fit the type's code (type, length, pattern).",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7018",
+    "defaultSeverity": "error",
+    "description": "A former code's replacedBy names a row that is not a row of its type. A missing row is MQ2001.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7019",
+    "defaultSeverity": "error",
+    "description": "A default, allowedValues entry or seed cell names a former code. It replaces MQ3019, MQ7009, MQ7011 and MQ7014 for that value.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7020",
+    "defaultSeverity": "error",
+    "description": "A reference-type refactor cannot apply (an unknown or scripted code, a code taken or former, mismatched types, a binding, a missing field, a second refactor of the type in the batch); the message gives the reason.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
     "id": "MQ7101",
     "defaultSeverity": "error",
     "description": "A seed targets an abstract entity.",
@@ -1570,7 +1786,7 @@
   {
     "id": "MQ7107",
     "defaultSeverity": "error",
-    "description": "A table seed targets a table that is not a table file of a database, or lists a column the table does not have.",
+    "description": "A table seed targets a table that is not a table file of a database, or lists a column or foreign key the table does not have.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true
@@ -1578,7 +1794,7 @@
   {
     "id": "MQ7108",
     "defaultSeverity": "error",
-    "description": "A table seed lists an identity, computed or generated column, whose value the database gives.",
+    "description": "A table seed lists an identity, computed, generated or stable id column, whose value the database or the engine gives.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true
@@ -1586,7 +1802,7 @@
   {
     "id": "MQ7109",
     "defaultSeverity": "error",
-    "description": "A table seed's cell does not fit its column: its type, length, precision or scale, or NULL in a NOT NULL column without a default.",
+    "description": "A table seed's cell does not fit its column (type, length, precision or scale, or NULL in a NOT NULL column without a default), or a foreign-key cell does not have the referenced row key's shape.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true
@@ -1594,7 +1810,7 @@
   {
     "id": "MQ7111",
     "defaultSeverity": "error",
-    "description": "A foreign key that a table seed or a reference type's binding fills names no row of the referenced table's seeds, or one they do not hold in every environment the row is loaded in.",
+    "description": "A foreign key that a table seed or a reference type's binding fills, or a foreign-key cell's natural key, names no row of the referenced table's rows, or one they do not hold in every environment the row is loaded in.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true
@@ -1626,7 +1842,7 @@
   {
     "id": "MQ7116",
     "defaultSeverity": "error",
-    "description": "A seed's rows file is missing or cannot be read, or the seed has rows of its own beside it.",
+    "description": "A seed's rows file or rows script is missing or cannot be read, or the seed has rows of its own beside it.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true
@@ -1667,6 +1883,46 @@
     "id": "MQ7121",
     "defaultSeverity": "error",
     "description": "Two seeds of one table key their rows differently (a different key, or a key beside the primary key).",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7124",
+    "defaultSeverity": "error",
+    "description": "`stableId` is set on a column that is not of type `uuid`, or whose value the database fills (identity, sequence, generated, computed).",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7125",
+    "defaultSeverity": "error",
+    "description": "The row key of a table with a stable id column holds that column, or a value the database fills directly or through a foreign-key entry, so the stable id cannot be derived.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7126",
+    "defaultSeverity": "error",
+    "description": "A table seed's column entry names a foreign key that is not its target's, is listed beside one of that key's own columns, references a table that has no rows in the model, or the seed's row key holds part of the entry's columns.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7127",
+    "defaultSeverity": "error",
+    "description": "A seed's rows script fails: it does not load, registers anything but rows exactly once, throws, exceeds a sandbox limit, or returns something that is not an array of row objects.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7128",
+    "defaultSeverity": "error",
+    "description": "A scripted row has a key its seed's columns do not name, or the seed's target has no row key to derive row ids from.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true

@@ -752,9 +752,10 @@ internal sealed class UnitFilter
         var set = new HashSet<string>(StringComparer.Ordinal);
         if (SourceOf(element) is { } source)
             set.UnionWith(source.Stereotypes.Select(s => s.Key));
-        // A table file's effective set (implied stereotypes included), as the resolved objects carry theirs.
-        if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file))
-            set.UnionWith(_model.Source.EffectiveStereotypes(file.Stereotypes).Select(s => s.Stereotype.Key));
+        // The resolved table's effective set (implied stereotypes and its schema's and package's defaults included, with or without a
+        // file; next-phase-2-design.md section 3.1), as the other resolved objects carry theirs.
+        if (element is RTable table)
+            set.UnionWith(table.Stereotypes.Select(s => s.Key));
         if (element is RDatabase or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery)
             set.UnionWith(((RAnnotated)element).Stereotypes.Select(s => s.Key));
         return set;

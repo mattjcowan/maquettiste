@@ -316,7 +316,12 @@ internal sealed partial class ChangePlanner
         if (slots.Count > 0 && RefuseReplacements(id, current, removed, slots, outcome))
             return;
         _removedIds.UnionWith(removed);
-        DropSeedColumns(index, removed, outcome);
+        // A stereotype member that goes takes the seed columns naming its inherited copies (<tableKey>.<memberId>) and the tables'
+        // redefines and excludes entries that name it (next-phase-2-design.md section 3.1); other keyed uses report MQ2001.
+        var members = current.Element is Stereotype old ? RemovedMembers(old, removed) : null;
+        DropSeedColumns(index, removed, outcome, members);
+        if (members is not null)
+            DropMemberLinks(index, members, outcome);
         ClearOptionalReferences(index, id, removed, outcome);
         CheckPackValues(index, removed, PackValueMode.Save, outcome);
     }
@@ -426,11 +431,16 @@ internal sealed partial class ChangePlanner
 
     /// <summary>
     /// Drops the columns naming removed attributes or ends, with their cells, from every seed that has them (section 2.7), in the
-    /// same save. Seeds the batch changes itself are left to their own operation.
+    /// same save. Seeds the batch changes itself are left to their own operation. A removed stereotype member (one of
+    /// <paramref name="members"/>) also drops the columns that name an inherited copy of it by keyed id, whose member part
+    /// (<see cref="ContributedMembers.TryParse"/>) is its id (next-phase-2-design.md section 3.1).
     /// </summary>
-    private void DropSeedColumns(int index, IReadOnlyCollection<string> removedIds, ChangeOutcome outcome)
+    private void DropSeedColumns(int index, IReadOnlyCollection<string> removedIds, ChangeOutcome outcome, IReadOnlySet<string>? members = null)
     {
         var removed = removedIds.ToHashSet(StringComparer.Ordinal);
+        bool Names(string column) =>
+            removed.Contains(column)
+            || (members is { Count: > 0 } && ContributedMembers.TryParse(column, out _, out var member) && members.Contains(member));
         var seeds = removedIds
             .SelectMany(sub => _snapshot.ReferencesTo(sub))
             .Where(r => r.Field == "columns" && !_deleted.Contains(r.FromElementId) && !_batchIds.Contains(r.FromElementId))
@@ -447,7 +457,7 @@ internal sealed partial class ChangePlanner
             var drop = new List<int>();
             for (var k = 0; k < columns.Count; k++)
             {
-                if (columns[k] is JsonValue v && v.TryGetValue<string>(out var column) && removed.Contains(column))
+                if (columns[k] is JsonValue v && v.TryGetValue<string>(out var column) && Names(column))
                     drop.Add(k);
             }
 
@@ -478,6 +488,89 @@ internal sealed partial class ChangePlanner
             Stage(seedId, element, node, info, seed.ModelPath, outcome, seed);
         }
     }
+
+    /// <summary>The ids of a stereotype's members (columns, primary key, uniques, foreign keys, checks, indexes), in file order.</summary>
+    /// <param name="stereotype">The stereotype.</param>
+    /// <returns>The member ids.</returns>
+    internal static IEnumerable<string> MemberIds(Stereotype stereotype)
+    {
+        foreach (var column in stereotype.Columns)
+            yield return column.Id;
+        if (stereotype.PrimaryKey?.Id is { } pk)
+            yield return pk;
+        foreach (var unique in stereotype.Uniques)
+            yield return unique.Id;
+        foreach (var foreignKey in stereotype.ForeignKeys)
+            yield return foreignKey.Id;
+        foreach (var check in stereotype.Checks)
+            yield return check.Id;
+        foreach (var index in stereotype.Indexes)
+            yield return index.Id;
+    }
+
+    /// <summary>The removed sub-element ids that were members of the stereotype as it was, or <see langword="null"/> when none was.</summary>
+    private static HashSet<string>? RemovedMembers(Stereotype before, IReadOnlyCollection<string> removed)
+    {
+        var members = MemberIds(before).Where(m => !string.IsNullOrEmpty(m)).ToHashSet(StringComparer.Ordinal);
+        members.IntersectWith(removed);
+        return members.Count == 0 ? null : members;
+    }
+
+    /// <summary>
+    /// Removes, from every table file that names them, the <c>redefines</c> and <c>excludes</c> entries of stereotype members a save
+    /// removed (next-phase-2-design.md section 3.1), in the same save: without the member they mean nothing. Tables the batch changes
+    /// itself are left to their own operation.
+    /// </summary>
+    private void DropMemberLinks(int index, IReadOnlySet<string> members, ChangeOutcome outcome)
+    {
+        var tables = members
+            .SelectMany(member => _snapshot.ReferencesTo(member))
+            .Where(r => IsMemberLink(r) && !_deleted.Contains(r.FromElementId) && !_batchIds.Contains(r.FromElementId))
+            .Select(r => r.FromElementId)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
+        foreach (var tableId in tables)
+        {
+            if (!TryGetCurrent(tableId, null, out var table) || table.Element is not Table)
+                continue;
+            var node = JsonNode.Parse(table.Json.GetRawText())!.AsObject();
+            var changed = DropEntries(node, "redefines", item => item is JsonObject entry && entry["member"] is JsonValue member
+                && member.TryGetValue<string>(out var id) && members.Contains(id));
+            changed |= DropEntries(node, "excludes", item => item is JsonValue value && value.TryGetValue<string>(out var id) && members.Contains(id));
+            if (!changed)
+                continue;
+            var info = KindInfo.Get(ElementKind.Table);
+            var repoPath = _paths.ToRepoPath(table.ModelPath);
+            if (Read(node, info, repoPath, outcome) is not { } element)
+                return;
+            _changeByElement.TryAdd(tableId, index);
+            Touch(tableId, table);
+            Stage(tableId, element, node, info, table.ModelPath, outcome, table);
+        }
+
+        static bool DropEntries(JsonObject node, string list, Func<JsonNode?, bool> names)
+        {
+            if (node[list] is not JsonArray items)
+                return false;
+            var dropped = false;
+            for (var k = items.Count - 1; k >= 0; k--)
+            {
+                if (!names(items[k]))
+                    continue;
+                items.RemoveAt(k);
+                dropped = true;
+            }
+
+            if (dropped && items.Count == 0)
+                node.Remove(list);
+            return dropped;
+        }
+    }
+
+    /// <summary>Whether a reference is a table's <c>redefines</c> or <c>excludes</c> entry naming a stereotype member.</summary>
+    private static bool IsMemberLink(ReferenceInfo reference) =>
+        (reference.Field == "member" && reference.JsonPointer.StartsWith("/redefines/", StringComparison.Ordinal))
+        || (reference.Field == "excludes" && reference.JsonPointer.StartsWith("/excludes/", StringComparison.Ordinal));
 
     private void Delete(int index, PlannedChange change, ChangeOutcome outcome)
     {
@@ -565,6 +658,11 @@ internal sealed partial class ChangePlanner
         // A diagram member without its element means nothing: drop the member.
         if (referrerKind == ElementKind.Diagram && segments.Length == 3 && segments[0] == "members" && segments[2] == "element")
             pointer = "/members/" + segments[1];
+        // A column's typeRef ({ "ref": ... }, the object form only) without its type means nothing: drop the whole typeRef, and the
+        // column keeps its physical type (next-phase-2-design.md section 3.2).
+        if (referrerKind is ElementKind.Table or ElementKind.Stereotype && segments.Length >= 4 && segments[^1] == "ref" && segments[^2] == "typeRef"
+            && segments[^4] == "columns")
+            pointer = pointer[..pointer.LastIndexOf('/')];
         // A convention package entry is the package id or { package, schema }: without its package the entry goes; without its
         // schema it becomes the package id (erratum E26).
         if (referrerKind == ElementKind.Database && segments.Length == 3 && segments[0] == "packages")
@@ -652,8 +750,9 @@ internal sealed partial class ChangePlanner
     private void Stage(string id, Element element, JsonObject node, KindInfo info, string modelPath, ChangeOutcome outcome, Working? previous = null)
     {
         var repoPath = _paths.ToRepoPath(modelPath);
-        // A seed whose rows live in a CSV file (rowsFrom): the rows go to the CSV, the seed file keeps the rest.
-        var csvRows = element is Seed { RowsFrom: not null } ? node["rows"]?.DeepClone() : null;
+        // A seed whose rows live in a CSV file (rowsFrom.file): the rows go to the CSV, the seed file keeps the rest. A seed with a rows
+        // script (rowsFrom.script) keeps what it holds: rows beside the script are MQ7116, never moved anywhere.
+        var csvRows = element is Seed { RowsFrom.File: not null } ? node["rows"]?.DeepClone() : null;
         if (csvRows is not null)
             node.Remove("rows");
         var bytes = _json.Write(node, info.SchemaFile, repoPath);
@@ -695,7 +794,7 @@ internal sealed partial class ChangePlanner
         }
 
         _working[id] = new Working(element, modelPath, bytes, hash, documentJson, previous?.SidecarText);
-        DropRowsFile(previous, element);
+        DropRowsFile(previous, element, modelPath);
         if (previous is not null && previous.ModelPath == modelPath && previous.Hash == hash && _snapshotPaths.ContainsKey(modelPath))
         {
             WriteRowsFile(modelPath, element);
@@ -728,7 +827,7 @@ internal sealed partial class ChangePlanner
     /// <summary>A CSV-backed seed's rows (SeedCsv), written beside the seed file when they differ from what is there.</summary>
     private void WriteRowsFile(string modelPath, Element element)
     {
-        if (element is not Seed { RowsFrom: { } rowsFrom } seed || ModelPaths.ResolveSidecar(modelPath, rowsFrom.File) is not { } path)
+        if (element is not Seed { RowsFrom.File: { } file } seed || ModelPaths.ResolveSidecar(modelPath, file) is not { } path)
             return;
         var bytes = SeedCsv.Write(seed.Columns, seed.Rows);
         var current = _writes.TryGetValue(path, out var planned) ? planned : Exists(path) ? File.ReadAllBytes(_paths.FullPath(path)) : null;
@@ -738,12 +837,18 @@ internal sealed partial class ChangePlanner
         _deletes.Remove(path);
     }
 
-    /// <summary>A seed that no longer keeps its rows in a CSV (or keeps them in another one): the old file goes, unless another element uses it.</summary>
-    private void DropRowsFile(Working? previous, Element element)
+    /// <summary>
+    /// A seed that no longer keeps its rows in a CSV, keeps them in another one or moves to another folder (its target renamed or
+    /// changed, next-phase-2-design.md section 3.5): the old file goes, unless another element uses it.
+    /// </summary>
+    private void DropRowsFile(Working? previous, Element element, string modelPath)
     {
-        if (previous?.Element is not Seed { RowsFrom: { } old } || (element as Seed)?.RowsFrom?.File == old.File)
+        if (previous?.Element is not Seed { RowsFrom.File: { } old })
             return;
-        if (ModelPaths.ResolveSidecar(previous.ModelPath, old.File) is { } path && Exists(path) && !SidecarUsedByOthers(path, previous.Element.Id))
+        var path = ModelPaths.ResolveSidecar(previous.ModelPath, old);
+        if ((element as Seed)?.RowsFrom?.File is { } kept && ModelPaths.ResolveSidecar(modelPath, kept) == path)
+            return;
+        if (path is not null && Exists(path) && !SidecarUsedByOthers(path, previous.Element.Id))
         {
             _deletes.Add(path);
             _writes.Remove(path);
@@ -756,11 +861,16 @@ internal sealed partial class ChangePlanner
         return document.RootElement.Clone();
     }
 
-    /// <summary>The path of an updated element: kept unless its name (and so its file name) or its conventional folder changes.</summary>
+    /// <summary>
+    /// The path of an updated element: kept unless its name (and so its file name) or its conventional folder changes. A seed or scenario
+    /// in its target's folder as the model had it before the plan follows the target the plan renames (next-phase-2-design.md section 3.5,
+    /// <c>rename-reference-type</c>), when the plan updates it after the target.
+    /// </summary>
     private string Relocate(Working current, Element element)
     {
         var folder = ModelPaths.FolderOf(current.ModelPath);
-        var oldConventional = ModelPaths.ConventionalFolder(current.Element, DatabaseFolderOf, TargetStemOf);
+        var oldConventional = ModelPaths.ConventionalFolder(current.Element, DatabaseFolderOf,
+            targetId => _snapshot.Get<Element>(targetId) is { } before ? ModelPaths.Stem(before) : TargetStemOf(targetId));
         var newConventional = ModelPaths.ConventionalFolder(element, DatabaseFolderOf, TargetStemOf);
         if (folder == oldConventional && newConventional != oldConventional)
             folder = newConventional; // a table, view or sequence moved to another database follows it
@@ -925,10 +1035,12 @@ internal sealed partial class ChangePlanner
         var referenceModel = deletedStereotypes.Count == 0
             ? candidate
             : ModelSnapshot.CreateAfter(null, candidate.Documents.Concat(deletedStereotypes), candidate.Settings, candidate.SettingsHash, candidate.Extensions,
-                candidate.RuleScripts, candidate.Version, null, _parallelism, _ct);
+                candidate.RuleScripts, candidate.Version, null, _parallelism, _ct, seedScripts: candidate.SeedScripts);
         foreach (var (index, id, subIds) in _deleteChecks)
         {
-            var remaining = subIds.Prepend(id)
+            // A sub-element that moved to another element of the plan (a reference row a merge moves into a seed of the target type,
+            // next-phase-2-design.md section 3.5) is not deleted: what references it still finds it.
+            var remaining = subIds.Where(sub => !candidate.TryGetEntry(sub, out _)).Prepend(id)
                 .SelectMany(target => referenceModel.ReferencesTo(target))
                 .Where(r => r.FromElementId != id && !_deleted.Contains(r.FromElementId))
                 .Distinct()

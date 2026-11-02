@@ -151,20 +151,22 @@ text that is not a duration fails the unit with MQ6006), `seed_named "<name>"` (
 or with its package path when its file states one, `Billing.currencies`; null when none has it, MQ6006 when two share
 it; renaming a seed into or out of the name renders the unit again) and `seed_row <seed or name> <key>` (the row
 whose key is the code of a reference type's seed, the key columns' value of a table seed or the key attributes' value
-of an entity's seed, a list in key order for a key of several parts; null when none has it),
-`table_named "<schema>.<name>" [<database or its name>]` (the resolved table, or null; without a schema part a table
-with no schema or in the default schema; every database is searched unless one is given, and two matches are MQ6006;
-renaming a table into or out of the name renders the unit again), `column_named <table> "<name>"`, `array_index_of
-<list> [<member path>] <value>` (the first index whose item, or its member at a snake_case path such as `"name"` or
-`"type.kind"`, equals the value, else -1; numbers compare by value and strings ordinally), `array_find <list> <member
-path> <value>` (that item, else null), `toposort <items> <edges>` (the items ordered so that each `[before, after]`
-pair's first end comes first, ends matching items by identity or value; ties keep input order and a cycle releases the
-earliest item left) and `json <value> [<fields>]` (with fields, the named member paths such as `["name",
-"columns.name"]` as an object, a path through a list applied per item; a path ending on a resolved object or naming no
-member is MQ6006). These names, and the template variables `database` and `attribute`, are taken: a pack helper
-registered under one of them is MQ6013. A function a template defines with `func` is not checked: it takes the name in
-that template only, so the template keeps working when a built-in of the same name arrives, and every other template
-still sees the built-in.
+of an entity's seed, a list in key order for a key of several parts; null when none has it), `stable_id <table> <key>`
+(the stable id the engine gives a row of a table with a `stableId` column: a UUID derived from the table id and the row
+key, a value or a list in key order in database terms; a table without such a column or a key with a null part is
+MQ6006), `table_named "<schema>.<name>" [<database or its name>]` (the resolved table, or null; without a schema part
+a table with no schema or in the default schema; every database is searched unless one is given, and two matches are
+MQ6006; renaming a table into or out of the name renders the unit again), `column_named <table> "<name>"`,
+`array_index_of <list> [<member path>] <value>` (the first index whose item, or its member at a snake_case path such as
+`"name"` or `"type.kind"`, equals the value, else -1; numbers compare by value and strings ordinally), `array_find
+<list> <member path> <value>` (that item, else null), `toposort <items> <edges>` (the items ordered so that each
+`[before, after]` pair's first end comes first, ends matching items by identity or value; ties keep input order and a
+cycle releases the earliest item left) and `json <value> [<fields>]` (with fields, the named member paths such as
+`["name", "columns.name"]` as an object, a path through a list applied per item; a path ending on a resolved object or
+naming no member is MQ6006). These names, and the template variables `database` and `attribute`, are taken: a pack
+helper registered under one of them is MQ6013. A function a template defines with `func` is not checked: it takes the
+name in that template only, so the template keeps working when a built-in of the same name arrives, and every other
+template still sees the built-in.
 Partials are templates included with
 `{{ include "_name.scriban" arg }}` (paths relative to the pack folder); a partial that only defines functions is a good home for
 shared logic.

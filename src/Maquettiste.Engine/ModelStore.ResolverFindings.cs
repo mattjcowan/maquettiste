@@ -9,13 +9,17 @@ public sealed partial class ModelStore
     private (ModelSnapshot Snapshot, Task<IReadOnlyList<Diagnostic>> Task)? _findings;
     private readonly Lock _resolvedGate = new();
     private (ModelSnapshot Snapshot, Task<ResolvedSnapshot> Task)? _resolved;
+    private readonly Lock _wholeGate = new();
+    private (ModelSnapshot Snapshot, Task<ValidationReport> Task)? _whole;
 
     /// <summary>
     /// A snapshot's whole-model validation report and, when it has no error (pending migration facts aside, MQ4101), its resolved model:
     /// computed once per snapshot and shared
     /// by everything that needs them (validate's resolver findings, the resolved model's paged reader, template previews and path
     /// listings), so an edit costs one validation and one resolution however many of them ask. Concurrent callers wait for the same
-    /// work (single flight), which runs without any caller's token; the last snapshot's result is kept.
+    /// work (single flight), which runs without any caller's token; the last snapshot's result is kept. The validation leaves seeds
+    /// with a rows script unjudged (<see cref="ValidationScope.Previews"/>; next-phase-2-design.md section 3.4, decision 31), so no
+    /// preview runs a rows script its unit does not read; <see cref="WholeReportAsync"/> judges them for validate.
     /// </summary>
     /// <param name="snapshot">The snapshot.</param>
     /// <param name="ct">Cancellation of the wait only.</param>
@@ -41,11 +45,40 @@ public sealed partial class ModelStore
 
     private async Task<ResolvedSnapshot> ResolveSnapshotAsync(ModelSnapshot snapshot)
     {
-        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.All, null, CancellationToken.None).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, CancellationToken.None).ConfigureAwait(false);
         if (report.Diagnostics.Any(Generation.Outcomes.BlocksResolution))
             return new ResolvedSnapshot(snapshot, report, null);
         var resolved = await _services.Resolver.ResolveAsync(snapshot, null, CancellationToken.None).ConfigureAwait(false);
         return new ResolvedSnapshot(snapshot, report, resolved);
+    }
+
+    /// <summary>
+    /// A snapshot's whole-model validation report with every seed's rows judged, scripted rows included (next-phase-2-design.md section
+    /// 3.4, decision 31): the shared report of <see cref="ResolvedAsync"/> when no seed has a rows script, else a validation of its own,
+    /// once per snapshot (single flight, without any caller's token; the last snapshot's result is kept).
+    /// </summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <param name="ct">Cancellation of the wait only.</param>
+    /// <returns>The report.</returns>
+    private async Task<ValidationReport> WholeReportAsync(ModelSnapshot snapshot, CancellationToken ct)
+    {
+        if (!snapshot.All<Seed>().Any(s => s.RowsFrom?.Script is not null))
+            return (await ResolvedAsync(snapshot, ct).ConfigureAwait(false)).Report;
+        Task<ValidationReport> task;
+        lock (_wholeGate)
+        {
+            if (_whole is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled)
+            {
+                task = cached.Task;
+            }
+            else
+            {
+                task = Task.Run(() => _services.Validator.ValidateAsync(snapshot, ValidationScope.All, null, CancellationToken.None), CancellationToken.None);
+                _whole = (snapshot, task);
+            }
+        }
+
+        return await task.WaitAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>

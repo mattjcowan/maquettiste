@@ -99,6 +99,7 @@ internal sealed partial class DatabaseRun
         var viewsById = views.ToDictionary(v => v.Id, StringComparer.Ordinal);
         var queriesById = _queries.ToDictionary(q => q.Query.Id, q => q.Query, StringComparer.Ordinal);
         var boundBy = new Dictionary<object, List<REntityBinding>>(ReferenceEqualityComparer.Instance);
+        var built = new List<REntityBinding>(_boundEntities.Count);
         foreach (var entity in _boundEntities)
         {
             _run.Ct.ThrowIfCancellationRequested();
@@ -106,6 +107,7 @@ internal sealed partial class DatabaseRun
             var binding = new BindingBuilder(this, entity, file, index, tables, viewsById, queriesById).Build();
             _run.SetEntityBinding(entity, _db.Name, binding);
             _run.Register(binding);
+            built.Add(binding);
             foreach (var target in new object?[] { binding.SourceTable, binding.SourceView, binding.SourceQuery, binding.WriteTable })
             {
                 if (target is null)
@@ -131,6 +133,32 @@ internal sealed partial class DatabaseRun
                 case RQuery q:
                     q.BoundBy = sorted;
                     break;
+            }
+        }
+
+        ShowBoundSensitivity(built);
+    }
+
+    /// <summary>
+    /// A column that stores no attribute (a designed, imported, extra or inherited column) and states no sensitivity shows the strongest own
+    /// value of the attributes the bindings' fields map to it, read or written (next-phase-2-design.md section 3.2, decision 9). Attributes
+    /// still hold their own values here: they show the columns' values only in the pass after every database
+    /// (<see cref="ResolveRun"/>'s <c>ResolveShared</c>), so neither side reads what the other borrowed. The table already depends on each
+    /// entity bound to it.
+    /// </summary>
+    private static void ShowBoundSensitivity(List<REntityBinding> bindings)
+    {
+        foreach (var binding in bindings)
+        {
+            foreach (var field in binding.Fields)
+            {
+                if ((field.Member ?? field.Attribute)?.Sensitive is not { } value)
+                    continue;
+                foreach (var column in new[] { field.SourceColumn, field.WriteColumn })
+                {
+                    if (column is { Attribute: null, OwnSensitive: null })
+                        column.Sensitive = ResolveRun.Stronger(column.Sensitive, value);
+                }
             }
         }
     }
@@ -177,6 +205,7 @@ internal sealed partial class DatabaseRun
                 ? Account([.. writeTable.Columns.Select(c => (c.Name, (RColumn?)c, (string?)c.Type))], fields, constants, listed, write: true)
                 : [];
             ReportUnaccounted();
+            ReportDrift();
             _b.Dependencies = _deps.ToList();
             return _b;
         }
@@ -670,6 +699,56 @@ internal sealed partial class DatabaseRun
                     continue;
                 Report("MQ4047", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' accounts for no {(names.Count == 1 ? "column" : "columns")} {string.Join(", ", names.Select(n => "'" + n + "'"))} of {what}: map {(names.Count == 1 ? "it" : "each")} to a field, give {(names.Count == 1 ? "it" : "each")} a constant, or list {(names.Count == 1 ? "it" : "them")} in columns (ignored, database or computed).", "");
             }
+        }
+
+        /// <summary>
+        /// MQ4088 and MQ4087 for a binding with provenance (next-phase-2-design.md section 3.3, decisions 5 and 6), from files alone
+        /// (<see cref="BindingDrift"/>): MQ4088 when the source is not a table file or none of the recorded columns is one of its columns;
+        /// else MQ4087, once for the binding, when a column a field maps was renamed or retyped since it was recorded. Added columns are
+        /// MQ4047's (or accounted for), and a removed column a field still maps is MQ4045's. A source that is nothing of the database is
+        /// MQ4044's, so it reports nothing here.
+        /// </summary>
+        private void ReportDrift()
+        {
+            // A source that resolves to nothing of the database is MQ4044's (decision 15).
+            if (file.Provenance is not { } provenance || _b.SourceKind is null || run._run.EntitySource(entity.Id) is not { } source)
+                return;
+            var drift = BindingDrift.Of(run._run.Model, source, file);
+            var prefix = $"The binding of entity '{entity.Name}' to database '{run._db.Name}'";
+            if (drift.Source == DriftSource.NotTableFile)
+            {
+                Report("MQ4088", $"{prefix} records provenance, but its source {_b.SourceKind} '{_b.SourceName}' is not a designed or imported table file, the only source whose columns have ids: remove provenance, or re-sync the binding (resync-binding) once it reads a table file.", "/provenance");
+                return;
+            }
+
+            if (drift.Source != DriftSource.TableFile)
+                return;
+            if (drift.Stale)
+            {
+                var count = provenance.Columns.Count;
+                Report("MQ4088", $"{prefix} records provenance for {count.ToString(CultureInfo.InvariantCulture)} {(count == 1 ? "column" : "columns")}, none of which is a column of table '{drift.Table!.Name}', so it describes another source and is ignored: re-sync the binding (resync-binding), or remove provenance.", "/provenance");
+                return;
+            }
+
+            if (drift.Renamed.Count == 0 && drift.Retyped.Count == 0)
+                return;
+            // One entry per mapped column and field, in the source's column order then field order.
+            var order = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var i = 0; i < drift.Columns.Count; i++)
+                order.TryAdd(drift.Columns[i].Id, i);
+            var renamed = drift.Renamed.Select(c => (c.Column, c.Field)).ToHashSet();
+            var retyped = drift.Retyped.Select(c => (c.Column, c.Field)).ToHashSet();
+            var changes = drift.Renamed.Concat(drift.Retyped)
+                .DistinctBy(c => (c.Column, c.Field))
+                .OrderBy(c => order.GetValueOrDefault(c.Column))
+                .ThenBy(c => c.Field)
+                .Select(c =>
+                {
+                    var both = renamed.Contains((c.Column, c.Field)) && retyped.Contains((c.Column, c.Field));
+                    var how = both ? "renamed and retyped" : renamed.Contains((c.Column, c.Field)) ? "renamed" : "retyped";
+                    return $"'{c.Name}' {how} (attribute '{c.AttributeName}')";
+                });
+            Report("MQ4087", $"{prefix} maps columns that changed since its provenance was recorded: {string.Join(", ", changes)}. Re-sync the binding (resync-binding).", "");
         }
     }
 }

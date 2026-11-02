@@ -396,6 +396,84 @@ public sealed class DeleteCascadeTests
         Assert.DoesNotContain(report.Diagnostics, d => d.ElementId == PricedId && d.Severity == DiagnosticSeverity.Error);
     }
 
+    [Fact]
+    public async Task Remove_references_clears_default_and_exclude_lists()
+    {
+        // next-phase-2-design.md section 3.1 (D10): remove-references on a stereotype clears its keys from stereotypes, defaultStereotypes
+        // and excludeStereotypes lists and the excludes entries naming its members, and drops the seed columns naming an inherited copy
+        // with their cells; the delete plan lists each.
+        await using var r = WithoutFacts();
+        WriteElement(r, ".maquettiste/model/vocabularies/stereotypes/stamped.json", new JsonObject
+        {
+            ["kind"] = "stereotype", ["id"] = StampedId, ["key"] = "stamped", ["name"] = "Stamped", ["appliesTo"] = new JsonArray("table"),
+            ["columns"] = new JsonArray(
+                new JsonObject { ["id"] = StampedAtId, ["name"] = "stamped_at", ["type"] = "datetimeoffset" },
+                new JsonObject { ["id"] = StampedById, ["name"] = "stamped_by", ["type"] = "string", ["length"] = 40 }),
+            ["indexes"] = new JsonArray(new JsonObject { ["id"] = StampedIndexId, ["columns"] = new JsonArray(new JsonObject { ["column"] = StampedById }) }),
+        });
+        Edit(r, ".maquettiste/model/databases/main/database.json", d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("stamped"));
+        Edit(r, ".maquettiste/model/packages/catalog.json", p => p["defaultStereotypes"] = new JsonArray("stamped"));
+        Edit(r, ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json", t => t["excludeStereotypes"] = new JsonArray("stamped"));
+        Edit(r, ".maquettiste/model/databases/main/tables/notes.json", t => t["excludes"] = new JsonArray(StampedIndexId));
+        WriteElement(r, ".maquettiste/model/seeds/notes/notes.json", new JsonObject
+        {
+            ["kind"] = "seed", ["id"] = NotesSeedId, ["name"] = "Notes", ["target"] = NotesTableId,
+            ["columns"] = new JsonArray("01K6BND0000000000000000002", "01K6BND0000000000000000003", "01K6BND0000000000000000004",
+                "01K6BND0000000000000000005", NotesTableId + "." + StampedById),
+            ["rows"] = new JsonArray(new JsonObject
+            {
+                ["id"] = "01K9XRF00000000000000000G2",
+                ["values"] = new JsonArray("0192f0c4-7f00-7000-8000-000000000001", "invoice", "0192f0c4-7f00-7000-8000-000000000002", "Call back.", "ann"),
+            }),
+        });
+
+        var plan = await r.Store.GetDeletePlanAsync([StampedId], DeleteResolution.RemoveReferences, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, plan.Outcome);
+        Assert.Empty(plan.Refused);
+        Assert.Equal(
+            new[]
+            {
+                (EditorRepo.MainDatabaseId, "/schemas/0/defaultStereotypes/0"), ("01J92P0V1T0J6RH4MY9H81NYB4", "/excludeStereotypes/0"),
+                (NotesTableId, "/excludes/0"),
+            }.Order(),
+            plan.Clears.Where(c => c.Id != CatalogId).Select(c => (c.Id, c.Pointer)).Order());
+        Assert.Contains(plan.Clears, c => c.Id == CatalogId && c.Pointer == "/defaultStereotypes/0" && c.Field == "defaultStereotypes");
+        var seedColumn = Assert.Single(plan.Removes);
+        Assert.Equal((NotesSeedId, "/columns/4", "column " + NotesTableId + "." + StampedById, "column"),
+            (seedColumn.Id, seedColumn.Pointer, seedColumn.What, seedColumn.SubKind));
+        Assert.Contains("column stamped_by of stereotype Stamped", seedColumn.Because, StringComparison.Ordinal);
+
+        var stamped = (await r.Store.GetElementAsync(StampedId, Ct))!;
+        var result = await r.Store.DeleteAsync(StampedId, stamped.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        var model = r.Store.Current!;
+        Assert.All(model.Get<Database>(EditorRepo.MainDatabaseId)!.Schemas, schema => Assert.Empty(schema.DefaultStereotypes));
+        Assert.Empty(model.Get<Package>(CatalogId)!.DefaultStereotypes);
+        Assert.Empty(model.Get<Table>("01J92P0V1T0J6RH4MY9H81NYB4")!.ExcludeStereotypes ?? []);
+        Assert.Empty(model.Get<Table>(NotesTableId)!.Excludes);
+        var seed = model.Get<Seed>(NotesSeedId)!;
+        Assert.Equal(4, seed.Columns.Count);
+        Assert.Equal(4, Assert.Single(seed.Rows).Values.Count);
+        var report = await r.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.DoesNotContain(report.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+    }
+
+    private const string StampedId = "01K9XRF00000000000000000G0";
+    private const string StampedAtId = "01K9XRF00000000000000000G4";
+    private const string StampedById = "01K9XRF00000000000000000G5";
+    private const string StampedIndexId = "01K9XRF00000000000000000G6";
+    private const string NotesSeedId = "01K9XRF00000000000000000G1";
+    private const string CatalogId = "01J92P0V025DRFTXKMS240G2NG";
+
+    private static void Edit(EditorRepo r, string path, Action<JsonObject> change)
+    {
+        var node = JsonNode.Parse(r.Repo.ReadFile(path))!.AsObject();
+        change(node);
+        WriteElement(r, path, node);
+    }
+
     /// <summary>
     /// The billing repo (no facts) with two entities, Reviewer and Approver, that Invoice names in custom properties an extension types:
     /// <c>reviewer</c> optional, <c>approver</c> required.

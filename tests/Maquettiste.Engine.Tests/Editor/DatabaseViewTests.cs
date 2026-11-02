@@ -135,7 +135,168 @@ public sealed class DatabaseViewTests
         Assert.Equal(
             ["key", "name", "type", "nativeType", "length", "precision", "scale", "nullable", "defaultSql", "identity", "computed", "attributeId",
                 "attributePath", "isPrimaryKey", "isForeignKey", "isDiscriminator", "position", "default", "computedStored", "sequenceId", "dbTypeId", "collation",
-                "comment", "displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation"],
+                "comment", "displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation", "typeRef", "sensitive",
+                "memberOrigin"],
             column.Select(p => p.Key));
+        Assert.Null(column["memberOrigin"]);
+        Assert.Null(column["typeRef"]); // next-phase-2-design.md section 3.2: no column of billing states a typeRef or a sensitivity yet
+        Assert.Null(column["sensitive"]);
+    }
+
+    private const string Audited = ".maquettiste/model/vocabularies/stereotypes/audited.json";
+    private const string MainDatabase = ".maquettiste/model/databases/main/database.json";
+    private const string NotesTable = ".maquettiste/model/databases/main/tables/notes.json";
+    private const string NotesTableId = "01K6BND0000000000000000001";
+    private const string CreatedAt = "01JC7AVD1TC0000000000000C1", UpdatedAt = "01JC7AVD1TC0000000000000C2", CreatedIndex = "01JC7AVD1TC0000000000000X1";
+    private const string OwnerId = "01JC7AVD1TC0000000000000C4", OwnerUnique = "01JC7AVD1TC0000000000000Q4", OwnerKey = "01JC7AVD1TC0000000000000F4";
+
+    /// <summary>Rewrites a model file on disk, behind the store's back.</summary>
+    private static void Edit(EditorRepo repo, string path, Action<JsonObject> change)
+    {
+        var node = JsonNode.Parse(File.ReadAllText(repo.Repo.PathOf(path)))!.AsObject();
+        change(node);
+        File.WriteAllText(repo.Repo.PathOf(path), node.ToJsonString(), new UTF8Encoding(false));
+    }
+
+    /// <summary>Schema billing of database main gives every table <c>audited</c> by default.</summary>
+    private static void DefaultAudited(EditorRepo repo) =>
+        Edit(repo, MainDatabase, d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("audited"));
+
+    [Fact]
+    public async Task A_typed_designed_column_carries_its_type_ref()
+    {
+        // next-phase-2-design.md section 3.2 (D21): the view's column carries the type its own entry names, as an attribute record
+        // carries its type; type stays the physical keyword. The body column is typed: entity_type takes the bindings' constants
+        // invoice and customer, which are no stored codes of the enum (MQ7014, D22).
+        await using var repo = EditorRepo.Create(packs: false);
+        const string invoiceStatus = "01J92P0V05WQDH2GZG539D9VG1";
+        Edit(repo, NotesTable, t => t["columns"]![3]!["typeRef"] = new JsonObject { ["ref"] = invoiceStatus });
+
+        var result = await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct);
+
+        var notes = Assert.IsType<DatabaseView>(result.View).Tables.Single(t => t.Name == "notes");
+        var body = notes.Columns.Single(c => c.Name == "body");
+        Assert.Equal(("text", (int?)null), (body.Type, body.Length));
+        Assert.Equal(new TypeRecord("enum", "InvoiceStatus", null, invoiceStatus, null, null, null), body.TypeRef);
+        Assert.All(notes.Columns.Where(c => c.Name != "body"), c => Assert.Null(c.TypeRef));
+    }
+
+    [Fact]
+    public async Task A_column_shows_its_own_or_its_bound_attributes_sensitivity()
+    {
+        // next-phase-2-design.md section 3.2 (D23): body states pii; entity_id states none, and shows none since no bound attribute does.
+        await using var repo = EditorRepo.Create(packs: false);
+        Edit(repo, NotesTable, t => t["columns"]![3]!["sensitive"] = "pii");
+
+        var result = await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct);
+
+        var notes = Assert.IsType<DatabaseView>(result.View).Tables.Single(t => t.Name == "notes");
+        Assert.Equal("pii", notes.Columns.Single(c => c.Name == "body").Sensitive);
+        Assert.All(notes.Columns.Where(c => c.Name != "body"), c => Assert.Null(c.Sensitive));
+    }
+
+    [Fact]
+    public async Task Member_origin_is_null_for_own_members_and_set_for_inherited()
+    {
+        // next-phase-2-design.md section 3.1: audited contributes two columns and an index to every table of schema billing; notes keeps
+        // its own created_at (and so leaves out the index on it), redefines updated_at's comment, and carries owned, whose column, unique and
+        // foreign key it inherits.
+        await using var repo = EditorRepo.Create(packs: false);
+        Edit(repo, Audited, s =>
+        {
+            s["columns"] = JsonNode.Parse($$"""
+                [{"id": "{{CreatedAt}}", "name": "created_at", "type": "datetimeoffset", "nullable": false, "defaultSql": {"*": "CURRENT_TIMESTAMP"} },
+                 {"id": "{{UpdatedAt}}", "name": "updated_at", "type": "datetimeoffset"}]
+                """);
+            s["indexes"] = JsonNode.Parse($$"""[{"id": "{{CreatedIndex}}", "columns": [{"column": "{{CreatedAt}}"}]}]""");
+        });
+        File.WriteAllText(repo.Repo.PathOf(".maquettiste/model/vocabularies/stereotypes/owned.json"), $$"""
+            {"kind": "stereotype", "id": "01JC7AVD1TC0000000000000S4", "key": "owned", "name": "Owned", "appliesTo": ["table"],
+             "columns": [{"id": "{{OwnerId}}", "name": "owner_id", "type": "uuid"}],
+             "uniques": [{"id": "{{OwnerUnique}}", "columns": ["{{OwnerId}}"]}],
+             "foreignKeys": [{"id": "{{OwnerKey}}", "columns": ["{{OwnerId}}"], "referencesTable": "{{EditorRepo.CustomerId}}@{{EditorRepo.MainDatabaseId}}"}]}
+            """, new UTF8Encoding(false));
+        DefaultAudited(repo);
+        Edit(repo, NotesTable, t =>
+        {
+            t["stereotypes"] = new JsonArray("owned");
+            t["redefines"] = JsonNode.Parse($$"""[{"member": "{{UpdatedAt}}", "comment": "When the note last changed."}]""");
+            t["excludes"] = new JsonArray(CreatedAt, CreatedIndex);
+        });
+
+        var result = await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct);
+
+        var view = Assert.IsType<DatabaseView>(result.View);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        // products inherits both columns and the index from the schema default, after its own members, keyed by its table key.
+        var products = view.Tables.Single(t => t.Name == "products");
+        Assert.Equal(["audited"], products.Stereotypes);
+        var inherited = products.Columns.Where(c => c.MemberOrigin is not null).ToList();
+        Assert.Equal(["created_at", "updated_at"], inherited.Select(c => c.Name));
+        Assert.Equal([products.Key + "." + CreatedAt, products.Key + "." + UpdatedAt], inherited.Select(c => c.Key));
+        var origin = inherited[0].MemberOrigin!;
+        Assert.Equal(("schema-default", "audited", CreatedAt), (origin.Source, origin.Stereotype, origin.MemberId));
+        Assert.Empty(origin.Redefined);
+        Assert.All(products.Columns.Take(products.Columns.Count - 2), c => Assert.Null(c.MemberOrigin));
+        Assert.Null(products.PrimaryKey!.MemberOrigin);
+        var index = products.Indexes.Single(i => i.MemberOrigin is not null);
+        Assert.Equal(("schema-default", "audited", CreatedIndex), (index.MemberOrigin!.Source, index.MemberOrigin.Stereotype, index.MemberOrigin.MemberId));
+        Assert.Equal([inherited[0].Key], index.Columns.Select(c => c.Column));
+        // customers stores audited's attributes as columns, so it inherits nothing; its own members carry no origin.
+        var customers = view.Tables.Single(t => t.Name == "customers");
+        Assert.All(customers.Columns, c => Assert.Null(c.MemberOrigin));
+        Assert.All(customers.Uniques, u => Assert.Null(u.MemberOrigin));
+        Assert.All(view.Tables.Single(t => t.Name == "invoices").ForeignKeys, f => Assert.Null(f.MemberOrigin));
+
+        // notes: its own created_at, updated_at redefined, and owned's column, unique and foreign key by its own entry.
+        var notes = view.Tables.Single(t => t.Key == NotesTableId);
+        Assert.Equal(["audited", "owned"], notes.Stereotypes); // the schema's defaults first, then the own list
+        Assert.Null(notes.Columns.Single(c => c.Name == "created_at").MemberOrigin);
+        var updated = notes.Columns.Single(c => c.Name == "updated_at");
+        Assert.Equal((NotesTableId + "." + UpdatedAt, "schema-default", "When the note last changed."), (updated.Key, updated.MemberOrigin!.Source, updated.Comment));
+        Assert.Equal(["comment"], updated.MemberOrigin.Redefined);
+        var owner = notes.Columns.Single(c => c.Name == "owner_id").MemberOrigin!;
+        Assert.Equal(("stereotype", "owned", OwnerId), (owner.Source, owner.Stereotype, owner.MemberId));
+        var unique = Assert.Single(notes.Uniques);
+        Assert.Equal(OwnerUnique, unique.MemberOrigin!.MemberId);
+        Assert.Equal([NotesTableId + "." + OwnerId], unique.Columns);
+        var foreignKey = Assert.Single(notes.ForeignKeys);
+        Assert.Equal(("stereotype", OwnerKey, customers.Key), (foreignKey.MemberOrigin!.Source, foreignKey.MemberOrigin.MemberId, foreignKey.ReferencedTable));
+        Assert.DoesNotContain(notes.Indexes, i => i.MemberOrigin is not null);
+        Assert.Null(notes.PrimaryKey!.MemberOrigin);
+
+        // The origin reaches the wire under web defaults: null for own members, an object for inherited ones.
+        var node = JsonNode.Parse(JsonSerializer.Serialize(result, Web))!["view"]!["tables"]!.AsArray().Single(t => (string)t!["key"]! == NotesTableId)!;
+        Assert.Null(node["columns"]![0]!["memberOrigin"]);
+        Assert.Equal("""{"source":"schema-default","stereotype":"audited","memberId":"01JC7AVD1TC0000000000000C2","redefined":["comment"]}""",
+            node["columns"]!.AsArray().Single(c => (string)c!["name"]! == "updated_at")!["memberOrigin"]!.ToJsonString());
+    }
+
+    [Fact]
+    public async Task A_table_without_a_file_shows_its_default_stereotypes()
+    {
+        // next-phase-2-design.md section 3.1: a synthesized table without an overlay carries the stereotypes its schema default gives
+        // it, with their default properties; the view and the sequence, which audited does not apply to, take none.
+        await using var repo = EditorRepo.Create(packs: false);
+        var before = (await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct)).View!;
+        DefaultAudited(repo);
+
+        var result = await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        var view = Assert.IsType<DatabaseView>(result.View);
+        Assert.Empty(before.Tables.Single(t => t.Name == "customers").Stereotypes);
+        foreach (var name in new[] { "customers", "products" })
+        {
+            var table = view.Tables.Single(t => t.Name == name);
+            Assert.Equal("synthesized", table.Origin);
+            Assert.Equal(["audited"], table.Stereotypes);
+            Assert.Equal(2555L, Convert.ToInt64(table.Properties["retentionDays"], System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Null(table.DisplayName);
+            Assert.All(table.Columns, c => Assert.Null(c.MemberOrigin)); // audited declares no members
+        }
+
+        Assert.All(view.Views, v => Assert.Empty(v.Stereotypes));
+        Assert.All(view.Sequences, s => Assert.Empty(s.Stereotypes));
     }
 }

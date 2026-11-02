@@ -11,7 +11,9 @@ namespace Maquettiste.Engine.Validation;
 /// a default is filled), MQ7111 (a foreign key of the table that the binding fills names a seeded row of the referenced table, through
 /// the constants on the type and through a field on each seed row; <see cref="CheckSeed"/>) and MQ7113 (a table bound to a type and
 /// to an entity with seeds). The rows a binding puts in its table also count for the table seed rules (MQ7111, MQ7112) through
-/// <see cref="KeysOf"/>.
+/// <see cref="KeysOf"/>. A bound table's inherited columns and keys count as its own, by keyed id (next-phase-2-design.md section 3.1).
+/// A field may not fill a column that names its own type (MQ4082), and a constant written into a column typed by an enum or a reference
+/// type is one of its values (MQ7014); <see cref="CodeFit"/> judges a code column here and a typed column alike (section 3.2).
 /// </summary>
 internal static class ReferenceBindingRules
 {
@@ -23,7 +25,8 @@ internal static class ReferenceBindingRules
 
     private static string Str(int i) => i.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>A column of a table by id, else by physical name.</summary>
+    /// <summary>A column of a table by id, else by physical name; pass the table with its inherited members
+    /// (<see cref="MemberRules.WithMembers"/>) to find those too, by keyed id or name.</summary>
     public static Column? ColumnOf(Table table, string reference) =>
         table.Columns.FirstOrDefault(c => string.Equals(c.Id, reference, StringComparison.Ordinal))
         ?? table.Columns.FirstOrDefault(c => string.Equals(c.Name, reference, StringComparison.Ordinal));
@@ -56,7 +59,7 @@ internal static class ReferenceBindingRules
                 continue;
             }
 
-            CheckBinding(context, type, binding, table, pointer, report);
+            CheckBinding(context, type, binding, MemberRules.WithMembers(context.Model, table), pointer, report);
         }
     }
 
@@ -69,7 +72,7 @@ internal static class ReferenceBindingRules
             if (!databases.Add(binding.Database) || context.Model.GetDocument(binding.Table)?.Element is not Table table
                 || !string.Equals(table.Database, binding.Database, StringComparison.Ordinal) || table.Origin == TableOrigin.Synthesized)
                 continue;
-            yield return (binding, table);
+            yield return (binding, MemberRules.WithMembers(context.Model, table));
         }
     }
 
@@ -132,6 +135,9 @@ internal static class ReferenceBindingRules
                 continue;
             }
 
+            // A binding's field says what the column holds, so the column states no type of its own (next-phase-2-design.md section 3.2).
+            if (column.TypeRef is not null)
+                report.Add("MQ4082", $"Column '{column.Name}' of table '{table.Name}' names the type it holds (typeRef), and the binding of reference type '{type.Name}' fills it with field '{name}': the binding says what the column holds, so remove the column's typeRef.", at + "/column", binding.Id);
             if (Fill(column, "field '" + name + "'", filled, table, at + "/column", binding, report) is false)
                 continue;
             if (field.Attribute == "code")
@@ -153,6 +159,8 @@ internal static class ReferenceBindingRules
 
             if (Fill(column, "a constant", filled, table, at, binding, report) is not false)
                 constants[column.Id] = constant.Value;
+            if (constant.Value is { } value && ColumnTypeRules.ValueProblem(context, column, value, null) is { } problem)
+                report.Add("MQ7014", $"The constant the binding of reference type '{type.Name}' writes into column '{column.Name}' of table '{table.Name}' is not one of the values the column's type holds: {problem}.", pointer + "/constants/" + Str(j), binding.Id);
         }
 
         if (codeColumn is null)
@@ -171,7 +179,8 @@ internal static class ReferenceBindingRules
         foreach (var column in table.Columns)
         {
             if (filled.ContainsKey(column.Id) || column.Nullable != false || column.Default is not null || column.DefaultSql.Count > 0
-                || column.Identity is not null || column.Generated is not null || column.Computed is not null || column.Sequence is not null)
+                || column.Identity is not null || column.Generated is not null || column.Computed is not null || column.Sequence is not null
+                || column.StableId) // the engine derives a stable id (next-phase-2-design.md section 3.4)
                 continue;
             report.Add("MQ7120", $"The binding of reference type '{type.Name}' fills no value for column '{column.Name}' of table '{table.Name}', which is NOT NULL without a default: map a field to it or give it a constant.", pointer, binding.Id);
         }
@@ -321,15 +330,7 @@ internal static class ReferenceBindingRules
         switch (field)
         {
             case "code":
-                if (type.Code.Type is "string" && !Texts.Contains(columnType))
-                    return $"a text code in a {columnType} column";
-                if (Integers.Contains(type.Code.Type) && !Integers.Contains(columnType) && columnType is not "decimal")
-                    return $"an integer code in a {columnType} column";
-                if (type.Code.Type is "uuid" && columnType is not "uuid" && !Texts.Contains(columnType))
-                    return $"a UUID code in a {columnType} column";
-                if (type.Code.Type is "string" && type.Code.Length is { } codeLength && column.Length is { } length && codeLength > length)
-                    return $"codes of up to {codeLength} characters, more than its length {length}";
-                return null;
+                return CodeFit(type, column)?.Problem;
             case "label" or "description":
                 if (!Texts.Contains(columnType))
                     return $"text in a {columnType} column";
@@ -341,7 +342,60 @@ internal static class ReferenceBindingRules
         }
     }
 
+    /// <summary>
+    /// Why a column cannot hold a reference type's codes, shared by a binding's code column (MQ7118) and a column typed by the type
+    /// (MQ4083, next-phase-2-design.md section 3.2): a text code needs a text column long enough for the code's length, an integer code an
+    /// integer or decimal column, a UUID code a uuid or text column. <see cref="CodeMisfit.Length"/> tells a length that is too short
+    /// from a type that cannot hold the codes at all. A column without a type is read as <c>string</c>.
+    /// </summary>
+    /// <param name="type">The reference type.</param>
+    /// <param name="column">The column.</param>
+    /// <returns>The problem, or <see langword="null"/> when the column fits.</returns>
+    internal static CodeMisfit? CodeFit(ReferenceType type, Column column)
+    {
+        var columnType = column.Type ?? "string";
+        if (type.Code.Type is "string" && !Texts.Contains(columnType))
+            return new($"a text code in a {columnType} column", false);
+        if (Integers.Contains(type.Code.Type) && !Integers.Contains(columnType) && columnType is not "decimal")
+            return new($"an integer code in a {columnType} column", false);
+        if (type.Code.Type is "uuid" && columnType is not "uuid" && !Texts.Contains(columnType))
+            return new($"a UUID code in a {columnType} column", false);
+        if (type.Code.Type is "string" && type.Code.Length is { } codeLength && column.Length is { } length && codeLength > length)
+            return new($"codes of up to {codeLength} characters, more than its length {length}", true);
+        return null;
+    }
+
+    /// <summary>Why a column cannot hold a reference type's codes (<see cref="CodeFit"/>).</summary>
+    /// <param name="Problem">The reason, in words.</param>
+    /// <param name="Length">Whether the column's length is too short (else its type cannot hold the codes).</param>
+    internal sealed record CodeMisfit(string Problem, bool Length);
+
     private static string? Raw(JsonElement? value) => value is { ValueKind: not (JsonValueKind.Null or JsonValueKind.Undefined) } v ? v.GetRawText() : null;
+
+    /// <summary>
+    /// The key a binding gives the rows it puts in its table, as the resolver takes it when no table seed keys the table: the primary
+    /// key when the binding fills every column of it (fields and constants), else the first unique constraint it fills whole that holds
+    /// the code's column (any one when no field is the code), else <see langword="null"/> (MQ7119 asks for one of the two). A foreign-key
+    /// entry's natural key names the table's rows by it (next-phase-2-design.md section 3.4, decision 2), with
+    /// <see cref="KeysOf"/> giving the bound rows' keys in seed terms.
+    /// </summary>
+    /// <param name="table">The bound table, with the members it inherits.</param>
+    /// <param name="binding">The binding.</param>
+    /// <returns>The key's column ids.</returns>
+    public static IReadOnlyList<string>? RowKeyOf(Table table, ReferenceTypeBinding binding)
+    {
+        var filled = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var column in binding.Fields.Select(f => f.Column).Concat(binding.Constants.Select(c => c.Column)))
+        {
+            if (ColumnOf(table, column) is { } found)
+                filled.Add(found.Id);
+        }
+
+        if (table.PrimaryKey is { Columns.Count: > 0 } primaryKey && primaryKey.Columns.All(filled.Contains))
+            return primaryKey.Columns;
+        var code = binding.Fields.FirstOrDefault(f => f.Attribute == "code") is { } field ? ColumnOf(table, field.Column)?.Id : null;
+        return table.Uniques.FirstOrDefault(u => u.Columns.Count > 0 && u.Columns.All(filled.Contains) && (code is null || u.Columns.Contains(code, StringComparer.Ordinal)))?.Columns;
+    }
 
     /// <summary>
     /// The row keys over some columns of a table that the seeds of the types bound to it put there, one entry per seed (keys as raw
@@ -349,6 +403,7 @@ internal static class ReferenceBindingRules
     /// </summary>
     public static List<(Seed Seed, HashSet<string> Keys)> KeysOf(ValidationContext context, Table table, IReadOnlyList<string> columnIds)
     {
+        table = MemberRules.WithMembers(context.Model, table);
         var result = new List<(Seed, HashSet<string>)>();
         foreach (var (type, binding) in context.BoundTypesOf(table.Id))
         {
@@ -358,7 +413,7 @@ internal static class ReferenceBindingRules
             {
                 var positions = Positions(seed, sources);
                 var keys = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var row in seed.Rows)
+                foreach (var row in context.RowsOf(seed))
                 {
                     if (KeyOf(row, sources, positions) is { } key)
                         keys.Add(key);

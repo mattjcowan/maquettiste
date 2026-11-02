@@ -160,7 +160,7 @@ public sealed class SeedInputTests
         Assert.Equal(SaveOutcome.Invalid, unknown.Outcome);
         var error = Assert.Single(unknown.Diagnostics);
         Assert.Equal(("MQ1002", "/columns/1"), (error.Rule, error.JsonPointer));
-        Assert.Contains("'symbol' names no column of table 'currency' (" + Currency + ")", error.Message, StringComparison.Ordinal);
+        Assert.Contains("'symbol' names no column or foreign key of table 'currency' (" + Currency + ")", error.Message, StringComparison.Ordinal);
         // A to-many end is no column of an entity's seed: its links belong in a seed of the relation.
         var toMany = await CreateAsync(s, $$"""
             {"kind":"seed","name":"demoCustomers","target":"01J92P0V0ETQKXXP951CMMNHH3","columns":["name","invoices"],"rows":[]}
@@ -239,5 +239,57 @@ public sealed class SeedInputTests
         Assert.Equal(table.Columns.Select(c => c.Id), seed.Columns);
         Assert.Equal(["EUR", "Euro"], Cells(seed.Rows.Single()));
         Assert.Equal(table.Columns[0].Id, result.Ids.Names["@column:billing.currency.code"]);
+    }
+
+    private const string PriceList = "01K7SDN0000000000000000010", PriceListId = "01K7SDN0000000000000000011";
+    private const string PriceListCurrency = "01K7SDN0000000000000000012", PriceListCurrencyKey = "01K7SDN0000000000000000013";
+
+    /// <summary>The currency table with a seed of EUR, and price_list whose currency foreign key, named <c>currency</c>, references it.</summary>
+    private static async Task<BillingStore> WithPriceListAsync(string currencyColumn)
+    {
+        var s = await WithCurrencyAsync();
+        AssertSaved(await CreateAsync(s, $$"""
+            {"kind":"seed","name":"currencies","target":"{{Currency}}","columns":["code","label"],
+             "rows":[{"id":"01K7SDN0000000000000000006","values":{"code":"EUR","label":"Euro"} }]}
+            """));
+        AssertSaved(await CreateAsync(s, $$"""
+            {"kind":"table","id":"{{PriceList}}","name":"price_list","database":"{{Main}}","columns":[
+              {"id":"{{PriceListId}}","name":"id","type":"int32","nullable":false},
+              {"id":"{{PriceListCurrency}}","name":"{{currencyColumn}}","type":"string","length":3,"nullable":false}],
+             "primaryKey":{"columns":["{{PriceListId}}"]},
+             "foreignKeys":[{"id":"{{PriceListCurrencyKey}}","name":"currency","columns":["{{PriceListCurrency}}"],"referencesTable":"{{Currency}}"}]}
+            """));
+        return s;
+    }
+
+    [Fact]
+    public async Task A_foreign_key_given_by_name_is_stored_as_its_id()
+    {
+        // next-phase-2-design.md section 3.4: a table seed's columns name its foreign keys too; the row's cell is the natural key.
+        await using var s = await WithPriceListAsync("currency_code");
+        var created = await CreateAsync(s, $$"""
+            {"kind":"seed","name":"priceLists","target":"{{PriceList}}","columns":["id","currency"],
+             "rows":[{"id":"01K7SDN0000000000000000014","values":{"currency":"EUR","id":1} }]}
+            """);
+        AssertSaved(created);
+        var seed = SeedOf(s, created.Id!);
+        Assert.Equal([PriceListId, PriceListCurrencyKey], seed.Columns);
+        Assert.Equal(["1", "EUR"], Cells(seed.Rows.Single()));
+    }
+
+    [Fact]
+    public async Task A_name_that_is_a_column_and_a_foreign_key_is_MQ1002()
+    {
+        await using var s = await WithPriceListAsync("currency");
+        var before = s.Files();
+        var refused = await CreateAsync(s, $$"""
+            {"kind":"seed","name":"priceLists","target":"{{PriceList}}","columns":["id","currency"],"rows":[]}
+            """);
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        var error = Assert.Single(refused.Diagnostics);
+        Assert.Equal(("MQ1002", "/columns/1"), (error.Rule, error.JsonPointer));
+        Assert.Contains($"'currency' names 2 children of table 'price_list' ({PriceList}): column {PriceListCurrency}, foreign key {PriceListCurrencyKey}; give the id.",
+            error.Message, StringComparison.Ordinal);
+        Assert.Equal(before, s.Files());
     }
 }

@@ -88,6 +88,49 @@ public sealed class ModelIndexerPatchTests
         AssertSameIndex(Full(documents, [Optional]), same, "same");
     }
 
+    [Fact]
+    public void A_package_default_change_builds_the_index_in_full_and_matches_a_full_build()
+    {
+        // next-phase-2-design.md section 3.1: the walks type properties by each element's effective keys, defaults included, so a
+        // package that gains a default list, or an entity whose package moves the holder of a document the patch would keep (its
+        // overlay), builds in full; a change that moves no holder still patches. Each result equals a full build.
+        var b = new ModelBuilder(31);
+        b.Stereotype("owned").Parameters("""{ "partner": { "type": "string", "x-ref": { "kind": "entity" } } }""");
+        var billing = b.Package("Billing");
+        var stock = b.Package("Stock");
+        var customer = b.Entity("Customer", stock).Key("id", "uuid");
+        var invoice = b.Entity("Invoice", billing).Key("id", "uuid").Property("partner", customer.Id);
+        var main = b.Database("main", Dialect.PostgreSql);
+        var overlay = b.Table("invoices", main).OverlayFor(invoice).Property("partner", customer.Id);
+        var documents = b.BuildDocuments().OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
+        var previous = Full(documents);
+        Assert.DoesNotContain(previous.ReferencesTo(customer.Id), r => r.Field == "partner");
+
+        documents = Change(documents, billing.Id, e => ((Package)e) with { DefaultStereotypes = ["owned"] });
+        var withDefault = After(previous, documents, 2);
+        Assert.False(withDefault.Index.Patched);
+        AssertSameIndex(Full(documents), withDefault, "default added");
+        Assert.Equal(new[] { invoice.Id, overlay.Id }.Order(StringComparer.Ordinal),
+            withDefault.ReferencesTo(customer.Id).Where(r => r.Field == "partner").Select(r => r.FromElementId).Order(StringComparer.Ordinal));
+
+        documents = Change(documents, invoice.Id, e => e with { Name = "Bill" });
+        var renamed = After(withDefault, documents, 3);
+        Assert.True(renamed.Index.Patched);
+        AssertSameIndex(Full(documents), renamed, "renamed");
+
+        documents = Change(documents, invoice.Id, e => ((Entity)e) with { Package = stock.Id });
+        var moved = After(renamed, documents, 4);
+        Assert.False(moved.Index.Patched);
+        AssertSameIndex(Full(documents), moved, "moved");
+        Assert.DoesNotContain(moved.ReferencesTo(customer.Id), r => r.Field == "partner");
+
+        static List<ElementDocument> Change(List<ElementDocument> documents, string id, Func<Element, Element> edit) =>
+            [.. documents.Select(d => d.Element.Id == id ? d with { Element = edit(d.Element), Hash = d.Hash + "1" } : d)];
+
+        static ModelSnapshot After(ModelSnapshot previous, List<ElementDocument> documents, long version) =>
+            ModelSnapshot.CreateAfter(previous, documents, previous.Settings, "", [], [], version, null, 2, TestContext.Current.CancellationToken);
+    }
+
     private const string TypedLinks = """{ "partner": { "type": "string", "x-ref": { "kind": "entity" } } }""";
 
     private const string OptionalLinks = """{ "partner": { "type": "string", "x-ref": { "kind": "entity", "optional": true } } }""";

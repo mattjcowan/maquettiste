@@ -741,7 +741,7 @@ public sealed class LocalizationIndex
                 description, true, false);
             if (holderSlots is null)
                 return;
-            foreach (var host in PropertyHost.Of(element))
+            foreach (var host in PropertyHost.Of(element, _model.PropertyKeys(element)))
             {
                 if (PropertyTranslation.Of(schemas, host) is { } found)
                     (holderSlots[i] ??= []).Add((host.Id, found));
@@ -878,7 +878,7 @@ public sealed class LocalizationIndex
         public static PropertyTranslation? Of(PropertySchemaSet schemas, PropertyHost host)
         {
             HashSet<string>? names = null;
-            foreach (var source in schemas.For(host.KindName, host.Stereotypes))
+            foreach (var source in schemas.For(host))
             {
                 foreach (var name in source.Translatable)
                     (names ??= new HashSet<string>(StringComparer.Ordinal)).Add(name);

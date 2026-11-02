@@ -96,10 +96,12 @@ public sealed record ConventionPackageView(string PackageId, string? Schema);
 /// without an overlay has no file).</param>
 /// <param name="PluralName">The plural name the table's file sets, or <see langword="null"/>.</param>
 /// <param name="Description">The description text (a sidecar file loaded), or <see langword="null"/>.</param>
-/// <param name="Stereotypes">The stereotype keys, in application order.</param>
+/// <param name="Stereotypes">The stereotype keys, in application order: the effective set (next-phase-2-design.md section 3.1), with
+/// the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.</param>
 /// <param name="Tags">The tag keys.</param>
 /// <param name="Category">The category's id, or <see langword="null"/>.</param>
-/// <param name="Properties">The custom properties: stereotype defaults merged under the file's own.</param>
+/// <param name="Properties">The custom properties: stereotype defaults merged under the file's own (for a table without a file, the
+/// default properties of the stereotypes its schema and package defaults give it).</param>
 /// <param name="Generation">The generation hints, by pack name or <c>"*"</c>.</param>
 /// <param name="BoundBy">The entity bindings that read or write the table (erratum E43): the entities that materialize from it.</param>
 /// <param name="ReferenceBindings">The reference types whose rows the table holds (their bindings, 2026-10-11).</param>
@@ -438,6 +440,10 @@ public sealed record SqlObjectView(
 /// <param name="Category">As <see cref="TableView.Category"/>, from the column's own entry.</param>
 /// <param name="Properties">As <see cref="TableView.Properties"/>, from the column's own entry.</param>
 /// <param name="Generation">As <see cref="TableView.Generation"/>, from the column's own entry.</param>
+/// <param name="TypeRef">The enum, reference type or scalar type the column's own entry names (its <c>typeRef</c>, next-phase-2-design.md
+/// section 3.2), or <see langword="null"/>; a projected column has none, its attribute (<paramref name="AttributeId"/>) types it.</param>
+/// <param name="Sensitive"><c>pii</c> or <c>secret</c>: the column's own; else a projected column's attribute's own; else the strongest own
+/// value of the attributes bindings map to it; <see langword="null"/> when none says (next-phase-2-design.md section 3.2).</param>
 public sealed record ColumnView(
     string Key,
     string Name,
@@ -469,12 +475,34 @@ public sealed record ColumnView(
     IReadOnlyList<string> Tags,
     string? Category,
     IReadOnlyDictionary<string, object?> Properties,
-    IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyDictionary<string, GenerationHints> Generation,
+    TypeRecord? TypeRef,
+    string? Sensitive)
+{
+    /// <summary>Where an inherited column comes from (next-phase-2-design.md section 3.1); <see langword="null"/> for the table's own.</summary>
+    public MemberOriginView? MemberOrigin { get; init; }
+}
+
+/// <summary>
+/// Where a member of a table comes from when a stereotype of the table's effective set contributes it (next-phase-2-design.md section
+/// 3.1), projected from <see cref="RMemberOrigin"/>. The member's key in the table is <c>&lt;tableKey&gt;.&lt;MemberId&gt;</c>: the keyed
+/// id a seed, index, binding or query names it by. The table's own members carry none.
+/// </summary>
+/// <param name="Source"><c>stereotype</c> (a stereotype the table lists, or one it implies), <c>schema-default</c> or
+/// <c>package-default</c> (a stereotype a database schema's or a package's <c>defaultStereotypes</c> gives the table, or one it implies).</param>
+/// <param name="Stereotype">The contributing stereotype's key.</param>
+/// <param name="MemberId">The stereotype member's id.</param>
+/// <param name="Redefined">The facets the table's <c>redefines</c> entry states for the member (their JSON names, ordinal); empty when none.</param>
+public sealed record MemberOriginView(string Source, string? Stereotype, string? MemberId, IReadOnlyList<string> Redefined);
 
 /// <summary>A primary key or unique constraint.</summary>
 /// <param name="Name">The constraint name.</param>
 /// <param name="Columns">The column keys, in key order.</param>
-public sealed record KeyView(string Name, IReadOnlyList<string> Columns);
+public sealed record KeyView(string Name, IReadOnlyList<string> Columns)
+{
+    /// <summary>Where an inherited key comes from (next-phase-2-design.md section 3.1); <see langword="null"/> for the table's own.</summary>
+    public MemberOriginView? MemberOrigin { get; init; }
+}
 
 /// <summary>A foreign key.</summary>
 /// <param name="Name">The constraint name.</param>
@@ -493,14 +521,22 @@ public sealed record ForeignKeyView(
     string OnDelete,
     string OnUpdate,
     string? RelationId,
-    string? EndId);
+    string? EndId)
+{
+    /// <summary>Where an inherited foreign key comes from (next-phase-2-design.md section 3.1); <see langword="null"/> for the table's own.</summary>
+    public MemberOriginView? MemberOrigin { get; init; }
+}
 
 /// <summary>An index.</summary>
 /// <param name="Name">The index name.</param>
 /// <param name="Columns">The indexed columns with their sort order.</param>
 /// <param name="Unique">Whether the index is unique.</param>
 /// <param name="Where">The partial-index predicate.</param>
-public sealed record IndexView(string Name, IReadOnlyList<IndexColumnView> Columns, bool Unique, string? Where);
+public sealed record IndexView(string Name, IReadOnlyList<IndexColumnView> Columns, bool Unique, string? Where)
+{
+    /// <summary>Where an inherited index comes from (next-phase-2-design.md section 3.1); <see langword="null"/> for the table's own.</summary>
+    public MemberOriginView? MemberOrigin { get; init; }
+}
 
 /// <summary>A column of an index.</summary>
 /// <param name="Column">The column key.</param>
@@ -550,10 +586,11 @@ internal static class DatabaseViews
         false, // the enum lookup-table option is retired (MQ7012)
         table.Comment,
         [.. table.Columns.Select(Column)],
-        table.PrimaryKey is { } key ? new KeyView(key.Name, [.. key.Columns.Select(c => c.Key)]) : null,
-        [.. table.Uniques.Select(u => new KeyView(u.Name, [.. u.Columns.Select(c => c.Key)]))],
+        table.PrimaryKey is { } key ? new KeyView(key.Name, [.. key.Columns.Select(c => c.Key)]) { MemberOrigin = Origin(key.MemberOrigin) } : null,
+        [.. table.Uniques.Select(u => new KeyView(u.Name, [.. u.Columns.Select(c => c.Key)]) { MemberOrigin = Origin(u.MemberOrigin) })],
         [.. table.ForeignKeys.Select(ForeignKey)],
-        [.. table.Indexes.Select(i => new IndexView(i.Name, [.. i.Columns.Select(c => new IndexColumnView(c.Column?.Key ?? "(" + c.Expression + ")", c.Descending))], i.Unique, i.Where))],
+        [.. table.Indexes.Select(i => new IndexView(i.Name, [.. i.Columns.Select(c => new IndexColumnView(c.Column?.Key ?? "(" + c.Expression + ")", c.Descending))], i.Unique, i.Where)
+            { MemberOrigin = Origin(i.MemberOrigin) })],
         OrNull(table.DisplayName),
         OrNull(table.PluralName),
         table.Description,
@@ -683,6 +720,11 @@ internal static class DatabaseViews
 
     private static string? OrNull(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
+    /// <summary>An inherited member's origin, or <see langword="null"/> for the table's own (next-phase-2-design.md section 3.1).</summary>
+    private static MemberOriginView? Origin(RMemberOrigin origin) =>
+        origin.Stereotype is null && origin.MemberId is null ? null
+            : new MemberOriginView(origin.Source, origin.Stereotype?.Key, origin.MemberId, origin.Redefined);
+
     private static ColumnView Column(RColumn column) => new(
         column.Key,
         column.Name,
@@ -714,7 +756,14 @@ internal static class DatabaseViews
         column.Tags,
         column.Category?.Id,
         column.Properties,
-        column.Generation);
+        column.Generation,
+        column.TypeRef is { } type ? TypeView(type) : null,
+        column.Sensitive)
+    { MemberOrigin = Origin(column.MemberOrigin) };
+
+    /// <summary>A resolved type as the records give an attribute's (<see cref="TypeRecord"/>).</summary>
+    internal static TypeRecord TypeView(RType type) =>
+        new(type.Kind, type.Name, type.Builtin, type.Enum?.Id, type.ValueObject?.Id, type.Scalar?.Id, type.ReferenceType?.Id);
 
     private static ForeignKeyView ForeignKey(RForeignKey key) => new(
         key.Name,
@@ -724,5 +773,6 @@ internal static class DatabaseViews
         key.OnDelete,
         key.OnUpdate,
         key.Relation?.Id,
-        key.End?.Id);
+        key.End?.Id)
+    { MemberOrigin = Origin(key.MemberOrigin) };
 }

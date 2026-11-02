@@ -24,6 +24,50 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Query_rows_with_typed_columns_compile()
+    {
+        // next-phase-2-design.md section 3.2 (D26): a row record field that reads a column typed by an enum is the enum (a stored code
+        // parsed, a stored number cast), and one that reads a column typed by a reference type keeps the code's type, the record's
+        // summary naming the type's record in a cref; the output compiles with warnings as errors.
+        using var repo = PackRepo.Billing();
+        const string events = "01K9X3C0000000000000000001", main = "01J92P0V1QRN2181XM2ZWE02W4", billing = "01J92P0V01KDRN8GX5PGYCNKSX";
+        repo.Write(".maquettiste/model/reference-types/invoice-state.json", $$"""
+            {"$schema":"../../.schema/v1/reference-type.json","kind":"reference-type","id":"01K9X3A0000000000000000001","name":"InvoiceState",
+             "package":"{{billing}}","code":{"id":"01K9X3A0000000000000000002","length":1},"label":{"id":"01K9X3A0000000000000000003","length":40} }
+            """);
+        repo.Write(".maquettiste/model/seeds/invoice-state/invoice-state.json", """
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"01K9X3A0000000000000000010","name":"invoiceStates","target":"01K9X3A0000000000000000001",
+             "columns":["code","label"],"rows":[{"id":"01K9X3A0000000000000000011","values":["D","Draft"]},{"id":"01K9X3A0000000000000000012","values":["I","Issued"]},
+               {"id":"01K9X3A0000000000000000013","values":["P","Paid"]},{"id":"01K9X3A0000000000000000014","values":["V","Void"]}]}
+            """);
+        repo.Write(".maquettiste/model/databases/main/tables/invoice-events.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{events}}","name":"invoice_events","database":"{{main}}",
+             "schema":"01J92P0V1RC04SKQ5353EAKHG2","columns":[
+              {"id":"01K9X3C0000000000000000002","name":"id","type":"uuid","nullable":false},
+              {"id":"01K9X3C0000000000000000003","name":"status","type":"string","typeRef":{"ref":"01K9X3A0000000000000000001"},"length":1,"nullable":false},
+              {"id":"01K9X3C0000000000000000004","name":"invoice_status","type":"string","typeRef":{"ref":"01J92P0V05WQDH2GZG539D9VG1"},"nullable":false},
+              {"id":"01K9X3C0000000000000000005","name":"stage","type":"int32","typeRef":{"ref":"01J92P0V05WQDH2GZG539D9VG1"} }],
+             "primaryKey":{"columns":["01K9X3C0000000000000000002"]} }
+            """);
+        repo.Write(".maquettiste/model/databases/main/queries/events-by-status.json", $$"""
+            {"$schema":"../../../../.schema/v1/query.json","kind":"query","id":"01K9X3F0000000000000000001","name":"events-by-status","database":"{{main}}",
+             "from":{"source":"{{events}}","alias":"e"},
+             "select":[{"name":"id","expression":{"column":"e.01K9X3C0000000000000000002"} },{"name":"status","expression":{"column":"e.01K9X3C0000000000000000003"} },
+               {"name":"invoiceStatus","expression":{"column":"e.01K9X3C0000000000000000004"} },{"name":"stage","expression":{"column":"e.01K9X3C0000000000000000005"} }]}
+            """);
+        await repo.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+
+        var query = File.ReadAllText(Directory.GetFiles(repo.PathOf("src/Generated"), "EventsByStatusQuery*.cs", SearchOption.AllDirectories).Single());
+        Assert.Matches(@"/// <summary>One row of query events-by-status\. Status holds a code of <see cref=""global::[\w.]+\.InvoiceState""/>\.</summary>", query);
+        Assert.Matches(@"public sealed partial record EventsByStatusRow\(Guid Id, string Status, global::[\w.]+\.InvoiceStatus InvoiceStatus, global::[\w.]+\.InvoiceStatus\? Stage\);", query);
+        Assert.Matches(@"new\(id, status, global::[\w.]+\.InvoiceStatusCodes\.Parse\(invoiceStatus\), \(global::[\w.]+\.InvoiceStatus\?\)stage\)", query);
+        var project = Path.Combine(repo.Repo.Root, "compile");
+        WriteProject(project, repo.PathOf("src/Generated"), program: null);
+
+        await BuildOrSkipAsync(project);
+    }
+
+    [Fact]
     public async Task Csharp_dapper_repositories_round_trip_through_the_sql_ddl_schema_on_sqlite()
     {
         using var repo = PackRepo.BillingDialects();

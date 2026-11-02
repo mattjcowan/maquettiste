@@ -307,8 +307,9 @@ render). On PostgreSQL each one writes a step, followed by its ledger row:
   that checks the catalog first), a stand-alone `backfill` (its `where` is the guard).
 - A `raw` fact runs its statements in its phase, before or after the schema statements, unless its `skipWhen` query
   returns a row. A `rekey` writes no DDL, only its row and, for each `sql-object` key it lists, an `UPDATE` that moves
-  the object row of a run-once SQL object to its new id, so the object does not run again. `adopt`, `baseline`,
-  `value-map` and `state-map` write a TODO line and no row: the pack writes no step for them yet.
+  the object row of a run-once SQL object to its new id, so the object does not run again. A `value-map` writes the
+  data step of Reference data below. `adopt`, `baseline` and `state-map` write a TODO line and no row: the pack writes
+  no step for them yet.
 - A held fact that is not released writes a note where its change would go and no row: a held drop keeps the object, and
   the next migration after its release drops it. A held table or column rename leaves the later statements of that
   migration (indexes, constraints, views), which name the object by its new name, to the reviewer, and a held sequence
@@ -327,7 +328,7 @@ no ledger rows (MQ4056 reports such facts); the header still names the states an
 is not released writes its note there too, never the diff's `DROP` or rename (a held type change or backfill writes the
 change as before): a SQLite table that needs a rebuild, which would drop or rename the held column, gets the notes and a
 TODO to rebuild it by hand instead. Once released, such a fact gets a TODO line, since those dialects have no fact
-steps.
+steps. A `value-map` gets a TODO line there too, naming its codes and the columns that hold them.
 
 ## DDL order
 
@@ -448,6 +449,48 @@ sharing one table), a single code column cannot name a row, so it gets no foreig
 on the table file. On PostgreSQL a column of a type stored as `native` becomes the code's type once the type is bound, and the
 next migration retypes it (the snapshot records the bound table as `referenceTable`).
 
+**A column of your own table typed by a reference type** (0.12.0). A column of a table file whose `typeRef` names a
+reference type holds its codes as a projected column does (`column.reference_type` is set; `column.type` stays the type
+the column states), so it gets the same objects: a foreign key into the lookup table or the bound table, or a CHECK. On
+PostgreSQL a type stored as `native` gives such a column a CHECK instead of the enum type, since the enum type would
+replace the type the column states; the type is still created for the projected columns that use it. When the table
+declares a foreign key that includes the column, that key is the link (validation, MQ4084, has made it point at the
+bound table's code column), and the column gets no `fk_<table>_<column>_ref` of its own. A column typed by an enum or a
+scalar type gets nothing more here: its physical type is the one the table states.
+
+**Codes that change: the value-map step** (0.12.0). The refactors `rename-code`, `retire-code`,
+`merge-reference-types` and `rename-reference-type` record a `value-map` fact in each database that stores the type's
+codes. On PostgreSQL its migration writes a data step before the schema statements and the native types, in this
+order, and every part can run twice:
+
+1. A renamed type: its lookup table is renamed from the old plural name to the new one, or its enum type from
+   `<old>_t` to `<new>_t`, while only the old one exists (a `DO` block over `to_regclass` or `to_regtype`). A
+   `tableName` option keeps the table's name, so nothing is written.
+2. The rows of the type that holds the codes now are made to exist, since the migration runs before `seed.sql`: the
+   lookup table is created when missing and its rows upserted, the enum type created when missing, or a bound type's
+   missing rows inserted into its table as a seed applied `once` would.
+3. On an enum type that was not merged, each mapped code that is a label of the type, while its replacement is not, is
+   renamed in place (`ALTER TYPE ... RENAME VALUE`, inside a `DO` block that checks `pg_enum`): every column of the type
+   follows its labels.
+4. Each column that holds the codes, named as the database knows it before the migration, has its check and foreign key
+   dropped by name, its codes mapped (`UPDATE <t> SET <c> = CASE <c> WHEN 'net30' THEN 'net-30' ELSE <c> END WHERE <c>
+   IN ('net30')`), then its objects created again for the type that holds the codes now. A column of an enum type is
+   mapped through text, and a `DO` block first stops the migration, naming the codes, when a mapped value is not a
+   label of the enum type: PostgreSQL cannot use an enum value in the transaction that adds it, so add such labels in
+   an earlier migration (a `raw` fact with `ALTER TYPE ... ADD VALUE`). After a merge, a column of the merged type's
+   enum type is retyped to the target's (`ALTER COLUMN ... TYPE <new>_t USING (CASE <c>::text WHEN ... ELSE
+   <c>::text END)::<new>_t`, its default dropped and set again).
+5. Each collection: a junction table first deletes the rows the map would make twice for one owner, then maps its code
+   column between the same drop and reconcile of its objects; an array column keeps the first position of each mapped
+   code. Each runs only where `seed.sql` created the junction table or the array column.
+6. The fact's ledger row.
+
+A value map whose type the model no longer has is a TODO line. The merged-away type's lookup table or enum type stays,
+as a deleted type's does. `seed.sql`'s guard on a native type leaves out the type's former codes, which may stay labels
+after a map, and the retire step deletes a former code's lookup row once no column stores it. A column whose reference
+type changes without a value map gets the same drop and reconcile in its column step (and, of an enum type, is retyped
+to the new type's enum type through text) instead of a TODO line; outside PostgreSQL the change stays a TODO line.
+
 **Seed rows.** The rows of entity and relation seeds follow as inserts, targets of referenced rows first: `ON CONFLICT DO
 NOTHING` on PostgreSQL and SQLite, `WHERE NOT EXISTS` on the primary key on SQL Server, so a second run skips them. An end column
 fills the foreign key with the referenced row's key; collection cells become junction rows or an array. Value-object cells, and
@@ -459,6 +502,15 @@ the binding's constants), and the rows of a reference type bound to the table (f
 on the row key (the primary key, or the unique constraint the seed names), and with `delete` also deletes the table's rows it does
 not hold. A seed whose `environments` are set goes to `seed.<environment>.sql` instead, for each environment the `environments`
 parameter names.
+
+**Natural keys and stable ids.** A table seed may name a foreign key in its `columns` and give, in each row, the
+referenced row's key (an email, an invoice number; a list for a composite key) instead of the referenced value. The
+engine fills the key's columns with that row's values, and a `stableId` column with the UUID it derives from the table
+and the row key, so the script holds literals. Where the database fills the referenced value (an identity, a sequence, a
+default), the column is written as a lookup of that row by its key on PostgreSQL: `(SELECT id FROM sales.customers WHERE
+email = 'ada@example.com')`. Rows of one table that look up rows of the same table go in one `INSERT` per level, parents
+first, so each lookup finds the rows inserted before it. On other dialects such a cell is `NULL` with a TODO comment
+naming the row and the key, and validation warns (MQ4056).
 
 ## Seed data and protected regions
 
@@ -530,7 +582,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `_migration.scriban` | Statement builders over the schema diff, and the steps of migration facts (`fact_steps`, `change_type_statements`, `backfill_statements`, `raw_step`). |
 | `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
 | `_ledger.scriban` | The migration ledger: its DDL through `ledger_ddl` (`ledger_prelude`), one fact row (`ledger_fact_row`), the facts a script that builds the database reaches (`ledger_build_facts`), a run-once SQL object's guard (`ledger_once_sql`), the object rows a rekey moves (`ledger_rekey_rows`) and the header line (`ledger_header`); used by `schema`, `migration`, `object-environments` and `sql-object`. |
-| `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. A reference type bound to a table writes its rows here too (source `list`). |
+| `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. A reference type bound to a table writes its rows here too (source `list`). A foreign-key column whose referenced value the database fills (a row's `refs`, `unknown`) is a lookup subquery on PostgreSQL, one `INSERT` per level of rows that look up their own table, else `NULL` with a TODO comment. |
 | `table.scriban`, `view.scriban`, `sequence.scriban`, `routine.scriban`, `database-type.scriban`, `sql-object.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `seed-environments.scriban`, `object-environments.scriban`, `process-tables.scriban` | The unit templates. |
 
 ## Notes

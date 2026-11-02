@@ -18,6 +18,9 @@ internal enum ModelFileKind
     /// <summary><c>extensions/rules/*.js</c>.</summary>
     RuleScript,
 
+    /// <summary><c>extensions/seeds/*.js</c>: a seed's rows script (next-phase-2-design.md section 3.4).</summary>
+    SeedScript,
+
     /// <summary><c>model/locales/**/*.json</c>: a locale shard, which is not an element.</summary>
     LocaleShard,
 
@@ -128,6 +131,8 @@ internal sealed class ModelPaths
             return ModelFileKind.Extension;
         if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "rules" && modelPath.EndsWith(".js", StringComparison.Ordinal))
             return ModelFileKind.RuleScript;
+        if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "seeds" && modelPath.EndsWith(".js", StringComparison.Ordinal))
+            return ModelFileKind.SeedScript;
         return null;
     }
 

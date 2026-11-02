@@ -56,14 +56,25 @@ internal static class DatabaseScope
     /// <param name="database">The database.</param>
     /// <param name="packageId">The entity's package.</param>
     /// <param name="mapping">The entity's mapping for the database, if any.</param>
-    public static string? SchemaFor(ModelSnapshot model, Database database, string? packageId, Mapping? mapping)
+    public static string? SchemaFor(ModelSnapshot model, Database database, string? packageId, Mapping? mapping) =>
+        SchemaFor(id => model.Get<Package>(id)?.Parent, database, packageId, mapping);
+
+    /// <summary>
+    /// <see cref="SchemaFor(ModelSnapshot, Database, string?, Mapping?)"/> with a parent lookup instead of a snapshot, so the holders
+    /// of default stereotypes (<see cref="StereotypeDefaults.SchemaOf"/>) route a table before the index exists, by the same walk.
+    /// </summary>
+    /// <param name="parentOf">The parent package of a package id (<see langword="null"/> for a root or an unknown id).</param>
+    /// <param name="database">The database.</param>
+    /// <param name="packageId">The entity's package.</param>
+    /// <param name="mapping">The entity's mapping for the database, if any.</param>
+    public static string? SchemaFor(Func<string, string?> parentOf, Database database, string? packageId, Mapping? mapping)
     {
         if (mapping?.Schema is { } explicitSchema)
             return explicitSchema;
         if (database.Packages.Count == 0)
             return null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var id = packageId; id is not null && seen.Add(id); id = model.Get<Package>(id)?.Parent)
+        for (var id = packageId; id is not null && seen.Add(id); id = parentOf(id))
         {
             for (var i = 0; i < database.Packages.Count; i++)
             {

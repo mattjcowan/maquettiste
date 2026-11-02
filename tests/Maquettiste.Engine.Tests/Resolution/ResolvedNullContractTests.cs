@@ -47,9 +47,11 @@ public sealed class ResolvedNullContractTests
         ["RQueryField.Name"] = "the file's name, else the attribute's name",
         ["RQueryField.Nullable"] = "the file's nullable, else inferred from the expression and the joins it reads through",
         ["RQueryExpression.Null"] = "true for the null literal, false for every other node (the schema allows only true)",
+        ["RColumn.Sensitive"] = "the column's own sensitive, else a projected column's attribute's own, else the strongest own value of the attributes bindings map to it",
 
         // Conceptual objects and their parts.
         ["RAttribute.Order"] = "the file's order, else the attribute's position among its owner's",
+        ["RAttribute.Sensitive"] = "the attribute's own sensitive, else the strongest own value of the columns its entity's bindings map it to",
         ["REnumMember.DisplayName"] = "the file's displayName, else the name",
         ["RProcessNode.DisplayName"] = "the file's displayName, else the name (a transition's label)",
         ["RScenario.Start"] = "the file's start, else a start with its fields' defaults (no context values, the default instant)",
@@ -69,11 +71,17 @@ public sealed class ResolvedNullContractTests
         ["RMigrationValue"] = "migration facts: MigrationResolutionTests",
         ["RMigrationDataCheck"] = "migration facts: MigrationResolutionTests",
         ["RConversion"] = "migration facts: MigrationResolutionTests",
+        // A value map's collections (next-phase-2-design.md section 3.5); MigrationResolutionTests resolves them.
+        ["RMigrationCollection"] = "value map collections: MigrationResolutionTests",
+        // A reference type's former codes (section 3.5); ReferenceDataResolutionTests resolves them.
+        ["RFormerCode"] = "former codes: ReferenceDataResolutionTests",
         // A query's case branches; QueryTests resolves them.
         ["RQueryWhen"] = "case expressions: QueryTests",
         // A reference type bound to a table; ReferenceBindingTests resolves it.
         ["RReferenceTypeBinding"] = "reference type bindings: ReferenceBindingTests",
         ["RReferenceBindingField"] = "reference type bindings: ReferenceBindingTests",
+        // A table seed's foreign-key entry (next-phase-2-design.md section 3.4); TableSeedTests and ReferenceDataResolutionTests resolve it.
+        ["RDataRef"] = "foreign-key entries of table seeds: TableSeedTests",
     };
 
     [Fact]

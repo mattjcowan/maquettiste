@@ -42,11 +42,14 @@ public sealed class FactClassifierTests
 
     private static ClassifierResult Classify(PhysicalSnapshot before, PhysicalSnapshot after, IReadOnlyList<Migration>? facts = null,
         IReadOnlySet<string>? written = null, IReadOnlyList<TableRekey>? rekeys = null, IReadOnlyDictionary<string, string>? sequences = null,
-        Dialect dialect = Dialect.PostgreSql) =>
+        Dialect dialect = Dialect.PostgreSql, IReadOnlyList<MigrationRekey>? members = null,
+        IReadOnlyDictionary<string, IReadOnlySet<string>>? constraintsBefore = null, IReadOnlyDictionary<string, IReadOnlySet<string>>? constraintsAfter = null) =>
         FactClassifier.Classify(new ClassifierInput
         {
             DatabaseId = Db, Dialect = dialect, Before = before, After = after, OpenFacts = facts ?? [], WrittenFacts = written ?? FrozenSet<string>.Empty,
-            Rekeys = rekeys ?? [], SequenceRekeys = sequences ?? FrozenDictionary<string, string>.Empty,
+            Rekeys = rekeys ?? [], SequenceRekeys = sequences ?? FrozenDictionary<string, string>.Empty, MemberRekeys = members ?? [],
+            ConstraintsBefore = constraintsBefore ?? FrozenDictionary<string, IReadOnlySet<string>>.Empty,
+            ConstraintsAfter = constraintsAfter ?? FrozenDictionary<string, IReadOnlySet<string>>.Empty,
         }, new SequentialIdGenerator(7));
 
     private static MigrationObject BodyObject(string name = "body") =>
@@ -323,6 +326,93 @@ public sealed class FactClassifierTests
         Assert.True(Classify(before, Capture(NotesTable()), facts: [authored], written: new HashSet<string> { Existing }).IsEmpty);
     }
 
+    // ---- a fold's constraint moves and its undo (next-phase-2-design.md section 3.1, task D17) ----
+
+    private const string Member = "01JFMB00000000000000000001";
+    private const string MemberIndex = "01JFMB00000000000000000002";
+    private const string OwnIndex = "01JFIX00000000000000000001";
+
+    /// <summary>notes with the kind column and an index on it, the column under <paramref name="kindKey"/>.</summary>
+    private static PhysicalSnapshot FoldCapture(string kindKey) => Capture(Table(Notes, "notes", Column(Body, "body", "text"), Column(kindKey, "kind", "varchar(20)")) with
+    {
+        Indexes = [new SnapshotIndex { Key = "ix:" + kindKey, Name = "ix_notes_kind", Columns = [new SnapshotIndexColumn { Column = kindKey }] }],
+    });
+
+    [Fact]
+    public void Member_rekeys_join_the_writes_one_rekey_and_move_no_capture_key()
+    {
+        var inherited = Notes + "." + Member;
+        var fold = new TableRekey(Notes, Notes, new Dictionary<string, string> { [Kind] = inherited });
+        var members = new[]
+        {
+            new MigrationRekey { Kind = "index", Table = Notes, From = OwnIndex, To = Notes + "." + MemberIndex, Name = "ix_notes_kind" },
+            new MigrationRekey { Kind = "check", Table = Notes, From = "01JFCK00000000000000000001", To = Notes + ".01JFMB00000000000000000003", Name = "ck_notes_kind" },
+        };
+
+        // One rekey: the table keeps its key, its column entry first, then its constraint ids by kind then from; nothing else.
+        var fact = Assert.Single(Classify(FoldCapture(Kind), FoldCapture(inherited), rekeys: [fold], members: members).Created);
+        Assert.Equal(MigrationFact.Rekey, fact.Fact);
+        Assert.Equal(
+            [("column", Notes, Kind, inherited, "kind"), ("check", Notes, "01JFCK00000000000000000001", Notes + ".01JFMB00000000000000000003", "ck_notes_kind"),
+                ("index", Notes, OwnIndex, Notes + "." + MemberIndex, "ix_notes_kind")],
+            fact.Keys.Select(k => (k.Kind, k.Table, k.From, k.To, k.Name)));
+        Assert.Equal("complete", MigrationRules.State(fact, Dialect.PostgreSql));
+        Assert.Equal("rekey 1 column, 1 check, 1 index", FactDocuments.Summary(fact));
+
+        // The constraint entries move no capture key: the key maps hold the column only, and readers leave a constraint's key as it is.
+        var map = Assert.Single(FactKeys.KeyMaps(fact).Tables);
+        Assert.Equal((Notes, Notes), (map.OldKey, map.NewKey));
+        Assert.Equal([new KeyValuePair<string, string>(Kind, inherited)], map.Columns);
+        Assert.Equal((Notes, OwnIndex), FactKeys.Moves([fact]).Current(-1, "index", Notes, OwnIndex));
+
+        // Constraint moves alone still record a rekey, and nothing else (the captures are the same).
+        var alone = Assert.Single(Classify(FoldCapture(Kind), FoldCapture(Kind), members: members).Created);
+        Assert.Equal(["check", "index"], alone.Keys.Select(k => k.Kind));
+
+        // A move a written rekey already records is not recorded again.
+        var written = new Migration { Id = Existing, Database = Db, Fact = MigrationFact.Rekey, Keys = [members[0]] };
+        var rest = Assert.Single(Classify(FoldCapture(Kind), FoldCapture(Kind), facts: [written], written: new HashSet<string> { Existing }, members: members).Created);
+        Assert.Equal(["check"], rest.Keys.Select(k => k.Kind));
+    }
+
+    [Fact]
+    public void Undoing_a_fold_records_the_rekey_back_and_no_drop()
+    {
+        var inherited = Notes + "." + Member;
+        var inheritedIndex = Notes + "." + MemberIndex;
+        var fold = new Migration
+        {
+            Id = Existing, Database = Db, Fact = MigrationFact.Rekey,
+            Keys =
+            [
+                new MigrationRekey { Kind = "column", Table = Notes, From = Kind, To = inherited, Name = "kind" },
+                new MigrationRekey { Kind = "index", Table = Notes, From = OwnIndex, To = inheritedIndex, Name = "ix_notes_kind" },
+            ],
+        };
+        var before = FoldCapture(inherited);
+        var after = FoldCapture(Kind);
+        var constraintsBefore = new Dictionary<string, IReadOnlySet<string>> { [Notes] = new HashSet<string> { inheritedIndex } };
+        var constraintsAfter = new Dictionary<string, IReadOnlySet<string>> { [Notes] = new HashSet<string> { OwnIndex } };
+
+        // Restoring the files from before the fold: the column's keyed id leaves notes and its own id comes back, so does the index's.
+        var fact = Assert.Single(Classify(before, after, facts: [fold], constraintsBefore: constraintsBefore, constraintsAfter: constraintsAfter).Created);
+        Assert.Equal(MigrationFact.Rekey, fact.Fact);
+        Assert.Equal(
+            [("column", Notes, inherited, Kind, "kind"), ("index", Notes, inheritedIndex, OwnIndex, "ix_notes_kind")],
+            fact.Keys.Select(k => (k.Kind, k.Table, k.From, k.To, k.Name)));
+        Assert.Equal([Existing], fact.After);
+
+        // Without the documents' constraint ids the column still moves back; the index entry needs them.
+        var columnOnly = Assert.Single(Classify(before, after, facts: [fold]).Created);
+        Assert.Equal([("column", inherited, Kind)], columnOnly.Keys.Select(k => (k.Kind, k.From, k.To)));
+
+        // Without the fold's rekey the same change reads as a drop (and an add, which records nothing).
+        Assert.Equal(MigrationFact.Drop, Assert.Single(Classify(before, after).Created).Fact);
+
+        // A column that keeps its keyed id is no undo: the write records nothing.
+        Assert.True(Classify(before, before, facts: [fold], constraintsBefore: constraintsBefore, constraintsAfter: constraintsBefore).IsEmpty);
+    }
+
     // ---- after heads and order ----
 
     [Fact]
@@ -472,6 +562,97 @@ public sealed class FactClassifierTests
         var rekey = Assert.Single(Classify(Capture(Table(projected, "notes", Column("body", "body", "text"), Column("kind", "kind", "varchar(20)"))), Capture(NotesTable()),
             rekeys: [new TableRekey(projected, Notes, new Dictionary<string, string> { ["body"] = Body, ["kind"] = Kind })]).Created);
         Assert.Equal("rekey 1 table, 2 columns", FactDocuments.Summary(rekey));
+    }
+
+    // ---- value maps (next-phase-2-design.md section 3.5) ----
+
+    private const string Terms = "01JFRT00000000000000000002";
+    private const string Credits = "01JFRT00000000000000000003";
+
+    private static CodeMap RenameCode(string type = Terms, bool names = false) => new(type, null, new MigrationState { Name = "PaymentTerm" },
+        new MigrationState { Name = names ? "PaymentCondition" : "PaymentTerm" }, names ? [] : [new MigrationValue { From = "net30", To = "net-30" }], names);
+
+    private static ClassifierResult ClassifyCodes(PhysicalSnapshot before, PhysicalSnapshot after, IReadOnlyList<CodeMap> maps, CodeHolders holders,
+        IReadOnlySet<string>? bound = null, IReadOnlyList<Migration>? facts = null) =>
+        FactClassifier.Classify(new ClassifierInput
+        {
+            DatabaseId = Db, Dialect = Dialect.PostgreSql, Before = before, After = after, OpenFacts = facts ?? [], CodeMaps = maps, Holders = holders,
+            BoundTypes = bound ?? FrozenSet<string>.Empty,
+        }, new SequentialIdGenerator(7));
+
+    [Fact]
+    public void A_code_map_records_one_value_map_over_its_holders_after_the_renames_and_before_the_change_types()
+    {
+        // The write renames the body column and changes the status column's strategy; a merge's code map moves the codes of Credits into
+        // Terms. The status column and a collection of the notes table held Credits' codes before the write.
+        var status = Column("01JFCL00000000000000000004", "status", "varchar(10)", type: "reference");
+        var before = Capture(Table(Notes, "notes", Column(Body, "text", "text"), status with { ReferenceType = Credits, Strategy = "check" }));
+        var after = Capture(Table(Notes, "memos", Column(Body, "body", "text"), status with { ReferenceType = Terms, Strategy = "lookup" }));
+        var holders = CodeHolders.From([(Credits, new HolderColumn(Notes, status.Key, "billing", "notes", "status"))],
+            [(Credits, new HolderCollection(Notes, "billing", "notes", "01JFAT00000000000000000001", "tags"))]);
+        var merge = new CodeMap(Terms, Credits, new MigrationState { Name = "CreditTerm" }, new MigrationState { Name = "PaymentTerm" },
+            [new MigrationValue { From = "n90", To = "net60" }], false);
+
+        var facts = ClassifyCodes(before, after, [merge], holders).Created;
+
+        Assert.Equal([MigrationFact.Rename, MigrationFact.Rename, MigrationFact.ValueMap, MigrationFact.ChangeType], facts.Select(f => f.Fact));
+        var map = facts[2];
+        Assert.Equal((Terms, Credits), (map.ReferenceType, map.FromReferenceType));
+        Assert.Equal(("CreditTerm", "PaymentTerm"), (map.From!.Name, map.To!.Name));
+        Assert.Equal([("n90", "net60")], map.Values.Select(v => (v.From, v.To)));
+        // Named as the renames leave them: the table is memos now.
+        var o = Assert.Single(map.Objects);
+        Assert.Equal(("column", Notes, status.Key, "billing", "memos", "status"), (o.Kind, o.Table, o.Key, o.Schema, o.TableName, o.Name));
+        var c = Assert.Single(map.Collections);
+        Assert.Equal((Notes, "billing", "memos", "01JFAT00000000000000000001", "tags"), (c.Table, c.Schema, c.TableName, c.Attribute, c.Name));
+        // It follows the renames of its table, and the change-type of its column follows it.
+        Assert.Equal([facts[1].Id], map.After);
+        Assert.Equal([map.Id], facts[3].After);
+        Assert.Equal("maps CreditTerm codes n90 -> net60 into PaymentTerm in 1 column and 1 collection", FactDocuments.Summary(map));
+        Assert.Equal("complete", MigrationRules.State(map, Dialect.PostgreSql));
+        var path = FactDocuments.PathOf(map with { Database = Db }, _ => "model/databases/main");
+        using var document = JsonDocument.Parse(FactDocuments.Bytes(TestServices.Json, map, path));
+        Assert.Empty(TestServices.Schemas.Evaluate("migration.json", document.RootElement, path));
+    }
+
+    [Fact]
+    public void A_code_map_with_no_holder_records_nothing_and_a_holder_gone_after_the_write_is_left_out()
+    {
+        var holders = CodeHolders.From([(Terms, new HolderColumn(Notes, Kind, "billing", "notes", "kind"))], []);
+        Assert.True(ClassifyCodes(Capture(NotesTable()), Capture(NotesTable()), [RenameCode()], CodeHolders.Empty).IsEmpty);
+
+        // The kind column holds the codes: one map; dropped in the same write, it is left out and only the drop is recorded.
+        Assert.Equal("kind", Assert.Single(Assert.Single(ClassifyCodes(Capture(NotesTable()), Capture(NotesTable()), [RenameCode()], holders).Created).Objects).Name);
+        var dropped = ClassifyCodes(Capture(NotesTable()), Capture(Table(Notes, "notes", Column(Body, "body", "text"))), [RenameCode()], holders).Created;
+        Assert.Equal(MigrationFact.Drop, Assert.Single(dropped).Fact);
+    }
+
+    [Fact]
+    public void A_type_rename_records_names_where_the_type_has_no_binding_even_with_no_holder()
+    {
+        var names = Assert.Single(ClassifyCodes(Capture(NotesTable()), Capture(NotesTable()), [RenameCode(names: true)], CodeHolders.Empty).Created);
+        Assert.Equal(MigrationFact.ValueMap, names.Fact);
+        Assert.Equal(("PaymentTerm", "PaymentCondition"), (names.From!.Name, names.To!.Name));
+        Assert.Empty(names.Objects);
+        Assert.Empty(names.Values);
+        Assert.Empty(names.After);
+        Assert.Equal("renames reference type PaymentTerm to PaymentCondition", FactDocuments.Summary(names));
+
+        // Where the type is bound to a table file, the rename changes nothing the database holds.
+        Assert.True(ClassifyCodes(Capture(NotesTable()), Capture(NotesTable()), [RenameCode(names: true)], CodeHolders.Empty,
+            new HashSet<string>(StringComparer.Ordinal) { Terms }).IsEmpty);
+    }
+
+    [Fact]
+    public void An_open_value_map_is_a_head_of_its_tables()
+    {
+        var open = new Migration
+        {
+            Id = Existing, Database = Db, Fact = MigrationFact.ValueMap, ReferenceType = Terms, From = new() { Name = "PaymentTerm" }, To = new() { Name = "PaymentTerm" },
+            Objects = [BodyObject()], Values = [new MigrationValue { From = "net30", To = "net-30" }],
+        };
+        var fact = Assert.Single(Classify(Capture(NotesTable()), Capture(NotesTable("content")), facts: [open]).Created);
+        Assert.Equal([Existing], fact.After);
     }
 
     [Fact]

@@ -97,8 +97,8 @@ internal static class CanonicalCheck
                 writer.WriteStartArray();
                 if (layout.SortKey is { } sortKey)
                 {
-                    if (sortKey == CanonicalJson.SelfSortKey)
-                        return false; // items sorted by themselves: the node-based writer decides
+                    if (sortKey == CanonicalJson.SelfSortKey || sortKey.Contains(CanonicalJson.SortKeySeparator, StringComparison.Ordinal))
+                        return false; // items sorted by themselves or by several keys: the node-based writer decides
                     var items = new List<(long Key, int Index, JsonElement Item)>(value.GetArrayLength());
                     var index = 0;
                     foreach (var item in value.EnumerateArray())

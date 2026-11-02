@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Immutable;
+using System.Text.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
 
@@ -55,12 +56,21 @@ internal sealed class ValidationContext
     /// <param name="documents">The active documents (duplicates and ignored singletons removed), ordinal by path.</param>
     /// <param name="walker">The reference walker.</param>
     /// <param name="ruleNames">The registered JavaScript rule names (without <c>x/</c>), or <see langword="null"/> when unknown.</param>
-    public ValidationContext(ModelSnapshot model, IReadOnlyList<ElementDocument> documents, ReferenceWalker walker, FrozenSet<string>? ruleNames)
+    /// <param name="wholeModel">Whether the validation judges the whole model (no element scope), which decides the scoped code checks of
+    /// seeds with a rows script (next-phase-2-design.md section 3.4, decision 17).</param>
+    /// <param name="scripts">The sandbox factory that runs rows scripts; a factory of its own when absent.</param>
+    /// <param name="seedRows">The engine's rows cache; a cache of its own when absent.</param>
+    public ValidationContext(ModelSnapshot model, IReadOnlyList<ElementDocument> documents, ReferenceWalker walker, FrozenSet<string>? ruleNames,
+        bool wholeModel = true, Scripting.IScriptSandboxFactory? scripts = null, SeedRowsCache? seedRows = null)
     {
         Model = model;
         Documents = documents;
         Walker = walker;
         RuleNames = ruleNames;
+        WholeModel = wholeModel;
+        _scripts = scripts;
+        _seedRows = seedRows;
+        _scripted = new(StringComparer.Ordinal);
         _names = new(BuildNames);
         _navigations = new(BuildNavigations);
         _compositions = new(BuildCompositions);
@@ -88,6 +98,12 @@ internal sealed class ValidationContext
         Documents = other.Documents;
         Walker = other.Walker;
         RuleNames = ruleNames;
+        WholeModel = other.WholeModel;
+        Scope = other.Scope;
+        DeferScriptedRows = other.DeferScriptedRows;
+        _scripts = other._scripts;
+        _seedRows = other._seedRows;
+        _scripted = other._scripted;
         _flat = other._flat;
         _valueObjectReach = other._valueObjectReach;
         _names = other._names;
@@ -109,6 +125,111 @@ internal sealed class ValidationContext
         _layers = other._layers;
         _seedOrder = other._seedOrder;
     }
+
+    private readonly Scripting.IScriptSandboxFactory? _scripts;
+    private readonly SeedRowsCache? _seedRows;
+    private readonly ConcurrentDictionary<string, Lazy<ScriptedRows>> _scripted;
+
+    /// <summary>Whether the validation judges the whole model (no element scope).</summary>
+    public bool WholeModel { get; }
+
+    /// <summary>
+    /// The element ids a scoped validation (a save) judges, or <see langword="null"/> for a whole-model one: a seed's rows script runs
+    /// only when the seed is among them (next-phase-2-design.md section 3.4, decision 15).
+    /// </summary>
+    internal IReadOnlySet<string>? Scope { get; set; }
+
+    /// <summary>
+    /// Whether a whole-model validation leaves every seed with a rows script unjudged, as a save leaves one outside its scope: the
+    /// validation previews wait on (<see cref="Diagnostics.ValidationScope.Previews"/>; next-phase-2-design.md section 3.4, decision 31).
+    /// </summary>
+    internal bool DeferScriptedRows { get; set; }
+
+    /// <summary>Whether every seed with a rows script is judged: a whole-model validation that does not defer them.</summary>
+    private bool JudgesEveryScript => WholeModel && !DeferScriptedRows;
+
+    /// <summary>
+    /// Whether this validation evaluates a seed's rows: a seed without a rows script always; one with a script in a whole-model
+    /// validation that does not defer scripted seeds (<see cref="DeferScriptedRows"/>), or in a save whose scope holds it (the seed or
+    /// its target changed).
+    /// </summary>
+    /// <param name="seed">The seed.</param>
+    /// <returns><see langword="true"/> when its rows are judged.</returns>
+    public bool Judges(Seed seed) => seed.RowsFrom?.Script is null || JudgesEveryScript || Scope?.Contains(seed.Id) == true;
+
+    /// <summary>
+    /// A seed's rows: its stored rows, or for a seed with a rows script (<c>rowsFrom.script</c>) its scripted rows, evaluated once per
+    /// validation through the engine's rows cache (next-phase-2-design.md section 3.4); none for a scripted seed outside a save's scope
+    /// (<see cref="Judges"/>), whose script the save does not run. The seed rules read rows through it.
+    /// </summary>
+    /// <param name="seed">The seed.</param>
+    /// <returns>The rows.</returns>
+    public IReadOnlyList<SeedRow> RowsOf(Seed seed) => seed.RowsFrom?.Script is null ? seed.Rows : Judges(seed) ? Scripted(seed).Rows : [];
+
+    /// <summary>
+    /// Whether a code is missing from a reference type's rows, so a default, an <c>allowedValues</c> entry or a cell that names it is
+    /// reported (decision 17). A stored row's code is in the index. When the type has a seed with a rows script, a save (and the
+    /// validation previews wait on, <see cref="DeferScriptedRows"/>) does not judge a code no stored row holds (scripted rows are not in
+    /// the index), and whole-model validation judges it against the stored and scripted rows.
+    /// </summary>
+    /// <param name="typeId">The reference type id.</param>
+    /// <param name="code">The code.</param>
+    /// <returns><see langword="true"/> when the finding is due.</returns>
+    public bool CodeMissing(string typeId, JsonElement code)
+    {
+        if (ReferenceData.RowOf(typeId, code) is not null)
+            return false;
+        if (!SeedsOf(typeId).Any(s => s.RowsFrom?.Script is not null))
+            return true;
+        return JudgesEveryScript && !ScriptedHolds(typeId, code);
+    }
+
+    /// <summary>
+    /// Whether a former code of a reference type is one of its live codes (MQ7017, next-phase-2-design.md section 3.5): a stored row holds
+    /// it, or, when this validation judges every rows script, a scripted row does. A save that runs no script leaves the scripted rows to
+    /// whole-model validation.
+    /// </summary>
+    /// <param name="typeId">The reference type id.</param>
+    /// <param name="code">The code.</param>
+    /// <returns><see langword="true"/> when a row holds it.</returns>
+    public bool HasLiveCode(string typeId, JsonElement code) =>
+        ReferenceData.RowOf(typeId, code) is not null || (JudgesEveryScript && ScriptedHolds(typeId, code));
+
+    /// <summary>Whether a scripted row of a seed of the reference type holds the code.</summary>
+    private bool ScriptedHolds(string typeId, JsonElement code)
+    {
+        var key = ReferenceDataIndex.CodeKey(code);
+        foreach (var seed in SeedsOf(typeId).Where(s => s.RowsFrom?.Script is not null))
+        {
+            var at = -1;
+            for (var k = 0; k < seed.Columns.Count && at < 0; k++)
+            {
+                if (string.Equals(seed.Columns[k], "code", StringComparison.Ordinal))
+                    at = k;
+            }
+
+            if (at >= 0 && Scripted(seed).Rows.Any(r => at < r.Values.Count && string.Equals(ReferenceDataIndex.CodeKey(r.Values[at]), key, StringComparison.Ordinal)))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>A seed with a rows script: its scripted rows and their findings, evaluated once per validation.</summary>
+    /// <param name="seed">The seed (its <c>rowsFrom.script</c> is set).</param>
+    /// <returns>The scripted rows.</returns>
+    public ScriptedRows Scripted(Seed seed) =>
+        _scripted.GetOrAdd(seed.Id, _ => new Lazy<ScriptedRows>(
+            () => SeedScripts.Evaluate(Model, seed, _scripts ?? DefaultScripts, _seedRows ?? DefaultSeedRows, CancellationToken.None),
+            LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+
+    /// <summary>Whether a reference type has a seed with a rows script (its codes are then not all in the index: decision 17).</summary>
+    /// <param name="typeId">The reference type id.</param>
+    /// <returns><see langword="true"/> when it has one.</returns>
+    public bool HasScriptedSeed(string typeId) => SeedsOf(typeId).Any(s => s.RowsFrom?.Script is not null);
+
+    private static readonly Scripting.IScriptSandboxFactory DefaultScripts = new Scripting.ScriptSandboxFactory();
+    private static readonly SeedRowsCache DefaultSeedRows = new();
 
     /// <summary>The database types by name and the dependency cycles among routines, database types and SQL objects (MQ4018 to MQ4020).</summary>
     public DatabaseObjectIndex DatabaseObjects => _databaseObjects.Value;
@@ -289,13 +410,16 @@ internal sealed class ValidationContext
     }
 
     /// <summary>
-    /// The stereotypes an element carries that exist, its effective set (<see cref="ModelSnapshot.EffectiveStereotypes"/>: implied
-    /// first, then own): the set its virtual attributes come from, and the set the <c>x-ref</c> scope <c>of: "$element"</c> reaches
-    /// through (next-phase-1-design.md sections 4.1 and 4.2).
+    /// The stereotypes an element carries that exist, its effective set: for a top-level element
+    /// <see cref="ModelSnapshot.EffectiveStereotypes(Element)"/> (schema and package defaults, implied, then own; next-phase-2-design.md
+    /// section 3.1), for a sub-element <see cref="ModelSnapshot.EffectiveStereotypes(IReadOnlyList{string})"/> (implied first, then own):
+    /// the set its virtual attributes come from, and the set the <c>x-ref</c> scope <c>of: "$element"</c> reaches through
+    /// (next-phase-1-design.md sections 4.1 and 4.2).
     /// </summary>
     /// <param name="element">The element.</param>
     /// <returns>The stereotypes.</returns>
-    public IEnumerable<Stereotype> StereotypesOf(ElementBase element) => Model.EffectiveStereotypes(element.Stereotypes).Select(s => s.Stereotype);
+    public IEnumerable<Stereotype> StereotypesOf(ElementBase element) =>
+        (element is Element top ? Model.EffectiveStereotypes(top) : Model.EffectiveStereotypes(element.Stereotypes)).Select(s => s.Stereotype);
 
     /// <summary>Returns the first document that holds a name key (see <see cref="NameKeys"/>).</summary>
     /// <param name="key">The scope key.</param>

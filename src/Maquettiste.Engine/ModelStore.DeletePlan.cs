@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
 
@@ -43,9 +44,10 @@ public sealed partial class ModelStore
                 case SaveOutcome.Referenced:
                     foreach (var r in outcome.Referrers)
                     {
-                        var from = snapshot.GetDocument(r.FromElementId)?.Element;
+                        var document = snapshot.GetDocument(r.FromElementId);
+                        var from = document?.Element;
                         refused.Add(new DeletePlanRefusal(r.FromElementId, from?.KindName, from is null ? null : ChangePlanner.ReadableName(snapshot, from), r.JsonPointer,
-                            "still references " + Label(snapshot, r.ToId) + ".", "referenced"));
+                            "still references " + Label(snapshot, r.ToId) + InheritedCopy(document, r) + ".", "referenced"));
                     }
 
                     break;
@@ -101,6 +103,17 @@ public sealed partial class ModelStore
     }
 
     private ModelPaths Paths => _paths.Value;
+
+    /// <summary>
+    /// For a reference that names a stereotype member through a table's inherited copy (a keyed id, next-phase-2-design.md section
+    /// 3.1): <c> through its inherited copy '&lt;tableKey&gt;.&lt;memberId&gt;'</c>, so the plan says which table's use refuses the
+    /// delete; otherwise empty.
+    /// </summary>
+    private static string InheritedCopy(ElementDocument? referrer, ReferenceInfo reference) =>
+        referrer is not null && JsonPointer.TryGet(referrer.Json, reference.JsonPointer, out var value) && value.ValueKind == JsonValueKind.String
+        && value.GetString() is { } text && ContributedMembers.TryParse(text, out _, out var member) && string.Equals(member, reference.ToId, StringComparison.Ordinal)
+            ? $" through its inherited copy '{text}'"
+            : "";
 
     private static string Label(ModelSnapshot snapshot, string id) => ChangePlanner.Describe(snapshot, id);
 

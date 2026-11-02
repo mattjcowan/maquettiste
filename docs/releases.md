@@ -5,6 +5,146 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.12.0 (unreleased)
+
+- **Stereotypes that contribute structure.** A stereotype that applies to tables can carry `columns`, a `primaryKey`,
+  `uniques`, `foreignKeys`, `checks` and `indexes`, and every table that carries it inherits them, designed, imported or
+  synthesized. An inherited member's id is `<tableKey>.<memberId>`, which seeds, keys, indexes, binding fields and
+  queries use like any id. Constraint names come from the naming conventions per table. A member foreign key's target
+  is a fixed table or a table each carrier names in a stereotype parameter. A synthesized table that stores a
+  stereotype's attributes skips its members, so `audited` keeps serving entities through its attributes. sql-ddl renders
+  inherited members as it renders own ones, with no template change. The
+  [user guide](user-guide.md#stereotypes-that-contribute-structure) has the details.
+- **Default stereotypes.** A database schema entry and a package can list `defaultStereotypes`, applied to every
+  element they hold in one line: `{ "name": "billing", "defaultStereotypes": ["audited"] }` gives `audited` to every
+  table of schema billing. A default skips the kinds it does not apply to. An element drops a default with
+  `excludeStereotypes`. Group, requires and conflict rules judge defaults with the element's own stereotypes, and
+  templates read where each stereotype came from in `stereotypes[].source` (`own`, `implied`, `schema-default`,
+  `package-default`); `has_stereotype` and `where: { stereotypes: [...] }` see defaults.
+- **Exceptions per table.** `excludes` drops inherited members by id, and `redefines` changes a few facets of one
+  member (nullable, defaults, comment, collation; a key's columns or name; an index's predicate, method or storage) and
+  keeps its id, so the table goes on following the stereotype for everything else.
+- **Fold into a stereotype.** The batch operation `fold-into-stereotype` (MCP `apply_batch`, `maquettiste model
+  apply`) makes tables that already hold a stereotype's columns, keys and indexes inherit them instead: the own copies
+  leave the table files, every reference moves to the keyed ids, differences become `redefines` (with `redefine`) and
+  missing members `excludes` (with `excludeMissing`). The write records one `rekey` per database, which now also lists
+  the index, unique, foreign-key and check ids it moved, and the next migration holds no statement for it. The [schema
+  changes guide](guides/schema-changes.md#fold-columns-into-a-stereotype) explains it.
+- Migration facts follow members: renaming a stereotype's column records one complete `rename` for each table that
+  carries it and changes no table file; removing one records a `drop` per table. `materialize-tables` keeps inherited
+  members inherited and moves the overlay's `redefines`, `excludes` and `excludeStereotypes` into the designed table.
+- MCP `get_database_view` and `get_resolved_model` give every inherited column, key, foreign key and index a
+  `memberOrigin` (null for own members), and a synthesized table without an overlay now lists the stereotypes defaults
+  give it. `get_references` on a stereotype member lists every table and file that names a copy of it, and deleting a
+  stereotype lists its member links in the delete plan.
+- New rules check members (MQ2024, MQ2025 for a key, index or check naming a column the stereotype lacks, MQ2026 for a
+  member foreign key's target), `redefines` (MQ2027, and the warning MQ4078 for a facet equal to the inherited one),
+  `excludes` (MQ2028), `excludeStereotypes` (MQ2029, and the warning MQ2030 when it excludes nothing), default lists
+  (MQ2031), two primary keys on one table (MQ4076), a refused fold (MQ4077) and a NOT NULL inherited column that rows
+  written through an entity cannot fill (MQ4079). MQ2013 now names the schema or package that gives a clashing default.
+  MQ4003 also reports a duplicate column name in a synthesized table, MQ4008 suggests the keyed id where a bare member
+  id is written, MQ2011 refuses a bare member id under `of: "$element"`, and MQ4106 takes the constraint entries of a
+  `rekey`.
+- Objects that belong to a package now depend on every package of its chain, so a package that gains a default list
+  renders its members' units again. Unit state was already invalidated by the engine version; no output changes.
+- **Columns typed by reference types, enums and scalar types.** A table column's `typeRef` names the type whose values
+  it holds, beside its `type`, which stays the physical keyword: `"type": "string", "typeRef": { "ref": "<id>" }`.
+  Designed, imported, extra and stereotype columns take it. A facet the column leaves out comes from the type, and a
+  column typed by a reference type gets what an attribute of that type gets: sql-ddl points it at the bound table or
+  the lookup table, or gives it a CHECK (on PostgreSQL a `native` type is a CHECK here), unless the table declares that
+  foreign key itself. csharp-dapper reads such a column into a query row as the enum, or as the code's type with a
+  summary naming the reference type. `reference_type_usage` lists the columns beside the attributes, templates read
+  `column.type_ref`, and `materialize-tables` and `materialize-columns` keep the logical type on the columns they
+  write. Typing a column by a type stored as a lookup table, a CHECK, a native type or a bound table records a
+  `change-type` that asks how values that are not codes convert. The [reference data
+  guide](guides/reference-data-and-seeds.md#11-type-a-column-of-your-own-table) walks through it.
+- **Sensitive columns.** A column's `sensitive` (`pii` or `secret`) is said once, on the column or on the attribute a
+  binding maps to it, and both sides show it: `attribute.sensitive` and `column.sensitive` now give the borrowed value
+  when there is no own one. A column's own `secret` also checks its literal default for credentials (MQ3017).
+- New rules check where `typeRef` may sit (MQ4082), that the column can hold the type's values (MQ4083), that a
+  declared foreign key from a typed column points at the type's bound table (MQ4084), that the two sides state one
+  sensitivity (MQ4085, a warning), and that seed cells, defaults and binding constants written into a typed column are
+  its codes (MQ7014).
+- **Bindings that record their provenance and drift.** A binding to a designed or imported table now records its
+  `provenance`: two short hashes per column, one of the name and one of the type, never a copy of the table and never a
+  date. Every materialize operation writes it, and so do the new batch operations `map-by-name` (unmapped attributes to
+  free columns of the same name, ignoring case and separators) and `resync-binding`. When the table changes,
+  `maquettiste binding drift` and the MCP tool `get_binding_drift` list per binding the columns added, renamed, retyped
+  and removed since, from files only; `--check` exits 2 on drift. MQ4087 (a mapped column renamed or retyped) and MQ4088
+  (provenance that does not describe the source) join MQ4047, which is unchanged, and all three take the severity
+  `validation.rules` gives them. `maquettiste binding resync` (or `resync-binding` through `apply_batch` and
+  `preview_materialize`) catches up in one batch: an attribute whose name followed its column takes the new name and
+  keeps its id (`--keep-names` keeps every name), a retyped column retypes its attribute unless its type still fits,
+  added columns get attributes, and removed columns lose their fields; a refused operation is MQ4089.
+  `materialize-entities` and `materialize-attributes` type an attribute by its column's `typeRef`, and a foreign key
+  into a reference type's bound table makes no relation. An attribute with no description of its own shows its bound
+  column's comment, named by `descriptionColumn` in the resolved model, so billing's `InvoiceNote.body` is documented
+  from the `notes.body` comment in generated code. The [bind entities
+  guide](guides/bind-entities.md#7-keep-a-binding-in-step-with-its-table) walks through it.
+- **Seeds by natural key.** A table seed can list a foreign key of its table in `columns`, in place of the key's own
+  columns, and give in each cell the referenced row's natural key: `"ada@example.com"`, or `["ACME", "EU"]` for a key of
+  several columns. The engine fills the foreign key's columns with the referenced row's values, so no seed file has to
+  repeat a surrogate id. Where the database fills the referenced value, sql-ddl writes a lookup on PostgreSQL,
+  `(SELECT id FROM sales.customers WHERE email = 'ada@example.com')`, and inserts rows that look up rows of their own
+  table by level; other dialects get `NULL` with a TODO comment (MQ4056), and seed-data lists such cells under
+  `unresolved`. Templates read `seed_column.foreign_key` and `data_row.refs`. A natural-key cell is data, not a link:
+  deleting the referenced row is not refused, and validation reports the cell (MQ7111).
+- **Stable ids.** A `uuid` column the database does not fill can say `"stableId": true`, on a table file or a
+  stereotype. Every row the table receives (table seed rows, a bound reference type's rows, entity rows through a
+  binding) then gets a UUID version 5 derived from the table's id and the row key, which PostgreSQL's
+  `uuid_generate_v5` and most UUID libraries compute the same way, so ids survive rebuilds and agree across
+  environments. Templates read `column.stable_id`, and the new helper `stable_id <table> <key>` gives the id of a key;
+  `stable_id` is now a reserved helper name (MQ6013). Changing `stableId` or a seed's row key changes the ids of rows
+  already in databases.
+- **Rows computed by a script.** A seed can take its rows from `rowsFrom: { "script": "seeds/<name>.js" }`, a file
+  under `extensions/seeds/` that calls `maquettiste.rows((model, seed) => [...])` once and reads the model as a script
+  rule does. Row ids are derived from the seed and the row key, so they are the same on every run. The script runs only
+  when something reads its rows, its result is kept until the script, the seed or something it read changes, and a unit
+  that read the rows renders again exactly then. The extension file tools write rows scripts (kind `seed-rows`) and load
+  them without running them.
+- **Seed preview.** `maquettiste seed preview <seed>` and the MCP and assistant tool `preview_seed_rows` (73 MCP tools
+  now) give one seed's rows, as written or scripted, or with `--database` (`database`) as that database receives them:
+  stable ids, the values natural keys find, and each foreign-key entry's ref. Only the scripts of that seed and of the
+  seeds it names run. `seed export` and `export_seed_csv` head a foreign-key column with the foreign key's name and
+  write a composite key as JSON array text, and export a scripted seed's rows; `seed import` and `import_seed_csv`
+  refuse a scripted seed. The [reference data
+  guide](guides/reference-data-and-seeds.md#12-name-a-referenced-row-by-its-natural-key) walks through all three.
+- New rules MQ7124 (a stable id on a column that is not a `uuid` or that the database fills), MQ7125 (a row key that
+  cannot derive the stable id), MQ7126 (a misplaced foreign-key entry), MQ7127 (a rows script that fails) and MQ7128 (a
+  scripted row without a row key). MQ7107, MQ7108, MQ7109, MQ7111, MQ7116, MQ5005 and MQ4056 cover foreign-key entries,
+  stable id columns and rows scripts too.
+- **Rename, retire and merge codes.** Four batch operations change reference data that databases store:
+  `rename-code` gives a row a new code, `retire-code` removes a row and moves its uses to another code,
+  `merge-reference-types` moves every use of one type to another (mapping codes with `codes`, moving the rows the
+  target lacks with their ids and translations) and `rename-reference-type` renames a type. Each goes through MCP
+  `apply_batch`, `maquettiste model apply` and the editor's batch endpoint, and a dry run lists what it rewrites
+  (`usage`: uses, rows moved and removed, translations removed) and the facts it would record. A merged type's seeds
+  whose rows all matched or mapped go with the type. The [reference data
+  guide](guides/reference-data-and-seeds.md#15-rename-retire-or-merge-codes) walks through all four on billing's
+  invented `PaymentTerm`.
+- **Former codes.** A refactor keeps the old code on the type, `formerCodes: [{ "code": "net30", "replacedBy": "<row
+  id>" }]`, so a seed import skips a row that names it, `names-to-ids` turns it into the replacing row's id,
+  `get_references` on a row lists the former codes that point at it, and templates read
+  `reference_type.former_codes`. csharp-dapper writes an `[Obsolete]` field per former code that holds the replacing
+  row. A code never comes back: renaming to a live or former code is refused.
+- **The value map is recorded and applied.** Each refactor records one `value-map` fact per database that stores the
+  type's codes, naming the columns and the template-defined collections that hold them (`collections`, new), the
+  merged-away type (`fromReferenceType`, new) and the type's names and plural names (`pluralName`, new in a fact's
+  states). On PostgreSQL sql-ddl's migration maps the stored codes before its schema statements: it renames the lookup
+  table or enum type of a renamed type, makes the target's rows exist, renames enum values in place where it can,
+  maps each column and collection between a drop and a re-add of its foreign key or CHECK, and adds the ledger row; the
+  step can run twice. A mapped value an enum type lacks stops the migration with the codes named, since PostgreSQL
+  cannot use an enum value in the transaction that adds it. Other dialects get a TODO line. A column whose reference
+  type changes without a value map gets its foreign key or CHECK rebuilt (and an enum column its new enum type) on
+  PostgreSQL instead of a TODO line. The [schema changes guide](guides/schema-changes.md#codes-that-change) has the
+  step per storage strategy. The ledger is unchanged.
+- New rules check former codes: a live, repeated or ill-fitting one (MQ7017), a `replacedBy` that is not a row of the
+  type (MQ7018), and a default, allowed value or seed cell that names one (MQ7019); MQ7020 refuses a refactor that
+  cannot apply. MQ4113 refuses an
+  open value map that maps away a live code, MQ4114 warns when a plain save changes a kept row's code or a type's name,
+  and `validate --against` reports such a change that no value map explains (MQ4112). MQ4106 and MQ4103 cover value
+  maps.
+
 ## 0.11.0 (unreleased)
 
 - **Table seeds follow their foreign keys.** `model.seeds_in_order` puts a table seed after the seeds that hold the

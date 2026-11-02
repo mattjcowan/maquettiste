@@ -754,6 +754,24 @@ database shows on the Database screen at once. The explorers remember which rows
     database type) is checked only for the kind of value its type keyword implies (a string, a number, true or false),
     since the native type, not the facets, sets the storage. A range column's default is a string. `defaultSql`, SQL
     text per dialect, is not checked.
+  - **Typed columns.** A column's `typeRef` names the enum, reference type or scalar type whose values it holds, by id:
+    `"type": "string", "typeRef": { "ref": "<InvoiceState's id>" }, "length": 1`. `type` stays the column's own keyword.
+    A facet the column leaves out comes from its type (the code's length, a scalar type's length, precision and scale,
+    the longest stored code of an enum in a text column), and a scalar type's native type applies when the column's type
+    is the scalar's base. A column typed by a reference type holds its codes as an attribute of that type does: sql-ddl
+    gives it a foreign key into the bound table or the lookup table, or a CHECK, and `reference_type_usage` lists it.
+    When the table declares a foreign key from the column, that key is the check: it must point at the code column of
+    the type's bound table in that database. Values written into the column (table seed cells, its literal default,
+    binding constants) are codes of the type, or an enum's stored values. Designed, imported, extra and contributed
+    columns take `typeRef`; a projected column has its attribute's type, and a column a reference type's binding fills
+    says nothing more. Templates read it as `column.type_ref`; `type_of` still maps the physical type. The [reference
+    data guide](guides/reference-data-and-seeds.md#11-type-a-column-of-your-own-table) walks through it.
+  - **Sensitive columns.** A column's `sensitive` (`pii` or `secret`) says it holds personal data or a secret, as an
+    attribute's does. Say it once, on either side, and the other side shows it: a column without its own value shows the
+    strongest one (`secret` over `pii`) of the attributes bindings map to it, or a projected column its attribute's; an
+    attribute without its own shows the strongest of the columns its entity's bindings map it to. An overlay entry
+    states it for its projected column. A column's own `secret` makes a literal default that looks like a credential
+    MQ3017, as on an attribute.
   - **Named defaults.** `defaultName` names a column's default constraint where the dialect names defaults (SQL Server);
     without it the DDL names it `df_<table>_<column>`. Migrations rename it with the column, the table or the name, and drop
     and add it on its own when only the default changes.
@@ -1296,6 +1314,16 @@ database shows on the Database screen at once. The explorers remember which rows
   length, precision, NOT NULL), its row keys, and its foreign keys against the referenced table's seeds (MQ7107 to MQ7116),
   and warns when a table receives rows both from its own seeds and from a bound entity's (MQ7113).
 
+  **Natural keys, stable ids and scripted rows.** A table seed may list a foreign key of its table in `columns`, in
+  place of the key's own columns, and give in each cell the referenced row's natural key (an email, an invoice number;
+  an array for a key of several columns); the engine fills the columns from that row (MQ7111 when no row has the key,
+  MQ7126 for a misplaced entry). A `uuid` column with `stableId` gets a value derived from the table and the row key for
+  every row the table receives (RFC 9562 version 5, so any tool computes the same; MQ7124, MQ7125). A seed may take its
+  rows from a script, `rowsFrom: { "script": "seeds/<name>.js" }` (MQ7127, MQ7128). The grids have no controls for the
+  three yet: set them in the seed's or the column's JSON form. The [reference data
+  guide](guides/reference-data-and-seeds.md#12-name-a-referenced-row-by-its-natural-key) walks through them, and
+  `maquettiste seed preview` shows one seed's rows as a database receives them.
+
   **Where the rows go.** `sql-ddl`'s `seed.sql` writes the rows of every environment (inserts that skip existing keys, or
   upserts per dialect for Keep as the model has them, and the deletes), and `seed.<environment>.sql` an environment's own
   rows for each environment its `environments` parameter names. The `seed-data` pack writes them as files for a loader:
@@ -1415,6 +1443,9 @@ line follow.
   when it is a view or a query. A write table other than the source matches each field's column by key, then by name.
 - `delete`: `"key"` (the default when the entity writes), `{ "soft": { "column": <column>, "value": <value> } }` (sets the
   column instead; reads then leave out the rows it marked) or `"none"`.
+- `provenance`: `{ "columns": { "<column id>": "<name part>:<type part>" } }`, what each column of a table file looked
+  like when an operation last followed it (see [Provenance and drift](#provenance-and-drift)). The engine writes it; you
+  never need to, and removing it stops the drift report for that binding.
 - `description`, `tags` and `properties` annotate the binding like any other part of the model.
 
 Every column of the source must be accounted for: a field, a constant, a `columns` entry, or a column that fills itself (an
@@ -1465,10 +1496,13 @@ had the first time (the snapshot remembers them), so the snapshot still reads it
 yours. An entity already bound to the database is refused (MQ4055), so running it twice is harmless.
 
 **An entity for each table** (`materialize-entities`; in the editor, **New entities from tables…**). For designed or
-imported tables (or views), `materialize-entities` writes an entity per table in the
-package you name: the singular of the table name in Pascal case, one attribute per column, the key from the primary key, and a
-binding to the table. Foreign keys between the picked tables, or to a table an entity is already bound to, become many-to-one
-relations naming those foreign keys. A table an entity is already bound to is refused.
+imported tables (or views), `materialize-entities` writes an entity per table in the package you name: the singular of
+the table name in Pascal case, one attribute per column, the key from the primary key, and a binding to the table.
+Foreign keys between the picked tables, or to a table an entity is already bound to, become many-to-one relations naming
+those foreign keys. A column typed by a reference type, an enum or a scalar type (its `typeRef`) gives an attribute of
+that type, with no length of its own; a foreign key from such a column into the code column of the reference type's
+bound table makes no relation, and a note says the attribute is typed by the type instead. A table an entity is already
+bound to is refused.
 
 **Attributes from the table's columns** (`materialize-attributes`; in the editor, on the binding card of the Storage tab,
 **Add attributes for the unmapped columns**, or **New attribute** in a column's *Account for*). An entity you made yourself and
@@ -1501,6 +1535,87 @@ shows the plan (creates, updates, deletes, notes, diagnostics) without writing; 
 Deleting a table, view, query or database a binding names is refused while the binding names it; with **remove references**
 or **delete dependents**, the binding goes and the entity stays.
 
+### Provenance and drift
+
+Tables you bind to keep changing: a migration adds a column, someone renames one, a type widens. The binding keeps
+working, because it names columns by id, but the entity stops following the table. So a binding records its
+**provenance**: for each column of its source, two short hashes, one of the name (ignoring case and separators) and one
+of the type (type, subtype, `typeRef`, length, precision, scale, native type, nullable). It is never a copy of the
+table, and it holds no date or author, so model files stay the same byte for byte. Only a designed or imported table has
+provenance; a view, a query or a table the database makes from an entity has no column ids to record.
+
+The engine's operations write it: `materialize-tables` and `materialize-entities` record every column of the table they
+bind; `materialize-attributes`, `materialize-columns` and `map-by-name` record the columns whose fields they write
+(every column when the binding has none yet); `resync-binding` records every column again. A save by hand leaves it as
+it is, and the editor's Auto-map and **Map by name…** do not record it yet. A stereotype fold moves its keys with the
+column ids it rewrites, so a fold reads as no drift.
+
+**Drift** compares the table with what was recorded:
+
+- **added**: a column not recorded that nothing in the binding names (no field, constant, listing or soft delete),
+  whatever the database fills;
+- **renamed** and **retyped**: a column a field maps whose name or type changed;
+- **removed**: a recorded column the table no longer has.
+
+A column that changed but that no field maps (a constant, a listed column) is not drift: nothing in the entity follows
+it.
+
+How the rules split the work: MQ4047 stays as it was, on every binding, for a column nothing accounts for, new or old.
+MQ4087 is for a binding with provenance: a column a field maps that was renamed or retyped since it was recorded, one
+warning per binding listing the columns. MQ4088 says the provenance does not describe the source (the binding was
+pointed at another table by hand, or its source is not a table file); the provenance is then read as none. An added
+column the database fills is accounted for, so no rule reports it; the drift report and a re-sync list it. A removed
+column a field still maps is MQ4045. All three take the severity `validation.rules` sets; at `error` they fail
+validation and stop generation, while a save that renames a column is never refused for drift.
+
+**Re-sync** (`resync-binding`) brings each named binding into step with its table file in one batch, all or nothing:
+
+1. an attribute whose name followed its column's old name takes the column's new name, as materialize names attributes;
+   an attribute that never followed its column keeps its name, and `keepNames` keeps every name;
+2. an attribute whose column's type changed keeps its reference type, enum or scalar type when the new type still fits,
+   and otherwise takes the type materialize would write; its facets and `required` follow the column;
+3. the attributes the binding leaves unmapped are mapped by name to free columns;
+4. each added column still free gets an attribute, mapped to it;
+5. the field of a removed column goes; its attribute stays;
+6. the provenance is recorded again (only the named columns' entries with `columns`).
+
+A renamed or retyped attribute keeps its id, so every link holds; renaming it changes generated names, and when the
+entity is also projected into another database the dry run lists the migration facts that change would record.
+Attributes from a base entity or a stereotype are never renamed or retyped; a note names them. A binding already in step
+is skipped with a note, and a re-sync of bindings that are all in step is refused (MQ4089). Re-sync never deletes
+attributes and never adds or changes columns: the entity follows the table, never the reverse.
+
+**Map by name** (`map-by-name`) maps every attribute a binding leaves unmapped to a free column of the same loose name:
+lowercase, with every character that is not an ASCII letter or digit dropped. An attribute matches by its name, a member
+of a value object attribute as `attributeMember`, and a to-one navigation's key as the navigation's name plus `Id` (or
+without `Id`). Each column matches once, in the table's column order. Fields name a table file's columns by id and a
+view's by name; a query source is refused.
+
+```sh
+maquettiste binding drift                                       # bindings with something to report
+maquettiste binding drift --database main Invoice --all         # also the ones in step
+maquettiste binding drift --check                               # exit 2 when a listed binding drifts
+maquettiste binding map --database main Supplier --dry-run      # map by name, and record provenance
+maquettiste binding resync --database main Invoice --dry-run    # what a re-sync would change
+maquettiste binding resync --database main Invoice --keep-names
+maquettiste binding resync --database main Invoice --column due_on
+```
+
+`--column` takes a column's key or physical name and serves one entity. The drift report reads files only. Over MCP,
+`get_binding_drift` answers the same report in pages; `preview_materialize` and `apply_batch` take `map-by-name` and
+`resync-binding` (with `keepNames`), and so does `POST /api/model/databases/{id}/materialize/preview`. These operations
+read the named entities and their tables only, never the whole model.
+
+### Column comments as descriptions
+
+An attribute with no description of its own shows the comment of the column its entity's binding maps it to: the text
+the database gets, which is the column's own comment, or its description by the `comments` convention. With bindings to
+several databases, the first by database name that has a comment gives it. The resolved model names that column in
+`descriptionColumn`, and generated code documents the attribute with the text (csharp-dapper writes it as the property's
+summary). Write a description on the attribute and it replaces both; the comment stays on the table. Value object
+members and relation keys take none, since a member is shared by every entity that uses its value object. Materialize
+writes no description, so the text stays in one place.
+
 ### The rules for bindings
 
 | Rule | Severity | When |
@@ -1517,6 +1632,20 @@ or **delete dependents**, the binding goes and the entity stays.
 | MQ4053 | error | a key delete from a table without a primary key, or a delete with no table to write |
 | MQ4054 | info | a mapping element maps an entity the database binds: the binding wins |
 | MQ4055 | error | a materialize operation is refused (something already bound, an entity in an inheritance hierarchy, a name taken) |
+| MQ4087 | warning | a column a binding maps was renamed or retyped since its provenance was recorded |
+| MQ4088 | warning | a binding's provenance does not describe its source: the source is not a table file, or none of the recorded columns belongs to it |
+| MQ4089 | error | a `map-by-name` or `resync-binding` operation is refused: an entity with no binding to the database, a source it cannot read, `columns` for more than one entity or naming a column the source lacks, or nothing to map or re-sync |
+
+### The rules for typed and sensitive columns
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| MQ4082 | error | a column's `typeRef` names no enum, reference type or scalar type, sits on an overlay entry of a projected column, or is on a column a reference type's binding fills (reported on the binding's field) |
+| MQ4083 | error | a typed column's type or a facet it states cannot hold the type's values: the codes, an enum's stored values, or a scalar type's base and facets |
+| MQ4084 | error | a declared foreign key from a column typed by a reference type does not point at the code column of the type's bound table, or the type has no binding in that database |
+| MQ4085 | warning | a column and an attribute it stores, or that a binding maps to it, state different sensitivities (reported on the binding field or the overlay entry) |
+| MQ7014 | error | a table seed cell, a column's literal default or a binding constant written into a typed column is not a code or stored value of its type |
+| MQ7019 | error | a table seed cell or a column's literal default names a former code of the column's reference type (as an attribute's default, `allowedValues` entry or seed cell does); write the code of the row that replaced it |
 
 ## Storage: binding an entity
 
@@ -2104,7 +2233,8 @@ needs a fact, are in the [schema changes guide](guides/schema-changes.md).
 Facts are recorded by the writes themselves: a save, create, delete or batch (in the editor, the command line, MCP or
 the HTTP API) that renames, retypes or drops a table, column or sequence, or makes a column not null, writes its facts
 in the same atomic save and lists them in its answer (`facts`). A settings change of `conventions`, `databases`,
-`typeMaps` or `inflection` and a default-locale change record theirs too. Edits of descriptions, display names, tags,
+`typeMaps` or `inflection` and a default-locale change record theirs too, and the reference-type refactors record a
+`value-map` per database that stores the type's codes. Edits of descriptions, display names, tags,
 categories, rationales, decisions or statuses record nothing, and neither do hand edits or a snapshot restore. The guide
 explains what each change records.
 
@@ -2144,15 +2274,18 @@ and its status are in [The migration ledger](ledger.md).
 | --- | --- | --- |
 | MQ4101 | error | A fact lacks the intent its change needs, one finding per missing field: a `conversion` for a `change-type`, and a `dataCheck` too when it narrows; an `acknowledge` for a `drop`; a `value` (or a `dataCheck`) for a `backfill`; a `skipWhen` guard for a `raw` step. Complete it, or hold it |
 | MQ4102 | error | `validate --against`: a change since the baseline needs a migration fact and none the baseline lacks explains it (a rename or a moved key, a type change that is not a widening, a dropped table, column or sequence, a column made not null). Reported on the column entry of a table file or overlay, the attribute of a derived column, the table or its entity, or the database file for a dropped object |
-| MQ4103 | warning | A fact the baseline lacks is stale: the model no longer shows what it, alone or with the facts on the same object, changed (a rename made and undone, a type changed back or widened back, a dropped object that is back, a column nullable again). A pending fact that is stale is MQ4103, never MQ4101. Plain `validate` judges complete facts only for a database that has a committed physical snapshot; `--against` judges them against its baseline |
+| MQ4103 | warning | A fact the baseline lacks is stale: the model no longer shows what it, alone or with the facts on the same object, changed (a rename made and undone, a type changed back or widened back, a dropped object that is back, a column nullable again), or a `value-map` whose codes its reference type did not hold in the baseline model and whose names did not change (a code born after the baseline, then renamed). A pending fact that is stale is MQ4103, never MQ4101. Plain `validate` judges complete facts only for a database that has a committed physical snapshot, and never a value map, since a physical snapshot holds no rows; `--against` judges them against its baseline |
 | MQ4104 | error | The `after` links of a database's facts form a cycle, so no order applies them; reported on each fact of the cycle |
 | MQ4105 | error | An `after` link names a fact of another database |
-| MQ4106 | error | A fact's fields do not fit its type: `from` equal to `to`, a `conversion` or `dataCheck` with both forms or neither, `released` without `held`, a key or object listed twice, a `values` code listed twice or mapped to itself, an object kind the type does not take (a `drop` takes a table, column or sequence; a `change-type` or `backfill` a column), a member without its table |
+| MQ4106 | error | A fact's fields do not fit its type: `from` equal to `to`, a `conversion` or `dataCheck` with both forms or neither, `released` without `held`, a key or object listed twice, a `values` code listed twice or mapped to itself, an object kind the type does not take (a `drop` takes a table, column or sequence; a `change-type` or `backfill` a column), a member without its table, a collection listed twice, or a `value-map` that maps codes in no column or collection and changes no name, or whose `to` is also a `from` (a chain) |
 | MQ4107 | error | Two facts change one object and neither comes after the other (merged copies changed one column): order them with `after`, or fold them. Reported on the later fact; a table drop also changes each of its members |
 | MQ4108 | warning | A fact's SQL text (`sql`, `skipWhen`, `value`, `where`, a conversion's expression, a data check's query) has no entry for the database's dialect and no `*` entry |
 | MQ4109 | warning | `validate --against`: the baseline has errors, so the objects their elements own, or the objects in baseline files that did not load, were left out (or the database did not resolve) and their changes were not checked; one finding per database, on the database file. `generate --against` reports it the same way: those objects are left out of both sides of the schema diff, and a database that does not resolve in the baseline is not diffed |
 | MQ4110 | info | A write changed objects whose elements have errors, so no facts were recorded for them; on the save's answer. Fix the errors; validate against a baseline checks the change |
 | MQ4111 | warning | An `after` link names a fact that does not exist (folded or removed in another copy); the link is ignored for ordering |
+| MQ4112 | error | `validate --against`: since the baseline, a kept reference row's code changed, a former code of a code the baseline held was added, or a reference type's `name` or `pluralName` changed, and no open `value-map` the baseline lacks records it in a database that holds the type (for a rename, also each database without a binding of the type). Reported on the row's code cell, the `formerCodes` entry, or `/name` or `/pluralName`, naming the databases that lack the fact. Run the refactor, or write the fact |
+| MQ4113 | error | An open `value-map` maps away a code that is a live code of its reference type: applied late, it would move the data of the row that holds the code now. Give that row another code, or fold the fact if it is stale |
+| MQ4114 | warning | A save, create or batch changed the code of a reference row it keeps, or a reference type's `name` or `pluralName`, outside the refactor operations (`rename-code`, `retire-code`, `merge-reference-types`, `rename-reference-type`), so no `value-map` was recorded; on the save's answer, at the cell or field. Use the refactor. Not reported while `migrations.record` is `off` |
 
 ## Generation: how the model becomes files
 
@@ -2862,7 +2995,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) with the output entries `db` and `src/Generated`. It never reads or writes the repository's ignore file (the `--gitignore` option of earlier releases is gone; a pack's managed block can keep lines there, see "Managed blocks"). A block an earlier version wrote stays as it is: it is yours to keep, edit or remove. `--hooks` installs git hooks that run `generate` after a checkout or merge. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers it as a `docker run` of the image (`--runtime podman` for `podman run`; docs/mcp.md). `--skill` writes the modeling skill, `.claude/skills/maquettiste-modeling/SKILL.md`, which belongs to Maquettiste: put your own modeling conventions in `CONVENTIONS.md` in the same folder, which `init` never touches and which agents read after the skill (the MCP conventions resource and prompt end with it). A skill nobody changed is refreshed to the installed version; one edited by hand is left alone, the new version goes to `SKILL.md.new` beside it with a one-line message, and `--force` overwrites it. `init --skill --check` writes nothing and exits 2 when the skill is missing, stale or edited, for CI. The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
 | `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. `--against <snapshot id or folder>` also compares the model with a baseline (a model snapshot, or a folder holding another copy of the project): a change since it that a migration must follow and no migration fact explains is MQ4102 (see "Migration facts"); a value that names nothing exits 4. |
 | `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. `--against <snapshot id or folder>` diffs the schema (migrations) from a baseline model for this run instead of the committed physical snapshots, and leaves those alone; a value that names nothing exits 4. `--unit <pack/unit or unit>` and `--element <id>` (both repeatable) run only those units and leave every other file as it is (see "Regenerate one element or one unit"); MQ6032 or MQ6033 exits 1, a filter that selects nothing warns (MQ6034) and exits 0. |
-| `maquettiste migration list` | The open migration facts in applied order, one line each (database, order, id, fact, state and the intent a pending fact lacks, `stale`, summary); `--database <name or id>`, `--format json` for scripts. An unknown database exits 1. |
+| `maquettiste migration list` | The open migration facts in applied order, one line each (database, order, id, fact, state and the intent a pending fact lacks, `stale`, summary; a value map's summary names its type, codes and columns, or a type rename's two names); `--database <name or id>`, `--format json` for scripts. An unknown database exits 1. |
 | `maquettiste migration fold` | Removes stale facts and joins consecutive facts on one object into the last one (see the schema changes guide); `--against <snapshot id or folder>` (its facts stay; default: the facts the committed snapshot lists as rendered, else pending facts only), `--database`, `--dry-run`, `--format json`. Exit 3 when a fact file changed meanwhile, 1 when the model has errors outside the migration rules or for an unknown database, 4 when `--against` names nothing. |
 | `maquettiste migration ledger` | Prints the migration ledger's DDL (see "The migration ledger" under Migration facts) for a PostgreSQL database: `--database <name or id>` (needed when the model has several), `--grant-read <role>` also prints the read grant, `--format json` prints `{ contractVersion, database, dialect, schema, ddl, grant }`, `--output <file>` writes it under an allowed output root. Exit 1 when the model has no PostgreSQL database, when the database named is missing or not PostgreSQL, or when several exist and none is named. |
 | `maquettiste generate --check` | Renders every output without writing and exits 2 when any file would be added, changed or deleted: the CI gate when the outputs it guards are committed (otherwise run `generate`, then compare the working tree). `--roots` of earlier releases is gone. |
@@ -2874,8 +3007,9 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste l10n prune` | Lists the orphan translations (MQ7203: an entry whose element is gone, or a field its element does not have); `--apply` removes them in one save, as the other `l10n` and `seed` verbs write only with `--apply`. `--check` exits 2 when there are orphans. |
 | `maquettiste l10n set-default fr` | Previews making French the default language: each French text moves into the element files and the text it replaces becomes an English translation; `--apply` writes it all in one change to review in git. Other locales' translations turn stale where their source text changed. Sidecar descriptions and orphans are not moved: they stay in the new default's locale folder, which is no longer loaded (MQ7202), and a sidecar-described element keeps its old-language description; the command lists them as skipped. Move or delete them by hand, or run `l10n prune` before switching. |
 | `maquettiste seed new <type>` | Creates a reference type's seed (by id or name), named after the type, with the columns code, label and description and no rows; a type that has a seed keeps it. |
-| `maquettiste seed export <seed>` | A seed's rows as CSV (the seed's id or name, or the id or name of the element it seeds); `--locale fr` adds the French label and description columns, `--out <file>` writes a file. |
-| `maquettiste seed import <seed> <file>` | Previews a CSV import (rows match by `@id`, else by `@code`): added, changed, removed and blocked rows; `--mode replace` also removes the rows the file leaves out, except rows still referenced; `--apply` plans again and writes it, refused (exit 3) when the seed file changes while the command runs; it prints what it wrote, which can differ from an earlier preview if the seed changed in between. |
+| `maquettiste seed export <seed>` | A seed's rows as CSV (the seed's id or name, or the id or name of the element it seeds); `--locale fr` adds the French label and description columns, `--out <file>` writes a file. A foreign-key column is headed by the foreign key's name and holds the natural key (a composite one as JSON array text); a seed with a rows script exports the rows its script returns, with their derived ids. |
+| `maquettiste seed import <seed> <file>` | Previews a CSV import (rows match by `@id`, else by `@code`): added, changed, removed and blocked rows; `--mode replace` also removes the rows the file leaves out, except rows still referenced; `--apply` plans again and writes it, refused (exit 3) when the seed file changes while the command runs; it prints what it wrote, which can differ from an earlier preview if the seed changed in between. A seed with a rows script takes no import (exit 4). A line whose `@code` is a former code of the type is skipped and listed with MQ7019. |
+| `maquettiste seed preview <seed>` | One line per row of the seed, `<key> <id>: <column>=<value> ...`: the rows as written, or as its rows script returns them. `--database <name or id>` gives them as that database receives them: stable ids, the values natural keys find, by column name. Only the seed's script and those of the seeds it names run. `--format json` prints the rows with their keys and refs. An unknown seed or database exits 4; a failed script exits 1. |
 | `maquettiste process simulate <process>` | Runs a process (by id, name or model path) through the engine from its initial state: `--inputs <file>` (or `-` for stdin) holds an array of steps, or `{ "start": { "context": {...}, "at": "..." }, "steps": [...] }`, each step a scenario step without `expect`; `--scenario <name>` runs a scenario's steps first. Prints one line per input (accepted or refused, and the active states after it), then the configuration, what can happen next and the clock; `--format json` prints the whole trace, `--from <n>` only from input n. The same inputs always give the same trace. |
 | `maquettiste process record <process> <name>` | Replays `--inputs <file>` and prints the scenario it would write, each step's expectations and the outcome filled from the replay; `--apply` writes it under `model/scenarios/<process>/`. |
 | `maquettiste process verify [<process>...]` | Replays the scenarios of the processes named (all processes when none is) and prints `pass` or `FAIL` per scenario with the first failing step and rule; exits 1 when one fails. `--format json` for scripts. |
@@ -2885,7 +3019,10 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations` (open migration facts by database, in applied order), `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
-| `maquettiste model apply <batch.json>` | Applies a batch file all or nothing, as the agent server's `apply_batch` does: `{ "operations": [...] }` or the bare array of creates, updates, deletes and the schema, materialize, process and tag operations. Id fields take ids, qualified names such as `@table:billing.notes` or `@entity:Billing.Invoice`, and placeholders (`"as": "$pm"` names a new element for the whole batch), and the engine mints every missing id, so a batch needs no id written by hand (docs/mcp.md, "Batches by name"). A name or placeholder that finds nothing is MQ1012, a name that finds several is MQ1013 (use a longer form or the id), a misused identity (a placeholder declared twice, a misplaced `as`, a sub-element dropped and added again without its id) is MQ1014 and a malformed or misplaced name is MQ1015; any of them writes nothing. Prints a line per path written or deleted, then each name and placeholder with its id; `--dry-run` writes nothing and prints the diffs, the names, and a `+` or `-` line per diagnostic the change adds or removes; `--format json` prints the `apply_batch` answer. Exit 1 when the file is not a valid batch or the batch is invalid or refused, 3 on a conflict. The agent server's `patch_element` changes part of one element with an RFC 6902 JSON Patch instead; a patch that cannot be applied (an unknown operation, a path that does not resolve, a failed `test`, a change to `/id` or `/kind`) is MQ1016 and writes nothing. |
+| `maquettiste model apply <batch.json>` | Applies a batch file all or nothing, as the agent server's `apply_batch` does: `{ "operations": [...] }` or the bare array of creates, updates, deletes and the schema, materialize, process, tag and reference-type refactor operations. Id fields take ids, qualified names such as `@table:billing.notes` or `@entity:Billing.Invoice`, and placeholders (`"as": "$pm"` names a new element for the whole batch), and the engine mints every missing id, so a batch needs no id written by hand (docs/mcp.md, "Batches by name"). A name or placeholder that finds nothing is MQ1012, a name that finds several is MQ1013 (use a longer form or the id), a misused identity (a placeholder declared twice, a misplaced `as`, a sub-element dropped and added again without its id) is MQ1014 and a malformed or misplaced name is MQ1015; any of them writes nothing. Prints a line per path written or deleted, then each name and placeholder with its id, and per reference-type refactor `<op> <type>: <n> uses, <m> rows moved, <k> rows removed, <t> translations removed`; `--dry-run` writes nothing and prints the diffs, the names, and a `+` or `-` line per diagnostic the change adds or removes; `--format json` prints the `apply_batch` answer. Exit 1 when the file is not a valid batch or the batch is invalid or refused, 3 on a conflict. The agent server's `patch_element` changes part of one element with an RFC 6902 JSON Patch instead; a patch that cannot be applied (an unknown operation, a path that does not resolve, a failed `test`, a change to `/id` or `/kind`) is MQ1016 and writes nothing. |
+| `maquettiste binding drift [<entity>...]` | Per binding, the columns of its table file added, renamed, retyped and removed since its provenance was recorded, from files only (`--database`, `--all` for bindings in step too, `--format json`); `--check` exits 2 when a listed binding drifts. See "Provenance and drift" under Binding entities. |
+| `maquettiste binding map --database <db> <entity...>` | Maps every attribute a binding leaves unmapped to the free column of the same name, ignoring case and separators, and records provenance; `--dry-run` shows the change. A refusal is MQ4089. |
+| `maquettiste binding resync --database <db> <entity...>` | Brings bindings into step with their tables in one batch (renames, retypes, added and removed columns); `--keep-names` keeps every attribute name, `--column` limits one entity to some columns, `--dry-run` shows the change. A refusal is MQ4089. |
 | `maquettiste snapshot create <name>` | Takes a snapshot of the whole model: a zip under `.maquettiste/model-snapshots/` named `<name in kebab case>-<yyyymmdd-hhmmss>.zip` (the snapshot's id) holding `maquettiste.json`, `model/`, `extensions/` and `branding/`; `--packs` holds the template packs too, `--description <text>`, `--format json`. |
 | `maquettiste snapshot list` | The snapshots, newest first, with their elements and flags (`[published]`, `[packs]`, `[before-restore]`); `snapshot show <id>` prints one snapshot's metadata, `snapshot delete <id>` deletes it. |
 | `maquettiste snapshot compare <from> [<to>]` | What differs between two snapshots, or a snapshot and the working model (`working`, the default `to`): counts per kind, then `+` added, `-` removed and `~` changed elements (a rename and a moved file say so) and the other documents; `--element <id>` prints that element's changed fields; `--format json`. |
@@ -3071,6 +3208,9 @@ rows as files people outside the model can work with (reference-types-seeds-loca
 - `GET /api/seeds/<id>/csv` exports a seed's rows (`?bom=true` for spreadsheet programs, `?locale=fr` adds the French label
   and description columns); `POST /api/seeds/<id>/csv` with `{ content }` previews an import (rows match by `@id`, else by
   `@code`), and `?dryRun=false` applies it (`?mode=replace` also removes the rows the file leaves out).
+- In a seed CSV, a table seed's foreign-key column is headed by the foreign key's name (its id when it has none) and
+  holds the referenced row's natural key, a composite one as JSON array text. A seed whose rows a script computes
+  exports those rows with their derived `@id`, and refuses an import (400).
 - `GET /api/reference-types/<id>/usage` lists the attributes that use a reference type and how each database stores it.
 - `GET /api/model/index?locale=fr` fills the display names from French, falling back as the settings say.
 - A seed saved through the API (an element save, `POST /api/model/batch`) or by an agent may give its `columns` and its
@@ -3078,6 +3218,22 @@ rows as files people outside the model can work with (reference-types-seeds-loca
   row's cells as a `values` object keyed by those columns. The seed is stored with ids and one cell per column; a name
   that finds nothing, or several, is MQ1002 and nothing is written (docs/mcp.md, "Seeds by name"). Templates find a
   seed by its name with `seed_named "<name>"` and one of its rows by key with `seed_row`.
+
+**Rename, retire or merge codes.** Databases store reference rows by code, so a code change moves data. Four batch
+operations (`POST /api/model/batch`, MCP `apply_batch`, `maquettiste model apply`) make the change and record it once
+for every environment: `rename-code` (`id`, `code`, `to`) gives a row a new code, `retire-code` (`id`, `code`, `to`)
+removes a row and moves its uses to another live code, `merge-reference-types` (`id`, `target`, optional `codes`) moves
+every use of one type to another, and `rename-reference-type` (`id`, `name`) renames a type. Each rewrites every
+default, `allowedValues` entry and seed cell that names a moved code, keeps the old code in the type's `formerCodes` (`{
+code, replacedBy }`, a row id), and records one `value-map` migration fact per database that stores the codes, which
+sql-ddl turns into a data step on PostgreSQL. A dry run lists what it would rewrite (`usage`) and the facts. One
+refactor per type per batch; a refusal is MQ7020 with the reason. A former code stays understood: a seed import skips a
+row that names one, `names-to-ids` turns it into its row's id, and csharp-dapper keeps an obsolete alias for it; a
+default, `allowedValues` entry or seed cell that names one is MQ7019. A former code that is also a live code, is listed
+twice or does not fit the type's code is MQ7017, and a `replacedBy` that is not a row of the type is MQ7018. The
+[reference data guide](guides/reference-data-and-seeds.md#15-rename-retire-or-merge-codes) walks through all four on a
+billing model. The editor has no menu for them yet: the batch endpoint takes them, and the type's JSON form edits
+`formerCodes`.
 
 Enums are stored as `int` or `string` columns. Storing an enum through a lookup table (`enumStorage` or a mapping's `storage`
 set to `lookup`) is no longer offered: a file that still uses it does not load and reports error MQ7012. Convert the enum to a
@@ -3119,13 +3275,14 @@ the holder already has another value there; each such holder is MQ5001 at its pr
 
 ## Extending the model and the generation
 
-Three kinds of files let a project add to what Maquettiste knows, without changing Maquettiste itself. All three are plain
+Four kinds of files let a project add to what Maquettiste knows, without changing Maquettiste itself. All four are plain
 files under `.maquettiste/`, so the editor, the command line, an agent and git see the same thing:
 
 | What | Where | What it adds |
 | --- | --- | --- |
 | Custom properties | `.maquettiste/extensions/<name>.json` | Fields of your own on elements, shown in the inspector, checked by validation, read by templates |
 | Script rules | `.maquettiste/extensions/rules/<name>.js` | Checks of your own, reported like the built-in rules |
+| Rows scripts | `.maquettiste/extensions/seeds/<name>.js` | A seed's rows, computed from the model |
 | Pack scripts | `.maquettiste/templates/<pack>/*.js` | Helpers, selectors, filters and transforms for one template pack |
 
 In the editor, the **Extensions** node of the Generate explorer lists the custom property schemas and the script rules.
@@ -3325,6 +3482,124 @@ without `required`, so a stereotype may leave a required parameter to the elemen
 parameter, is MQ2019; a malformed `x-ref` in it is MQ2009 on the stereotype. MCP `get_schema` lists the parameters of
 the stereotypes that may apply to a kind under `stereotypeParameters`.
 
+### Stereotypes that contribute structure
+
+Many tables repeat a few small structures: audit timestamps, a row version, an owner column with its foreign key. A
+stereotype that applies to tables can carry them as **members**: `columns`, `primaryKey`, `uniques`, `foreignKeys`,
+`checks` and `indexes`, written as a table file writes its own. Every table that carries the stereotype inherits its
+members, whether the table is designed, imported or synthesized (projected by the database from an entity or a
+relation), so the structure is written once and a change to it reaches every table. Until the stereotype form follows,
+edit these keys in the stereotype's JSON. In billing terms, `audited` keeps its attributes and gains two columns and an
+index:
+
+```json
+{
+  "kind": "stereotype",
+  "key": "audited",
+  "name": "Audited",
+  "appliesTo": ["entity", "table", "column"],
+  "columns": [
+    { "id": "01JC7AVD1TC0000000000000C1", "name": "created_at", "type": "datetimeoffset", "nullable": false,
+      "defaultSql": { "*": "CURRENT_TIMESTAMP" } },
+    { "id": "01JC7AVD1TC0000000000000C2", "name": "updated_at", "type": "datetimeoffset" }
+  ],
+  "indexes": [ { "id": "01JC7AVD1TC0000000000000X1", "columns": [ { "column": "01JC7AVD1TC0000000000000C1" } ] } ]
+}
+```
+
+Members differ from a table's own in a few ways, which MQ2024 to MQ2026 check on the stereotype:
+
+- A stereotype whose `appliesTo` leaves out `table` has no members, and a member column has no `attribute` or
+  `sequence` (MQ2024).
+- A member key, index or check names only the stereotype's own columns (MQ2025) and has no `name` (MQ2024): each table
+  names it by the naming conventions, so two tables never share a constraint name. A member primary key needs an `id`.
+- A member foreign key names its target with `referencesTable` (one fixed table) or `referencesParameter`: the name of
+  a required parameter of the stereotype typed
+  `{ "type": "string", "x-ref": { "kind": "table", "sameDatabase": true } }` (MQ2026). Each table that carries the
+  stereotype then names a table of its own database in its `properties`; one without the value is MQ2018 and gets no
+  such key.
+
+**Keyed ids.** An inherited member's id in a table is `<tableKey>.<memberId>`: the table file's id for a designed or
+imported table, the synthesized key for a synthesized one (`<entityId>@<databaseId>`, `<relationId>@<databaseId>`).
+The `notes` table inherits `updated_at` as `01K6BND0000000000000000001.01JC7AVD1TC0000000000000C2`. Seeds, keys,
+indexes, binding fields and queries name an inherited member by its keyed id, never by the member id alone (MQ4008 then
+gives the keyed form), and `get_references` on a member lists every table and file that names a copy of it. MCP
+`get_database_view` and `get_resolved_model` show each member's keyed id and `memberOrigin`: where it comes from
+(`stereotype`, `schema-default` or `package-default`), the stereotype, the member id and the facets the table
+redefines; own members have none. Templates read the same as `member_origin`, and sql-ddl writes inherited members as
+it writes own ones.
+
+**Order.** A table lists its own members first (a synthesized table's attribute columns and an overlay's extra
+columns), then the inherited ones: stereotype by stereotype in the order of its effective set, each in the stereotype's
+order. Inherited checks continue the numbering of the table's own checks.
+
+**Synthesized tables.** A synthesized table that already stores a stereotype's attributes as columns, because its entity
+carries the stereotype, skips that stereotype's members: the attributes realize it there. So one stereotype serves
+entities through its attributes and tables through its members. A synthesized table that inherits a NOT NULL column
+with no default is MQ4079 (a warning): rows written through its entity or relation have no value for it.
+
+**Defaults.** A database schema entry and a package can list `defaultStereotypes`, which apply a stereotype to every
+element they hold in one line. On the schema entry of database `main`:
+
+```json
+{ "id": "01J92P0V1RC04SKQ5353EAKHG2", "name": "billing", "defaultStereotypes": ["audited"] }
+```
+
+Now every table of schema `billing` carries `audited`. A schema's defaults reach its tables, views, sequences, routines,
+database types and SQL objects; a package's reach every element of the package and its sub-packages (a table overlay
+takes its entity's or relation's package, a seed its target's, a scenario its process's). An element's stereotypes are
+built in layers: the schema's defaults, then the package defaults from the outermost package in, then its own
+`stereotypes`, each layer with the stereotypes it implies first; a key listed twice keeps its last place. A default
+skips an element whose kind it does not apply to, so the schema default above gives nothing to a view or a sequence,
+with no MQ2004. Group, requires and conflict rules judge the whole set (MQ2013 to MQ2015), and a finding about a default
+names the schema or package that gives it; a default list with two stereotypes of one group, or two that conflict, is
+MQ2031. Defaults reach top-level elements only, never columns, attributes or process nodes, and databases and the
+project have none: list the schemas.
+
+**Exceptions per table.** A table says only what differs:
+
+- `excludeStereotypes` drops a stereotype a default gives, with the stereotypes it implies. An own stereotype, or one an
+  own stereotype implies, cannot be excluded (MQ2029); an entry no default gives excludes nothing (MQ2030, a warning).
+- `excludes` drops inherited members by member id: `notes` keeps its own `created_at` with
+  `"excludes": ["01JC7AVD1TC0000000000000C1", "01JC7AVD1TC0000000000000X1"]`. Excluding a column that a kept key,
+  index or check uses is MQ2028: exclude that member too (here, the index).
+- `redefines` changes facets of one member and keeps its keyed id: an overlay of Product's table states
+  `"redefines": [{ "member": "01JC7AVD1TC0000000000000C1", "nullable": true }]`, and its `created_at` follows
+  `audited` for every other facet. MQ2027 refuses an entry that names a member the table does not inherit, names one
+  twice, states no facet or states a facet its member does not take; MQ4078 (a warning) reports a facet equal to the
+  inherited value, which only stops the table from following the stereotype for it.
+
+| Member | Facets a redefinition may state |
+| --- | --- |
+| Column | `nullable`, `default`, `defaultSql`, `defaultName`, `comment`, `collation` |
+| Primary key | `columns`, `name`, `clustered` |
+| Unique | `columns`, `name`, `nullsNotDistinct` |
+| Foreign key | `name`, `onDelete`, `onDeleteColumns`, `onUpdate`, `deferrable` |
+| Index | `name`, `where`, `method`, `storage` |
+| Check | `name` |
+
+Types and a column's name cannot be redefined: the stereotype's check expressions and index predicates name its columns
+in SQL. A table that needs another type or name excludes the member and declares its own column. Setting `default` or
+`defaultSql` replaces an inherited default of either form, but no redefinition removes one. A key's `columns` lists the
+whole new list (own column ids and keyed ids), and an index's `storage` replaces the inherited map. Two primary keys are
+MQ4076: an inherited one beside the table's own or its entity's, or beside another stereotype's. A partitioned table
+adds its partition column with a `columns` redefinition of the inherited key.
+
+**Materialize.** `materialize-tables` writes the designed table with the shape of the synthesized one but leaves
+inherited members inherited: their keyed ids follow the new table id, and the overlay's `redefines`, `excludes` and
+`excludeStereotypes` move into the table. The table names the package whose defaults reached the synthesized table, so
+it keeps the same stereotypes. A stereotype the synthesized table skipped because it stored the attributes gets an
+`excludes` entry per member, since the designed table holds those columns as its own; fold them in later.
+
+**Migration facts.** Members are columns and keys of each table that carries them, so a change to a stereotype records
+facts table by table, as a change to an own column does: adding a member records nothing, removing one records a
+pending `drop` per table, renaming one a complete `rename` per table and changes no table file, a widening records
+nothing and a narrowing a pending `change-type` per table. An `excludes` entry is a `drop` for that table, and a
+redefinition that makes a column not null is a `backfill`. To make tables that already hold the same columns inherit
+them instead, use the fold: [Fold columns into a stereotype](guides/schema-changes.md#fold-columns-into-a-stereotype).
+A fold that cannot apply (a column that differs in its type, a facet that differs without `redefine`, a target that is
+not a designed or imported table file) is MQ4077, one per refused table, and writes nothing.
+
 ### Script rules (`extensions/rules/*.js`)
 
 A script rule is a check of your own, written in JavaScript. Each file directly in `extensions/rules/` registers one or more
@@ -3449,6 +3724,35 @@ that).
 - A rule id registered twice is MQ5002 on the second file.
 
 Clicking such a finding in the Problems panel opens the rule file on the Extensions tab.
+
+### Rows scripts (`extensions/seeds/*.js`)
+
+A seed can compute its rows from the model instead of listing them: the seed names a file directly in
+`extensions/seeds/` with `rowsFrom: { "script": "seeds/<name>.js" }`, and the file calls `maquettiste.rows` once:
+
+```js
+maquettiste.rows((model, seed) => model.withStereotype("audited")
+  .filter(d => d.kind === "entity")
+  .map(d => ({ code: d.name.toLowerCase(), label: d.displayName ?? d.name })));
+```
+
+| Part | Meaning |
+| --- | --- |
+| `model` | The model documents, read-only, with the same calls as a rule's `model` (`get`, `all`, `referencesTo`, `withStereotype`, `withTag`, `withProperty`, `byQualifiedName`). Never the resolved model or a pack. |
+| `seed` | The seed's document, frozen; several seeds may share one script and tell themselves apart by it. |
+| The result | An array of plain objects keyed by the seed's column names: `code`, `label` and `description` for a reference type, an attribute's name or an end's role, a table column's name, a foreign key's name for a foreign-key entry. |
+
+A scripted row's id is derived from the seed's id and the row's key, so it is the same on every run; a target with no
+row key (a relation, for one) takes no scripted rows. The script runs in the same sandbox and under the same `limits`
+as a rule, in its own scope with frozen globals; calling `maquettiste.rule` there, or `maquettiste.rows` in a rule file
+or a pack script, fails to load. It runs only when something reads the seed's rows (a unit, `validate`, a save of the
+seed, `maquettiste seed preview`, the MCP tool `preview_seed_rows`), and its rows are kept until the script, the seed or
+something it read changes. Its failures are MQ7127 (it does not load, throws, breaks a limit or returns no array of
+rows) and MQ7128 (a key no column has, or no row key), both on the seed at `rowsFrom.script`, and MQ5005 on the script
+for a top-level `let` or `var`. The Generate explorer lists rows scripts under Extensions and opens them on the
+Extensions tab, which has no group or New command for them yet; the MCP extension file tools and the API write them too
+(kind `seed-rows`), and a write loads the script without running it. The [reference data
+guide](guides/reference-data-and-seeds.md#14-compute-rows-with-a-script) has an example from start to end.
 
 ### Pack scripts (helpers, selectors and transforms)
 

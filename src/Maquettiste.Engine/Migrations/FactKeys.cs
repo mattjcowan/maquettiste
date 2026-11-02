@@ -17,6 +17,14 @@ internal static class FactKeys
         new[] { "column", "index", "unique", "foreign-key", "check" }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
+    /// The member kinds whose <c>rekey</c> entries move a constraint's element id (a fold into a stereotype's, next-phase-2-design.md
+    /// section 3.1): each names its table as a column entry does, and none moves a capture key, since the capture keys of keys and
+    /// indexes follow their columns. <see cref="KeyMaps"/> and <see cref="RekeyMap"/> skip them.
+    /// </summary>
+    public static readonly FrozenSet<string> ConstraintKinds =
+        new[] { "index", "unique", "foreign-key", "check" }.ToFrozenSet(StringComparer.Ordinal);
+
+    /// <summary>
     /// The applied order of one database's facts: a topological order over their <c>after</c> links that takes the ready fact with
     /// the ordinally smallest id. Links to facts outside <paramref name="facts"/> (missing, MQ4111, or of another database, MQ4105)
     /// are ignored; when the links form a cycle (MQ4104) and no fact is ready, the unplaced fact with the smallest id is placed next,
@@ -89,7 +97,8 @@ internal static class FactKeys
 
     /// <summary>
     /// The key maps of a <c>rekey</c> fact for <see cref="SnapshotRekey.Apply"/>: one table entry per table key it moves or whose
-    /// columns it moves (a column entry's table is its table's key before the fact), and its sequence keys. With
+    /// columns it moves (a column entry's table is its table's key before the fact), and its sequence keys; constraint entries
+    /// (<see cref="ConstraintKinds"/>) move no capture key and are skipped. With
     /// <paramref name="reverse"/>, the maps that undo the fact: each key back from <c>to</c> to <c>from</c>.
     /// </summary>
     /// <param name="rekey">A <c>rekey</c> fact.</param>

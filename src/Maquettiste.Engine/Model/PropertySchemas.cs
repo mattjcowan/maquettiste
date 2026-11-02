@@ -255,17 +255,24 @@ internal readonly record struct XRefSite(PropertyHost Host, string Pointer, stri
 /// <param name="KindName">The kind name extension files and stereotypes apply by (<c>attribute</c>, <c>column</c>, <c>state</c>...).</param>
 /// <param name="Stereotypes">The holder's stereotype keys, as the file lists them.</param>
 /// <param name="Properties">The holder's own <c>properties</c>.</param>
+/// <param name="EffectiveKeys">
+/// For the element, when the model declares default stereotypes: the keys schemas apply by, its effective set's with defaults
+/// (<see cref="PropertySchemaSet.HostKeys"/>, next-phase-2-design.md section 3.1); <see langword="null"/> otherwise, and the
+/// schemas apply by <paramref name="Stereotypes"/> with the keys they imply.
+/// </param>
 internal readonly record struct PropertyHost(string Pointer, string Id, string KindName, IReadOnlyList<string> Stereotypes,
-    IReadOnlyDictionary<string, JsonElement> Properties)
+    IReadOnlyDictionary<string, JsonElement> Properties, IReadOnlyList<string>? EffectiveKeys = null)
 {
     /// <summary>The holders of a document, in walk order: the element, attributes, enum members, columns, states (depth first),
     /// transitions, events.</summary>
     /// <param name="element">The top-level element.</param>
+    /// <param name="effectiveKeys">The element's keys with defaults (<see cref="ModelSnapshot.PropertyKeys"/>), or <see langword="null"/>
+    /// when the model declares no default stereotype.</param>
     /// <returns>The holders.</returns>
-    public static IEnumerable<PropertyHost> Of(Element element)
+    public static IEnumerable<PropertyHost> Of(Element element, IReadOnlyList<string>? effectiveKeys)
     {
         ArgumentNullException.ThrowIfNull(element);
-        yield return new PropertyHost("", element.Id, element.KindName, element.Stereotypes, element.Properties);
+        yield return new PropertyHost("", element.Id, element.KindName, element.Stereotypes, element.Properties, effectiveKeys);
         IReadOnlyList<ModelAttribute> attributes = element switch
         {
             Entity e => e.Attributes,
@@ -483,7 +490,9 @@ internal sealed class AnnotationOnly(string name) : IKeywordHandler
 /// The custom property schemas of a snapshot (next-phase-1-design.md sections 4.1 and 4.2): the extension files by path, then each
 /// stereotype's <c>parameters</c> (for each key, the ordinally first file). The index, the validator, localization and the batches
 /// read <c>x-ref</c> sites and translatable names from it. A holder's stereotypes count with the ones they imply (one level, as
-/// <see cref="ModelSnapshot.EffectiveStereotypes"/>), so a schema that applies to an implied stereotype applies to its carriers.
+/// <see cref="ModelSnapshot.EffectiveStereotypes(IReadOnlyList{string})"/>), so a schema that applies to an implied stereotype applies to its carriers;
+/// an element of a model with default stereotypes counts its effective set's keys (<see cref="HostKeys"/>), defaults included, which
+/// its callers pass.
 /// <see cref="Hash"/> covers the ordinal (path, hash) pairs of the extension files and the stereotype files, so a snapshot whose files
 /// did not change reuses the previous set, and a source whose file did not change is reused with its compiled schema. Immutable and
 /// thread-safe.
@@ -647,6 +656,43 @@ internal sealed class PropertySchemaSet
     }
 
     /// <summary>
+    /// The schemas that apply to a holder, in set order: by its kind and its effective keys when it carries them (an element of a model
+    /// with default stereotypes, next-phase-2-design.md section 3.1), else by its own keys with the keys they imply.
+    /// </summary>
+    /// <param name="host">The holder.</param>
+    /// <returns>The sources.</returns>
+    public IEnumerable<PropertySchemaSource> For(PropertyHost host)
+    {
+        if (host.EffectiveKeys is not { } keys)
+            return For(host.KindName, host.Stereotypes);
+        return Sources.Where(s => s.AppliesTo(host.KindName, keys));
+    }
+
+    /// <summary>
+    /// The keys schemas apply by for an element of a model with default stereotypes (next-phase-2-design.md section 3.1): its effective
+    /// set's keys (implied stereotypes and defaults included, excluded defaults left out), then its own keys that name no stereotype, as
+    /// <see cref="EffectiveKeys"/> keeps them. Without defaults the set is the one <see cref="EffectiveKeys"/> gives the own list.
+    /// </summary>
+    /// <param name="effective">The element's effective set (<see cref="ModelSnapshot.EffectiveStereotypes(Element)"/>).</param>
+    /// <param name="own">The element's own keys, as its file lists them.</param>
+    /// <returns>The keys.</returns>
+    public static IReadOnlyList<string> HostKeys(IReadOnlyList<AppliedStereotype> effective, IReadOnlyList<string> own)
+    {
+        ArgumentNullException.ThrowIfNull(effective);
+        ArgumentNullException.ThrowIfNull(own);
+        var keys = new List<string>(effective.Count + own.Count);
+        foreach (var applied in effective)
+            keys.Add(applied.Stereotype.Key);
+        foreach (var key in own)
+        {
+            if (!keys.Contains(key, StringComparer.Ordinal))
+                keys.Add(key);
+        }
+
+        return keys;
+    }
+
+    /// <summary>
     /// The schemas a stereotype's <c>defaultProperties</c> are walked against: its own <c>parameters</c> and the extension files that
     /// name its key.
     /// </summary>
@@ -666,17 +712,21 @@ internal sealed class PropertySchemaSet
     /// (ordinal), then schema order, then the value's own order. One value two schemas type is two sites.
     /// </summary>
     /// <param name="element">The top-level element.</param>
+    /// <param name="effectiveKeys">
+    /// The element's keys with defaults (<see cref="ModelSnapshot.PropertyKeys"/>, or <see cref="HostKeys"/> of its effective set), or
+    /// <see langword="null"/> when the model declares no default stereotype (next-phase-2-design.md section 3.1).
+    /// </param>
     /// <returns>The sites.</returns>
-    public IEnumerable<XRefSite> Sites(Element element)
+    public IEnumerable<XRefSite> Sites(Element element, IReadOnlyList<string>? effectiveKeys)
     {
         ArgumentNullException.ThrowIfNull(element);
         if (!HasRefs)
             yield break;
-        foreach (var host in PropertyHost.Of(element))
+        foreach (var host in PropertyHost.Of(element, effectiveKeys))
         {
             if (host.Properties.Count == 0)
                 continue;
-            foreach (var site in SitesOf(host, host.Pointer + "/properties", host.Properties, For(host.KindName, host.Stereotypes), false))
+            foreach (var site in SitesOf(host, host.Pointer + "/properties", host.Properties, For(host), false))
                 yield return site;
         }
 

@@ -17,7 +17,11 @@ namespace Maquettiste.Engine.Migrations;
 /// entities, value objects, scalar types, enums, reference types, stereotypes, packages and their parents), over the relations
 /// that name a reached entity (and so the entities at their other ends) and over the entities that derive from a reached one. A
 /// reached stereotype's <c>implies</c> are references too, so the stereotypes it implies are reached: an element's effective set
-/// (next-phase-1-design.md section 4.2) is in the reach of every database that reaches the element.
+/// (next-phase-1-design.md section 4.2) is in the reach of every database that reaches the element. Default stereotypes
+/// (next-phase-2-design.md section 3.1) need no walk of their own: the database's schema entries and every package on a reached
+/// element's chain are reached, and their <c>defaultStereotypes</c> are references; the package a table without a file or an
+/// overlay takes its defaults from is its entity's or relation's, reached with it, and every package on a holder's chain (the
+/// <c>e:</c> keys resolution adds) is reached through the parents.
 /// </remarks>
 internal static class DatabaseReach
 {

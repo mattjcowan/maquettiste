@@ -765,6 +765,13 @@ creating a synthesized table's overlay with just the edited column on its first 
 
 **7.1 Ordering.** Packages by qualified name; entities, value objects, enums, scalars and relations by (package qualified name, name, id); databases by name; tables by (schema, name); columns by `Position`.
 
+ Within a table (next-phase-2-design.md section 3.1), own members come first (a synthesized table's attribute columns
+and an overlay's extra columns, a file's columns, keys, indexes and checks in file order), then the members it inherits
+from its stereotypes: stereotype by stereotype in effective-set order (schema defaults, package defaults from the
+outermost package in, then the table's own list, each layer's implied stereotypes first), each stereotype's members in
+its file order. `Position` follows that order; inherited checks continue the own checks' ordinal, and inherited indexes
+count as declared indexes.
+
 **7.1a Processes, actors and scenarios (phase-3-design.md sections 4.3 and 7.1, status: built 2026-09-30, P5a).**
 `ResolveRun.Processes.cs` resolves them after the conceptual layer (a lifecycle reads its subject's flattened attributes) into
 `ResolvedProcesses.cs`: `RProcess : RElement` (`Use`, `Subject`, `BoundAttribute`, `BoundEnum`, `Context`, `Events`, `Guards`,
@@ -803,6 +810,14 @@ key, so editing a scenario (a referrer of its process) re-renders only the units
 **7.2b Which schema a conventional table goes to (E26, status: built 2026-09-29, round 9).** `DatabaseScope.SchemaFor` answers for an entity's table: the entity's mapping `schema`, else the schema of the nearest `packages` entry (walking up from the entity's package) that names one, else none; `DatabaseRun.NewEntityTable` puts a table file's (overlay's) `schema` first and falls back to the database's default schema (`defaultSchema`, else the dialect's). A `packages` entry is a package id or `{ "package", "schema" }`; `ConventionPackageListConverter` reads both and writes the id when there is no schema, and the canonical writer does the same through the schema keyword `x-collapse`. Schema references are ids, so renaming a schema touches only its entry and, when it is the default, `defaultSchema`. The batch operations `add-schema`, `rename-schema`, `remove-schema` and `set-default-schema` (`ModelStore.Schemas.cs`) expand into element updates executed with the batch's other operations; `remove-schema` lists the tables, views, sequences, convention entries and mappings still in the schema (MQ4015) unless a `target` receives them. Validation revisits a database's mappings with a `schema` when the database changes (MQ4014).
 
 **7.3 Physical keys.** File-backed tables keep their ULID as `Key`. A synthesized table's key is `<entityId>@<databaseId>` (junction: `<relationId>@<databaseId>`; child table: `<entityId>.<attributeId>@<databaseId>`; the enum lookup table and its `enum` overlay are retired, MQ7012). A table overlay file targets exactly one of them (D9): `entity` (the entity table), `entity` + `attribute` (that entity's child table for the attribute, own, inherited or virtual, so TPC copies stay distinct) or `relation` (junction). A synthesized key sequence (§7.5) has the key `<entityId>.sequence@<databaseId>`. Column keys are attribute paths: `<attrId>`, `<attrId>.<memberAttrId>` for embedded value objects, `<endId>.<keyAttrId>` for FK columns, `discriminator`, `position`, `id` (surrogate). Overlay columns (`Column.Attribute`), constraint and index column lists, and snapshots all use these keys, which is what lets the schema diff see renames.
+
+ A member a table inherits from a stereotype (next-phase-2-design.md section 3.1: a column, primary key, unique, foreign
+key, index or check) has the id and key `<tableKey>.<memberId>`, where the table key is the file id of a designed or
+imported table and the synthesized key above otherwise; inside a member set every column a member names is keyed the
+same way. `ContributedMembers.TryParse` splits such a key at its last `.` when the rest is an id (a relation end's key
+column has the same shape, so a caller confirms the stereotype member). A redefinition changes facets and never the key,
+a bare member id never names an inherited member (MQ4008), and the index records a keyed value as references to the
+table and the member, so seeds, bindings, deletes, captures and facts treat an inherited member like an own one.
 
 As built on 2026-10-01, the physical side of a synthesized column is free: an overlay column entry may set `name`, `type`, `length`, `precision`, `scale`, `nativeType`, `nullable`, `default`, `comment` and `description` (and the other column members), and `DatabaseRun.AddColumn` applies each over what the attribute gives (`ApplyColumnFile` for the default, comment and annotations; a native type is computed from the resulting type and facets unless the entry sets one). The attribute keeps its own type and facets in the resolved model (`RColumn.Attribute.Length` stays 255 under a column the overlay makes `text` or `varchar(2056)`): the attribute's length is validation, the column's is storage, and no rule compares the two. A synthesized foreign key column (relation, junction, child table owner key, TPT derived key) copies the referenced column's type, facets and native type unless its own overlay entry pins any of type, length, precision, scale or native type. `DatabaseRun.CheckForeignKeyColumns` then runs MQ4005 over the resolved columns, after `FinishTables`: each foreign key column must have the referenced column's type and native type (ordinal, native type case-insensitive) and the facets its type uses (length for string, text and binary; precision for decimal and the time types; scale for decimal). A mismatch is reported on the file that pins it, with a pointer: the foreign key column's overlay entry or designed-table column, else the referenced column's, else the relation end (`/ends/<i>`) of the key, else the entity that declares the column's attribute. Validation's file-level MQ4005 still compares the declared types when both tables are files; the resolved check skips exactly that case (both columns declared in files with differing types), so a column is reported once. Every validate path reports these resolver findings, not only a generation run: `ModelStore.ValidateAsync` (the editor's validation loop and `POST /api/validate`, `maquettiste validate` with its JSON and SARIF, the MCP `validate` tool) adds the resolver's diagnostics once the whole-model validation, load diagnostics included, has no error, resolving once per snapshot (`ModelStore.ResolverFindingsAsync`, kept with the snapshot, positioned with `Positions`), filtered to a scope like the load diagnostics, and dropping an exact repeat or an unpointed finding whose rule validation already reports on the same element (`ModelStore.NewFindings`).
 
@@ -1277,7 +1292,7 @@ public interface IScriptSandboxFactory { IScriptSandboxPool CreatePool(IReadOnly
 public interface IScriptSandboxPool : IDisposable { IReadOnlyList<ScriptRegistration> Registrations { get; } IReadOnlyList<Diagnostic> Warnings { get; } IScriptSandboxLease Rent(); }
 public interface IScriptSandboxLease : IDisposable { IScriptSandbox Sandbox { get; } }
 public sealed record ScriptRegistration(ScriptRegistrationKind Kind, string Name, string DeclaredIn) { public bool WholeModel { get; init; } }   // scope "model"
-public enum ScriptRegistrationKind { Helper, Selector, Filter, Transform, Rule }
+public enum ScriptRegistrationKind { Helper, Selector, Filter, Transform, Rule, Rows }   // Rows: a seed's rows script, named by its path
 public sealed record ScriptCallContext(IReadRecorder? Reads, string Seed, IReadOnlyDictionary<string, object?> Parameters, CancellationToken CancellationToken);
 public interface IScriptSandbox
 {
@@ -1287,12 +1302,25 @@ public interface IScriptSandbox
     IReadOnlyDictionary<string, object?> Transform(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx);
     IReadOnlyList<Diagnostic> RunRule(string ruleId, ElementDocument element, ModelSnapshot model, ScriptCallContext ctx);
     IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model, ScriptCallContext ctx);   // a whole-model rule, once
+    JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx); // a rows script: its array
 }
 public sealed class ScriptLimitException : Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
 ```
 
 - **Engine options** (Jint 4.16.4): `Strict()`, `Interop.Enabled = false`, `AllowGetType = false`, `AllowSystemReflection = false`, `DisableStringCompilation()` (no `eval`, no `Function`), no modules, `Culture(CultureInfo.InvariantCulture)`, `LocalTimeZone(TimeZoneInfo.Utc)`, `TimeSystem` = a fixed clock at 2000-01-01T00:00:00Z (so `Date.now()` and `new Date()` are constant), `LimitRecursion`, `LimitMemory`, `TimeoutInterval` (none when `scriptTimeoutMs` is 0: the wall clock is off and statements alone bound a call, so results do not depend on load), `MaxStatements` from `SandboxLimits` (clamped to 2,000,000,000, below `int.MaxValue`, which Jint reads as no limit), and `Options.CancellationToken(ct)` with the pool's run token, with `engine.Constraints.Reset()` before every top-level call. Pools live for one run (or one validation), so the run token fits; every call also checks `ScriptCallContext.CancellationToken` before it starts. A running script therefore stops within the one-second cancellation budget (host-contracts 26) although the script timeout (2 s by default) is longer. `Math.random` is replaced by xorshift128+ seeded from `ScriptCallContext.Seed` (the unit key or element id) at every top-level call.
 - **Registration**: each engine runs the pool's prepared scripts (`Engine.PrepareScript`, prepared once per pool) against a global `maquettiste` with `helper(name, fn)`, `selector(name, fn)`, `filter(name, fn)`, `transform(name, fn)`, `rule(spec)`, then deep-freezes `globalThis` and the registration object. Rule scripts each run in their own function scope, and a pool of rule scripts deep-freezes the globals before they run, so a rule file cannot publish anything for another; a top-level `let` or `var` in a rule file is MQ5005 (next-phase-1-design.md section 5.7). That makes a rule file's hash, with the shared setup, its behaviour, which is what lets the validator cache a rule's results per element; a file with MQ5005 is never cached. Helpers must be pure; closure state cannot be frozen, and the `--jobs 1` versus `--jobs N` determinism test (§17) is what catches it (D12).
+- **Rows scripts** (next-phase-2-design.md section 3.4): a file directly in `extensions/seeds/` calls
+  `maquettiste.rows(fn)` exactly once, registered under its path (`ScriptRegistrationKind.Rows`). It loads as a rule
+  file does (its own function scope, frozen globals, MQ5005 for a top-level `let` or `var`, the line and column of its
+  errors); a rows script that calls anything else, or a rule or pack script that calls `rows`, fails to load. `RunRows`
+  calls `fn(model, seed)` with the rule-script model view, whose reads go to `ScriptCallContext.Reads`, and a frozen
+  copy of the seed's canonical JSON; `Math.random` is seeded with the seed id. The result must be an array of plain
+  objects whose values are JSON values. `Resolution/SeedScripts.cs` runs one seed's script in a one-engine pool created
+  for the call, through the engine-wide `SeedRowsCache` (`EngineServices.SeedRows`, shared by the resolver and the
+  validator): an entry is reused while the seed's dependency hash, the script's path and hash, the limits and the hashes
+  of the keys the run read are unchanged, and only clean runs (no failure, no MQ5005) are stored. Load, the index and
+  extension writes never run a rows script; a write loads it alone and reports MQ7127 when it does not load or does not
+  register its rows once.
 - **Pool**: one Jint engine per worker (`size` = render parallelism), rented for a whole unit. A unit renders synchronously on its worker thread, which `LimitMemory`'s per-thread accounting requires.
 - **Model view**: `JsModelProxy : ObjectInstance` exposes an `IResolvedObject`'s template-visible properties in camelCase, read-only (`Set`, `DefineOwnProperty` and `Delete` refuse), records dependencies like the Scriban accessor, and wraps lists as frozen array-likes. Values cross as JSON-like data: string, number (integral → `long`), bool, null, arrays, plain objects, and resolved objects as proxies both ways. A returned function or symbol is an error.
 
@@ -1313,7 +1341,14 @@ public sealed class ScriptLimitException : Exception { public Diagnostic Diagnos
 | `l:<locale>:<ownerId>` | `LocalizationIndex.OwnerHash`: `H` over the owner's effective entries in that locale (every field of the owner and its sub-elements, ordinal by id, with their `src` fingerprints) and their description sidecars' hashes. A helper records one per consulted chain locale up to the one that answered, plus the owner's `e:` key when the default text answered (reference-types-seeds-localization.md section 3.8) |
 | `t:<pack>/<path>` | file hash of a template or partial |
 | `d:<databaseId>` | `SchemaDiffResult.Hash` |
+| `x:<path under extensions>` | the content hash of a file under `extensions/` (`seeds/audited-records.js`), or absent; recorded by a seed's scripted rows (next-phase-2-design.md section 3.4) |
+| `ix:<index>:<value>`, `rt:<id>` | as `RuleKeyHasher` hashes them for the rule cache: `ix:` the sorted ids a `withStereotype`, `withTag`, `withProperty` or `byQualifiedName` lookup returns, `rt:` every reference entry to the id; recorded by a scripted seed's rows through the reads of its script run |
 | any key that no longer resolves | `"absent"` |
+
+A seed's scripted rows carry, as their list's membership keys and each row's keys, the seed's keys, the script's `x:`
+key and the keys its run read (`e:`, `k:`, `ix:`, `rt:`), so a unit that read them renders again exactly when the
+script, the seed or something the script read changes; `PlanExplainer` words an `x:` key as "The extension file <path>",
+with the cause kind `inputs`.
 
 `StaticHash = H("mq-unit-1", EngineVersion.Value, pack name, canonical PackUnit JSON, ScriptsHash, canonical effective parameters, output base, formatter settings or "none", unit key)`. `InputHash = H(StaticHash, key₁, hash₁, key₂, hash₂, …)` over the unit's recorded read keys in ordinal order. A unit is **skipped** when not forced, not in check mode, its `UnitState` exists, the `InputHash` recomputed from the recorded keys equals the stored one, and every recorded output still has the same manifest hash and the same length and mtime on disk (a stat mismatch re-hashes the file). Owned outputs only need to exist. Skipped units keep their manifest entries and state. Because resolved objects carry `r:` keys (§7), a new file that starts contributing to an existing resolved object (a mapping, a table overlay, a relation) changes the recomputed `InputHash` of every unit that read that object, so incremental runs and `--force` runs agree. Rendered units store their new `UnitState` (read keys, hash, outputs with stat) in `CacheDirectory/units/<pack>.v1.bin` when their pack completes, and only in apply mode. A unit whose render fails keeps its previous outputs and state.
 

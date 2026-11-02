@@ -108,7 +108,7 @@ public sealed record Stereotype : Element, IPackaged
 
     /// <summary>
     /// Stereotype keys applied with this one, one level deep (MQ2017): an element that carries it carries them too, before its own
-    /// (<see cref="ModelSnapshot.EffectiveStereotypes"/>).
+    /// (<see cref="ModelSnapshot.EffectiveStereotypes(IReadOnlyList{string})"/>).
     /// </summary>
     [StereotypeKeys]
     public IReadOnlyList<string> Implies { get; init; } = [];
@@ -129,11 +129,84 @@ public sealed record Stereotype : Element, IPackaged
     public IReadOnlyDictionary<string, IReadOnlyDictionary<string, JsonElement>> Storage { get; init; } =
         ImmutableDictionary<string, IReadOnlyDictionary<string, JsonElement>>.Empty;
 
+    /// <summary>
+    /// Columns every table whose effective set holds the stereotype inherits (next-phase-2-design.md section 3.1), keyed
+    /// <c>&lt;tableKey&gt;.&lt;memberId&gt;</c> in each table. With the keys, indexes and checks below they are the stereotype's
+    /// <em>members</em>. A synthesized table that stores the stereotype's attributes as columns inherits none of them.
+    /// </summary>
+    public IReadOnlyList<Column> Columns { get; init; } = [];
+
+    /// <summary>A primary key every carrier inherits, over the stereotype's own columns; it has an id and no name.</summary>
+    public PrimaryKey? PrimaryKey { get; init; }
+
+    /// <summary>Unique constraints every carrier inherits, over the stereotype's own columns.</summary>
+    public IReadOnlyList<UniqueConstraint> Uniques { get; init; } = [];
+
+    /// <summary>Foreign keys every carrier inherits, to one fixed table or to the table each carrier names in a parameter.</summary>
+    public IReadOnlyList<MemberForeignKey> ForeignKeys { get; init; } = [];
+
+    /// <summary>Check constraints every carrier inherits.</summary>
+    public IReadOnlyList<CheckConstraint> Checks { get; init; } = [];
+
+    /// <summary>Indexes every carrier inherits, over the stereotype's own columns.</summary>
+    public IReadOnlyList<TableIndex> Indexes { get; init; } = [];
+
     /// <summary>An icon name.</summary>
     public string? Icon { get; init; }
 
     /// <summary>A display color.</summary>
     public string? Color { get; init; }
+}
+
+/// <summary>
+/// A foreign key a stereotype contributes (next-phase-2-design.md section 3.1): a <see cref="ForeignKey"/>'s members without a name,
+/// since every carrier would share it, and with a target that is either one fixed table (<see cref="ReferencesTable"/>) or the
+/// table each carrier names in a stereotype parameter (<see cref="ReferencesParameter"/>), never both (MQ2026).
+/// </summary>
+public sealed record MemberForeignKey
+{
+    /// <summary>The key's id: the member id, keyed <c>&lt;tableKey&gt;.&lt;id&gt;</c> in each carrying table.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The referencing columns: ids of the stereotype's own columns, in key order.</summary>
+    [ElementRef(Keyed = true)]
+    public required IReadOnlyList<string> Columns { get; init; }
+
+    /// <summary>The id of the one table every carrier references, or <see langword="null"/> with <see cref="ReferencesParameter"/>.</summary>
+    [ElementRef(Keyed = true)]
+    public string? ReferencesTable { get; init; }
+
+    /// <summary>
+    /// The name of a required stereotype parameter typed <c>{type: string, x-ref: {kind: table, sameDatabase: true}}</c>, in which each
+    /// carrier names the table it references in its <c>properties</c>; <see langword="null"/> with <see cref="ReferencesTable"/>.
+    /// </summary>
+    public string? ReferencesParameter { get; init; }
+
+    /// <summary>With <see cref="ReferencesTable"/>: referenced column ids or keys; empty means the referenced primary key.</summary>
+    [ElementRef(Keyed = true)]
+    public IReadOnlyList<string> ReferencesColumns { get; init; } = [];
+
+    /// <summary>Whether the last column pair is a period the referenced rows' periods must cover (PostgreSQL 18 <c>PERIOD</c>).</summary>
+    public bool Period { get; init; }
+
+    /// <summary>The on-delete action.</summary>
+    public ReferentialAction OnDelete { get; init; } = ReferentialAction.NoAction;
+
+    /// <summary>With <see cref="OnDelete"/> set-null or set-default, the columns of <see cref="Columns"/> the action sets; empty sets them all.</summary>
+    [ElementRef(Keyed = true)]
+    public IReadOnlyList<string> OnDeleteColumns { get; init; } = [];
+
+    /// <summary>The on-update action.</summary>
+    public ReferentialAction OnUpdate { get; init; } = ReferentialAction.NoAction;
+
+    /// <summary>When the key is checked.</summary>
+    public Deferrability Deferrable { get; init; } = Deferrability.NotDeferrable;
+
+    /// <summary>
+    /// The constraint name one carrying table's <c>redefines</c> entry gives the key in that table's member set; never read from or
+    /// written to a file (a stereotype's foreign key has no name), so it is internal and outside the JSON contract.
+    /// </summary>
+    internal string? Name { get; init; }
 }
 
 /// <summary>
@@ -149,8 +222,34 @@ public sealed record StereotypeParameters
     public IReadOnlyList<string> Required { get; init; } = [];
 }
 
-/// <summary>One stereotype of an element's effective set (<see cref="ModelSnapshot.EffectiveStereotypes"/>).</summary>
+/// <summary>Where a stereotype of an effective set comes from (next-phase-2-design.md section 3.1).</summary>
+public enum StereotypeSource
+{
+    /// <summary>The element's own <c>stereotypes</c> list.</summary>
+    Own,
+
+    /// <summary>Implied by a stereotype of the element's own list.</summary>
+    Implied,
+
+    /// <summary>A database schema's <c>defaultStereotypes</c>, or a stereotype one of them implies.</summary>
+    SchemaDefault,
+
+    /// <summary>A package's <c>defaultStereotypes</c>, or a stereotype one of them implies.</summary>
+    PackageDefault,
+}
+
+/// <summary>One stereotype of an effective set (<see cref="ModelSnapshot.EffectiveStereotypes(Element)"/>, or of a key list).</summary>
 /// <param name="Stereotype">The stereotype.</param>
-/// <param name="Entry">The element's own entry, or the implying stereotype's.</param>
-/// <param name="ImpliedBy">The key of the stereotype that implies it, or <see langword="null"/> for an own entry.</param>
-public sealed record AppliedStereotype(Stereotype Stereotype, int Entry, string? ImpliedBy);
+/// <param name="Entry">The element's own entry, or the implying stereotype's; -1 for a default and the stereotypes it implies.</param>
+/// <param name="ImpliedBy">The key of the stereotype that implies it, or <see langword="null"/> for an own or default entry.</param>
+public sealed record AppliedStereotype(Stereotype Stereotype, int Entry, string? ImpliedBy)
+{
+    /// <summary>
+    /// Where the stereotype comes from: <see cref="StereotypeSource.Own"/>, <see cref="StereotypeSource.Implied"/> (by an own one),
+    /// or the default that gives it, which a stereotype implied by a default shares (with <see cref="ImpliedBy"/> set).
+    /// </summary>
+    public StereotypeSource Source { get; init; } = StereotypeSource.Own;
+
+    /// <summary>The id of the database schema entry or package whose default list gives the stereotype; <see langword="null"/> otherwise.</summary>
+    public string? DefaultHolder { get; init; }
+}

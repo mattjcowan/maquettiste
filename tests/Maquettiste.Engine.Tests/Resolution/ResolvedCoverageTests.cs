@@ -72,6 +72,7 @@ public sealed class ResolvedCoverageTests
 
         // Reference data.
         new("reference type", "reference-type.json", "", typeof(RReferenceType)),
+        new("former code", "reference-type.json", "formerCodes/[]", typeof(RFormerCode)),
         new("seed", "seed.json", "", typeof(RSeed)),
         new("seed row", "seed.json", "rows/[]", typeof(RSeedRow)),
 
@@ -103,6 +104,7 @@ public sealed class ResolvedCoverageTests
         new("migration state", "migration.json", "$defs/migrationState", typeof(RMigrationState)),
         new("migration key", "migration.json", "keys/[]", typeof(RMigrationRekey)),
         new("migration value", "migration.json", "values/[]", typeof(RMigrationValue)),
+        new("migration collection", "migration.json", "collections/[]", typeof(RMigrationCollection)),
         new("migration conversion", "migration.json", "conversion", typeof(RConversion)),
         new("migration data check", "migration.json", "dataCheck", typeof(RMigrationDataCheck)),
     ];
@@ -118,7 +120,7 @@ public sealed class ResolvedCoverageTests
     };
 
     /// <summary>Properties of one target that are deliberately not resolved, and why.</summary>
-    private static readonly Dictionary<(string Target, string Property), string> NotResolved = new()
+    private static readonly Dictionary<(string Target, string Property), string> NotResolved = WithDefaultLists(new()
     {
         // A stereotype's storage reaches templates merged under a table's own (table.storage), as its defaultProperties do on each
         // carrier; model.stereotypes lists the definition without it (next-phase-1-design.md section 5.5).
@@ -132,7 +134,27 @@ public sealed class ResolvedCoverageTests
         [("category", "category")] = "category summary",
         [("category", "properties")] = "category summary",
         [("category", "generation")] = "category summary",
-    };
+    });
+
+    /// <summary>
+    /// Default stereotype lists, exclusions and contributed members (next-phase-2-design.md section 3.1): a database schema's and a
+    /// package's <c>defaultStereotypes</c> and every top-level <c>excludeStereotypes</c> (a migration fact has none) shape the effective
+    /// set of the elements they reach, and a stereotype's members, with a table's <c>redefines</c> and <c>excludes</c>, resolve only on
+    /// each carrying table as its inherited members, rather than as members of their own.
+    /// </summary>
+    private static Dictionary<(string Target, string Property), string> WithDefaultLists(Dictionary<(string Target, string Property), string> map)
+    {
+        const string reason = "applied through the effective set and inherited members (MemberOrigin, RStereotype.Source)";
+        foreach (var target in Targets.Where(t => t.Path.Length == 0 && t.File != "migration.json"))
+            map[(target.Label, "excludeStereotypes")] = reason;
+        map[("package", "defaultStereotypes")] = reason;
+        map[("database schema", "defaultStereotypes")] = reason;
+        foreach (var member in new[] { "columns", "primaryKey", "uniques", "foreignKeys", "checks", "indexes" })
+            map[("stereotype", member)] = reason;
+        map[("table", "redefines")] = reason;
+        map[("table", "excludes")] = reason;
+        return map;
+    }
 
     /// <summary>Properties resolved under another member name.</summary>
     internal static readonly Dictionary<(string Target, string Property), string> Renamed = new()

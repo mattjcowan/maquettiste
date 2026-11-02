@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Maquettiste.Engine;
 using Maquettiste.Engine.Diagnostics;
 
@@ -37,17 +38,22 @@ internal static class BatchOutput
     }
 
     /// <summary>
-    /// The text of a saved apply: a line per written or deleted path (<c>written &lt;path&gt;</c>, <c>deleted &lt;path&gt;</c>), then
-    /// <c>name  id</c> per name the batch resolved and placeholder it declared.
+    /// The text of a saved apply: a usage line per reference-type refactor (<see cref="UsageLines"/>), a line per written or deleted path
+    /// (<c>written &lt;path&gt;</c>, <c>deleted &lt;path&gt;</c>), then <c>name  id</c> per name the batch resolved and placeholder it
+    /// declared.
     /// </summary>
     /// <param name="result">The saved result.</param>
-    /// <param name="before">The model before the batch, where a deleted element's path is read.</param>
+    /// <param name="before">The model before the batch, where a deleted element's path and a refactored type's name are read.</param>
+    /// <param name="batch">The batch as parsed, whose refactors get a usage line.</param>
     /// <returns>The text, each line ending with a line feed.</returns>
-    public static string AppliedText(BatchResult result, Engine.Model.ModelSnapshot before)
+    public static string AppliedText(BatchResult result, Engine.Model.ModelSnapshot before, ModelBatch batch)
     {
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(batch);
         var text = new StringBuilder();
+        foreach (var line in UsageLines(batch, result.Items, result.Ids, before))
+            text.Append(line).Append('\n');
         foreach (var change in result.Changes?.Changed ?? [])
             text.Append("written ").Append(change.Path).Append('\n');
         foreach (var id in result.Changes?.Deleted ?? [])
@@ -57,15 +63,22 @@ internal static class BatchOutput
     }
 
     /// <summary>
-    /// The text of a dry run that would save: each file's unified diff, then <c>name  id</c> per name, then a <c>+ </c> line per
-    /// diagnostic the change would add and a <c>- </c> line per diagnostic it would remove.
+    /// The text of a dry run that would save: a usage line per reference-type refactor (<see cref="UsageLines"/>), each file's unified
+    /// diff, then <c>name  id</c> per name, then a <c>+ </c> line per diagnostic the change would add and a <c>- </c> line per diagnostic
+    /// it would remove.
     /// </summary>
     /// <param name="preview">The dry run.</param>
+    /// <param name="before">The model before the batch, where a refactored type's name is read.</param>
+    /// <param name="batch">The batch as parsed, whose refactors get a usage line.</param>
     /// <returns>The text, each line ending with a line feed.</returns>
-    public static string PreviewText(BatchPreview preview)
+    public static string PreviewText(BatchPreview preview, Engine.Model.ModelSnapshot before, ModelBatch batch)
     {
         ArgumentNullException.ThrowIfNull(preview);
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(batch);
         var text = new StringBuilder();
+        foreach (var line in UsageLines(batch, preview.Items, preview.Ids, before))
+            text.Append(line).Append('\n');
         foreach (var file in preview.Files)
         {
             if (file.Diff is { Length: > 0 } diff)
@@ -80,6 +93,36 @@ internal static class BatchOutput
         foreach (var d in preview.DiagnosticsRemoved)
             text.Append("- ").Append(DiagnosticOutput.Line(d)).Append('\n');
         return text.ToString();
+    }
+
+    /// <summary>
+    /// One line per reference-type refactor of a batch (next-phase-2-design.md section 3.5), from the usage on the item of the type it
+    /// names: <c>&lt;op&gt; &lt;type&gt;: &lt;n&gt; uses, &lt;m&gt; rows moved, &lt;k&gt; rows removed, &lt;t&gt; translations removed</c>.
+    /// </summary>
+    /// <param name="batch">The batch as parsed (its ids may be names, which <paramref name="ids"/> resolves).</param>
+    /// <param name="items">The items of the answer.</param>
+    /// <param name="ids">The names the batch resolved.</param>
+    /// <param name="before">The model before the batch, where the type's name is read.</param>
+    /// <returns>The lines, in operation order.</returns>
+    public static IEnumerable<string> UsageLines(ModelBatch batch, IReadOnlyList<SaveResult> items, BatchIds ids, Engine.Model.ModelSnapshot before)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(ids);
+        ArgumentNullException.ThrowIfNull(before);
+        foreach (var o in batch.Operations)
+        {
+            if (o.Op is not (BatchOp.RenameCode or BatchOp.RetireCode or BatchOp.MergeReferenceTypes or BatchOp.RenameReferenceType) || o.Id is null)
+                continue;
+            var id = ids.Names.GetValueOrDefault(o.Id) ?? o.Id;
+            if (items.FirstOrDefault(i => i.Id == id && i.Usage is not null)?.Usage is not { } usage)
+                continue;
+            var name = before.Get<Engine.Model.ReferenceType>(id)?.Name ?? id;
+            yield return string.Create(CultureInfo.InvariantCulture,
+                $"{JsonSerializer.Serialize(o.Op, Engine.Model.EngineJson.Options).Trim('"')} {name}: {Count(usage.UseCount, "use")}, {Count(usage.RowsMoved, "row")} moved, {Count(usage.RowsRemoved, "row")} removed, {Count(usage.TranslationsRemoved, "translation")} removed");
+        }
+
+        static string Count(int n, string noun) => string.Create(CultureInfo.InvariantCulture, $"{n} {noun}{(n == 1 ? "" : "s")}");
     }
 
     /// <summary>

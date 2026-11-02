@@ -81,3 +81,19 @@ The model loader (stage 1), the index cache, the file-name policy, the change pl
   undo takes back the table, column and key sequence ids those aliases recorded (when no element holds them), so the alias stays
   as it is and the next diff sees only what changed in between. `ChangePlanner.Cascade` treats a reference from an entity's binding
   as removable in both resolutions: the binding (or the one field, constant or listed column) goes and the entity stays.
+  Every materialize operation records the provenance of the table-file columns its binding follows
+  (next-phase-2-design.md section 3.3, decision 4): all of them when it creates the binding or the binding has none,
+  else the columns whose fields it writes, hashed from the entries it writes when it also writes the table.
+- **Binding operations (next-phase-2-design.md section 3.3).** `Materializer.Bindings.cs` plans `map-by-name` (the
+  attributes a binding leaves unmapped to the free columns of the same loose name) and `resync-binding` (renamed,
+  retyped, map by name, added, removed, provenance) from files only, through `Model/BindingDrift.cs`; they never resolve
+  the model, and their refusals are MQ4089. `StereotypeFold` moves provenance keys with the column ids it rewrites,
+  since provenance is not a reference.
+- **Reference-type refactors (next-phase-2-design.md section 3.5).** `ModelStore.ReferenceRefactors.cs` expands
+  `rename-code`, `retire-code`, `merge-reference-types` and `rename-reference-type` from the index, never a resolve:
+  the refactors of one batch share working copies, value rewrites land first at the index's pointers and the structural
+  edits (rows removed or moved, former codes, remapped columns) after; a refusal is MQ7020. The planner supports them in
+  three places: a seed in its target's folder as the snapshot had it follows the target the plan renames when the plan
+  updates it after the target, its CSV rows file with it (`Relocate`, `DropRowsFile`); a sub-element that moves to
+  another element of the plan keeps its translations (`ReconcileTranslations`) and does not count as deleted in the
+  delete check (`CheckCandidate`).

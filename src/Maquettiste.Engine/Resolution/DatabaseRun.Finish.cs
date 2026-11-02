@@ -19,6 +19,8 @@ internal sealed partial class DatabaseRun
             // A table file's own package wins; a table without one is in its entity's or relation's (next-phase-1-design.md 4.3).
             t.Table.Package ??= t.Table.Entity?.Package ?? t.Table.Relation?.Package;
             AddOverlayExtraColumns(t);
+            // Inherited members follow the own ones (next-phase-2-design.md section 3.1), before positions and keys.
+            AddInheritedMembers(t);
             for (var i = 0; i < t.Columns.Count; i++)
                 t.Columns[i].Position = i;
             FillComments(t);
@@ -31,8 +33,9 @@ internal sealed partial class DatabaseRun
                 column.Nullable = false;
             }
 
-            t.Table.PrimaryKey = new RPrimaryKey { Name = t.PrimaryKeyName ?? Render(_conv.PrimaryKeyName, ("table", t.Table.Name)), Columns = pk,
-                Clustered = t.PrimaryKeyClustered, WithoutOverlaps = t.PrimaryKeyWithoutOverlaps };
+            t.Table.PrimaryKey = new RPrimaryKey { Id = t.PrimaryKeyId, Name = t.PrimaryKeyName ?? Render(_conv.PrimaryKeyName, ("table", t.Table.Name)),
+                Columns = pk, Clustered = t.PrimaryKeyClustered, WithoutOverlaps = t.PrimaryKeyWithoutOverlaps,
+                MemberOrigin = t.PrimaryKeyOrigin ?? RMemberOrigin.Own };
         }
 
         foreach (var t in _tableOrder)
@@ -97,6 +100,7 @@ internal sealed partial class DatabaseRun
                     Columns = [.. x.Columns!],
                     NullsNotDistinct = x.Spec.NullsNotDistinct,
                     WithoutOverlaps = x.Spec.WithoutOverlaps,
+                    MemberOrigin = x.Spec.Origin ?? RMemberOrigin.Own,
                 })];
             var indexes = t.Indexes.Select(i => (Spec: i, Columns: i.Columns.Select(c => (Column: c.Column is null ? null : t.Resolve(c.Column), c.Descending, c.Expression, c.Length, c.OperatorClass, c.Nulls)).ToList(),
                     Include: i.Include.Select(t.Resolve).ToList()))
@@ -124,6 +128,7 @@ internal sealed partial class DatabaseRun
                     Unique = x.Spec.Unique,
                     Method = x.Spec.Method,
                     Storage = x.Spec.Storage ?? [],
+                    MemberOrigin = x.Spec.Origin ?? RMemberOrigin.Own,
                 })];
             // Partition columns the table does not have leave the partitioning out (validation's MQ4008 says so).
             if (t.PartitionBy is { } partitionBy && partitionBy.Columns.Select(t.Resolve).ToList() is var partitionColumns && partitionColumns.All(c => c is not null))
@@ -150,6 +155,7 @@ internal sealed partial class DatabaseRun
                 Name = c.Name ?? Render(_conv.CheckName, ("table", t.Table.Name), ("name", c.Ordinal.ToString(CultureInfo.InvariantCulture))),
                 Expression = c.Expression,
                 Column = c.Column is null ? null : t.Resolve(c.Column),
+                MemberOrigin = c.Origin ?? RMemberOrigin.Own,
             })];
         }
 
@@ -337,6 +343,16 @@ internal sealed partial class DatabaseRun
     private void ReportUnresolved(TableBuild t, ForeignKeySpec spec, string reason)
     {
         var relation = spec.Result.Relation;
+        if (spec.Inherited is { } inherited)
+        {
+            // A key a stereotype contributes is placed like any finding about an inherited member (next-phase-2-design.md section 3.1).
+            var (pinId, pointer) = MemberPin(t, inherited.MemberId, inherited.From);
+            _run.AddDiagnostic("MQ4008",
+                $"Foreign key '{inherited.MemberId}' that stereotype '{inherited.From.Stereotype.Key}' gives table '{t.Table.Name}' of database '{_db.Name}' is left out: {reason}.",
+                pinId, pointer);
+            return;
+        }
+
         var elementId = spec.FileId ?? (relation is not null && _run.RelationSource(relation.Id) is not null ? relation.Id : t.SourceElementId);
         var what = spec.Name is { } name ? $"Foreign key '{name}'"
             : relation is not null ? $"The foreign key of relation '{relation.Name}'"

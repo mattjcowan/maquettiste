@@ -16,6 +16,7 @@
     "decision",
     "status",
     "stereotypes",
+    "excludeStereotypes",
     "tags",
     "category",
     "code",
@@ -23,6 +24,7 @@
     "attributes",
     "storage",
     "bindings",
+    "formerCodes",
     "properties",
     "generation",
     "source"
@@ -70,6 +72,10 @@
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",
       "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
     },
     "tags": {
       "$ref": "common.json#/$defs/tagList",
@@ -223,6 +229,31 @@
         "required": ["id", "database", "table"],
         "additionalProperties": false
       },
+      "default": []
+    },
+    "formerCodes": {
+      "description": "Codes the type's rows used to have, each with the row that holds its value now. A former code is never a live code again; imports, validation, names-to-ids and generated code still understand it. Remove an entry once no database stores the code.",
+      "type": "array",
+      "items": {
+        "title": "Former code",
+        "description": "A code a row of the type used to have, and the row that replaced it.",
+        "type": "object",
+        "x-order": ["code", "replacedBy"],
+        "properties": {
+          "code": {
+            "description": "The former code, as the code's canonical text: a string code as written, an integer code in decimal digits, a uuid code in lowercase.",
+            "type": "string",
+            "minLength": 1
+          },
+          "replacedBy": {
+            "description": "The id of the row of this type that holds the code's value now.",
+            "$ref": "common.json#/$defs/id"
+          }
+        },
+        "required": ["code", "replacedBy"],
+        "additionalProperties": false
+      },
+      "x-sort": "code",
       "default": []
     },
     "properties": {

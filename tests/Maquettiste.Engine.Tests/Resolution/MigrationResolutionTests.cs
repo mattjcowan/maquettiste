@@ -215,6 +215,43 @@ public sealed class MigrationResolutionTests
     }
 
     [Fact]
+    public void Value_map_collections_move_with_later_rekeys()
+    {
+        // F1, a value map (next-phase-2-design.md section 3.5), names a collection of a projected table by its synthesized key; F2, a
+        // materialize's rekey, moved that table to the designed one. F3, recorded after the rekey, names the designed table already.
+        var (model, db, notes) = Notes();
+        const string Entity = "01JFCT000000000000000000E1";
+        const string Tags = "01JFCT000000000000000000A2";
+        const string Type = "01JFCT000000000000000000T1";
+        const string Merged = "01JFCT000000000000000000T2";
+        var projected = Entity + "@" + db.Id;
+        var collection = new MigrationCollection { Table = projected, Schema = "public", TableName = "notes", Attribute = Tags, Name = "tags" };
+        model.Add(Fact(F1, db, MigrationFact.ValueMap) with
+            {
+                Collections = [collection], ReferenceType = Type, FromReferenceType = Merged,
+                From = new() { Name = "NoteLabel", PluralName = "NoteLabels" }, To = new() { Name = "NoteTag", PluralName = "NoteTags" },
+                Values = [new MigrationValue { From = "todo", To = "open" }],
+            })
+            .Add(Fact(F2, db, MigrationFact.Rekey, F1) with { Keys = [new MigrationRekey { Kind = "table", From = projected, To = notes.Id, Name = "notes" }] })
+            .Add(Fact(F3, db, MigrationFact.ValueMap, F2) with
+            {
+                Collections = [collection with { Table = notes.Id }], ReferenceType = Type,
+                From = new() { Name = "NoteTag" }, To = new() { Name = "NoteTag" }, Values = [new MigrationValue { From = "wip", To = "open" }],
+            });
+
+        var resolved = ResolutionKit.Resolve(model);
+        var facts = resolved.Db("main").Migrations;
+        var map = facts.Single(f => f.Id == F1);
+        var moved = Assert.Single(map.Collections);
+        Assert.Equal((projected, notes.Id, Tags, "tags"), (moved.Table, moved.CurrentTable, moved.Attribute, moved.Name));
+        Assert.Equal(("public", "notes"), (moved.Schema, moved.TableName));
+        Assert.Equal((Type, Merged), (map.ReferenceType, map.FromReferenceType));
+        Assert.Equal(("NoteLabel", "NoteLabels", "NoteTag", "NoteTags"), (map.From!.Name, map.From.PluralName, map.To!.Name, map.To.PluralName));
+        Assert.Contains("e:" + F2, map.Dependencies); // its keys today depend on the rekey after it
+        Assert.Equal(notes.Id, Assert.Single(facts.Single(f => f.Id == F3).Collections).CurrentTable);
+    }
+
+    [Fact]
     public void State_missing_intent_and_dialect_entries_resolve_for_the_database()
     {
         var (model, db, notes) = Notes();

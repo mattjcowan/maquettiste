@@ -17,6 +17,13 @@ public sealed record Migration : Element
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Migration;
 
+    /// <summary>
+    /// Always <see langword="null"/>: a fact has no package and takes no default stereotypes, so its file has no
+    /// <c>excludeStereotypes</c> key and its content hash stays as phase 1 froze it (next-phase-2-design.md section 3.1).
+    /// </summary>
+    [JsonIgnore]
+    public override IReadOnlyList<string>? ExcludeStereotypes { get => null; init { } }
+
     /// <summary>The database whose shape the fact changes; the fact belongs to it.</summary>
     [ElementRef(ElementKind.Database, Owning = true)]
     public required string Database { get; init; }
@@ -35,6 +42,12 @@ public sealed record Migration : Element
 
     /// <summary>The objects of an <c>adopt</c>, <c>baseline</c>, <c>value-map</c> or <c>state-map</c>; context for <c>raw</c>.</summary>
     public IReadOnlyList<MigrationObject> Objects { get; init; } = [];
+
+    /// <summary>
+    /// A <c>value-map</c>'s template-defined collections that hold the codes (next-phase-2-design.md section 3.5), sorted by owner table
+    /// key then attribute id; both are historical, so no reference walker sees them.
+    /// </summary>
+    public IReadOnlyList<MigrationCollection> Collections { get; init; } = [];
 
     /// <summary>The state before: the name and schema of a <c>rename</c>, the type facets of a <c>change-type</c>.</summary>
     public MigrationState? From { get; init; }
@@ -75,8 +88,13 @@ public sealed record Migration : Element
     /// <summary>The environment of an <c>adopt</c>: a free name.</summary>
     public string? Environment { get; init; }
 
-    /// <summary>The historical id of a <c>value-map</c>'s reference type; not a reference.</summary>
+    /// <summary>The historical id of a <c>value-map</c>'s reference type, the one that holds the codes after the fact; not a reference.</summary>
     public string? ReferenceType { get; init; }
+
+    /// <summary>
+    /// The historical id of the reference type a merge's <c>value-map</c> maps away (next-phase-2-design.md section 3.5); not a reference.
+    /// </summary>
+    public string? FromReferenceType { get; init; }
 
     /// <summary>The historical id of a <c>state-map</c>'s process; not a reference.</summary>
     public string? Process { get; init; }
@@ -180,13 +198,38 @@ public sealed record MigrationObject
 }
 
 /// <summary>
+/// A template-defined collection a <c>value-map</c> fact maps codes in (next-phase-2-design.md section 3.5): its owner table by historical
+/// key and names at the time, and the collection attribute by historical id. It has no id, so the indexer registers no sub-element.
+/// </summary>
+public sealed record MigrationCollection
+{
+    /// <summary>The owner table's key at the time: a historical key that later <c>rekey</c> facts move forward.</summary>
+    public required string Table { get; init; }
+
+    /// <summary>The owner table's database schema name at the time.</summary>
+    public string? Schema { get; init; }
+
+    /// <summary>The owner table's name at the time.</summary>
+    public string? TableName { get; init; }
+
+    /// <summary>The id of the collection attribute: a historical id, not a reference.</summary>
+    public required string Attribute { get; init; }
+
+    /// <summary>The attribute's name at the time.</summary>
+    public string? Name { get; init; }
+}
+
+/// <summary>
 /// A side of a migration fact: names for a <c>rename</c>; type facets for a <c>change-type</c>, with a reference column's strategy and
-/// bound table.
+/// bound table; a <c>value-map</c>'s reference type name and plural name.
 /// </summary>
 public sealed record MigrationState
 {
-    /// <summary>The object's name.</summary>
+    /// <summary>The object's name (a <c>value-map</c>'s reference type name).</summary>
     public string? Name { get; init; }
+
+    /// <summary>A <c>value-map</c>'s reference type plural name, so a pack finds the objects it named after the type.</summary>
+    public string? PluralName { get; init; }
 
     /// <summary>The object's database schema name.</summary>
     public string? Schema { get; init; }
@@ -222,10 +265,13 @@ public sealed record MigrationState
 /// <summary>One key a <c>rekey</c> fact moved.</summary>
 public sealed record MigrationRekey
 {
-    /// <summary>What the key names: <c>table</c>, <c>column</c>, <c>sequence</c> or <c>sql-object</c>.</summary>
+    /// <summary>
+    /// What the key names: <c>table</c>, <c>column</c>, <c>sequence</c> or <c>sql-object</c>, or the id of an <c>index</c>,
+    /// <c>unique</c>, <c>foreign-key</c> or <c>check</c> (a fold into a stereotype moves them; capture keys follow columns).
+    /// </summary>
     public required string Kind { get; init; }
 
-    /// <summary>A column entry's table key before the fact.</summary>
+    /// <summary>A column, index, unique, foreign-key or check entry's table key before the fact.</summary>
     public string? Table { get; init; }
 
     /// <summary>The key before.</summary>

@@ -156,8 +156,12 @@ matches column aliases without regard to case), and converts to the result:
   to-one navigation fills the entity's foreign key property (`CustomerId`); a field without an attribute is read but not
   copied. The rows are read-only projections, as the class's remarks say: an entity holds what the query selects and leaves
   its other properties at their defaults, so it is not a row to save back through the entity's repository.
-- Without one, the method returns `<Name>Row`, a `sealed partial record` with one property per field (`pascal` of its name),
-  typed by the field's type and nullability.
+- Without one, the method returns `<Name>Row`, a `sealed partial record` with one property per field (`pascal` of its
+  name), typed by the field's type and nullability. A field that reads a column of a table file typed by an enum (the
+  column's `typeRef`) is that enum, nullable as the field, converted as an entity's enum attribute is (a stored code
+  through `<Enum>Codes.Parse`, a stored number cast). A field that reads a column typed by a reference type keeps the
+  code's type, and the record's summary says so with a cref to the type's record ("Status holds a code of
+  `<see cref="global::Billing.InvoiceState"/>`."). The same goes for a generated `<Name><Collection>Item` record.
 - With collections, the method returns `<Name>Result(Item, <Collection>…)`: after the parent rows, each collection's statement
   (`query_collection_sql`) runs with the parent rows' distinct key values (`mq_keys0`), at most `MaxKeysPerStatement` (1000)
   of them per run, so a large parent set stays under the databases' parameter limits; the runs go in the parents' order and
@@ -201,7 +205,18 @@ public static partial class UnitOfMeasures
 }
 ```
 
-Row fields are the codes in PascalCase (`Code` in front when that does not start with a letter). With locales declared in
+Row fields are the codes in PascalCase (`Code` in front when that does not start with a letter). Each former code of the
+type (0.12.0: `formerCodes`, which the reference-type refactors write) gets an `[Obsolete]` field named as its row was,
+holding the row that replaced it, so code that names the old constant still compiles and reads the new row:
+
+```csharp
+    /// <summary>The former code kg, now the row kilogram.</summary>
+    [Obsolete("kg is a former code of UnitOfMeasure; use Kilogram.")]
+    public static readonly UnitOfMeasure Kg = Kilogram;
+```
+
+A former code whose field name a live row's field already has gets none: `net30` and `net-30` both give `Net30`. `Find`
+and `All` know the live codes only. With locales declared in
 `localization`, one `.resx` per locale holds `<Type>_DisplayName`, `<Type>_PluralName`, `<Type>_Description` and `<Type>_<Row>`
 (the row label) through the locale's fallback chain; the default locale's file is the neutral `ReferenceData.resx` and the others
 are satellites the SDK compiles into `fr/…resources.dll`.

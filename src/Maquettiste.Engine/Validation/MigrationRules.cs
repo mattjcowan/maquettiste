@@ -10,7 +10,8 @@ namespace Maquettiste.Engine.Validation;
 /// <c>after</c> links of a database's facts form a cycle), MQ4105 (a link to a fact of another database), MQ4106 (fields that do not
 /// fit the fact's type), MQ4107 (two facts change one object and neither comes after the other), MQ4108 (SQL text without an entry for
 /// the database's dialect), MQ4111 (a link to a fact that does not exist) and MQ4056 (facts outside PostgreSQL), and MQ4103 for a
-/// pending fact the validator judged stale on a resolved database (<see cref="Migrations.StaleFacts.PendingAsync"/>). The rules that
+/// pending fact the validator judged stale on a resolved database (<see cref="Migrations.StaleFacts.PendingAsync"/>), and MQ4113 (a value
+/// map that maps away a live code of its reference type; next-phase-2-design.md section 3.5). The rules that
 /// need a baseline (stale chains of complete facts, unexplained changes) are the store's. Facts are judged on their recorded keys; a later
 /// <c>rekey</c> fact does not join two keys for MQ4107 here.
 /// </summary>
@@ -22,7 +23,8 @@ internal static class MigrationRules
     private static readonly FrozenSet<string> RenameKinds = new[] { "table", "column", "view", "sequence", "schema" }.ToFrozenSet(StringComparer.Ordinal);
     private static readonly FrozenSet<string> DropKinds = new[] { "table", "column", "sequence" }.ToFrozenSet(StringComparer.Ordinal);
     private static readonly FrozenSet<string> ColumnKind = new[] { "column" }.ToFrozenSet(StringComparer.Ordinal);
-    private static readonly FrozenSet<string> RekeyKinds = new[] { "table", "column", "sequence", "sql-object" }.ToFrozenSet(StringComparer.Ordinal);
+    private static readonly FrozenSet<string> RekeyKinds =
+        new[] { "table", "column", "index", "unique", "foreign-key", "check", "sequence", "sql-object" }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
     /// The model's facts with what only the set of them decides: per fact, the MQ4104, MQ4105, MQ4107 and MQ4111 findings. Computed
@@ -170,6 +172,7 @@ internal static class MigrationRules
             return;
         var database = context.Model.Get<Database>(fact.Database);
         CheckFields(fact, report);
+        CheckLiveCodes(context, fact, report);
         if (database is not null)
         {
             // A pending fact whose change the model no longer shows is stale, never pending (section 3.2).
@@ -224,6 +227,8 @@ internal static class MigrationRules
                 }
 
                 CheckValues(fact, report);
+                if (fact.Fact == MigrationFact.ValueMap)
+                    CheckValueMap(fact, report);
                 break;
             case MigrationFact.Rekey:
                 CheckKeys(fact, report);
@@ -293,11 +298,19 @@ internal static class MigrationRules
             var key = fact.Keys[i];
             var pointer = Ptr.At("/keys", i);
             if (!RekeyKinds.Contains(key.Kind))
-                report.Add("MQ4106", $"A rekey moves the keys of tables, columns, sequences and SQL objects; this entry is a {key.Kind}.", pointer + "/kind");
-            else if (key.Kind == "column" && key.Table is null)
-                report.Add("MQ4106", $"The column key '{key.From}' names no table: a column entry gives its table's key before the fact.", pointer);
-            else if (key.Kind != "column" && key.Table is not null)
-                report.Add("MQ4106", $"The {key.Kind} key '{key.From}' names a table, which only a column entry has.", pointer + "/table");
+            {
+                report.Add("MQ4106", $"A rekey moves the keys of tables, columns, sequences and SQL objects, and the ids of indexes, uniques, foreign keys and checks; this entry is a {key.Kind}.",
+                    pointer + "/kind");
+            }
+            else if (MemberKinds.Contains(key.Kind) && key.Table is null)
+            {
+                report.Add("MQ4106", $"The {key.Kind} key '{key.From}' names no table: a {key.Kind} entry gives its table's key before the fact.", pointer);
+            }
+            else if (!MemberKinds.Contains(key.Kind) && key.Table is not null)
+            {
+                report.Add("MQ4106", $"The {key.Kind} key '{key.From}' names a table, which only a column, index, unique, foreign-key or check entry has.", pointer + "/table");
+            }
+
             if (string.Equals(key.From, key.To, StringComparison.Ordinal))
                 report.Add("MQ4106", $"The {key.Kind} key '{key.From}' moves to itself.", pointer + "/to");
             if (!seen.Add(key.Kind + "\u0000" + key.Table + "\u0000" + key.From))
@@ -317,6 +330,58 @@ internal static class MigrationRules
                 report.Add("MQ4106", $"The code '{value.From}' is listed twice in values: each stored code has one replacement.", pointer);
             if (string.Equals(value.From, value.To, StringComparison.Ordinal))
                 report.Add("MQ4106", $"The code '{value.From}' maps to itself: a values entry replaces a stored code with another.", pointer + "/to");
+        }
+    }
+
+    /// <summary>
+    /// A value map's shape (next-phase-2-design.md section 3.5): it changes a name or maps codes in a column or collection, no <c>to</c>
+    /// is also a <c>from</c> (a chain would not be idempotent), and each collection is listed once.
+    /// </summary>
+    private static void CheckValueMap(Migration fact, Report report)
+    {
+        var renames = !string.Equals(fact.From?.Name, fact.To?.Name, StringComparison.Ordinal)
+            || !string.Equals(fact.From?.PluralName, fact.To?.PluralName, StringComparison.Ordinal);
+        if (!renames && fact.Values.Count == 0)
+            report.Add("MQ4106", "The value map maps no code and changes no name: list the codes in values, or give from and to the type's names before and after.", "/values");
+        else if (!renames && fact.Objects.Count == 0 && fact.Collections.Count == 0)
+            report.Add("MQ4106", "The value map maps codes in no column or collection and changes no name: list the columns in objects or the collections that hold the codes.", "/objects");
+
+        var froms = fact.Values.Select(v => v.From).ToHashSet(StringComparer.Ordinal);
+        for (var i = 0; i < fact.Values.Count; i++)
+        {
+            var value = fact.Values[i];
+            if (!string.Equals(value.From, value.To, StringComparison.Ordinal) && froms.Contains(value.To))
+                report.Add("MQ4106", $"The code '{value.From}' maps to '{value.To}', which this value map also maps away: a chain is not idempotent; map each code to its final code.", Ptr.At("/values", i) + "/to");
+        }
+
+        var collections = new HashSet<(string, string)>();
+        for (var i = 0; i < fact.Collections.Count; i++)
+        {
+            var collection = fact.Collections[i];
+            if (!collections.Add((collection.Table, collection.Attribute)))
+                report.Add("MQ4106", $"The collection '{collection.Name ?? collection.Attribute}' of table '{collection.TableName ?? collection.Table}' is listed twice in collections.", Ptr.At("/collections", i));
+        }
+    }
+
+    // ---- MQ4113: a value map that maps away a live code ----
+
+    /// <summary>
+    /// A value map whose <c>from</c> is a live code of its reference type (next-phase-2-design.md section 3.5, decision 3): in an environment
+    /// that applies the fact late, the map would move the data of the row that holds the code now. A type the model no longer has is not
+    /// judged (the id is historical).
+    /// </summary>
+    private static void CheckLiveCodes(ValidationContext context, Migration fact, Report report)
+    {
+        if (fact.Fact != MigrationFact.ValueMap || fact.ReferenceType is not { } typeId || context.Model.Get<ReferenceType>(typeId) is not { } type)
+            return;
+        for (var i = 0; i < fact.Values.Count; i++)
+        {
+            var from = fact.Values[i].From;
+            if (context.HasLiveCode(type.Id, System.Text.Json.JsonSerializer.SerializeToElement(from)))
+            {
+                report.Add("MQ4113", $"The value map maps away '{from}', which is a live code of reference type '{type.Name}': applied late, it would move the data of the row that holds the code now. Give that row another code, or fold the fact if it is stale.",
+                    Ptr.At("/values", i) + "/from");
+            }
         }
     }
 

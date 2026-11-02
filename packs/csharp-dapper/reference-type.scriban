@@ -3,7 +3,9 @@
 # row description when a seed lists one and the single-valued and collection user fields, then a static class with one field
 # per row, All (seed order) and Find (by code). Attributes typed by a reference type hold its code (type_of: string, or the
 # code's integer type, or Guid for a uuid code), so the record is for reading reference data in code, not for mapping columns.
-# A Guid is no constant, so a uuid code is written new Guid("...") and Find compares the rows in turn.
+# A Guid is no constant, so a uuid code is written new Guid("...") and Find compares the rows in turn. Each former code of the type
+# (next-phase-2-design.md section 3.5) gets an [Obsolete] field named as its row was, holding the row that replaced it, so code that
+# names the old constant still compiles and reads the new row; Find keeps finding live codes only.
 include "_csharp.scriban"
 rt = reference_type
 name = type_name(rt)
@@ -66,6 +68,20 @@ func cs_literal(v, f)
   end
   ret "default /* " + (json v | string.replace "*/" "* /") + " */"
 end
+
+# The former codes that get an alias field, in code order: one whose member name a live row's member, or an earlier alias, already
+# has is left out (net30 and net-30 both give Net30).
+aliases = []
+taken = {}
+for r in rt.rows
+  taken[row_member(r)] = true
+end
+for fc in rt.former_codes
+  if !taken[row_member(fc)]
+    taken[row_member(fc)] = true
+    aliases[aliases.size] = fc
+  end
+end
 -}}
 {{ header() }}
 using System;
@@ -84,6 +100,11 @@ public static partial class {{ rows_class }}
 {{ doc(r.description, "    ") }}    public static readonly {{ name }} {{ row_member(r) }} = new({{ code_literal(r.code) }}, {{ json r.label }}
 {{- if has_description }}, {{ r.description ? (json r.description) : "null" }}{{ end }}
 {{- for f in rt.attributes }}, {{ cs_literal(r.values[f.name], f) }}{{ end }});
+{{- end }}
+{{- for fc in aliases }}
+
+{{ doc("The former code " + fc.code + ", now the row " + fc.replaced_by.code + ".", "    ") }}    [Obsolete({{ json ("" + fc.code + " is a former code of " + rt.name + "; use " + row_member(fc.replaced_by) + ".") }})]
+    public static readonly {{ name }} {{ row_member(fc) }} = {{ row_member(fc.replaced_by) }};
 {{- end }}
 
     /// <summary>Every row, in seed order.</summary>

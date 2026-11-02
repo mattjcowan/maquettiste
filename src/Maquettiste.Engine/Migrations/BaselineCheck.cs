@@ -38,6 +38,12 @@ internal static class BaselineCheck
         /// state a schema diff names as where it starts (<see cref="SchemaDiffResult.FromState"/>).
         /// </summary>
         public IReadOnlyDictionary<string, PhysicalSnapshot> Stored { get; init; } = new Dictionary<string, PhysicalSnapshot>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Per database id that resolved in the baseline, where it stored reference-type codes (under the baseline's keys); filled only when
+        /// asked for (<see cref="CapturesAsync"/>), for MQ4112 (<see cref="ValueMapFindings"/>).
+        /// </summary>
+        public IReadOnlyDictionary<string, CodeHolders> Holders { get; init; } = FrozenDictionary<string, CodeHolders>.Empty;
     }
 
     /// <summary>A change since the baseline that no fact explains.</summary>
@@ -55,16 +61,17 @@ internal static class BaselineCheck
     /// <param name="working">The working model.</param>
     /// <param name="databaseIds">The working databases to capture.</param>
     /// <param name="ct">Cancellation.</param>
+    /// <param name="holders">Whether to read where each baseline database stored reference-type codes (<see cref="BaselineCaptures.Holders"/>).</param>
     /// <returns>The captures.</returns>
     public static async Task<BaselineCaptures> CapturesAsync(ModelBaseline baseline, ModelSnapshot working, IReadOnlyList<string> databaseIds,
-        CancellationToken ct)
+        CancellationToken ct, bool holders = false)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(working);
         ArgumentNullException.ThrowIfNull(databaseIds);
         var model = await baseline.Store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var ids = databaseIds.Where(id => model.Get<Database>(id) is not null).Distinct(StringComparer.Ordinal).ToList();
-        var side = await baseline.Store.CaptureDatabasesAsync(model, ids, ct).ConfigureAwait(false);
+        var side = await baseline.Store.CaptureDatabasesAsync(model, ids, ct, holders).ConfigureAwait(false);
         var facts = model.All<Migration>().Select(f => f.Id).ToFrozenSet(StringComparer.Ordinal);
         var captures = new Dictionary<string, PhysicalSnapshot>(StringComparer.Ordinal);
         var stored = new Dictionary<string, PhysicalSnapshot>(StringComparer.Ordinal);
@@ -87,7 +94,7 @@ internal static class BaselineCheck
             captures[id] = ToTodayKeys(capture, ordered, f => !facts.Contains(f.Id));
         }
 
-        return new BaselineCaptures(captures, leftOut, unresolved, side.FailedOwners, facts) { Stored = stored };
+        return new BaselineCaptures(captures, leftOut, unresolved, side.FailedOwners, facts) { Stored = stored, Holders = side.Holders };
     }
 
     /// <summary>
@@ -414,6 +421,156 @@ internal static class BaselineCheck
         model.All<Table>().Where(t => string.Equals(t.Database, database.Id, StringComparison.Ordinal))
             .FirstOrDefault(t => string.Equals(t.Entity is { } entity ? (t.Attribute is { } attribute ? entity + "." + attribute : entity) : t.Relation, target,
                 StringComparison.Ordinal));
+
+    /// <summary>
+    /// MQ4112 (next-phase-2-design.md section 3.5): the reference codes and names changed since the baseline that a value map must record
+    /// in each database that may store them, and that no open value-map fact the baseline lacks records there. Each kept reference type
+    /// (in both models by id) is read for three changes:
+    /// <list type="bullet">
+    /// <item><description>a kept row (the same row id in a seed of the type) whose code changed: every database whose baseline holders
+    /// hold the type needs a value map of the type that maps the old code; the finding goes on the row's code cell;</description></item>
+    /// <item><description>a former code the baseline did not list that a type held there as a live code (the type itself, or a type the
+    /// working model no longer has, which a merge folded in): every database holding that type in the baseline needs a value map into
+    /// the type, from that type, that maps the code; on <c>/formerCodes/&lt;i&gt;</c>. A code moved over as a former code, or born after
+    /// the baseline, needs none;</description></item>
+    /// <item><description>a changed <c>name</c> or <c>pluralName</c>: every database holding the type in the baseline, or without a
+    /// binding of it, needs a value map of the type whose <c>from</c> carries the baseline's names; on <c>/name</c>, else
+    /// <c>/pluralName</c>.</description></item>
+    /// </list>
+    /// A row code change and the former code it left are one finding, on the cell. The findings name the databases that lack the fact.
+    /// </summary>
+    /// <param name="working">The working model.</param>
+    /// <param name="baseline">The baseline model.</param>
+    /// <param name="codes">The baseline's reference codes.</param>
+    /// <param name="databases">The databases of both models whose baseline resolved, by name.</param>
+    /// <param name="holders">Per database id, where the baseline stored reference-type codes.</param>
+    /// <param name="lacking">Whether the baseline lacks a fact.</param>
+    /// <param name="label">The baseline's label, for the messages.</param>
+    /// <returns>The findings, unsettled.</returns>
+    public static IReadOnlyList<Diagnostic> ValueMapFindings(ModelSnapshot working, ModelSnapshot baseline, BaselineCodes codes, IReadOnlyList<Database> databases,
+        IReadOnlyDictionary<string, CodeHolders> holders, Func<Migration, bool> lacking, string label)
+    {
+        ArgumentNullException.ThrowIfNull(working);
+        ArgumentNullException.ThrowIfNull(baseline);
+        ArgumentNullException.ThrowIfNull(codes);
+        ArgumentNullException.ThrowIfNull(databases);
+        ArgumentNullException.ThrowIfNull(holders);
+        ArgumentNullException.ThrowIfNull(lacking);
+        var found = new List<Diagnostic>();
+        if (databases.Count == 0)
+            return found;
+        var maps = working.All<Migration>().Where(f => f.Fact == MigrationFact.ValueMap && lacking(f)).ToLookup(f => f.Database, StringComparer.Ordinal);
+        var baseRows = RowCodes(baseline);
+        var seen = new HashSet<(string Type, string Code)>();
+
+        void Need(string elementId, string pointer, Func<Database, bool> holds, Func<Migration, bool> records, Func<string, string> message)
+        {
+            var missing = databases.Where(d => holds(d) && !maps[d.Id].Any(records)).Select(d => "'" + d.Name + "'").ToList();
+            if (missing.Count == 0)
+                return;
+            var where = (missing.Count == 1 ? "database " : "databases ") + string.Join(", ", missing);
+            found.Add(RuleCatalog.Create("MQ4112", message(where), elementId, working.GetDocument(elementId)?.Path, pointer));
+        }
+
+        bool Holds(Database database, string typeId) => holders.TryGetValue(database.Id, out var held) && held.Holds(typeId);
+
+        foreach (var type in working.All<ReferenceType>().OrderBy(t => t.Name, StringComparer.Ordinal).ThenBy(t => t.Id, StringComparer.Ordinal))
+        {
+            if (baseline.Get<ReferenceType>(type.Id) is not { } old)
+                continue;
+
+            // Kept rows whose code changed.
+            foreach (var seed in working.All<Seed>().Where(s => string.Equals(s.Target, type.Id, StringComparison.Ordinal))
+                .OrderBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.Id, StringComparer.Ordinal))
+            {
+                var at = CodeColumn(seed);
+                for (var r = 0; at >= 0 && r < seed.Rows.Count; r++)
+                {
+                    var row = seed.Rows[r];
+                    if (at >= row.Values.Count || ReferenceDataIndex.CodeKey(row.Values[at]) is not { } code || !baseRows.TryGetValue(row.Id, out var was)
+                        || !string.Equals(was.Type, type.Id, StringComparison.Ordinal) || string.Equals(was.Code, code, StringComparison.Ordinal)
+                        || !seen.Add((type.Id, was.Code)))
+                        continue;
+                    var from = was.Code;
+                    Need(seed.Id, "/rows/" + Text(r) + "/values/" + Text(at), d => Holds(d, type.Id), f => Maps(f, type.Id, type.Id, from),
+                        where => $"Since the baseline ({label}), row {row.Id} of reference type '{type.Name}' changed its code from '{from}' to '{code}', and no value-map fact records it in {where}, which may store '{from}'; run rename-code (or retire-code), or write the value-map fact.");
+                }
+            }
+
+            // Former codes the baseline did not list, of codes a type held there.
+            var listed = old.FormerCodes.Select(f => f.Code).ToHashSet(StringComparer.Ordinal);
+            for (var i = 0; i < type.FormerCodes.Count; i++)
+            {
+                var code = type.FormerCodes[i].Code;
+                if (listed.Contains(code))
+                    continue;
+                IEnumerable<ReferenceType> sources = codes.Held(type.Id, code) ? [old]
+                    : baseline.All<ReferenceType>().Where(t => working.Get<ReferenceType>(t.Id) is null && codes.Held(t.Id, code))
+                        .OrderBy(t => t.Name, StringComparer.Ordinal).ThenBy(t => t.Id, StringComparer.Ordinal);
+                foreach (var source in sources)
+                {
+                    if (!seen.Add((source.Id, code)))
+                        continue;
+                    var of = string.Equals(source.Id, type.Id, StringComparison.Ordinal) ? "" : $" (a code of '{source.Name}' in the baseline)";
+                    Need(type.Id, "/formerCodes/" + Text(i), d => Holds(d, source.Id), f => Maps(f, type.Id, source.Id, code),
+                        where => $"Since the baseline ({label}), reference type '{type.Name}' lists '{code}'{of} as a former code, and no value-map fact maps it away in {where}, which may store it; run the refactor that retired it, or write the value-map fact.");
+                }
+            }
+
+            // A changed name or plural name.
+            var name = !string.Equals(old.Name, type.Name, StringComparison.Ordinal);
+            if (name || !string.Equals(old.PluralName, type.PluralName, StringComparison.Ordinal))
+            {
+                var bound = type.Bindings.Select(b => b.Database).ToHashSet(StringComparer.Ordinal);
+                var renamed = name ? $"is named '{type.Name}'" : $"has the plural name '{type.PluralName ?? "(inflected)"}' (was '{old.PluralName ?? "(inflected)"}')";
+                Need(type.Id, name ? "/name" : "/pluralName", d => Holds(d, type.Id) || !bound.Contains(d.Id),
+                    f => string.Equals(f.ReferenceType, type.Id, StringComparison.Ordinal) && f.FromReferenceType is null
+                        && string.Equals(f.From?.Name, old.Name, StringComparison.Ordinal) && string.Equals(f.From?.PluralName, old.PluralName, StringComparison.Ordinal)
+                        && (!string.Equals(f.To?.Name, old.Name, StringComparison.Ordinal) || !string.Equals(f.To?.PluralName, old.PluralName, StringComparison.Ordinal)),
+                    where => $"Since the baseline ({label}), reference type '{old.Name}' {renamed}, and no value-map fact records the rename in {where}, where a pack may have named objects after it; run rename-reference-type, or write the value-map fact.");
+            }
+        }
+
+        return found;
+
+        static bool Maps(Migration fact, string type, string source, string code) =>
+            string.Equals(fact.ReferenceType, type, StringComparison.Ordinal)
+            && string.Equals(fact.FromReferenceType ?? fact.ReferenceType, source, StringComparison.Ordinal)
+            && fact.Values.Any(v => string.Equals(v.From, code, StringComparison.Ordinal));
+
+        static string Text(int value) => value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Each written row of a model's reference-type seeds by id: its type and its code (the first seed by name and id that lists it).</summary>
+    private static Dictionary<string, (string Type, string Code)> RowCodes(ModelSnapshot model)
+    {
+        var rows = new Dictionary<string, (string Type, string Code)>(StringComparer.Ordinal);
+        foreach (var seed in model.All<Seed>().OrderBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.Id, StringComparer.Ordinal))
+        {
+            if (model.Get<ReferenceType>(seed.Target) is null)
+                continue;
+            var at = CodeColumn(seed);
+            foreach (var row in seed.Rows)
+            {
+                if (at >= 0 && at < row.Values.Count && ReferenceDataIndex.CodeKey(row.Values[at]) is { } code)
+                    rows.TryAdd(row.Id, (seed.Target, code));
+            }
+        }
+
+        return rows;
+    }
+
+    /// <summary>The position of a seed's <c>code</c> column, or -1.</summary>
+    private static int CodeColumn(Seed seed)
+    {
+        for (var k = 0; k < seed.Columns.Count; k++)
+        {
+            if (string.Equals(seed.Columns[k], "code", StringComparison.Ordinal))
+                return k;
+        }
+
+        return -1;
+    }
 
     /// <summary>Ids for the facts a check classifies and never writes.</summary>
     private sealed class PlaceholderIds : IIdGenerator

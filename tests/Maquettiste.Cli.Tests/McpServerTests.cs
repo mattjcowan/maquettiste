@@ -11,10 +11,10 @@ public sealed class McpSurfaceTests
     private static readonly string[] Tools =
     [
         "apply_batch", "apply_plan", "compare_snapshots", "create_element", "create_seed", "create_snapshot", "delete_element", "delete_extension_file", "delete_pack", "delete_pack_file", "explain_unit",
-        "export_process", "export_seed_csv", "fold_migrations", "format_model", "generate", "get_database_view", "get_element", "get_elements", "get_ledger_ddl", "get_materialize_status", "get_model_index", "get_model_kinds", "get_pack",
+        "export_process", "export_seed_csv", "fold_migrations", "format_model", "generate", "get_binding_drift", "get_database_view", "get_element", "get_elements", "get_ledger_ddl", "get_materialize_status", "get_model_index", "get_model_kinds", "get_pack",
         "get_pack_outputs", "get_plan", "get_plan_diff", "get_project", "get_references", "get_resolved_model", "get_schema", "get_settings", "get_template_context",
         "get_translations", "import_process", "import_seed_csv", "list_extension_files", "list_migrations", "list_pack_files", "list_packs", "list_snapshots", "list_validation_rules",
-        "localization_status", "move_extension_file", "move_pack_file", "new_pack", "patch_element", "plan", "preview_binding_sql", "preview_materialize", "preview_query_sql", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
+        "localization_status", "move_extension_file", "move_pack_file", "new_pack", "patch_element", "plan", "preview_binding_sql", "preview_materialize", "preview_query_sql", "preview_seed_rows", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
         "reference_type_usage", "rename_pack", "restore_snapshot", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
         "sync_enum_from_process", "tag_usage", "unit_paths", "validate", "verify_scenarios", "write_extension_file", "write_pack_file",
     ];
@@ -55,7 +55,7 @@ public sealed class McpSurfaceTests
         var ct = TestContext.Current.CancellationToken;
         await using var session = await McpSession.StartAsync(ct: ct);
         var tools = await session.Client.ListToolsAsync(cancellationToken: ct);
-        Assert.Equal(27, Engine.AgentTools.All.Count);
+        Assert.Equal(29, Engine.AgentTools.All.Count);
         foreach (var tool in Engine.AgentTools.All)
         {
             var listed = tools.Single(t => t.Name == tool.Name).ProtocolTool;
@@ -599,6 +599,38 @@ public sealed class McpEndOfInputTests
 public sealed class McpReadTests
 {
     [Fact]
+    public async Task Get_binding_drift_answers_only_drifted_bindings()
+    {
+        // next-phase-2-design.md section 3.3 (D35): InvoiceNote records provenance through a re-sync; renaming the notes table's body
+        // column behind the server is drift for it alone (CustomerNote records none, and every column of notes is accounted for).
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        await using var session = await McpSession.StartAsync(repo, ct);
+        Assert.Empty((await session.OkAsync("get_binding_drift"))["bindings"]!.AsArray());
+        var resync = new[] { new { op = "resync-binding", database = "@database:main", entities = new[] { "@entity:InvoiceNote" } } };
+        Assert.Equal("saved", (string)(await session.OkAsync("apply_batch", new { operations = resync }))["outcome"]!);
+
+        repo.Replace(".maquettiste/model/databases/main/tables/notes.json", "\"name\": \"body\"", "\"name\": \"note_body\"");
+        var drift = await session.OkAsync("get_binding_drift", new { database = "main" });
+
+        var binding = Assert.Single(drift["bindings"]!.AsArray())!;
+        Assert.Equal(("InvoiceNote", "notes", true, false), ((string)binding["entityName"]!, (string)binding["sourceName"]!, (bool)binding["hasProvenance"]!, (bool)binding["stale"]!));
+        Assert.Equal(
+            new JsonObject { ["column"] = "01K6BND0000000000000000005", ["name"] = "note_body", ["attribute"] = "01K6BND0000000000000000013", ["attributeName"] = "body" }.ToJsonString(),
+            Assert.Single(binding["renamed"]!.AsArray())!.ToJsonString());
+        Assert.Empty(binding["retyped"]!.AsArray());
+        Assert.Null(drift["next"]);
+
+        // all lists every binding; an unknown database or entity is bad-request.
+        var all = await session.OkAsync("get_binding_drift", new { all = true, limit = 2 });
+        Assert.Equal(["CustomerNote", "InvoiceNote"], all["bindings"]!.AsArray().Select(b => (string)b!["entityName"]!));
+        var rest = await session.OkAsync("get_binding_drift", new { all = true, cursor = (string)all["next"]! });
+        Assert.Equal("RevenueMonth", (string)Assert.Single(rest["bindings"]!.AsArray())!["entityName"]!);
+        Assert.Equal("bad-request", (await session.ErrorAsync("get_binding_drift", new { database = "nowhere" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("get_binding_drift", new { entities = new[] { "01K6BNDNOSUCHENTITY0000000" } })).Code);
+    }
+
+    [Fact]
     public async Task Validate_against_a_folder_or_a_snapshot_compares_the_model_with_it()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -621,6 +653,93 @@ public sealed class McpReadTests
 
         Assert.Equal("bad-request", (await session.ErrorAsync("validate", new { against = "no-such-baseline" })).Code);
         Assert.Equal("bad-request", (await session.ErrorAsync("validate", new { against = snapshot, elementIds = new[] { McpSession.Customer } })).Code);
+    }
+
+    [Fact]
+    public async Task Preview_seed_rows_pages_scripted_rows()
+    {
+        // next-phase-2-design.md section 3.4 (D44): a reference type takes one row per entity of the billing package from a rows script;
+        // the preview pages them with ids derived from the seed and the code, the same on every call, and runs nothing else.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        const string type = "01K9SPM0000000000000000001", seed = "01K9SPM0000000000000000010";
+        repo.Write(".maquettiste/model/reference-types/entity-kind.json", $$"""
+            {"kind":"reference-type","id":"{{type}}","name":"EntityKind","code":{"id":"01K9SPM0000000000000000002","length":32},
+             "label":{"id":"01K9SPM0000000000000000003","length":64} }
+            """);
+        repo.Write(".maquettiste/model/seeds/entity-kinds.json", $$"""
+            {"kind":"seed","id":"{{seed}}","name":"EntityKinds","target":"{{type}}","columns":["code","label"],"rowsFrom":{"script":"seeds/entity-kinds.js"} }
+            """);
+        repo.Write(".maquettiste/extensions/seeds/entity-kinds.js", """
+            maquettiste.rows((model, seed) => model.all("entity")
+              .map(d => ({ code: d.name.toLowerCase(), label: d.name }))
+              .sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
+            """);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var first = await session.OkAsync("preview_seed_rows", new { seed, limit = 2 });
+
+        Assert.Equal(("seeds/entity-kinds.js", 2), ((string)first["script"]!, first["rows"]!.AsArray().Count));
+        var total = (int)first["total"]!;
+        Assert.True(total > 2, first.ToJsonString());
+        var rows = first["rows"]!.AsArray().ToList();
+        var cursor = (string?)first["next"];
+        while (cursor is not null)
+        {
+            var page = await session.OkAsync("preview_seed_rows", new { seed, cursor, limit = 2 });
+            rows.AddRange(page["rows"]!.AsArray());
+            cursor = (string?)page["next"];
+        }
+
+        Assert.Equal(total, rows.Count);
+        Assert.Contains(rows, row => (string)row!["values"]!["code"]! == "customer");
+        Assert.All(rows, row =>
+        {
+            var code = (string)row!["key"]![0]!;
+            Assert.Equal(Engine.Model.StableIds.RowId(seed, [code]), (string)row["id"]!);
+            Assert.Equal(code, (string)row["values"]!["code"]!);
+            Assert.Empty(row["refs"]!.AsArray());
+        });
+        // The same ids on the next call.
+        var again = await session.OkAsync("preview_seed_rows", new { seed, limit = 2 });
+        Assert.Equal(first["rows"]!.ToJsonString(), again["rows"]!.ToJsonString());
+        Assert.Equal("not-found", (await session.ErrorAsync("preview_seed_rows", new { seed = type })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("preview_seed_rows", new { seed, database = "nowhere" })).Code);
+    }
+
+    [Fact]
+    public async Task Reference_type_usage_answers_columns()
+    {
+        // next-phase-2-design.md section 3.2 (D24): reference_type_usage answers columns beside usages, the designed column whose
+        // typeRef names the type with its table, database, required and no storage choice or bound table (the billing project states
+        // none, and the type has no binding).
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        const string state = "01K9X3A0000000000000000001", events = "01K9X3C0000000000000000001", status = "01K9X3C0000000000000000003";
+        repo.Write(".maquettiste/model/reference-types/invoice-state.json", $$"""
+            { "kind": "reference-type", "id": "{{state}}", "name": "InvoiceState",
+              "code": { "id": "01K9X3A0000000000000000002", "length": 1 }, "label": { "id": "01K9X3A0000000000000000003", "length": 40 } }
+            """);
+        repo.Write(".maquettiste/model/databases/main/tables/invoice-events.json", $$"""
+            { "kind": "table", "id": "{{events}}", "name": "invoice_events", "database": "01J92P0V1QRN2181XM2ZWE02W4",
+              "columns": [ { "id": "01K9X3C0000000000000000002", "name": "id", "type": "uuid", "nullable": false },
+                           { "id": "{{status}}", "name": "status", "type": "string", "typeRef": { "ref": "{{state}}" }, "length": 1 } ],
+              "primaryKey": { "columns": ["01K9X3C0000000000000000002"] } }
+            """);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var usage = await session.OkAsync("reference_type_usage", new { id = state });
+
+        Assert.Empty(usage["usages"]!.AsArray());
+        var column = Assert.Single(usage["columns"]!.AsArray())!;
+        Assert.Equal(
+            new JsonObject
+            {
+                ["table"] = events, ["column"] = status, ["database"] = "01J92P0V1QRN2181XM2ZWE02W4", ["domain"] = null, ["required"] = false,
+                ["storage"] = null, ["boundTable"] = null,
+            }.ToJsonString(),
+            column.ToJsonString());
+        Assert.Equal("not-found", (await session.ErrorAsync("reference_type_usage", new { id = events })).Code);
     }
 
     [Fact]
@@ -697,6 +816,51 @@ public sealed class McpReadTests
             ((string)json["rationale"]!, (string)json["decision"]!, (string)json["status"]!));
         Assert.Equal("deprecated", (string)json["attributes"]!.AsArray().Single(a => (string)a!["name"]! == "customerSince")!["status"]!);
         Assert.Empty((await session.OkAsync("validate", new { elementIds = new[] { McpSession.Customer } }))["diagnostics"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task Get_database_view_shows_inherited_members()
+    {
+        // next-phase-2-design.md section 3.1: audited contributes two columns and an index, and schema billing gives it to every table;
+        // an agent reads the keyed ids it must write from memberOrigin, which own members leave null. notes keeps its own created_at.
+        var ct = TestContext.Current.CancellationToken;
+        const string mainDatabase = "01J92P0V1QRN2181XM2ZWE02W4", notes = "01K6BND0000000000000000001";
+        const string createdAt = "01JC7AVD1TC0000000000000C1", updatedAt = "01JC7AVD1TC0000000000000C2", createdIndex = "01JC7AVD1TC0000000000000X1";
+        using var repo = CliRepo.Billing();
+        repo.Replace(".maquettiste/model/vocabularies/stereotypes/audited.json", "  \"defaultProperties\": {",
+            $$"""
+              "columns": [
+                { "id": "{{createdAt}}", "name": "created_at", "type": "datetimeoffset", "nullable": false, "defaultSql": { "*": "CURRENT_TIMESTAMP" } },
+                { "id": "{{updatedAt}}", "name": "updated_at", "type": "datetimeoffset" } ],
+              "indexes": [ { "id": "{{createdIndex}}", "columns": [ { "column": "{{createdAt}}" } ] } ],
+              "defaultProperties": {
+            """);
+        repo.Replace(".maquettiste/model/databases/main/database.json", "\"name\": \"billing\"", "\"name\": \"billing\", \"defaultStereotypes\": [\"audited\"]");
+        repo.Replace(".maquettiste/model/databases/main/tables/notes.json", "  \"primaryKey\": {",
+            $"  \"excludes\": [\"{createdAt}\", \"{createdIndex}\"],\n  \"primaryKey\": {{");
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var view = (await session.OkAsync("get_database_view", new { id = mainDatabase }))["view"]!;
+
+        JsonNode Table(string name) => view["tables"]!.AsArray().Single(t => (string)t!["name"]! == name)!;
+        var products = Table("products");
+        var created = products["columns"]!.AsArray().Single(c => (string)c!["name"]! == "created_at")!;
+        Assert.Equal((string)products["key"]! + "." + createdAt, (string)created["key"]!);
+        Assert.Equal($$"""{"source":"schema-default","stereotype":"audited","memberId":"{{createdAt}}","redefined":[]}""", created["memberOrigin"]!.ToJsonString());
+        Assert.All(products["columns"]!.AsArray().Where(c => (string)c!["name"]! is not ("created_at" or "updated_at")), c => Assert.Null(c!["memberOrigin"]));
+        Assert.Null(products["primaryKey"]!["memberOrigin"]);
+        var index = products["indexes"]!.AsArray().Single(i => i!["memberOrigin"] is not null)!;
+        Assert.Equal(createdIndex, (string)index["memberOrigin"]!["memberId"]!);
+        // A synthesized table without an overlay carries the stereotype its schema default gives it.
+        Assert.Equal(["audited"], products["stereotypes"]!.AsArray().Select(s => (string)s!));
+        var notesTable = view["tables"]!.AsArray().Single(t => (string)t!["key"]! == notes)!;
+        Assert.Null(notesTable["columns"]!.AsArray().Single(c => (string)c!["name"]! == "created_at")!["memberOrigin"]);
+        Assert.Equal(notes + "." + updatedAt, (string)notesTable["columns"]!.AsArray().Single(c => (string)c!["name"]! == "updated_at")!["key"]!);
+
+        // The resolved model's table records carry the same origins.
+        var records = await session.OkAsync("get_resolved_model", new { scope = "tables", database = mainDatabase, limit = 1000 });
+        var record = records["items"]!.AsArray().Single(r => (string)r!["id"]! == (string)products["key"]!)!;
+        Assert.True(JsonNode.DeepEquals(products, record["table"]));
     }
 
     [Fact]
@@ -831,6 +995,81 @@ public sealed class McpReadTests
 public sealed class McpWriteTests
 {
     [Fact]
+    public async Task Apply_batch_takes_a_rename_code_operation()
+    {
+        // next-phase-2-design.md section 3.5 (D52): a refactor is an operation of the batch contract; its dry run and its apply answer the
+        // usage on the type's item, and a refusal is MQ7020.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        await using var session = await McpSession.StartAsync(repo, ct);
+        var created = await session.OkAsync("apply_batch", new { operations = ModelApplyTests.PaymentTerms });
+        Assert.Equal("saved", (string)created["outcome"]!);
+        var type = (string)created["ids"]!["names"]!["$term"]!;
+        var rename = new[] { new { op = "rename-code", id = "@reference-type:PaymentTerm", code = "net30", to = "net-30" } };
+        var before = repo.Tree(".maquettiste");
+
+        var preview = await session.OkAsync("apply_batch", new { operations = rename, dryRun = true });
+
+        Assert.Equal("saved", (string)preview["outcome"]!);
+        Assert.Equal(before, repo.Tree(".maquettiste"));
+        var item = preview["items"]!.AsArray().Single(i => i!["usage"] is not null)!;
+        Assert.Equal((type, 1), ((string)item["id"]!, (int)item["usage"]!["useCount"]!));
+
+        var applied = await session.OkAsync("apply_batch", new { operations = rename });
+        Assert.Equal("saved", (string)applied["outcome"]!);
+        Assert.Contains(applied["items"]!.AsArray(), i => i!["usage"] is not null);
+        var read = await session.OkAsync("get_element", new { id = type });
+        var former = Assert.Single(read["json"]!["formerCodes"]!.AsArray())!;
+        Assert.Equal("net30", (string)former["code"]!);
+
+        // The old code never comes back: renaming another code to it is refused, and nothing is written.
+        before = repo.Tree(".maquettiste");
+        var refused = await session.ErrorAsync("apply_batch", new { operations = new[] { new { op = "rename-code", id = type, code = "net60", to = "net30" } } });
+        Assert.Equal("invalid", refused.Code);
+        Assert.Contains("MQ7020", refused.Json["items"]!.ToJsonString(), StringComparison.Ordinal);
+        Assert.Equal(before, repo.Tree(".maquettiste"));
+    }
+
+    [Fact]
+    public async Task Apply_batch_resync_binding_is_one_batch()
+    {
+        // next-phase-2-design.md section 3.3 (D35): a re-sync of several entities is one batch, all or nothing; preview_materialize
+        // shows the same plan with keepNames.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        await using var session = await McpSession.StartAsync(repo, ct);
+        const string main = "01J92P0V1QRN2181XM2ZWE02W4", invoiceNote = "01K6BND0000000000000000010", customerNote = "01K6BND0000000000000000020";
+        var both = new[] { new { op = "resync-binding", database = main, entities = new[] { invoiceNote, customerNote } } };
+        var recorded = await session.OkAsync("apply_batch", new { operations = both });
+        Assert.Equal("saved", (string)recorded["outcome"]!);
+        repo.Replace(".maquettiste/model/databases/main/tables/notes.json", "\"name\": \"body\"", "\"name\": \"note_body\"");
+
+        var preview = await session.OkAsync("preview_materialize", new { database = main, op = "resync-binding", entities = new[] { invoiceNote, customerNote }, keepNames = true });
+        Assert.True((bool)preview["valid"]!);
+        Assert.Equal([invoiceNote, customerNote], preview["updates"]!.AsArray().Select(u => (string)u!["id"]!).Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(preview["notes"]!.AsArray(), n => ((string)n!).Contains("is renamed", StringComparison.Ordinal));
+        Assert.Equal("bad-request", (await session.ErrorAsync("preview_materialize", new { database = main, op = "resync-binding" })).Code);
+
+        // Both entities follow the column in one write: each attribute that followed it is renamed and keeps its id.
+        var applied = await session.OkAsync("apply_batch", new { operations = both });
+        Assert.Equal("saved", (string)applied["outcome"]!);
+        foreach (var (path, attribute) in new[] { (".maquettiste/model/entities/invoice-note.json", "01K6BND0000000000000000013"), (".maquettiste/model/entities/customer-note.json", "01K6BND0000000000000000023") })
+        {
+            var entity = JsonNode.Parse(repo.Read(path))!;
+            Assert.Equal("noteBody", (string)entity["attributes"]!.AsArray().Single(a => (string)a!["id"]! == attribute)!["name"]!);
+        }
+
+        Assert.Empty((await session.OkAsync("get_binding_drift"))["bindings"]!.AsArray());
+
+        // One entity the operation refuses (no binding to the database) refuses the batch: nothing is written.
+        var before = repo.Tree(".maquettiste");
+        var refused = await session.ErrorAsync("apply_batch", new { operations = new[] { new { op = "resync-binding", database = main, entities = new[] { invoiceNote, McpSession.Customer } } } });
+        Assert.Equal("invalid", refused.Code);
+        Assert.Contains("MQ4089", refused.Json["items"]!.ToJsonString(), StringComparison.Ordinal);
+        Assert.Equal(before, repo.Tree(".maquettiste"));
+    }
+
+    [Fact]
     public async Task A_rename_through_save_element_writes_one_fact_file_with_no_prompt()
     {
         await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
@@ -887,6 +1126,64 @@ public sealed class McpWriteTests
         var again = await session.OkAsync("apply_batch", new { operations });
         Assert.Equal("saved", (string)again["outcome"]!);
         Assert.Empty(again["items"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task Apply_batch_folds_into_a_stereotype()
+    {
+        // next-phase-2-design.md section 3.1 (D12): fold-into-stereotype through apply_batch. A refusal is MQ4077 per table and writes
+        // nothing; the dry run lists the files and the rekey; the apply records that rekey, and the database view shows the inherited copy.
+        using var repo = CliRepo.Billing();
+        ModelApplyTests.AuditColumns(repo);
+        await using var session = await McpSession.StartAsync(repo, TestContext.Current.CancellationToken);
+        const string mainDatabase = "01J92P0V1QRN2181XM2ZWE02W4";
+        const string notesPath = ".maquettiste/model/databases/main/tables/notes.json";
+        object Fold(bool excludeMissing) => new[]
+        {
+            new { op = "fold-into-stereotype", id = "@stereotype:audited", tables = new[] { ModelApplyTests.Notes }, excludeMissing },
+        };
+        var before = session.Repo.Tree(".maquettiste");
+
+        var refused = await session.ErrorAsync("apply_batch", new { operations = Fold(excludeMissing: false) });
+
+        Assert.Equal("invalid", refused.Code);
+        var refusal = Assert.Single(refused.Json["items"]![0]!["diagnostics"]!.AsArray())!;
+        Assert.Equal(("MQ4077", "/operations/0"), ((string)refusal["rule"]!, (string)refusal["jsonPointer"]!));
+        Assert.Contains("column 'updated_at'", (string)refusal["message"]!, StringComparison.Ordinal);
+        Assert.Equal(before, session.Repo.Tree(".maquettiste"));
+
+        var preview = await session.OkAsync("apply_batch", new { operations = Fold(excludeMissing: true), dryRun = true });
+
+        Assert.Equal("saved", (string)preview["outcome"]!);
+        var planned = Assert.Single(preview["facts"]!.AsArray())!;
+        Assert.Equal(("rekey", "rekey 1 column, 1 index"), ((string)planned["fact"]!, (string)planned["summary"]!));
+        Assert.Equal(
+            [(string)planned["path"]!, notesPath, ".maquettiste/model/entities/customer-note.json", ".maquettiste/model/entities/invoice-note.json"],
+            preview["files"]!.AsArray().Select(f => (string)f!["path"]!).Order(StringComparer.Ordinal));
+        Assert.Equal(before, session.Repo.Tree(".maquettiste"));
+
+        var applied = await session.OkAsync("apply_batch", new { operations = Fold(excludeMissing: true) });
+
+        Assert.Equal("saved", (string)applied["outcome"]!);
+        var fact = Assert.Single(applied["facts"]!.AsArray())!;
+        Assert.Equal(("rekey", "complete", mainDatabase), ((string)fact["fact"]!, (string)fact["state"]!, (string)fact["database"]!));
+        var rekey = (await session.OkAsync("get_element", new { id = (string)fact["id"]! }))["json"]!;
+        var keyed = ModelApplyTests.Notes + "." + ModelApplyTests.AuditCreatedAt;
+        Assert.Equal(
+            [("column", "01K6BND0000000000000000006", keyed), ("index", ModelApplyTests.NotesCreatedIndex, ModelApplyTests.Notes + "." + ModelApplyTests.AuditCreatedIndex)],
+            rekey["keys"]!.AsArray().Select(k => ((string)k!["kind"]!, (string)k["from"]!, (string)k["to"]!)));
+        var notes = (await session.OkAsync("get_element", new { id = ModelApplyTests.Notes }))["json"]!;
+        Assert.DoesNotContain(notes["columns"]!.AsArray(), c => (string)c!["name"]! == "created_at");
+        Assert.Equal([ModelApplyTests.AuditUpdatedAt], notes["excludes"]!.AsArray().Select(k => (string)k!));
+
+        // An agent reads the keyed id from the view, and get_references on the stereotype's member lists the inherited copy's uses.
+        var view = (await session.OkAsync("get_database_view", new { id = mainDatabase }))["view"]!;
+        var table = view["tables"]!.AsArray().Single(t => (string)t!["key"]! == ModelApplyTests.Notes)!;
+        var created = table["columns"]!.AsArray().Single(c => (string)c!["name"]! == "created_at")!;
+        Assert.Equal((keyed, "stereotype"), ((string)created["key"]!, (string)created["memberOrigin"]!["source"]!));
+        var references = (await session.OkAsync("get_references", new { id = ModelApplyTests.AuditCreatedAt })).AsArray();
+        Assert.Contains(references, r => (string)r!["fromElementId"]! == "01K6BND0000000000000000010");
+        Assert.DoesNotContain((await session.OkAsync("validate"))["diagnostics"]!.AsArray(), d => (string)d!["severity"]! == "error");
     }
 
     [Fact]

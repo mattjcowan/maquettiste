@@ -20,8 +20,34 @@ public sealed class RReferenceType : RElement
     /// <summary>The user fields, stereotype virtual attributes included, stably sorted by order.</summary>
     public RList<RAttribute> Attributes { get; internal set; } = RList<RAttribute>.Empty;
 
-    /// <summary>The rows of every seed of the type: seed by seed in merge order (<see cref="RSeed"/>s by package qualified name with none first, name, id), each in file order.</summary>
-    public RList<RRow> Rows { get; internal set; } = RList<RRow>.Empty;
+    private RList<RRow> _rows = RList<RRow>.Empty;
+    private IReadOnlyDictionary<string, RRow> _rowsByCode = FrozenDictionary<string, RRow>.Empty;
+    private Lazy<(RList<RRow> Rows, IReadOnlyDictionary<string, RRow> ByCode)>? _scriptedRows;
+
+    /// <summary>
+    /// The rows of every seed of the type: seed by seed in merge order (<see cref="RSeed"/>s by package qualified name with none first,
+    /// name, id), each in file order. A type with a scripted seed (next-phase-2-design.md section 3.4) builds them on first read, running
+    /// the script; a script that fails makes the read fail with its MQ7127.
+    /// </summary>
+    public RList<RRow> Rows
+    {
+        get => _scriptedRows?.Value.Rows ?? _rows;
+        internal set => _rows = value;
+    }
+
+    /// <summary>
+    /// The membership keys of <see cref="Rows"/> known before any rows script runs: the keys a reader of the rows depends on that do not
+    /// come from a run (a usage's dependencies take them, so resolving never runs a script).
+    /// </summary>
+    internal IReadOnlyList<string> RowKeys { get; set; } = [];
+
+    /// <summary>Whether the type has a seed with a rows script, whose rows are built on first read.</summary>
+    internal bool HasScriptedRows => _scriptedRows is not null;
+
+    /// <summary>Builds the rows on first read (a type with a scripted seed); the factory runs once.</summary>
+    /// <param name="factory">The rows and their index by code.</param>
+    internal void SetRows(Func<(RList<RRow> Rows, IReadOnlyDictionary<string, RRow> ByCode)> factory) =>
+        _scriptedRows = new(factory, LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>The seeds whose target is the type, in merge order (package qualified name with none first, name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
@@ -38,13 +64,53 @@ public sealed class RReferenceType : RElement
     /// </summary>
     public IReadOnlyDictionary<string, RReferenceTypeBinding> Bindings { get; internal set; } = FrozenDictionary<string, RReferenceTypeBinding>.Empty;
 
+    private IReadOnlyList<RFormerCode> _formerCodes = [];
+    private Lazy<IReadOnlyList<RFormerCode>>? _scriptedFormerCodes;
+
+    /// <summary>
+    /// The codes the type's rows used to have (next-phase-2-design.md section 3.5), sorted by code text (ordinal), each with the row that
+    /// replaced it. An entry whose <c>replacedBy</c> names no row of the type (MQ7018, MQ2001) is left out. <c>row</c> finds live codes
+    /// only. A type with a scripted seed builds them with its rows, on first read.
+    /// </summary>
+    public IReadOnlyList<RFormerCode> FormerCodes
+    {
+        get => _scriptedFormerCodes?.Value ?? _formerCodes;
+        internal set => _formerCodes = value;
+    }
+
+    /// <summary>Builds the former codes on first read (a type with a scripted seed, whose rows are built then); the factory runs once.</summary>
+    /// <param name="factory">The former codes.</param>
+    internal void SetFormerCodes(Func<IReadOnlyList<RFormerCode>> factory) =>
+        _scriptedFormerCodes = new(factory, LazyThreadSafetyMode.ExecutionAndPublication);
+
     /// <summary>Rows by code key (<see cref="RRow.CodeKey"/>), for <c>row</c> and <c>refs</c>.</summary>
-    internal IReadOnlyDictionary<string, RRow> RowsByCode { get; set; } = FrozenDictionary<string, RRow>.Empty;
+    internal IReadOnlyDictionary<string, RRow> RowsByCode
+    {
+        get => _scriptedRows?.Value.ByCode ?? _rowsByCode;
+        set => _rowsByCode = value;
+    }
 
     /// <summary>The row with a code, or <see langword="null"/>.</summary>
     /// <param name="code">The code (a string, or an integer for integer codes).</param>
     /// <returns>The row.</returns>
     internal RRow? RowOf(object? code) => code is null ? null : RowsByCode.GetValueOrDefault(RRow.KeyOf(code));
+}
+
+/// <summary>
+/// A code a row of a reference type used to have (next-phase-2-design.md section 3.5), and the row that replaced it: a rename keeps the
+/// old code with the row itself, a retire or a merge with the row that took over. Generated code keeps it as an alias of that row. Its
+/// id is the type id and the code joined by <c>:</c>; it is part of the type's document, so it depends on the type and the row.
+/// </summary>
+public sealed class RFormerCode : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "former-code";
+
+    /// <summary>The former code: a string, or a long for an integer code type (as <see cref="RRow.Code"/>).</summary>
+    public object? Code { get; internal set; }
+
+    /// <summary>The row that holds the code's value now.</summary>
+    public RRow ReplacedBy { get; internal set; } = null!;
 }
 
 /// <summary>
@@ -203,14 +269,57 @@ public sealed class RSeed : RElement
     /// <summary>A table seed's row key: the id of the unique constraint it names, or <see langword="null"/> for the primary key.</summary>
     public string? Key { get; internal set; }
 
-    /// <summary>The CSV file the rows are kept in (<c>rowsFrom</c>), or <see langword="null"/> when the seed file holds them.</summary>
+    /// <summary>The CSV file the rows are kept in (<c>rowsFrom.file</c>), or <see langword="null"/> when the seed file holds them.</summary>
     public string? RowsFrom { get; internal set; }
+
+    /// <summary>
+    /// The rows script (<c>rowsFrom.script</c>, a path under <c>extensions/</c> such as <c>seeds/audited-records.js</c>;
+    /// next-phase-2-design.md section 3.4), or <see langword="null"/> when the rows are written.
+    /// </summary>
+    public string? RowsScript { get; internal set; }
 
     /// <summary>The columns, in file order.</summary>
     public IReadOnlyList<RSeedColumn> Columns { get; internal set; } = [];
 
-    /// <summary>The rows, in file order.</summary>
-    public RList<RSeedRow> Rows { get; internal set; } = RList<RSeedRow>.Empty;
+    private RList<RSeedRow> _rows = RList<RSeedRow>.Empty;
+    private Lazy<RList<RSeedRow>>? _scriptedRows;
+
+    /// <summary>
+    /// The rows, in file order, or for a seed with a rows script in the script's order. Scripted rows are built on first read, running the
+    /// script; their ids derive from the seed id and the row key, and they carry the script's <c>x:</c> key and the keys the run read. A
+    /// script that fails makes the read fail with its MQ7127, so the unit that read the rows fails.
+    /// </summary>
+    public RList<RSeedRow> Rows
+    {
+        get => _scriptedRows?.Value ?? _rows;
+        internal set => _rows = value;
+    }
+
+    /// <summary>Builds the rows on first read (a seed with a rows script); the factory runs once.</summary>
+    /// <param name="factory">The rows.</param>
+    internal void SetRows(Func<RList<RSeedRow>> factory) => _scriptedRows = new(factory, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    /// <summary>Whether <see cref="Rows"/> is built (tests: a unit that does not read a scripted seed leaves its script alone).</summary>
+    internal bool RowsBuilt => _scriptedRows is null || _scriptedRows.IsValueCreated;
+
+    /// <summary>
+    /// The rows, or none when the seed's rows script failed: for readers that list what is there (the resolved model's records) rather
+    /// than render from it.
+    /// </summary>
+    internal RList<RSeedRow> RowsOrNone
+    {
+        get
+        {
+            try
+            {
+                return Rows;
+            }
+            catch (Scripting.ScriptErrorException)
+            {
+                return RList<RSeedRow>.Empty;
+            }
+        }
+    }
 
     private RList<RSeedRow>? _orderedRows;
     private Func<RList<RSeedRow>>? _orderedRowsFactory;
@@ -299,14 +408,23 @@ public sealed class RSeed : RElement
 /// <summary>A column of a seed.</summary>
 public sealed class RSeedColumn
 {
-    /// <summary>The column name: <c>code</c>, <c>label</c>, <c>description</c>, the attribute name or the end role.</summary>
+    /// <summary>
+    /// The column name: <c>code</c>, <c>label</c>, <c>description</c>, the attribute name, the end role, a table column's name, or a
+    /// foreign key's name for a foreign-key entry of a table seed.
+    /// </summary>
     public string Name { get; internal set; } = "";
 
-    /// <summary><c>builtin</c>, <c>attribute</c>, <c>end</c> or <c>column</c> (a table seed's).</summary>
+    /// <summary><c>builtin</c>, <c>attribute</c>, <c>end</c>, <c>column</c> or <c>foreign-key</c> (a table seed's).</summary>
     public string Kind { get; internal set; } = "builtin";
 
     /// <summary>The table column, for a column of a table seed.</summary>
     public RColumn? Column { get; internal set; }
+
+    /// <summary>
+    /// The foreign key, for a foreign-key entry of a table seed (next-phase-2-design.md section 3.4): its cell names the referenced row
+    /// by that table's row key in seed terms, and the key's own columns take that row's values in database terms.
+    /// </summary>
+    public RForeignKey? ForeignKey { get; internal set; }
 
     /// <summary>The attribute, for an attribute column.</summary>
     public RAttribute? Attribute { get; internal set; }
@@ -335,7 +453,8 @@ public sealed class RSeedRow : RObject
 
     /// <summary>
     /// The cells by column name, as plain values: enum cells as <see cref="REnumMember"/>, reference cells as codes (or lists of
-    /// codes), end cells as row ids; a missing or null cell is null. A row of an entity's or a relation's seed converts its cells on
+    /// codes), end cells as row ids, a foreign-key entry's cell as written under the foreign key's name (the referenced row's key in
+    /// seed terms, a list for a composite key); a missing or null cell is null. A row of an entity's or a relation's seed converts its cells on
     /// first read, so the rows of a large seed cost nothing until a template (or the resolved model's reader) reads them.
     /// </summary>
     public IReadOnlyDictionary<string, object?> Values
@@ -389,11 +508,30 @@ public sealed class RReferenceUsage : RObject
     /// <summary>Whether a value is required.</summary>
     public bool Required { get; internal set; }
 
-    /// <summary>The rows the attribute allows: <c>validation.allowedValues</c> applied to the type's rows, in row order.</summary>
-    public RList<RRow> Allowed { get; internal set; } = RList<RRow>.Empty;
+    private RList<RRow> _allowed = RList<RRow>.Empty;
+    private RRow? _defaultRow;
+    private Lazy<(RList<RRow> Allowed, RRow? DefaultRow)>? _scripted;
+
+    /// <summary>
+    /// The rows the attribute allows: <c>validation.allowedValues</c> applied to the type's rows, in row order. Built on first read when
+    /// the type has a scripted seed.
+    /// </summary>
+    public RList<RRow> Allowed
+    {
+        get => _scripted?.Value.Allowed ?? _allowed;
+        internal set => _allowed = value;
+    }
 
     /// <summary>The row of the default code (the first code of a collection default), or <see langword="null"/>.</summary>
-    public RRow? DefaultRow { get; internal set; }
+    public RRow? DefaultRow
+    {
+        get => _scripted is { } scripted ? scripted.Value.DefaultRow : _defaultRow;
+        internal set => _defaultRow = value;
+    }
+
+    /// <summary>Builds <see cref="Allowed"/> and <see cref="DefaultRow"/> on first read (a type with a scripted seed).</summary>
+    /// <param name="factory">The allowed rows and the default row.</param>
+    internal void SetRows(Func<(RList<RRow> Allowed, RRow? DefaultRow)> factory) => _scripted = new(factory, LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>The effective storage choice by database name.</summary>
     public IReadOnlyDictionary<string, RStorageChoice> Storage { get; internal set; } = FrozenDictionary<string, RStorageChoice>.Empty;

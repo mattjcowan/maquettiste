@@ -73,6 +73,75 @@ public sealed class ModelStoreDeleteTests
     }
 
     [Fact]
+    public async Task Deleting_a_stereotype_lists_member_links_and_inherited_keys_as_referrers()
+    {
+        // next-phase-2-design.md section 3.1 (D10): a stereotype's members are sub-elements of it, so a plain delete lists the tables
+        // that carry it, redefine its members or name an inherited copy by keyed id; remove-references refuses the keyed use in an
+        // index, and delete-dependents removes that index with the redefinition.
+        await using var s = await BillingStore.OpenAsync(load: false, validate: true);
+        const string Notes = "model/databases/main/tables/notes.json";
+        s.Harness.Write(StampedPath, StampedJson);
+        var notes = JsonNode.Parse(s.Harness.Read(Notes))!.AsObject();
+        notes["stereotypes"] = new JsonArray("stamped");
+        notes["redefines"] = new JsonArray(new JsonObject { ["member"] = StampedById, ["comment"] = "Who stamped the note." });
+        notes["indexes"]!.AsArray().Add(new JsonObject
+        {
+            ["id"] = "01K9XRF00000000000000000F9",
+            ["columns"] = new JsonArray(new JsonObject { ["column"] = NotesId + "." + StampedById }),
+        });
+        s.Harness.Write(Notes, notes.ToJsonString());
+        await s.Store.LoadAsync(Ct);
+        var stamped = s.Model.GetDocument(StampedId)!;
+        var before = s.Files();
+
+        var refused = await s.Store.DeleteAsync(StampedId, stamped.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Referenced, refused.Outcome);
+        Assert.Equal(
+            [("/indexes/1/columns/0/column", StampedById), ("/redefines/0/member", StampedById), ("/stereotypes/0", StampedId)],
+            refused.Referrers.Where(r => r.FromElementId == NotesId).Select(r => (r.JsonPointer, r.ToId)).Distinct().Order());
+        Assert.Equal(before, s.Files());
+        var plan = await s.Store.GetDeletePlanAsync([StampedId], DeleteResolution.Refuse, Ct);
+        var keyed = Assert.Single(plan.Refused, r => r.Pointer == "/indexes/1/columns/0/column");
+        Assert.Equal($"still references column stamped_by of stereotype Stamped through its inherited copy '{NotesId}.{StampedById}'.", keyed.Why);
+        Assert.Contains(plan.Refused, r => r.Pointer == "/redefines/0/member" && r.Why == "still references column stamped_by of stereotype Stamped.");
+
+        var clear = await s.Store.GetDeletePlanAsync([StampedId], DeleteResolution.RemoveReferences, Ct);
+        Assert.Equal(SaveOutcome.Invalid, clear.Outcome);
+        var refusal = Assert.Single(clear.Refused);
+        Assert.Equal((NotesId, "/indexes/1/columns/0/column", "MQ2001"), (refusal.Id, refusal.Pointer, refusal.Rule));
+        Assert.Contains("delete-dependents", refusal.Why, StringComparison.Ordinal);
+
+        var cascade = await s.Store.GetDeletePlanAsync([StampedId], DeleteResolution.DeleteDependents, Ct);
+        Assert.Equal(SaveOutcome.Saved, cascade.Outcome);
+        Assert.Equal(
+            [("/indexes/1", "key stamped_by"), ("/redefines/0", "redefinition stamped_by")],
+            cascade.Removes.Where(r => r.Id == NotesId).Select(r => (r.Pointer, r.What)));
+        Assert.Equal(["/stereotypes/0"], cascade.Clears.Where(c => c.Id == NotesId).Select(c => c.Pointer));
+        var deleted = await s.Store.DeleteAsync(StampedId, stamped.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
+        var table = s.Store.Current!.Get<Table>(NotesId)!;
+        Assert.Empty(table.Stereotypes);
+        Assert.Empty(table.Redefines);
+        Assert.Equal(["01K6BND0000000000000000007"], table.Indexes.Select(i => i.Id));
+    }
+
+    private const string NotesId = "01K6BND0000000000000000001";
+    private const string StampedPath = "model/vocabularies/stereotypes/stamped.json";
+    private const string StampedId = "01K9XRF00000000000000000F1";
+    private const string StampedAtId = "01K9XRF00000000000000000F2";
+    private const string StampedById = "01K9XRF00000000000000000F3";
+    private const string StampedIndexId = "01K9XRF00000000000000000F4";
+
+    /// <summary>A stereotype <c>stamped</c> for tables: columns stamped_at and stamped_by, and an index on stamped_by.</summary>
+    private const string StampedJson = $$"""
+        { "kind": "stereotype", "id": "{{StampedId}}", "key": "stamped", "name": "Stamped", "appliesTo": ["table"],
+          "columns": [ { "id": "{{StampedAtId}}", "name": "stamped_at", "type": "datetimeoffset" },
+                       { "id": "{{StampedById}}", "name": "stamped_by", "type": "string", "length": 40 } ],
+          "indexes": [ { "id": "{{StampedIndexId}}", "columns": [ { "column": "{{StampedById}}" } ] } ] }
+        """;
+
+    [Fact]
     public async Task Remove_references_drops_diagram_members_and_a_delete_removes_the_sidecar()
     {
         await using var s = await BillingStore.OpenAsync();
@@ -100,6 +169,79 @@ public sealed class ModelStoreDeleteTests
         Assert.Equal(((Diagram)diagram.Element).Members.Count, members.Count);
         Assert.DoesNotContain(members, m => m.Element == created.Id);
     }
+
+    [Fact]
+    public async Task Remove_references_clears_a_column_typeRef_and_keeps_its_type()
+    {
+        // next-phase-2-design.md section 3.2 (D20): remove-references drops the whole { "ref": ... } object, never leaving {}, and the
+        // column keeps its physical type and facets.
+        await using var s = await BillingStore.OpenAsync();
+        var created = await s.Store.CreateAsync(
+            "{\"kind\":\"enum\",\"name\":\"NoteSubject\",\"members\":[{\"name\":\"Invoice\",\"code\":\"invoice\"},{\"name\":\"Customer\",\"code\":\"customer\"}]}"u8.ToArray(),
+            ChangeSource.Editor,
+            Ct);
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        var notes = s.Doc("table", "notes");
+        var typed = await s.Store.SaveAsync(
+            notes.Element.Id,
+            BillingStore.Edit(notes, n => n["columns"]![1]!["typeRef"] = new JsonObject { ["ref"] = created.Id }),
+            notes.Hash,
+            ChangeSource.Editor,
+            Ct);
+        Assert.Equal(SaveOutcome.Saved, typed.Outcome);
+        Assert.Equal(created.Id, s.Store.Current!.Get<Table>(notes.Element.Id)!.Columns[1].TypeRef?.Ref);
+        var refused = await s.Store.DeleteAsync(created.Id!, created.Hash!, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Referenced, refused.Outcome);
+        Assert.Contains(refused.Referrers, r => r.FromElementId == notes.Element.Id && r.JsonPointer == "/columns/1/typeRef/ref");
+
+        var deleted = await s.Store.DeleteAsync(created.Id!, created.Hash!, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
+        Assert.Equal([notes.Element.Id], deleted.Changes!.Changed.Where(c => c.Kind != "migration").Select(c => c.Id));
+        var column = s.Store.Current!.Get<Table>(notes.Element.Id)!.Columns[1];
+        Assert.Equal(("entity_type", "string", 32, false), (column.Name, column.Type, column.Length, column.Nullable));
+        Assert.Null(column.TypeRef);
+        Assert.DoesNotContain("typeRef", s.Harness.Read("model/databases/main/tables/notes.json"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_column_delete_ignores_provenance()
+    {
+        // next-phase-2-design.md section 3.3 (D30, decision 2): a binding's provenance is a record keyed by column ids, not a link, so a
+        // column it records but nothing in the binding names is deleted plainly; the entity's file is not touched and keeps the entry,
+        // which then reads as removed.
+        await using var s = await BillingStore.OpenAsync(load: false, validate: true);
+        const string Notes = "model/databases/main/tables/notes.json", Note = "model/entities/invoice-note.json";
+        const string Spare = "01K9XPV0000000000000000001";
+        var notes = JsonNode.Parse(s.Harness.Read(Notes))!.AsObject();
+        notes["columns"]!.AsArray().Add(new JsonObject { ["id"] = Spare, ["name"] = "spare", ["type"] = "text" });
+        s.Harness.Write(Notes, notes.ToJsonString());
+        var note = JsonNode.Parse(s.Harness.Read(Note))!.AsObject();
+        note["bindings"]![0]!["provenance"] = new JsonObject
+        {
+            ["columns"] = new JsonObject { ["01K6BND0000000000000000002"] = "00000000:00000000", [Spare] = "11111111:11111111" },
+        };
+        s.Harness.Write(Note, note.ToJsonString());
+        await s.Store.LoadAsync(Ct);
+        var entity = s.Model.Get<Entity>(NoteId)!;
+        Assert.Equal(["01K6BND0000000000000000002", Spare], entity.Bindings[0].Provenance!.Columns.Keys.Order(StringComparer.Ordinal));
+        Assert.Empty(s.Model.ReferencesTo(Spare));
+        var noteBefore = s.Harness.Read(Note);
+        var table = s.Model.GetDocument(NotesId)!;
+
+        var saved = await s.Store.SaveAsync(NotesId, BillingStore.Edit(table, t =>
+        {
+            var columns = t["columns"]!.AsArray();
+            columns.Remove(columns.Single(c => c!["id"]!.GetValue<string>() == Spare));
+        }), table.Hash, ChangeSource.Editor, Ct);
+
+        Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join("; ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.DoesNotContain(s.Store.Current!.Get<Table>(NotesId)!.Columns, c => c.Id == Spare);
+        Assert.Equal(noteBefore, s.Harness.Read(Note));
+        Assert.Contains(Spare, s.Store.Current!.Get<Entity>(NoteId)!.Bindings[0].Provenance!.Columns.Keys);
+    }
+
+    private const string NoteId = "01K6BND0000000000000000010";
 
     [Fact]
     public async Task Deleting_an_unreferenced_element_removes_its_file()

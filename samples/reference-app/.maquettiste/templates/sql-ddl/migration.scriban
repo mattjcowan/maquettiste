@@ -18,6 +18,7 @@ include "_sql.scriban"
 include "_objects.scriban"
 include "_migration.scriban"
 include "_reference.scriban"
+include "_data.scriban"
 include "_ledger.scriban"
 db = database
 diff = schema_diff[db.name]
@@ -65,8 +66,10 @@ if diff && !diff.is_empty
     # Raw steps of phase before, rekey rows, TODO lines and the own steps of facts the diff holds no change for come first.
     fact_steps(db, diff, statements, mq_after_steps)
   else if !mq_from_nothing
-    # A held drop or rename released after an earlier migration wrote its note: no fact writes a step here, so a TODO line.
+    # A held drop or rename released after an earlier migration wrote its note: no fact writes a step here, so a TODO line; so does a
+    # value map.
     held_release_todos(db, diff, statements)
+    value_map_todos(db, diff, statements)
   end
   # Foreign keys dropped so a key or column can change (drop_fk_once in _migration.scriban), and their ADD CONSTRAINTs, written
   # with the other foreign keys at the end; mq_incoming lists every table's incoming foreign keys, by the referenced table's key.

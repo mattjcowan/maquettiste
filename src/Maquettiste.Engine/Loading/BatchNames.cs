@@ -417,7 +417,7 @@ internal sealed class BatchNames
     /// </summary>
     private void ResolveElement(int i, string root, JsonObject node, Element element, string elementPointer)
     {
-        var sites = Walker.Walk(element, _snapshot.PropertySchemas).Where(s => QualifiedName.IsName(s.Value)).ToList();
+        var sites = Walker.Walk(element, _snapshot.PropertySchemas, _snapshot.PropertyKeys(element)).Where(s => QualifiedName.IsName(s.Value)).ToList();
         var forms = sites.Where(s => IsFormSite(s.Pointer)).ToList();
         if (forms.Count > 0)
         {

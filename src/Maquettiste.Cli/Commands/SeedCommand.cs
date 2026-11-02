@@ -7,9 +7,10 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste seed new|export|import</c> (reference-types-seeds-localization.md section 2.3): a reference type's empty seed with
-/// the code, label and description columns, a seed's rows as CSV, and a CSV import previewed, then applied with <c>--apply</c> as one
-/// save checked against the seed's hash as read.
+/// <c>maquettiste seed new|export|import|preview</c> (reference-types-seeds-localization.md section 2.3): a reference type's empty seed
+/// with the code, label and description columns, a seed's rows as CSV, a CSV import previewed, then applied with <c>--apply</c> as one
+/// save checked against the seed's hash as read, and a seed's rows, written or scripted, as one database receives them with
+/// <c>--database</c> (next-phase-2-design.md section 3.4).
 /// </summary>
 internal static class SeedCommand
 {
@@ -20,7 +21,7 @@ internal static class SeedCommand
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
         var line = context.Line;
-        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'seed' needs a verb: new, export or import.");
+        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'seed' needs a verb: new, export, import or preview.");
         switch (verb)
         {
             case "new":
@@ -32,11 +33,14 @@ internal static class SeedCommand
             case "import":
                 line.Expect("seed import", 4, "--mode", "--format", "--apply", "--dry-run", "--check");
                 break;
+            case "preview":
+                line.Expect("seed preview", 3, "--database", "--format");
+                break;
             default:
-                throw new UsageException($"Unknown seed verb '{verb}': use new, export or import.");
+                throw new UsageException($"Unknown seed verb '{verb}': use new, export, import or preview.");
         }
 
-        var json = verb == "import" && line.Choice("--format", "text", "text", "json") == "json";
+        var json = verb is "import" or "preview" && line.Choice("--format", "text", "text", "json") == "json";
         var mode = verb == "import" ? line.Choice("--mode", "merge", "merge", "replace") : "merge";
         if (line.Has("--apply") && (line.Has("--dry-run") || line.Has("--check")))
             throw new UsageException("--apply contradicts --dry-run and --check.");
@@ -51,9 +55,12 @@ internal static class SeedCommand
                 return await NewAsync(context, store, line.Positionals[2], ct).ConfigureAwait(false);
             if (await ResolveAsync(context, store, line.Positionals[2], ct).ConfigureAwait(false) is not { } seed)
                 return Program.ExitCodes.Invalid;
-            return verb == "export"
-                ? await ExportAsync(context, store, seed, ct).ConfigureAwait(false)
-                : await ImportAsync(context, store, seed, line.Positionals[3], mode == "replace", json, ct).ConfigureAwait(false);
+            return verb switch
+            {
+                "export" => await ExportAsync(context, store, seed, ct).ConfigureAwait(false),
+                "preview" => await PreviewAsync(context, store, seed, line.Value("--database"), json, ct).ConfigureAwait(false),
+                _ => await ImportAsync(context, store, seed, line.Positionals[3], mode == "replace", json, ct).ConfigureAwait(false),
+            };
         }
     }
 
@@ -123,13 +130,86 @@ internal static class SeedCommand
                 return await L10nCommand.NotTranslatedAsync(context, locale).ConfigureAwait(false);
         }
 
-        var text = await store.ExportSeedCsvAsync(seed.Id, false, locales, ct).ConfigureAwait(false);
-        await CliFiles.EmitAsync(context, text!, ct).ConfigureAwait(false);
+        string text;
+        try
+        {
+            text = (await store.ExportSeedCsvAsync(seed.Id, false, locales, ct).ConfigureAwait(false))!;
+        }
+        catch (Engine.Scripting.ScriptErrorException e)
+        {
+            // A scripted seed whose rows script fails exports nothing (next-phase-2-design.md section 3.4).
+            await context.Error.WriteLineAsync(DiagnosticOutput.Line(e.Diagnostic)).ConfigureAwait(false);
+            return Program.ExitCodes.Invalid;
+        }
+
+        await CliFiles.EmitAsync(context, text, ct).ConfigureAwait(false);
         return Program.ExitCodes.Success;
     }
 
+    /// <summary>
+    /// Prints every page of a seed's rows (next-phase-2-design.md section 3.4): one line per row, <c>&lt;key&gt; &lt;id&gt;: &lt;column&gt;=&lt;value&gt; ...</c>,
+    /// as written or scripted, or in a database's terms with <c>--database</c> (a name or an id; an unknown one exits 4); the findings
+    /// that kept rows out go to standard error and an error exits 1. <c>--format json</c> prints the whole preview as one object.
+    /// </summary>
+    private static async Task<int> PreviewAsync(GlobalContext context, ModelStore store, ElementSummary seed, string? database, bool json, CancellationToken ct)
+    {
+        var rows = new List<SeedRowsPreviewRow>();
+        SeedRowsPreview? page = null;
+        string? cursor = null;
+        do
+        {
+            try
+            {
+                page = await store.PreviewSeedRowsAsync(seed.Id, database, cursor, ModelPages.MaxLimit, ct).ConfigureAwait(false)
+                    ?? throw new UsageException($"no seed has the id '{seed.Id}'.");
+            }
+            catch (ArgumentException e) when (e is not ArgumentOutOfRangeException)
+            {
+                throw new UsageException(e.Message.Split(" (Parameter", 2)[0]);
+            }
+
+            rows.AddRange(page.Rows);
+            cursor = page.Next;
+        }
+        while (cursor is not null);
+
+        var whole = page with { Rows = rows, Next = null };
+        if (json)
+        {
+            await context.Out.WriteLineAsync(JsonSerializer.Serialize(whole, CliJson.Options)).ConfigureAwait(false);
+        }
+        else
+        {
+            var text = new StringBuilder();
+            foreach (var row in rows)
+            {
+                text.Append(row.Key.Count switch { 0 => "-", 1 => PreviewText(row.Key[0]), _ => PreviewText(row.Key) }).Append(' ').Append(row.Id).Append(':');
+                foreach (var (column, value) in row.Values)
+                    text.Append(' ').Append(column).Append('=').Append(PreviewText(value));
+                text.Append('\n');
+            }
+
+            await context.Out.WriteAsync(text.ToString()).ConfigureAwait(false);
+            foreach (var d in whole.Diagnostics)
+                await context.Error.WriteLineAsync(DiagnosticOutput.Line(d)).ConfigureAwait(false);
+        }
+
+        return whole.Diagnostics.Any(d => d.Severity == Engine.Diagnostics.DiagnosticSeverity.Error) ? Program.ExitCodes.Invalid : Program.ExitCodes.Success;
+    }
+
+    /// <summary>A preview value on a text line: text as it is, null as <c>null</c>, anything else as compact JSON.</summary>
+    private static string PreviewText(object? value) => value switch
+    {
+        null => "null",
+        string text => text,
+        _ => JsonSerializer.Serialize(value, CliJson.Options),
+    };
+
     private static async Task<int> ImportAsync(GlobalContext context, ModelStore store, ElementSummary seed, string file, bool replace, bool json, CancellationToken ct)
     {
+        // A seed whose rows a script computes takes no import (next-phase-2-design.md section 3.4): a usage error, exit 4.
+        if ((await store.GetElementAsync(seed.Id, ct).ConfigureAwait(false))?.Element is Seed { RowsFrom.Script: { } script })
+            throw new UsageException($"seed {seed.Name} takes its rows from the rows script {script}; edit the script, or export its rows and import them into a seed without a script.");
         if (await CliFiles.ReadAsync(context, file, ct).ConfigureAwait(false) is not { } csv)
             return Program.ExitCodes.Invalid;
         var apply = context.Line.Has("--apply");
@@ -177,7 +257,8 @@ internal static class SeedCommand
 
         var summary = string.Create(CultureInfo.InvariantCulture,
             $"{seed.Name} import ({(replace ? "replace" : "merge")}): {preview.Added} added, {preview.Changed.Count} changed, {preview.Removed} removed, {preview.Blocked?.Count ?? 0} blocked");
-        if (!apply && preview.Diagnostics.Any(d => d.Severity == Engine.Diagnostics.DiagnosticSeverity.Error))
+        // A line skipped for a former code (MQ7019) is listed, not a reason to refuse the rest (next-phase-2-design.md section 3.5).
+        if (!apply && preview.Diagnostics.Any(d => d.Severity == Engine.Diagnostics.DiagnosticSeverity.Error && d.Rule != "MQ7019"))
         {
             await context.Error.WriteLineAsync("maquettiste: " + summary + "; the import is not valid.").ConfigureAwait(false);
             return Program.ExitCodes.Invalid;

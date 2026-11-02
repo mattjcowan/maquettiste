@@ -44,18 +44,22 @@ internal static class FactDocuments
     /// A one-line summary of a fact, by the names it records: <c>rename column billing.notes.text to body</c>,
     /// <c>change-type column billing.invoices.number text to varchar(20)</c> (a reference column whose storage changed adds it, as in
     /// <c>varchar(10) (check) to varchar(10) (bound table)</c>), <c>drop table billing.notes</c>,
-    /// <c>rekey 1 table, 7 columns</c>.
+    /// <c>rekey 1 table, 7 columns</c>. A value map names its type, codes and holders (next-phase-2-design.md section 3.5):
+    /// <c>maps PaymentTerm codes net30 -&gt; net-30 in 1 column</c>, a merge's <c>maps CreditTerm codes n90 -&gt; net60 into PaymentTerm
+    /// in 2 columns</c>, and a type rename <c>renames reference type PaymentTerm to PaymentCondition</c>.
     /// </summary>
     /// <param name="fact">The fact.</param>
     /// <returns>The summary.</returns>
     public static string Summary(Migration fact)
     {
         ArgumentNullException.ThrowIfNull(fact);
+        if (fact.Fact == MigrationFact.ValueMap)
+            return ValueMapSummary(fact);
         var sb = new StringBuilder(ResolutionValues.Kebab(fact.Fact));
         if (fact.Fact == MigrationFact.Rekey)
         {
             var parts = fact.Keys.GroupBy(k => k.Kind, StringComparer.Ordinal).OrderBy(g => Rank(g.Key)).ThenBy(g => g.Key, StringComparer.Ordinal)
-                .Select(g => g.Count().ToString(CultureInfo.InvariantCulture) + " " + g.Key + (g.Count() == 1 ? "" : "s"));
+                .Select(g => g.Count().ToString(CultureInfo.InvariantCulture) + " " + g.Key + (g.Count() == 1 ? "" : g.Key == "index" ? "es" : "s"));
             return sb.Append(' ').Append(string.Join(", ", parts)).ToString();
         }
 
@@ -78,6 +82,26 @@ internal static class FactDocuments
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>A value map's summary: its type's codes and the columns and collections that hold them, or the type's rename.</summary>
+    private static string ValueMapSummary(Migration fact)
+    {
+        var to = fact.To?.Name ?? fact.From?.Name ?? fact.ReferenceType ?? "";
+        var from = fact.From?.Name ?? to;
+        var renamed = !string.Equals(from, to, StringComparison.Ordinal);
+        if (fact.Values.Count == 0 && renamed)
+            return "renames reference type " + from + " to " + to;
+        var sb = new StringBuilder("maps ").Append(from).Append(" codes ");
+        sb.Append(fact.Values.Count == 0 ? "(none)" : string.Join(", ", fact.Values.Select(v => v.From + " -> " + v.To)));
+        if (renamed)
+            sb.Append(" into ").Append(to);
+        sb.Append(" in ").Append(Count(fact.Objects.Count, "column"));
+        if (fact.Collections.Count > 0)
+            sb.Append(" and ").Append(Count(fact.Collections.Count, "collection"));
+        return sb.ToString();
+
+        static string Count(int n, string noun) => n.ToString(CultureInfo.InvariantCulture) + " " + noun + (n == 1 ? "" : "s");
     }
 
     private static int Rank(string kind) => kind switch { "table" => 0, "column" => 1, "sequence" => 2, _ => 3 };

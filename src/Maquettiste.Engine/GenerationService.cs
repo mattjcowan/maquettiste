@@ -268,6 +268,7 @@ public sealed partial class GenerationService
     /// <summary>
     /// The resolved physical model of one database, for the editor's Database and Mappings workspaces (E1, phase2-design.md section
     /// 3.8): loads (the store rescans by stat), validates the whole model and resolves it, then projects the database into flat records.
+    /// As for previews, seeds with a rows script are left unjudged and no rows script runs (<see cref="ValidationScope.Previews"/>).
     /// Takes no run lock and writes nothing.
     /// </summary>
     /// <param name="databaseId">The database element's id.</param>
@@ -278,7 +279,7 @@ public sealed partial class GenerationService
     {
         ArgumentNullException.ThrowIfNull(databaseId);
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, ct).ConfigureAwait(false);
         if (report.HasErrors)
             return new DatabaseViewResult(null, report.Diagnostics);
         var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
@@ -309,7 +310,7 @@ public sealed partial class GenerationService
         if (dialect is not null && !Rendering.SqlDialects.TryParse(dialect, out _))
             throw new ArgumentException($"'{dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, ct).ConfigureAwait(false);
         if (report.HasErrors)
             return new QuerySqlResult(null, report.Diagnostics);
         var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
@@ -343,7 +344,7 @@ public sealed partial class GenerationService
         if (dialect is not null && !Rendering.SqlDialects.TryParse(dialect, out _))
             throw new ArgumentException($"'{dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, ct).ConfigureAwait(false);
         if (report.HasErrors)
             return new BindingSqlResult(null, report.Diagnostics);
         var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);

@@ -31,7 +31,7 @@ public sealed partial class ModelStore
         for (var i = 0; i < batch.Operations.Count; i++)
         {
             var o = batch.Operations[i];
-            if (!IsExpandedOperation(o.Op) || invalid[i] is not null)
+            if (!IsExpandedOperation(o.Op) || o.Op == BatchOp.FoldIntoStereotype || IsReferenceRefactor(o.Op) || invalid[i] is not null)
                 continue;
             // Each expansion answers with the diagnostics that refuse it (none when it applies): most wrap one message in their rule at the
             // operation, names-to-ids and tags-to-property report at each value or holder they cannot convert.
@@ -39,10 +39,32 @@ public sealed partial class ModelStore
             IReadOnlyList<Diagnostic>? Wrap(string rule, string? refusal) => refusal is null ? null : [RuleCatalog.Create(rule, refusal, o.Id, null, pointer)];
             var refusals = IsSchemaOperation(o.Op) ? Wrap("MQ4015", work.Apply(o))
                 : IsMaterializeOperation(o.Op) ? Wrap("MQ4055", await MaterializeAsync(snapshot, o, materialized, materializeResults, ct).ConfigureAwait(false))
+                : IsBindingOperation(o.Op) ? Wrap("MQ4089", await MaterializeAsync(snapshot, o, materialized, materializeResults, ct).ConfigureAwait(false))
                 : o.Op == BatchOp.Retag ? Wrap("MQ1002", Retag(snapshot, o, materialized))
                 : o.Op == BatchOp.TagsToProperty ? TagsToProperty(snapshot, o, materialized, pointer)
                 : o.Op == BatchOp.NamesToIds ? NamesToIds(snapshot, o, materialized, pointer)
                 : Wrap("MQ9019", processWork.Apply(o));
+            if (refusals is { Count: > 0 })
+                invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null, refusals, [], null);
+        }
+
+        // The reference-type refactors (next-phase-2-design.md section 3.5) read the model as it was before the batch and share their
+        // working copies, so two refactors of different types may rewrite one document; a second refactor of one type is MQ7020.
+        var refactors = ExpandReferenceRefactors(snapshot, batch, invalid, materialized);
+
+        // Folds into a stereotype plan last, so each knows every document the batch's other operations write: one that writes the
+        // stereotype or a target table refuses the fold (next-phase-2-design.md section 3.1). Their key maps go to the recording of
+        // migration facts (one rekey per database) and never to the snapshot's aliases.
+        var foldKeyMaps = new List<MaterializeResult>();
+        for (var i = 0; i < batch.Operations.Count; i++)
+        {
+            var o = batch.Operations[i];
+            if (o.Op != BatchOp.FoldIntoStereotype || invalid[i] is not null)
+                continue;
+            var written = changes.Select(c => c.Id).Concat(materialized.Select(c => c.Id)).Concat(work.Changes().Select(c => c.Id))
+                .Concat(processWork.Changes().Select(c => c.Id)).OfType<string>().ToHashSet(StringComparer.Ordinal);
+            var refusals = await FoldIntoStereotypeAsync(snapshot, o, written, materialized, foldKeyMaps, "/operations/" + i.ToString(CultureInfo.InvariantCulture), ct)
+                .ConfigureAwait(false);
             if (refusals is { Count: > 0 })
                 invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null, refusals, [], null);
         }
@@ -64,10 +86,12 @@ public sealed partial class ModelStore
         if (changes.Count == 0)
             return new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source)) { Facts = [] };
         // The materialize results go along: their key maps tell the recording of migration facts which keys moved (a rekey, not a drop).
-        var result = await ExecuteAsync(changes, source, ct, preview, materializeResults).ConfigureAwait(false);
+        // The refactors' code maps go along too: the recording turns each into a value map per database that holds the codes.
+        var result = await ExecuteAsync(changes, source, ct, preview, [.. materializeResults, .. foldKeyMaps], [.. refactors.Select(r => r.CodeMap)])
+            .ConfigureAwait(false);
         if (result.Outcome == SaveOutcome.Saved && materializeResults.Count > 0 && preview is null)
             await RecordAliasesAsync(materializeResults, ct).ConfigureAwait(false);
-        return result;
+        return WithUsage(result, refactors);
     }
 
     /// <summary>The documents a batch's schema operations change, as working copies.</summary>

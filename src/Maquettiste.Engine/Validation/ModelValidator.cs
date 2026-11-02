@@ -4,6 +4,7 @@ using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Processes;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
 
 namespace Maquettiste.Engine.Validation;
@@ -26,7 +27,9 @@ namespace Maquettiste.Engine.Validation;
 /// <param name="scripts">The sandbox factory (JavaScript rules).</param>
 /// <param name="resolver">The resolver that judges pending migration facts stale (MQ4103, next-phase-1-design.md section 3.2); without
 /// one every pending fact is MQ4101.</param>
-internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry schemas, IScriptSandboxFactory scripts, IModelResolver? resolver = null)
+/// <param name="seedRows">The engine's cache of rows script runs (next-phase-2-design.md section 3.4); a cache of its own when absent.</param>
+internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry schemas, IScriptSandboxFactory scripts, IModelResolver? resolver = null,
+    SeedRowsCache? seedRows = null)
     : IModelValidator
 {
     private static readonly IReadOnlyDictionary<string, object?> NoParameters = FrozenDictionary<string, object?>.Empty;
@@ -42,6 +45,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     private static readonly ReferenceWalker SelectionWalker = new();
 
     private readonly ReferenceWalker _walker = new();
+
+    /// <summary>The engine's cache of rows script runs (next-phase-2-design.md section 3.4), shared with the resolver.</summary>
+    private readonly SeedRowsCache _seedRows = seedRows ?? new SeedRowsCache();
 
     /// <summary>The per-element results of script rules, reused while their inputs are unchanged (next-phase-1-design.md section 5.7).</summary>
     private readonly RuleResultCache _ruleResults = new();
@@ -60,9 +66,14 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         ct.ThrowIfCancellationRequested();
 
         var active = ActiveDocuments(model);
-        var shared = new ValidationContext(model, active, _walker, null);
-        var targets = SelectTargets(shared, active, scope);
         var wholeModel = scope.ElementIds is null;
+        var shared = new ValidationContext(model, active, _walker, null, wholeModel, scripts, _seedRows)
+        {
+            DeferScriptedRows = wholeModel && scope.DeferScriptedRows,
+        };
+        var targets = SelectTargets(shared, active, scope);
+        if (!wholeModel)
+            shared.Scope = targets.Select(d => d.Element.Id).ToHashSet(StringComparer.Ordinal);
         var parallelism = options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount;
         var diagnostics = new List<Diagnostic>();
 
@@ -168,6 +179,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 {
                     var report = new Report(targets[i]);
                     BuiltinRules.Validate(context, report);
+                    MemberRules.Validate(context, report);
                     StatusRules.Validate(context, report);
                     PackageRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
@@ -409,7 +421,13 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// (MQ2020: its <c>dependsOn</c> and <c>parent</c> decide what its subtree may reference and what reaches it). The other packages
     /// of a <c>dependsOn</c> cycle (MQ2021; the saved package reports its own edge) and the seeds a rename or move reorders (it only
     /// moves MQ7112, MQ7121, MQ7001 and MQ7102 between seeds that already disagree) are not revisited (next-phase-1-design.md
-    /// section 4.3).
+    /// section 4.3). Default stereotypes (next-phase-2-design.md section 3.1, <see cref="DefaultPeers"/>): a package, while the model
+    /// declares any default, brings the files whose holder's package chain holds it (its members, its descendants' members and the
+    /// members that fall back to its package); a database whose schema entries declare defaults brings the files those schemas reach;
+    /// a stereotype brings the files that carry it, or a stereotype implying it, through a schema or package default. Typed columns
+    /// (next-phase-2-design.md section 3.2, <see cref="TypedColumnPeers"/>): an enum, a reference type or a seed of a reference type brings
+    /// the tables whose columns the type types, the table seeds of those tables and the entities and reference types whose bindings give
+    /// those tables' columns constants (MQ7014, MQ4083 and MQ4084 read the type's values, codes and bindings, which no reference reaches).
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="document">The document in scope.</param>
@@ -428,6 +446,20 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     yield return peerDocument;
             }
 
+            // A former code is no live code of its type (MQ7017), and an open value map maps away no live code (MQ4113): a row's code is
+            // judged on the type and on its value maps (next-phase-2-design.md section 3.5).
+            if (model.Get<ReferenceType>(seed.Target) is { } codeType)
+            {
+                if (codeType.FormerCodes.Count > 0 && model.GetDocument(codeType.Id) is { } typeDocument)
+                    yield return typeDocument;
+                foreach (var map in model.All<Migration>())
+                {
+                    if (map.Fact == MigrationFact.ValueMap && string.Equals(map.ReferenceType, codeType.Id, StringComparison.Ordinal)
+                        && model.GetDocument(map.Id) is { } mapDocument)
+                        yield return mapDocument;
+                }
+            }
+
             if (model.Get<Relation>(seed.Target) is { } seededRelation)
             {
                 foreach (var end in seededRelation.Ends)
@@ -442,6 +474,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         }
 
         foreach (var peer in RowPeers(context, element))
+            yield return peer;
+
+        foreach (var peer in TypedColumnPeers(context, element))
             yield return peer;
 
         foreach (var (key, _) in ValidationContext.NameKeys(element))
@@ -500,6 +535,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         }
 
         foreach (var peer in ProcessPeers(model, element))
+            yield return peer;
+
+        // The files a default list reaches are judged on the effective set it gives (MQ2004, MQ2013 to MQ2015, MQ2018 and every rule
+        // that reads stereotypes), and they are not the referrers of the package, database or stereotype (next-phase-2-design.md
+        // section 3.1).
+        foreach (var peer in DefaultPeers(context, element))
             yield return peer;
 
         // MQ2004, MQ2013 to MQ2015 and MQ2018 on the carriers of a stereotype that implies this one depend on it (its applicability,
@@ -608,6 +649,166 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 }
 
                 break;
+        }
+    }
+
+    /// <summary>
+    /// For an enum, a reference type or a seed of a reference type: the table files with a column whose <c>typeRef</c> names the type (own,
+    /// or through a stereotype the table lists), their table seeds, and the entities and reference types bound to them, whose constants
+    /// fill their columns (next-phase-2-design.md section 3.2). Nothing for any other document.
+    /// </summary>
+    private static IEnumerable<ElementDocument> TypedColumnPeers(ValidationContext context, Element element)
+    {
+        var model = context.Model;
+        var typeId = element switch
+        {
+            EnumType or ReferenceType => element.Id,
+            Seed seed when model.Get<ReferenceType>(seed.Target) is not null => seed.Target,
+            _ => null,
+        };
+        if (typeId is null)
+            yield break;
+        var tables = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var reference in model.ReferencesTo(typeId))
+        {
+            switch (model.GetDocument(reference.FromElementId)?.Element)
+            {
+                case Table table when table.Columns.Any(c => string.Equals(c.TypeRef?.Ref, typeId, StringComparison.Ordinal)):
+                    tables.Add(table.Id);
+                    break;
+                case Stereotype stereotype when stereotype.Columns.Any(c => string.Equals(c.TypeRef?.Ref, typeId, StringComparison.Ordinal)):
+                    foreach (var carrier in model.ReferencesTo(stereotype.Id))
+                    {
+                        if (carrier.Field == "stereotypes" && model.Get<Table>(carrier.FromElementId) is not null)
+                            tables.Add(carrier.FromElementId);
+                    }
+
+                    break;
+            }
+        }
+
+        if (tables.Count == 0)
+            yield break;
+        foreach (var tableId in tables)
+        {
+            if (model.GetDocument(tableId) is { } tableDocument)
+                yield return tableDocument;
+            foreach (var seed in context.SeedsOf(tableId))
+            {
+                if (model.GetDocument(seed.Id) is { } seedDocument)
+                    yield return seedDocument;
+            }
+
+            foreach (var (type, _) in context.BoundTypesOf(tableId))
+            {
+                if (model.GetDocument(type.Id) is { } typeDocument)
+                    yield return typeDocument;
+            }
+        }
+
+        foreach (var entity in model.All<Entity>())
+        {
+            if (entity.Bindings.Any(b => tables.Contains(b.Source) || (b.Write?.Table is { } written && tables.Contains(written)))
+                && model.GetDocument(entity.Id) is { } entityDocument)
+                yield return entityDocument;
+        }
+    }
+
+    /// <summary>
+    /// The files whose effective stereotype set a document's default lists decide (next-phase-2-design.md section 3.1). The validator
+    /// sees only the candidate model, so a package brings its reach while the model declares any default (a save that removes the
+    /// model's last default list leaves its descendants' and fallback members to the next validate; its own members are its
+    /// referrers); a database brings the reach of its schema entries that declare defaults (its physical files are its referrers
+    /// too); a stereotype brings the reach of every schema entry or package whose default list names it or a stereotype implying it.
+    /// The reach of schema entries and packages is every document whose holder (<see cref="ModelSnapshot.HolderOf"/>) is in one of
+    /// the schemas or has one of the packages on its package chain, and, for schemas, the entities and relations whose tables without a
+    /// file would be in one (findings about such a table go on its entity or relation).
+    /// </summary>
+    private static IEnumerable<ElementDocument> DefaultPeers(ValidationContext context, Element element)
+    {
+        var model = context.Model;
+        var schemas = new HashSet<string>(StringComparer.Ordinal);
+        var packages = new HashSet<string>(StringComparer.Ordinal);
+        switch (element)
+        {
+            case Package package when model.StereotypeDefaults.HasDefaults || package.DefaultStereotypes.Count > 0:
+                packages.Add(package.Id);
+                break;
+            case Database database:
+                foreach (var schema in database.Schemas)
+                {
+                    if (schema.DefaultStereotypes.Count > 0)
+                        schemas.Add(schema.Id);
+                }
+
+                break;
+            case Stereotype stereotype when model.StereotypeDefaults.HasDefaults:
+                var keys = new List<string> { stereotype.Id };
+                foreach (var reference in model.ReferencesTo(stereotype.Id))
+                {
+                    if (reference.Field == "implies" && model.GetDocument(reference.FromElementId)?.Element is Stereotype)
+                        keys.Add(reference.FromElementId);
+                }
+
+                foreach (var key in keys)
+                {
+                    foreach (var reference in model.ReferencesTo(key))
+                    {
+                        if (reference.Field != "defaultStereotypes")
+                            continue;
+                        switch (model.GetDocument(reference.FromElementId)?.Element)
+                        {
+                            case Database:
+                                schemas.Add(reference.FromId);
+                                break;
+                            case Package:
+                                packages.Add(reference.FromElementId);
+                                break;
+                        }
+                    }
+                }
+
+                break;
+        }
+
+        if (schemas.Count == 0 && packages.Count == 0)
+            yield break;
+        var routed = schemas.Count == 0 ? [] : model.All<Database>().Where(d => d.Schemas.Any(s => schemas.Contains(s.Id))).ToList();
+        foreach (var doc in context.Documents)
+        {
+            var holder = model.HolderOf(doc.Element);
+            if ((holder.Schema is { } schema && schemas.Contains(schema)) || (packages.Count > 0 && OnChain(model, holder.Package, packages)))
+            {
+                yield return doc;
+                continue;
+            }
+
+            foreach (var database in routed)
+            {
+                var tableSchema = doc.Element switch
+                {
+                    Entity entity => model.StereotypeDefaults.SchemaOf(database.Id, null, entity.Id),
+                    Relation => model.StereotypeDefaults.SchemaOf(database.Id, null),
+                    _ => null,
+                };
+                if (tableSchema is not null && schemas.Contains(tableSchema))
+                {
+                    yield return doc;
+                    break;
+                }
+            }
+        }
+
+        static bool OnChain(ModelSnapshot model, string? packageId, HashSet<string> packages)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var id = packageId; id is not null && seen.Add(id); id = model.Get<Package>(id)?.Parent)
+            {
+                if (packages.Contains(id))
+                    return true;
+            }
+
+            return false;
         }
     }
 

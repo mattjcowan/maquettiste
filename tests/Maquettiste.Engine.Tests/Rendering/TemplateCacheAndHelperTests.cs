@@ -194,4 +194,65 @@ public sealed class TemplateCacheAndHelperTests
             model.Entities.Single(e => e.Name == "Thing"), model: model);
         Assert.Equal("id:bigint/bigint/number(19);at:pg_lsn/binary(8)/blob;binary(8)|pg_lsn", unit.Text());
     }
+
+    /// <summary>
+    /// A designed table whose columns a reference type (stored as a lookup table), an enum and a scalar type type (next-phase-2-design.md
+    /// section 3.2), and a C# map with entries for the three.
+    /// </summary>
+    private static (Maquettiste.Engine.Resolution.ResolvedModel Model, string TableId, Dictionary<string, string> Files) TypedColumns()
+    {
+        var b = new ModelBuilder(seed: 58);
+        var db = b.Database("main", Dialect.PostgreSql);
+        var state = new ReferenceType
+        {
+            Id = b.NewId(), Name = "InvoiceState",
+            Code = new ReferenceCode { Id = b.NewId(), Length = 1 }, Label = new ReferenceLabel { Id = b.NewId() },
+            Storage = new Dictionary<string, StorageChoice> { ["*"] = new() { Strategy = "lookup-table" } },
+        };
+        b.Add(state);
+        var status = b.Enum("InvoiceStatus").Member("Draft", 0, "D").Member("Issued", 1, "I");
+        var money = b.ScalarType("Money", "decimal").Decimal(12, 2);
+        var table = b.Table("invoice_events", db).Column("state", "string", nullable: false).Column("status", "string").Column("amount", "decimal", nullable: false)
+            .Column("note", "text")
+            .Edit(t => t with
+            {
+                Columns =
+                [
+                    t.Columns[0] with { TypeRef = new TypeRef { Ref = state.Id } },
+                    t.Columns[1] with { TypeRef = new TypeRef { Ref = status.Id } },
+                    t.Columns[2] with { TypeRef = new TypeRef { Ref = money.Id } },
+                    t.Columns[3],
+                ],
+            });
+        var files = new Dictionary<string, string>
+        {
+            ["types/cs.json"] = "{ \"string\": \"string\", \"text\": \"string\", \"decimal\": \"decimal\", \"InvoiceStatus\": \"InvoiceStatus\", \"Money\": \"Money\", "
+                + "\"reference:*\": \"Code<{name}>\", \"reference:lookup-table\": \"Lookup<{name}>\", \"nullable\": \"{type}?\" }",
+        };
+        return (Resolution.ResolutionKit.Resolve(b), table.Id, files);
+    }
+
+    [Fact]
+    public async Task Type_of_a_typed_column_keeps_its_physical_type()
+    {
+        // Section 3.2 (D21), decision 7: type_of maps a column's physical type, so row classes filled from the database keep their types;
+        // column.type stays the physical keyword and column.reference_type says the column holds codes.
+        var (model, tableId, files) = TypedColumns();
+        var unit = await Adhoc.RenderAsync(
+            $"{{{{ for c in (lookup '{tableId}').columns }}}}{{{{ c.name }}}}:{{{{ c.type }}}}:{{{{ type_of c 'cs' }}}}:{{{{ type_of c 'postgresql' }}}}:{{{{ c.reference_type?.name }}}};{{{{ end }}}}",
+            files: files, model: model);
+        Assert.Equal("state:string:string:varchar(1):InvoiceState;status:string:string?:varchar(1):;amount:decimal:decimal:numeric(12,2):;note:text:string?:text:;", unit.Text());
+    }
+
+    [Fact]
+    public async Task Type_of_a_column_type_ref_maps_through_the_type()
+    {
+        // Section 3.2 (D21), decision 7: a pack that wants the logical type passes column.type_ref, an RType, which type_of maps as an
+        // attribute's type; a column whose entry names none has no type_ref.
+        var (model, tableId, files) = TypedColumns();
+        var unit = await Adhoc.RenderAsync(
+            $"{{{{ for c in (lookup '{tableId}').columns }}}}{{{{ c.name }}}}:{{{{ if c.type_ref }}}}{{{{ c.type_ref.kind }}}}/{{{{ type_of c.type_ref 'cs' }}}}{{{{ else }}}}-{{{{ end }}}};{{{{ end }}}}",
+            files: files, model: model);
+        Assert.Equal("state:reference/Code<InvoiceState>;status:enum/InvoiceStatus;amount:scalar/Money;note:-;", unit.Text());
+    }
 }

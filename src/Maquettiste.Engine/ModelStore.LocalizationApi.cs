@@ -7,6 +7,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine;
 
@@ -99,9 +100,26 @@ public sealed record SeedBatchImportResult(IReadOnlyList<ImportPreview> Items, S
 /// <param name="Storage">Database name to the effective storage choice.</param>
 public sealed record ReferenceTypeUse(string Attribute, string Owner, string? Domain, bool Collection, bool Required, IReadOnlyDictionary<string, StorageChoice> Storage);
 
+/// <summary>
+/// One column whose own <c>typeRef</c> names a reference type (next-phase-2-design.md section 3.2): a designed, imported, extra or
+/// inherited column. Projected columns are covered by their attributes (<see cref="ReferenceTypeUse"/>).
+/// </summary>
+/// <param name="Table">The table id: the table file's id, or a synthesized table's key (<c>&lt;entityId&gt;@&lt;databaseId&gt;</c>) for
+/// an overlay's extra column or a column a synthesized table inherits.</param>
+/// <param name="Column">The column id (a keyed id for an inherited column).</param>
+/// <param name="Database">The database id.</param>
+/// <param name="Domain">The table's package (a synthesized table without one: its entity's or relation's), or <see langword="null"/>.</param>
+/// <param name="Required">Whether the column is not nullable.</param>
+/// <param name="Storage">The type's effective storage choice in the database, or <see langword="null"/> for template-defined.</param>
+/// <param name="BoundTable">The table of the type's binding in the database, or <see langword="null"/>.</param>
+public sealed record ReferenceTypeColumnUse(string Table, string Column, string Database, string? Domain, bool Required,
+    StorageChoice? Storage, string? BoundTable);
+
 /// <summary>The body of <c>GET /api/reference-types/{id}/usage</c>.</summary>
-/// <param name="Usages">The usages, ordinal by owner then attribute id.</param>
-public sealed record ReferenceTypeUsage(IReadOnlyList<ReferenceTypeUse> Usages);
+/// <param name="Usages">The attributes typed by the type, ordinal by owner then attribute id.</param>
+/// <param name="Columns">The designed, imported, extra and inherited columns whose <c>typeRef</c> names the type, ordinal by table id
+/// then column id.</param>
+public sealed record ReferenceTypeUsage(IReadOnlyList<ReferenceTypeUse> Usages, IReadOnlyList<ReferenceTypeColumnUse> Columns);
 
 /// <summary>The API and MCP reads and writes of reference-types-seeds-localization.md section 3.9.</summary>
 public sealed partial class ModelStore
@@ -275,7 +293,10 @@ public sealed partial class ModelStore
     /// <summary>
     /// A seed's rows as CSV (section 2.3): <c>@id</c>, then the seed's columns in order (<c>@code</c>, <c>@label</c>, <c>@description</c>
     /// for built-in ones, attribute names and end roles otherwise), then <c>@label:&lt;locale&gt;</c> and <c>@description:&lt;locale&gt;</c>
-    /// per requested locale.
+    /// per requested locale. A foreign-key entry of a table seed is headed by the foreign key's name (its id when it has none) and a
+    /// composite natural key is JSON array text (next-phase-2-design.md section 3.4). A seed with a rows script exports the rows its script
+    /// returns, with their derived <c>@id</c>; only that seed's script runs (through the engine's rows cache), and a script that fails
+    /// throws its MQ7127 diagnostic (the internal <c>ScriptErrorException</c>).
     /// </summary>
     /// <param name="seedId">The seed id.</param>
     /// <param name="bom">Adds a byte order mark and CRLF line ends.</param>
@@ -288,13 +309,22 @@ public sealed partial class ModelStore
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         if (snapshot.Get<Element>(seedId) is not Seed seed)
             return null;
+        IReadOnlyList<SeedRow> rows = seed.Rows;
+        if (seed.RowsFrom?.Script is not null)
+        {
+            var scripted = Resolution.SeedScripts.Evaluate(snapshot, seed, _services.Scripts, _services.SeedRows, ct);
+            if (scripted.Failure is { } failure)
+                throw new Scripting.ScriptErrorException(failure);
+            rows = scripted.Rows;
+        }
+
         var columns = SeedColumns(snapshot, seed);
         var l10n = snapshot.Localization;
         var wanted = locales.Where(l10n.IsTranslated).Distinct(StringComparer.Ordinal).ToList();
         IEnumerable<IReadOnlyList<string?>> Rows()
         {
             yield return ["@id", .. columns.Select(c => c.Header), .. wanted.SelectMany(l => new[] { "@label:" + l, "@description:" + l })];
-            foreach (var row in seed.Rows)
+            foreach (var row in rows)
             {
                 yield return [row.Id, .. columns.Select((c, i) => CellText(i < row.Values.Count ? row.Values[i] : null, c)),
                     .. wanted.SelectMany(l => new[] { l10n.Text(l, row.Id, LocalizationIndex.LabelField), l10n.Text(l, row.Id, LocalizationIndex.DescriptionField) })];
@@ -306,7 +336,8 @@ public sealed partial class ModelStore
 
     /// <summary>
     /// Previews or applies a CSV import into a seed (section 2.3). Rows match by <c>@id</c>, else by <c>@code</c> for a reference type,
-    /// else are new rows with new ids; <c>replace</c> also removes the rows the file leaves out, except rows other seeds' cells name.
+    /// else are new rows with new ids; <c>replace</c> also removes the rows the file leaves out, except rows other seeds' cells name. A
+    /// line whose <c>@code</c> is a former code of the type is skipped and listed with MQ7019 (next-phase-2-design.md section 3.5).
     /// Applying saves the seed with <paramref name="expectedHash"/> (the seed's hash as read when null), then writes the
     /// <c>@label:&lt;locale&gt;</c> and <c>@description:&lt;locale&gt;</c> translations.
     /// </summary>
@@ -318,7 +349,8 @@ public sealed partial class ModelStore
     /// <param name="source">Who makes the change.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The preview and the outcome, or <see langword="null"/> when no seed has the id.</returns>
-    /// <exception cref="FormatException">The CSV is malformed or has no <c>@id</c> header.</exception>
+    /// <exception cref="FormatException">The CSV is malformed or has no <c>@id</c> header, or the seed takes its rows from a rows script
+    /// (next-phase-2-design.md section 3.4), whose rows no import replaces.</exception>
     public async Task<ImportResult?> ImportSeedCsvAsync(string seedId, string csv, bool replace, bool dryRun, string? expectedHash, ChangeSource source, CancellationToken ct)
     {
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
@@ -354,7 +386,8 @@ public sealed partial class ModelStore
     /// <param name="source">Who makes the change.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>One preview per file in request order and the outcome, or <see langword="null"/> when a file names no seed.</returns>
-    /// <exception cref="FormatException">A CSV is malformed or has no <c>@id</c> header, or two files name one seed.</exception>
+    /// <exception cref="FormatException">A CSV is malformed or has no <c>@id</c> header, two files name one seed, or a seed takes its rows from
+    /// a rows script.</exception>
     public async Task<SeedBatchImportResult?> ImportSeedCsvBatchAsync(IReadOnlyList<SeedCsvFile> files, bool replace, bool dryRun, ChangeSource source, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(files);
@@ -424,6 +457,10 @@ public sealed partial class ModelStore
 
     private SeedImportPlan PlanSeedImport(ModelSnapshot snapshot, Seed seed, ElementDocument document, string csv, bool replace)
     {
+        // A scripted seed's rows are what its script returns (next-phase-2-design.md section 3.4): an import would add rows beside the
+        // script (MQ7116), so it is refused. Export the rows and import them into a seed without a script to freeze them.
+        if (seed.RowsFrom?.Script is { } script)
+            throw new FormatException($"Seed '{seed.Name}' takes its rows from the rows script {script}: edit the script, or export its rows and import them into a seed without a script.");
         var table = Csv.Read(csv);
         if (table.Count == 0)
             throw new FormatException("The CSV is empty; the first line must be the header.");
@@ -468,9 +505,24 @@ public sealed partial class ModelStore
         var newRows = new List<(string Id, List<JsonNode?> Cells)>();
         var changed = new List<JsonObject>();
         var translations = new List<(string Locale, string Id, string Field, string Value)>();
+        var diagnostics = new List<Diagnostic>();
+        // A line whose code is a former code of the type is skipped (next-phase-2-design.md section 3.5): the code never comes back, and
+        // the row that replaced it stands for it, so a replace keeps that row.
+        var formerType = codeCsvAt >= 0 ? snapshot.Get<ReferenceType>(seed.Target) : null;
+        var lineNumber = 1;
         foreach (var line in table.Skip(1))
         {
+            lineNumber++;
             string Cell(int at) => at < line.Count ? line[at] : "";
+            if (formerType?.FormerCodes.FirstOrDefault(f => string.Equals(f.Code, Cell(codeCsvAt), StringComparison.Ordinal)) is { } former)
+            {
+                if (byId.TryGetValue(former.ReplacedBy, out var replacing))
+                    seen.Add(replacing);
+                diagnostics.Add(RuleCatalog.Create("MQ7019", $"Line {lineNumber.ToString(CultureInfo.InvariantCulture)}: '{former.Code}' is a former code of reference type {formerType.Name}, replaced by row {former.ReplacedBy}; the line is skipped. Write the code of that row to change it.",
+                    seed.Id, document.Path, "/rows"));
+                continue;
+            }
+
             int? existing = idAt >= 0 && byId.TryGetValue(Cell(idAt), out var hit) ? hit : null;
             if (existing is null && codeCsvAt >= 0 && byCode.TryGetValue(Cell(codeCsvAt), out var coded))
                 existing = coded;
@@ -530,7 +582,7 @@ public sealed partial class ModelStore
             }
         }
 
-        var preview = new ImportPreview(newRows.Count, changed, removed.Count, [])
+        var preview = new ImportPreview(newRows.Count, changed, removed.Count, diagnostics)
         {
             IgnoredHeaders = ignored,
             Blocked = blocked,
@@ -566,7 +618,11 @@ public sealed partial class ModelStore
         return new ImportResult(preview with { Applied = true, Hash = hash, ShardHashes = shardHashes }, SaveOutcome.Saved);
     }
 
-    /// <summary>The attributes typed by a reference type, with their effective storage per database.</summary>
+    /// <summary>
+    /// The attributes typed by a reference type, with their effective storage per database, and the columns whose own <c>typeRef</c>
+    /// names it (next-phase-2-design.md section 3.2, decision 11). The read takes the shared resolved snapshot
+    /// (<see cref="ResolvedAsync"/>) and resolves on its own only when validation errors leave that without a model.
+    /// </summary>
     /// <param name="referenceTypeId">The reference type id.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The usages, or <see langword="null"/> when no reference type has the id.</returns>
@@ -575,14 +631,17 @@ public sealed partial class ModelStore
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         if (snapshot.Get<Element>(referenceTypeId) is not ReferenceType)
             return null;
-        Resolution.ResolvedModel resolved;
-        try
+        var resolved = (await ResolvedAsync(snapshot, ct).ConfigureAwait(false)).Model;
+        if (resolved is null)
         {
-            resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return new ReferenceTypeUsage([]); // a model the resolver cannot take: validation says why
+            try
+            {
+                resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return new ReferenceTypeUsage([], []); // a model the resolver cannot take: validation says why
+            }
         }
 
         var packages = snapshot.Summaries().ToDictionary(s => s.Id, s => s.Package, StringComparer.Ordinal);
@@ -592,17 +651,46 @@ public sealed partial class ModelStore
             var owner = (a.Owner as Resolution.RElement)?.Id ?? "";
             var storage = (a.Reference?.Storage ?? new Dictionary<string, Resolution.RStorageChoice>())
                 .OrderBy(p => p.Key, StringComparer.Ordinal)
-                .ToDictionary(p => p.Key, p => new StorageChoice
-                {
-                    Strategy = p.Value.Strategy,
-                    Options = p.Value.Options.ToDictionary(o => o.Key, o => JsonSerializer.SerializeToElement(o.Value), StringComparer.Ordinal),
-                }, StringComparer.Ordinal);
+                .ToDictionary(p => p.Key, p => ToStorageChoice(p.Value), StringComparer.Ordinal);
             return new ReferenceTypeUse(a.Id, owner, packages.GetValueOrDefault(owner), a.Reference?.IsCollection ?? false, a.Reference?.Required ?? false, storage);
         }).OrderBy(u => u.Owner, StringComparer.Ordinal).ThenBy(u => u.Attribute, StringComparer.Ordinal).ToList();
-        return new ReferenceTypeUsage(usages);
+
+        var columns = new List<ReferenceTypeColumnUse>();
+        foreach (var database in resolved.Databases)
+        {
+            foreach (var table in database.Tables)
+            {
+                foreach (var column in table.Columns)
+                {
+                    if (column.TypeRef?.ReferenceType is not { } typed || !string.Equals(typed.Id, referenceTypeId, StringComparison.Ordinal))
+                        continue;
+                    var choice = typed.Storage.GetValueOrDefault(database.Name);
+                    var domain = table.Package ?? table.Entity?.Package ?? table.Relation?.Package;
+                    columns.Add(new ReferenceTypeColumnUse(table.Id, column.Id, database.Id, domain?.Id, !column.Nullable,
+                        choice?.Strategy is null ? null : ToStorageChoice(choice), column.ReferenceBinding?.Table.Id));
+                }
+            }
+        }
+
+        columns.Sort((a, b) =>
+        {
+            var byTable = string.CompareOrdinal(a.Table, b.Table);
+            return byTable != 0 ? byTable : string.CompareOrdinal(a.Column, b.Column);
+        });
+        return new ReferenceTypeUsage(usages, columns);
+
+        static StorageChoice ToStorageChoice(Resolution.RStorageChoice choice) => new()
+        {
+            Strategy = choice.Strategy,
+            Options = choice.Options.ToDictionary(o => o.Key, o => JsonSerializer.SerializeToElement(o.Value), StringComparer.Ordinal),
+        };
     }
 
-    private sealed record SeedColumn(string Key, string Header, string? Type, bool Collection, bool Json);
+    /// <summary>
+    /// A seed column as a CSV column: its key, its header, its logical type, and whether a cell is a list of codes, a JSON value or a
+    /// foreign-key entry's natural key (<see cref="ForeignKey"/>: a value, or JSON array text for a composite key).
+    /// </summary>
+    private sealed record SeedColumn(string Key, string Header, string? Type, bool Collection, bool Json, bool ForeignKey = false);
 
     private static List<SeedColumn> SeedColumns(ModelSnapshot snapshot, Seed seed)
     {
@@ -628,6 +716,14 @@ public sealed partial class ModelStore
                 continue;
             }
 
+            // A foreign-key entry of a table seed (next-phase-2-design.md section 3.4): headed by the key's name (its id when it has
+            // none); its cell is the referenced row's key, typed by the key's column when the key has one.
+            if (entry.Kind == "key" && entry.JsonPointer.StartsWith("/foreignKeys/", StringComparison.Ordinal))
+            {
+                columns.Add(new SeedColumn(key, Text("name") ?? key, NaturalKeyType(snapshot, Text("referencesTable")), false, false, ForeignKey: true));
+                continue;
+            }
+
             string? type = null;
             var json = false;
             if (node.TryGetProperty("type", out var t))
@@ -643,6 +739,25 @@ public sealed partial class ModelStore
         }
 
         return columns;
+    }
+
+    /// <summary>
+    /// The logical type of a table's row key when it has one column (as a foreign-key entry's natural key names its rows,
+    /// <see cref="TableSeedRules.NaturalKeyIds"/>), else <see langword="null"/>.
+    /// </summary>
+    private static string? NaturalKeyType(ModelSnapshot snapshot, string? tableId)
+    {
+        if (tableId is null || snapshot.Get<Element>(tableId) is not Table file)
+            return null;
+        var table = MemberRules.WithMembers(snapshot, file);
+        var seeds = snapshot.ElementsOf(ElementKind.Seed).OfType<Seed>().Where(s => string.Equals(s.Target, table.Id, StringComparison.Ordinal))
+            .Order(new Resolution.SeedOrder(snapshot));
+        var bindings = snapshot.ElementsOf(ElementKind.ReferenceType).OfType<ReferenceType>()
+            .OrderBy(t => t.Name, StringComparer.Ordinal).ThenBy(t => t.Id, StringComparer.Ordinal)
+            .SelectMany(t => t.Bindings).Where(b => string.Equals(b.Table, table.Id, StringComparison.Ordinal) && string.Equals(b.Database, table.Database, StringComparison.Ordinal));
+        return TableSeedRules.NaturalKeyIds(table, seeds, bindings) is [var only]
+            ? table.Columns.FirstOrDefault(c => string.Equals(c.Id, only, StringComparison.Ordinal))?.Type
+            : null;
     }
 
     private static JsonElement? Pointer(JsonElement root, string pointer)
@@ -667,7 +782,7 @@ public sealed partial class ModelStore
         null or { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined } => "",
         { ValueKind: JsonValueKind.String } v => v.GetString()!,
         { ValueKind: JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False } v => v.GetRawText(),
-        { ValueKind: JsonValueKind.Array } v when !column.Json && v.EnumerateArray().All(x => x.ValueKind == JsonValueKind.String) =>
+        { ValueKind: JsonValueKind.Array } v when !column.Json && !column.ForeignKey && v.EnumerateArray().All(x => x.ValueKind == JsonValueKind.String) =>
             string.Join(';', v.EnumerateArray().Select(x => x.GetString())),
         { } v => JsonSerializer.Serialize(v),
     };
@@ -676,7 +791,28 @@ public sealed partial class ModelStore
     {
         if (text.Length == 0)
             return null;
-        if (column.Json || (column.Type is null && text[0] is '{' or '['))
+        if (column.ForeignKey && text[0] == '[')
+        {
+            // A composite natural key: JSON array text.
+            try
+            {
+                return JsonNode.Parse(text);
+            }
+            catch (JsonException)
+            {
+                return JsonValue.Create(text); // kept as text: MQ7109 reports its shape on save
+            }
+        }
+
+        if (column.ForeignKey)
+        {
+            // A one-column natural key, typed by the referenced key's column (a table column's type keyword).
+            if (column.Type is "int16" or "int32" or "int64" or "decimal" or "float" or "double" && IsJsonNumber(text))
+                return JsonNode.Parse(text);
+            return column.Type == "bool" && text is "true" or "false" ? JsonValue.Create(text == "true") : JsonValue.Create(text);
+        }
+
+        if (column.Json || (column.Type is null && !column.ForeignKey && text[0] is '{' or '['))
         {
             try
             {

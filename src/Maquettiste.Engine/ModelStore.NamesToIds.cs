@@ -60,7 +60,7 @@ public sealed partial class ModelStore
         {
             var values = new List<(string Pointer, string Id)>();
             // One value several schemas type is one site per schema: the id it becomes must satisfy each of them.
-            foreach (var group in schemas.Sites(document.Element).Where(s => BuiltinRules.XRefIds(s.Value) is null).GroupBy(s => s.Pointer, StringComparer.Ordinal))
+            foreach (var group in schemas.Sites(document.Element, snapshot.PropertyKeys(document.Element)).Where(s => BuiltinRules.XRefIds(s.Value) is null).GroupBy(s => s.Pointer, StringComparer.Ordinal))
             {
                 IReadOnlyList<string>? candidates = null;
                 string? why = null;
@@ -121,7 +121,8 @@ public sealed partial class ModelStore
     /// sub-elements match through the qualified-name forms a batch resolves (<see cref="NameIndex"/>: stereotypes by key only, an
     /// attribute as <c>Owner.name</c>); a text that starts with <c>@</c> is a qualified name of one of the kinds. Within an
     /// <c>of: "$element"</c> scope a sub-element also matches its own name (a column its physical name), and under <c>of: &lt;id&gt;</c>
-    /// a row matches its code (<see cref="ReferenceDataIndex.RowOf"/>). The scope narrows every candidate: <c>of: "$element"</c> to the
+    /// a row matches its code (<see cref="ReferenceDataIndex.RowOf"/>), and a former code of the type the row that replaced it
+    /// (<see cref="ReferenceDataIndex.ReplacedByOf"/>). The scope narrows every candidate: <c>of: "$element"</c> to the
     /// members of the element, its base entities and its stereotypes (implied ones included), <c>of: &lt;id&gt;</c> to rows of a seed of
     /// that element, and <c>sameDatabase</c> to the element's one database. Names compare ordinally with the names as stored.
     /// </summary>
@@ -209,8 +210,10 @@ public sealed partial class ModelStore
                     }
                 }
 
+                // A row matches its code; a former code of the type finds the row that replaced it (next-phase-2-design.md section 3.5).
                 if (list is not null && string.Equals(kind, "row", StringComparison.Ordinal)
-                    && (_referenceData ??= ReferenceDataIndex.Build(snapshot.Documents.Select(d => d.Element))).RowOf(list, Text(text)) is { } row
+                    && (_referenceData ??= ReferenceDataIndex.Build(snapshot.Documents.Select(d => d.Element))) is var referenceData
+                    && (referenceData.RowOf(list, Text(text)) ?? referenceData.ReplacedByOf(list, Text(text))) is { } row
                     && snapshot.TryGetEntry(row, out var rowEntry))
                 {
                     Add(row, rowEntry.OwnerId);
@@ -262,7 +265,8 @@ public sealed partial class ModelStore
             while (current is not null && owners.Add(current) && snapshot.Get<Entity>(current) is { } ancestor)
                 current = ancestor.Base;
 
-            foreach (var applied in snapshot.EffectiveStereotypes(element.Stereotypes))
+            // The element's effective set, defaults included (next-phase-2-design.md section 3.1).
+            foreach (var applied in snapshot.EffectiveStereotypes(element))
                 owners.Add(applied.Stereotype.Id);
             _owners[element.Id] = owners;
             return owners;

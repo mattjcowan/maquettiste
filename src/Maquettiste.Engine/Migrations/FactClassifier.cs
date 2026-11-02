@@ -30,6 +30,38 @@ internal sealed record ClassifierInput
 
     /// <summary>The key sequences a materialize in the same write moved (<c>MaterializeResult.Sequences</c>).</summary>
     public IReadOnlyDictionary<string, string> SequenceRekeys { get; init; } = FrozenDictionary<string, string>.Empty;
+
+    /// <summary>
+    /// The constraint ids a fold into a stereotype in the same write moved (<c>MaterializeResult.MemberRekeys</c>): <c>index</c>,
+    /// <c>unique</c>, <c>foreign-key</c> and <c>check</c> entries, each with its table's key before the change. The write's one
+    /// <c>rekey</c> lists them after its table's column entries; they move no capture key, since the capture keys of keys and indexes
+    /// follow their columns (next-phase-2-design.md section 3.1).
+    /// </summary>
+    public IReadOnlyList<MigrationRekey> MemberRekeys { get; init; } = [];
+
+    /// <summary>
+    /// The constraint ids (keys, uniques, foreign keys, checks and indexes; an inherited one by its keyed id) of the tables whose
+    /// constraint entries an open <c>rekey</c> fact the write does not write lists, by table key, before the change. With
+    /// <see cref="ConstraintsAfter"/> they tell an undo: an entry whose <c>to</c> leaves its table and whose <c>from</c> comes back
+    /// in it is recorded back, as a column is.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlySet<string>> ConstraintsBefore { get; init; } = FrozenDictionary<string, IReadOnlySet<string>>.Empty;
+
+    /// <summary>The same constraint ids after the change (<see cref="ConstraintsBefore"/>).</summary>
+    public IReadOnlyDictionary<string, IReadOnlySet<string>> ConstraintsAfter { get; init; } = FrozenDictionary<string, IReadOnlySet<string>>.Empty;
+
+    /// <summary>
+    /// The write's code maps, in operation order: each reference-type refactor's (next-phase-2-design.md section 3.5). Each becomes one
+    /// <c>value-map</c> fact here when the database holds the codes (<see cref="Holders"/>), or for a type rename when the database has no
+    /// binding of the type (<see cref="BoundTypes"/>).
+    /// </summary>
+    public IReadOnlyList<CodeMap> CodeMaps { get; init; } = [];
+
+    /// <summary>Where the database stored reference-type codes before the change (its before resolve), under the keys before the write.</summary>
+    public CodeHolders Holders { get; init; } = CodeHolders.Empty;
+
+    /// <summary>The reference types the code maps rename that have a binding in the database after the change.</summary>
+    public IReadOnlySet<string> BoundTypes { get; init; } = FrozenSet<string>.Empty;
 }
 
 /// <summary>The facts a write records in one database.</summary>
@@ -47,12 +79,13 @@ internal sealed record ClassifierResult(IReadOnlyList<Migration> Created, IReadO
 /// <summary>
 /// The classifier (next-phase-1-design.md section 3.2): two captures of one database, its open facts after the change, the dialect
 /// and the write's key maps in; facts out. It compares resolved physical captures, never documents, and never matches objects by
-/// name: a moved key is known from the write's key maps (a materialize's, the keys of <c>rekey</c> facts the write itself creates,
-/// and the reverse of open <c>rekey</c> facts whose new keys the write removes, an undo of a materialize), never guessed. The
-/// before capture is moved through those maps (<see cref="SnapshotRekey.Apply"/>) and the two captures are compared by key, as
-/// the schema diff matches them:
+/// name: a moved key is known from the write's key maps (a materialize's or a fold's, the keys of <c>rekey</c> facts the write itself
+/// creates, and the reverse of open <c>rekey</c> facts whose new keys the write removes, an undo of a materialize or a fold), never
+/// guessed. The before capture is moved through those maps (<see cref="SnapshotRekey.Apply"/>) and the two captures are compared by
+/// key, as the schema diff matches them:
 /// <list type="bullet">
-/// <item><description>keys the write's materialize or undo moved: one complete <c>rekey</c> fact, every key moved;</description></item>
+/// <item><description>keys the write's materialize, fold or undo moved: one complete <c>rekey</c> fact, every key moved, a fold's
+/// constraint ids after its table's columns;</description></item>
 /// <item><description>a database schema, table, view, sequence or column with the same key and a new name (or a table, view or
 /// sequence in a schema other than its schema's rename): a complete <c>rename</c>;</description></item>
 /// <item><description>a column type (its native type, else its keyword and facets) narrowed: a <c>change-type</c> pending a
@@ -62,7 +95,11 @@ internal sealed record ClassifierResult(IReadOnlyList<Migration> Created, IReadO
 /// <item><description>a table, column or sequence whose key disappears: a <c>drop</c> pending its acknowledgement (a dropped
 /// table's columns get none), even when an object with the same name appears;</description></item>
 /// <item><description>added objects, indexes, constraints, views dropped, routines, types, SQL objects, defaults, comments,
-/// identity, collation and storage: nothing.</description></item>
+/// identity, collation and storage: nothing;</description></item>
+/// <item><description>a code map the write hands over (a reference-type refactor's, next-phase-2-design.md section 3.5): one
+/// <c>value-map</c> fact over the columns and template-defined collections that held the codes before the write (read under the
+/// write's key maps, named as after the change, and only those still there), or with no holder for a type rename where the type has
+/// no binding; the classifier never infers one from the captures.</description></item>
 /// </list>
 /// A change that a fact the write itself creates or updates already explains (same fact type, same object) is not recorded again.
 /// A column whose last open fact is a pending <c>change-type</c> (not held, no conversion, no data check) keeps that one fact: a
@@ -70,7 +107,9 @@ internal sealed record ClassifierResult(IReadOnlyList<Migration> Created, IReadO
 /// (stale, MQ4103). New facts chain in the order: the write's <c>rekey</c> first (the other facts name the keys it moved), then
 /// schema renames by key, then by (object key, member key; rename, change-type, backfill, drop); ids are taken in that order, and
 /// each fact's <c>after</c> is the heads of the database's open facts on the same table (the facts of the table and of its members
-/// that no other such fact follows).
+/// that no other such fact follows). A write with value maps chains them after every rename it records and before its other facts
+/// (in code-map order), so a value map names its columns as the renames leave them and a <c>change-type</c> on one of them, such as
+/// a merge's change of strategy, converts mapped codes; a value map's tables are those of its columns and collections.
 /// </summary>
 internal static class FactClassifier
 {
@@ -112,6 +151,9 @@ internal static class FactClassifier
         /// <summary>The write's table key maps, old key to new (a bound reference table moves with them).</summary>
         private readonly Dictionary<string, string> _tableMoves = new(StringComparer.Ordinal);
 
+        /// <summary>The write's table key maps with their column moves, by old key (a value map's holders move with them).</summary>
+        private readonly Dictionary<string, TableRekey> _tableRekeys = new(StringComparer.Ordinal);
+
         public ClassifierResult Classify(IIdGenerator ids)
         {
             _ordered = FactKeys.Order(input.OpenFacts.Where(f => string.Equals(f.Database, input.DatabaseId, StringComparison.Ordinal)));
@@ -126,7 +168,11 @@ internal static class FactClassifier
             }
 
             foreach (var t in tables)
+            {
                 _tableMoves[t.OldKey] = t.NewKey;
+                _tableRekeys[t.OldKey] = t;
+            }
+
             for (var i = 0; i < _ordered.Count; i++)
             {
                 var fact = _ordered[i];
@@ -144,43 +190,127 @@ internal static class FactClassifier
 
             var before = tables.Count > 0 || sequences.Count > 0 ? SnapshotRekey.Apply(input.Before, tables, sequences) : input.Before;
             Compare(before, input.After);
-            if (_candidates.Count == 0 && rekey is null)
+            var valueMaps = ValueMaps(input.After);
+            if (_candidates.Count == 0 && rekey is null && valueMaps.Count == 0)
                 return _updated.Count == 0 ? ClassifierResult.Empty : new ClassifierResult([], [.. _updated.Values.OrderBy(f => f.Id, StringComparer.Ordinal)]);
 
             var ordered = _candidates
                 .OrderBy(c => c.Group, StringComparer.Ordinal).ThenBy(c => c.Member, StringComparer.Ordinal).ThenBy(c => c.Rank).ToList();
-            var created = new List<Migration>(ordered.Count + 1);
+            var created = new List<Migration>(ordered.Count + valueMaps.Count + 1);
             var heads = new Heads(_ordered, _objects);
             if (rekey is not null)
                 created.Add(heads.Chain(rekey with { Id = ids.NewId() }, RekeyObjects(rekey)));
-            foreach (var candidate in ordered)
+
+            // Value maps come after every rename the write records and before its other facts (section 3.5): they name their columns as
+            // the renames leave them, and a change-type on one of their columns converts mapped codes.
+            var renames = valueMaps.Count == 0 ? ordered : [.. ordered.Where(c => c.Rank == RankRename)];
+            foreach (var candidate in renames)
+                created.Add(heads.Chain(candidate.Fact with { Id = ids.NewId(), Database = input.DatabaseId }, [Identity(candidate.Fact.Object!)]));
+            if (valueMaps.Count == 0)
+                return new ClassifierResult(created, [.. _updated.Values.OrderBy(f => f.Id, StringComparer.Ordinal)]);
+
+            foreach (var map in valueMaps)
+                created.Add(heads.Chain(map with { Id = ids.NewId() }, ValueMapObjects(map)));
+            foreach (var candidate in ordered.Where(c => c.Rank != RankRename))
+                created.Add(heads.Chain(candidate.Fact with { Id = ids.NewId(), Database = input.DatabaseId }, [Identity(candidate.Fact.Object!)]));
+            return new ClassifierResult(created, [.. _updated.Values.OrderBy(f => f.Id, StringComparer.Ordinal)]);
+        }
+
+        // ---- value maps ----
+
+        /// <summary>
+        /// One <c>value-map</c> per code map that applies to the database (section 3.5): its columns and collections are the holders of the
+        /// type whose codes it changes, read under the write's table key maps and named as the after capture names them; a holder that is
+        /// gone after the change is left out. A code map with no holder left applies only when it renames a type the database has no
+        /// binding of.
+        /// </summary>
+        private List<Migration> ValueMaps(PhysicalSnapshot after)
+        {
+            if (input.CodeMaps.Count == 0)
+                return [];
+            var tables = after.Tables.GroupBy(t => t.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+            var result = new List<Migration>();
+            foreach (var map in input.CodeMaps)
             {
-                var fact = candidate.Fact with { Id = ids.NewId(), Database = input.DatabaseId };
-                created.Add(heads.Chain(fact, [Identity(candidate.Fact.Object!)]));
+                var objects = new List<MigrationObject>();
+                foreach (var holder in input.Holders.Columns(map.HeldType))
+                {
+                    var (tableKey, columnKey) = MoveColumn(holder.Table, holder.Key);
+                    if (!tables.TryGetValue(tableKey, out var table) || table.Columns.FirstOrDefault(c => string.Equals(c.Key, columnKey, StringComparison.Ordinal)) is not { } column)
+                        continue;
+                    objects.Add(new MigrationObject { Kind = "column", Table = tableKey, Key = columnKey, Schema = table.Schema, TableName = table.Name, Name = column.Name });
+                }
+
+                var collections = new List<MigrationCollection>();
+                foreach (var holder in input.Holders.Collections(map.HeldType))
+                {
+                    var tableKey = _tableMoves.GetValueOrDefault(holder.Table) ?? holder.Table;
+                    if (!tables.TryGetValue(tableKey, out var table))
+                        continue;
+                    collections.Add(new MigrationCollection { Table = tableKey, Schema = table.Schema, TableName = table.Name, Attribute = holder.Attribute, Name = holder.Name });
+                }
+
+                if (objects.Count == 0 && collections.Count == 0 && !(map.Names && !input.BoundTypes.Contains(map.ReferenceType)))
+                    continue;
+                result.Add(new Migration
+                {
+                    Id = "", Database = input.DatabaseId, Fact = MigrationFact.ValueMap,
+                    Objects = [.. objects.OrderBy(o => o.Table, StringComparer.Ordinal).ThenBy(o => o.Key, StringComparer.Ordinal)],
+                    Collections = [.. collections.OrderBy(c => c.Table, StringComparer.Ordinal).ThenBy(c => c.Attribute, StringComparer.Ordinal)],
+                    From = map.FromNames, To = map.ToNames, ReferenceType = map.ReferenceType, FromReferenceType = map.FromReferenceType,
+                    Values = [.. map.Values.OrderBy(v => v.From, StringComparer.Ordinal)],
+                });
             }
 
-            return new ClassifierResult(created, [.. _updated.Values.OrderBy(f => f.Id, StringComparer.Ordinal)]);
+            return result;
+        }
+
+        /// <summary>A column's table and column keys before the write, moved through the write's table key maps.</summary>
+        private (string Table, string Column) MoveColumn(string table, string column)
+        {
+            if (!_tableRekeys.TryGetValue(table, out var moved))
+                return (table, column);
+            return (moved.NewKey, moved.Columns.GetValueOrDefault(column) ?? column);
+        }
+
+        /// <summary>The identities a new value map changes, as the heads read them: each column (a member of its table) and each collection's owner table.</summary>
+        private static List<(string Kind, string? Table, string Key)> ValueMapObjects(Migration map)
+        {
+            var result = new List<(string Kind, string? Table, string Key)>();
+            foreach (var o in map.Objects)
+                result.Add(Identity(o));
+            foreach (var c in map.Collections)
+                result.Add(Identity(new MigrationObject { Kind = "table", Key = c.Table }));
+            return result;
         }
 
         // ---- key maps ----
 
         /// <summary>
-        /// The write's key maps: the materialize's, the keys of <c>rekey</c> facts the write creates, and the reverse of open
-        /// <c>rekey</c> facts whose new keys the write removes (the old key is back in the after capture); the first map of a key wins.
-        /// Also the keys the new <c>rekey</c> fact records: those the materialize or the undo moved that exist before the change and
-        /// that no written fact records already.
+        /// The write's key maps: the materialize's or the fold's, the keys of <c>rekey</c> facts the write creates, and the reverse of
+        /// open <c>rekey</c> facts whose new keys the write removes (the old key is back in the after capture: a table, or a column of a
+        /// table that stays where it is); the first map of a key wins. Also the keys the new <c>rekey</c> fact records: those the
+        /// materialize, the fold or the undo moved that exist before the change and that no written fact records already, each
+        /// table's constraint ids (the fold's, and those an undo brings back) after its columns, by kind then <c>from</c>.
         /// </summary>
         private (List<TableRekey> Tables, Dictionary<string, string> Sequences, List<MigrationRekey> Recorded) KeyMaps()
         {
             var tables = new Dictionary<string, TableRekey>(StringComparer.Ordinal);
             var sequences = new Dictionary<string, string>(StringComparer.Ordinal);
-            var recordable = new List<TableRekey>();
+            var recordable = new Dictionary<string, TableRekey>(StringComparer.Ordinal);
             var recordableSequences = new List<(string From, string To)>();
+            var members = new Dictionary<(string Kind, string Table, string From), MigrationRekey>();
 
             foreach (var t in input.Rekeys.OrderBy(t => t.OldKey, StringComparer.Ordinal))
             {
                 if (tables.TryAdd(t.OldKey, t))
-                    recordable.Add(t);
+                    recordable[t.OldKey] = t;
+            }
+
+            foreach (var m in input.MemberRekeys)
+            {
+                if (IsConstraint(m.Kind) && m.Table is { } table)
+                    members.TryAdd((m.Kind, table, m.From), m);
             }
 
             foreach (var (from, to) in input.SequenceRekeys.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -201,19 +331,40 @@ internal static class FactClassifier
                     sequences.TryAdd(from, to);
             }
 
-            var beforeTables = input.Before.Tables.Select(t => t.Key).ToHashSet(StringComparer.Ordinal);
-            var afterTables = input.After.Tables.Select(t => t.Key).ToHashSet(StringComparer.Ordinal);
+            var beforeTables = input.Before.Tables.ToDictionary(t => t.Key, StringComparer.Ordinal);
+            var afterTables = input.After.Tables.ToDictionary(t => t.Key, StringComparer.Ordinal);
             var beforeSequences = input.Before.Sequences.Select(s => s.Key).ToHashSet(StringComparer.Ordinal);
             var afterSequences = input.After.Sequences.Select(s => s.Key).ToHashSet(StringComparer.Ordinal);
+            var columnUndos = new SortedDictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+            var constraintUndos = new List<(FactKeys.RekeyMap Own, MigrationRekey Key)>();
             foreach (var fact in _ordered.Where(f => f.Fact == MigrationFact.Rekey && !input.WrittenFacts.Contains(f.Id)))
             {
                 var (back, backSequences) = FactKeys.KeyMaps(fact, reverse: true);
                 foreach (var t in back)
                 {
                     // An undo: the fact's new key leaves and its old key comes back.
-                    if (!string.Equals(t.OldKey, t.NewKey, StringComparison.Ordinal) && beforeTables.Contains(t.OldKey) && !afterTables.Contains(t.OldKey)
-                        && afterTables.Contains(t.NewKey) && tables.TryAdd(t.OldKey, t))
-                        recordable.Add(t);
+                    if (!string.Equals(t.OldKey, t.NewKey, StringComparison.Ordinal) && beforeTables.ContainsKey(t.OldKey) && !afterTables.ContainsKey(t.OldKey)
+                        && afterTables.ContainsKey(t.NewKey) && tables.TryAdd(t.OldKey, t))
+                    {
+                        recordable[t.OldKey] = t;
+                        continue;
+                    }
+
+                    // A column undo (a fold's, which keeps its table key): the table stays where it is, the fact's new column key
+                    // leaves it and the old one comes back.
+                    if (t.Columns.Count == 0 || !beforeTables.TryGetValue(t.OldKey, out var wasTable) || !afterTables.TryGetValue(t.OldKey, out var nowTable))
+                        continue;
+                    var was = wasTable.Columns.Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
+                    var now = nowTable.Columns.Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
+                    foreach (var (from, to) in t.Columns.OrderBy(c => c.Key, StringComparer.Ordinal))
+                    {
+                        if (was.Contains(from) && !was.Contains(to) && now.Contains(to) && !now.Contains(from))
+                        {
+                            if (!columnUndos.TryGetValue(t.OldKey, out var moves))
+                                columnUndos[t.OldKey] = moves = new Dictionary<string, string>(StringComparer.Ordinal);
+                            moves.TryAdd(from, to);
+                        }
+                    }
                 }
 
                 foreach (var (from, to) in backSequences.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -221,21 +372,73 @@ internal static class FactClassifier
                     if (beforeSequences.Contains(from) && !afterSequences.Contains(from) && afterSequences.Contains(to) && sequences.TryAdd(from, to))
                         recordableSequences.Add((from, to));
                 }
+
+                if (input.ConstraintsBefore.Count > 0)
+                {
+                    var own = FactKeys.RekeyMap.Of(fact);
+                    foreach (var key in fact.Keys.Where(k => IsConstraint(k.Kind) && k.Table is not null))
+                        constraintUndos.Add((own, key));
+                }
+            }
+
+            // Column undos join the table's map; a map the write already holds for the table (its own) keeps its columns.
+            foreach (var (key, moves) in columnUndos)
+            {
+                if (!tables.TryGetValue(key, out var existing))
+                {
+                    tables[key] = recordable[key] = new TableRekey(key, key, moves);
+                    continue;
+                }
+
+                var merged = new Dictionary<string, string>(existing.Columns, StringComparer.Ordinal);
+                var added = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var (from, to) in moves)
+                {
+                    if (merged.TryAdd(from, to))
+                        added[from] = to;
+                }
+
+                if (added.Count == 0)
+                    continue;
+                tables[key] = existing with { Columns = merged };
+                recordable[key] = recordable.TryGetValue(key, out var mine) ? mine with { Columns = new Dictionary<string, string>(mine.Columns.Concat(added), StringComparer.Ordinal) }
+                    : new TableRekey(key, existing.NewKey, added);
+            }
+
+            // A constraint undo: in the table its open fact names (by its key before the write), the fact's new id leaves and the old
+            // one comes back, as the documents tell (the captures key constraints by their columns, not by id).
+            foreach (var (own, key) in constraintUndos)
+            {
+                var at = own.Move("table", null, key.Table!).Key;
+                var then = tables.TryGetValue(at, out var moved) ? moved.NewKey : at;
+                if (input.ConstraintsBefore.TryGetValue(at, out var was) && was.Contains(key.To) && !was.Contains(key.From)
+                    && input.ConstraintsAfter.TryGetValue(then, out var now) && now.Contains(key.From) && !now.Contains(key.To))
+                    members.TryAdd((key.Kind, at, key.To), new MigrationRekey { Kind = key.Kind, Table = at, From = key.To, To = key.From, Name = key.Name });
             }
 
             var recorded = new List<MigrationRekey>();
-            var beforeByKey = input.Before.Tables.ToDictionary(t => t.Key, StringComparer.Ordinal);
-            foreach (var t in recordable.OrderBy(t => t.OldKey, StringComparer.Ordinal))
+            var memberTables = members.Values.GroupBy(m => m.Table!, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.OrderBy(m => m.Kind, StringComparer.Ordinal).ThenBy(m => m.From, StringComparer.Ordinal).ToList(), StringComparer.Ordinal);
+            foreach (var key in recordable.Keys.Union(memberTables.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal))
             {
-                if (!beforeByKey.TryGetValue(t.OldKey, out var table))
+                if (!beforeTables.TryGetValue(key, out var table))
                     continue;
-                if (!string.Equals(t.OldKey, t.NewKey, StringComparison.Ordinal) && !writtenKeys.Contains(("table", null, t.OldKey)))
-                    recorded.Add(new MigrationRekey { Kind = "table", From = t.OldKey, To = t.NewKey, Name = table.Name });
-                foreach (var column in table.Columns.OrderBy(c => c.Key, StringComparer.Ordinal))
+                if (recordable.TryGetValue(key, out var t))
                 {
-                    if (t.Columns.TryGetValue(column.Key, out var to) && !string.Equals(column.Key, to, StringComparison.Ordinal)
-                        && !writtenKeys.Contains(("column", t.OldKey, column.Key)))
-                        recorded.Add(new MigrationRekey { Kind = "column", Table = t.OldKey, From = column.Key, To = to, Name = column.Name });
+                    if (!string.Equals(t.OldKey, t.NewKey, StringComparison.Ordinal) && !writtenKeys.Contains(("table", null, t.OldKey)))
+                        recorded.Add(new MigrationRekey { Kind = "table", From = t.OldKey, To = t.NewKey, Name = table.Name });
+                    foreach (var column in table.Columns.OrderBy(c => c.Key, StringComparer.Ordinal))
+                    {
+                        if (t.Columns.TryGetValue(column.Key, out var to) && !string.Equals(column.Key, to, StringComparison.Ordinal)
+                            && !writtenKeys.Contains(("column", t.OldKey, column.Key)))
+                            recorded.Add(new MigrationRekey { Kind = "column", Table = t.OldKey, From = column.Key, To = to, Name = column.Name });
+                    }
+                }
+
+                foreach (var m in memberTables.GetValueOrDefault(key) ?? [])
+                {
+                    if (!string.Equals(m.From, m.To, StringComparison.Ordinal) && !writtenKeys.Contains((m.Kind, key, m.From)))
+                        recorded.Add(new MigrationRekey { Kind = m.Kind, Table = key, From = m.From, To = m.To, Name = m.Name });
                 }
             }
 
@@ -446,6 +649,8 @@ internal static class FactClassifier
                 result.Add(Identity(Current(single, position)));
             foreach (var o in fact.Objects)
                 result.Add(Identity(Current(o, position)));
+            foreach (var c in fact.Collections)
+                result.Add(Identity(Current(new MigrationObject { Kind = "table", Key = c.Table }, position))); // a value map's owner tables
             if (fact.Fact == MigrationFact.Rekey)
             {
                 var own = FactKeys.RekeyMap.Of(fact);
@@ -483,6 +688,9 @@ internal static class FactClassifier
             "table" or "sequence" or "sql-object" => (key.Kind, key.To),
             _ => ("table", own.Move("table", null, key.Table ?? key.From).Key),
         };
+
+        /// <summary>Whether a <c>rekey</c> entry moves a constraint's id: an index, unique, foreign key or check.</summary>
+        private static bool IsConstraint(string kind) => FactKeys.ConstraintKinds.Contains(kind);
 
         /// <summary>An object's identity: a member by its table's key and its own, any other object by its kind and key.</summary>
         private static (string Kind, string? Table, string Key) Identity(MigrationObject o) =>

@@ -4,7 +4,10 @@
 # any row gives; json: <database>/seed-data.json. The manifest says, per table, its file, its key columns and, per seed, the rows
 # it holds (first row and count), the columns it gives, its environments (empty: every environment), and how a loader applies
 # it: once (insert the rows whose key is missing) or converge (also update changed rows; with delete, remove the rows it does not
-# hold). seedHash changes whenever any row or setting does, so a loader can skip a database it has loaded already.
+# hold). seedHash changes whenever any row or setting does, so a loader can skip a database it has loaded already. A table seed's
+# foreign-key entry names its row by that row's key; where the database fills the referenced value (identity, sequence, a default),
+# the cell is left empty and listed under unresolved (the table, the row and its index in the table's rows, the column, the referenced
+# table and column, its key columns and the row's key), for a loader to look the value up after the referenced rows are in.
 db = database
 folder = kebab db.name
 format = pack.params.format ?? "csv"
@@ -62,6 +65,36 @@ func seed_entries(st)
   ret $out
 end
 
+# The cells of a database's rows whose referenced value the database fills, in table and row order.
+func unresolved_cells(tables)
+  $out = []
+  for st in tables
+    for r in st.rows
+      $index = for.index
+      for fk in st.table.foreign_keys
+        if !(object.has_key r.refs fk.name)
+          continue
+        end
+        $ref = r.refs[fk.name]
+        for u in $ref.unknown
+          $target = null
+          for k in fk.columns
+            if k.name == u.name
+              $target = fk.referenced_columns[for.index]
+            end
+          end
+          $keys = []
+          for k in $ref.key_columns
+            $keys[$keys.size] = k.name
+          end
+          $out[$out.size] = { table: st.table.name, schema: st.table.schema, row: r.id, index: $index, column: u.name, referencedTable: $ref.table.name, referencedSchema: $ref.table.schema, referencedColumn: $target.name, keyColumns: $keys, key: $ref.row ? $ref.row.key : $ref.key }
+        end
+      end
+    end
+  end
+  ret $out
+end
+
 func table_entry(st, with_rows)
   $columns = []
   $types = {}
@@ -87,6 +120,7 @@ func table_entry(st, with_rows)
 end
 -}}
 {{- if db.seed_tables.size > 0 -}}
+{{- unresolved = unresolved_cells(db.seed_tables) -}}
 {{- if format == "json" -}}
 {{- capture content -}}
 {
@@ -97,7 +131,12 @@ end
 {{- for st in db.seed_tables }}
     {{ json (table_entry st true) }}{{ for.last ? "" : "," }}
 {{- end }}
-  ]
+  ]{{ if unresolved.size > 0 }},
+  "unresolved": [
+{{- for u in unresolved }}
+    {{ json u }}{{ for.last ? "" : "," }}
+{{- end }}
+  ]{{ end }}
 }
 {{ end -}}
 {{- file (folder + "/seed-data.json") content -}}
@@ -111,7 +150,12 @@ end
 {{- for st in db.seed_tables }}
     {{ json (table_entry st false) }}{{ for.last ? "" : "," }}
 {{- end }}
-  ]
+  ]{{ if unresolved.size > 0 }},
+  "unresolved": [
+{{- for u in unresolved }}
+    {{ json u }}{{ for.last ? "" : "," }}
+{{- end }}
+  ]{{ end }}
 }
 {{ end -}}
 {{- file (folder + "/manifest.json") content -}}

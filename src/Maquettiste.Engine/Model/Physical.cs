@@ -142,7 +142,16 @@ public enum ConventionMapping
 }
 
 /// <summary>A schema inside a database.</summary>
-public sealed record DbSchema : ElementBase;
+public sealed record DbSchema : ElementBase
+{
+    /// <summary>
+    /// Stereotype keys every table, view, sequence, routine, database type and SQL object of the schema carries, applied before
+    /// package defaults and their own stereotypes (next-phase-2-design.md section 3.1). A default skips an object whose kind it does
+    /// not apply to; an object leaves one out with <see cref="Element.ExcludeStereotypes"/>.
+    /// </summary>
+    [StereotypeKeys]
+    public IReadOnlyList<string> DefaultStereotypes { get; init; } = [];
+}
 
 /// <summary>A SQL dialect.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<Dialect>))]
@@ -244,6 +253,16 @@ public sealed record Table : Element, IPackaged
     /// <summary>Indexes.</summary>
     public IReadOnlyList<TableIndex> Indexes { get; init; } = [];
 
+    /// <summary>
+    /// Per-table exceptions to the members the table inherits from its stereotypes (next-phase-2-design.md section 3.1): each entry
+    /// names a stereotype member and states only the facets it changes; the member keeps its keyed id.
+    /// </summary>
+    public IReadOnlyList<TableRedefinition> Redefines { get; init; } = [];
+
+    /// <summary>Ids of stereotype members (columns, keys, indexes and checks) the table does not inherit.</summary>
+    [ElementRef(IndexKinds = ["column", "key"])]
+    public IReadOnlyList<string> Excludes { get; init; } = [];
+
     /// <summary>Declarative partitioning (PostgreSQL <c>PARTITION BY</c>), or <see langword="null"/>.</summary>
     public PartitionBy? PartitionBy { get; init; }
 
@@ -256,6 +275,105 @@ public sealed record Table : Element, IPackaged
 
     /// <summary>A database comment.</summary>
     public string? Comment { get; init; }
+}
+
+/// <summary>
+/// One entry of a table's <c>redefines</c> list (next-phase-2-design.md section 3.1): the stereotype member it redefines and the facets
+/// it states, each <see langword="null"/> when not stated. Which facets a member takes depends on its kind: a column takes
+/// <see cref="Nullable"/>, <see cref="Default"/>, <see cref="DefaultSql"/>, <see cref="DefaultName"/>, <see cref="Comment"/> and
+/// <see cref="Collation"/>; a primary key <see cref="Columns"/>, <see cref="Name"/> and <see cref="Clustered"/>; a unique
+/// <see cref="Columns"/>, <see cref="Name"/> and <see cref="NullsNotDistinct"/>; a foreign key <see cref="Name"/>,
+/// <see cref="OnDelete"/>, <see cref="OnDeleteColumns"/>, <see cref="OnUpdate"/> and <see cref="Deferrable"/>; an index
+/// <see cref="Name"/>, <see cref="Where"/>, <see cref="Method"/> and <see cref="Storage"/>; a check <see cref="Name"/> (MQ2027 refuses
+/// others).
+/// </summary>
+public sealed record TableRedefinition : IMemberRedefinition
+{
+    /// <summary>The id of the stereotype member the entry redefines.</summary>
+    [ElementRef(IndexKinds = ["column", "key"])]
+    public required string Member { get; init; }
+
+    /// <summary>A key's, index's or check's constraint name for this table.</summary>
+    public string? Name { get; init; }
+
+    /// <summary>A column's nullability.</summary>
+    public bool? Nullable { get; init; }
+
+    /// <summary>A column's literal default; it replaces an inherited default of either form.</summary>
+    public JsonElement? Default { get; init; }
+
+    /// <summary>A column's default SQL per dialect name; it replaces an inherited default of either form.</summary>
+    public IReadOnlyDictionary<string, string>? DefaultSql { get; init; }
+
+    /// <summary>The name of a column's default constraint (SQL Server).</summary>
+    public string? DefaultName { get; init; }
+
+    /// <summary>A column's database comment.</summary>
+    public string? Comment { get; init; }
+
+    /// <summary>A column's collation.</summary>
+    public string? Collation { get; init; }
+
+    /// <summary>A primary or unique key's whole column list: own column ids and inherited keyed ids.</summary>
+    [ElementRef(Keyed = true)]
+    public IReadOnlyList<string>? Columns { get; init; }
+
+    /// <summary>Whether a primary key is clustered (SQL Server).</summary>
+    public bool? Clustered { get; init; }
+
+    /// <summary>Whether two rows with nulls in a unique key's columns conflict (PostgreSQL 15).</summary>
+    public bool? NullsNotDistinct { get; init; }
+
+    /// <summary>A foreign key's on-delete action.</summary>
+    public ReferentialAction? OnDelete { get; init; }
+
+    /// <summary>The columns a foreign key's set-null or set-default on-delete action sets.</summary>
+    [ElementRef(Keyed = true)]
+    public IReadOnlyList<string>? OnDeleteColumns { get; init; }
+
+    /// <summary>A foreign key's on-update action.</summary>
+    public ReferentialAction? OnUpdate { get; init; }
+
+    /// <summary>When a foreign key is checked.</summary>
+    public Deferrability? Deferrable { get; init; }
+
+    /// <summary>An index's partial-index predicate.</summary>
+    public string? Where { get; init; }
+
+    /// <summary>An index's method.</summary>
+    public IndexMethod? Method { get; init; }
+
+    /// <summary>An index's storage parameters per dialect name; they replace the inherited map whole.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, JsonElement>>? Storage { get; init; }
+
+    /// <summary>The JSON names of the facets the entry states (the non-null ones), in ordinal order; never <c>member</c>.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> Facets
+    {
+        get
+        {
+            // Listed in ordinal order of their JSON names.
+            var facets = new List<string>(4);
+            if (Clustered is not null) facets.Add("clustered");
+            if (Collation is not null) facets.Add("collation");
+            if (Columns is not null) facets.Add("columns");
+            if (Comment is not null) facets.Add("comment");
+            if (Default is not null) facets.Add("default");
+            if (DefaultName is not null) facets.Add("defaultName");
+            if (DefaultSql is not null) facets.Add("defaultSql");
+            if (Deferrable is not null) facets.Add("deferrable");
+            if (Method is not null) facets.Add("method");
+            if (Name is not null) facets.Add("name");
+            if (Nullable is not null) facets.Add("nullable");
+            if (NullsNotDistinct is not null) facets.Add("nullsNotDistinct");
+            if (OnDelete is not null) facets.Add("onDelete");
+            if (OnDeleteColumns is not null) facets.Add("onDeleteColumns");
+            if (OnUpdate is not null) facets.Add("onUpdate");
+            if (Storage is not null) facets.Add("storage");
+            if (Where is not null) facets.Add("where");
+            return facets;
+        }
+    }
 }
 
 /// <summary>How a table is partitioned.</summary>
@@ -327,6 +445,12 @@ public sealed record Column : ElementBase
     public string? Type { get; init; }
 
     /// <summary>
+    /// The enum, reference type or scalar type whose values the column holds (designed, imported, extra and contributed columns);
+    /// <see langword="null"/> when its physical type is all it says. Only <see cref="Model.TypeRef.Ref"/> is set.
+    /// </summary>
+    public TypeRef? TypeRef { get; init; }
+
+    /// <summary>
     /// The bound type of a range or multirange column (<see cref="BuiltinTypes.RangeSubtypes"/>), and only of one (MQ4057).
     /// </summary>
     public string? Subtype { get; init; }
@@ -385,11 +509,21 @@ public sealed record Column : ElementBase
     /// <summary>Whether the computed value is stored.</summary>
     public bool ComputedStored { get; init; }
 
+    /// <summary>
+    /// A stable id (next-phase-2-design.md section 3.4): on a <c>uuid</c> column the database does not fill (MQ7124), every row a
+    /// database receives into the table gets <see cref="StableIds.Of"/> of the table id and the row key there, unless the row's
+    /// source writes the column; a table seed gives no cell for it (MQ7108). Never written to a seed file or a snapshot.
+    /// </summary>
+    public bool StableId { get; init; }
+
     /// <summary>The collation.</summary>
     public string? Collation { get; init; }
 
     /// <summary>A database comment.</summary>
     public string? Comment { get; init; }
+
+    /// <summary>Whether the column holds personal data or a secret.</summary>
+    public Sensitivity? Sensitive { get; init; }
 }
 
 /// <summary>How a database generates a column's value.</summary>
@@ -422,6 +556,12 @@ public sealed record ColumnIdentity
 /// <summary>A table's primary key.</summary>
 public sealed record PrimaryKey
 {
+    /// <summary>
+    /// The key's id, or <see langword="null"/>. Optional on a table; a key with an id is a <c>key</c> sub-element in the index, as a
+    /// unique constraint is, so other elements can name it (next-phase-2-design.md section 3.1).
+    /// </summary>
+    public string? Id { get; init; }
+
     /// <summary>The constraint name; <see langword="null"/> uses the naming convention.</summary>
     public string? Name { get; init; }
 

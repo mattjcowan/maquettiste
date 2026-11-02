@@ -67,6 +67,16 @@ public sealed record ValidationScope(IReadOnlyList<string>? ElementIds = null, b
 {
     /// <summary>The whole model, with referrers and script rules.</summary>
     public static ValidationScope All { get; } = new();
+
+    /// <summary>
+    /// The whole model with every seed that has a rows script left out, as a save leaves out one outside its scope: no rows script runs,
+    /// and no code or key is reported missing for want of scripted rows (next-phase-2-design.md section 3.4, decision 31). Previews wait
+    /// on this validation; validate, plan and generate judge scripted seeds.
+    /// </summary>
+    internal static ValidationScope Previews { get; } = new() { DeferScriptedRows = true };
+
+    /// <summary>Whether seeds with a rows script are left unjudged (<see cref="Previews"/>).</summary>
+    internal bool DeferScriptedRows { get; init; }
 }
 
 /// <summary>The result of validating a model (host-contracts requirements 20 and 22).</summary>

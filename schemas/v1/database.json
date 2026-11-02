@@ -19,6 +19,7 @@
     "decision",
     "status",
     "stereotypes",
+    "excludeStereotypes",
     "tags",
     "category",
     "schemas",
@@ -86,6 +87,10 @@
       "$ref": "common.json#/$defs/keyList",
       "default": []
     },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
+    },
     "tags": {
       "$ref": "common.json#/$defs/tagList",
       "default": []
@@ -108,6 +113,7 @@
           "decision",
           "status",
           "stereotypes",
+          "defaultStereotypes",
           "tags",
           "category",
           "properties",
@@ -146,6 +152,11 @@
             "$ref": "common.json#/$defs/status"
           },
           "stereotypes": {
+            "$ref": "common.json#/$defs/keyList",
+            "default": []
+          },
+          "defaultStereotypes": {
+            "description": "Stereotype keys every table, view, sequence, routine, database type and SQL object of the schema carries, applied before package defaults and their own stereotypes. A default skips an object whose kind it does not apply to; an object leaves one out with excludeStereotypes.",
             "$ref": "common.json#/$defs/keyList",
             "default": []
           },

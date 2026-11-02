@@ -155,6 +155,56 @@ public sealed class ReferenceBindingSqlTests
         Assert.Contains("salt=g", output, StringComparison.Ordinal);
     }
 
+    private const string PantryItems = "01K7RBS0000000000000000051", PantryUnit = "01K7RBS0000000000000000053";
+
+    /// <summary>
+    /// A designed table pantry_items in main whose unit column (string(8), not null) is typed by UnitOfMeasure, with the given
+    /// foreign keys (next-phase-2-design.md section 3.2).
+    /// </summary>
+    private static void PantryItemsTable(PackRepo repo, string foreignKeys = "[]") =>
+        repo.Write(".maquettiste/model/databases/main/tables/pantry-items.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{PantryItems}}","name":"pantry_items","database":"{{PackRepo.MainDatabaseId}}","columns":[
+              {"id":"01K7RBS0000000000000000052","name":"id","type":"int32","nullable":false},
+              {"id":"{{PantryUnit}}","name":"unit","type":"string","typeRef":{"ref":"01JBM9S346Q3D25VT4F5V37E3S"},"length":8,"nullable":false}],
+             "primaryKey":{"columns":["01K7RBS0000000000000000052"]},"foreignKeys":{{foreignKeys}} }
+            """);
+
+    [Fact]
+    public async Task A_typed_designed_column_gets_a_key_into_the_bound_table()
+    {
+        // A column of a table file typed by a bound reference type holds its codes as a projected column does: it keeps the type it
+        // states and gets fk_<table>_<column>_ref into the bound table's code column, after the bound table's rows.
+        using var repo = PackRepo.ReferenceData("lookup-table");
+        Bind(repo);
+        PantryItemsTable(repo);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+
+        Assert.Contains("unit varchar(8) NOT NULL", repo.Read("db/main/schema.sql"), StringComparison.Ordinal);
+        var main = repo.Read("db/main/seed.sql");
+        Assert.Contains("-- pantry_items.unit (UnitOfMeasure, rows in table units).", main, StringComparison.Ordinal);
+        var key = main.IndexOf("ALTER TABLE public.pantry_items ADD CONSTRAINT fk_pantry_items_unit_ref FOREIGN KEY (unit) REFERENCES public.units (code);", StringComparison.Ordinal);
+        Assert.True(key > main.IndexOf("INSERT INTO public.units", StringComparison.Ordinal), main);
+        Assert.DoesNotContain("units_of_measure", main, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_typed_column_in_a_declared_key_gets_no_key_of_its_own()
+    {
+        // When pantry_items declares a foreign key from unit into the bound table, that key is the link: schema.sql holds it, and
+        // seed.sql writes no fk_pantry_items_unit_ref for the column.
+        using var repo = PackRepo.ReferenceData("lookup-table");
+        Bind(repo);
+        PantryItemsTable(repo, $$"""
+            [{"id":"01K7RBS0000000000000000054","name":"fk_pantry_unit","columns":["{{PantryUnit}}"],"referencesTable":"01K7RBS0000000000000000011"}]
+            """);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+
+        Assert.Contains("fk_pantry_unit", repo.Read("db/main/schema.sql"), StringComparison.Ordinal);
+        var main = repo.Read("db/main/seed.sql");
+        Assert.DoesNotContain("pantry_items", main, StringComparison.Ordinal);
+        Assert.Contains("ADD CONSTRAINT fk_ingredients_default_unit_ref", main, StringComparison.Ordinal);
+    }
+
     /// <summary>A bound repo's scripts of one database: schema, first migration, seed.</summary>
     internal static async Task<(string Schema, string Migration, string Seed)> ScriptsAsync(string database)
     {

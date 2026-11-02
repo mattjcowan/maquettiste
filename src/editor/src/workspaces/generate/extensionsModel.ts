@@ -1,36 +1,43 @@
-// The model's extension files as data, pure: the custom property schemas (`extensions/<name>.json`) and the script rules
-// (`extensions/rules/<name>.js`), their rows in the Generate explorer, the paths the editor accepts, and the minimal valid
-// file each New command writes. The Extensions tab (ExtensionsScreen.tsx) and the tests share it.
+// The model's extension files as data, pure: the custom property schemas (`extensions/<name>.json`), the script rules
+// (`extensions/rules/<name>.js`) and the seeds' rows scripts (`extensions/seeds/<name>.js`, kind `seed-rows`), their rows in
+// the Generate explorer, the paths the editor accepts, and the minimal valid file each New command writes. The Extensions
+// tab (ExtensionsScreen.tsx) and the tests share it.
 import type { components } from "@/api/schema";
 import type { Diagnostic, ElementKind } from "@/api/types";
 
 type S = components["schemas"];
 export type ExtensionFile = S["ExtensionFileInfo"];
-export type ExtensionKind = "schema" | "rule";
+export type ExtensionKind = "schema" | "rule" | "seed-rows";
 
-/** The two shapes the engine loads: a schema at the top of extensions/, a rule directly in extensions/rules/. */
-const PATH = /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\.json|rules\/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$/;
+/** The three shapes the engine loads: a schema at the top of extensions/, a rule directly in rules/, a rows script directly in seeds/. */
+const PATH = /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\.json|(?:rules|seeds)\/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$/;
 
-export const KIND_LABEL: Record<ExtensionKind, string> = { schema: "Custom properties", rule: "Script rule" };
+export const KIND_LABEL: Record<ExtensionKind, string> = { schema: "Custom properties", rule: "Script rule", "seed-rows": "Rows script" };
 
 export function kindOfPath(path: string): ExtensionKind {
-  return path.startsWith("rules/") ? "rule" : "schema";
+  return path.startsWith("rules/") ? "rule" : path.startsWith("seeds/") ? "seed-rows" : "schema";
 }
+
+/** Where each kind lives and how its paths read, for the messages below. */
+const SHAPE: Record<ExtensionKind, { path: string; stays: string }> = {
+  schema: { path: "A custom property schema is <name>.json", stays: "A schema stays at the top and ends in .json." },
+  rule: { path: "A script rule is rules/<name>.js", stays: "A script rule stays under rules/ and ends in .js." },
+  "seed-rows": { path: "A rows script is seeds/<name>.js", stays: "A rows script stays under seeds/ and ends in .js." },
+};
 
 /** Why a path cannot be created or taken by a rename, or null when it can. */
 export function extensionPathProblem(path: string, kind: ExtensionKind, taken: readonly string[]): string | null {
-  if (!PATH.test(path))
-    return kind === "rule"
-      ? "A script rule is rules/<name>.js: letters, digits, dots, hyphens and underscores."
-      : "A custom property schema is <name>.json: letters, digits, dots, hyphens and underscores.";
-  if (kindOfPath(path) !== kind) return kind === "rule" ? "A script rule stays under rules/ and ends in .js." : "A schema stays at the top and ends in .json.";
+  if (!PATH.test(path)) return `${SHAPE[kind].path}: letters, digits, dots, hyphens and underscores.`;
+  if (kindOfPath(path) !== kind) return SHAPE[kind].stays;
   if (taken.includes(path)) return `${path} already exists.`;
   return null;
 }
 
-/** The first free `<base>.json` or `rules/<base>.js` (then `-2`, `-3`, ...). */
+/** The first free `<base>.json`, `rules/<base>.js` or `seeds/<base>.js` (then `-2`, `-3`, ...). */
 export function freePath(kind: ExtensionKind, taken: readonly string[]): string {
-  const at = (n: number) => (kind === "rule" ? `rules/new-rule${n > 1 ? `-${n}` : ""}.js` : `new-properties${n > 1 ? `-${n}` : ""}.json`);
+  const suffix = (n: number) => (n > 1 ? `-${n}` : "");
+  const at = (n: number) =>
+    kind === "rule" ? `rules/new-rule${suffix(n)}.js` : kind === "seed-rows" ? `seeds/new-rows${suffix(n)}.js` : `new-properties${suffix(n)}.json`;
   let n = 1;
   while (taken.includes(at(n))) n++;
   return at(n);
@@ -38,7 +45,7 @@ export function freePath(kind: ExtensionKind, taken: readonly string[]): string 
 
 /** The bare name of a path: `rules/no-draft.js` → `no-draft`. */
 export function baseName(path: string): string {
-  return path.replace(/^rules\//, "").replace(/\.(json|js)$/, "");
+  return path.replace(/^(?:rules|seeds)\//, "").replace(/\.(json|js)$/, "");
 }
 
 /** A valid schema with one property, which the inspector shows at once for entities. */
@@ -165,19 +172,21 @@ export interface ExtensionRow {
 
 export const EXTENSIONS_KEY = "x:extensions";
 
-/** The Extensions node and, when expanded, one row per file (schemas first, then rules). */
+/** The Extensions node and, when expanded, one row per file (schemas first, then rules, then rows scripts). */
 export function extensionRows(files: readonly ExtensionFile[] | undefined, expanded: ReadonlySet<string>, setsize: number, posinset: number): ExtensionRow[] {
   const open = expanded.has(EXTENSIONS_KEY);
   const list = files ?? [];
   const schemas = list.filter((f) => f.kind === "schema").length;
-  const rules = list.length - schemas;
+  const rules = list.filter((f) => f.kind === "rule").length;
+  const scripts = list.filter((f) => f.kind === "seed-rows").length;
+  const rowsScripts = scripts ? ` · ${scripts} ${scripts === 1 ? "rows script" : "rows scripts"}` : "";
   const rows: ExtensionRow[] = [
     {
       key: EXTENSIONS_KEY,
       kind: "extensions",
       level: 1,
       label: "Extensions",
-      detail: files ? `${schemas} ${schemas === 1 ? "schema" : "schemas"} · ${rules} ${rules === 1 ? "rule" : "rules"}` : "",
+      detail: files ? `${schemas} ${schemas === 1 ? "schema" : "schemas"} · ${rules} ${rules === 1 ? "rule" : "rules"}${rowsScripts}` : "",
       expandable: true,
       expanded: open,
       setsize,
@@ -192,7 +201,7 @@ export function extensionRows(files: readonly ExtensionFile[] | undefined, expan
       kind: "extension-file",
       level: 2,
       label: f.path,
-      detail: f.kind === "rule" ? f.rules.map((r) => r.id).join(", ") || "script rule" : "custom properties",
+      detail: f.kind === "rule" ? f.rules.map((r) => r.id).join(", ") || "script rule" : f.kind === "seed-rows" ? "rows script" : "custom properties",
       expandable: false,
       expanded: false,
       setsize: list.length,

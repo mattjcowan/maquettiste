@@ -80,6 +80,7 @@ public sealed partial class AgentTools
         _handlers = new(StringComparer.Ordinal)
         {
             ["compare_snapshots"] = CompareSnapshotsAsync,
+            ["get_binding_drift"] = GetBindingDriftAsync,
             ["get_database_view"] = GetDatabaseViewAsync,
             ["get_element"] = GetElementAsync,
             ["get_elements"] = GetElementsAsync,
@@ -102,6 +103,7 @@ public sealed partial class AgentTools
             ["preview_binding_sql"] = PreviewBindingSqlAsync,
             ["preview_materialize"] = PreviewMaterializeAsync,
             ["preview_query_sql"] = PreviewQuerySqlAsync,
+            ["preview_seed_rows"] = PreviewSeedRowsAsync,
             ["preview_unit"] = PreviewUnitAsync,
             ["reference_type_usage"] = ReferenceTypeUsageAsync,
             ["tag_usage"] = TagUsageAsync,

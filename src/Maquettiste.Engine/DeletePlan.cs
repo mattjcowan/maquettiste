@@ -12,8 +12,10 @@ namespace Maquettiste.Engine;
 /// that cannot be resolved, or an error the change would introduce), <c>not-found</c> or <c>conflict</c>.</param>
 /// <param name="Deletes">Every other element deleted with them, in the order the cascade reached it.</param>
 /// <param name="Clears">References cleared from elements that stay.</param>
-/// <param name="Removes">Parts removed from elements that stay (an attribute whose type is deleted, a diagram member, a key).</param>
-/// <param name="Refused">What blocks the delete: references that cannot be resolved with this resolution, and errors the change would
+/// <param name="Removes">Parts removed from elements that stay (an attribute whose type is deleted, a diagram member, a key, a table's
+/// redefinition of a deleted stereotype's member, a seed column naming a table's inherited copy of one).</param>
+/// <param name="Refused">What blocks the delete: references that cannot be resolved with this resolution (under <c>remove-references</c>,
+/// an index, key, binding field or query naming a table's inherited copy of a deleted stereotype's member), and errors the change would
 /// introduce. Empty when <paramref name="Outcome"/> is <c>saved</c>.</param>
 /// <param name="Settings">Entries of <c>maquettiste.json</c> removed in the same change (the conventions of a deleted database).</param>
 /// <param name="Warnings">What the delete leaves as it is but stops working (a pack unit that filters on a deleted database's name).</param>

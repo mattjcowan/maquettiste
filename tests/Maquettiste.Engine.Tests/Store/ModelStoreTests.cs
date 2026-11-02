@@ -285,6 +285,36 @@ public sealed class ModelStoreTests
     }
 
     [Fact]
+    public async Task A_save_that_adds_a_package_default_judges_its_members()
+    {
+        await using var s = await BillingStore.OpenAsync();
+        // The real validator, with its scope: a child package's members and an overlay whose entity is in Billing do not reference
+        // Billing, they are its conflict peers (next-phase-2-design.md section 3.1, D4).
+        var validator = Validation.ValidationFixture.Validator();
+        s.Harness.Validator.Rule = (model, scope) => validator.ValidateAsync(model, scope, null, Ct).GetAwaiter().GetResult().Diagnostics;
+        const string Owned = "01K9PKG0000000000000000011";
+        var created = await s.Store.CreateAsync(Encoding.UTF8.GetBytes($$$"""
+            {"kind":"stereotype","id":"{{{Owned}}}","key":"owned","name":"Owned","appliesTo":["entity","table"],
+             "parameters":{"properties":{"owner":{"type":"string"}},"required":["owner"]}}
+            """), ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        var billing = s.Doc("package", "Billing");
+        var before = s.Files();
+
+        var refused = await s.Store.SaveAsync(billing.Element.Id, BillingStore.Edit(billing, n => n["defaultStereotypes"] = new JsonArray("owned")),
+            billing.Hash, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        var judged = refused.Diagnostics.Where(d => d.Rule == "MQ2018").Select(d => (d.ElementId!, d.JsonPointer!)).ToList();
+        // Product is in Catalog, a child of Billing; the invoices overlay takes its entity's package; both list stereotypes, so the
+        // finding points at the list, not at an entry.
+        Assert.Contains((s.Id("entity", "Product"), "/stereotypes"), judged);
+        Assert.Contains(("01J92P0V1T0J6RH4MY9H81NYB4", "/stereotypes"), judged);
+        Assert.Contains((s.Id("entity", "Customer"), "/stereotypes"), judged);
+        Assert.Equal(before, s.Files());
+    }
+
+    [Fact]
     public async Task Schema_violations_and_bad_json_are_invalid_and_write_nothing()
     {
         await using var s = await BillingStore.OpenAsync();

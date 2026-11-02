@@ -163,4 +163,50 @@ public sealed class SeedHelperTests
         Assert.Equal($"none\n{UnitSeed}\n{UnitSeed}\nAllergen\ntrue\n", repo.Repo.ReadFile(Output));
         Assert.Equal("Ledger.Catalog.UnitOfMeasure", (await repo.ResolveAsync()).Seeds.Single(x => x.Id == UnitSeed).QualifiedName);
     }
+
+    [Fact]
+    public async Task Stable_id_matches_the_resolved_value()
+    {
+        // stable_id (next-phase-2-design.md section 3.4) gives what the resolver puts in a stable id column of the table's rows.
+        const string Customers = "01K7SHT0000000000000000060";
+        await using var repo = Create("""
+            {{ customers = table_named "customers" -}}
+            helper {{ stable_id customers "ada@example.com" }} {{ stable_id customers ["grace@example.com"] }}
+            {{ for db in model.databases }}{{ for seeded in db.seed_tables }}{{ if seeded.table.name == "customers" }}{{ for r in seeded.rows -}}
+            resolved {{ r.values.email }} {{ r.values.id }}
+            {{ end }}{{ end }}{{ end }}{{ end -}}
+
+            """);
+        await repo.CreateAsync($$"""
+            {"kind":"table","id":"{{Customers}}","name":"customers","database":"{{MainDatabaseId}}","columns":[
+              {"id":"01K7SHT0000000000000000061","name":"id","type":"uuid","nullable":false,"stableId":true},
+              {"id":"01K7SHT0000000000000000062","name":"email","type":"string","length":254,"nullable":false}],
+             "primaryKey":{"columns":["01K7SHT0000000000000000061"]},
+             "uniques":[{"id":"01K7SHT0000000000000000063","name":"uq_customers_email","columns":["01K7SHT0000000000000000062"]}]}
+            """);
+        await repo.CreateAsync($$"""
+            {"kind":"seed","id":"01K7SHT0000000000000000064","name":"customers","target":"{{Customers}}","key":"01K7SHT0000000000000000063",
+             "columns":["01K7SHT0000000000000000062"],
+             "rows":[{"id":"01K7SHT0000000000000000065","values":["ada@example.com"]},{"id":"01K7SHT0000000000000000066","values":["grace@example.com"]}]}
+            """);
+
+        await repo.ApplyAsync();
+
+        var lines = repo.Repo.ReadFile(Output).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string ada = Maquettiste.Engine.Model.StableIds.Of(Customers, ["ada@example.com"]), grace = Maquettiste.Engine.Model.StableIds.Of(Customers, ["grace@example.com"]);
+        Assert.Equal([$"helper {ada} {grace}", $"resolved ada@example.com {ada}", $"resolved grace@example.com {grace}"], lines);
+
+        // A value that is not a table, and a table without a stable id column, are render errors.
+        File.WriteAllText(Path.Combine(repo.Repo.ModelRoot, "templates", Names, "names.scriban"), "{{ stable_id \"customers\" \"x\" }}\n");
+        var text = await RunAsync(repo);
+        Assert.Contains(text.Diagnostics, d => d.Rule == "MQ6006" && d.Message.Contains("`stable_id` takes a table", StringComparison.Ordinal));
+        await repo.CreateAsync($$"""
+            {"kind":"table","id":"01K7SHT0000000000000000067","name":"plain","database":"{{MainDatabaseId}}","columns":[
+              {"id":"01K7SHT0000000000000000068","name":"id","type":"uuid","nullable":false}],
+             "primaryKey":{"columns":["01K7SHT0000000000000000068"]} }
+            """);
+        File.WriteAllText(Path.Combine(repo.Repo.ModelRoot, "templates", Names, "names.scriban"), "{{ stable_id (table_named \"plain\") \"x\" }}\n");
+        var plain = await RunAsync(repo);
+        Assert.Contains(plain.Diagnostics, d => d.Rule == "MQ6006" && d.Message.Contains("table 'plain' has no stable id column", StringComparison.Ordinal));
+    }
 }
