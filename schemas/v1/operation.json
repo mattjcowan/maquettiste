@@ -18,6 +18,8 @@
     "outcomes",
     "defaultOutcome",
     "errors",
+    "redefines",
+    "excludes",
     "fires",
     "requires",
     "description",
@@ -103,6 +105,22 @@
       },
       "default": []
     },
+    "redefines": {
+      "description": "Per-operation exceptions to the errors the operation inherits from its stereotypes: each entry names a stereotype error by its id and states only the facets it changes (input, displayName, description). The error keeps its keyed id (<operation id>.<error id>); name and code are not redefinable (MQ2027).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/errorRedefinition"
+      },
+      "x-sort": "member",
+      "default": []
+    },
+    "excludes": {
+      "description": "Ids of stereotype errors the operation does not inherit (MQ2028).",
+      "$ref": "common.json#/$defs/idList",
+      "uniqueItems": true,
+      "x-sort": ".",
+      "default": []
+    },
     "fires": {
       "description": "Process event ids, of any process, that the operation fires.",
       "$ref": "common.json#/$defs/idList",
@@ -172,7 +190,7 @@
   "$defs": {
     "member": {
       "title": "Operation member",
-      "description": "An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).",
+      "description": "An input member, or a member of an outcome's inline returns: exactly one of a typed value (type), a record key (keyOf) or a file (file) (MQ3024).",
       "type": "object",
       "x-order": [
         "id",
@@ -181,6 +199,8 @@
         "pluralName",
         "type",
         "keyOf",
+        "file",
+        "mediaTypes",
         "length",
         "precision",
         "scale",
@@ -221,6 +241,21 @@
         "keyOf": {
           "description": "A record key: the id of the entity whose record's key the member holds (with collection, a list of keys).",
           "$ref": "common.json#/$defs/id"
+        },
+        "file": {
+          "description": "A file: bytes with a name and a media type; length caps its size in bytes.",
+          "type": "boolean",
+          "default": false
+        },
+        "mediaTypes": {
+          "description": "The media types a file member accepts; empty accepts any. Only on a file (MQ3024).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "default": []
         },
         "length": {
           "$ref": "common.json#/$defs/length"
@@ -390,12 +425,16 @@
     },
     "returns": {
       "title": "Returns",
-      "description": "What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.",
+      "description": "What an outcome returns: exactly one of members, entity or file (MQ3025). It has no id; it is part of its outcome.",
       "type": "object",
       "x-order": [
         "members",
         "entity",
-        "list"
+        "file",
+        "mediaTypes",
+        "list",
+        "paging",
+        "maxPageSize"
       ],
       "properties": {
         "members": {
@@ -410,12 +449,72 @@
           "description": "Records of an entity, its attributes as the shape.",
           "$ref": "common.json#/$defs/id"
         },
-        "list": {
-          "description": "Whether a list is returned.",
+        "file": {
+          "description": "A file (a download; streaming is a file).",
           "type": "boolean",
           "default": false
+        },
+        "mediaTypes": {
+          "description": "The media types a file result may have, the first the usual one. Only beside file (MQ3025).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "list": {
+          "description": "Whether a list is returned; never beside file (MQ3025).",
+          "type": "boolean",
+          "default": false
+        },
+        "paging": {
+          "description": "How a list is paged: page (a page number) or cursor (an opaque cursor). Set with list and maxPageSize (MQ3025); the paging inputs are implied, never declared as members.",
+          "enum": [
+            "page",
+            "cursor"
+          ]
+        },
+        "maxPageSize": {
+          "description": "The largest page a caller may ask for; set with paging (MQ3025).",
+          "type": "integer",
+          "minimum": 1
         }
       },
+      "additionalProperties": false
+    },
+    "errorRedefinition": {
+      "title": "Error redefinition",
+      "description": "An exception to one inherited error: the stereotype error it names (member) and the facets it states. It has no id of its own.",
+      "type": "object",
+      "x-order": [
+        "member",
+        "input",
+        "displayName",
+        "description"
+      ],
+      "properties": {
+        "member": {
+          "description": "The id of the stereotype error the entry redefines.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "input": {
+          "description": "The input member of this operation the error points at (MQ3027).",
+          "$ref": "common.json#/$defs/id"
+        },
+        "displayName": {
+          "description": "The display name for this operation; it shows in every locale.",
+          "type": "string"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "member"
+      ],
+      "minProperties": 2,
       "additionalProperties": false
     }
   }

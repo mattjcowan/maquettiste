@@ -10135,11 +10135,11 @@ components:
           description: Its JSON pointer in the element's file.
     OperationMemberRecord:
       x-engine-record: Maquettiste.Engine.OperationMemberRecord
-      description: A member of an operation's input or of an outcome's returns, a typed value or a record key.
+      description: A member of an operation's input or of an outcome's returns, a typed value, a record key or a file.
       allOf:
       - $ref: '#/components/schemas/ProcessNodeAnnotations'
       - type: object
-        required: [id, name, type, keyOf, required, default, length, precision, scale, collection, sensitive, validation, order]
+        required: [id, name, type, keyOf, file, mediaTypes, required, default, length, precision, scale, collection, sensitive, validation, order]
         properties:
           id:
             type: string
@@ -10153,6 +10153,14 @@ components:
           keyOf:
             type: [string, 'null']
             description: The id of the entity whose key the member holds.
+          file:
+            type: boolean
+            description: Whether the member is a file; `length` caps its size in bytes.
+          mediaTypes:
+            type: array
+            description: The media types a file member accepts; empty accepts any.
+            items:
+              type: string
           required:
             type: boolean
           default:
@@ -10197,9 +10205,9 @@ components:
             - type: 'null'
     OperationReturnsRecord:
       x-engine-record: Maquettiste.Engine.OperationReturnsRecord
-      description: What an outcome returns, an inline shape (`members`) or records of an entity (`entity`).
+      description: What an outcome returns, an inline shape (`members`), records of an entity (`entity`) or a file (`file`).
       type: object
-      required: [members, entity, list]
+      required: [members, entity, file, mediaTypes, list, paging, maxPageSize]
       properties:
         members:
           type: array
@@ -10209,15 +10217,30 @@ components:
         entity:
           type: [string, 'null']
           description: The id of the entity whose records are returned.
+        file:
+          type: boolean
+          description: Whether a file is returned.
+        mediaTypes:
+          type: array
+          description: The media types a file result may have, the first the usual one.
+          items:
+            type: string
         list:
           type: boolean
+        paging:
+          type: [string, 'null']
+          enum: [page, cursor, null]
+          description: How a list is paged; null for an unpaged list.
+        maxPageSize:
+          type: [integer, 'null']
+          description: The largest page a caller may ask for, set with `paging`.
     OperationErrorRecord:
       x-engine-record: Maquettiste.Engine.OperationErrorRecord
-      description: An error of an operation.
+      description: An error of an operation, its own or one a stereotype contributes (by its keyed id `<operationId>.<errorId>`).
       allOf:
       - $ref: '#/components/schemas/ProcessNodeAnnotations'
       - type: object
-        required: [id, name, code, input]
+        required: [id, name, code, input, memberOrigin]
         properties:
           id:
             type: string
@@ -10229,6 +10252,11 @@ components:
           input:
             type: [string, 'null']
             description: The id of the input member it points at.
+          memberOrigin:
+            description: Where an inherited error comes from; null for an own error.
+            oneOf:
+            - $ref: '#/components/schemas/MemberOriginView'
+            - type: 'null'
     DatabaseRecord:
       x-engine-record: Maquettiste.Engine.DatabaseRecord
       description: 'A resolved database: every field of the database view (`DatabaseView`) with its kind.'
@@ -12118,7 +12146,8 @@ components:
         Where a member of a table comes from when a stereotype of the table's effective set contributes it
         (next-phase-2-design.md 3.1). The member's key in the table is `<tableKey>.<memberId>`, the keyed id that seeds,
         indexes, bindings and queries write; change the member on the stereotype, or with the table's `redefines` and
-        `excludes`, never by copying it as an own column.
+        `excludes`, never by copying it as an own column. An operation's inherited error (next-phase-2-design.md 4.1) carries
+        the same view, its key `<operationId>.<errorId>`.
       type: object
       required: [source, stereotype, memberId, redefined]
       properties:

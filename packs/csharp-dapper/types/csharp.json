@@ -8,6 +8,7 @@
   "decimal": "decimal",
   "double": "double",
   "duration": "TimeSpan",
+  "file": "System.IO.Stream",
   "float": "float",
   "int16": "short",
   "int32": "int",

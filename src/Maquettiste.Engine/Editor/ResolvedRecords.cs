@@ -707,12 +707,14 @@ public sealed record OperationRecord(string Id, string Kind, string Name, string
     IReadOnlyList<string> Fires, IReadOnlyList<string> Requires, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags,
     string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
 
-/// <summary>A member of an operation's input or of an outcome's returns: a typed value or a record key.</summary>
+/// <summary>A member of an operation's input or of an outcome's returns: a typed value, a record key or a file.</summary>
 /// <param name="Id">The member id.</param>
 /// <param name="Name">The name.</param>
 /// <param name="Type">The type: a typed value's, or a record key's single key attribute's; <see langword="null"/> for a key of several
 /// attributes.</param>
 /// <param name="KeyOf">The id of the entity whose key the member holds, or <see langword="null"/>.</param>
+/// <param name="File">Whether the member is a file; <paramref name="Length"/> caps its size in bytes.</param>
+/// <param name="MediaTypes">The media types a file member accepts; empty accepts any.</param>
 /// <param name="Required">Whether a value must be given.</param>
 /// <param name="Default">The default value, or <see langword="null"/>.</param>
 /// <param name="Length">The length, or <see langword="null"/>.</param>
@@ -726,7 +728,7 @@ public sealed record OperationRecord(string Id, string Kind, string Name, string
 /// <param name="Description">The description.</param>
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
-public sealed record OperationMemberRecord(string Id, string Name, TypeRecord? Type, string? KeyOf, bool Required, object? Default, int? Length, int? Precision,
+public sealed record OperationMemberRecord(string Id, string Name, TypeRecord? Type, string? KeyOf, bool File, IReadOnlyList<string> MediaTypes, bool Required, object? Default, int? Length, int? Precision,
     int? Scale, bool Collection, string? Sensitive, ValidationRecord? Validation, int Order, string DisplayName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
 
@@ -743,22 +745,30 @@ public sealed record OperationMemberRecord(string Id, string Name, TypeRecord? T
 public sealed record OperationOutcomeRecord(string Id, string Name, bool IsDefault, string Completes, OperationReturnsRecord? Returns, string DisplayName,
     string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
 
-/// <summary>What an outcome returns: an inline shape (<paramref name="Members"/>) or records of an entity (<paramref name="Entity"/>).</summary>
+/// <summary>What an outcome returns: an inline shape (<paramref name="Members"/>), records of an entity (<paramref name="Entity"/>) or a
+/// file (<paramref name="File"/>).</summary>
 /// <param name="Members">The inline shape's members, in file order; empty unless the returns is of that form.</param>
 /// <param name="Entity">The id of the entity whose records are returned, or <see langword="null"/>.</param>
+/// <param name="File">Whether a file is returned.</param>
+/// <param name="MediaTypes">The media types a file result may have, the first the usual one.</param>
 /// <param name="List">Whether a list is returned.</param>
-public sealed record OperationReturnsRecord(IReadOnlyList<OperationMemberRecord> Members, string? Entity, bool List);
+/// <param name="Paging"><c>page</c> or <c>cursor</c> for a paged list, else <see langword="null"/>.</param>
+/// <param name="MaxPageSize">The largest page a caller may ask for, set with <paramref name="Paging"/>.</param>
+public sealed record OperationReturnsRecord(IReadOnlyList<OperationMemberRecord> Members, string? Entity, bool File, IReadOnlyList<string> MediaTypes, bool List,
+    string? Paging, int? MaxPageSize);
 
-/// <summary>An error of an operation.</summary>
-/// <param name="Id">The error id.</param>
+/// <summary>An error of an operation: its own, or one a stereotype contributes (by its keyed id).</summary>
+/// <param name="Id">The error id; an inherited error's is <c>&lt;operationId&gt;.&lt;errorId&gt;</c>.</param>
 /// <param name="Name">The name.</param>
 /// <param name="Code">The stable text clients see: the code, else the name.</param>
 /// <param name="Input">The id of the input member it points at, or <see langword="null"/>.</param>
+/// <param name="MemberOrigin">Where an inherited error comes from (the stereotype, its error id and the facets redefined);
+/// <see langword="null"/> for an own error.</param>
 /// <param name="DisplayName">The display name.</param>
 /// <param name="Description">The description.</param>
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
-public sealed record OperationErrorRecord(string Id, string Name, string Code, string? Input, string DisplayName, string? Description,
+public sealed record OperationErrorRecord(string Id, string Name, string Code, string? Input, MemberOriginView? MemberOrigin, string DisplayName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
 
 /// <summary>A resolved custom element (next-phase-2-design.md section 4.2).</summary>
@@ -1225,10 +1235,12 @@ public static class ResolvedRecords
         public OperationRecord Operation(ROperation o) => new(o.Id, "operation", o.Name, o.Package?.Id, o.Subject?.Id, o.Level, o.Effect,
             [.. o.Input.Select(OperationMember)],
             [.. o.Outcomes.Select(c => new OperationOutcomeRecord(c.Id, c.Name, c.IsDefault, c.Completes,
-                c.Returns is { } r ? new OperationReturnsRecord([.. r.Members.Select(OperationMember)], r.Entity?.Id, r.IsList) : null,
+                c.Returns is { } r ? new OperationReturnsRecord([.. r.Members.Select(OperationMember)], r.Entity?.Id, r.IsFile, r.MediaTypes, r.IsList, r.Paging, r.MaxPageSize) : null,
                 c.DisplayName!, c.Description, Keys(c.Stereotypes), Plain(c.Properties)))],
             o.DefaultOutcome?.Id,
-            [.. o.Errors.Select(e => new OperationErrorRecord(e.Id, e.Name, e.Code, e.Input?.Id, e.DisplayName!, e.Description, Keys(e.Stereotypes), Plain(e.Properties)))],
+            [.. o.Errors.Select(e => new OperationErrorRecord(e.Id, e.Name, e.Code, e.Input?.Id,
+                e.MemberOrigin.MemberId is null ? null : new MemberOriginView(e.MemberOrigin.Source, e.MemberOrigin.Stereotype?.Key, e.MemberOrigin.MemberId, e.MemberOrigin.Redefined),
+                e.DisplayName!, e.Description, Keys(e.Stereotypes), Plain(e.Properties)))],
             Ids(o.Fires), Ids(o.Requires),
             o.DisplayName!, o.PluralName!, o.Description, o.Tags, o.Category?.Id, Keys(o.Stereotypes), Plain(o.Properties), o.Generation);
 
@@ -1239,7 +1251,7 @@ public static class ResolvedRecords
 
         private static OperationMemberRecord OperationMember(ROperationMember m) => new(m.Id, m.Name,
             m.Type is { } t ? new TypeRecord(t.Kind, t.Name, t.Builtin, t.Enum?.Id, t.ValueObject?.Id, t.Scalar?.Id, t.ReferenceType?.Id) : null,
-            m.KeyOf?.Id, m.Required, Plain(m.Default), m.Length, m.Precision, m.Scale, m.Collection, m.Sensitive, Validation(m.Validation), m.Order,
+            m.KeyOf?.Id, m.IsFile, m.MediaTypes, m.Required, Plain(m.Default), m.Length, m.Precision, m.Scale, m.Collection, m.Sensitive, Validation(m.Validation), m.Order,
             m.DisplayName!, m.Description, Keys(m.Stereotypes), Plain(m.Properties));
 
         private List<StorageChoiceRecord> Storage(IReadOnlyDictionary<string, RStorageChoice> storage) =>

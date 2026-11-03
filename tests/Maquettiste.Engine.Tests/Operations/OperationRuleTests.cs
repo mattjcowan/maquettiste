@@ -8,7 +8,8 @@ namespace Maquettiste.Engine.Tests.Operations;
 
 /// <summary>
 /// The rules on an operation's own structure (next-phase-2-design.md section 4.1, task E2): one failing and one passing case per rule
-/// from MQ3023 to MQ3031 (MQ3029, a stereotype's errors, arrives with the second cut), and the rules its parts share with other kinds.
+/// from MQ3023 to MQ3031 (MQ3029, on a stereotype's errors, is in <see cref="OperationInheritanceTests"/>), and the rules its parts
+/// share with other kinds.
 /// </summary>
 public sealed class OperationRuleTests
 {
@@ -140,6 +141,60 @@ public sealed class OperationRuleTests
 
         Assert.Empty(await s.FindingsAsync(clean.Id));
         Assert.Equal([("MQ3025", "/outcomes/0/returns", neither.Id), ("MQ3025", "/outcomes/1/returns", both.Id)], await s.FindingsAsync(broken.Id));
+    }
+
+    [Fact]
+    public async Task MQ3024_a_file_member_takes_media_types_and_a_byte_cap_only()
+    {
+        var s = new Scene(141);
+        var clean = s.Add(o => o with
+        {
+            Input = [new OperationMember { Id = s.Id(), Name = "attachment", File = true, MediaTypes = ["application/pdf"], Length = 1048576, Required = true }],
+        }, "attach");
+        var typed = s.Typed("note", "string", m => m with { MediaTypes = ["text/plain"] });
+        var both = s.Typed("both", "string") with { File = true };
+        OperationMember valued = new() { Id = s.Id(), Name = "valued", File = true, Default = Json("\"x\""), Precision = 2 };
+        var broken = s.Add(o => o with { Input = [typed, both, valued] }, "remind");
+
+        Assert.Empty(await s.FindingsAsync(clean.Id));
+        Assert.Equal(
+            [
+                ("MQ3024", "/input/0/mediaTypes", typed.Id),
+                ("MQ3024", "/input/1/file", both.Id),
+                ("MQ3024", "/input/2/default", valued.Id),
+                ("MQ3024", "/input/2/precision", valued.Id),
+            ],
+            (await s.FindingsAsync(broken.Id)).Order());
+    }
+
+    [Fact]
+    public async Task MQ3025_a_file_result_is_no_list_and_paging_comes_with_a_list_and_a_max_page_size()
+    {
+        var s = new Scene(142);
+        var clean = s.Add(o => o with
+        {
+            Outcomes = [s.Outcome("download", new OperationReturns { File = true, MediaTypes = ["application/pdf"] }),
+                s.Outcome("found", new OperationReturns { Entity = s.Invoice.Id, List = true, Paging = OperationPaging.Cursor, MaxPageSize = 100 })],
+        }, "export");
+        var files = s.Outcome("files", new OperationReturns { File = true, List = true });
+        var typed = s.Outcome("typed", new OperationReturns { Entity = s.Invoice.Id, MediaTypes = ["text/csv"] });
+        var unlisted = s.Outcome("unlisted", new OperationReturns { Entity = s.Invoice.Id, Paging = OperationPaging.Page, MaxPageSize = 50 });
+        var noMax = s.Outcome("noMax", new OperationReturns { Entity = s.Invoice.Id, List = true, Paging = OperationPaging.Page });
+        var noPaging = s.Outcome("noPaging", new OperationReturns { Entity = s.Invoice.Id, List = true, MaxPageSize = 50 });
+        var two = s.Outcome("two", new OperationReturns { Entity = s.Invoice.Id, File = true });
+        var broken = s.Add(o => o with { Outcomes = [files, typed, unlisted, noMax, noPaging, two] }, "remind");
+
+        Assert.Empty(await s.FindingsAsync(clean.Id));
+        Assert.Equal(
+            [
+                ("MQ3025", "/outcomes/0/returns/list", files.Id),
+                ("MQ3025", "/outcomes/1/returns/mediaTypes", typed.Id),
+                ("MQ3025", "/outcomes/2/returns/paging", unlisted.Id),
+                ("MQ3025", "/outcomes/3/returns/paging", noMax.Id),
+                ("MQ3025", "/outcomes/4/returns/maxPageSize", noPaging.Id),
+                ("MQ3025", "/outcomes/5/returns", two.Id),
+            ],
+            (await s.FindingsAsync(broken.Id)).Order());
     }
 
     [Fact]

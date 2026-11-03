@@ -16148,7 +16148,7 @@
       },
       "OperationMemberRecord": {
         "x-engine-record": "Maquettiste.Engine.OperationMemberRecord",
-        "description": "A member of an operation's input or of an outcome's returns, a typed value or a record key.",
+        "description": "A member of an operation's input or of an outcome's returns, a typed value, a record key or a file.",
         "allOf": [
           {
             "$ref": "#/components/schemas/ProcessNodeAnnotations"
@@ -16160,6 +16160,8 @@
               "name",
               "type",
               "keyOf",
+              "file",
+              "mediaTypes",
               "required",
               "default",
               "length",
@@ -16194,6 +16196,17 @@
                   "null"
                 ],
                 "description": "The id of the entity whose key the member holds."
+              },
+              "file": {
+                "type": "boolean",
+                "description": "Whether the member is a file; `length` caps its size in bytes."
+              },
+              "mediaTypes": {
+                "type": "array",
+                "description": "The media types a file member accepts; empty accepts any.",
+                "items": {
+                  "type": "string"
+                }
               },
               "required": {
                 "type": "boolean"
@@ -16295,12 +16308,16 @@
       },
       "OperationReturnsRecord": {
         "x-engine-record": "Maquettiste.Engine.OperationReturnsRecord",
-        "description": "What an outcome returns, an inline shape (`members`) or records of an entity (`entity`).",
+        "description": "What an outcome returns, an inline shape (`members`), records of an entity (`entity`) or a file (`file`).",
         "type": "object",
         "required": [
           "members",
           "entity",
-          "list"
+          "file",
+          "mediaTypes",
+          "list",
+          "paging",
+          "maxPageSize"
         ],
         "properties": {
           "members": {
@@ -16317,14 +16334,44 @@
             ],
             "description": "The id of the entity whose records are returned."
           },
+          "file": {
+            "type": "boolean",
+            "description": "Whether a file is returned."
+          },
+          "mediaTypes": {
+            "type": "array",
+            "description": "The media types a file result may have, the first the usual one.",
+            "items": {
+              "type": "string"
+            }
+          },
           "list": {
             "type": "boolean"
+          },
+          "paging": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "page",
+              "cursor",
+              null
+            ],
+            "description": "How a list is paged; null for an unpaged list."
+          },
+          "maxPageSize": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The largest page a caller may ask for, set with `paging`."
           }
         }
       },
       "OperationErrorRecord": {
         "x-engine-record": "Maquettiste.Engine.OperationErrorRecord",
-        "description": "An error of an operation.",
+        "description": "An error of an operation, its own or one a stereotype contributes (by its keyed id `<operationId>.<errorId>`).",
         "allOf": [
           {
             "$ref": "#/components/schemas/ProcessNodeAnnotations"
@@ -16335,7 +16382,8 @@
               "id",
               "name",
               "code",
-              "input"
+              "input",
+              "memberOrigin"
             ],
             "properties": {
               "id": {
@@ -16354,6 +16402,17 @@
                   "null"
                 ],
                 "description": "The id of the input member it points at."
+              },
+              "memberOrigin": {
+                "description": "Where an inherited error comes from; null for an own error.",
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/MemberOriginView"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             }
           }
@@ -20240,7 +20299,7 @@
       },
       "MemberOriginView": {
         "x-engine-record": "Maquettiste.Engine.MemberOriginView",
-        "description": "Where a member of a table comes from when a stereotype of the table's effective set contributes it\n(next-phase-2-design.md 3.1). The member's key in the table is `<tableKey>.<memberId>`, the keyed id that seeds,\nindexes, bindings and queries write; change the member on the stereotype, or with the table's `redefines` and\n`excludes`, never by copying it as an own column.\n",
+        "description": "Where a member of a table comes from when a stereotype of the table's effective set contributes it\n(next-phase-2-design.md 3.1). The member's key in the table is `<tableKey>.<memberId>`, the keyed id that seeds,\nindexes, bindings and queries write; change the member on the stereotype, or with the table's `redefines` and\n`excludes`, never by copying it as an own column. An operation's inherited error (next-phase-2-design.md 4.1) carries\nthe same view, its key `<operationId>.<errorId>`.\n",
         "type": "object",
         "required": [
           "source",
@@ -33266,6 +33325,99 @@
         ],
         "additionalProperties": false
       },
+      "operationError": {
+        "title": "Operation error",
+        "description": "An error an operation can report. Its display name and description are the texts a client shows.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "code",
+          "input",
+          "description",
+          "rationale",
+          "decision",
+          "status",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "code": {
+            "description": "The stable text clients see; absent, the name.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+          },
+          "input": {
+            "description": "The input member the error points at, one of the operation's own (MQ3027).",
+            "$ref": "#/components/schemas/id"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
       "stereotype": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Stereotype",
@@ -33304,6 +33456,7 @@
           "foreignKeys",
           "checks",
           "indexes",
+          "errors",
           "icon",
           "color",
           "properties",
@@ -33616,6 +33769,14 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/tableIndex"
+            },
+            "default": []
+          },
+          "errors": {
+            "description": "Errors every operation that carries the stereotype inherits, each keyed <operation id>.<error id> in the operation; an operation can redefine one's input, displayName and description, or exclude it. A stereotype with errors applies to operations (MQ3029).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/operationError"
             },
             "default": []
           },
@@ -36884,7 +37045,7 @@
       },
       "member": {
         "title": "Operation member",
-        "description": "An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).",
+        "description": "An input member, or a member of an outcome's inline returns: exactly one of a typed value (type), a record key (keyOf) or a file (file) (MQ3024).",
         "type": "object",
         "x-order": [
           "id",
@@ -36893,6 +37054,8 @@
           "pluralName",
           "type",
           "keyOf",
+          "file",
+          "mediaTypes",
           "length",
           "precision",
           "scale",
@@ -36933,6 +37096,21 @@
           "keyOf": {
             "description": "A record key: the id of the entity whose record's key the member holds (with collection, a list of keys).",
             "$ref": "#/components/schemas/id"
+          },
+          "file": {
+            "description": "A file: bytes with a name and a media type; length caps its size in bytes.",
+            "type": "boolean",
+            "default": false
+          },
+          "mediaTypes": {
+            "description": "The media types a file member accepts; empty accepts any. Only on a file (MQ3024).",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "default": []
           },
           "length": {
             "$ref": "#/components/schemas/length"
@@ -37008,12 +37186,16 @@
       },
       "returns": {
         "title": "Returns",
-        "description": "What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.",
+        "description": "What an outcome returns: exactly one of members, entity or file (MQ3025). It has no id; it is part of its outcome.",
         "type": "object",
         "x-order": [
           "members",
           "entity",
-          "list"
+          "file",
+          "mediaTypes",
+          "list",
+          "paging",
+          "maxPageSize"
         ],
         "properties": {
           "members": {
@@ -37028,10 +37210,37 @@
             "description": "Records of an entity, its attributes as the shape.",
             "$ref": "#/components/schemas/id"
           },
-          "list": {
-            "description": "Whether a list is returned.",
+          "file": {
+            "description": "A file (a download; streaming is a file).",
             "type": "boolean",
             "default": false
+          },
+          "mediaTypes": {
+            "description": "The media types a file result may have, the first the usual one. Only beside file (MQ3025).",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "list": {
+            "description": "Whether a list is returned; never beside file (MQ3025).",
+            "type": "boolean",
+            "default": false
+          },
+          "paging": {
+            "description": "How a list is paged: page (a page number) or cursor (an opaque cursor). Set with list and maxPageSize (MQ3025); the paging inputs are implied, never declared as members.",
+            "enum": [
+              "page",
+              "cursor"
+            ]
+          },
+          "maxPageSize": {
+            "description": "The largest page a caller may ask for; set with paging (MQ3025).",
+            "type": "integer",
+            "minimum": 1
           }
         },
         "additionalProperties": false
@@ -37130,97 +37339,37 @@
         ],
         "additionalProperties": false
       },
-      "operationError": {
-        "title": "Operation error",
-        "description": "An error an operation can report. Its display name and description are the texts a client shows.",
+      "errorRedefinition": {
+        "title": "Error redefinition",
+        "description": "An exception to one inherited error: the stereotype error it names (member) and the facets it states. It has no id of its own.",
         "type": "object",
         "x-order": [
-          "id",
-          "name",
-          "displayName",
-          "pluralName",
-          "code",
+          "member",
           "input",
-          "description",
-          "rationale",
-          "decision",
-          "status",
-          "stereotypes",
-          "tags",
-          "category",
-          "properties",
-          "generation",
-          "source"
+          "displayName",
+          "description"
         ],
         "properties": {
-          "id": {
+          "member": {
+            "description": "The id of the stereotype error the entry redefines.",
             "$ref": "#/components/schemas/id"
-          },
-          "name": {
-            "$ref": "#/components/schemas/identifier",
-            "default": ""
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "pluralName": {
-            "type": "string"
-          },
-          "code": {
-            "description": "The stable text clients see; absent, the name.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
           },
           "input": {
-            "description": "The input member the error points at, one of the operation's own (MQ3027).",
+            "description": "The input member of this operation the error points at (MQ3027).",
             "$ref": "#/components/schemas/id"
+          },
+          "displayName": {
+            "description": "The display name for this operation; it shows in every locale.",
+            "type": "string"
           },
           "description": {
             "$ref": "#/components/schemas/description"
-          },
-          "rationale": {
-            "description": "Markdown text: why the element is shaped this way.",
-            "type": "string",
-            "minLength": 1
-          },
-          "decision": {
-            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 2000
-          },
-          "status": {
-            "$ref": "#/components/schemas/status"
-          },
-          "stereotypes": {
-            "$ref": "#/components/schemas/keyList",
-            "default": []
-          },
-          "tags": {
-            "$ref": "#/components/schemas/tagList",
-            "default": []
-          },
-          "category": {
-            "$ref": "#/components/schemas/id"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/properties",
-            "default": {}
-          },
-          "generation": {
-            "$ref": "#/components/schemas/generation",
-            "default": {}
-          },
-          "source": {
-            "$ref": "#/components/schemas/source"
           }
         },
         "required": [
-          "id",
-          "name"
+          "member"
         ],
+        "minProperties": 2,
         "additionalProperties": false
       },
       "operation": {
@@ -37243,6 +37392,8 @@
           "outcomes",
           "defaultOutcome",
           "errors",
+          "redefines",
+          "excludes",
           "fires",
           "requires",
           "description",
@@ -37328,6 +37479,22 @@
             },
             "default": []
           },
+          "redefines": {
+            "description": "Per-operation exceptions to the errors the operation inherits from its stereotypes: each entry names a stereotype error by its id and states only the facets it changes (input, displayName, description). The error keeps its keyed id (<operation id>.<error id>); name and code are not redefinable (MQ2027).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/errorRedefinition"
+            },
+            "x-sort": "member",
+            "default": []
+          },
+          "excludes": {
+            "description": "Ids of stereotype errors the operation does not inherit (MQ2028).",
+            "$ref": "#/components/schemas/idList",
+            "uniqueItems": true,
+            "x-sort": ".",
+            "default": []
+          },
           "fires": {
             "description": "Process event ids, of any process, that the operation fires.",
             "$ref": "#/components/schemas/idList",
@@ -37397,7 +37564,7 @@
         "$defs": {
           "member": {
             "title": "Operation member",
-            "description": "An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).",
+            "description": "An input member, or a member of an outcome's inline returns: exactly one of a typed value (type), a record key (keyOf) or a file (file) (MQ3024).",
             "type": "object",
             "x-order": [
               "id",
@@ -37406,6 +37573,8 @@
               "pluralName",
               "type",
               "keyOf",
+              "file",
+              "mediaTypes",
               "length",
               "precision",
               "scale",
@@ -37446,6 +37615,21 @@
               "keyOf": {
                 "description": "A record key: the id of the entity whose record's key the member holds (with collection, a list of keys).",
                 "$ref": "#/components/schemas/id"
+              },
+              "file": {
+                "description": "A file: bytes with a name and a media type; length caps its size in bytes.",
+                "type": "boolean",
+                "default": false
+              },
+              "mediaTypes": {
+                "description": "The media types a file member accepts; empty accepts any. Only on a file (MQ3024).",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true,
+                "default": []
               },
               "length": {
                 "$ref": "#/components/schemas/length"
@@ -37615,12 +37799,16 @@
           },
           "returns": {
             "title": "Returns",
-            "description": "What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.",
+            "description": "What an outcome returns: exactly one of members, entity or file (MQ3025). It has no id; it is part of its outcome.",
             "type": "object",
             "x-order": [
               "members",
               "entity",
-              "list"
+              "file",
+              "mediaTypes",
+              "list",
+              "paging",
+              "maxPageSize"
             ],
             "properties": {
               "members": {
@@ -37635,12 +37823,72 @@
                 "description": "Records of an entity, its attributes as the shape.",
                 "$ref": "#/components/schemas/id"
               },
-              "list": {
-                "description": "Whether a list is returned.",
+              "file": {
+                "description": "A file (a download; streaming is a file).",
                 "type": "boolean",
                 "default": false
+              },
+              "mediaTypes": {
+                "description": "The media types a file result may have, the first the usual one. Only beside file (MQ3025).",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true,
+                "default": []
+              },
+              "list": {
+                "description": "Whether a list is returned; never beside file (MQ3025).",
+                "type": "boolean",
+                "default": false
+              },
+              "paging": {
+                "description": "How a list is paged: page (a page number) or cursor (an opaque cursor). Set with list and maxPageSize (MQ3025); the paging inputs are implied, never declared as members.",
+                "enum": [
+                  "page",
+                  "cursor"
+                ]
+              },
+              "maxPageSize": {
+                "description": "The largest page a caller may ask for; set with paging (MQ3025).",
+                "type": "integer",
+                "minimum": 1
               }
             },
+            "additionalProperties": false
+          },
+          "errorRedefinition": {
+            "title": "Error redefinition",
+            "description": "An exception to one inherited error: the stereotype error it names (member) and the facets it states. It has no id of its own.",
+            "type": "object",
+            "x-order": [
+              "member",
+              "input",
+              "displayName",
+              "description"
+            ],
+            "properties": {
+              "member": {
+                "description": "The id of the stereotype error the entry redefines.",
+                "$ref": "#/components/schemas/id"
+              },
+              "input": {
+                "description": "The input member of this operation the error points at (MQ3027).",
+                "$ref": "#/components/schemas/id"
+              },
+              "displayName": {
+                "description": "The display name for this operation; it shows in every locale.",
+                "type": "string"
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "member"
+            ],
+            "minProperties": 2,
             "additionalProperties": false
           }
         }

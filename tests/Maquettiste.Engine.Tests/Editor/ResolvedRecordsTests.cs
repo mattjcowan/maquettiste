@@ -112,6 +112,39 @@ public sealed class ResolvedRecordsTests
         Assert.Equal([Send], ResolvedRecords.Entries(resolved, "all", null).Where(e => e.Kind == "operation").Select(e => e.Id));
     }
 
+    /// <summary>An inherited error's record carries its <c>memberOrigin</c>; an own error's is null. A member and a returns carry the file
+    /// and paging parts (next-phase-2-design.md section 4.1).</summary>
+    [Fact]
+    public async Task Operations_scope_lists_inherited_errors_with_their_origin_and_file_and_paging_parts()
+    {
+        const string common = "01JR5NG0000000000000000001", notFound = "01JR5NG0000000000000000002", export = "01JR5NG0000000000000000003";
+        const string scan = "01JR5NG0000000000000000004", pdf = "01JR5NG0000000000000000005", found = "01JR5NG0000000000000000006";
+        await using var s = await OpenAsync();
+        await CreateAsync(s, $$"""
+            { "kind": "stereotype", "id": "{{common}}", "key": "common-errors", "name": "CommonErrors", "appliesTo": ["operation"],
+              "errors": [ { "id": "{{notFound}}", "name": "not_found" } ] }
+            """);
+        await CreateAsync(s, $$"""
+            { "kind": "operation", "id": "{{export}}", "name": "export", "subject": "{{Invoice}}", "effect": "read", "stereotypes": ["common-errors"],
+              "input": [ { "id": "{{scan}}", "name": "scan", "file": true, "mediaTypes": ["image/png"], "length": 1048576 } ],
+              "outcomes": [ { "id": "{{pdf}}", "name": "pdf", "returns": { "file": true, "mediaTypes": ["application/pdf"] } },
+                { "id": "{{found}}", "name": "found", "returns": { "entity": "{{Invoice}}", "list": true, "paging": "page", "maxPageSize": 50 } } ],
+              "redefines": [ { "member": "{{notFound}}", "input": "{{scan}}" } ] }
+            """);
+        var resolved = ResolutionKit.Resolve(s.Model);
+
+        var record = ResolvedRecords.Entries(resolved, "operations", null).Select(e => e.Project()).OfType<OperationRecord>().Single(o => o.Id == export);
+
+        var error = Assert.Single(record.Errors);
+        Assert.Equal((export + "." + notFound, scan), (error.Id, error.Input));
+        Assert.Equal(("stereotype", "common-errors", notFound, "input"), (error.MemberOrigin!.Source, error.MemberOrigin.Stereotype, error.MemberOrigin.MemberId,
+            Assert.Single(error.MemberOrigin.Redefined)));
+        Assert.Equal((true, "image/png", 1048576), (record.Input[0].File, Assert.Single(record.Input[0].MediaTypes), record.Input[0].Length));
+        Assert.Equal((true, "application/pdf", false), (record.Outcomes[0].Returns!.File, Assert.Single(record.Outcomes[0].Returns!.MediaTypes), record.Outcomes[0].Returns!.List));
+        Assert.Equal((true, "page", 50), (record.Outcomes[1].Returns!.List, record.Outcomes[1].Returns!.Paging, record.Outcomes[1].Returns!.MaxPageSize));
+        Assert.Null(Assert.IsType<OperationRecord>(ResolvedRecords.Entries(resolved, "operations", null).First(e => e.Id == Send).Project()).Errors[0].MemberOrigin);
+    }
+
     /// <summary>The <c>custom-elements</c> scope (next-phase-2-design.md section 4.2): one record per custom element with its type,
     /// package, content as written and members.</summary>
     [Fact]

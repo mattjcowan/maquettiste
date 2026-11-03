@@ -69,7 +69,7 @@ internal sealed partial class ChangePlanner
         _cascadeDeleted[id] = (index, because);
         _cascadeOrder.Add(id);
         _cascadeOps.Remove(id);
-        // A deleted stereotype's members are named by keyed id where tables inherit them (next-phase-2-design.md section 3.1).
+        // A deleted stereotype's members are named by keyed id where tables and operations inherit them (next-phase-2-design.md section 3.1).
         if (current.Element is Stereotype stereotype)
             _cascadeMembers.UnionWith(MemberIds(stereotype).Where(m => !string.IsNullOrEmpty(m)));
         _cascadeQueue.Enqueue((index, id, mode));
@@ -130,12 +130,12 @@ internal sealed partial class ChangePlanner
             return;
         }
 
-        // Links to a member of a deleted stereotype (next-phase-2-design.md section 3.1): a table's redefinition of it goes whole and an
-        // exclusion of it is cleared, in both resolutions; any other keyed use of an inherited copy (an index, a key, a binding field, a
+        // Links to a member of a deleted stereotype (next-phase-2-design.md sections 3.1 and 4.1): a table's or an operation's redefinition
+        // of it goes whole and an exclusion of it is cleared, in both resolutions; any other keyed use of an inherited copy (an index, a key, a binding field, a
         // query) refuses remove-references, and delete-dependents removes it as it removes a deleted column's uses.
         if (_cascadeMembers.Contains(target))
         {
-            if (referrer.Element is Table && reference.Field == "member" && RedefinesEntry(reference.JsonPointer) is { } entry)
+            if (referrer.Element is Table or Operation && reference.Field == "member" && RedefinesEntry(reference.JsonPointer) is { } entry)
             {
                 List<CascadeOp> next = [.. ops.Where(o => o.Pointer != entry && !IsUnder(o.Pointer, entry)), new CascadeOp(entry, true, reference, index)];
                 if (TryOps(referrer, next, narrow, out _) is null)
@@ -621,7 +621,7 @@ internal sealed partial class ChangePlanner
         return true;
     }
 
-    /// <summary>A table's <c>redefines</c> entry a reference at <c>/redefines/&lt;n&gt;/member</c> sits in, else <see langword="null"/>.</summary>
+    /// <summary>A table's or an operation's <c>redefines</c> entry a reference at <c>/redefines/&lt;n&gt;/member</c> sits in, else <see langword="null"/>.</summary>
     private static string? RedefinesEntry(string pointer) =>
         JsonPointer.TryParse(pointer, out var segments) && segments is ["redefines", _, "member"] ? JsonPointer.Build(segments[..2]) : null;
 

@@ -155,6 +155,8 @@ internal sealed class NameIndex
                 break;
             case Stereotype stereotype when forms is not null:
                 AddAttributes(stereotype.Attributes, forms, Add);
+                foreach (var error in stereotype.Errors)
+                    Add("error", error.Id, forms.Then(error.Name));
                 break;
             case EnumType enumType when forms is not null:
                 foreach (var member in enumType.Members)
@@ -210,7 +212,8 @@ internal sealed class NameIndex
         "row" => [ElementKind.Seed],
         "binding" => [ElementKind.Entity, ElementKind.ReferenceType],
         "category" => [ElementKind.CategoryTree],
-        "operation-member" or "outcome" or "error" => [ElementKind.Operation],
+        "operation-member" or "outcome" => [ElementKind.Operation],
+        "error" => [ElementKind.Operation, ElementKind.Stereotype],
         "member" => [ElementKind.Custom],
         _ => KindInfo.TryGet(kind, out var info) ? [info.Kind] : [],
     };

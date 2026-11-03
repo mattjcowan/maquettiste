@@ -983,6 +983,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 break;
             case Stereotype s:
                 foreach (var a in s.Attributes) yield return a.Id;
+                foreach (var e in s.Errors) yield return e.Id;
                 break;
             case EnumType n:
                 foreach (var m in n.Members) yield return m.Id;

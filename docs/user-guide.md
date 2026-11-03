@@ -2136,8 +2136,7 @@ model. Each operation is one file of kind `operation` under `.maquettiste/model/
 its subject's file when it has a subject (`operations/invoice/send.json` for `send` on Invoice); changing the subject
 moves the file. The editor lists operations in an **Operations** folder under their domain (an operation without a
 `package` sits in its subject's) and opens one with its General fields, where the subject, level and effect are shown
-read-only, and the JSON tab, which edits the rest. Errors shared from stereotypes, file members and file returns,
-paging and an HTTP endpoint template come later.
+read-only, and the JSON tab, which edits the rest.
 
 ### The file shape
 
@@ -2176,12 +2175,15 @@ paging and an HTTP endpoint template come later.
   holds only the rest; `collection` acts on the whole set (a search, a create, a bulk change). It means something only
   with a subject (MQ3023).
 - `effect`: required, `read` or `change`, whether or not the operation takes input.
-- `input`: the input members, in file order. A member is exactly one of two forms (MQ3024): a typed value, `type`, which
-  takes what an attribute's `type` takes (a built-in keyword, an enum, a value object, a custom scalar type or a
-  reference type), with `length`, `precision`, `scale`, `default` and `validation` as an attribute has them; or a record
+- `input`: the input members, in file order. A member is exactly one of three forms (MQ3024): a typed value, `type`,
+  which takes what an attribute's `type` takes (a built-in keyword, an enum, a value object, a custom scalar type or a
+  reference type), with `length`, `precision`, `scale`, `default` and `validation` as an attribute has them; a record
   key, `keyOf`, the id of an entity whose record's key the member holds (with `collection`, a list of keys, such as the
-  invoices a bulk change applies to). Either form takes `required`, `collection` and `sensitive`.
-- `outcomes` and `defaultOutcome`, `errors`, `fires` and `requires`: below.
+  invoices a bulk change applies to); or a file, `file: true`, bytes with a name and a media type, where `mediaTypes`
+  lists the accepted ones (empty accepts any) and `length` caps the size in bytes. Every form takes `required`,
+  `collection` and `sensitive`; only a file takes `mediaTypes`, and a record key or a file takes no `default`,
+  `precision`, `scale` or `validation` (a record key no `length` either).
+- `outcomes` and `defaultOutcome`, `errors`, `redefines`, `excludes`, `fires` and `requires`: below.
 - `description`, `rationale`, `decision`, `status`, `stereotypes`, `tags`, `category` and `properties` annotate the
   operation, each member, outcome and error, like any other part of the model. Their display names and descriptions
   translate; the entries live in the shard of the operation file's own package, else the root.
@@ -2200,9 +2202,18 @@ without one returns nothing. A `returns` is exactly one of (MQ3025):
 
 - `members`: an inline shape, at least one member, written as input members are, except that a member of a returns
   takes no `default` (MQ3024);
-- `entity`: records of an entity, its attributes as the shape.
+- `entity`: records of an entity, its attributes as the shape;
+- `file: true`: a download (streaming is a file too), with `mediaTypes` listing what it may be, the first the usual one.
 
-`list: true` makes either a list (the invoices a search finds, rather than one).
+`list: true` makes `members` or `entity` a list (the invoices a search finds, rather than one); a file is never a list.
+A list may be paged: `paging` is `page` (by page number) or `cursor` (by an opaque cursor the previous page returned),
+always with `maxPageSize`, the largest page a caller may ask for. The paging inputs (a page or a cursor, and a page
+size) follow from `paging`; they are never declared as input members.
+
+```json
+{ "id": "01K8QPN0000000000000000030", "name": "found",
+  "returns": { "entity": "01K8QPN0000000000000000010", "list": true, "paging": "cursor", "maxPageSize": 100 } }
+```
 
 ### Errors
 
@@ -2211,6 +2222,51 @@ and an optional `input`, the input member of the same operation that the error p
 `missing_recipient` pointing at `recipient`. Its display name and description are the texts a client shows, and they
 translate. Two errors of one operation may not share a name or a code (MQ3026), the name counting as the code of an
 error that has none.
+
+### Errors shared from stereotypes
+
+Errors that many operations report (not found, a stale version) are stated once, on a stereotype, and every operation
+that carries the stereotype inherits them. A stereotype's `errors` take the same shape as an operation's, without
+`input` (MQ3027), and the stereotype applies to operations (MQ3029):
+
+```json
+{
+  "kind": "stereotype",
+  "id": "01K8QPN0000000000000000040",
+  "key": "common-errors",
+  "name": "CommonErrors",
+  "appliesTo": ["operation"],
+  "errors": [
+    { "id": "01K8QPN0000000000000000041", "name": "not_found" },
+    { "id": "01K8QPN0000000000000000042", "name": "stale_version" }
+  ]
+}
+```
+
+An operation that lists `common-errors` in `stereotypes`, or receives it from its package's `defaultStereotypes`,
+reports its own errors and then the inherited ones, each with the id `<operation id>.<error id>` (the keyed id a
+property that names the error writes). Changing a shared error's code edits the stereotype file alone, and every
+operation that inherits it follows. An operation adjusts what it inherits with two lists:
+
+- `excludes`: ids of stereotype errors it does not inherit;
+- `redefines`: entries that name a stereotype error in `member` and state only what changes for this operation: its
+  `input` (one of the operation's input members), `displayName` or `description`. A redefined text shows in every
+  locale; an inherited text that is not redefined takes the stereotype error's translations. `name` and `code` are not
+  redefinable, so a shared code stays shared: for another code, exclude the error and declare an own one.
+
+```json
+"stereotypes": ["common-errors"],
+"excludes": ["01K8QPN0000000000000000042"],
+"redefines": [{ "member": "01K8QPN0000000000000000041", "description": "No invoice has this id." }]
+```
+
+An entry that names no inherited error, a second entry for one error, an entry that states nothing, and an error both
+excluded and redefined are MQ2027 (`redefines`) and MQ2028 (`excludes`). Own and inherited errors together keep names
+and codes unique (MQ3026). Removing an error from the stereotype removes the entries that name it; deleting the
+stereotype is refused while operations carry it, and `remove-references` clears those entries with the `stereotypes`
+entry. The resolved error says where it comes from (`member_origin`: the stereotype, the error's id and the facets the
+operation redefines), and the stereotype lists its errors too (`model.stereotypes[...].errors`), so a pack can write one
+set of constants per stereotype.
 
 ### Fires and requires
 
@@ -2231,11 +2287,12 @@ every `validate`. Names are identifiers (MQ3018) and unique where the file shape
 | Rule | Severity | What it reports |
 | --- | --- | --- |
 | MQ3023 | warning | An operation sets `level` `collection` without a subject; the level is ignored |
-| MQ3024 | error | A member is not exactly one of a typed value (`type`) or a record key (`keyOf`); a record key sets `default`, `length`, `precision`, `scale` or `validation`; or a member of a returns sets `default` |
-| MQ3025 | error | An outcome's `returns` is not exactly one of `members` or `entity` |
-| MQ3026 | error | Two errors of an operation share a name or a code (the code, else the name) |
-| MQ3027 | error | An error's `input` is not an input member of the operation that holds it |
+| MQ3024 | error | A member is not exactly one of a typed value (`type`), a record key (`keyOf`) or a file (`file`); `mediaTypes` sits on a member that is not a file; a record key or a file sets `default`, `precision`, `scale` or `validation`, or a record key sets `length`; or a member of a returns sets `default` |
+| MQ3025 | error | An outcome's `returns` is not exactly one of `members`, `entity` or `file`; `mediaTypes` sits beside no `file`; `list` sits beside `file`; `paging` is set without `list`; or `paging` and `maxPageSize` are not set together |
+| MQ3026 | error | Two errors of an operation, own and inherited counted, share a name or a code (the code, else the name), or two of its stereotypes give it an error of one id |
+| MQ3027 | error | An error's `input`, or a redefinition's `input`, is not an input member of the operation that holds it; a stereotype's error has none |
 | MQ3028 | error | `defaultOutcome` names an outcome of another operation |
+| MQ3029 | error | A stereotype declares `errors` but does not apply to operations |
 | MQ3030 | warning | A `read` operation fires a process event; an event changes state |
 | MQ3031 | error | `requires` names the operation itself, one of its own sub-elements, a diagram or a migration fact |
 
@@ -2244,11 +2301,13 @@ every `validate`. Names are identifiers (MQ3018) and unique where the file shape
 The engine runs no operation in your application: what an operation becomes is what the packs write. The scope `each
 operation` renders one unit per operation, the template variable being `operation`, with its `subject` (the entity, or
 null), `level` (null without a subject), `effect`, `input`, `outcomes` (each with `is_default`, `completes` and
-`returns`, whose `members`, `entity` and `is_list` say what comes back), `default_outcome`, `errors` (each with `code`
-and the `input` member it points at), `fires` (the events) and `requires` (the elements). A member has `type` or
-`key_of`, and `required`, `collection`, `default`, `length`, `precision`, `scale`, `sensitive` and `validation`.
+`returns`, whose `members`, `entity`, `is_file`, `media_types`, `is_list`, `paging` and `max_page_size` say what comes
+back), `default_outcome`, `errors` (own then inherited, each with `code`, the `input` member it points at and
+`member_origin`), `fires` (the events) and `requires` (the elements). A member has `type`, `key_of` or `is_file` with
+`media_types`, and `required`, `collection`, `default`, `length`, `precision`, `scale`, `sensitive` and `validation`.
 `type_of` maps a member: a typed member as an attribute (the `collection` pattern for a collection, `nullable` when not
-required), a record key through the type of its entity's key attribute (an entity with a composite key is MQ6006). An
+required), a record key through the type of its entity's key attribute (an entity with a composite key is MQ6006), a
+file through the type map's `file` entry (MQ6006 without one, and for a SQL dialect). An
 entity lists its operations (`entity.operations`). A filter takes tags, stereotypes, categories and packages (an
 operation's package is its file's, else its subject's) and refuses `database` and `abstract`. The same records are in
 MCP `get_resolved_model` and `maquettiste model export --resolved` under the scope `operations`.
@@ -2259,9 +2318,14 @@ MCP `get_resolved_model` and `maquettiste model export --resolved` under the sco
 dependency on a web framework: `SendInvoiceRequest`, a record of the input members; a record per outcome that returns
 members (`SendInvoiceWaiting`), while an outcome that returns an entity uses its class; `SendInvoiceErrors`, a constant
 per error code; `SendInvoiceResult`, with a nested record per outcome (`Applied`, `Waiting`) and `Failed(string Code,
-string? Input)`; and `ISendInvoiceHandler`, whose `HandleAsync` takes the subject's key at record level, the request and
-a cancellation token, and whose summary names the events the operation fires. You implement the handler and map it to
-your transport. packs/csharp-dapper/README.md has every detail.
+string? Input)`; and `ISendInvoiceHandler`, whose `HandleAsync` takes the subject's key at record level, the request,
+the paging inputs of a paged list and a cancellation token, and whose summary names the events the operation fires. A
+file is a `System.IO.Stream`, and a paged list a record with `Items` and `Next` or `Page`. You implement the handler.
+With the pack parameter `endpointsFolder` set, the unit `operation-endpoints` also writes
+`<endpointsFolder>/Operations/<package folder>/<Op>Endpoint.g.cs`, one ASP.NET Core minimal API route per operation that
+calls the handler: `POST /invoices/{id}/send` for `send`, answering 200 or 204 for an outcome that completes now, 202
+for one that completes later, and problem details for an error (422 when it points at an input, 409 otherwise, unless
+the error has an integer property `httpStatus`). packs/csharp-dapper/README.md has every detail.
 
 ## Packages and layering
 

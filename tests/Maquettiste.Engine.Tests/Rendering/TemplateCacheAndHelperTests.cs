@@ -181,9 +181,9 @@ public sealed class TemplateCacheAndHelperTests
     }
 
     [Fact]
-    public async Task Type_of_maps_typed_and_key_members()
+    public async Task Type_of_maps_typed_key_and_file_members()
     {
-        // File members are the second cut (next-phase-2-design.md section 4.1); the first cut maps typed and key members.
+        // next-phase-2-design.md section 4.1: typed and key members map as attributes do; a file member takes the map's file entry.
         const string Pair = "01JR5NDT000000000000000001", PairA = "01JR5NDT000000000000000002", PairB = "01JR5NDT000000000000000003";
         var b = new ModelBuilder(seed: 61);
         var invoice = b.Entity("Invoice").Key("id", "uuid");
@@ -212,6 +212,8 @@ public sealed class TemplateCacheAndHelperTests
                 new OperationMember { Id = "01JR5NDT000000000000000014", Name = "related", KeyOf = invoice.Id, Required = true },
                 new OperationMember { Id = "01JR5NDT000000000000000015", Name = "others", KeyOf = invoice.Id, Collection = true },
                 new OperationMember { Id = "01JR5NDT000000000000000016", Name = "pair", KeyOf = Pair, Required = true },
+                new OperationMember { Id = "01JR5NDT000000000000000018", Name = "scan", File = true, Required = true },
+                new OperationMember { Id = "01JR5NDT000000000000000019", Name = "extras", File = true, Collection = true },
             ],
             Outcomes = [new OperationOutcome { Id = "01JR5NDT000000000000000017", Name = "done" }],
         });
@@ -232,6 +234,16 @@ public sealed class TemplateCacheAndHelperTests
         var composite = await Adhoc.RenderAsync("{{ type_of operation.input[5] 'ts' }}", send, u => u with { For = "each operation" }, files, model);
         Assert.Equal("MQ6006", composite.Error().Rule);
         Assert.Contains("member.key_of.key", composite.Error().Message, StringComparison.Ordinal);
+
+        var withFile = new Dictionary<string, string>(files) { ["types/cs.json"] = "{ \"file\": \"Stream\", \"collection\": \"List<{type}>\" }" };
+        var mapped = await Adhoc.RenderAsync("{{ type_of operation.input[6] 'cs' }}|{{ type_of operation.input[7] 'cs' }}", send, u => u with { For = "each operation" },
+            withFile, model);
+        Assert.Equal("Stream|List<Stream>", mapped.Text());
+        var noEntry = await Adhoc.RenderAsync("{{ type_of operation.input[6] 'ts' }}", send, u => u with { For = "each operation" }, files, model);
+        Assert.Equal("MQ6006", noEntry.Error().Rule);
+        Assert.Contains("no 'file' entry", noEntry.Error().Message, StringComparison.Ordinal);
+        var dialect = await Adhoc.RenderAsync("{{ type_of operation.input[6] 'postgresql' }}", send, u => u with { For = "each operation" }, files, model);
+        Assert.Equal("MQ6006", dialect.Error().Rule);
     }
 
     [Fact]

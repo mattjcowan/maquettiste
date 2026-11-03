@@ -182,6 +182,16 @@ internal static partial class BuiltinRules
 
         if (dangling || !model.TryGetEntry(ids[^1], out var entry))
             return;
+        // A keyed id <operationId>.<errorId> names an error the operation inherits from a stereotype (next-phase-2-design.md section 4.1);
+        // one the operation does not inherit names nothing.
+        if (ids.Length == 2 && entry.Kind == "error" && model.Get<Stereotype>(entry.OwnerId) is { } errorOwner && model.Get<Operation>(ids[0]) is { } holder
+            && !OperationErrors.Of(model, holder).Any(e => string.Equals(e.Key, site.Value, StringComparison.Ordinal)))
+        {
+            Add("MQ2001", $"'{site.Field}' references '{site.Value}', which does not exist: operation {holder.Name} does not inherit error '{ids[1]}' of stereotype '{errorOwner.Key}'"
+                + (holder.Excludes.Contains(ids[1], StringComparer.Ordinal) ? " (it excludes the error)." : "."));
+            return;
+        }
+
         var customType = entry.Kind == "custom" ? model.Get<Custom>(entry.Id)?.Type : null;
         if (!xref.Takes(entry.Kind, customType))
         {
@@ -256,6 +266,22 @@ internal static partial class BuiltinRules
                 // A column or key a stereotype gives a table is the table's member only by its keyed id (next-phase-2-design.md 3.1).
                 if (InheritedMemberScopeProblem(model, table, stereotype, ids) is { } inherited)
                     return inherited;
+            }
+            else if (element is Operation operation && entry.Kind == "error" && model.Get<Stereotype>(entry.OwnerId) is { } errorStereotype)
+            {
+                // An error a stereotype gives an operation is the operation's only by its keyed id (next-phase-2-design.md section 4.1).
+                var keyed = ContributedMembers.KeyOf(operation.Id, ids[^1]);
+                var inherits = OperationErrors.Of(model, operation).Any(e => string.Equals(e.Key, keyed, StringComparison.Ordinal));
+                var what = $"an error of stereotype '{errorStereotype.Key}'";
+                if (ids.Length == 1)
+                {
+                    return inherits
+                        ? $"{what}; of \"$element\" takes an error an operation inherits by its keyed id: write '{keyed}'"
+                        : $"{what} that operation {operation.Name} does not inherit";
+                }
+
+                if (!string.Equals(ids[0], operation.Id, StringComparison.Ordinal))
+                    return $"{what} as {Describe(model, ids[0])} inherits it; of \"$element\" takes an error of operation {operation.Name}, by its keyed id '{keyed}'";
             }
             else
             {

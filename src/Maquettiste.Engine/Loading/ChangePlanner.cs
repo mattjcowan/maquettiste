@@ -492,7 +492,8 @@ internal sealed partial class ChangePlanner
         }
     }
 
-    /// <summary>The ids of a stereotype's members (columns, primary key, uniques, foreign keys, checks, indexes), in file order.</summary>
+    /// <summary>The ids of a stereotype's members (columns, primary key, uniques, foreign keys, checks, indexes, then the errors operations
+    /// inherit), in file order.</summary>
     /// <param name="stereotype">The stereotype.</param>
     /// <returns>The member ids.</returns>
     internal static IEnumerable<string> MemberIds(Stereotype stereotype)
@@ -509,6 +510,8 @@ internal sealed partial class ChangePlanner
             yield return check.Id;
         foreach (var index in stereotype.Indexes)
             yield return index.Id;
+        foreach (var error in stereotype.Errors)
+            yield return error.Id;
     }
 
     /// <summary>The removed sub-element ids that were members of the stereotype as it was, or <see langword="null"/> when none was.</summary>
@@ -520,9 +523,9 @@ internal sealed partial class ChangePlanner
     }
 
     /// <summary>
-    /// Removes, from every table file that names them, the <c>redefines</c> and <c>excludes</c> entries of stereotype members a save
-    /// removed (next-phase-2-design.md section 3.1), in the same save: without the member they mean nothing. Tables the batch changes
-    /// itself are left to their own operation.
+    /// Removes, from every table and operation file that names them, the <c>redefines</c> and <c>excludes</c> entries of stereotype
+    /// members a save removed (next-phase-2-design.md sections 3.1 and 4.1), in the same save: without the member they mean nothing.
+    /// Files the batch changes itself are left to their own operation.
     /// </summary>
     private void DropMemberLinks(int index, IReadOnlySet<string> members, ChangeOutcome outcome)
     {
@@ -534,7 +537,7 @@ internal sealed partial class ChangePlanner
             .Order(StringComparer.Ordinal);
         foreach (var tableId in tables)
         {
-            if (!TryGetCurrent(tableId, null, out var table) || table.Element is not Table)
+            if (!TryGetCurrent(tableId, null, out var table) || table.Element is not (Table or Operation))
                 continue;
             var node = JsonNode.Parse(table.Json.GetRawText())!.AsObject();
             var changed = DropEntries(node, "redefines", item => item is JsonObject entry && entry["member"] is JsonValue member
@@ -542,7 +545,7 @@ internal sealed partial class ChangePlanner
             changed |= DropEntries(node, "excludes", item => item is JsonValue value && value.TryGetValue<string>(out var id) && members.Contains(id));
             if (!changed)
                 continue;
-            var info = KindInfo.Get(ElementKind.Table);
+            var info = KindInfo.Get(table.Element.Kind);
             var repoPath = _paths.ToRepoPath(table.ModelPath);
             if (Read(node, info, repoPath, outcome) is not { } element)
                 return;
@@ -570,7 +573,7 @@ internal sealed partial class ChangePlanner
         }
     }
 
-    /// <summary>Whether a reference is a table's <c>redefines</c> or <c>excludes</c> entry naming a stereotype member.</summary>
+    /// <summary>Whether a reference is a table's or an operation's <c>redefines</c> or <c>excludes</c> entry naming a stereotype member.</summary>
     private static bool IsMemberLink(ReferenceInfo reference) =>
         (reference.Field == "member" && reference.JsonPointer.StartsWith("/redefines/", StringComparison.Ordinal))
         || (reference.Field == "excludes" && reference.JsonPointer.StartsWith("/excludes/", StringComparison.Ordinal));

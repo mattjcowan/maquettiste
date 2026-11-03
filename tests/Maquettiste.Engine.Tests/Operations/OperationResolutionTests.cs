@@ -6,7 +6,7 @@ using static Maquettiste.Engine.Tests.Operations.OperationFixture;
 
 namespace Maquettiste.Engine.Tests.Operations;
 
-/// <summary>Resolution of operations (next-phase-2-design.md section 4.1, task E3): own errors only in the first cut.</summary>
+/// <summary>Resolution of operations (next-phase-2-design.md section 4.1, task E3); inherited errors are in <see cref="OperationInheritanceTests"/>.</summary>
 public sealed class OperationResolutionTests
 {
     private static Operation Op(ModelBuilder b, string name, string? subject, Func<Operation, Operation>? change = null)
@@ -65,6 +65,30 @@ public sealed class OperationResolutionTests
         Assert.Contains("e:" + Invoice, applied.Dependencies);
         Assert.Contains("e:" + Send, send.Errors[0].Dependencies);
         Assert.Contains("k:operation", model.Operations.MembershipKeys);
+    }
+
+    [Fact]
+    public void File_members_file_results_and_paging_resolve()
+    {
+        var b = new ModelBuilder(77);
+        var invoice = b.Entity("Invoice").Key("id", "uuid");
+        var operation = Op(b, "attach", invoice.Id, o => o with
+        {
+            Input = [new OperationMember { Id = b.NewId(), Name = "scan", File = true, MediaTypes = ["image/png", "application/pdf"], Length = 1048576 }],
+            Outcomes = [new OperationOutcome { Id = b.NewId(), Name = "pdf", Returns = new OperationReturns { File = true, MediaTypes = ["application/pdf"] } },
+                new OperationOutcome { Id = b.NewId(), Name = "found", Returns = new OperationReturns { Entity = invoice.Id, List = true, Paging = OperationPaging.Cursor, MaxPageSize = 100 } }],
+        });
+
+        var resolved = ResolutionKit.Resolve(b).Operations.Single(o => o.Id == operation.Id);
+
+        var scan = Assert.Single(resolved.Input);
+        Assert.Equal((true, 1048576, (object?)null), (scan.IsFile, scan.Length, (object?)scan.Type));
+        Assert.Equal(["image/png", "application/pdf"], scan.MediaTypes);
+        var pdf = resolved.Outcomes[0].Returns!;
+        Assert.Equal((true, false, (string?)null), (pdf.IsFile, pdf.IsList, pdf.Paging));
+        Assert.Equal(["application/pdf"], pdf.MediaTypes);
+        var found = resolved.Outcomes[1].Returns!;
+        Assert.Equal((false, true, "cursor", 100), (found.IsFile, found.IsList, found.Paging, found.MaxPageSize));
     }
 
     [Fact]

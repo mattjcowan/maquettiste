@@ -1,5 +1,6 @@
 {{-
-# Shared names of the operation units for the csharp-dapper pack. Include this file after _csharp.scriban; it prints nothing.
+# Shared names and the HTTP mapping of the operation units for the csharp-dapper pack. Include this file after _csharp.scriban;
+# it prints nothing.
 
 # The C# name of an operation's types: its Pascal name followed by its subject's ("SendInvoice"), or the Pascal name alone.
 func op_type(op)
@@ -10,7 +11,7 @@ func op_type(op)
 end
 
 # The C# type of an input or returns member: the type map's, a list when a collection, nullable when not required. A member
-# that holds a record key takes its key attribute's type.
+# that holds a record key takes its key attribute's type; a file member takes the map's file entry (System.IO.Stream).
 func member_type(m)
   ret type_of m "csharp"
 end
@@ -23,16 +24,103 @@ func returns_record(op, o)
   ret ""
 end
 
-# The C# type of an outcome's value: the entity's class or the inline record, IReadOnlyList<T> for a list; "" without a value.
-func returns_type(op, o)
+# The record of an outcome's paged list ("SearchCustomerFoundPage"): its Items and Next (cursor) or Page; "" unless paged.
+func page_record(op, o)
+  if o.returns && o.returns.is_list && o.returns.paging
+    ret op_type(op) + (pascal o.name) + "Page"
+  end
+  ret ""
+end
+
+# The C# type of one item of an outcome's value: the entity's class, the inline record or a stream for a file; "" without one.
+func item_type(op, o)
   if !o.returns
     ret ""
   end
-  $t = o.returns.entity ? type_name(o.returns.entity) : returns_record(op, o)
+  if o.returns.is_file
+    ret "System.IO.Stream"
+  end
+  ret o.returns.entity ? type_name(o.returns.entity) : returns_record(op, o)
+end
+
+# The C# type of an outcome's value: the item type, IReadOnlyList<T> for a list, the page record for a paged list; "" without a
+# value.
+func returns_type(op, o)
+  $t = item_type(op, o)
   if $t == ""
     ret ""
   end
+  $p = page_record(op, o)
+  if $p != ""
+    ret $p
+  end
   ret o.returns.is_list ? ("IReadOnlyList<" + $t + ">") : $t
+end
+
+# The paging kinds of an operation's paged lists, each once, in ordinal order: "cursor", "page".
+func paging_kinds(op)
+  $kinds = []
+  for o in op.outcomes
+    if page_record(op, o) != "" && !($kinds | array.contains o.returns.paging)
+      $kinds[$kinds.size] = o.returns.paging
+    end
+  end
+  ret $kinds | array.sort
+end
+
+# The paging inputs a paged list implies, as parameters ("string? cursor, int pageSize, ") or arguments ("cursor, pageSize, ");
+# "" without a paged list. They are never declared as members.
+func paging_parameters(op, arguments)
+  $kinds = paging_kinds(op)
+  if $kinds.size == 0
+    ret ""
+  end
+  $s = ""
+  if $kinds | array.contains "cursor"
+    $s = $s + (arguments ? "cursor, " : "string? cursor, ")
+  end
+  if $kinds | array.contains "page"
+    $s = $s + (arguments ? "page, " : "int page, ")
+  end
+  ret $s + (arguments ? "pageSize, " : "int pageSize, ")
+end
+
+# The smallest maxPageSize of an operation's paged lists: the endpoint caps pageSize with it.
+func max_page_size(op)
+  $max = 0
+  for o in op.outcomes
+    if page_record(op, o) != "" && ($max == 0 || o.returns.max_page_size < $max)
+      $max = o.returns.max_page_size
+    end
+  end
+  ret $max
+end
+
+# The HTTP route of an operation, the pack's own convention: /<kebab plural subject>, then one segment per key attribute at
+# record level ("/{id}"), then /<kebab name>; /operations/<kebab name> without a subject.
+func op_route(op)
+  if !op.subject
+    ret "/operations/" + (kebab op.name)
+  end
+  $r = "/" + (kebab op.subject.plural_name)
+  for k in key_attributes(op)
+    $r = $r + "/{" + (camel k.name) + "}"
+  end
+  ret $r + "/" + (kebab op.name)
+end
+
+# GET for a read without input, else POST.
+func op_verb(op)
+  ret (op.effect == "read" && op.input.size == 0) ? "GET" : "POST"
+end
+
+# The HTTP status of an error: its integer property httpStatus, else 422 when it points at an input, else 409.
+func error_status(e)
+  $s = e.properties.httpStatus
+  if $s != null && (object.typeof $s) == "number"
+    ret $s
+  end
+  ret e.input ? 422 : 409
 end
 
 # The key attributes a record-level operation takes besides its input: its subject's; none at collection level or without one.

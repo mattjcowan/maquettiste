@@ -3,10 +3,12 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// The rules on an operation's own structure (next-phase-2-design.md section 4.1): MQ3023 to MQ3028, MQ3030 and MQ3031, and on its
-/// sub-elements the rules other kinds' parts take: names (MQ3001, MQ3018), member facets, defaults and validation rule ids (MQ3013,
-/// MQ3019, MQ3017, MQ2007), and stereotypes and tags (MQ2003, MQ2004, MQ2006, MQ2008, MQ2013 to MQ2015). Every finding is about the
-/// operation's own file. Pure functions of the context.
+/// The rules on an operation's structure (next-phase-2-design.md section 4.1): MQ3023 to MQ3028, MQ3030 and MQ3031, counting the
+/// errors its stereotypes contribute (MQ3026, MQ3027) and judging its <c>redefines</c> and <c>excludes</c> entries (MQ2027, MQ2028,
+/// through <see cref="ContributedMembers.CheckLinks"/>); on its sub-elements the rules other kinds' parts take: names (MQ3001, MQ3018),
+/// member facets, defaults and validation rule ids (MQ3013, MQ3019, MQ3017, MQ2007), and stereotypes and tags (MQ2003, MQ2004, MQ2006,
+/// MQ2008, MQ2013 to MQ2015). On a stereotype: MQ3029, MQ3027 and the same name and mark rules on its errors. Every finding is about
+/// the document's own file. Pure functions of the context.
 /// </summary>
 internal static class OperationRules
 {
@@ -17,6 +19,42 @@ internal static class OperationRules
     {
         if (report.Document.Element is Operation operation)
             Check(context, operation, report);
+        else if (report.Document.Element is Stereotype { Errors.Count: > 0 } stereotype)
+            CheckStereotype(context, stereotype, report);
+    }
+
+    // MQ3029 when the stereotype does not apply to operations; MQ3027 on an error with an input; names, codes and marks of its errors.
+    private static void CheckStereotype(ValidationContext context, Stereotype stereotype, Report report)
+    {
+        if (stereotype.AppliesTo.Count > 0 && !stereotype.AppliesTo.Contains("operation", StringComparer.Ordinal))
+        {
+            report.Add("MQ3029", $"Stereotype '{stereotype.Key}' declares errors but does not apply to operations, so no operation can inherit them; add operation to appliesTo.",
+                "/appliesTo");
+        }
+
+        for (var i = 0; i < stereotype.Errors.Count; i++)
+        {
+            var error = stereotype.Errors[i];
+            var pointer = Ptr.At("/errors", i);
+            BuiltinRules.CheckCommon(context, error, pointer, "error", report);
+            if (error.Input is not null)
+            {
+                report.Add("MQ3027", $"Error '{error.Name}' of stereotype '{stereotype.Key}' points at an input member, but a stereotype's error has none; remove input, and "
+                    + "let each operation that carries the stereotype redefine the error's input.", pointer + "/input", error.Id);
+            }
+        }
+
+        Unique(stereotype.Errors.Select((e, i) => (e.Name, Ptr.At("/errors", i), e.Id)), "error", "stereotype '" + stereotype.Key + "'", report);
+        var codes = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 0; i < stereotype.Errors.Count; i++)
+        {
+            var error = stereotype.Errors[i];
+            if (error.Code is { Length: > 0 } code && !codes.TryAdd(code, Ptr.At("/errors", i)))
+            {
+                report.Add("MQ3026", $"The error code '{code}' is already used at {codes[code]} in stereotype '{stereotype.Key}'; clients of the operations that carry it could not tell the errors apart.",
+                    Ptr.At("/errors", i) + "/code", error.Id);
+            }
+        }
     }
 
     private static void Check(ValidationContext context, Operation operation, Report report)
@@ -37,14 +75,7 @@ internal static class OperationRules
             BuiltinRules.CheckCommon(context, outcome, pointer, "outcome", report);
             if (outcome.Returns is not { } returns)
                 continue;
-            var forms = (returns.Members is not null ? 1 : 0) + (returns.Entity is not null ? 1 : 0);
-            if (forms != 1)
-            {
-                report.Add("MQ3025", forms == 0
-                        ? $"The returns of outcome '{outcome.Name}' states neither members nor entity; state one of them, or remove returns to return nothing."
-                        : $"The returns of outcome '{outcome.Name}' states both members and entity; keep one of them.",
-                    pointer + "/returns", outcome.Id);
-            }
+            CheckReturns(outcome, returns, pointer + "/returns", report);
 
             if (returns.Members is { } members)
                 CheckMembers(context, members, pointer + "/returns/members", inReturns: true, report);
@@ -65,6 +96,35 @@ internal static class OperationRules
         CheckRequires(context, operation, report);
     }
 
+    // MQ3025: one form of members, entity and file; mediaTypes only beside file, list never beside it; paging only on a list, and with
+    // maxPageSize.
+    private static void CheckReturns(OperationOutcome outcome, OperationReturns returns, string pointer, Report report)
+    {
+        var id = outcome.Id;
+        var forms = (returns.Members is not null ? 1 : 0) + (returns.Entity is not null ? 1 : 0) + (returns.File ? 1 : 0);
+        if (forms != 1)
+        {
+            report.Add("MQ3025", forms == 0
+                    ? $"The returns of outcome '{outcome.Name}' states neither members, entity nor file; state one of them, or remove returns to return nothing."
+                    : $"The returns of outcome '{outcome.Name}' states more than one of members, entity and file; keep one of them.",
+                pointer, id);
+        }
+
+        if (returns.MediaTypes.Count > 0 && !returns.File)
+            report.Add("MQ3025", $"The returns of outcome '{outcome.Name}' lists mediaTypes, which only a file result takes; remove them, or return a file.", pointer + "/mediaTypes", id);
+        if (returns.File && returns.List)
+            report.Add("MQ3025", $"The returns of outcome '{outcome.Name}' is a file and a list; a file result is one file, so remove list.", pointer + "/list", id);
+        if (returns.Paging is not null && !returns.List)
+            report.Add("MQ3025", $"The returns of outcome '{outcome.Name}' sets paging without list; only a list is paged, so set list or remove paging.", pointer + "/paging", id);
+        if (returns.Paging is null != returns.MaxPageSize is null)
+        {
+            report.Add("MQ3025", returns.Paging is null
+                    ? $"The returns of outcome '{outcome.Name}' sets maxPageSize without paging; set paging (page or cursor) with it, or remove it."
+                    : $"The returns of outcome '{outcome.Name}' sets paging without maxPageSize; state the largest page a caller may ask for.",
+                pointer + (returns.Paging is null ? "/maxPageSize" : "/paging"), id);
+        }
+    }
+
     // MQ3024 on each member, and the checks an attribute's facets take (MQ3013, MQ3019, MQ3017, MQ2007), names and marks.
     private static void CheckMembers(ValidationContext context, IReadOnlyList<OperationMember> members, string listPointer, bool inReturns, Report report)
     {
@@ -74,22 +134,26 @@ internal static class OperationRules
             var pointer = Ptr.At(listPointer, i);
             var id = member.Id;
             BuiltinRules.CheckCommon(context, member, pointer, "operation-member", report);
-            if (member.Type is null == member.KeyOf is null)
+            var forms = (member.Type is not null ? 1 : 0) + (member.KeyOf is not null ? 1 : 0) + (member.File ? 1 : 0);
+            if (forms != 1)
             {
-                report.Add("MQ3024", member.Type is null
-                        ? $"Member '{member.Name}' is neither a typed value nor a record key; state type or keyOf."
-                        : $"Member '{member.Name}' states both type and keyOf; keep one form.",
-                    member.Type is null ? pointer : pointer + "/keyOf", id);
+                report.Add("MQ3024", forms == 0
+                        ? $"Member '{member.Name}' is neither a typed value, a record key nor a file; state type, keyOf or file."
+                        : $"Member '{member.Name}' states more than one of type, keyOf and file; keep one form.",
+                    forms == 0 ? pointer : pointer + (member.File ? "/file" : "/keyOf"), id);
             }
 
-            if (member.KeyOf is not null && member.Type is null)
+            if (member.MediaTypes.Count > 0 && !member.File)
+                report.Add("MQ3024", $"Member '{member.Name}' lists mediaTypes, which only a file member takes; remove them, or make the member a file.", pointer + "/mediaTypes", id);
+            if (member.Type is null && (member.KeyOf is not null || member.File))
             {
+                var what = member.KeyOf is not null ? "a record key" : "a file";
                 foreach (var (facet, set) in (ReadOnlySpan<(string, bool)>)
-                    [("default", member.Default is not null), ("length", member.Length is not null), ("precision", member.Precision is not null),
+                    [("default", member.Default is not null), ("length", member.KeyOf is not null && member.Length is not null), ("precision", member.Precision is not null),
                      ("scale", member.Scale is not null), ("validation", member.Validation is not null)])
                 {
                     if (set)
-                        report.Add("MQ3024", $"Member '{member.Name}' is a record key, which takes no {facet}; remove it, or make the member a typed value.", pointer + "/" + facet, id);
+                        report.Add("MQ3024", $"Member '{member.Name}' is {what}, which takes no {facet}; remove it, or make the member a typed value.", pointer + "/" + facet, id);
                 }
             }
 
@@ -127,8 +191,10 @@ internal static class OperationRules
         AttributeRules.CheckRuleIds(context, member.Validation, pointer + "/validation/rules", id, report);
     }
 
-    // MQ3026 on own errors sharing a name or a code (the code, else the name), MQ3027 on an input that is not an input member of the
-    // operation, MQ3018 on names and the marks of each error.
+    // MQ3026 on errors sharing a name or a code (the code, else the name), own and inherited counted, and on two inherited errors of one
+    // key (two stereotypes giving an error of one id); MQ3027 on an input, own or
+    // redefined, that is not an input member of the operation; MQ3018 on names and the marks of each own error; MQ2027 and MQ2028 on the
+    // redefines and excludes entries.
     private static void CheckErrors(ValidationContext context, Operation operation, Report report)
     {
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -157,14 +223,107 @@ internal static class OperationRules
                     pointer + (error.Code is not null ? "/code" : "/name"), error.Id);
             }
 
-            if (error.Input is { } input && !operation.Input.Any(m => string.Equals(m.Id, input, StringComparison.Ordinal))
-                && context.Model.TryGetEntry(input, out var entry) && entry.Kind == "operation-member")
+            if (NotOwnInput(context, operation, error.Input) is { } where)
             {
-                var where = string.Equals(entry.OwnerId, operation.Id, StringComparison.Ordinal) ? "a member of one of its returns" : "a member of another operation";
                 report.Add("MQ3027", $"Error '{error.Name}' points at {where}, not at an input member of operation '{operation.Name}'; pick one of its input members.",
                     pointer + "/input", error.Id);
             }
         }
+
+        for (var i = 0; i < operation.Redefines.Count; i++)
+        {
+            var redefinition = operation.Redefines[i];
+            if (NotOwnInput(context, operation, redefinition.Input) is { } where)
+            {
+                report.Add("MQ3027", $"The redefinition of error '{redefinition.Member}' points at {where}, not at an input member of operation '{operation.Name}'; pick one of its input members.",
+                    Ptr.At("/redefines", i) + "/input");
+            }
+        }
+
+        if (operation.Redefines.Count == 0 && operation.Excludes.Count == 0 && !HasStereotypeErrors(context, operation))
+            return;
+        CheckLinks(context, operation, report);
+        var keys = new Dictionary<string, AppliedStereotype>(StringComparer.Ordinal);
+        foreach (var inherited in OperationErrors.Of(context.Model, operation))
+        {
+            var error = inherited.Member;
+            if (!keys.TryAdd(inherited.Key, inherited.From))
+            {
+                // Two stereotypes give an error of one id: resolution keeps the first, so the second's name and code are not counted.
+                report.Add("MQ3026", $"Stereotypes '{keys[inherited.Key].Stereotype.Key}' and '{inherited.From.Stereotype.Key}' both contribute an error with id {inherited.MemberId} to operation '{operation.Name}', which keeps the one of '{keys[inherited.Key].Stereotype.Key}'; give the other error a new id, or carry only one of the stereotypes.",
+                    inherited.From.Entry >= 0 ? Ptr.At("/stereotypes", inherited.From.Entry) : "/stereotypes");
+                continue;
+            }
+
+            var at = PointerOf(operation, inherited.MemberId, inherited.From);
+            var from = $"error '{error.Name}' that stereotype '{inherited.From.Stereotype.Key}' contributes";
+            var nameTaken = false;
+            if (error.Name.Length > 0 && (nameTaken = !names.TryAdd(error.Name, at)))
+            {
+                report.Add("MQ3026", $"The {from} has the name of the error at {names[error.Name]} in operation '{operation.Name}'; rename the own error, or exclude the inherited one.",
+                    at);
+            }
+
+            var code = error.Code ?? error.Name;
+            if (code.Length > 0 && !codes.TryAdd(code, at) && !(error.Code is null && nameTaken))
+            {
+                report.Add("MQ3026", $"The {from} has the code '{code}' of the error at {codes[code]} in operation '{operation.Name}'; clients could not tell the errors apart, so exclude one of them.",
+                    at);
+            }
+        }
+    }
+
+    // Why an input is not one of the operation's input members ("a member of one of its returns", "a member of another operation"), or null.
+    private static string? NotOwnInput(ValidationContext context, Operation operation, string? input) =>
+        input is not null && !operation.Input.Any(m => string.Equals(m.Id, input, StringComparison.Ordinal))
+            && context.Model.TryGetEntry(input, out var entry) && entry.Kind == "operation-member"
+            ? string.Equals(entry.OwnerId, operation.Id, StringComparison.Ordinal) ? "a member of one of its returns" : "a member of another operation"
+            : null;
+
+    private static bool HasStereotypeErrors(ValidationContext context, Operation operation) =>
+        context.Model.EffectiveStereotypes(operation).Any(s => s.Stereotype.Errors.Count > 0);
+
+    // MQ2027 and MQ2028 on the redefines and excludes entries, as section 3.1 words them for any holder.
+    private static void CheckLinks(ValidationContext context, Operation operation, Report report)
+    {
+        if (operation.Redefines.Count == 0 && operation.Excludes.Count == 0)
+            return;
+        var inheritable = OperationErrors.Inheritable(context.Model, operation).Keys.ToHashSet(StringComparer.Ordinal);
+        foreach (var finding in ContributedMembers.CheckLinks(inheritable, operation.Redefines, operation.Excludes))
+        {
+            var excludesEntry = finding.Pointer.StartsWith("/excludes/", StringComparison.Ordinal);
+            switch (finding.Problem)
+            {
+                case MemberLinkProblem.NotInherited when excludesEntry:
+                    report.Add("MQ2028", $"Exclusion names '{finding.Member}', which is not an error operation '{operation.Name}' inherits from its stereotypes; remove the entry.", finding.Pointer);
+                    break;
+                case MemberLinkProblem.NotInherited:
+                    report.Add("MQ2027", $"Redefinition names '{finding.Member}', which is not an error operation '{operation.Name}' inherits from its stereotypes; fix or remove the entry.", finding.Pointer);
+                    break;
+                case MemberLinkProblem.RedefinedTwice:
+                    report.Add("MQ2027", $"Error '{finding.Member}' is redefined twice; state its facets in one entry.", finding.Pointer);
+                    break;
+                case MemberLinkProblem.NoFacet:
+                    report.Add("MQ2027", $"Redefinition of error '{finding.Member}' states no facet; state the facets it changes (input, displayName, description), or remove the entry.", finding.Pointer);
+                    break;
+                case MemberLinkProblem.ExcludedAndRedefined:
+                    report.Add("MQ2028", $"Error '{finding.Member}' is both excluded and redefined; keep one of the two entries.", finding.Pointer);
+                    break;
+            }
+        }
+    }
+
+    // Where a finding about an inherited error goes: its redefines entry, else the contributing stereotype's entry, else /stereotypes
+    // (a package default).
+    private static string PointerOf(Operation operation, string memberId, AppliedStereotype from)
+    {
+        for (var i = 0; i < operation.Redefines.Count; i++)
+        {
+            if (string.Equals(operation.Redefines[i].Member, memberId, StringComparison.Ordinal))
+                return Ptr.At("/redefines", i);
+        }
+
+        return from.Entry >= 0 ? Ptr.At("/stereotypes", from.Entry) : "/stereotypes";
     }
 
     private static void CheckDefaultOutcome(ValidationContext context, Operation operation, Report report)
