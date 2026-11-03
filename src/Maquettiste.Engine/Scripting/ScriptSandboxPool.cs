@@ -17,6 +17,7 @@ internal sealed class ScriptSandboxPool : IScriptSandboxPool
     private readonly CancellationToken _runToken;
     private readonly int _size;
     private readonly IReadOnlyList<ScriptLibrary> _libraries;
+    private readonly IReadOnlyList<PreparedScript>? _tests;
     private readonly ConcurrentStack<ScriptSandbox> _idle = new();
     private int _disposed;
 
@@ -27,18 +28,61 @@ internal sealed class ScriptSandboxPool : IScriptSandboxPool
     /// <param name="runToken">The run's cancellation, wired into every engine.</param>
     /// <param name="warnings">The scripts' load warnings (MQ5005), ordinal by path.</param>
     /// <param name="libraries">The packs <c>maquettiste.use</c> reaches (library packs); none by default.</param>
+    /// <param name="tests">Helper test files, prepared scoped (a test pool, next-phase-2-design.md section 5.4); none by default.</param>
+    /// <param name="testFailures">The test files that did not prepare (a syntax error), left out of <paramref name="tests"/>.</param>
     public ScriptSandboxPool(IReadOnlyList<PreparedScript> scripts, SandboxLimits limits, int size, CancellationToken runToken,
-        IReadOnlyList<Diagnostic>? warnings = null, IReadOnlyList<ScriptLibrary>? libraries = null)
+        IReadOnlyList<Diagnostic>? warnings = null, IReadOnlyList<ScriptLibrary>? libraries = null, IReadOnlyList<PreparedScript>? tests = null,
+        IReadOnlyList<ScriptTestFailure>? testFailures = null)
     {
         _libraries = libraries ?? [];
         _scripts = scripts;
+        _tests = tests;
         _limits = limits;
         _size = size;
         _runToken = runToken;
         Warnings = warnings ?? [];
-        var first = ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken, _libraries);
+        var first = ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken, _libraries, _tests);
         Registrations = first.Registrations;
+        Tests = first.Tests;
+        TestFailures = [.. (testFailures ?? []).Concat(first.TestFailures).OrderBy(f => f.File, StringComparer.Ordinal)];
         _idle.Push(first);
+    }
+
+    /// <summary>The helper tests the test files registered (a test pool); empty otherwise.</summary>
+    internal IReadOnlyList<ScriptTest> Tests { get; }
+
+    /// <summary>The test files that did not prepare or load, ordinal by file.</summary>
+    internal IReadOnlyList<ScriptTestFailure> TestFailures { get; }
+
+    /// <summary>
+    /// Runs one helper test (<see cref="Tests"/>) on an engine of the pool; an engine a limit faulted is dropped. An engine built again
+    /// whose test files did not register the test at its index (a file that failed to load this time) does not run it: the result is
+    /// <see cref="ScriptTestResult.Malformed"/>.
+    /// </summary>
+    /// <param name="index">The test's index.</param>
+    /// <param name="ctx">The call context.</param>
+    /// <returns>The result.</returns>
+    internal ScriptTestResult RunTest(int index, ScriptCallContext ctx)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Tests.Count);
+        var sandbox = _idle.TryPop(out var idle) ? idle : ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken, _libraries, _tests);
+        try
+        {
+            var test = Tests[index];
+            if (!sandbox.HasTest(index, test))
+            {
+                return new ScriptTestResult(false, $"its engine was built again after a limit and its test files no longer register it at index {index}; a test file must register the same tests on every load.",
+                    test.File, null, null, Malformed: true);
+            }
+
+            return sandbox.RunTest(index, ctx);
+        }
+        finally
+        {
+            Return(sandbox);
+        }
     }
 
     /// <inheritdoc/>
@@ -51,7 +95,7 @@ internal sealed class ScriptSandboxPool : IScriptSandboxPool
     public IScriptSandboxLease Rent()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        var sandbox = _idle.TryPop(out var idle) ? idle : ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken, _libraries);
+        var sandbox = _idle.TryPop(out var idle) ? idle : ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken, _libraries, _tests);
         return new Lease(this, sandbox);
     }
 

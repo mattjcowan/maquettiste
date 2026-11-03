@@ -1,0 +1,64 @@
+{
+  "kind": "table",
+  "id": "01JC0000000000000000000T02",
+  "name": "invoices",
+  "database": "01JC0000000000000000000D01",
+  "columns": [
+    {
+      "id": "01JC0000000000000000000C11",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01JC0000000000000000000C12",
+      "name": "number",
+      "type": "string",
+      "length": 32,
+      "nullable": false
+    },
+    {
+      "id": "01JC0000000000000000000C13",
+      "name": "issued_on",
+      "type": "date"
+    },
+    {
+      "id": "01JC0000000000000000000C14",
+      "name": "total",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01JC0000000000000000000C15",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01JC0000000000000000000C11"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01JC0000000000000000000Q11",
+      "name": "uq_invoices_number",
+      "columns": [
+        "01JC0000000000000000000C12"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01JC0000000000000000000F11",
+      "name": "fk_invoices_customer",
+      "columns": [
+        "01JC0000000000000000000C15"
+      ],
+      "referencesTable": "01JC0000000000000000000T01"
+    }
+  ]
+}

@@ -5,7 +5,7 @@
 // Deterministic: ids come from domain keys (lib/ids.mjs), files are canonical JSON (lib/canonical.mjs), and nothing depends on
 // the clock or the machine. Usage: node build-model.mjs [--out <sample root>] [--quiet]
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Canonical } from "./lib/canonical.mjs";
 import { compile, loadDomain } from "./lib/domain.mjs";
@@ -37,7 +37,12 @@ export function writeModel(outRoot, files) {
     writeFileSync(full, text);
   }
   cpSync(join(repoRoot, "schemas", "v1"), join(mq, ".schema", "v1"), { recursive: true });
-  for (const p of PACKS) cpSync(join(repoRoot, "packs", p), join(mq, "templates", p), { recursive: true });
+  // The pack copies leave the pack's tests/ out (5.4).
+  for (const p of PACKS) {
+    const source = join(repoRoot, "packs", p);
+    const outsideTests = (src) => relative(source, src).split(/[\\/]/)[0] !== "tests";
+    cpSync(source, join(mq, "templates", p), { recursive: true, filter: outsideTests });
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

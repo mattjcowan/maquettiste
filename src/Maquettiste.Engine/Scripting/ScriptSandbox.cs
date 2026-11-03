@@ -51,12 +51,14 @@ internal sealed record PreparedScript(ScriptSource Source, Prepared<AstScript> P
     /// <summary>
     /// Prepares scripts in load order; a syntax error is a <see cref="ScriptErrorException"/> with file, line and column. A rule script
     /// (<see cref="ScriptSandbox.IsRuleScript"/>) is wrapped in its own function scope and checked for top-level <c>let</c> and
-    /// <c>var</c> (<see cref="Warning"/>).
+    /// <c>var</c> (<see cref="Warning"/>); with <paramref name="scoped"/> every script is wrapped so (helper test files,
+    /// next-phase-2-design.md section 5.4).
     /// </summary>
     /// <param name="scripts">The scripts.</param>
     /// <param name="limits">The limits; they bound the match time of regular expression literals.</param>
+    /// <param name="scoped">Whether every script runs in its own function scope, as rule files do.</param>
     /// <returns>The prepared scripts.</returns>
-    public static IReadOnlyList<PreparedScript> PrepareAll(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits)
+    public static IReadOnlyList<PreparedScript> PrepareAll(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, bool scoped = false)
     {
         // A prepared script ignores ConstraintOptions.RegexTimeout: its literals get the parsing option's timeout, or 10 s.
         var options = new ScriptPreparationOptions
@@ -67,9 +69,10 @@ internal sealed record PreparedScript(ScriptSource Source, Prepared<AstScript> P
         foreach (var script in scripts)
         {
             var rule = ScriptSandbox.IsRuleScript(script.Path);
+            var wrap = rule || scoped;
             var (lineCount, lastLineLength) = Measure(script.Code);
-            var shape = new PreparedScript(script, default) { Scoped = rule, LineCount = lineCount, LastLineLength = lastLineLength };
-            var code = rule ? ScopePrefix + script.Code + ScopeSuffix : script.Code;
+            var shape = new PreparedScript(script, default) { Scoped = wrap, LineCount = lineCount, LastLineLength = lastLineLength };
+            var code = wrap ? ScopePrefix + script.Code + ScopeSuffix : script.Code;
             Prepared<AstScript> program;
             try
             {
@@ -86,7 +89,7 @@ internal sealed record PreparedScript(ScriptSource Source, Prepared<AstScript> P
                     ex);
             }
 
-            prepared.Add(rule ? shape.Scope(program) : shape with { Program = program });
+            prepared.Add(wrap ? shape.Scope(program) : shape with { Program = program });
         }
 
         return prepared;
@@ -222,6 +225,12 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     private JsValue? _ruleModel;
     private readonly Dictionary<string, ScriptLibrary> _libraries = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JsValue> _libraryObjects = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _testFiles = new(StringComparer.Ordinal);
+    private readonly List<(ScriptTest Test, Function Function)> _tests = [];
+    private readonly List<(string Name, Function Function)> _pendingTests = [];
+    private readonly List<ScriptTestFailure> _testFailures = [];
+    private JsValue? _assert;
+    private JsValue? _helperObject;
 
     private ScriptSandbox(SandboxLimits limits, MemberCatalog catalog, CancellationToken runToken, IReadOnlyList<ScriptLibrary> libraries)
     {
@@ -276,15 +285,19 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     /// <param name="catalog">The pool's reflection catalog.</param>
     /// <param name="runToken">The run's cancellation.</param>
     /// <param name="libraries">The packs <c>maquettiste.use</c> reaches (library packs); none by default.</param>
+    /// <param name="tests">
+    /// Helper test files (next-phase-2-design.md section 5.4), prepared scoped; <see langword="null"/> for a normal engine, which has
+    /// no <c>maquettiste.test</c>. They load after the scripts and the freeze of the globals, each in its own function scope.
+    /// </param>
     /// <returns>The sandbox.</returns>
     public static ScriptSandbox Create(IReadOnlyList<PreparedScript> scripts, SandboxLimits limits, MemberCatalog catalog, CancellationToken runToken,
-        IReadOnlyList<ScriptLibrary>? libraries = null)
+        IReadOnlyList<ScriptLibrary>? libraries = null, IReadOnlyList<PreparedScript>? tests = null)
     {
         runToken.ThrowIfCancellationRequested();
         var sandbox = new ScriptSandbox(limits, catalog, runToken, libraries ?? []);
         try
         {
-            sandbox.Initialize(scripts);
+            sandbox.Initialize(scripts, tests);
             return sandbox;
         }
         catch
@@ -363,7 +376,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         _engine.Dispose();
     }
 
-    private void Initialize(IReadOnlyList<PreparedScript> scripts)
+    private void Initialize(IReadOnlyList<PreparedScript> scripts, IReadOnlyList<PreparedScript>? tests)
     {
         var global = _engine.Global;
         foreach (var name in RemovedGlobals)
@@ -372,7 +385,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         GuardStringGrowth();
         GuardRegExp();
         DefaultIntlTimeZoneToUtc();
-        global.FastSetProperty("maquettiste", new PropertyDescriptor(CreateApi(), PropertyFlag.Enumerable));
+        global.FastSetProperty("maquettiste", new PropertyDescriptor(CreateApi(tests is not null), PropertyFlag.Enumerable));
 
         // Rule files each run in their own function scope; with the globals frozen first, a global or prototype member one of them
         // sets is a TypeError while it loads. Pack scripts share their pack's globals until the freeze after loading.
@@ -402,8 +415,12 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         }
 
         _loadingPath = null;
+        if (tests is not null)
+            PrepareTestObjects();
         if (!freezeFirst)
             DeepFreeze(global);
+        if (tests is not null)
+            LoadTests(tests);
     }
 
     private void ReplaceRandom()
@@ -586,7 +603,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         }
     }
 
-    private JsObject CreateApi()
+    private JsObject CreateApi(bool tests)
     {
         var api = new JsObject(_engine);
         foreach (var (name, kind) in new[]
@@ -607,6 +624,12 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         api.DefineOwnProperty("params", new GetSetPropertyDescriptor(paramsGetter, JsValue.Undefined, enumerable: true, configurable: false));
         api.FastSetProperty("use", new PropertyDescriptor(
             new ClrFunction(_engine, "use", (_, args) => Use(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
+        if (tests)
+        {
+            api.FastSetProperty("test", new PropertyDescriptor(
+                new ClrFunction(_engine, "test", (_, args) => RegisterTest(args), 2, PropertyFlag.Configurable), PropertyFlag.Enumerable));
+        }
+
         return api;
     }
 
@@ -682,6 +705,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     {
         var path = _loadingPath ?? throw TypeError($"maquettiste.{api} can only be called while scripts load.");
         RefuseInRowsScript(path, api);
+        RefuseInTestFile(path, api);
         var name = args.Length > 0 && args[0] is JsString s ? s.ToString() : "";
         if (name.Length == 0)
             throw TypeError($"maquettiste.{api}(name, fn): name must be a non-empty string.");
@@ -727,6 +751,143 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
             throw TypeError($"maquettiste.{api} cannot be called by a rows script ({path}): a rows script registers its rows once with maquettiste.rows(fn).");
     }
 
+    /// <summary>A helper test file registers tests and nothing else (next-phase-2-design.md section 5.4): any other call fails its load.</summary>
+    private void RefuseInTestFile(string path, string api)
+    {
+        if (_testFiles.Contains(path))
+            throw TypeError($"maquettiste.{api} cannot be called by a test file ({path}): a test file registers tests only, with maquettiste.test(name, fn).");
+    }
+
+    /// <summary>The helper tests this engine's test files registered: files in load order, tests in registration order.</summary>
+    internal IReadOnlyList<ScriptTest> Tests => [.. _tests.Select(t => t.Test)];
+
+    /// <summary>Whether this engine registered <paramref name="test"/> at <paramref name="index"/> (a rebuilt engine ran the test files again).</summary>
+    /// <param name="index">The test's index in <see cref="Tests"/>.</param>
+    /// <param name="test">The test the pool's first engine registered there.</param>
+    /// <returns>Whether the index holds a test of the same file and name.</returns>
+    internal bool HasTest(int index, ScriptTest test) =>
+        index >= 0 && index < _tests.Count && string.Equals(_tests[index].Test.File, test.File, StringComparison.Ordinal)
+        && string.Equals(_tests[index].Test.Name, test.Name, StringComparison.Ordinal);
+
+    /// <summary>The test files that did not load, in load order; none of their tests is registered.</summary>
+    internal IReadOnlyList<ScriptTestFailure> TestFailures => _testFailures;
+
+    /// <summary>
+    /// <c>maquettiste.test(name, fn)</c>: registers a helper test of the test file that is loading. Only a test file may call it, only
+    /// while it loads, and a name its file already registered is a <c>TypeError</c>, so the file fails to load.
+    /// </summary>
+    private JsValue RegisterTest(JsValue[] args)
+    {
+        var path = _loadingPath;
+        if (path is null || !_testFiles.Contains(path))
+            throw TypeError("maquettiste.test can only be called by a test file in the pack's tests/ folder while it loads.");
+        var name = args.Length > 0 && args[0] is JsString s ? s.ToString() : "";
+        if (name.Length == 0)
+            throw TypeError("maquettiste.test(name, fn): name must be a non-empty string.");
+        if (args.Length < 2 || args[1] is not Function fn)
+            throw TypeError($"maquettiste.test('{name}', fn): fn must be a function that takes (assert, helpers).");
+        if (_pendingTests.Exists(t => string.Equals(t.Name, name, StringComparison.Ordinal)))
+            throw TypeError($"A test named '{name}' is already registered by {path}; each test of a file needs a name of its own.");
+        _pendingTests.Add((name, fn));
+        return JsValue.Undefined;
+    }
+
+    /// <summary>
+    /// The objects every helper test receives, built once per engine after the pack's scripts load and frozen with the globals: the
+    /// assert object (<see cref="ScriptTests.Prelude"/>) and the object of the pack's registered helpers, ordinal by name, each the
+    /// registered function itself.
+    /// </summary>
+    private void PrepareTestObjects()
+    {
+        _engine.Constraints.Reset();
+        var assert = _engine.Evaluate(ScriptTests.Prelude, InternalSourcePrefix + "assert");
+        _engine.Advanced.ResetCallStack();
+        var members = _functions.Values.Where(f => f.Kind == ScriptRegistrationKind.Helper).OrderBy(f => f.Name, StringComparer.Ordinal)
+            .Select(f => new KeyValuePair<string, JsValue>(f.Name, f.Function)).ToList();
+        var helpers = _values.FrozenObject(members);
+        if (assert is ObjectInstance assertObject)
+            DeepFreeze(assertObject);
+        if (helpers is ObjectInstance helperObject)
+            DeepFreeze(helperObject);
+        _assert = assert;
+        _helperObject = helpers;
+    }
+
+    /// <summary>
+    /// Loads the helper test files after the freeze, each in its own function scope: a file that throws, hits a limit, registers
+    /// anything but tests or repeats a test name is a <see cref="ScriptTestFailure"/> at its position, and none of its tests is kept.
+    /// </summary>
+    private void LoadTests(IReadOnlyList<PreparedScript> tests)
+    {
+        foreach (var test in tests)
+            _testFiles.Add(test.Source.Path);
+        foreach (var test in tests)
+        {
+            var path = test.Source.Path;
+            _scripts.TryAdd(path, test);
+            _loadingPath = path;
+            _pendingTests.Clear();
+            _random.Seed(path);
+            var program = test.Program;
+            try
+            {
+                _engine.Constraints.Reset();
+                _engine.Execute(in program);
+                foreach (var (name, fn) in _pendingTests)
+                    _tests.Add((new ScriptTest(path, name, _tests.Count), fn));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var translated = Translate(ex, new CallSite($"Test file {path} failed while loading", path, null, false), _runToken);
+                _testFailures.Add(new ScriptTestFailure(path, translated switch
+                {
+                    ScriptErrorException error => error.Diagnostic,
+                    ScriptLimitException limit => limit.Diagnostic,
+                    _ => throw translated,
+                }));
+            }
+            finally
+            {
+                _engine.Advanced.ResetCallStack();
+            }
+        }
+
+        _pendingTests.Clear();
+        _loadingPath = null;
+    }
+
+    /// <summary>
+    /// Runs one helper test (<see cref="Tests"/>) as one sandbox call under the limits: <c>fn(assert, helpers)</c> with the context's
+    /// parameters as <c>maquettiste.params</c> and its libraries behind <c>maquettiste.use</c>. A failed assertion reads its own text; a
+    /// throw reads the error; a limit names the limit. Positions are mapped as script errors are.
+    /// </summary>
+    /// <param name="index">The test's index in <see cref="Tests"/>.</param>
+    /// <param name="ctx">The call context.</param>
+    /// <returns>Pass, or why it failed and where.</returns>
+    internal ScriptTestResult RunTest(int index, ScriptCallContext ctx)
+    {
+        var (test, fn) = _tests[index];
+        try
+        {
+            return Run(new CallSite($"Test '{test.Name}'", test.File, null, false), ctx, () =>
+            {
+                _engine.Call(fn, JsValue.Undefined, [_assert ?? JsValue.Undefined, _helperObject ?? JsValue.Undefined]);
+                return ScriptTestResult.Pass;
+            });
+        }
+        catch (ScriptErrorException e)
+        {
+            var assertion = e.InnerException is JavaScriptException js && js.Error is ObjectInstance error && error.Get("name") is JsString n
+                && string.Equals(n.ToString(), ScriptTests.AssertionError, StringComparison.Ordinal);
+            var message = assertion ? ((JavaScriptException)e.InnerException!).Message : e.Diagnostic.Message;
+            return new ScriptTestResult(false, message, e.Diagnostic.FilePath, e.Diagnostic.Line, e.Diagnostic.Column);
+        }
+        catch (ScriptLimitException e)
+        {
+            return new ScriptTestResult(false, e.Diagnostic.Message, e.Diagnostic.FilePath, e.Diagnostic.Line, e.Diagnostic.Column, Limit: true);
+        }
+    }
+
     /// <summary>
     /// <c>maquettiste.rows(fn)</c>: a rows script's function, <c>fn(model, seed)</c>, registered under the script's path. Only a script in
     /// <c>extensions/seeds/</c> may call it, once; a rule or pack script that calls it fails to load.
@@ -734,6 +895,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     private JsValue RegisterRows(JsValue[] args)
     {
         var path = _loadingPath ?? throw TypeError("maquettiste.rows can only be called while scripts load.");
+        RefuseInTestFile(path, "rows");
         if (!IsRowsScript(path))
             throw TypeError($"maquettiste.rows can only be called by a rows script in extensions/seeds/, not by {path}.");
         if (args.Length == 0 || args[0] is not Function fn)
@@ -749,6 +911,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     {
         var path = _loadingPath ?? throw TypeError("maquettiste.rule can only be called while scripts load.");
         RefuseInRowsScript(path, "rule");
+        RefuseInTestFile(path, "rule");
         if (args.Length == 0 || args[0] is not ObjectInstance spec)
             throw TypeError("maquettiste.rule({ id, severity, kinds, scope, check }): the argument must be an object.");
         var id = spec.Get("id") is JsString idValue ? idValue.ToString() : "";

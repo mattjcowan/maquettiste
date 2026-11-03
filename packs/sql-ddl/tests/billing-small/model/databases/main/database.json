@@ -1,0 +1,14 @@
+{
+  "kind": "database",
+  "id": "01JC0000000000000000000D01",
+  "name": "main",
+  "dialect": "postgresql",
+  "version": "16",
+  "defaultSchema": "billing",
+  "schemas": [
+    {
+      "id": "01JC0000000000000000000D02",
+      "name": "billing"
+    }
+  ]
+}

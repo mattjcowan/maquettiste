@@ -1,0 +1,8 @@
+{
+  "database": "main",
+  "dialect": "postgresql",
+  "seedHash": "bf4535c6bb00b3e7b56bcf57a11c89f6b3663e2e1b087b10ec58af535b69efd3",
+  "tables": [
+    {"columns":["id","name","email"],"file":"billing.customers.csv","key":["email"],"schema":"billing","seeds":[{"apply":"once","columns":["id","name","email"],"delete":false,"environments":[],"firstRow":0,"rowCount":2,"seed":"customers","source":"table"}],"table":"customers","types":{"email":"string","id":"uuid","name":"string"}}
+  ]
+}

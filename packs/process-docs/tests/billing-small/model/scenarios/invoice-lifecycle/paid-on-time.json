@@ -1,0 +1,31 @@
+{
+  "kind": "scenario",
+  "id": "01JE0000000000000000000W01",
+  "name": "PaidOnTime",
+  "displayName": "Paid on time",
+  "process": "01JE0000000000000000000Q01",
+  "steps": [
+    {
+      "id": "01JE0000000000000000000Y01",
+      "event": "01JE0000000000000000000X01",
+      "actor": "01JE0000000000000000000K01",
+      "expect": {
+        "states": [
+          "01JE0000000000000000000S02"
+        ]
+      },
+      "description": "The clerk sends the invoice."
+    },
+    {
+      "id": "01JE0000000000000000000Y02",
+      "event": "01JE0000000000000000000X02",
+      "expect": {
+        "states": [
+          "01JE0000000000000000000S03"
+        ]
+      },
+      "description": "The customer pays."
+    }
+  ],
+  "outcome": "final"
+}

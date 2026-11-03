@@ -1,0 +1,25 @@
+{
+  "kind": "entity",
+  "id": "01JG0000000000000000000E01",
+  "name": "Customer",
+  "package": "01JG0000000000000000000P01",
+  "key": {
+    "attributes": [
+      "01JG0000000000000000000A01"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JG0000000000000000000A01",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JG0000000000000000000A02",
+      "name": "name",
+      "type": "string",
+      "required": true
+    }
+  ]
+}

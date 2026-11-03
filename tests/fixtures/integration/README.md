@@ -15,5 +15,10 @@ The packs under `tests/fixtures/packs/` are written for the fake renderer of the
 | `packs/processes` | `gen` (used over `models/processes` by `ProcessGenerationTests`) | `process` (each process: `all_states`, `state_path`, transition `label`, `iso_duration_ms`, gate `audit`), `actor` (each actor: `events`, `gates`), `scenario` (each scenario: steps with `expect.state_paths`) |
 | `packs/migrations` | `db` | `migration` (`for: model`, `mode: once`, `usesSchemaDiff`): a file block `migrations/<to_revision>.sql` when the `main` diff is not empty |
 
+`pack-tests/` serves `PackTestTests` (next-phase-2-design.md section 5.4): `records` (one `each entity` unit through a
+`record_name` helper, with the `billing-small` case and `tests/helpers.test.js`), `billing-small-rows` (a `case.json`
+variant the test copies under `records/tests/`), `naming` (a library with a `class_name` helper) and `named-records`
+(the `pack.json` and template that make `records` use `naming`). Its `.gitattributes` keeps the expected trees' bytes.
+
 With `billing-demo` the full run renders 60 units (e2e 36, billing-demo 23, migrations 1). Tests that count units or files
 depend on these packs; change them together.

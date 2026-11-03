@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pack test case",
+  "description": "templates/<pack>/tests/<case>/case.json: optional settings of a pack test case.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "description",
+    "model",
+    "parameters"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "description": {
+      "description": "What the case shows; the test report prints it.",
+      "type": "string",
+      "minLength": 1
+    },
+    "model": {
+      "description": "Another case of the same pack whose project files (maquettiste.json, model/, extensions/, locales) serve as this case's project. That case must not itself name a model.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "parameters": {
+      "description": "Parameters merged over packs.<pack>.parameters of the case's maquettiste.json for the pack under test.",
+      "type": "object",
+      "default": {}
+    }
+  },
+  "additionalProperties": false
+}

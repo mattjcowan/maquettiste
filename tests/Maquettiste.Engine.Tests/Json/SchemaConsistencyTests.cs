@@ -26,6 +26,7 @@ public sealed class SchemaConsistencyTests
         data.Add("snapshot.json", typeof(PhysicalSnapshot));
         data.Add("batch.json", typeof(ModelBatch));
         data.Add("locale.json", typeof(LocaleShard));
+        data.Add("pack-case.json", typeof(Maquettiste.Engine.Generation.PackCaseSettings));
         return data;
     }
 

@@ -39,7 +39,8 @@ public sealed class PackRenameTests
 
         Assert.Equal(SaveOutcome.Saved, renamed.Outcome);
         Assert.Equal(("sql-ddl", "ddl"), (renamed.From, renamed.To));
-        Assert.Equal(pack.Files.Select(f => f.Path).Order(StringComparer.Ordinal), renamed.Files);
+        // The pack lists no hidden file; the folder also holds the shipped tests/.gitattributes, which moves with it.
+        Assert.Equal(pack.Files.Select(f => f.Path).Append("tests/.gitattributes").Order(StringComparer.Ordinal), renamed.Files);
         Assert.Equal(preview.Files, renamed.Files);
         Assert.Equal(outputs.Order(StringComparer.Ordinal), renamed.Tracked);
         Assert.Equal([EditorRepo.CustomerId], renamed.Hints);
@@ -153,7 +154,8 @@ public sealed class PackRenameTests
         Assert.Equal(SaveOutcome.Saved, renamed.Outcome);
         Assert.Null(renamed.SettingsHash);
         Assert.Empty(renamed.Tracked);
-        Assert.Equal(["entity.scriban", "pack.json"], renamed.Files);
+        Assert.Equal(["entity.scriban", "pack.json", "tests/.gitattributes", "tests/example/expected/invoice.txt", "tests/example/maquettiste.json",
+            "tests/example/model/entities/invoice.json", "tests/example/model/packages/billing.json"], renamed.Files);
         Assert.Equal(before, (await repo.Store.GetSettingsAsync(Ct)).Hash);
         Assert.False(Directory.Exists(repo.Repo.PathOf(".maquettiste/templates/docs")));
         Assert.Contains("\"name\": \"notes\"", File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/notes/pack.json")), StringComparison.Ordinal);

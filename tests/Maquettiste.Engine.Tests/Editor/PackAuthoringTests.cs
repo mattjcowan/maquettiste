@@ -159,7 +159,9 @@ public sealed class PackAuthoringTests
         await using var repo = EditorRepo.Create();
         var empty = await repo.Service.CreatePackAsync("docs", "empty", null, Ct);
         Assert.Equal(SaveOutcome.Saved, empty.Outcome);
-        Assert.Equal(["entity.scriban", "pack.json"], empty.Files);
+        Assert.Equal(["entity.scriban", "pack.json", "tests/.gitattributes", "tests/example/expected/invoice.txt", "tests/example/maquettiste.json",
+            "tests/example/model/entities/invoice.json", "tests/example/model/packages/billing.json"], empty.Files);
+        Assert.Contains("\n* -text\n", File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/docs/tests/.gitattributes")), StringComparison.Ordinal);
         var copy = await repo.Service.CreatePackAsync("ddl-copy", "sql-ddl", null, Ct);
         Assert.Equal(SaveOutcome.Saved, copy.Outcome);
         Assert.Contains("table.scriban", copy.Files);
@@ -464,7 +466,8 @@ public sealed class PackAuthoringTests
         var created = await repo.Service.CreatePackAsync("shared-names", "empty", null, library: true, Ct);
 
         Assert.Equal(SaveOutcome.Saved, created.Outcome);
-        Assert.Equal(["helpers.js", "pack.json", "partials/header.scriban"], created.Files);
+        Assert.Equal(["helpers.js", "pack.json", "partials/header.scriban", "tests/.gitattributes", "tests/helpers.test.js"], created.Files);
+        Assert.Contains("\n* -text\n", File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/shared-names/tests/.gitattributes")), StringComparison.Ordinal);
         var manifest = JsonNode.Parse(File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/shared-names/pack.json")))!.AsObject();
         Assert.False(manifest.ContainsKey("units"));
         Assert.Contains("shared_names.<helper>", File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/shared-names/helpers.js")), StringComparison.Ordinal);
@@ -474,5 +477,71 @@ public sealed class PackAuthoringTests
         Assert.Contains(listed.Diagnostics, d => d.Rule == "MQ6046" && d.FilePath == ".maquettiste/templates/shared-names/pack.json");
         Assert.DoesNotContain(listed.Diagnostics, d => d.Severity == Maquettiste.Engine.Diagnostics.DiagnosticSeverity.Error && d.FilePath!.Contains("shared-names", StringComparison.Ordinal));
         Assert.Equal(SaveOutcome.Invalid, (await repo.Service.CreatePackAsync("other", "sql-ddl", null, library: true, Ct)).Outcome);
+    }
+
+    [Fact]
+    public async Task An_empty_pack_passes_its_own_case()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        Assert.Equal(SaveOutcome.Saved, (await repo.Service.CreatePackAsync("docs", "empty", null, Ct)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.Service.CreatePackAsync("shared-names", "empty", null, library: true, Ct)).Outcome);
+
+        var report = await repo.Service.TestPackAsync(["docs", "shared-names"], new PackTestOptions(), null, Ct);
+
+        var docs = report.Packs.Single(p => p.Pack == "docs");
+        var result = Assert.Single(docs.Cases);
+        Assert.True(result.Outcome == PackTestOutcome.Passed, string.Join("\n", result.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.Equal("example", result.Name);
+        Assert.Empty(docs.Tests);
+        Assert.Equal("title_case capitalizes each word", Assert.Single(report.Packs.Single(p => p.Pack == "shared-names").Tests).Name);
+        Assert.Equal((2, 0), (report.Passed, report.Failed));
+    }
+
+    [Fact]
+    public async Task New_pack_from_a_project_pack_leaves_tests_out()
+    {
+        await using var repo = EditorRepo.Create();
+        Directory.CreateDirectory(PackPath(repo, "sql-ddl", "tests/case/expected"));
+        await File.WriteAllTextAsync(PackPath(repo, "sql-ddl", "tests/case/expected/main.sql"), "-- main\n", Ct);
+        await File.WriteAllTextAsync(PackPath(repo, "sql-ddl", "tests/helpers.test.js"), "maquettiste.test('a', () => {});", Ct);
+
+        var copy = await repo.Service.CreatePackAsync("ddl-copy", "sql-ddl", null, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, copy.Outcome);
+        Assert.Contains("table.scriban", copy.Files);
+        Assert.DoesNotContain(copy.Files, f => f.StartsWith("tests/", StringComparison.Ordinal));
+        Assert.False(Directory.Exists(PackPath(repo, "ddl-copy", "tests")));
+    }
+
+    [Fact]
+    public async Task Files_under_tests_have_the_test_role_and_are_not_parsed()
+    {
+        await using var repo = EditorRepo.Create();
+        Directory.CreateDirectory(PackPath(repo, "sql-ddl", "tests/case/expected"));
+        await File.WriteAllTextAsync(PackPath(repo, "sql-ddl", "tests/case/expected/broken.sql"), "{{ if }}", Ct);
+        await File.WriteAllTextAsync(PackPath(repo, "sql-ddl", "tests/helpers.test.js"), "maquettiste.test('a', () => {});", Ct);
+
+        var pack = await repo.Service.GetPackAsync("sql-ddl", Ct);
+
+        Assert.NotNull(pack);
+        var tests = pack.Files.Where(f => f.Path.StartsWith("tests/", StringComparison.Ordinal)).ToList();
+        // The shipped sql-ddl pack carries its own billing-small case beside the two files written here.
+        Assert.Contains("tests/case/expected/broken.sql", tests.Select(f => f.Path));
+        Assert.Contains("tests/helpers.test.js", tests.Select(f => f.Path));
+        Assert.Contains("tests/billing-small/maquettiste.json", tests.Select(f => f.Path));
+        Assert.All(tests, f => Assert.Equal("test", f.Role));
+        Assert.DoesNotContain(pack.Diagnostics, d => d.FilePath!.Contains("/tests/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Writing_a_file_under_tests_does_not_parse_it()
+    {
+        await using var repo = EditorRepo.Create();
+
+        var saved = await repo.Service.WritePackFileAsync("sql-ddl", "tests/case/expected/broken.sql", "{{ if }}", null, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
+        Assert.Empty(saved.Diagnostics);
+        Assert.NotEmpty((await repo.Service.WritePackFileAsync("sql-ddl", "broken.sql", "{{ if }}", null, Ct)).Diagnostics);
     }
 }

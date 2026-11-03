@@ -16,7 +16,7 @@ internal sealed partial class ModelTools
 {
     /// <summary>One pack (getPack).</summary>
     [McpServerTool(Name = "get_pack", Title = "Get pack", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("One template pack: pack.json as a document with its hash (for save_pack), the parameters (default, project value, schema), every file with its hash, role (template, partial, script, type-map, manifest, other) and users (include:<pack>:<path> for a partial another pack includes by its prefixed name), usedBy (the packs whose uses name it, then maquettiste.json when the project's uses does), and the diagnostics (load errors of the pack and of the packs its uses reach, MQ6042 to MQ6045 uses problems, MQ6019 output paths outside every root, MQ6003 templates that do not parse).")]
+    [Description("One template pack: pack.json as a document with its hash (for save_pack), the parameters (default, project value, schema), every file with its hash, role (template, partial, script, type-map, manifest, copy-source, test for a file under the reserved tests/ folder, other) and users (include:<pack>:<path> for a partial another pack includes by its prefixed name), usedBy (the packs whose uses name it, then maquettiste.json when the project's uses does), and the diagnostics (load errors of the pack and of the packs its uses reach, MQ6042 to MQ6045 uses problems, MQ6019 output paths outside every root, MQ6003 templates that do not parse).")]
     public Task<CallToolResult> GetPack([Description("The pack name (its folder under .maquettiste/templates/); required.")] string? pack = null,
         CancellationToken ct = default) => GuardAsync(() => PackAsync(async () =>
     {
@@ -119,7 +119,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Writes one pack file (putPackFile).</summary>
     [McpServerTool(Name = "write_pack_file", Title = "Write pack file", Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Writes one pack file if it still has expectedHash; expectedHash 'new' creates a file that must not exist. UTF-8 text, no NUL, at most 1 MB. A template that does not parse is saved and its MQ6003 diagnostics returned. pack.json is refused: use save_pack.")]
+    [Description("Writes one pack file if it still has expectedHash; expectedHash 'new' creates a file that must not exist. UTF-8 text, no NUL, at most 1 MB. A template that does not parse is saved and its MQ6003 diagnostics returned; a file under tests/ (a test case or a helper test) is never parsed. pack.json is refused: use save_pack.")]
     public Task<CallToolResult> WritePackFile(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The pack-relative path; required.")] string? path = null,
@@ -229,6 +229,42 @@ internal sealed partial class ModelTools
             if (elementIds is { Length: > GenerationService.MaxRenderedPaths })
                 return BadRequest($"elementIds takes at most {GenerationService.MaxRenderedPaths} ids.");
             return Ok(await _generation.GetPackExportsAsync(pack, elementIds, ct).ConfigureAwait(false));
+        }), ct);
+
+    /// <summary>Runs a pack's tests (testPack, next-phase-2-design.md section 5.4).</summary>
+    [McpServerTool(Name = "test_pack", Title = "Test pack", Destructive = true, Idempotent = false, OpenWorld = false)]
+    [Description("Runs the tests in a pack's tests/ folder (every pack that has one when pack is absent). Each case tests/<case>/ is a small project (maquettiste.json, model/, extensions/, locales; or a case.json whose model names another case and whose parameters override the pack's) that runs as a fresh project in a temporary folder; its output folder must equal tests/<case>/expected/ byte for byte, and a difference is MQ6051 with each file added, missing or differing and a unified diff. Then the helper tests of tests/*.test.js run: maquettiste.test(name, (assert, helpers) => ...), with assert.equal, deepEqual, ok, throws and fail; a failing test is MQ6052 at its statement, a malformed case or test file MQ6053. With update, each run case's expected/ is rewritten from its output; nothing else in the project changes. Answers the passed, failed and updated counts and each case and test.")]
+    public Task<CallToolResult> TestPack(
+        [Description("The pack name; absent tests every pack with a tests/ folder.")] string? pack = null,
+        [Description("Case names to run; absent runs every case and then the helper tests, which a case list skips.")] string[]? cases = null,
+        [Description("Rewrite each run case's expected/ tree from its output (default false).")] bool update = false,
+        [Description("The most lines of each file's diff, 1 to 200 (default 40).")] int maxDiffLines = 40,
+        CancellationToken ct = default) =>
+        GuardAsync(() => PackAsync(async () =>
+        {
+            if (maxDiffLines is < 1 or > Engine.Generation.PackTestRunner.MaxDiffLines)
+                return BadRequest($"maxDiffLines must be 1 to {Engine.Generation.PackTestRunner.MaxDiffLines}.");
+            PackTestReport report;
+            try
+            {
+                report = await _generation.TestPackAsync(string.IsNullOrEmpty(pack) ? null : [pack],
+                    new PackTestOptions { Cases = cases ?? [], Update = update }, null, ct).ConfigureAwait(false);
+            }
+            catch (ArgumentException ex) when (ex is not PackPathException)
+            {
+                return ex.ParamName == "packs" ? NotFound("pack", pack) : BadRequest(ex.Message.Split(" (Parameter '", 2)[0]);
+            }
+
+            return Ok(report with
+            {
+                Packs = [.. report.Packs.Select(p => p with
+                {
+                    Cases = [.. p.Cases.Select(c => c with
+                    {
+                        Files = [.. c.Files.Select(f => f with { Diff = f.Diff is null ? null : Engine.Generation.PackTestRunner.Truncate(f.Diff, maxDiffLines) })],
+                    })],
+                })],
+            });
         }), ct);
 
     /// <summary>Moves a pack file (movePackFile).</summary>

@@ -176,4 +176,30 @@ public sealed class McpPackToolTests
         Assert.Equal(["docs/index"], record["units"]!.AsArray().Select(u => (string)u!));
         Assert.Equal("bad-request", (await session.ErrorAsync("get_pack_exports", new { pack = "docs", elementIds = Enumerable.Range(0, 21).Select(i => "e" + i).ToArray() })).Code);
     }
+
+    [Fact]
+    public async Task Test_pack_reports_a_failing_case_and_updates_it()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        PackTestCommandTests.Records(repo);
+        repo.Write(PackTestCommandTests.Pack + "record.scriban", "// v2\npublic sealed record {{ record_name entity }};\n");
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var failed = await session.OkAsync("test_pack", new { pack = "records", maxDiffLines = 3 });
+        Assert.Equal((1, 1, 0), ((int)failed["passed"]!, (int)failed["failed"]!, (int)failed["updated"]!));
+        var invoice = failed["packs"]![0]!["cases"]![0]!["files"]![1]!;
+        Assert.Equal(("Billing/InvoiceRecord.cs", "differs"), ((string)invoice["path"]!, (string)invoice["change"]!));
+        Assert.EndsWith("more lines\n", (string)invoice["diff"]!, StringComparison.Ordinal);
+        Assert.Equal("MQ6051", (string)failed["packs"]![0]!["cases"]![0]!["diagnostics"]![0]!["rule"]!);
+        var files = await session.OkAsync("list_pack_files", new { pack = "records" });
+        Assert.Contains(files["files"]!.AsArray(), f => (string)f!["path"]! == "tests/helpers.test.js" && (string)f["role"]! == "test");
+
+        var updated = await session.OkAsync("test_pack", new { update = true });
+        Assert.Equal("updated", (string)updated["packs"]![0]!["cases"]![0]!["outcome"]!);
+        Assert.Equal("// v2\npublic sealed record InvoiceRecord;\n", repo.Read(PackTestCommandTests.Case + "expected/Billing/InvoiceRecord.cs"));
+        Assert.Equal(0, (int)(await session.OkAsync("test_pack", new { pack = "records" }))["failed"]!);
+        Assert.Equal("not-found", (await session.ErrorAsync("test_pack", new { pack = "ghost" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("test_pack", new { maxDiffLines = 0 })).Code);
+    }
 }

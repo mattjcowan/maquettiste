@@ -608,4 +608,64 @@ public sealed class PackLoaderTests
         Assert.Equal(scripts ? 1 : 0, set.Diagnostics.Count(d => d.Rule == "MQ6045"));
         Assert.Equal(!scripts, set.Packs.Any(p => p.Name == "records"));
     }
+
+    // The reserved tests/ folder (next-phase-2-design.md section 5.4).
+
+    [Fact]
+    public async Task Scripts_under_tests_are_not_loaded()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "scripted");
+        f.WritePackFile("scripted", "tests/helpers.test.js", "maquettiste.test('a', () => {});\n");
+        f.WritePackFile("scripted", "tests/case/model/x.js", "throw new Error('never loaded');\n");
+
+        var set = await LoadAsync(f);
+
+        var pack = Assert.Single(set.Packs);
+        Assert.Equal([".maquettiste/templates/scripted/helpers.js"], pack.Scripts.Select(s => s.Path));
+        Assert.Empty(set.Diagnostics);
+    }
+
+    [Fact]
+    public async Task A_scripts_entry_under_tests_is_MQ6001()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
+        f.WritePackFile("basic", "tests/helpers.test.js", "maquettiste.test('a', () => {});\n");
+        f.WritePackFile("basic", "pack.json", "{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"scripts\": [\"tests/helpers.test.js\"], \"units\": [ { \"id\": \"index\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }");
+
+        var set = await LoadAsync(f);
+
+        Assert.Empty(set.Packs);
+        var error = Only(set, "MQ6001");
+        Assert.Equal("/scripts/0", error.JsonPointer);
+        Assert.Contains("under tests/", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_unit_template_under_tests_is_MQ6001()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
+        f.WritePackFile("basic", "tests/index.tpl", "x");
+        f.WritePackFile("basic", "pack.json", "{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"index\", \"template\": \"tests/index.tpl\", \"for\": \"model\" } ] }");
+
+        var set = await LoadAsync(f);
+
+        Assert.Empty(set.Packs);
+        Assert.Equal("/units/0/template", Only(set, "MQ6001").JsonPointer);
+    }
+
+    [Fact]
+    public async Task A_copy_unit_never_copies_tests()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
+        f.WritePackFile("basic", "skeleton/Program.cs", "class Program { }\n");
+        f.WritePackFile("basic", "tests/case/expected/Program.cs", "class Program { }\n");
+        f.WritePackFile("basic", "pack.json", CopyPack.Replace("UNIT", "{ \"id\": \"skeleton\", \"for\": \"model\", \"mode\": \"copy\", \"sources\": [\"**\"] }", StringComparison.Ordinal));
+
+        var pack = Assert.Single((await LoadAsync(f)).Packs);
+        var sources = CopySources.Of(pack, pack.Manifest.Units[1]);
+
+        Assert.DoesNotContain(sources.Files, s => s.Path.StartsWith("tests/", StringComparison.Ordinal));
+        Assert.Contains(sources.Files, s => s.Path == "skeleton/Program.cs");
+        Assert.DoesNotContain("tests/case/expected/Program.cs", PackFileRoles.CopiedFiles(PackFileRoles.EnumerateFiles(pack.RootPath), pack.Manifest));
+    }
 }

@@ -14,7 +14,8 @@ namespace Maquettiste.Engine.Planning;
 /// Discovers and loads local template packs (W6; engine-design.md section 8): every <c>&lt;ModelRoot&gt;/templates/&lt;name&gt;/pack.json</c>
 /// whose <c>name</c> equals its folder, in dependency order (ordinal name order when no pack has <c>uses</c>), minus those <c>packs.&lt;name&gt;.enabled: false</c> turns off. Each
 /// <c>pack.json</c> is validated against <c>pack.json</c> (MQ6001), its engine range checked (MQ6002), its unit ids, template and
-/// companion paths, script list and <c>types/*.json</c> type maps checked (MQ6001). A pack with any error is left out of
+/// companion paths, script list and <c>types/*.json</c> type maps checked (MQ6001; a script or template under the reserved
+/// <c>tests/</c> folder is one, next-phase-2-design.md section 5.4). A pack with any error is left out of
 /// <see cref="PackSet.Packs"/> and its diagnostics are returned; the orchestrator stops the run on them, so a broken pack never has
 /// its outputs orphaned. A pack's <c>uses</c> closure loads with it, enabled or not, into <see cref="PackSet.Used"/> when the run does not
 /// select it, and packs order after the packs they use (library packs, next-phase-2-design.md section 5.2; <see cref="PackUses"/>).
@@ -390,9 +391,15 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
         var full = PackFiles.Resolve(root, template);
         if (full is null)
             error(InvalidPack, $"Template path '{template}' must be a relative path inside the pack folder.", pointer);
+        else if (UnderTests(root, full))
+            error(InvalidPack, $"Template '{template}' is under tests/, which holds the pack's tests; move the template out of tests/.", pointer);
         else if (!File.Exists(full))
             error(MissingTemplate, $"Template '{template}' does not exist in the pack folder.", pointer);
     }
+
+    /// <summary>Whether a resolved pack path lies under the pack's reserved <c>tests/</c> folder (<see cref="PackFileRoles.IsTest"/>).</summary>
+    private static bool UnderTests(string root, string full) =>
+        PackFileRoles.IsTest(Path.GetRelativePath(root, full).Replace(Path.DirectorySeparatorChar, '/'));
 
     private static async Task<IReadOnlyList<ScriptSource>> LoadScriptsAsync(string root, string relative, PackManifest manifest,
         IReadOnlyList<string> defaults, Action<string, string, string?> error, CancellationToken ct)
@@ -412,6 +419,8 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
                 var full = PackFiles.Resolve(root, path);
                 if (full is null)
                     error(InvalidPack, $"Script path '{path}' must be a relative path inside the pack folder.", pointer);
+                else if (UnderTests(root, full))
+                    error(InvalidPack, $"Script '{path}' is under tests/, which holds the pack's tests; a script there is never loaded.", pointer);
                 else if (!File.Exists(full))
                     error(InvalidPack, $"Script '{path}' does not exist in the pack folder.", pointer);
                 else if (files.Any(f => string.Equals(f.Relative, path, StringComparison.Ordinal)))

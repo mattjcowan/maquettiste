@@ -617,9 +617,11 @@ internal sealed class LastRun(EngineServices services)
     }
 
     /// <summary>
-    /// The content hash of every file under the templates folder (dot files included): <c>H</c> over each file's relative path
-    /// (<c>/</c>) and bytes, in ordinal path order. Templates, partials, helper scripts and pack manifests are what the units' static
-    /// hashes are made of, which a full run reads on every run, so the record compares their bytes, not their stats.
+    /// The content hash of every file under the templates folder (dot files included) except each pack's <c>tests/</c> folder:
+    /// <c>H</c> over each file's relative path (<c>/</c>) and bytes, in ordinal path order. Templates, partials, helper scripts and pack
+    /// manifests are what the units' static hashes are made of, which a full run reads on every run, so the record compares their
+    /// bytes, not their stats. Nothing a run reads lives under a pack's <c>tests/</c> (next-phase-2-design.md section 5.4), so that
+    /// folder is never listed: an edit there keeps the record, and a large case tree costs nothing.
     /// </summary>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The hash.</returns>
@@ -627,10 +629,24 @@ internal sealed class LastRun(EngineServices services)
     public Task<string> HashTemplatesAsync(CancellationToken ct)
     {
         var folder = TemplatesFolder;
-        var enumeration = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0, IgnoreInaccessible = false, MatchType = MatchType.Simple };
-        var files = Directory.Exists(folder)
-            ? Directory.EnumerateFiles(folder, "*", enumeration).Select(full => (Path.GetRelativePath(folder, full).Replace('\\', '/'), full)).ToList()
-            : [];
+        var flat = new EnumerationOptions { RecurseSubdirectories = false, AttributesToSkip = 0, IgnoreInaccessible = false, MatchType = MatchType.Simple };
+        var deep = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0, IgnoreInaccessible = false, MatchType = MatchType.Simple };
+        var files = new List<(string Relative, string Full)>();
+        if (Directory.Exists(folder))
+        {
+            void Add(IEnumerable<string> found) => files.AddRange(found.Select(full => (Path.GetRelativePath(folder, full).Replace('\\', '/'), full)));
+            Add(Directory.EnumerateFiles(folder, "*", flat));
+            foreach (var pack in Directory.EnumerateDirectories(folder, "*", flat))
+            {
+                Add(Directory.EnumerateFiles(pack, "*", flat));
+                foreach (var sub in Directory.EnumerateDirectories(pack, "*", flat))
+                {
+                    if (!string.Equals(Path.GetFileName(sub), Planning.PackFileRoles.TestsFolder, StringComparison.Ordinal))
+                        Add(Directory.EnumerateFiles(sub, "*", deep));
+                }
+            }
+        }
+
         return HashFilesAsync("mq-templates-1", [(folder, files)], ct);
     }
 

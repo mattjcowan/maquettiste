@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "name": "billing-small",
+  "packs": {
+    "sql-ddl": {
+      "output": "out"
+    }
+  }
+}

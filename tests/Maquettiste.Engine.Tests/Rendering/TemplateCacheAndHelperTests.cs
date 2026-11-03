@@ -361,4 +361,16 @@ public sealed class TemplateCacheAndHelperTests
         Assert.Equal("MQ6006", error.Rule);
         Assert.Contains("names 2 custom elements", error.Message, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void An_include_under_tests_is_refused()
+    {
+        using var pack = new TempPack("cache", new Dictionary<string, string> { ["a.scriban"] = "A", ["tests/case/expected/a.scriban"] = "B" });
+        var loaded = pack.Load(RenderKit.Manifest("cache", new PackUnit { Id = "a", Template = "a.scriban", For = "model" }));
+
+        var error = Assert.Throws<TemplateException>(() => new TemplateCache().Get(loaded, "tests/case/expected/a.scriban", null));
+
+        Assert.Contains("under tests/", error.Diagnostics[0].Message, StringComparison.Ordinal);
+        Assert.Equal("A", new TemplateCache().Get(loaded, "a.scriban", null).Render());
+    }
 }

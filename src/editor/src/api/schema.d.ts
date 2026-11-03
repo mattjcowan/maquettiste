@@ -5348,10 +5348,10 @@ export interface components {
             size: number;
             hash: components["schemas"]["Hash"];
             /**
-             * @description `copy-source`: a copy unit's sources match the file, which is copied as it is and never parsed.
+             * @description `copy-source`: a copy unit's sources match the file, which is copied as it is and never parsed. `test`: the file is under the pack's `tests/` folder (a test case or a helper test), never loaded or parsed.
              * @enum {string}
              */
-            role: "manifest" | "template" | "partial" | "script" | "type-map" | "copy-source" | "other";
+            role: "manifest" | "template" | "partial" | "script" | "type-map" | "copy-source" | "test" | "other";
             /** @description `unit:<id>`, `companion:<id>`, `include:<path>` and `include:<pack>:<path>` (a file of another pack, whose `uses` names this one, includes it by its prefixed name), ordinal. */
             usedBy: string[];
         };

@@ -28,6 +28,7 @@ internal sealed record CopySourceFile(string Path, byte[] Bytes, string Hash, st
 /// each of the unit's <see cref="PackUnit.Sources"/> patterns is matched case-sensitively against the pack's file list
 /// (<see cref="PackFileRoles.EnumerateFiles"/>, dot files and folders left out), with the expression
 /// <see cref="OutputPathPolicy.GlobPattern"/> builds, compiled non-backtracking so matching is linear and no wall clock enters. The
+/// pack's <c>tests/</c> folder is never a source (<see cref="PackFileRoles.IsTest"/>, next-phase-2-design.md section 5.4). The
 /// files come back ordinal by path, each once, with its bytes and content hash. A pattern that matches nothing is MQ6030; a token
 /// whose parameter is undeclared or whose effective value is not a string is MQ6031. The result is kept per <see cref="LoadedPack"/>
 /// instance and unit id, so a run or a preview session matches and reads each unit's files once.
@@ -113,14 +114,17 @@ internal sealed class CopySources
         return slash < 0 ? "" : literal[..(slash + 1)];
     }
 
-    /// <summary>The paths of a file list that any well-formed pattern matches (malformed ones are skipped), for the pack file roles.</summary>
+    /// <summary>
+    /// The paths of a file list that any well-formed pattern matches (malformed ones are skipped), for the pack file roles; a path
+    /// under <c>tests/</c> never matches.
+    /// </summary>
     /// <param name="paths">Pack-relative paths.</param>
     /// <param name="patterns">The patterns.</param>
     /// <returns>The matched paths.</returns>
     public static IEnumerable<string> Matching(IReadOnlyList<string> paths, IReadOnlyList<string> patterns)
     {
         var regexes = patterns.Where(p => PatternProblem(p) is null).Select(Compile).ToList();
-        return regexes.Count == 0 ? [] : paths.Where(p => regexes.Any(r => r.IsMatch(p)));
+        return regexes.Count == 0 ? [] : paths.Where(p => !PackFileRoles.IsTest(p) && regexes.Any(r => r.IsMatch(p)));
     }
 
     private static Regex Compile(string pattern) => new(OutputPathPolicy.GlobPattern(pattern), MatchOptions);
@@ -237,7 +241,7 @@ internal sealed class CopySources
     /// <summary>One pack instance's file list (enumerated once, on first use) and its units' matches.</summary>
     private sealed class PackEntry(string root)
     {
-        public Lazy<IReadOnlyList<string>> Files { get; } = new(() => PackFileRoles.EnumerateFiles(root));
+        public Lazy<IReadOnlyList<string>> Files { get; } = new(() => [.. PackFileRoles.EnumerateFiles(root).Where(p => !PackFileRoles.IsTest(p))]);
 
         public ConcurrentDictionary<string, Lazy<CopySources>> Units { get; } = new(StringComparer.Ordinal);
     }

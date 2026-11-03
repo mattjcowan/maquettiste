@@ -57,10 +57,11 @@
   </ItemGroup>
 
   <!-- Starter packs for maquettiste init and pack new (from option). WithCulture="false": without it MSBuild reads a file such as
-       entity.cs.scriban as a Czech ("cs") resource and moves it into a satellite assembly, so it would vanish from the pack. -->
+       entity.cs.scriban as a Czech ("cs") resource and moves it into a satellite assembly, so it would vanish from the pack. A pack's
+       tests/ folder stays out: starters carry no tests (next-phase-2-design.md section 5.4). -->
   <ItemGroup>
-    <EmbeddedResource Include="../../packs/sql-ddl/**/*" LogicalName="Maquettiste.Cli.Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
-    <EmbeddedResource Include="../../packs/csharp-dapper/**/*" LogicalName="Maquettiste.Cli.Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+    <EmbeddedResource Include="../../packs/sql-ddl/**/*" Exclude="../../packs/sql-ddl/tests/**" LogicalName="Maquettiste.Cli.Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+    <EmbeddedResource Include="../../packs/csharp-dapper/**/*" Exclude="../../packs/csharp-dapper/tests/**" LogicalName="Maquettiste.Cli.Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
   </ItemGroup>
 
   <!-- The modeling conventions maquettiste mcp serves as a resource and a prompt (docs/mcp.md). -->

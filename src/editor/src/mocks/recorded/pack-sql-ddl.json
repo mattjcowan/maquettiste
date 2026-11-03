@@ -172,8 +172,8 @@
   "files": [
     {
       "path": "README.md",
-      "size": 64217,
-      "hash": "c00864e13d4647263ab4401f4245955d0664c9d48fad2c39834ba0e5de2ee425",
+      "size": 65146,
+      "hash": "d16dd1b1192662edc52954cd6aa88983f52bf86aca5d5438c8051fd8d3ab4ea7",
       "role": "other",
       "usedBy": []
     },
@@ -383,6 +383,83 @@
       "usedBy": [
         "unit:table"
       ]
+    },
+    {
+      "path": "tests/billing-small/expected/main/billing/tables/customers.sql",
+      "size": 363,
+      "hash": "bc2fa6a02af6948b8da5f8731d93eb1b7dc73be5c6aa08c7483be5332663adcb",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/billing-small/expected/main/billing/tables/invoices.sql",
+      "size": 516,
+      "hash": "97a0451f9a94aa1f400aa25ea08c25b55692c51915af52210a3842e2df11cab4",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/billing-small/expected/main/migrations/0001-80904b768b34.sql",
+      "size": 1007,
+      "hash": "2c3689f3dc0d03f8d5528fe63cf7e39ef063c176596c01b157faf57273c0e0dd",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/billing-small/expected/main/schema.sql",
+      "size": 924,
+      "hash": "b5c4b34c49171125af160990036972bf35f899df3371a25ddf533deb1cb4665a",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/billing-small/expected/main/seed.sql",
+      "size": 836,
+      "hash": "8cf8afed74ab22db186061cdf872e06cc8ab7837c73536906de6707d36cea367",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/billing-small/maquettiste.json",
+      "size": 115,
+      "hash": "576c9cf00e4246886f5203c874242995add39cf8a68745bdfd0489d476070044",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/billing-small/model/databases/main/database.json",
+      "size": 255,
+      "hash": "d36935916d2c63330623d58bdd384160378e8be07f0854fa9ffc1907deec68c8",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/billing-small/model/databases/main/tables/customers.json",
+      "size": 839,
+      "hash": "ba5b573272d77e913694db29dc4a1b8eed6e8e73281043a4745885662a5f1e5d",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/billing-small/model/databases/main/tables/invoices.json",
+      "size": 1304,
+      "hash": "59b42dd8ed389ba5129ef0e3ad1b3883e0dfa42e8f3e63cdc4eac7b291298a26",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/billing-small/model/seeds/customers/customers.json",
+      "size": 479,
+      "hash": "9f3a1cc15b151ec81c09e8528cf7f85a9cd5d76d5d0f1dd6043f06da317911ac",
+      "role": "test",
+      "usedBy": []
+    },
+    {
+      "path": "tests/helpers.test.js",
+      "size": 2020,
+      "hash": "8682703e84a79ee1bf31e05a04a55525a7456c51c9735c2c9380b3374b9536ec",
+      "role": "test",
+      "usedBy": []
     },
     {
       "path": "view.scriban",

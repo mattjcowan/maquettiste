@@ -27,8 +27,10 @@ internal static partial class PackNewCommand
             return await PackRenameCommand.RunAsync(context, ct).ConfigureAwait(false);
         if (context.Line.Positionals.Count >= 2 && context.Line.Positionals[1] == "exports")
             return await PackExportsCommand.RunAsync(context, ct).ConfigureAwait(false);
+        if (context.Line.Positionals.Count >= 2 && context.Line.Positionals[1] == "test")
+            return await PackTestCommand.RunAsync(context, ct).ConfigureAwait(false);
         if (context.Line.Positionals.Count < 2 || context.Line.Positionals[1] != "new")
-            throw new UsageException("Usage: maquettiste pack new <name> [--from empty|sql-ddl|csharp-dapper] [--library], maquettiste pack remove <name> [--apply] [--format text|json], maquettiste pack rename <name> <new-name> [--apply] [--keep-hints] [--format text|json], or maquettiste pack exports <pack> [--element <id>]... [--format text|json].");
+            throw new UsageException("Usage: maquettiste pack new <name> [--from empty|sql-ddl|csharp-dapper] [--library], maquettiste pack remove <name> [--apply] [--format text|json], maquettiste pack rename <name> <new-name> [--apply] [--keep-hints] [--format text|json], maquettiste pack exports <pack> [--element <id>]... [--format text|json], or maquettiste pack test [<pack>...] [--case <name>]... [--update] [--format text|json].");
         context.Line.Expect("pack new", 3, "--from", "--library");
         var name = context.Line.Positionals[2];
         if (!KeyPattern().IsMatch(name))
@@ -82,7 +84,7 @@ internal static partial class PackNewCommand
                 }),
             };
             output.Add(new("pack.json", json.Write(manifest, "pack.json", packJsonPath)));
-            output.AddRange(StarterPacks.Empty().Select(f => new KeyValuePair<string, byte[]>(f.Key, Encoding.UTF8.GetBytes(f.Value))));
+            output.AddRange(StarterPacks.Empty(name).Select(f => new KeyValuePair<string, byte[]>(f.Key, Encoding.UTF8.GetBytes(f.Value))));
         }
         else
         {

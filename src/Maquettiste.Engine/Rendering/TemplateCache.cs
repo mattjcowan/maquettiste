@@ -138,6 +138,9 @@ internal sealed class TemplateCache : ITemplateCache
         var repoPackPath = pack.RelativePath.TrimEnd('/');
         if (!PackPaths.TryNormalize(path, out var normalized, out var error))
             throw Refused(repoPackPath + "/" + path, $"The template path '{path}' is refused: {error}");
+        // The tests folder holds the pack's tests, never a template or partial (next-phase-2-design.md section 5.4).
+        if (Planning.PackFileRoles.IsTest(normalized))
+            throw Refused(repoPackPath + "/" + normalized, $"The template '{path}' is refused: it is under tests/, which holds the pack's tests, not templates.");
         if (_overlay is not null && _overlay.TryGetValue((pack.Name, normalized), out var unsaved))
         {
             return _files.GetOrAdd(("overlay:" + pack.Name, normalized), k => new Lazy<SourceFile>(() => new SourceFile(k.Path,

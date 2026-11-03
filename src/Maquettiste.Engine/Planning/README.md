@@ -173,3 +173,11 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
 `UnitPlanner` plans the exporting units of used packs into `UnitPlan.ExportOnly`, never rendered or written.
 `DependencyHasher` hashes `px:` keys through the bound `ExportTable`. Unit state format 5 stores `UnitExports` with the
 export keys as positions among the read keys, so a record copied as its bytes stays valid; a format 4 file loads empty.
+
+## The tests folder (next-phase-2-design.md section 5.4)
+
+`tests/` in a pack is reserved for its tests (`PackFileRoles.IsTest`): every file under it has the role `test`, no
+default script, type map or copy source comes from it (`CopySources` leaves it out of each pack's file list), the parse
+pass and `PackFileRoles.Parse` skip it, and its includes make no partial, in the pack or across packs. A `scripts` entry
+or a unit or companion template under it is MQ6001; the check uses the resolved path, so `./tests/x` is caught too.
+`TemplateCache` refuses any template or include under it.

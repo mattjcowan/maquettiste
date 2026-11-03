@@ -20,7 +20,7 @@ internal sealed class CommandLine
         "--from", "--out", "--docker", "--runtime", "--locale", "--mode", "--name", "--seed", "--entities", "--relations", "--enums", "--fanout", "--baseline", "--max-regression",
         "--inputs", "--scenario", "--domain", "--use", "--subject", "--into", "--processes",
         "--kind", "--package", "--tag", "--category", "--stereotype", "--query", "--ids", "--fields", "--scope", "--database", "--by",
-        "--resolution", "--description", "--element", "--column", "--attribute", "--against", "--grant-read", "--unit",
+        "--resolution", "--description", "--element", "--column", "--attribute", "--against", "--grant-read", "--unit", "--case",
     };
 
     /// <summary>Options that are flags.</summary>
@@ -28,6 +28,7 @@ internal sealed class CommandLine
     {
         "--version", "--help", "--quiet", "--no-color", "--hooks", "--gitignore", "--force", "--watch", "--dry-run", "--diff", "--check", "--keep", "--no-wait",
         "--no-example-packs", "--mcp", "--skill", "--agent-setup", "--apply", "--resolved", "--keep-hints", "--packs", "--all", "--keep-names", "--library",
+        "--update",
     };
 
     /// <summary>Short aliases.</summary>
