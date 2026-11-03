@@ -10,7 +10,10 @@ namespace Maquettiste.Engine.Loading;
 /// Gives every object below an element's root that its schema says requires an id (<see cref="ObjectLayout.RequiresId"/>) and that
 /// has none a new id (next-phase-1-design.md section 5.1, decision 5). The order is fixed, so a deterministic generator gives
 /// byte-identical files: the keys of an object in <c>x-order</c> (a map's in ordinal order), the items of an array by index, an object
-/// before its children. The root is never touched: a create's root id is set by its caller, an update's is its target's.
+/// before its children. The root is never touched: a create's root id is set by its caller, an update's is its target's. A custom
+/// element's <c>content</c> is free-form to the schema: its members (next-phase-2-design.md section 4.2) get their ids through the
+/// custom kind's member tree from the snapshot, content keys in ordinal order, object members in ordinal order, items by index, a
+/// member before its nested members. No key after <c>content</c> holds a sub-element, so this is the same order.
 /// </summary>
 internal static class IdMinter
 {
@@ -21,12 +24,21 @@ internal static class IdMinter
     /// <param name="minted">Receives one entry per minted id, in minting order, or <see langword="null"/>. Each entry has operation
     /// 0, the object's pointer in <paramref name="element"/>, its index kind (else <c>sub-element</c>), no name, and the placeholder
     /// its <c>as</c> key declares when it carries one; a batch's caller sets the operation and the name.</param>
-    public static void Fill(JsonNode element, ObjectLayout layout, IIdGenerator ids, List<MintedId>? minted)
+    /// <param name="schemas">The snapshot's property schema set, whose custom kinds give a custom element's member tree, or
+    /// <see langword="null"/> to mint no member ids.</param>
+    public static void Fill(JsonNode element, ObjectLayout layout, IIdGenerator ids, List<MintedId>? minted, PropertySchemaSet? schemas = null)
     {
         ArgumentNullException.ThrowIfNull(element);
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(ids);
-        new Walk(element, ids, minted).Children(element, layout);
+        var walk = new Walk(element, ids, minted);
+        walk.Children(element, layout);
+        if (schemas is not null && element is JsonObject root && root["kind"] is JsonValue kind && kind.TryGetValue<string>(out var kindName)
+            && kindName == "custom" && root["type"] is JsonValue type && type.TryGetValue<string>(out var typeName)
+            && schemas.ContentOf(typeName) is { Members.Count: > 0 } source && root["content"] is JsonObject content)
+        {
+            walk.Content(content, source.Members);
+        }
     }
 
     /// <summary>One fill: the path of the walk is kept as segments, and a pointer and a kind are built only for a minted id.</summary>
@@ -80,6 +92,57 @@ internal static class IdMinter
             }
 
             Children(node, layout);
+            _path.RemoveAt(_path.Count - 1);
+        }
+
+        /// <summary>Mints the ids of the members of a custom element's content through its custom kind's member tree.</summary>
+        public void Content(JsonObject content, IReadOnlyDictionary<string, XMemberNode> roots)
+        {
+            _path.Add("content");
+            foreach (var key in content.Select(p => p.Key).Order(StringComparer.Ordinal).ToList())
+            {
+                if (roots.TryGetValue(key, out var node))
+                    Member(content[key], node, key);
+            }
+
+            _path.RemoveAt(_path.Count - 1);
+        }
+
+        private void Member(JsonNode? value, XMemberNode node, string segment)
+        {
+            _path.Add(segment);
+            switch (value)
+            {
+                case JsonArray array when node.Items is { } items:
+                    for (var i = 0; i < array.Count; i++)
+                    {
+                        if (items.IsMember && array[i] is JsonObject item && item["id"] is null)
+                        {
+                            var id = ids.NewId();
+                            item["id"] = id;
+                            if (minted is not null)
+                            {
+                                _path.Add(i.ToString(CultureInfo.InvariantCulture));
+                                var placeholder = item["as"] is JsonValue marker && marker.TryGetValue<string>(out var text) ? text : null;
+                                minted.Add(new MintedId(0, JsonPointer.Build(_path), "member", id, null, placeholder));
+                                _path.RemoveAt(_path.Count - 1);
+                            }
+                        }
+
+                        Member(array[i], items, i.ToString(CultureInfo.InvariantCulture));
+                    }
+
+                    break;
+                case JsonObject obj when node.Properties is not null:
+                    foreach (var key in obj.Select(p => p.Key).Order(StringComparer.Ordinal).ToList())
+                    {
+                        if (node.Properties.TryGetValue(key, out var child))
+                            Member(obj[key], child, key);
+                    }
+
+                    break;
+            }
+
             _path.RemoveAt(_path.Count - 1);
         }
 

@@ -115,10 +115,10 @@ public sealed partial class ModelStore
                     LocalizationIndex.PluralNameField => entry.PluralName,
                     LocalizationIndex.LabelField => entry.Label,
                     LocalizationIndex.DescriptionField => entry.Description?.Text,
-                    _ => l10n.Text(locale, id, field), // a property text (next-phase-1-design.md section 4.4)
+                    _ => l10n.Text(locale, id, field), // a property or content text (next-phase-1-design.md section 4.4, next-phase-2 section 4.2)
                 };
                 var before = node.Source(field);
-                if (text is null || (LocalizationIndex.PropertyNameOf(field) is null && before?.StartsWith("file:", StringComparison.Ordinal) == true))
+                if (text is null || (LocalizationIndex.GroupOf(field, out _) is null && before?.StartsWith("file:", StringComparison.Ordinal) == true))
                 {
                     skipped.Add(id + "/" + field + ": a description in a sidecar file is not moved (the translation stays in the new default's locale folder, which is not loaded, MQ7202; the element keeps its sidecar text)");
                     continue;
@@ -306,6 +306,26 @@ public sealed partial class ModelStore
             }
 
             properties[name] = text;
+            return true;
+        }
+
+        if (LocalizationIndex.ContentNameOf(field) is { } key)
+        {
+            // A content text (next-phase-2-design.md section 4.2): a member's keys are its item's own, an element's sit under content.
+            if (node.Kind == LocalizationIndex.MemberKind)
+            {
+                holder[key] = text;
+                return true;
+            }
+
+            if (holder["content"] is not JsonObject content)
+            {
+                if (holder["content"] is not null)
+                    return false;
+                holder["content"] = content = new JsonObject();
+            }
+
+            content[key] = text;
             return true;
         }
 

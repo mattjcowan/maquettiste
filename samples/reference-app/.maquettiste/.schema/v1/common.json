@@ -82,12 +82,12 @@
       "type": "object"
     },
     "xRef": {
-      "description": "The x-ref keyword of a custom property schema (an extension file's properties, a stereotype's parameters, a pack's parameterSchema): the string it sits on, or each item of the array whose items it sits on, is the id of an element or sub-element. It goes on a schema of type string or on an array's items, under properties, items or additionalProperties only; anything else is MQ2009. Values are ids (or ids joined by '.', the keyed id of an inherited member): the index lists them as references, so where-used, delete refusals and remove-references see them.",
+      "description": "The x-ref keyword of a custom property schema (an extension file's properties, a stereotype's parameters, a custom kind's properties, a pack's parameterSchema): the string it sits on, or each item of the array whose items it sits on, is the id of an element or sub-element. It goes on a schema of type string or on an array's items, under properties, items or additionalProperties only; anything else is MQ2009. Values are ids (or ids joined by '.', the keyed id of an inherited member): the index lists them as references, so where-used, delete refusals and remove-references see them.",
       "type": "object",
       "x-order": ["kind", "of", "sameDatabase", "optional"],
       "properties": {
         "kind": {
-          "description": "The kinds the value may name: element kind names (entity, table...), sub-element kinds as the index names them (attribute, enum-member, column, row, state...), or a reserved kind (operation, outcome, error, member, custom, custom:<type> with a kebab-case type), whose values dangle until the kind exists.",
+          "description": "The kinds the value may name: element kind names (entity, table...), sub-element kinds as the index names them (attribute, enum-member, column, row, state...), member (a member of a custom element), custom (any custom element) or custom:<type> with a kebab-case type, which matches the custom elements of that type (none when the project declares no such custom kind, so a shared schema may name custom kinds a project lacks).",
           "oneOf": [
             {
               "type": "string"
@@ -103,7 +103,7 @@
           ]
         },
         "of": {
-          "description": "For sub-element kinds only: \"$element\" (a member of the element whose file holds the value, its base chain and its stereotypes included) or an element id (a row whose seed targets that element).",
+          "description": "For sub-element kinds only: \"$element\" (a member of the element whose file holds the value, its base chain and its stereotypes included) or an element id (a row whose seed targets that element; with kind member, a member of that custom element).",
           "type": "string"
         },
         "sameDatabase": {

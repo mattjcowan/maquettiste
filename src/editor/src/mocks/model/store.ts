@@ -1281,7 +1281,7 @@ export function summary(e: Entry): ElementSummary {
 }
 
 /** The index format hashed into the index tag; the engine's ModelReads.IndexFormat. */
-export const INDEX_FORMAT = "maquettiste-index/e10";
+export const INDEX_FORMAT = "maquettiste-index/e11";
 
 /** The E5 members of an index row, present only for the kinds that carry them (as the engine writes them). */
 function e5(json: Json): Partial<ElementSummary> {
@@ -1316,6 +1316,8 @@ function e5(json: Json): Partial<ElementSummary> {
     if (typeof json.subject === "string") out.subject = json.subject;
     out.effect = json.effect === "change" ? "change" : "read";
   }
+  // Section 4.2 (maquettiste-index/e11): a custom element's type. The mock reads no custom kind files, so it counts no members.
+  if (kind === "custom" && typeof json.type === "string") out.type = json.type;
   if (kind === "relation" && Array.isArray(json.ends))
     out.ends = (json.ends as Json[]).map((end) => ({ entity: String(end.entity ?? ""), role: String(end.role ?? "") }));
   return out;

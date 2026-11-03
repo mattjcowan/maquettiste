@@ -103,6 +103,7 @@ internal static class LocaleShardReader
         Description? description = null;
         Dictionary<string, string>? src = null;
         Dictionary<string, string>? properties = null;
+        Dictionary<string, string>? content = null;
         while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
         {
             var name = reader.GetString();
@@ -164,6 +165,18 @@ internal static class LocaleShardReader
                     }
 
                     break;
+                case "content":
+                    if (reader.TokenType != JsonTokenType.StartObject)
+                        return null;
+                    content ??= new Dictionary<string, string>(StringComparer.Ordinal);
+                    while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+                    {
+                        var key = reader.GetString()!;
+                        reader.Read();
+                        content[key] = reader.GetString()!;
+                    }
+
+                    break;
                 default:
                     reader.Skip();
                     break;
@@ -174,6 +187,7 @@ internal static class LocaleShardReader
         {
             DisplayName = display, PluralName = plural, Label = label, Description = description,
             Properties = properties ?? (IReadOnlyDictionary<string, string>)ImmutableDictionary<string, string>.Empty,
+            Content = content ?? (IReadOnlyDictionary<string, string>)ImmutableDictionary<string, string>.Empty,
             Src = src ?? (IReadOnlyDictionary<string, string>)ImmutableDictionary<string, string>.Empty,
         };
     }

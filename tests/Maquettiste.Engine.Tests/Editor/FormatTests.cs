@@ -114,4 +114,22 @@ public sealed class FormatTests
         Assert.Empty(result.Formatted);
         Assert.Equal(bytes, File.ReadAllBytes(repo.Repo.PathOf(CustomerPath)));
     }
+
+    /// <summary>Custom kind files (next-phase-2-design.md section 4.2) are model files to format; other extension files are not.</summary>
+    [Fact]
+    public async Task Format_rewrites_custom_kind_files()
+    {
+        await using var s = await CustomKinds.CustomFixture.OpenAsync(withDueDays: false);
+        s.Harness.Write("extensions/texts.json", """{"name":"texts","appliesTo":{"kinds":["entity"]},"properties":{}}""");
+        const string kindPath = ".maquettiste/extensions/kinds/setting.json";
+
+        var result = await s.Store.FormatAsync(null, ChangeSource.Editor, EditorRepo.Ct);
+
+        Assert.Contains(kindPath, result.Formatted);
+        Assert.DoesNotContain(result.Formatted, p => p.EndsWith("texts.json", StringComparison.Ordinal));
+        var text = File.ReadAllText(s.Harness.Model("extensions/kinds/setting.json"));
+        Assert.StartsWith("{\n  \"$schema\": \"", text, StringComparison.Ordinal);
+        Assert.Equal("setting", s.Model.CustomKinds.Single().Kind.Type);
+        Assert.DoesNotContain(kindPath, (await s.Store.FormatAsync([kindPath], ChangeSource.Editor, EditorRepo.Ct)).Formatted); // canonical now
+    }
 }

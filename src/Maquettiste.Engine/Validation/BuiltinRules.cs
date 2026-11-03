@@ -147,9 +147,9 @@ internal static partial class BuiltinRules
 
     /// <summary>
     /// One value an <c>x-ref</c> types (next-phase-1-design.md section 4.1), judged per schema: MQ2010 when it is a name or other
-    /// text, else MQ2001 for each id that does not exist (a reserved kind's values all dangle until the kind arrives) and MQ2002
-    /// when the id (the last of a keyed id) is of another kind, else MQ2011 when it is out of scope. A finding two schemas share is
-    /// reported once.
+    /// text, else MQ2001 for each id that does not exist and MQ2002 when the id (the last of a keyed id) is of another kind (a custom
+    /// element counts as <c>custom</c> and as <c>custom:&lt;its type&gt;</c>, next-phase-2-design.md section 4.2), else MQ2011 when it
+    /// is out of scope. A finding two schemas share is reported once. A custom element's content values are sites like any other.
     /// </summary>
     private static void CheckXRef(ValidationContext context, XRefSite site, Report report, HashSet<(string Rule, string Pointer, string Message)> seen)
     {
@@ -182,9 +182,11 @@ internal static partial class BuiltinRules
 
         if (dangling || !model.TryGetEntry(ids[^1], out var entry))
             return;
-        if (!xref.Kinds.Contains(entry.Kind, StringComparer.Ordinal))
+        var customType = entry.Kind == "custom" ? model.Get<Custom>(entry.Id)?.Type : null;
+        if (!xref.Takes(entry.Kind, customType))
         {
-            Add("MQ2002", $"'{site.Field}' references '{ids[^1]}', {Article(entry.Kind)} {entry.Kind}; its schema ({site.Source.Schema}) expects {Article(kinds)} {kinds}.");
+            var found = customType is null ? entry.Kind : XRef.CustomPrefix + customType;
+            Add("MQ2002", $"'{site.Field}' references '{ids[^1]}', {Article(found)} {found}; its schema ({site.Source.Schema}) expects {Article(kinds)} {kinds}.");
             return;
         }
 
@@ -207,6 +209,24 @@ internal static partial class BuiltinRules
             1 => $"{later[0]} arrives in a later phase, so no value of that kind exists yet",
             _ => $"{string.Join(", ", later)} arrive in a later phase, so no value of those kinds exists yet",
         };
+    }
+
+    /// <summary>
+    /// Why an <c>x-ref</c>'s element <c>of</c> is malformed (MQ2009), or <see langword="null"/>: it names no element of the model, or, with
+    /// kind <c>member</c>, no custom element (next-phase-2-design.md section 4.2).
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="xref">The keyword.</param>
+    /// <returns>The message.</returns>
+    internal static string? OfProblem(ModelSnapshot model, XRef xref)
+    {
+        if (xref.Of is not { } of || of == XRef.ElementScope)
+            return null;
+        if (!(model.TryGetEntry(of, out var entry) && entry.OwnerId == of))
+            return $"x-ref of names {of}, which is no element of the model.";
+        if (xref.Kinds.Contains("member", StringComparer.Ordinal) && entry.Kind != "custom")
+            return $"x-ref of names {of}, {Article(entry.Kind)} {entry.Kind}: with kind member, of names the custom element whose members the value takes.";
+        return null;
     }
 
     /// <summary>The ids of an <c>x-ref</c> value: one id, or the ids a keyed id joins with <c>.</c>; <see langword="null"/> for text.</summary>
@@ -250,8 +270,16 @@ internal static partial class BuiltinRules
         }
         else if (xref.Of is { } listId)
         {
-            if (entry.Kind != "row" || context.SeedOfRow(entry.Id) is not { } seed || seed.Target != listId)
+            // A member is in scope when the custom element of names owns it (next-phase-2-design.md section 4.2).
+            if (entry.Kind == "member")
+            {
+                if (entry.OwnerId != listId)
+                    return $"a member of {Describe(model, entry.OwnerId)}, not of {Describe(model, listId)} (of {listId})";
+            }
+            else if (entry.Kind != "row" || context.SeedOfRow(entry.Id) is not { } seed || seed.Target != listId)
+            {
                 return $"which is not a row of a seed of {Describe(model, listId)} (of {listId})";
+            }
         }
 
         if (!xref.SameDatabase)
@@ -1395,8 +1423,8 @@ internal static partial class BuiltinRules
             report.Add(rule, message, pointer); // MQ7212, MQ7213 (next-phase-1-design.md section 4.4)
         foreach (var (pointer, xref) in source.Keywords)
         {
-            if (xref.Of is { } of && of != XRef.ElementScope && !(model.TryGetEntry(of, out var entry) && entry.OwnerId == of))
-                report.Add("MQ2009", $"x-ref of names {of}, which is no element of the model.", pointer + "/of");
+            if (OfProblem(model, xref) is { } problem)
+                report.Add("MQ2009", problem, pointer + "/of");
         }
 
         for (var i = 0; i < parameters.Required.Count; i++)

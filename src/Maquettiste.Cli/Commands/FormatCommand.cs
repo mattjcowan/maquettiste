@@ -10,7 +10,8 @@ namespace Maquettiste.Cli.Commands;
 /// <summary>
 /// <c>maquettiste format</c>: rewrites every model file in canonical form (SPEC section 11), the form the editor and the engine
 /// write, so hand-written files stop reporting MQ1003 (and <c>maquettiste.json</c> loses the retired <c>commit</c> flag, MQ1010). It covers <c>maquettiste.json</c>, the element files under <c>model/</c>
-/// and the locale shards. A file that is not valid JSON, has no known kind or fails its schema is left as it is and listed (run
+/// the locale shards and the custom kind files (<c>extensions/kinds/*.json</c>). A file that is not valid JSON, has no known kind or fails
+/// its schema is left as it is and listed (run
 /// <c>maquettiste validate</c> for the reasons). <c>--check</c> writes nothing, lists the files that would change and exits 2 (drift, as
 /// <c>generate --check</c>) when there is any. Exit 0 otherwise, and 1 when there is no model.
 /// </summary>
@@ -46,7 +47,7 @@ internal static class FormatCommand
             ct.ThrowIfCancellationRequested();
             var modelPath = Path.GetRelativePath(modelRoot, path).Replace('\\', '/');
             var kind = ModelPaths.Classify(modelPath);
-            if (kind is not (ModelFileKind.Settings or ModelFileKind.Element or ModelFileKind.LocaleShard))
+            if (kind is not (ModelFileKind.Settings or ModelFileKind.Element or ModelFileKind.LocaleShard or ModelFileKind.CustomKind))
                 continue;
             total++;
             var repoPath = GlobalContext.ModelFolder + "/" + modelPath;

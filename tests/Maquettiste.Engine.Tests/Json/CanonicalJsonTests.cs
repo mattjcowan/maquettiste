@@ -137,6 +137,38 @@ public sealed class CanonicalJsonTests
     }
 
     [Fact]
+    public void Custom_content_is_written_in_ordinal_order_at_every_level()
+    {
+        // next-phase-2-design.md section 4.2: content is free-form for the canonical writer, like properties; arrays keep their order
+        // and members are objects like any other, so no custom kind file is read.
+        const string shuffled = """
+            {
+              "content": {
+                "value": 30,
+                "parts": [ { "text": "Invoice sent", "name": "subject", "id": "01JR6CK00000000000000000P1" }, { "name": "body", "id": "01JR6CK00000000000000000P2" } ],
+                "unit": { "symbol": "d", "label": "days" }
+              },
+              "type": "setting", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "name": "due_days", "id": "01JR6CK000000000000000000A", "kind": "custom"
+            }
+            """;
+
+        var text = Write(shuffled, "custom.json", ".maquettiste/model/custom/setting/due-days.json");
+        var node = JsonNode.Parse(text)!.AsObject();
+
+        Assert.Equal(["$schema", "kind", "id", "name", "package", "type", "content"], node.Select(p => p.Key));
+        Assert.Equal("../../../.schema/v1/custom.json", node["$schema"]!.GetValue<string>());
+        Assert.Equal(["parts", "unit", "value"], node["content"]!.AsObject().Select(p => p.Key));
+        Assert.Equal(["label", "symbol"], node["content"]!["unit"]!.AsObject().Select(p => p.Key));
+        Assert.Equal(["id", "name", "text"], node["content"]!["parts"]![0]!.AsObject().Select(p => p.Key));
+        Assert.Equal(["subject", "body"], node["content"]!["parts"]!.AsArray().Select(p => p!["name"]!.GetValue<string>()));
+        Assert.Equal(text, Write(text, "custom.json", ".maquettiste/model/custom/setting/due-days.json"));
+
+        // An empty content is the default, and is left out.
+        Assert.DoesNotContain("content", Write("""{ "kind": "custom", "id": "01JR6CK000000000000000000A", "name": "x", "type": "flag", "content": {} }""",
+            "custom.json", ".maquettiste/model/custom/flag/x.json"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Values_equal_to_their_schema_default_and_nulls_are_omitted()
     {
         const string verbose = """

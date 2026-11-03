@@ -248,7 +248,7 @@ internal sealed partial class ChangePlanner
         }
 
         // Sub-elements without an id get one before the schema runs (section 5.1); the batch resolver has minted its own already.
-        IdMinter.Fill(node, _schemas.GetLayout(info.SchemaFile), _ids, null);
+        IdMinter.Fill(node, _schemas.GetLayout(info.SchemaFile), _ids, null, _snapshot.PropertySchemas);
         _changeByElement[id] = index;
         if (Read(node, info, null, outcome) is not { } element)
             return;
@@ -285,7 +285,7 @@ internal sealed partial class ChangePlanner
 
         // A sub-element without an id is new: it gets one (section 5.1); the engine never matches sub-elements by name.
         var mintedHere = new List<MintedId>();
-        IdMinter.Fill(node, _schemas.GetLayout(info.SchemaFile), _ids, mintedHere);
+        IdMinter.Fill(node, _schemas.GetLayout(info.SchemaFile), _ids, mintedHere, _snapshot.PropertySchemas);
         IReadOnlyList<string> minted = [.. change.Minted ?? [], .. mintedHere.Select(m => m.Pointer)];
         if (Read(node, info, _paths.ToRepoPath(current.ModelPath), outcome) is not { } element)
             return;
@@ -379,8 +379,11 @@ internal sealed partial class ChangePlanner
 
         if (current.ValueKind != JsonValueKind.Object)
             return null;
+        // A custom element's member (next-phase-2-design.md section 4.2) sits under content, at any depth: its property is the key of
+        // the array that holds it, since member names are unique per array.
+        var property = segments[0] == "content" && segments.Length >= 2 ? segments[^2] : segments[parentDepth];
         if (current.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
-            return new SubElementSlot(pointer, parentId, segments[parentDepth], "name:" + name.GetString(), name.GetString()!);
+            return new SubElementSlot(pointer, parentId, property, "name:" + name.GetString(), name.GetString()!);
         if (!rowCodes || parentDepth != 0 || segments is not ["rows", _] || !current.TryGetProperty("values", out var values)
             || values.ValueKind != JsonValueKind.Array || !root.TryGetProperty("columns", out var columns) || columns.ValueKind != JsonValueKind.Array)
         {
@@ -1035,7 +1038,7 @@ internal sealed partial class ChangePlanner
         var referenceModel = deletedStereotypes.Count == 0
             ? candidate
             : ModelSnapshot.CreateAfter(null, candidate.Documents.Concat(deletedStereotypes), candidate.Settings, candidate.SettingsHash, candidate.Extensions,
-                candidate.RuleScripts, candidate.Version, null, _parallelism, _ct, seedScripts: candidate.SeedScripts);
+                candidate.RuleScripts, candidate.Version, null, _parallelism, _ct, seedScripts: candidate.SeedScripts, customKinds: candidate.CustomKinds);
         foreach (var (index, id, subIds) in _deleteChecks)
         {
             // A sub-element that moved to another element of the plan (a reference row a merge moves into a seed of the target type,

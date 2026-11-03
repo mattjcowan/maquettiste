@@ -86,6 +86,49 @@ public sealed class McpLocalizationToolTests
         Assert.True((int)shard["translated"]! >= 1, shard.ToJsonString());
     }
 
+    /// <summary>Content texts of a custom element's members (next-phase-2-design.md section 4.2): <c>content/&lt;name&gt;</c> under
+    /// the member's id, in its owner's shard.</summary>
+    [Fact]
+    public async Task Translations_handle_content_fields()
+    {
+        const string message = "01JRDC00000000000000000002";
+        const string subject = "01JRDM00000000000000000001";
+        const string root = ".maquettiste/model/locales/fr/_root.json";
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.ReferenceData();
+        repo.Write(".maquettiste/extensions/kinds/message.json",
+            """{ "type": "message", "properties": { "parts": { "type": "array", "x-member": true, "items": { "type": "object", "properties": { "name": { "type": "string" }, "text": { "type": "string", "x-translatable": true } } } } } }""");
+        repo.Write(".maquettiste/model/custom/message/invoice-sent.json", $$"""
+            { "kind": "custom", "id": "{{message}}", "name": "invoice_sent", "type": "message",
+              "content": { "parts": [ { "id": "{{subject}}", "name": "subject", "text": "Your invoice" } ] } }
+            """);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var before = await session.CallAsync("localization_status");
+        var read = await session.CallAsync("get_translations", new { locale = "fr", owner = message });
+        var written = await session.CallAsync("set_translations", new
+        {
+            locale = "fr",
+            entries = new[] { new { id = subject, field = "content/text", value = "Votre facture" } },
+            expected = new Dictionary<string, string>(),
+        });
+        var plain = await session.CallAsync("set_translations", new { locale = "fr", entries = new[] { new { id = subject, field = "content/name", value = "x" } } });
+        var after = await session.CallAsync("get_translations", new { locale = "fr", owner = message });
+        var status = await session.CallAsync("localization_status");
+
+        Assert.False(read.IsError, read.ToString());
+        var row = Assert.Single(read.Json["entries"]!.AsArray(), e => (string)e!["field"]! == "content/text")!;
+        Assert.Equal((subject, "Your invoice", "missing", root), ((string?)row["id"], (string?)row["source"], (string?)row["state"], (string?)row["shard"]));
+        Assert.False(written.IsError, written.ToString());
+        Assert.Equal("invalid", plain.Code);
+        var translated = Assert.Single(after.Json["entries"]!.AsArray(), e => (string)e!["field"]! == "content/text")!;
+        Assert.Equal(("Votre facture", "translated"), ((string?)translated["translation"], (string?)translated["state"]));
+        Assert.Contains("\"content/text\": ", repo.Read(root), StringComparison.Ordinal);
+        static int Translated(ToolReply result, string shard) => (int)result.Json["locales"]!.AsArray().Single(l => (string)l!["locale"]! == "fr")!["shards"]!
+            .AsArray().Single(s => (string)s!["shard"]! == shard)!["translated"]!;
+        Assert.Equal(Translated(before, root) + 1, Translated(status, root));
+    }
+
     [Fact]
     public async Task Seed_csv_export_import_preview_apply_and_reference_type_usage()
     {

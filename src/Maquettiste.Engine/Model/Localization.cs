@@ -46,8 +46,12 @@ public sealed record TranslationEntry
     /// (next-phase-1-design.md section 4.4).</summary>
     public IReadOnlyDictionary<string, string> Properties { get; init; } = ImmutableDictionary<string, string>.Empty;
 
+    /// <summary>The translated texts of a custom element's or a member's <c>x-translatable</c> content keys, by key
+    /// (next-phase-2-design.md section 4.2).</summary>
+    public IReadOnlyDictionary<string, string> Content { get; init; } = ImmutableDictionary<string, string>.Empty;
+
     /// <summary>Field name to the first 8 hex digits of SHA-256 over the default-locale text it was translated from; a property text's
-    /// field is <c>properties/&lt;name&gt;</c>.</summary>
+    /// field is <c>properties/&lt;name&gt;</c>, a content text's <c>content/&lt;name&gt;</c>.</summary>
     public IReadOnlyDictionary<string, string> Src { get; init; } = ImmutableDictionary<string, string>.Empty;
 }
 

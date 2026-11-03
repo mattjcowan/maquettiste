@@ -85,4 +85,42 @@ public sealed class LocalizationRuleTests
         var saved = await store.ValidateAsync(new ValidationScope([Stereotype]), Ct);
         Assert.Contains(saved.Diagnostics, d => d.Rule == "MQ7212" && d.ElementId == Stereotype);
     }
+
+    // ---- custom kinds (next-phase-2-design.md section 4.2) ----
+
+    [Fact]
+    public void X_translatable_below_a_member_item_is_MQ7212()
+    {
+        var kind = Maquettiste.Engine.Tests.CustomKinds.CustomFixture.KindDocument("""
+            { "type": "message", "properties": { "parts": { "type": "array", "x-member": true, "items": { "type": "object", "properties": {
+                "name": { "type": "string" },
+                "text": { "type": "string", "x-translatable": true },
+                "meta": { "type": "object", "properties": { "hint": { "type": "string", "x-translatable": true } } } } } } } }
+            """);
+
+        var set = Maquettiste.Engine.Model.PropertySchemaSet.Create([], null, null, [kind]);
+
+        var finding = Assert.Single(set.Diagnostics);
+        Assert.Equal(("MQ7212", "/properties/parts/items/properties/meta/properties/hint/x-translatable"), (finding.Rule, finding.JsonPointer!));
+        Assert.Equal(["text"], set.ContentOf("message")!.Members["parts"].Items!.Translatable);
+    }
+
+    [Fact]
+    public void X_translatable_on_a_content_name_that_is_not_an_identifier_is_MQ7212()
+    {
+        var kind = Maquettiste.Engine.Tests.CustomKinds.CustomFixture.KindDocument("""
+            { "type": "notice", "properties": {
+                "title": { "type": "string", "x-translatable": true },
+                "body-text": { "type": "string", "x-translatable": true },
+                "count": { "type": "integer", "x-translatable": true } } }
+            """);
+
+        var set = Maquettiste.Engine.Model.PropertySchemaSet.Create([], null, null, [kind]);
+
+        Assert.Equal(
+            [("MQ7212", "/properties/body-text/x-translatable"), ("MQ7212", "/properties/count/x-translatable")],
+            set.Diagnostics.Select(d => (d.Rule, d.JsonPointer!)));
+        Assert.Contains("must be an identifier", set.Diagnostics[0].Message, StringComparison.Ordinal);
+        Assert.Equal(["title"], set.ContentOf("notice")!.Translatable);
+    }
 }

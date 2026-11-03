@@ -36,7 +36,7 @@ internal static class LocalizationHelpers
         return LocalizationIndex.IsField(field)
             ? field
             : throw new RenderHelperException("MQ6006",
-                $"'{field}' is not a translatable field: use displayName, pluralName, label, description or {LocalizationIndex.PropertyFieldPrefix}<name> for an x-translatable property.");
+                $"'{field}' is not a translatable field: use displayName, pluralName, label, description, {LocalizationIndex.PropertyFieldPrefix}<name> for an x-translatable property or {LocalizationIndex.ContentFieldPrefix}<name> for an x-translatable content key.");
     }
 
     private static string? Translate(TrackingTemplateContext context, object? target, string field, string? locale)
@@ -87,6 +87,8 @@ internal static class LocalizationHelpers
         string? Source(string id) => nodes.TryGetValue(id, out var n) ? n.Source(field) : null;
         if (LocalizationIndex.PropertyNameOf(field) is { } name)
             return PropertyNode(context, value, name, field, helper);
+        if (LocalizationIndex.ContentNameOf(field) is not null)
+            return ContentNode(context, value, field, helper);
         return value switch
         {
             null => (null, null),
@@ -148,6 +150,22 @@ internal static class LocalizationHelpers
     /// The node id and default text of a property field (next-phase-1-design.md section 4.4): the holder's own text, else the resolved
     /// value (a stereotype default, which is not translated: the object's dependencies are recorded with it).
     /// </summary>
+    /// <summary>
+    /// The node id and default-locale text of a <c>content/&lt;name&gt;</c> field (next-phase-2-design.md section 4.2): a custom element's
+    /// or a member's own text, as the localizable node holds it.
+    /// </summary>
+    private static (string? Id, string? Default) ContentNode(TrackingTemplateContext context, object? value, string field, string helper)
+    {
+        var id = value switch
+        {
+            null => null,
+            string text => text,
+            RObject target => target.Id,
+            _ => throw new RenderHelperException("MQ6006", $"`{helper}` takes a custom element, a member or an id, not a {TemplateValues.TypeName(value)}."),
+        };
+        return id is null ? (null, null) : (id, context.Unit.Run.Context.Model.Source.Localization.Nodes.TryGetValue(id, out var node) ? node.Source(field) : null);
+    }
+
     private static (string? Id, string? Default) PropertyNode(TrackingTemplateContext context, object? value, string name, string field, string helper)
     {
         var model = context.Unit.Run.Context.Model;

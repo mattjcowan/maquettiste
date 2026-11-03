@@ -340,7 +340,8 @@ internal sealed partial class ChangePlanner
     /// Why the edited holder fails a schema that declares the property an <c>x-ref</c> value was removed from (the <c>optional</c>
     /// decision of next-phase-1-design.md section 4.1): its <c>required</c> names the property (a stereotype default excepted, which
     /// need not be complete), an object it sits in requires the member, or an array drops below <c>minItems</c>. Naming the property
-    /// and the schema; <see langword="null"/> when every declaring schema still holds.
+    /// and the schema; <see langword="null"/> when every declaring schema still holds. A custom element's <c>content</c> is checked
+    /// against its custom kind's content schema, the top-level content key standing for the property.
     /// </summary>
     /// <param name="element">The holder's top-level element, as the index read it.</param>
     /// <param name="edited">The element's file after the removals.</param>
@@ -351,9 +352,12 @@ internal sealed partial class ChangePlanner
         {
             if (!JsonPointer.TryParse(pointer, out var segments))
                 continue;
+            // A custom element's content (next-phase-2-design.md section 4.2, decision 11) is typed by its custom kind's content schema,
+            // whose top-level key is the field; a value in a member is reached through the member arrays' item schemas below it.
+            var custom = segments.Length > 1 && segments[0] == "content" ? element as Custom : null;
             var at = Array.FindIndex(segments, segment => segment == "properties");
             var isDefault = segments.Length > 1 && segments[0] == "defaultProperties";
-            if (isDefault)
+            if (isDefault || custom is not null)
                 at = 0;
             if (at < 0 || at + 1 >= segments.Length)
                 continue;
@@ -361,7 +365,11 @@ internal sealed partial class ChangePlanner
             var field = segments[at + 1];
             var rest = segments[(at + 2)..];
             IEnumerable<PropertySchemaSource> sources;
-            if (isDefault)
+            if (custom is not null)
+            {
+                sources = _snapshot.PropertySchemas.ContentOf(custom.Type) is { } content ? [content] : [];
+            }
+            else if (isDefault)
             {
                 sources = element is Stereotype stereotype ? _snapshot.PropertySchemas.ForDefaults(stereotype.Key) : [];
             }

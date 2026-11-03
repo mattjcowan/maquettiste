@@ -222,7 +222,7 @@ public sealed class ProcessModelTests
 
     [Fact]
     public void Index_format_moved_with_the_row_shape() =>
-        Assert.Equal("maquettiste-index/e10", ModelReads.IndexFormat);
+        Assert.Equal("maquettiste-index/e11", ModelReads.IndexFormat);
 
     [Fact]
     public async Task A_wrong_kind_or_dangling_sub_element_reference_is_reported()

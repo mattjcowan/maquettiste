@@ -105,8 +105,9 @@
             "minLength": 1
           },
           "for": {
+            "description": "The unit's scope: model, each <kind>, each custom:<type> for the elements of a custom kind the project declares, or select <name> for a selector the pack's scripts register.",
             "type": "string",
-            "pattern": "^(model|each (package|entity|attribute|relation|enum|value object|database|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario|operation)|select [A-Za-z_][A-Za-z0-9_]*)$"
+            "pattern": "^(model|each (package|entity|attribute|relation|enum|value object|database|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario|operation|custom:[a-z][a-z0-9]*(-[a-z0-9]+)*)|select [A-Za-z_][A-Za-z0-9_]*)$"
           },
           "where": {
             "title": "Unit filters",

@@ -20,7 +20,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | types/ | value objects and custom scalar types | reusable across attributes |
 | reference-types/ | reference type: built-in `code` and `label`, plus your own fields | an attribute's `type` may name one (single, or `collection`); defaults and cells use the row's code; storage is template-defined unless `referenceData.strategies` declares one |
 | seeds/<target>/ | rows of an entity, relation or reference type | one row per line with its own id; owned by its target and deleted with it |
-| locales/<locale>/ | translation shards (`kind: "locale-shard"`) keyed by id | only display name, plural name, description, a row's label and description, and the text of a custom property marked `x-translatable` (field `properties/<name>`) |
+| locales/<locale>/ | translation shards (`kind: "locale-shard"`) keyed by id | only display name, plural name, description, a row's label and description, the text of a custom property marked `x-translatable` (field `properties/<name>`) and the `x-translatable` content text of a custom element or member (field `content/<name>`) |
 | databases/<db>/ | database, tables (overlays), views, sequences | tables from entities store only overrides |
 | databases/<db>/routines/ | routine (`kind: "routine"`): a function or procedure, `parameters` typed by a built-in type or a database type id, `returns`, a `body` per dialect | `dependsOn` orders it; routines are not overloaded |
 | databases/<db>/types/ | database type (`kind: "database-type"`): a domain, composite, enum or range the database owns | a column uses it by naming its id or name in `nativeType` |
@@ -32,6 +32,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
 | operations/<subject>/ | operation: one command over the model (`subject`, `level`, `effect`, `input`, `outcomes`, `errors`, `fires`, `requires`) | in `operations/` itself without a subject; the subject is not owning, so deleting the entity is refused while an operation names it |
+| custom/<type>/ | custom element (`kind: "custom"`): an element of a kind the project declares in `extensions/kinds/<type>.json`, its fields under `content` | see Custom kinds below |
 | diagrams/ | canvas membership and positions only (a process's diagram holds its chart's places) | never own elements |
 | vocabularies/ | tags, categories, stereotypes | |
 
@@ -186,6 +187,30 @@ entity; model only the commands asked for.
   `get_resolved_model` has the scope `operations`. csharp-dapper's `operation-contracts` unit writes each operation's
   request, result, error codes and handler interface.
 - Errors shared from stereotypes, file members and returns, paging and an endpoint template come later.
+
+## Custom kinds
+
+A project may declare its own kinds for facts no built-in kind holds (settings, messages, feature flags): one file per
+kind, `.maquettiste/extensions/kinds/<type>.json` (`type` kebab-case and equal to the file name, `displayName`,
+`pluralName`, `description`, `properties` as JSON Schemas per content key, `required`), written with
+`write_extension_file`. Declare one only when asked; never invent a custom kind for something a built-in kind models.
+
+- An element of the kind is `{ "kind": "custom", "name": "early_invoicing", "type": "feature-flag", "package": ...,
+  "content": { "enabled": false } }`, in `model/custom/<type>/`. Names are unique per type and package. Content that
+  fails the schema is MQ3033; a `type` with no kind file is MQ1019; a bad kind file MQ1017. `get_schema` with
+  `custom:<type>` returns the element schema with the kind's content.
+- An array marked `"x-member": true` (items are objects, no `id` declared) makes each item a member: a sub-element whose
+  id the engine mints on save, named by its item's `name`. `"x-ref": { "kind": "member" }` names a member of any custom
+  element, `"of": "$element"` one of the same element; `"x-ref": { "kind": "custom:<type>" }` names a custom element.
+- Names carry the type: `@custom:feature-flag.early_invoicing` (or `@custom:feature-flag.Billing.early_invoicing`) and
+  `@member:message.invoice_sent.subject`; the plain name is not a form. `apply_batch` returns minted member ids under
+  `ids.minted` with their longest form.
+- An `x-translatable` top-level string of the content or of member items is translated as `content/<name>`; a member's
+  text is translated on the member's id (`set_translations`).
+- Templates: a unit `"for": "each custom:<type>"` (variable `custom`: `type`, `content`, `members`), and from any unit
+  `custom_named "<type>" "<name>"` or `lookup` of an id. `get_template_context` lists the content keys under
+  `custom.content`. `get_model_index` and `get_elements` filter by kind `custom` or `custom:<type>`.
+- An operation's `requires` may name a custom element; deleting it is then refused (`referenced`) until the link goes.
 
 ## Fallback: editing the files
 

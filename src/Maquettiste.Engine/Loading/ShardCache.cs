@@ -17,7 +17,7 @@ internal static class ShardCache
     /// <summary>The folder under the cache directory.</summary>
     public const string Folder = "shards";
 
-    private const int Format = 2; // 2: property texts (next-phase-1-design.md section 4.4)
+    private const int Format = 3; // 2: property texts (next-phase-1-design.md section 4.4); 3: content texts (next-phase-2 section 4.2)
     private static ReadOnlySpan<byte> Magic => "MQSH"u8;
 
     /// <summary>The cache file of a shard's content hash.</summary>
@@ -102,7 +102,20 @@ internal static class ShardCache
                 properties = map;
             }
 
-            entries[key] = new TranslationEntry { DisplayName = display, PluralName = plural, Label = label, Description = description, Properties = properties, Src = src };
+            var contentCount = reader.ReadInt32();
+            IReadOnlyDictionary<string, string> content = ImmutableDictionary<string, string>.Empty;
+            if (contentCount > 0)
+            {
+                var map = new Dictionary<string, string>(contentCount, StringComparer.Ordinal);
+                for (var j = 0; j < contentCount; j++)
+                    map[reader.ReadString()] = reader.ReadString();
+                content = map;
+            }
+
+            entries[key] = new TranslationEntry
+            {
+                DisplayName = display, PluralName = plural, Label = label, Description = description, Properties = properties, Content = content, Src = src,
+            };
         }
 
         return new LocaleShard { SchemaPath = schema, Kind = kind, Locale = locale, Scope = scope, Entries = entries };
@@ -153,6 +166,13 @@ internal static class ShardCache
                 foreach (var (property, text) in entry.Properties.OrderBy(p => p.Key, StringComparer.Ordinal))
                 {
                     writer.Write(property);
+                    writer.Write(text);
+                }
+
+                writer.Write(entry.Content.Count);
+                foreach (var (name, text) in entry.Content.OrderBy(p => p.Key, StringComparer.Ordinal))
+                {
+                    writer.Write(name);
                     writer.Write(text);
                 }
             }

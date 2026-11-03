@@ -84,4 +84,38 @@ public sealed class McpExtensionToolTests
         Assert.Equal("invalid", (await session.ErrorAsync("move_extension_file", new { from = "seeds/kinds.js", to = "rules/kinds.js", expectedHash = (string)good["hash"]! })).Code);
         Assert.Equal("bad-request", (await session.ErrorAsync("write_extension_file", new { path = "seeds/deep/kinds.js", text = "//", expectedHash = "new" })).Code);
     }
+
+    /// <summary>A custom kind file (next-phase-2-design.md section 4.2) through the extension tools: written in canonical form with the
+    /// MQ3033 findings of its elements, listed and read as custom-kind, and refused for delete while an element uses it.</summary>
+    [Fact]
+    public async Task Custom_kind_files_round_trip()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        repo.Write(".maquettiste/model/custom/setting/due-days.json", """
+            { "kind": "custom", "id": "01JR6CK000000000000000000A", "name": "due_days", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "type": "setting",
+              "content": { "unit": "days", "value": 30 } }
+            """);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var written = await session.OkAsync("write_extension_file", new { path = "kinds/setting.json", text = """{ "type": "setting", "displayName": "Setting", "properties": { "unit": { "type": "string" }, "value": { "type": "integer" } } }""", expectedHash = "new" });
+        Assert.Empty(written["diagnostics"]!.AsArray());
+        Assert.StartsWith("{\n  \"$schema\"", (string)written["text"]!, StringComparison.Ordinal);
+        var listed = (await session.OkAsync("list_extension_files"))["files"]!.AsArray().Single(f => (string)f!["path"]! == "kinds/setting.json")!;
+        Assert.Equal(("custom-kind", (string)written["hash"]!), ((string)listed["kind"]!, (string)listed["hash"]!));
+        var read = await session.OkAsync("read_extension_file", new { path = "kinds/setting.json" });
+        Assert.Equal(("custom-kind", (string)written["text"]!), ((string)read["kind"]!, (string)read["text"]!));
+
+        // A narrower kind still writes, and answers with the element's MQ3033.
+        var narrower = await session.OkAsync("write_extension_file", new
+        {
+            path = "kinds/setting.json", text = """{ "type": "setting", "properties": { "value": { "type": "string" } } }""", expectedHash = (string)written["hash"]!,
+        });
+        Assert.Contains(narrower["diagnostics"]!.AsArray(), d => (string)d!["rule"]! == "MQ3033" && (string)d["elementId"]! == "01JR6CK000000000000000000A");
+
+        var delete = await session.ErrorAsync("delete_extension_file", new { path = "kinds/setting.json", expectedHash = (string)narrower["hash"]! });
+        Assert.Equal("invalid", delete.Code);
+        Assert.Contains("MQ1019", delete.ToString(), StringComparison.Ordinal);
+        Assert.Equal("invalid", (await session.ErrorAsync("write_extension_file", new { path = "kinds/flag.json", text = "{ \"type\": \"flag\" }", expectedHash = "new" })).Code);
+    }
 }

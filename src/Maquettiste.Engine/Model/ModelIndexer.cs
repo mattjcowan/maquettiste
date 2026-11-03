@@ -111,7 +111,7 @@ internal static class ModelIndexer
     internal static readonly FrozenSet<string> SubElementKinds = new[]
     {
         "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
-        "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error",
+        "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error", "member",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
@@ -224,7 +224,7 @@ internal static class ModelIndexer
                 clean &= entries.TryAdd(id, entry);
             retired.UnionWith(walk.Retired);
             references.AddRange(walk.References);
-            summaries.Add(Summarize(element, doc.Hash, doc.Path));
+            summaries.Add(Summarize(element, doc.Hash, doc.Path, schemas));
         }
 
         var referencesTo = Group(references, static r => r.ToId);
@@ -470,7 +470,7 @@ internal static class ModelIndexer
             if (addedSet.Contains(d))
             {
                 var element = documents[d].Element;
-                summaries.Add(Summarize(element, documents[d].Hash, documents[d].Path));
+                summaries.Add(Summarize(element, documents[d].Hash, documents[d].Path, schemas));
                 continue;
             }
 
@@ -556,8 +556,9 @@ internal static class ModelIndexer
         return false;
     }
 
-    /// <summary>The index row of an element (E4 and E5 members included).</summary>
-    private static ElementSummary Summarize(Element element, string hash, string path) =>
+    /// <summary>The index row of an element (E4 and E5 members included; a custom element's type and member count,
+    /// next-phase-2-design.md section 4.2).</summary>
+    private static ElementSummary Summarize(Element element, string hash, string path, PropertySchemaSet schemas) =>
         new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
             DisplayName: element.DisplayName,
             Database: element switch
@@ -579,7 +580,12 @@ internal static class ModelIndexer
                 Table t => t.Entity,
                 _ => null,
             },
-            MemberCount: element is Diagram diagram ? diagram.Members.Count : null,
+            MemberCount: element switch
+            {
+                Diagram diagram => diagram.Members.Count,
+                Custom custom => MembersOf(custom, schemas).Count,
+                _ => null,
+            },
             Ends: element is Relation relation ? EndsOf(relation) : null,
             Target: element is Seed seed ? seed.Target : null,
             RowCount: element is Seed rows ? rows.Rows.Count : null,
@@ -606,7 +612,18 @@ internal static class ModelIndexer
                 _ => null,
             },
             StepCount: element is Scenario steps ? steps.Steps.Count : null,
-            Effect: element is Operation effect ? (effect.Effect == OperationEffect.Change ? "change" : "read") : null);
+            Effect: element is Operation effect ? (effect.Effect == OperationEffect.Change ? "change" : "read") : null,
+            Type: element is Custom typed ? typed.Type : null);
+
+    /// <summary>
+    /// The members of a custom element (next-phase-2-design.md section 4.2), in walk order, through its custom kind's member tree; none
+    /// when the type is undeclared or the custom kind has no <c>x-member</c> array.
+    /// </summary>
+    /// <param name="custom">The custom element.</param>
+    /// <param name="schemas">The snapshot's property schema set.</param>
+    /// <returns>The members.</returns>
+    internal static List<MemberSite> MembersOf(Custom custom, PropertySchemaSet schemas) =>
+        schemas.ContentOf(custom.Type) is { Members.Count: > 0 } source ? XMemberNode.Walk(source.Members, custom.Content) : [];
 
     private static int CountStates(IReadOnlyList<ProcessState> states)
     {
@@ -701,7 +718,20 @@ internal static class ModelIndexer
             if (element.Status == ElementStatus.Retired)
                 Retired.Add(element.Id);
             WalkProperties(element, "", element.Id, element.Id);
+            if (element is Custom custom)
+                WalkMembers(custom);
             WalkReferenceData(element);
+        }
+
+        /// <summary>Registers each member of a custom element that has an id as a sub-element of kind <c>member</c> (next-phase-2-design.md
+        /// section 4.2), owned by the custom element, in walk order.</summary>
+        private void WalkMembers(Custom custom)
+        {
+            foreach (var member in MembersOf(custom, schemas))
+            {
+                if (member.Id is { } id)
+                    Entries.Add((id, new IndexEntry(id, custom.Id, "member", member.Pointer)));
+            }
         }
 
         /// <summary>

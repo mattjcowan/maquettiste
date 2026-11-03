@@ -128,6 +128,30 @@
     "canBeOff": false
   },
   {
+    "id": "MQ1017",
+    "defaultSeverity": "error",
+    "description": "A custom kind file is invalid: its type differs from its file name, its properties do not compile as a JSON Schema, or its required names a property it does not declare.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1018",
+    "defaultSeverity": "error",
+    "description": "An x-member keyword is misplaced: not true, not on an array whose items is an object schema, on an item schema that declares id, or under an applicator the walk does not follow.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1019",
+    "defaultSeverity": "error",
+    "description": "A custom element's type names no custom kind file (extensions/kinds/<type>.json); its content is not checked.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
     "id": "MQ2001",
     "defaultSeverity": "error",
     "description": "Dangling reference.",
@@ -194,7 +218,7 @@
   {
     "id": "MQ2009",
     "defaultSeverity": "error",
-    "description": "An x-ref keyword is malformed: an unknown kind or key, a custom:<type> whose type is not a key, of or sameDatabase where they do not fit, an of naming no element, not on a string, under an applicator the link walk does not follow, or beside a patternProperties pattern that needs backtracking (a lookaround, backreference, atomic group or conditional).",
+    "description": "An x-ref keyword is malformed: an unknown kind or key, a custom:<type> whose type is not a key, of or sameDatabase where they do not fit, an of naming no element (or, under kind member, no custom element), not on a string, under an applicator the link walk does not follow, or beside a patternProperties pattern that needs backtracking (a lookaround, backreference, atomic group or conditional).",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -210,7 +234,7 @@
   {
     "id": "MQ2011",
     "defaultSeverity": "error",
-    "description": "An x-ref value is out of scope: a member of another element, a row of another list, another database, a holder with no single database, or a stereotype default under of \"$element\" or sameDatabase.",
+    "description": "An x-ref value is out of scope: a member of another element, a member of a custom element other than the one of names, a row of another list, another database, a holder with no single database, or a stereotype default under of \"$element\" or sameDatabase.",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -595,6 +619,14 @@
     "id": "MQ3031",
     "defaultSeverity": "error",
     "description": "requires names the operation itself, one of its own sub-elements, a diagram or a migration fact.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3033",
+    "defaultSeverity": "error",
+    "description": "A custom element's content fails its custom kind's schema: a required key missing, an undeclared key, a value of the wrong shape, or a member without an id.",
     "family": "MQ30xx",
     "familyLabel": "Model structure",
     "canBeOff": true
@@ -2082,7 +2114,7 @@
   {
     "id": "MQ7212",
     "defaultSeverity": "error",
-    "description": "x-translatable is not on a top-level string property of an extension file or stereotype parameters: nested, on another type, or not a boolean.",
+    "description": "x-translatable is not on a top-level string property of an extension file or stereotype parameters, or of a custom kind's content or member items whose name is an identifier: nested, on another type, or not a boolean.",
     "family": "MQ72xx",
     "familyLabel": "Localization",
     "canBeOff": true

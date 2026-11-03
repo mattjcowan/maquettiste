@@ -76,8 +76,16 @@ public sealed record LocalizableNode(string Id, string OwnerId, string Kind, str
     /// property is an orphan.</summary>
     public IReadOnlySet<string> TranslatableProperties { get; init; } = FrozenSet<string>.Empty;
 
+    /// <summary>The node's own texts of its translatable content keys, ordinal by key (next-phase-2-design.md section 4.2): the non-empty
+    /// strings a custom element's <c>content</c>, or a member's item, holds under a key its custom kind marks <c>x-translatable</c>.</summary>
+    public IReadOnlyDictionary<string, string> ContentTexts { get; init; } = ImmutableSortedDictionary.Create<string, string>(StringComparer.Ordinal);
+
+    /// <summary>The content keys the node's custom kind marks <c>x-translatable</c> (for a member, its item schema's); a translation of
+    /// any other key is an orphan.</summary>
+    public IReadOnlySet<string> TranslatableContent { get; init; } = FrozenSet<string>.Empty;
+
     /// <summary>The source text of a field, or <see langword="null"/> when the node has no such field (or no default text).</summary>
-    /// <param name="field">The field name: a standard field or <c>properties/&lt;name&gt;</c>.</param>
+    /// <param name="field">The field name: a standard field, <c>properties/&lt;name&gt;</c> or <c>content/&lt;name&gt;</c>.</param>
     /// <returns>The text.</returns>
     public string? Source(string field) => field switch
     {
@@ -85,23 +93,25 @@ public sealed record LocalizableNode(string Id, string OwnerId, string Kind, str
         LocalizationIndex.PluralNameField => PluralName,
         LocalizationIndex.LabelField => Label,
         LocalizationIndex.DescriptionField => Description,
-        _ => LocalizationIndex.PropertyNameOf(field) is { } name ? PropertyTexts.GetValueOrDefault(name) : null,
+        _ => LocalizationIndex.PropertyNameOf(field) is { } name ? PropertyTexts.GetValueOrDefault(name)
+            : LocalizationIndex.ContentNameOf(field) is { } key ? ContentTexts.GetValueOrDefault(key) : null,
     };
 
     /// <summary>Whether a translation of the field may exist for the node.</summary>
-    /// <param name="field">The field name: a standard field or <c>properties/&lt;name&gt;</c>.</param>
+    /// <param name="field">The field name: a standard field, <c>properties/&lt;name&gt;</c> or <c>content/&lt;name&gt;</c>.</param>
     /// <returns><see langword="true"/> when allowed.</returns>
     public bool Allows(string field) => field switch
     {
         LocalizationIndex.DisplayNameField => DisplayName is not null,
         LocalizationIndex.PluralNameField => HasPluralField,
         LocalizationIndex.LabelField => Kind == "reference-row",
-        LocalizationIndex.DescriptionField => true,
-        _ => LocalizationIndex.PropertyNameOf(field) is { } name && TranslatableProperties.Contains(name),
+        LocalizationIndex.DescriptionField => Kind != LocalizationIndex.MemberKind,
+        _ => LocalizationIndex.PropertyNameOf(field) is { } name ? TranslatableProperties.Contains(name)
+            : LocalizationIndex.ContentNameOf(field) is { } key && TranslatableContent.Contains(key),
     };
 
     /// <summary>The fields completeness expects: display name, plural (where marked), label (rows), description (when the default has one),
-    /// then each property text the node has, ordinal by name.</summary>
+    /// then each property text the node has, ordinal by name, then each content text, ordinal by key.</summary>
     public IEnumerable<string> ExpectedFields()
     {
         if (DisplayName is not null)
@@ -114,6 +124,8 @@ public sealed record LocalizableNode(string Id, string OwnerId, string Kind, str
             yield return LocalizationIndex.DescriptionField;
         foreach (var name in PropertyTexts.Keys.Order(StringComparer.Ordinal))
             yield return LocalizationIndex.PropertyFieldPrefix + name;
+        foreach (var key in ContentTexts.Keys.Order(StringComparer.Ordinal))
+            yield return LocalizationIndex.ContentFieldPrefix + key;
     }
 }
 
@@ -165,7 +177,14 @@ public sealed class LocalizationIndex
     /// <summary>The prefix of a property text's field: <c>properties/&lt;name&gt;</c> (next-phase-1-design.md section 4.4).</summary>
     public const string PropertyFieldPrefix = "properties/";
 
-    /// <summary>The fields of a node: its standard fields, then <c>properties/&lt;name&gt;</c> for each translatable property, ordinal.</summary>
+    /// <summary>The prefix of a content text's field: <c>content/&lt;name&gt;</c> (next-phase-2-design.md section 4.2).</summary>
+    public const string ContentFieldPrefix = "content/";
+
+    /// <summary>The node kind of a custom element's member: it translates its content texts only.</summary>
+    public const string MemberKind = "member";
+
+    /// <summary>The fields of a node: its standard fields, then <c>properties/&lt;name&gt;</c> for each translatable property, ordinal,
+    /// then <c>content/&lt;name&gt;</c> for each translatable content key, ordinal.</summary>
     /// <param name="node">The node.</param>
     /// <returns>The fields <see cref="LocalizableNode.Allows"/> accepts.</returns>
     public static IEnumerable<string> FieldsOf(LocalizableNode node)
@@ -179,9 +198,12 @@ public sealed class LocalizationIndex
 
         foreach (var name in node.TranslatableProperties.Order(StringComparer.Ordinal))
             yield return PropertyFieldPrefix + name;
+        foreach (var key in node.TranslatableContent.Order(StringComparer.Ordinal))
+            yield return ContentFieldPrefix + key;
     }
 
-    /// <summary>The fields an entry holds: its standard fields in canonical order, then its property texts, ordinal by name.</summary>
+    /// <summary>The fields an entry holds: its standard fields in canonical order, then its property texts, ordinal by name, then its
+    /// content texts, ordinal by key.</summary>
     /// <param name="entry">The entry.</param>
     /// <returns>The fields.</returns>
     public static IEnumerable<string> FieldsIn(TranslationEntry entry)
@@ -198,22 +220,67 @@ public sealed class LocalizationIndex
             if (text is { Length: > 0 })
                 yield return PropertyFieldPrefix + name;
         }
+
+        foreach (var (key, text) in entry.Content.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            if (text is { Length: > 0 })
+                yield return ContentFieldPrefix + key;
+        }
     }
 
-    /// <summary>Whether a text is a translatable field: a standard field or <c>properties/&lt;identifier&gt;</c>.</summary>
+    /// <summary>Whether a text is a translatable field: a standard field, <c>properties/&lt;identifier&gt;</c> or
+    /// <c>content/&lt;identifier&gt;</c>.</summary>
     /// <param name="field">The text.</param>
     /// <returns><see langword="true"/> for a field.</returns>
     public static bool IsField(string field) =>
-        field is not null && (Fields.Contains(field, StringComparer.Ordinal) || PropertyNameOf(field) is not null);
+        field is not null && (Fields.Contains(field, StringComparer.Ordinal) || GroupOf(field, out _) is not null);
 
     /// <summary>The property name of a <c>properties/&lt;identifier&gt;</c> field, or <see langword="null"/> for any other text.</summary>
     /// <param name="field">The field.</param>
     /// <returns>The name.</returns>
-    internal static string? PropertyNameOf(string field)
+    internal static string? PropertyNameOf(string field) => NameAfter(field, PropertyFieldPrefix);
+
+    /// <summary>The content key of a <c>content/&lt;identifier&gt;</c> field, or <see langword="null"/> for any other text.</summary>
+    /// <param name="field">The field.</param>
+    /// <returns>The key.</returns>
+    internal static string? ContentNameOf(string field) => NameAfter(field, ContentFieldPrefix);
+
+    /// <summary>The object of an entry's JSON that holds a keyed field's text (<c>properties</c> or <c>content</c>), or
+    /// <see langword="null"/> for a standard field.</summary>
+    /// <param name="field">The field.</param>
+    /// <param name="name">The property name or content key.</param>
+    /// <returns>The object's key.</returns>
+    internal static string? GroupOf(string field, out string name)
     {
-        if (!field.StartsWith(PropertyFieldPrefix, StringComparison.Ordinal) || field.Length == PropertyFieldPrefix.Length)
+        if (PropertyNameOf(field) is { } property)
+        {
+            name = property;
+            return "properties";
+        }
+
+        if (ContentNameOf(field) is { } key)
+        {
+            name = key;
+            return "content";
+        }
+
+        name = "";
+        return null;
+    }
+
+    /// <summary>An entry's text of a keyed field, or <see langword="null"/>.</summary>
+    private static string? KeyedText(TranslationEntry entry, string field) => GroupOf(field, out var name) switch
+    {
+        "properties" => entry.Properties.GetValueOrDefault(name),
+        "content" => entry.Content.GetValueOrDefault(name),
+        _ => null,
+    };
+
+    private static string? NameAfter(string field, string prefix)
+    {
+        if (!field.StartsWith(prefix, StringComparison.Ordinal) || field.Length == prefix.Length)
             return null;
-        var name = field.AsSpan(PropertyFieldPrefix.Length);
+        var name = field.AsSpan(prefix.Length);
         if (!(char.IsAsciiLetter(name[0]) || name[0] == '_'))
             return null;
         foreach (var c in name)
@@ -222,24 +289,25 @@ public sealed class LocalizationIndex
                 return null;
         }
 
-        return field[PropertyFieldPrefix.Length..];
+        return field[prefix.Length..];
     }
 
-    /// <summary>The value of a field in an entry's JSON (a property text inside its <c>properties</c> object), or <see langword="null"/>.</summary>
+    /// <summary>The value of a field in an entry's JSON (a property text inside its <c>properties</c> object, a content text inside
+    /// <c>content</c>), or <see langword="null"/>.</summary>
     /// <param name="entry">The entry object.</param>
     /// <param name="field">The field.</param>
     /// <returns>The value.</returns>
     internal static JsonNode? FieldValue(JsonObject entry, string field) =>
-        PropertyNameOf(field) is { } name ? (entry["properties"] as JsonObject)?[name] : entry[field];
+        GroupOf(field, out var name) is { } group ? (entry[group] as JsonObject)?[name] : entry[field];
 
     /// <summary>Sets a field's text in an entry's JSON, or removes it when <paramref name="value"/> is <see langword="null"/> (an emptied
-    /// <c>properties</c> object goes too).</summary>
+    /// <c>properties</c> or <c>content</c> object goes too).</summary>
     /// <param name="entry">The entry object.</param>
     /// <param name="field">The field.</param>
     /// <param name="value">The text, or <see langword="null"/>.</param>
     internal static void SetFieldValue(JsonObject entry, string field, string? value)
     {
-        if (PropertyNameOf(field) is not { } name)
+        if (GroupOf(field, out var name) is not { } group)
         {
             if (value is null)
                 entry.Remove(field);
@@ -248,18 +316,18 @@ public sealed class LocalizationIndex
             return;
         }
 
-        var properties = entry["properties"] as JsonObject;
+        var texts = entry[group] as JsonObject;
         if (value is null)
         {
-            properties?.Remove(name);
-            if (properties is { Count: 0 })
-                entry.Remove("properties");
+            texts?.Remove(name);
+            if (texts is { Count: 0 })
+                entry.Remove(group);
             return;
         }
 
-        if (properties is null)
-            entry["properties"] = properties = new JsonObject();
-        properties[name] = value;
+        if (texts is null)
+            entry[group] = texts = new JsonObject();
+        texts[name] = value;
     }
 
     /// <summary>Removes a field and its source fingerprint from an entry's JSON.</summary>
@@ -434,7 +502,7 @@ public sealed class LocalizationIndex
             PluralNameField => entry.PluralName,
             LabelField => entry.Label,
             DescriptionField => entry.Description is { } d ? d.Text ?? (d.File is { } f && shard.Sidecars.TryGetValue(f, out var s) ? s.Text : null) : null,
-            _ => PropertyNameOf(field) is { } name && entry.Properties.TryGetValue(name, out var text) && text.Length > 0 ? text : null,
+            _ => KeyedText(entry, field) is { Length: > 0 } text ? text : null,
         };
     }
 
@@ -445,7 +513,7 @@ public sealed class LocalizationIndex
         PluralNameField => entry.PluralName is { Length: > 0 },
         LabelField => entry.Label is { Length: > 0 },
         DescriptionField => entry.Description is not null,
-        _ => PropertyNameOf(field) is { } name && entry.Properties.TryGetValue(name, out var text) && text is { Length: > 0 },
+        _ => KeyedText(entry, field) is { Length: > 0 },
     };
 
     /// <summary>The state of a node's field in a locale (section 3.3): missing, stale (its <c>src</c> hash differs) or translated.</summary>
@@ -594,11 +662,20 @@ public sealed class LocalizationIndex
 
             // Property texts (section 4.4), after the standard fields so an entry without any keeps its hash.
             var properties = FieldsIn(entry).Where(f => PropertyNameOf(f) is not null).ToList();
-            if (properties.Count == 0)
+            if (properties.Count > 0)
+            {
+                hash.Add(PropertyFieldPrefix).Add(properties.Count.ToString(CultureInfo.InvariantCulture));
+                foreach (var field in properties)
+                    hash.Add(field).Add(entry.Properties[PropertyNameOf(field)!]).Add(entry.Src.GetValueOrDefault(field));
+            }
+
+            // Content texts (next-phase-2-design.md section 4.2), after the property texts so an entry without any keeps its hash.
+            var content = FieldsIn(entry).Where(f => ContentNameOf(f) is not null).ToList();
+            if (content.Count == 0)
                 continue;
-            hash.Add(PropertyFieldPrefix).Add(properties.Count.ToString(CultureInfo.InvariantCulture));
-            foreach (var field in properties)
-                hash.Add(field).Add(entry.Properties[PropertyNameOf(field)!]).Add(entry.Src.GetValueOrDefault(field));
+            hash.Add(ContentFieldPrefix).Add(content.Count.ToString(CultureInfo.InvariantCulture));
+            foreach (var field in content)
+                hash.Add(field).Add(entry.Content[ContentNameOf(field)!]).Add(entry.Src.GetValueOrDefault(field));
         }
 
         return hash.Finish();
@@ -657,6 +734,7 @@ public sealed class LocalizationIndex
             Process process => process.Package,
             Scenario scenario => (find(scenario.Process) as Process)?.Package,
             Operation operation => operation.Package,
+            Custom custom => custom.Package,
             _ => null,
         };
         if (package == ReferenceDataScope)
@@ -731,6 +809,8 @@ public sealed class LocalizationIndex
         // The translatable properties of each holder (section 4.4), per document, merged in document order below.
         var schemas = _model.PropertySchemas;
         var holderSlots = schemas.HasTranslatable ? new List<(string Id, PropertyTranslation Found)>?[documents.Count] : null;
+        // The member nodes of each custom element with translatable member keys (next-phase-2-design.md section 4.2), per document.
+        var memberSlots = new List<LocalizableNode>?[documents.Count];
         Parallel.For(0, documents.Count, i =>
         {
             var document = documents[i];
@@ -739,8 +819,11 @@ public sealed class LocalizationIndex
                 return;
             var display = element.DisplayName ?? element.Name;
             var description = element.Description is { } d ? d.Text ?? document.SidecarText ?? "file:" + d.File : null;
-            elementNodes[i] = new LocalizableNode(element.Id, element.Id, element.KindName, ScopeOf(element), display, element.PluralName ?? display, null,
+            var elementNode = new LocalizableNode(element.Id, element.Id, element.KindName, ScopeOf(element), display, element.PluralName ?? display, null,
                 description, true, false);
+            if (element is Custom custom)
+                elementNode = WithContent(elementNode, custom, document, schemas, memberSlots, i);
+            elementNodes[i] = elementNode;
             if (holderSlots is null)
                 return;
             foreach (var host in PropertyHost.Of(element, _model.PropertyKeys(element)))
@@ -769,10 +852,19 @@ public sealed class LocalizationIndex
             nodes[node.Id] = WithProperties(node);
         }
 
+        var members = new Dictionary<string, LocalizableNode>(StringComparer.Ordinal);
+        foreach (var slot in memberSlots)
+        {
+            foreach (var member in slot ?? [])
+                members.TryAdd(member.Id, member);
+        }
+
         var entries = _model.Index.Entries.Values.ToArray();
         var subNodes = new LocalizableNode?[entries.Length];
         var seeds = new ConcurrentDictionary<string, (Seed Seed, int Label, int Description, Dictionary<string, SeedRow> Rows)?>(StringComparer.Ordinal);
-        Parallel.For(0, entries.Length, i => subNodes[i] = SubNode(entries[i], scopes, seeds));
+        Parallel.For(0, entries.Length, i => subNodes[i] = entries[i].Kind == MemberKind
+            ? entries[i].OwnerId != entries[i].Id && scopes.ContainsKey(entries[i].OwnerId) ? members.GetValueOrDefault(entries[i].Id) : null
+            : SubNode(entries[i], scopes, seeds));
         foreach (var node in subNodes)
         {
             if (node is not null)
@@ -831,6 +923,49 @@ public sealed class LocalizationIndex
         var hasPlural = entry.Kind == "category" || (entry.Kind == "end" && toMany);
         return new LocalizableNode(entry.Id, entry.OwnerId, entry.Kind, scope, display, hasPlural ? plural ?? display : null, null,
             description, hasPlural, entry.Kind == "end" && !toMany && plural is not null);
+    }
+
+    /// <summary>
+    /// A custom element's node with its content texts, and its members' nodes into <paramref name="memberSlots"/> (next-phase-2-design.md
+    /// section 4.2): the keys its custom kind marks <c>x-translatable</c>, and for each member with an id whose item schema marks keys, a
+    /// <c>member</c> node in its owner's shard that translates those keys only.
+    /// </summary>
+    private static LocalizableNode WithContent(LocalizableNode node, Custom custom, ElementDocument document, PropertySchemaSet schemas,
+        List<LocalizableNode>?[] memberSlots, int slot)
+    {
+        if (schemas.ContentOf(custom.Type) is not { } source)
+            return node;
+        foreach (var member in ModelIndexer.MembersOf(custom, schemas))
+        {
+            if (member.Id is not { } id || member.Node.Translatable.Count == 0
+                || !Json.JsonPointer.TryGet(document.Json, member.Pointer, out var item) || item.ValueKind != JsonValueKind.Object)
+                continue;
+            var texts = ContentTexts(member.Node.Translatable, key => item.TryGetProperty(key, out var value) ? value : default);
+            (memberSlots[slot] ??= []).Add(new LocalizableNode(id, custom.Id, MemberKind, node.Scope, null, null, null, null, false, false)
+            {
+                ContentTexts = texts, TranslatableContent = member.Node.Translatable,
+            });
+        }
+
+        return source.Translatable.Count == 0
+            ? node
+            : node with
+            {
+                ContentTexts = ContentTexts(source.Translatable, key => custom.Content.TryGetValue(key, out var value) ? value : default),
+                TranslatableContent = source.Translatable,
+            };
+    }
+
+    private static IReadOnlyDictionary<string, string> ContentTexts(IReadOnlySet<string> keys, Func<string, JsonElement> valueOf)
+    {
+        var texts = ImmutableSortedDictionary.CreateBuilder<string, string>(StringComparer.Ordinal);
+        foreach (var key in keys)
+        {
+            if (valueOf(key) is { ValueKind: JsonValueKind.String } value && value.GetString() is { Length: > 0 } text)
+                texts[key] = text;
+        }
+
+        return texts.ToImmutable();
     }
 
     /// <summary>The sub-elements of processes and scenarios (phase-3-design.md section 2.6).</summary>

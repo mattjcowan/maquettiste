@@ -23,7 +23,7 @@ public sealed partial class ModelStore
 {
     /// <summary>
     /// Finds the orphan translations (MQ7203: an entry whose id names no localizable node, or a field its node does not have, such as the
-    /// text of a property no schema marks <c>x-translatable</c> any more) of every
+    /// text of a property or a content key no schema marks <c>x-translatable</c> any more) of every
     /// translated locale and, unless <paramref name="dryRun"/>, removes them in one atomic save checked against the shards as loaded.
     /// </summary>
     /// <param name="dryRun">Only report.</param>

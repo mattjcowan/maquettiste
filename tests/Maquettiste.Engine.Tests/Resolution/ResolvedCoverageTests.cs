@@ -114,6 +114,9 @@ public sealed class ResolvedCoverageTests
         new("outcome", "operation.json", "$defs/outcome", typeof(ROperationOutcome)),
         new("outcome returns", "operation.json", "$defs/returns", typeof(ROperationReturns)),
         new("error", "common.json", "$defs/operationError", typeof(ROperationError)),
+
+        // Custom elements (next-phase-2-design.md section 4.2).
+        new("custom", "custom.json", "", typeof(RCustom)),
     ];
 
     /// <summary>Properties no resolved object carries, anywhere, and why.</summary>

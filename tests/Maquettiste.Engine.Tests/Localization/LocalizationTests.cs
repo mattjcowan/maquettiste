@@ -20,7 +20,7 @@ public sealed class LocalizationTests
     private const string KgRow = "01JBS3C4DWA7N36096Q14DR9GP";
     private const string Recipe = "01JRDE00000000000000000001";
     private const string RecipeName = "01JRDE00000000000000000012";
-    private const string Package = "01JRDP00000000000000000001";
+    internal const string Package = "01JRDP00000000000000000001";
     private const string FrReference = ".maquettiste/model/locales/fr/_reference-data.json";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -384,6 +384,142 @@ public sealed class LocalizationTests
         Assert.Equal([("fr", Recipe, "properties/footer"), ("fr", RecipeName, "properties/footer")],
             pruned.Orphans.Select(o => (o.Locale, o.Id, o.Field ?? "")).Order());
         Assert.False(File.Exists(h.Model("model/locales/fr/_root.json")));
+    }
+
+    internal const string Notice = "01JRDC00000000000000000001";
+    internal const string Message = "01JRDC00000000000000000002";
+    internal const string Subject = "01JRDM00000000000000000001";
+    internal const string Body = "01JRDM00000000000000000002";
+    private const string FrKitchen = ".maquettiste/model/locales/fr/kitchen.json";
+
+    private static string NoticeKind(bool translatable = true) =>
+        "{ \"type\": \"notice\", \"properties\": { \"title\": { \"type\": \"string\"" + (translatable ? ", \"x-translatable\": true" : "")
+        + " }, \"code\": { \"type\": \"string\" } } }";
+
+    /// <summary>The kit with package Kitchen, the custom kinds notice (a translatable title) and message (parts as members with a
+    /// translatable text), the notice closed and the message invoice_sent with parts subject and body, all in Kitchen.</summary>
+    internal static Task<(LoaderHarness Harness, ModelStore Store)> OpenCustomAsync() => Kit.OpenAsync(h =>
+    {
+        Kit.Write(h, "model/packages/kitchen.json", $$"""{ "kind": "package", "id": "{{Package}}", "name": "Kitchen" }""");
+        Kit.Write(h, "extensions/kinds/notice.json", NoticeKind());
+        Kit.Write(h, "extensions/kinds/message.json", CustomKinds.CustomFixture.MessageKind);
+        Kit.Write(h, "model/custom/notice/closed.json", $$"""
+            { "kind": "custom", "id": "{{Notice}}", "name": "closed", "package": "{{Package}}", "type": "notice",
+              "content": { "code": "c1", "title": "Closed today." } }
+            """);
+        Kit.Write(h, "model/custom/message/invoice-sent.json", $$"""
+            { "kind": "custom", "id": "{{Message}}", "name": "invoice_sent", "package": "{{Package}}", "type": "message",
+              "content": { "parts": [ { "id": "{{Subject}}", "name": "subject", "text": "Your invoice" }, { "id": "{{Body}}", "name": "body", "text": "Thank you." } ] } }
+            """);
+    });
+
+    private static async Task<ShardStatus> KitchenStatus(ModelStore store, string locale) =>
+        Assert.Single(Assert.Single((await store.GetLocalizationStatusAsync(Ct)).Locales, l => l.Locale == locale).Shards,
+            s => s.Shard.EndsWith("/kitchen.json", StringComparison.Ordinal));
+
+    [Fact]
+    public async Task Content_texts_join_rows_status_and_pruning()
+    {
+        var (h, store) = await OpenCustomAsync();
+        using var _ = h;
+        await using var __ = store;
+        Assert.DoesNotContain((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        var l10n = store.Current!.Localization;
+        var notice = l10n.Nodes[Notice];
+
+        // Only the marked content key is a field, after the standard ones; the plain one is no field at all.
+        Assert.Equal(["title"], notice.TranslatableContent);
+        Assert.Equal("Closed today.", notice.Source("content/title"));
+        Assert.Null(notice.Source("content/code"));
+        Assert.Equal(["displayName", "pluralName", "description", "content/title"], LocalizationIndex.FieldsOf(notice));
+        Assert.Equal(Package, notice.Scope);
+        Assert.True(LocalizationIndex.IsField("content/title"));
+        Assert.False(LocalizationIndex.IsField("content/9lives"));
+        Assert.False(LocalizationIndex.IsField("content/"));
+
+        var row = Assert.Single((await store.GetTranslationsAsync("fr", Notice, null, Ct)).Items, i => i.Id == Notice && i.Field == "content/title");
+        Assert.Equal(("Closed today.", (string?)null, "missing", FrKitchen), (row.Source, row.Value, row.State, row.ShardPath));
+        var before = await KitchenStatus(store, "fr");
+        var ownerHash = l10n.OwnerHash("fr", Notice);
+
+        await Kit.Translate(store, "fr", new TranslationEdit(Notice, "content/title", "Fermé aujourd'hui."));
+
+        // The shard holds the text in a nested content object, its fingerprint under src as content/<name>.
+        var shardText = File.ReadAllText(h.Model("model/locales/fr/kitchen.json"));
+        using (var parsed = System.Text.Json.JsonDocument.Parse(shardText))
+            Assert.Equal(Engine.Json.PrecheckVerdict.Valid, new Engine.Json.SchemaRegistry().Precheck("locale.json", parsed.RootElement));
+        var entry = JsonNode.Parse(shardText)!["entries"]![Notice]!.AsObject();
+        Assert.Equal(["content", "src"], entry.Select(p => p.Key));
+        Assert.Equal("Fermé aujourd'hui.", (string?)entry["content"]!["title"]);
+        Assert.Equal(LocalizationIndex.SourceHash("Closed today."), (string?)entry["src"]!["content/title"]);
+        l10n = store.Current!.Localization;
+        Assert.Equal("Fermé aujourd'hui.", l10n.Text("fr", Notice, "content/title"));
+        Assert.Equal(TranslationState.Translated, l10n.StateOf("fr", l10n.Nodes[Notice], "content/title"));
+        Assert.NotEqual(ownerHash, l10n.OwnerHash("fr", Notice));
+        var after = await KitchenStatus(store, "fr");
+        Assert.Equal((before.Expected, before.Translated + 1, before.Missing - 1), (after.Expected, after.Translated, after.Missing));
+
+        // A plain content key, or a name that is not an identifier, is no translatable field.
+        var hashes = (await store.GetTranslationsAsync("fr", null, null, Ct)).ShardHashes;
+        foreach (var field in new[] { "content/code", "content/9lives" })
+        {
+            var refused = await store.SaveTranslationsAsync("fr", [new TranslationEdit(Notice, field, "x")], hashes, ChangeSource.Editor, Ct);
+            Assert.Equal((SaveOutcome.Invalid, "MQ7203"), (refused.Outcome, Assert.Single(refused.Diagnostics).Rule));
+        }
+
+        // The default text changes: the translation goes stale.
+        await Kit.Edit(store, Notice, n => n["content"]!["title"] = "Closed until noon.");
+        Assert.Equal("stale", Assert.Single((await store.GetTranslationsAsync("fr", Notice, null, Ct)).Items, i => i.Field == "content/title").State);
+
+        // The mark goes: the text is an orphan (MQ7203 at the content key), and pruning drops it with the empty entry.
+        Kit.Write(h, "extensions/kinds/notice.json", NoticeKind(translatable: false));
+        await store.RefreshAsync([h.Model("extensions/kinds/notice.json")], Ct);
+        Assert.Empty(store.Current!.Localization.Nodes[Notice].TranslatableContent);
+        var orphans = (await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics.Where(d => d.Rule == "MQ7203").Select(d => d.JsonPointer).ToList();
+        Assert.Contains("/entries/" + Notice + "/content/title", orphans);
+        var pruned = await store.PruneTranslationsAsync(false, ChangeSource.Editor, Ct);
+        Assert.True(pruned.Applied);
+        Assert.Equal([("fr", Notice, "content/title")], pruned.Orphans.Select(o => (o.Locale, o.Id, o.Field ?? "")));
+        Assert.False(File.Exists(h.Model("model/locales/fr/kitchen.json")));
+    }
+
+    [Fact]
+    public async Task Member_texts_are_member_nodes()
+    {
+        var (h, store) = await OpenCustomAsync();
+        using var _ = h;
+        await using var __ = store;
+        var l10n = store.Current!.Localization;
+
+        // Each part is a member node in its owner's shard that translates its text only; the message itself has no content field.
+        var subject = l10n.Nodes[Subject];
+        Assert.Equal(("member", Message, Package), (subject.Kind, subject.OwnerId, subject.Scope));
+        Assert.Equal(["content/text"], LocalizationIndex.FieldsOf(subject));
+        Assert.Equal(["content/text"], subject.ExpectedFields());
+        Assert.Equal("Your invoice", subject.Source("content/text"));
+        Assert.False(subject.Allows("description"));
+        Assert.DoesNotContain(LocalizationIndex.FieldsOf(l10n.Nodes[Message]), f => f.StartsWith("content/", StringComparison.Ordinal));
+
+        var rows = (await store.GetTranslationsAsync("fr", Message, null, Ct)).Items.Where(i => i.Field == "content/text").ToList();
+        Assert.Equal([(Subject, "Your invoice"), (Body, "Thank you.")], rows.Select(r => (r.Id, r.Source ?? "")).OrderBy(r => r.Item1, StringComparer.Ordinal));
+        var before = await KitchenStatus(store, "fr");
+        var ownerHash = l10n.OwnerHash("fr", Message);
+
+        await Kit.Translate(store, "fr", new TranslationEdit(Subject, "content/text", "Votre facture"), new TranslationEdit(Body, "content/text", "Merci."));
+
+        var entries = JsonNode.Parse(File.ReadAllText(h.Model("model/locales/fr/kitchen.json")))!["entries"]!;
+        Assert.Equal("Votre facture", (string?)entries[Subject]!["content"]!["text"]);
+        l10n = store.Current!.Localization;
+        Assert.Equal("Merci.", l10n.Text("fr", Body, "content/text"));
+        Assert.NotEqual(ownerHash, l10n.OwnerHash("fr", Message)); // the l: key of the owner covers its members
+        var after = await KitchenStatus(store, "fr");
+        Assert.Equal((before.Expected, before.Translated + 2), (after.Expected, after.Translated));
+
+        // A member has no description to translate.
+        var hashes = (await store.GetTranslationsAsync("fr", null, null, Ct)).ShardHashes;
+        var refused = await store.SaveTranslationsAsync("fr", [new TranslationEdit(Subject, "description", "x")], hashes, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        Assert.DoesNotContain((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule is "MQ7203" or "MQ7207");
     }
 
     [Fact]

@@ -12,7 +12,7 @@ namespace Maquettiste.Engine;
 /// <summary>One translated field as the store serves it (reference-types-seeds-localization.md section 3.9).</summary>
 /// <param name="Id">The node id.</param>
 /// <param name="OwnerId">The element whose file holds the node.</param>
-/// <param name="Field">displayName, pluralName, label, description, or <c>properties/&lt;name&gt;</c> for a translatable custom property.</param>
+/// <param name="Field">displayName, pluralName, label, description, <c>properties/&lt;name&gt;</c> for a translatable custom property, or <c>content/&lt;name&gt;</c> for a translatable content key of a custom element or a member.</param>
 /// <param name="Source">The default-locale text.</param>
 /// <param name="Value">The locale's own translation, or <see langword="null"/>.</param>
 /// <param name="Effective">The text the chain gives (the translation, a fallback locale's, or the default).</param>

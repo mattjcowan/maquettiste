@@ -457,6 +457,10 @@ internal sealed class ValidationContext
             case Actor actor when actor.Name.Length > 0:
                 yield return ("actor|" + actor.Name, "actors");
                 break;
+            // A custom element's name is unique among the elements of its type in one package (next-phase-2-design.md section 4.2).
+            case Custom custom when custom.Name.Length > 0:
+                yield return ("custom|" + custom.Type + "|" + custom.Package + "|" + custom.Name, "custom elements of type " + custom.Type + " in the same package");
+                break;
             case Scenario scenario when scenario.Name.Length > 0:
                 yield return ("scenario|" + scenario.Process + "|" + scenario.Name, "scenarios of the same process");
                 break;

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Maquettiste.Engine.Diagnostics;
@@ -13,14 +14,17 @@ using Maquettiste.Engine.Writing;
 namespace Maquettiste.Engine;
 
 /// <summary>One file of the model's <c>extensions/</c> folder (<c>GET /api/extensions/files</c>).</summary>
-/// <param name="Path">The path under <c>extensions/</c>: <c>&lt;name&gt;.json</c>, <c>rules/&lt;name&gt;.js</c> or <c>seeds/&lt;name&gt;.js</c>.</param>
-/// <param name="Kind"><c>schema</c> (custom properties, <c>extensions/*.json</c>), <c>rule</c> (a script rule, <c>extensions/rules/*.js</c>) or
-/// <c>seed-rows</c> (a seed's rows script, <c>extensions/seeds/*.js</c>; next-phase-2-design.md section 3.4).</param>
+/// <param name="Path">The path under <c>extensions/</c>: <c>&lt;name&gt;.json</c>, <c>rules/&lt;name&gt;.js</c>, <c>seeds/&lt;name&gt;.js</c> or
+/// <c>kinds/&lt;type&gt;.json</c>.</param>
+/// <param name="Kind"><c>schema</c> (custom properties, <c>extensions/*.json</c>), <c>rule</c> (a script rule, <c>extensions/rules/*.js</c>),
+/// <c>seed-rows</c> (a seed's rows script, <c>extensions/seeds/*.js</c>; next-phase-2-design.md section 3.4) or <c>custom-kind</c> (a custom
+/// kind, <c>extensions/kinds/*.json</c>; section 4.2).</param>
 /// <param name="Size">The size in bytes.</param>
 /// <param name="Hash">The content hash (the expected hash of a write, delete or move).</param>
 /// <param name="Diagnostics">What is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load (MQ5002, MQ5003),
-/// a rows script that does not load or does not register its rows exactly once (MQ7127), or a script that keeps state at its top level
-/// (MQ5005, a warning).</param>
+/// a rows script that does not load or does not register its rows exactly once (MQ7127), a script that keeps state at its top level
+/// (MQ5005, a warning), or a custom kind file that does not parse or pass <c>custom-kind.json</c> (MQ1001, MQ1002) and its own findings
+/// (MQ1017, MQ1018, MQ2009, MQ7212).</param>
 /// <param name="Rules">For a rule script that loads, the rules it registers (whole-model rules marked); empty for a schema.</param>
 public sealed record ExtensionFileInfo(string Path, string Kind, long Size, string Hash, IReadOnlyList<Diagnostic> Diagnostics,
     IReadOnlyList<ExtensionRuleInfo> Rules);
@@ -58,8 +62,9 @@ public sealed record ExtensionFileMove(string? From, string? To);
 /// <param name="Hash">The new hash when saved (null after a delete); the disk hash on conflict.</param>
 /// <param name="Current">The disk text on conflict, else null.</param>
 /// <param name="Text">The text written when saved: a schema is written in canonical form, so it may differ from the text sent.</param>
-/// <param name="Diagnostics">Why it was refused; for a saved rule script, its syntax and load check (MQ5002, MQ5003 with line and column, or
-/// the warning MQ5005).</param>
+/// <param name="Diagnostics">Why it was refused (for a custom kind file deleted or moved while elements use it, one MQ1019 per element);
+/// for a saved rule script, its syntax and load check (MQ5002, MQ5003 with line and column, or the warning MQ5005); for a saved custom
+/// kind file, its own findings and the MQ3033 findings of its elements. Lists of elements hold at most 50, then one line with the count.</param>
 /// <param name="Files">The paths written or deleted.</param>
 public sealed record ExtensionWriteResult(SaveOutcome Outcome, string? Hash, string? Current, string? Text, IReadOnlyList<Diagnostic> Diagnostics,
     IReadOnlyList<string> Files);
@@ -75,7 +80,7 @@ public sealed partial class ModelStore
 
     private static readonly UTF8Encoding ExtensionUtf8 = new(false, throwOnInvalidBytes: true);
 
-    [GeneratedRegex(@"^(?:[A-Za-z0-9][A-Za-z0-9._-]*\.json|(?:rules|seeds)/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?:(?:kinds/)?[A-Za-z0-9][A-Za-z0-9._-]*\.json|(?:rules|seeds)/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$", RegexOptions.CultureInvariant)]
     private static partial Regex ExtensionPathPattern();
 
     /// <summary>
@@ -97,11 +102,13 @@ public sealed partial class ModelStore
             IEnumerable<string> Scripts(string sub) => Directory.Exists(Path.Combine(folder, sub))
                 ? Directory.EnumerateFiles(Path.Combine(folder, sub), "*.js", SearchOption.TopDirectoryOnly).Select(f => sub + "/" + Path.GetFileName(f))
                 : [];
+            var kinds = Path.Combine(folder, "kinds");
             var found = Directory.EnumerateFiles(folder, "*.json", SearchOption.TopDirectoryOnly).Select(f => Path.GetFileName(f))
                 .Concat(Scripts("rules"))
                 .Concat(Scripts("seeds"))
+                .Concat(Directory.Exists(kinds) ? Directory.EnumerateFiles(kinds, "*.json", SearchOption.TopDirectoryOnly).Select(f => "kinds/" + Path.GetFileName(f)) : [])
                 .Where(p => ExtensionPathPattern().IsMatch(p))
-                .OrderBy(p => KindOfExtension(p) switch { "schema" => 0, "rule" => 1, _ => 2 })
+                .OrderBy(p => KindOfExtension(p) switch { "schema" => 0, "rule" => 1, SeedRowsKind => 2, _ => 3 })
                 .ThenBy(p => p, StringComparer.Ordinal);
             foreach (var path in found)
             {
@@ -118,6 +125,7 @@ public sealed partial class ModelStore
                 {
                     "rule" => CheckRuleScript(snapshot, repoPath, DecodeExtension(bytes) ?? "", ct, rules),
                     SeedRowsKind => CheckRowsScript(snapshot, repoPath, DecodeExtension(bytes) ?? "", ct),
+                    CustomKindFileKind => CustomKindFindings(snapshot, repoPath),
                     _ => [.. snapshot.LoadDiagnostics.Where(d => string.Equals(d.FilePath, repoPath, StringComparison.Ordinal))],
                 };
                 files.Add(new ExtensionFileInfo(path, kind, bytes.LongLength, ContentHash.Of(bytes), diagnostics, rules));
@@ -148,7 +156,10 @@ public sealed partial class ModelStore
     /// that passes <c>extension.json</c>, else nothing is written and the MQ5004 diagnostics come back; it is written in canonical form.
     /// A rule script is written as sent, then loaded alone in the sandbox: its syntax error or failed registration comes back as MQ5002
     /// (or MQ5003) with line and column. A rows script (<c>seeds/&lt;name&gt;.js</c>) is written as sent and loaded alone, never run: a
-    /// script that does not load or does not register its rows exactly once comes back as MQ7127. The snapshot is refreshed before the
+    /// script that does not load or does not register its rows exactly once comes back as MQ7127. A custom kind file
+    /// (<c>kinds/&lt;type&gt;.json</c>, next-phase-2-design.md section 4.2) must parse and pass <c>custom-kind.json</c>, else nothing is
+    /// written (MQ1001, MQ1002); it is written in canonical form, and the answer carries its own findings and the MQ3033 findings of the
+    /// elements of its type (decision 20: at most 50, then the count; they never refuse the write). The snapshot is refreshed before the
     /// call returns, so the next validation runs the new rules.
     /// </summary>
     /// <param name="path">The path under <c>extensions/</c>.</param>
@@ -185,6 +196,12 @@ public sealed partial class ModelStore
                 return new ExtensionWriteResult(SaveOutcome.Invalid, null, null, null, parsed.Diagnostics, []);
             bytes = _services.Json.Write(JsonNode.Parse(parsed.Json.GetRawText())!, "extension.json", modelPath);
         }
+        else if (kind == CustomKindFileKind)
+        {
+            if (CheckCustomKindText(bytes, repoPath) is { Count: > 0 } refused)
+                return new ExtensionWriteResult(SaveOutcome.Invalid, null, null, null, refused, []);
+            bytes = _services.Json.Write(JsonNode.Parse(bytes)!, "custom-kind.json", modelPath);
+        }
         else
         {
             diagnostics = kind == SeedRowsKind ? CheckRowsScript(snapshot, repoPath, text, ct) : CheckRuleScript(snapshot, repoPath, text, ct);
@@ -195,10 +212,13 @@ public sealed partial class ModelStore
             GuardExtensionWrite(full);
             await AtomicFile.WriteAsync(full, bytes, "ext", ct).ConfigureAwait(false);
         }, source, ct).ConfigureAwait(false);
+        if (written is null && kind == CustomKindFileKind)
+            diagnostics = await CustomKindWriteFindingsAsync(TypeOfKindFile(path), repoPath, ct).ConfigureAwait(false);
         return written ?? new ExtensionWriteResult(SaveOutcome.Saved, ContentHash.Of(bytes), null, Encoding.UTF8.GetString(bytes), diagnostics, [path]);
     }
 
-    /// <summary>Deletes one extension file when its hash is still <paramref name="expectedHash"/>.</summary>
+    /// <summary>Deletes one extension file when its hash is still <paramref name="expectedHash"/>. A custom kind file that elements still use
+    /// is refused (<c>invalid</c>, one MQ1019 per element that would lose its kind, at most 50, then the count).</summary>
     /// <param name="path">The path under <c>extensions/</c>.</param>
     /// <param name="expectedHash">The hash read.</param>
     /// <param name="ct">Cancellation.</param>
@@ -210,9 +230,11 @@ public sealed partial class ModelStore
     {
         ArgumentNullException.ThrowIfNull(expectedHash);
         var full = ResolveExtensionPath(path);
-        await LoadedAsync(ct).ConfigureAwait(false);
+        var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         if (!File.Exists(full))
             return new ExtensionWriteResult(SaveOutcome.NotFound, null, null, null, [], []);
+        if (UsedCustomKind(snapshot, path) is { Count: > 0 } used)
+            return new ExtensionWriteResult(SaveOutcome.Invalid, null, null, null, used, []);
         var written = await ExtensionWriteAsync(full, expectedHash, [_paths.Value.ToRepoPath("extensions/" + path)], () =>
         {
             GuardExtensionWrite(full);
@@ -225,8 +247,8 @@ public sealed partial class ModelStore
     /// <summary>
     /// Moves (renames) one extension file when its hash is still <paramref name="expectedHash"/>. The target must not exist and must be of
     /// the same kind: a schema stays a <c>&lt;name&gt;.json</c>, a rule a <c>rules/&lt;name&gt;.js</c>, a rows script a
-    /// <c>seeds/&lt;name&gt;.js</c>. Nothing changes the seeds that name a moved rows script: they report it missing (MQ7116) until they
-    /// name the new path.
+    /// <c>seeds/&lt;name&gt;.js</c>, a custom kind a <c>kinds/&lt;type&gt;.json</c>. Nothing changes the seeds that name a moved rows script:
+    /// they report it missing (MQ7116) until they name the new path. A custom kind file that elements still use is refused as a delete is.
     /// </summary>
     /// <param name="move">The source and target.</param>
     /// <param name="expectedHash">The source file's hash.</param>
@@ -243,7 +265,7 @@ public sealed partial class ModelStore
         var to = move.To ?? throw new ExtensionPathException("to is required.");
         var origin = ResolveExtensionPath(from);
         var target = ResolveExtensionPath(to);
-        await LoadedAsync(ct).ConfigureAwait(false);
+        var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         var paths = _paths.Value;
         var targetRepo = paths.ToRepoPath("extensions/" + to);
         if (!File.Exists(origin))
@@ -251,8 +273,12 @@ public sealed partial class ModelStore
         if (!string.Equals(KindOfExtension(from), KindOfExtension(to), StringComparison.Ordinal))
         {
             return InvalidExtension(RuleCatalog.Create("MQ5004",
-                $"'{to}' is not the same kind of file as '{from}': a schema is <name>.json, a script rule rules/<name>.js, a rows script seeds/<name>.js.", null, targetRepo));
+                $"'{to}' is not the same kind of file as '{from}': a schema is <name>.json, a script rule rules/<name>.js, a rows script seeds/<name>.js, a custom kind kinds/<type>.json.",
+                null, targetRepo));
         }
+
+        if (UsedCustomKind(snapshot, from) is { Count: > 0 } used)
+            return new ExtensionWriteResult(SaveOutcome.Invalid, null, null, null, used, []);
 
         if (File.Exists(target) || Directory.Exists(target))
             return InvalidExtension(RuleCatalog.Create("MQ5004", $"'{to}' already exists.", null, targetRepo));
@@ -388,7 +414,7 @@ public sealed partial class ModelStore
         if (string.IsNullOrEmpty(path) || !ExtensionPathPattern().IsMatch(path))
         {
             throw new ExtensionPathException(
-                $"'{path}' is not an extension file path: a custom property schema is <name>.json, a script rule rules/<name>.js and a rows script seeds/<name>.js, under extensions/.");
+                $"'{path}' is not an extension file path: a custom property schema is <name>.json, a script rule rules/<name>.js, a rows script seeds/<name>.js and a custom kind kinds/<type>.json, under extensions/.");
         }
 
         var paths = _paths.Value;
@@ -411,8 +437,103 @@ public sealed partial class ModelStore
     /// <summary>The kind of a seed's rows script (<c>extensions/seeds/*.js</c>).</summary>
     private const string SeedRowsKind = "seed-rows";
 
+    /// <summary>The kind of a custom kind file (<c>extensions/kinds/*.json</c>).</summary>
+    private const string CustomKindFileKind = "custom-kind";
+
+    /// <summary>The most elements a custom kind file's answer lists, before the line with the count (decision 20).</summary>
+    private const int MaxListedElements = 50;
+
     private static string KindOfExtension(string path) =>
-        path.StartsWith("rules/", StringComparison.Ordinal) ? "rule" : path.StartsWith("seeds/", StringComparison.Ordinal) ? SeedRowsKind : "schema";
+        path.StartsWith("rules/", StringComparison.Ordinal) ? "rule"
+        : path.StartsWith("seeds/", StringComparison.Ordinal) ? SeedRowsKind
+        : path.StartsWith("kinds/", StringComparison.Ordinal) ? CustomKindFileKind
+        : "schema";
+
+    /// <summary>The type a custom kind file declares when valid: its file stem (MQ1017 flags a file whose type differs).</summary>
+    private static string TypeOfKindFile(string path) => Path.GetFileNameWithoutExtension(path);
+
+    /// <summary>A custom kind file's problems on its own: its load diagnostics (MQ1001, MQ1002) and its findings in the property schema set
+    /// (MQ1017, MQ1018, MQ2009, MQ7212), in order.</summary>
+    private static List<Diagnostic> CustomKindFindings(ModelSnapshot snapshot, string repoPath) =>
+    [
+        .. snapshot.LoadDiagnostics.Concat(snapshot.PropertySchemas.Diagnostics)
+            .Where(d => string.Equals(d.FilePath, repoPath, StringComparison.Ordinal))
+            .Distinct()
+            .Order(Diagnostic.Order),
+    ];
+
+    /// <summary>A custom kind text that does not parse (MQ1001) or pass <c>custom-kind.json</c> (MQ1002); empty when it may be written.</summary>
+    private List<Diagnostic> CheckCustomKindText(byte[] bytes, string repoPath)
+    {
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(bytes);
+        }
+        catch (JsonException ex)
+        {
+            return [RuleCatalog.Create("MQ1001", "The custom kind file is not valid JSON: " + ex.Message, null, repoPath)];
+        }
+
+        using (document)
+        {
+            return [.. _services.Schemas.Evaluate("custom-kind.json", document.RootElement, repoPath)
+                .Select(d => d with { Rule = "MQ1002", Severity = DiagnosticSeverity.Error })
+                .Order(Diagnostic.Order)];
+        }
+    }
+
+    /// <summary>
+    /// The answer of a saved custom kind file: its own findings, then the MQ3033 findings of the elements of its type, validated alone, at
+    /// most <see cref="MaxListedElements"/> and then one line with the count.
+    /// </summary>
+    private async Task<IReadOnlyList<Diagnostic>> CustomKindWriteFindingsAsync(string type, string repoPath, CancellationToken ct)
+    {
+        var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
+        var findings = CustomKindFindings(snapshot, repoPath);
+        var ids = snapshot.All<Custom>().Where(c => string.Equals(c.Type, type, StringComparison.Ordinal)).Select(c => c.Id).Order(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0)
+            return findings;
+        var report = await ValidateCoreAsync(snapshot, new ValidationScope(ids, IncludeReferrers: false, IncludeScriptRules: false), committedStale: false, ct)
+            .ConfigureAwait(false);
+        var content = report.Diagnostics.Where(d => d.Rule == "MQ3033").ToList();
+        findings.AddRange(content.Take(MaxListedElements));
+        if (content.Count > MaxListedElements)
+        {
+            findings.Add(RuleCatalog.Create("MQ3033", string.Create(CultureInfo.InvariantCulture,
+                $"{content.Count} findings in the elements of the custom kind '{type}'; the first {MaxListedElements} are listed."), null, repoPath));
+        }
+
+        return findings;
+    }
+
+    /// <summary>
+    /// For a custom kind file the snapshot holds as the declaration of its type, one MQ1019 per element of that type, which a delete or a
+    /// move would leave without its kind (ordered by name and id, at most <see cref="MaxListedElements"/>, then one line with the count);
+    /// empty for any other file or a kind no element uses.
+    /// </summary>
+    private static List<Diagnostic> UsedCustomKind(ModelSnapshot snapshot, string path)
+    {
+        if (KindOfExtension(path) != CustomKindFileKind)
+            return [];
+        var type = TypeOfKindFile(path);
+        var repoPath = snapshot.PropertySchemas.ContentOf(type)?.Path;
+        if (repoPath is null || !repoPath.EndsWith("extensions/" + path, StringComparison.Ordinal))
+            return [];
+        var users = snapshot.All<Custom>().Where(c => string.Equals(c.Type, type, StringComparison.Ordinal))
+            .OrderBy(c => c.Name, StringComparer.Ordinal).ThenBy(c => c.Id, StringComparer.Ordinal).ToList();
+        var refused = users.Take(MaxListedElements)
+            .Select(c => RuleCatalog.Create("MQ1019", $"The custom element '{c.Name}' would lose its custom kind '{type}'.", c.Id,
+                snapshot.GetDocument(c.Id)?.Path, "/type"))
+            .ToList();
+        if (users.Count > MaxListedElements)
+        {
+            refused.Add(RuleCatalog.Create("MQ1019", string.Create(CultureInfo.InvariantCulture,
+                $"{users.Count} custom elements use the custom kind '{type}'; the first {MaxListedElements} are listed."), null, repoPath));
+        }
+
+        return refused;
+    }
 
     private static ExtensionWriteResult InvalidExtension(Diagnostic diagnostic) => new(SaveOutcome.Invalid, null, null, null, [diagnostic], []);
 

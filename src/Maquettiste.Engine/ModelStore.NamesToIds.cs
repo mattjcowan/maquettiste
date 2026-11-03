@@ -188,13 +188,21 @@ public sealed partial class ModelStore
                 }
             }
 
-            foreach (var kind in xref.Kinds)
+            foreach (var listed in xref.Kinds)
             {
+                // custom:<type> (next-phase-2-design.md section 4.2) reads the custom name index, whose forms start with the type, and
+                // keeps the elements of that type.
+                var customType = listed.StartsWith("custom:", StringComparison.Ordinal) ? listed["custom:".Length..] : null;
+                var kind = customType is null ? listed : "custom";
                 if ((qualified is not null && !string.Equals(qualified.Kind, kind, StringComparison.Ordinal)) || !NameIndex.NamedKinds.Contains(kind))
                     continue; // reserved kinds and kinds listed by id only have no names
                 var index = snapshot.Names(kind);
-                foreach (var entry in index.Find(qualified?.Path ?? PathOf(kind, text)))
-                    Add(entry.Id, entry.ElementId);
+                var path = qualified?.Path ?? (customType is null ? PathOf(kind, text) : customType + "." + PathOf(kind, text));
+                foreach (var entry in index.Find(path))
+                {
+                    if (customType is null || string.Equals(snapshot.Get<Custom>(entry.Id)?.Type, customType, StringComparison.Ordinal))
+                        Add(entry.Id, entry.ElementId);
+                }
 
                 if (qualified is not null)
                     continue;

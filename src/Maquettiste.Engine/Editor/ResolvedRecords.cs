@@ -18,7 +18,7 @@ public sealed record ResolvedQuery(string Scope = "all", string? Database = null
 /// <summary>One page of the resolved model as flat records (resolved objects reference each other, so other objects appear by id).</summary>
 /// <param name="Items">The records, by (kind, name, id): <see cref="PackageRecord"/>, <see cref="EntityRecord"/>, <see cref="RelationRecord"/>,
 /// <see cref="EnumRecord"/>, <see cref="ValueObjectRecord"/>, <see cref="ScalarTypeRecord"/>, <see cref="ReferenceTypeRecord"/>,
-/// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>, <see cref="OperationRecord"/>,
+/// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>, <see cref="OperationRecord"/>, <see cref="CustomRecord"/>,
 /// <see cref="DatabaseRecord"/>, <see cref="TableRecord"/>, <see cref="RoutineRecord"/>, <see cref="DatabaseTypeRecord"/> or
 /// <see cref="SqlObjectRecord"/>, <see cref="QueryRecord"/> or <see cref="MigrationRecord"/> (by database name, then applied order); each
 /// has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
@@ -751,6 +751,34 @@ public sealed record OperationReturnsRecord(IReadOnlyList<OperationMemberRecord>
 public sealed record OperationErrorRecord(string Id, string Name, string Code, string? Input, string DisplayName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
 
+/// <summary>A resolved custom element (next-phase-2-design.md section 4.2).</summary>
+/// <param name="Id">The element id.</param>
+/// <param name="Kind"><c>custom</c>.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Type">The custom kind's type key.</param>
+/// <param name="Package">The package id, or <see langword="null"/>.</param>
+/// <param name="Content">The content as written.</param>
+/// <param name="Members">Every member at any depth, in walk order.</param>
+/// <param name="DisplayName">The display name.</param>
+/// <param name="PluralName">The plural name.</param>
+/// <param name="Description">The description.</param>
+/// <param name="Tags">The tags.</param>
+/// <param name="Category">The category id, or <see langword="null"/>.</param>
+/// <param name="Stereotypes">The stereotype keys.</param>
+/// <param name="Properties">The custom properties.</param>
+/// <param name="Generation">The generation hints by pack.</param>
+public sealed record CustomRecord(string Id, string Kind, string Name, string Type, string? Package, IReadOnlyDictionary<string, System.Text.Json.JsonElement> Content,
+    IReadOnlyList<MemberRecord> Members, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+
+/// <summary>A member of a custom element.</summary>
+/// <param name="Id">The member id.</param>
+/// <param name="Name">The member's name, or <see langword="null"/> when its item has none.</param>
+/// <param name="Array">The key of the array that holds it.</param>
+/// <param name="Parent">The id of the member that holds it, or <see langword="null"/>.</param>
+/// <param name="Pointer">Its JSON pointer in the element's file.</param>
+public sealed record MemberRecord(string Id, string? Name, string Array, string? Parent, string Pointer);
+
 /// <summary>A resolved database: the database view (<see cref="DatabaseView"/>) with its kind.</summary>
 /// <param name="Id">The database id.</param>
 /// <param name="Kind"><c>database</c>.</param>
@@ -864,6 +892,7 @@ public static class ResolvedRecords
         ["actors"] = "actor",
         ["scenarios"] = "scenario",
         ["operations"] = "operation",
+        ["custom-elements"] = "custom",
         ["databases"] = "database",
         ["tables"] = "table",
         ["routines"] = "routine",
@@ -959,6 +988,12 @@ public static class ResolvedRecords
         {
             foreach (var o in model.Operations)
                 yield return new Entry("operation", o.Name, o.Id, () => context.Operation(o));
+        }
+
+        if (all || scope == "custom-elements")
+        {
+            foreach (var c in model.CustomElements)
+                yield return new Entry("custom", c.Name, c.Id, () => context.Custom(c));
         }
 
         if (all || scope == "databases")
@@ -1186,6 +1221,11 @@ public static class ResolvedRecords
             [.. o.Errors.Select(e => new OperationErrorRecord(e.Id, e.Name, e.Code, e.Input?.Id, e.DisplayName!, e.Description, Keys(e.Stereotypes), Plain(e.Properties)))],
             Ids(o.Fires), Ids(o.Requires),
             o.DisplayName!, o.PluralName!, o.Description, o.Tags, o.Category?.Id, Keys(o.Stereotypes), Plain(o.Properties), o.Generation);
+
+        public CustomRecord Custom(RCustom c) => new(c.Id, "custom", c.Name, c.Type, c.Package?.Id,
+            model.Source.Get<Model.Custom>(c.Id)?.Content ?? System.Collections.Immutable.ImmutableDictionary<string, System.Text.Json.JsonElement>.Empty,
+            [.. c.Members.Select(m => new MemberRecord(m.Id, m.Name, m.Array, m.Parent?.Id, model.Source.TryGetEntry(m.Id, out var entry) ? entry.JsonPointer : ""))],
+            c.DisplayName!, c.PluralName!, c.Description, c.Tags, c.Category?.Id, Keys(c.Stereotypes), Plain(c.Properties), c.Generation);
 
         private static OperationMemberRecord OperationMember(ROperationMember m) => new(m.Id, m.Name,
             m.Type is { } t ? new TypeRecord(t.Kind, t.Name, t.Builtin, t.Enum?.Id, t.ValueObject?.Id, t.Scalar?.Id, t.ReferenceType?.Id) : null,

@@ -14,6 +14,7 @@ import {
   ListChecks,
   ListOrdered,
   Package,
+  Puzzle,
   Rows3,
   SearchCode,
   Shapes,
@@ -56,6 +57,7 @@ export const KIND_ICONS: Record<ElementKind, LucideIcon> = {
   scenario: ListChecks,
   migration: History,
   operation: SquareTerminal,
+  custom: Puzzle,
 };
 
 export function KindIcon({ kind, className }: { kind: ElementKind; className?: string }) {

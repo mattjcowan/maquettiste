@@ -87,6 +87,9 @@ internal static class LocalizationRules
                     else if (LocalizationIndex.PropertyNameOf(field) is { } name)
                         diagnostics.Add(RuleCatalog.Create("MQ7203", $"The '{locale}' entry {id} translates the property '{name}', which no schema that applies to the {node.Kind} marks x-translatable.",
                             id, shard.Path, Pointer(id, field)));
+                    else if (LocalizationIndex.ContentNameOf(field) is { } key)
+                        diagnostics.Add(RuleCatalog.Create("MQ7203", $"The '{locale}' entry {id} translates the content key '{key}', which the {node.Kind}'s custom kind does not mark x-translatable.",
+                            id, shard.Path, Pointer(id, field)));
                     else
                         diagnostics.Add(RuleCatalog.Create("MQ7203", $"The '{locale}' entry {id} has a '{field}', which a {node.Kind} does not have.", id, shard.Path, Pointer(id, field)));
                 }
@@ -133,8 +136,8 @@ internal static class LocalizationRules
         return cut < 0 ? modelPath : settings[..cut] + "/" + modelPath;
     }
 
-    private static string Pointer(string id, string field) => LocalizationIndex.PropertyNameOf(field) is { } name
-        ? "/entries/" + id + "/properties/" + JsonPointer.Escape(name)
+    private static string Pointer(string id, string field) => LocalizationIndex.GroupOf(field, out var name) is { } group
+        ? "/entries/" + id + "/" + group + "/" + JsonPointer.Escape(name)
         : "/entries/" + id + "/" + JsonPointer.Escape(field);
 
     private static string Str(int i) => i.ToString(CultureInfo.InvariantCulture);

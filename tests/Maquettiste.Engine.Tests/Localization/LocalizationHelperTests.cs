@@ -39,6 +39,35 @@ public sealed class LocalizationHelperTests
         Assert.Contains("properties/<name>", error.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>A member's content text (next-phase-2-design.md section 4.2) is translated under the member's own id.</summary>
+    [Fact]
+    public async Task Translate_reads_a_member_content_field()
+    {
+        var (h, store) = await LocalizationTests.OpenCustomAsync();
+        using var _ = h;
+        await using var __ = store;
+        await Kit.Translate(store, "fr", new TranslationEdit(LocalizationTests.Subject, "content/text", "Votre facture"));
+        var model = ResolutionKit.Resolve(store.Current!);
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ translate '" + LocalizationTests.Subject + "' 'content/text' 'fr-CA' }}|{{ translate '" + LocalizationTests.Body + "' 'content/text' 'fr' }}|"
+            + "{{ has_translation '" + LocalizationTests.Subject + "' 'content/text' 'fr' }}",
+            model.Entity("Recipe"), model: model);
+
+        // fr-CA falls back to fr; an untranslated part is its default text; the l: key is the owner's.
+        Assert.Equal("Votre facture|Thank you.|true", unit.Text());
+        Assert.Contains("l:fr:" + LocalizationTests.Message, unit.ReadKeys);
+        Assert.Contains("e:" + LocalizationTests.Message, unit.ReadKeys);
+
+        // A resolved member takes the same field: the parts of the message, in file order.
+        var parts = await Adhoc.RenderAsync(
+            "{{ for part in (lookup '" + LocalizationTests.Message + "').content.parts }}{{ part.name }}={{ translate part 'content/text' 'fr' }};{{ end }}", model: model);
+        Assert.Equal("subject=Votre facture;body=Thank you.;", parts.Text());
+
+        var wrong = await Adhoc.RenderAsync("{{ translate '" + LocalizationTests.Subject + "' 'content/9lives' 'fr' }}", model.Entity("Recipe"), model: model);
+        Assert.Contains("content/<name>", wrong.Error().Message, StringComparison.Ordinal);
+    }
+
     /// <summary>Own errors only: an inherited error's translation is the second cut (next-phase-2-design.md section 4.1).</summary>
     [Fact]
     public async Task An_operations_members_outcomes_and_errors_take_their_translations()

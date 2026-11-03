@@ -39,7 +39,8 @@ public sealed class ModelSnapshot
         ModelIndexer.Result index,
         IReadOnlyList<LocaleShardDocument> shards,
         StereotypeDefaults stereotypeDefaults,
-        ImmutableArray<ScriptSource> seedScripts)
+        ImmutableArray<ScriptSource> seedScripts,
+        ImmutableArray<CustomKindDocument> customKinds)
     {
         Version = version;
         Settings = settings;
@@ -49,6 +50,11 @@ public sealed class ModelSnapshot
         Extensions = extensions;
         RuleScripts = ruleScripts;
         SeedScripts = seedScripts;
+        CustomKinds = customKinds;
+        _customKindsByType = customKinds
+            .Where(k => string.Equals(ModelPaths.StemOfPath(k.Path), k.Kind.Type, StringComparison.Ordinal))
+            .GroupBy(k => k.Kind.Type, StringComparer.Ordinal)
+            .ToFrozenDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         PropertySchemas = propertySchemas;
         _entries = index.Entries;
         _documentsById = index.DocumentsById;
@@ -102,6 +108,7 @@ public sealed class ModelSnapshot
     /// <param name="loadDiagnostics">Diagnostics of files that failed to load, or loaded with warnings.</param>
     /// <param name="localeShards">The locale shards (reference-types-seeds-localization.md section 3.3).</param>
     /// <param name="seedScripts">The rows scripts from <c>extensions/seeds/</c> (next-phase-2-design.md section 3.4).</param>
+    /// <param name="customKinds">The custom kind files from <c>extensions/kinds/</c> (next-phase-2-design.md section 4.2).</param>
     /// <returns>The snapshot.</returns>
     public static ModelSnapshot Create(
         IEnumerable<ElementDocument> documents,
@@ -112,15 +119,16 @@ public sealed class ModelSnapshot
         long version,
         IReadOnlyList<Diagnostic>? loadDiagnostics = null,
         IReadOnlyList<LocaleShardDocument>? localeShards = null,
-        IReadOnlyList<ScriptSource>? seedScripts = null) =>
+        IReadOnlyList<ScriptSource>? seedScripts = null,
+        IReadOnlyList<CustomKindDocument>? customKinds = null) =>
         CreateAfter(null, documents, settings, settingsHash, extensions, ruleScripts, version, loadDiagnostics, ModelIndexer.DefaultParallelism,
-            CancellationToken.None, localeShards, seedScripts);
+            CancellationToken.None, localeShards, seedScripts, customKinds);
 
     /// <summary>
     /// <see cref="Create"/> after the store's previous snapshot, whose indexes are patched when few documents changed (the result
     /// is the same as without it), walking at most <paramref name="parallelism"/> documents at once and observing
     /// <paramref name="ct"/> (the loader and the store pass <see cref="EngineOptions.EffectiveParallelism"/> and their token). Without
-    /// <paramref name="localeShards"/> or <paramref name="seedScripts"/> the previous snapshot's are kept.
+    /// <paramref name="localeShards"/>, <paramref name="seedScripts"/> or <paramref name="customKinds"/> the previous snapshot's are kept.
     /// </summary>
     internal static ModelSnapshot CreateAfter(
         ModelSnapshot? previous,
@@ -134,7 +142,8 @@ public sealed class ModelSnapshot
         int parallelism,
         CancellationToken ct,
         IReadOnlyList<LocaleShardDocument>? localeShards = null,
-        IReadOnlyList<ScriptSource>? seedScripts = null)
+        IReadOnlyList<ScriptSource>? seedScripts = null,
+        IReadOnlyList<CustomKindDocument>? customKinds = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(settings);
@@ -145,7 +154,9 @@ public sealed class ModelSnapshot
         if (!sorted)
             docs = [.. docs.OrderBy(d => d.Path, StringComparer.Ordinal)];
         var sortedExtensions = extensions.OrderBy(e => e.Path, StringComparer.Ordinal).ToImmutableArray();
-        var propertySchemas = PropertySchemaSet.Create(sortedExtensions, previous?.PropertySchemas, [.. docs.Where(d => d.Element is Stereotype)]);
+        ImmutableArray<CustomKindDocument> kinds =
+            [.. (customKinds ?? previous?.CustomKinds ?? []).OrderBy(k => k.Kind.Type, StringComparer.Ordinal).ThenBy(k => k.Path, StringComparer.Ordinal)];
+        var propertySchemas = PropertySchemaSet.Create(sortedExtensions, previous?.PropertySchemas, [.. docs.Where(d => d.Element is Stereotype)], kinds);
         var stereotypeDefaults = new StereotypeDefaults(docs);
         var index = ModelIndexer.Build(docs, propertySchemas, stereotypeDefaults, previous?.Index, parallelism, ct);
         var diagnostics = (loadDiagnostics ?? []).ToImmutableArray();
@@ -163,7 +174,8 @@ public sealed class ModelSnapshot
             index,
             localeShards is null ? previous?.LocaleShards ?? [] : [.. localeShards.OrderBy(s => s.ModelPath, StringComparer.Ordinal)],
             stereotypeDefaults,
-            [.. (seedScripts ?? previous?.SeedScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)]);
+            [.. (seedScripts ?? previous?.SeedScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)],
+            kinds);
     }
 
     /// <summary>The snapshot version.</summary>
@@ -192,6 +204,22 @@ public sealed class ModelSnapshot
     /// only when something reads the rows of a seed that names one (<c>rowsFrom.script</c>).
     /// </summary>
     public IReadOnlyList<ScriptSource> SeedScripts { get; }
+
+    /// <summary>
+    /// The custom kind files of <c>extensions/kinds/*.json</c> that read (next-phase-2-design.md section 4.2), ordinal by type, then by
+    /// path.
+    /// </summary>
+    public IReadOnlyList<CustomKindDocument> CustomKinds { get; }
+
+    private readonly FrozenDictionary<string, CustomKindDocument> _customKindsByType;
+
+    /// <summary>
+    /// The custom kind file that declares a type: the file <c>extensions/kinds/&lt;type&gt;.json</c> whose <c>type</c> is its stem, or
+    /// <see langword="null"/> when the project declares none (a file whose type differs from its name, MQ1017, declares nothing).
+    /// </summary>
+    /// <param name="type">The type key.</param>
+    /// <returns>The custom kind file.</returns>
+    public CustomKindDocument? CustomKindOf(string type) => _customKindsByType.GetValueOrDefault(type);
 
     /// <summary>The rows script a seed's <c>rowsFrom.script</c> names (a path under <c>extensions/</c>), or <see langword="null"/>.</summary>
     /// <param name="path">The path under <c>extensions/</c>, such as <c>seeds/audited-records.js</c>.</param>

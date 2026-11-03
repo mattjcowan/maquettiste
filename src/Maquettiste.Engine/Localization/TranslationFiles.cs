@@ -7,7 +7,7 @@ namespace Maquettiste.Engine.Localization;
 
 /// <summary>One translation unit read from an exchange file: a node id, a field and the target text (empty: left untranslated).</summary>
 /// <param name="Id">The node id.</param>
-/// <param name="Field">displayName, pluralName, label, description or <c>properties/&lt;name&gt;</c>.</param>
+/// <param name="Field">displayName, pluralName, label, description, <c>properties/&lt;name&gt;</c> or <c>content/&lt;name&gt;</c>.</param>
 /// <param name="Value">The translated text.</param>
 /// <param name="State">
 /// The unit's state as the file states it (XLIFF: the segment's <c>state</c>, such as <c>initial</c>, <c>translated</c>, <c>reviewed</c> or
@@ -213,7 +213,7 @@ public static class TranslationFiles
         foreach (var unit in document.Root.Descendants(ns + "unit"))
         {
             var key = (string?)unit.Attribute("id") ?? "";
-            var slash = key.IndexOf('/', StringComparison.Ordinal); // ids hold no slash; a property field does (properties/<name>)
+            var slash = key.IndexOf('/', StringComparison.Ordinal); // ids hold no slash; a property or content field does (properties/<name>, content/<name>)
             if (slash <= 0)
                 continue;
             var targets = unit.Descendants(ns + "target").ToList();

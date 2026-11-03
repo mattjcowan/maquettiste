@@ -175,6 +175,7 @@ internal sealed partial class ResolveRun
         ResolveSeedsAndUsages(resolvedDatabases);
         ResolveProcesses();
         ResolveOperations();
+        ResolveCustomElements();
         var (stereotypes, vocabularies, trees) = ResolveDefinitions();
         LinkOperationRequires(); // last: an id of any kind resolves, whatever registered it
 
@@ -195,6 +196,7 @@ internal sealed partial class ResolveRun
             Actors = new RList<RActor>(_actorOrder, [ActorKind]),
             Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),
             Operations = new RList<ROperation>(_operationOrder, [OperationKind]),
+            CustomElements = new RList<RCustom>(_customOrder, [CustomKind]),
             Databases = new RList<RDatabase>(resolvedDatabases, ["k:database"]),
             Migrations = new RList<RMigration>(_migrationOrder, MigrationMembership()),
             Locales = new RList<RLocale>(RLocale.Of(Settings.Localization), [RLocale.SettingsKey]),

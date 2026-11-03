@@ -871,6 +871,8 @@ paths:
           actions, gates and invokes, actors by id.
         - `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,
           `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.
+        - `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and
+          its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.
         - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
           indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
           for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
@@ -896,7 +898,7 @@ paths:
           description: What to read.
           schema:
             type: string
-            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, operations, databases, tables, routines, database-types, sql-objects, queries, migrations]
+            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, operations, custom-elements, databases, tables, routines, database-types, sql-objects, queries, migrations]
             default: all
         - name: database
           in: query
@@ -5164,7 +5166,9 @@ paths:
         and what is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load alone in the sandbox
         (MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not
         call `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level
-        (MQ5005, a warning). No rows script runs. Rule findings (`x/<id>`) come from `POST /api/validate`.
+        (MQ5005, a warning). Then the custom kinds (`kinds/<type>.json`, kind `custom-kind`), with MQ1001 or MQ1002 when one does not
+        parse or pass `custom-kind.json` and its own findings (MQ1017, MQ1018, MQ2009, MQ7212). No rows script runs. Rule findings
+        (`x/<id>`) come from `POST /api/validate`.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.ListExtensionFilesAsync()
       responses:
@@ -5214,8 +5218,10 @@ paths:
         `diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is
         refreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings
         reach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not
-        load or does not register its rows exactly once comes back as MQ7127. A path other than `<name>.json`, `rules/<name>.js` or
-        `seeds/<name>.js`, or one through a link, is 400.
+        load or does not register its rows exactly once comes back as MQ7127. A custom kind (`kinds/<type>.json`) must be JSON that
+        passes `custom-kind.json`, else 422 (MQ1001, MQ1002); it is written in canonical form, and `diagnostics` carry its own findings
+        and the MQ3033 findings of the elements of its type (at most 50, then a line with the count), which never refuse it. A path
+        other than `<name>.json`, `rules/<name>.js`, `seeds/<name>.js` or `kinds/<type>.json`, or one through a link, is 400.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: ModelStore.WriteExtensionFileAsync(path, text, expectedHash)
       parameters:
@@ -5258,7 +5264,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExtensionWriteResult'
         '422':
-          description: Not text, larger than 1 MB, or a schema that is not valid; nothing was written.
+          description: Not text, larger than 1 MB, or a schema or custom kind that is not valid; nothing was written.
           content:
             application/json:
               schema:
@@ -5273,6 +5279,9 @@ paths:
       tags: [extensions]
       operationId: deleteExtensionFile
       summary: Delete one extension file
+      description: |
+        `If-Match` carries the file's hash. A custom kind that custom elements use is 422, with one MQ1019 per element that would
+        lose its kind (at most 50, then a line with the count), and nothing is deleted.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: ModelStore.DeleteExtensionFileAsync(path, expectedHash)
       parameters:
@@ -5286,6 +5295,12 @@ paths:
                 $ref: '#/components/schemas/ExtensionWriteResult'
         '409':
           description: The file changed since it was read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '422':
+          description: A custom kind that custom elements use; nothing was deleted.
           content:
             application/json:
               schema:
@@ -5310,8 +5325,9 @@ paths:
       summary: Rename one extension file within its kind
       description: |
         `If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a
-        `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`), else 422. Nothing else changes: a seed whose
-        `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.
+        `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`, a custom kind a `kinds/<type>.json`), else 422.
+        A custom kind that custom elements use is 422, with one MQ1019 per element that would lose its kind, as a delete is. Nothing
+        else changes: a seed whose `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: ModelStore.MoveExtensionFileAsync(move, expectedHash)
       parameters:
@@ -5339,7 +5355,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExtensionWriteResult'
         '422':
-          description: The target exists or is of another kind.
+          description: The target exists or is of another kind, or the source is a custom kind that custom elements use.
           content:
             application/json:
               schema:
@@ -7358,9 +7374,9 @@ components:
                 type: [string, 'null']
                 description: The text the fallback chain gives.
               field:
-                description: A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.
+                description: A standard field, `properties/<name>` for the text of an `x-translatable` custom property, or `content/<name>` for an `x-translatable` content key of a custom element or a member.
                 type: string
-                pattern: '^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$'
+                pattern: '^(displayName|pluralName|label|description|(properties|content)/[A-Za-z_][A-Za-z0-9_]*)$'
               source:
                 type: [string, 'null']
               translation:
@@ -7389,9 +7405,9 @@ components:
               id:
                 $ref: '#/components/schemas/Ulid'
               field:
-                description: A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.
+                description: A standard field, `properties/<name>` for the text of an `x-translatable` custom property, or `content/<name>` for an `x-translatable` content key of a custom element or a member.
                 type: string
-                pattern: '^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$'
+                pattern: '^(displayName|pluralName|label|description|(properties|content)/[A-Za-z_][A-Za-z0-9_]*)$'
               value:
                 description: 'The text, `{ "file": "<sidecar>" }`, or `null` to remove.'
               confirm:
@@ -7571,7 +7587,7 @@ components:
                   - type: 'null'
     ElementKind:
       type: string
-      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario, migration, operation]
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario, migration, operation, custom]
     ChangeSource:
       type: string
       enum: [editor, disk, cli, engine]
@@ -7626,7 +7642,7 @@ components:
         memberCount:
           type: integer
           minimum: 0
-          description: The number of members, on diagram rows (E5).
+          description: The number of members, on diagram rows (E5) and on custom element rows (next-phase-2-design.md section 4.2).
         ends:
           type: array
           description: The relation's ends in document order, on relation rows (E5).
@@ -7672,6 +7688,9 @@ components:
           description: The operation's effect, on operation rows (next-phase-2-design.md section 4.1).
           type: string
           enum: [read, change]
+        type:
+          description: The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2).
+          type: string
     RelationEndSummary:
       x-engine-addition: E5
       x-engine-record: Maquettiste.Engine.Model.RelationEndSummary
@@ -7739,6 +7758,7 @@ components:
         - $ref: '../../schemas/v1/scenario.json'
         - $ref: '../../schemas/v1/migration.json'
         - $ref: '../../schemas/v1/operation.json'
+        - $ref: '../../schemas/v1/custom.json'
     NewModelDocument:
       description: 'A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other.'
       type: object
@@ -8697,6 +8717,7 @@ components:
             - $ref: '#/components/schemas/ActorRecord'
             - $ref: '#/components/schemas/ScenarioRecord'
             - $ref: '#/components/schemas/OperationRecord'
+            - $ref: '#/components/schemas/CustomRecord'
             - $ref: '#/components/schemas/DatabaseRecord'
             - $ref: '#/components/schemas/TableRecord'
             - $ref: '#/components/schemas/RoutineRecord'
@@ -9976,6 +9997,55 @@ components:
             type: array
             items:
               type: string
+    CustomRecord:
+      x-engine-record: Maquettiste.Engine.CustomRecord
+      description: 'A resolved custom element (next-phase-2-design.md section 4.2): its custom kind''s type, its content as written and every member.'
+      allOf:
+      - $ref: '#/components/schemas/ResolvedAnnotations'
+      - type: object
+        required: [id, kind, name, type, package, content, members]
+        properties:
+          id:
+            type: string
+          kind:
+            type: string
+            const: custom
+          name:
+            type: string
+          type:
+            type: string
+            description: The custom kind's type key.
+          package:
+            type: [string, 'null']
+          content:
+            type: object
+            description: The content as written, keys in ordinal order.
+            additionalProperties: true
+          members:
+            type: array
+            description: Every member at any depth, in walk order (content keys ordinal, items by index, a member before its nested ones).
+            items:
+              $ref: '#/components/schemas/MemberRecord'
+    MemberRecord:
+      x-engine-record: Maquettiste.Engine.MemberRecord
+      description: A member of a custom element, an item of an x-member array.
+      type: object
+      required: [id, name, array, parent, pointer]
+      properties:
+        id:
+          type: string
+        name:
+          type: [string, 'null']
+          description: The item's name, when its item schema declares a string name.
+        array:
+          type: string
+          description: The key of the array that holds it.
+        parent:
+          type: [string, 'null']
+          description: The id of the member that holds it.
+        pointer:
+          type: string
+          description: Its JSON pointer in the element's file.
     OperationMemberRecord:
       x-engine-record: Maquettiste.Engine.OperationMemberRecord
       description: A member of an operation's input or of an outcome's returns, a typed value or a record key.
@@ -12688,10 +12758,10 @@ components:
             $ref: '#/components/schemas/ExtensionRuleInfo'
         kind:
           description: >-
-            `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`) or `seed-rows` (a seed's rows
-            script, `seeds/<name>.js`).
+            `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows
+            script, `seeds/<name>.js`) or `custom-kind` (a custom kind, `kinds/<type>.json`).
           type: string
-          enum: [schema, rule, seed-rows]
+          enum: [schema, rule, seed-rows, custom-kind]
         size:
           type: integer
         hash:
@@ -12724,7 +12794,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [schema, rule, seed-rows]
+          enum: [schema, rule, seed-rows, custom-kind]
         hash:
           $ref: '#/components/schemas/Hash'
         text:
@@ -12916,7 +12986,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [element, kind-set, referrers, setting, template, schema-diff, translation, localization, absent, inputs, output-missing, output-edited, state-reset, pack-version, unit, parameter, scripts, output-base, formatter, target-missing]
+          enum: [element, kind-set, referrers, setting, template, schema-diff, translation, localization, custom-kind, absent, inputs, output-missing, output-edited, state-reset, pack-version, unit, parameter, scripts, output-base, formatter, target-missing]
         key:
           type: string
         detail:

@@ -111,4 +111,28 @@ public sealed class ModelSnapshotIndexTests
         b.Relation("placed", customer, order);
         return (b.Build(), customer.Id);
     }
+
+    [Fact]
+    public void Content_xrefs_are_indexed_with_the_custom_kind_schema_and_the_member_as_holder()
+    {
+        // next-phase-2-design.md section 4.2: Schema is custom-kind:<type>, Field the top-level content key, FromId the innermost member.
+        var b = new ModelBuilder(61);
+        var invoice = b.Entity("Invoice").Key("id", "uuid").Attr("number", "string");
+        string layout = b.NewId(), header = b.NewId(), number = b.NewId(), setting = b.NewId(), row = invoice.AttrId("number");
+        b.Add(CustomKinds.CustomFixture.Element(layout, "invoice_layout", "layout", $$"""
+            { "sections": [ { "id": "{{header}}", "name": "header", "lines": [ { "id": "{{number}}", "name": "number", "field": "{{row}}" } ] } ], "pick": "{{number}}" }
+            """));
+        b.Add(CustomKinds.CustomFixture.Element(setting, "number_field", "pointer", $$"""{ "field": "{{row}}" }"""));
+        var pointer = CustomKinds.CustomFixture.KindDocument("""{ "type": "pointer", "properties": { "field": { "type": "string", "x-ref": { "kind": "attribute" } } } }""");
+
+        var model = CustomKinds.CustomFixture.Snapshot(b, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.LayoutKind), pointer]);
+
+        Assert.Equal(
+            [
+                new ReferenceInfo(setting, setting, "/content/field", "field", row, false, false, "custom-kind:pointer"),
+                new ReferenceInfo(layout, number, "/content/sections/0/lines/0/field", "sections", row, false, true, "custom-kind:layout"),
+            ],
+            model.ReferencesTo(row).Where(r => r.Schema is not null).OrderBy(r => r.Schema, StringComparer.Ordinal).Reverse());
+        Assert.Contains(model.ReferencesTo(number), r => r is { FromElementId: var from, FromId: var holder, JsonPointer: "/content/pick", Field: "pick" } && from == layout && holder == layout);
+    }
 }

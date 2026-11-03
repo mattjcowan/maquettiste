@@ -37,7 +37,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Saves pack.json (savePack).</summary>
     [McpServerTool(Name = "save_pack", Title = "Save pack.json", Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Replaces a pack's pack.json with a whole document (units, parameters, parameterSchema and every other member) if it still has expectedHash; written in canonical form. A schema failure (MQ6001, MQ6021 unknown scope) writes nothing; unit problems (MQ6019, MQ6022) are saved and reported.")]
+    [Description("Replaces a pack's pack.json with a whole document (units, parameters, parameterSchema and every other member) if it still has expectedHash; written in canonical form. A unit's for is model, each <kind>, each custom:<type> or select <name>. A schema failure (MQ6001, MQ6021 unknown scope) writes nothing; unit problems (MQ6019, MQ6022) are saved and reported.")]
     public Task<CallToolResult> SavePack(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The whole pack.json document (the document from get_pack, edited); required.")] JsonElement? document = null,
@@ -255,7 +255,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Completion data for a unit's templates (getTemplateContext).</summary>
     [McpServerTool(Name = "get_template_context", Title = "Template context", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("What a unit's templates can use: the globals (model, element, the scope alias, pack.params.*, mapping, hints, data, unit), the members of the model and of the scope's records in snake_case, and the built-in helpers.")]
+    [Description("What a unit's templates can use: the globals (model, element, the scope alias, pack.params.*, mapping, hints, data, unit), the members of the model and of the scope's records in snake_case, and the built-in helpers. An each custom:<type> unit's alias is custom, and members lists the custom kind's declared content keys under custom.content.")]
     public Task<CallToolResult> GetTemplateContext(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The unit id; required.")] string? unit = null,

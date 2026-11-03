@@ -1227,7 +1227,7 @@
         ],
         "operationId": "getResolvedModel",
         "summary": "The resolved model as flat records, in pages",
-        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
+        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.\n- `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and\n  its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
         "parameters": [
@@ -1254,6 +1254,7 @@
                 "actors",
                 "scenarios",
                 "operations",
+                "custom-elements",
                 "databases",
                 "tables",
                 "routines",
@@ -7280,7 +7281,7 @@
         ],
         "operationId": "listExtensionFiles",
         "summary": "The custom property schemas, script rules and rows scripts of the model",
-        "description": "The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules\n(`rules/<name>.js`), then the seeds' rows scripts (`seeds/<name>.js`, kind `seed-rows`), each ordinal by path, with size, hash\nand what is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load alone in the sandbox\n(MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not\ncall `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level\n(MQ5005, a warning). No rows script runs. Rule findings (`x/<id>`) come from `POST /api/validate`.\n",
+        "description": "The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules\n(`rules/<name>.js`), then the seeds' rows scripts (`seeds/<name>.js`, kind `seed-rows`), each ordinal by path, with size, hash\nand what is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load alone in the sandbox\n(MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not\ncall `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level\n(MQ5005, a warning). Then the custom kinds (`kinds/<type>.json`, kind `custom-kind`), with MQ1001 or MQ1002 when one does not\nparse or pass `custom-kind.json` and its own findings (MQ1017, MQ1018, MQ2009, MQ7212). No rows script runs. Rule findings\n(`x/<id>`) come from `POST /api/validate`.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelStore.ListExtensionFilesAsync()",
         "responses": {
@@ -7347,7 +7348,7 @@
         ],
         "operationId": "putExtensionFile",
         "summary": "Write one extension file",
-        "description": "`If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB, and the\nwrite goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its\nMQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is\nwritten as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in\n`diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is\nrefreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings\nreach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not\nload or does not register its rows exactly once comes back as MQ7127. A path other than `<name>.json`, `rules/<name>.js` or\n`seeds/<name>.js`, or one through a link, is 400.\n",
+        "description": "`If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB, and the\nwrite goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its\nMQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is\nwritten as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in\n`diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is\nrefreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings\nreach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not\nload or does not register its rows exactly once comes back as MQ7127. A custom kind (`kinds/<type>.json`) must be JSON that\npasses `custom-kind.json`, else 422 (MQ1001, MQ1002); it is written in canonical form, and `diagnostics` carry its own findings\nand the MQ3033 findings of the elements of its type (at most 50, then a line with the count), which never refuse it. A path\nother than `<name>.json`, `rules/<name>.js`, `seeds/<name>.js` or `kinds/<type>.json`, or one through a link, is 400.\n",
         "x-maquettiste-role": "maintainer",
         "x-maquettiste-engine": "ModelStore.WriteExtensionFileAsync(path, text, expectedHash)",
         "parameters": [
@@ -7422,7 +7423,7 @@
             }
           },
           "422": {
-            "description": "Not text, larger than 1 MB, or a schema that is not valid; nothing was written.",
+            "description": "Not text, larger than 1 MB, or a schema or custom kind that is not valid; nothing was written.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7442,6 +7443,7 @@
         ],
         "operationId": "deleteExtensionFile",
         "summary": "Delete one extension file",
+        "description": "`If-Match` carries the file's hash. A custom kind that custom elements use is 422, with one MQ1019 per element that would\nlose its kind (at most 50, then a line with the count), and nothing is deleted.\n",
         "x-maquettiste-role": "maintainer",
         "x-maquettiste-engine": "ModelStore.DeleteExtensionFileAsync(path, expectedHash)",
         "parameters": [
@@ -7486,6 +7488,16 @@
               }
             }
           },
+          "422": {
+            "description": "A custom kind that custom elements use; nothing was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
           "428": {
             "$ref": "#/components/responses/PreconditionRequired"
           }
@@ -7499,7 +7511,7 @@
         ],
         "operationId": "moveExtensionFile",
         "summary": "Rename one extension file within its kind",
-        "description": "`If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a\n`<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`), else 422. Nothing else changes: a seed whose\n`rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.\n",
+        "description": "`If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a\n`<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`, a custom kind a `kinds/<type>.json`), else 422.\nA custom kind that custom elements use is 422, with one MQ1019 per element that would lose its kind, as a delete is. Nothing\nelse changes: a seed whose `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.\n",
         "x-maquettiste-role": "maintainer",
         "x-maquettiste-engine": "ModelStore.MoveExtensionFileAsync(move, expectedHash)",
         "parameters": [
@@ -7560,7 +7572,7 @@
             }
           },
           "422": {
-            "description": "The target exists or is of another kind.",
+            "description": "The target exists or is of another kind, or the source is a custom kind that custom elements use.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10900,9 +10912,9 @@
                   "description": "The text the fallback chain gives."
                 },
                 "field": {
-                  "description": "A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.",
+                  "description": "A standard field, `properties/<name>` for the text of an `x-translatable` custom property, or `content/<name>` for an `x-translatable` content key of a custom element or a member.",
                   "type": "string",
-                  "pattern": "^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$"
+                  "pattern": "^(displayName|pluralName|label|description|(properties|content)/[A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "source": {
                   "type": [
@@ -10970,9 +10982,9 @@
                   "$ref": "#/components/schemas/Ulid"
                 },
                 "field": {
-                  "description": "A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.",
+                  "description": "A standard field, `properties/<name>` for the text of an `x-translatable` custom property, or `content/<name>` for an `x-translatable` content key of a custom element or a member.",
                   "type": "string",
-                  "pattern": "^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$"
+                  "pattern": "^(displayName|pluralName|label|description|(properties|content)/[A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "value": {
                   "description": "The text, `{ \"file\": \"<sidecar>\" }`, or `null` to remove."
@@ -11315,7 +11327,8 @@
           "actor",
           "scenario",
           "migration",
-          "operation"
+          "operation",
+          "custom"
         ]
       },
       "ChangeSource": {
@@ -11409,7 +11422,7 @@
           "memberCount": {
             "type": "integer",
             "minimum": 0,
-            "description": "The number of members, on diagram rows (E5)."
+            "description": "The number of members, on diagram rows (E5) and on custom element rows (next-phase-2-design.md section 4.2)."
           },
           "ends": {
             "type": "array",
@@ -11478,6 +11491,10 @@
               "read",
               "change"
             ]
+          },
+          "type": {
+            "description": "The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2).",
+            "type": "string"
           }
         }
       },
@@ -11621,6 +11638,9 @@
           },
           {
             "$ref": "#/components/schemas/operation"
+          },
+          {
+            "$ref": "#/components/schemas/custom"
           }
         ]
       },
@@ -13259,6 +13279,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/OperationRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomRecord"
                 },
                 {
                   "$ref": "#/components/schemas/DatabaseRecord"
@@ -15913,6 +15936,100 @@
             }
           }
         ]
+      },
+      "CustomRecord": {
+        "x-engine-record": "Maquettiste.Engine.CustomRecord",
+        "description": "A resolved custom element (next-phase-2-design.md section 4.2): its custom kind's type, its content as written and every member.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "type",
+              "package",
+              "content",
+              "members"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "custom"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "description": "The custom kind's type key."
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "content": {
+                "type": "object",
+                "description": "The content as written, keys in ordinal order.",
+                "additionalProperties": true
+              },
+              "members": {
+                "type": "array",
+                "description": "Every member at any depth, in walk order (content keys ordinal, items by index, a member before its nested ones).",
+                "items": {
+                  "$ref": "#/components/schemas/MemberRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MemberRecord": {
+        "x-engine-record": "Maquettiste.Engine.MemberRecord",
+        "description": "A member of a custom element, an item of an x-member array.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "array",
+          "parent",
+          "pointer"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The item's name, when its item schema declares a string name."
+          },
+          "array": {
+            "type": "string",
+            "description": "The key of the array that holds it."
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the member that holds it."
+          },
+          "pointer": {
+            "type": "string",
+            "description": "Its JSON pointer in the element's file."
+          }
+        }
       },
       "OperationMemberRecord": {
         "x-engine-record": "Maquettiste.Engine.OperationMemberRecord",
@@ -21389,12 +21506,13 @@
             }
           },
           "kind": {
-            "description": "`schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`) or `seed-rows` (a seed's rows script, `seeds/<name>.js`).",
+            "description": "`schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows script, `seeds/<name>.js`) or `custom-kind` (a custom kind, `kinds/<type>.json`).",
             "type": "string",
             "enum": [
               "schema",
               "rule",
-              "seed-rows"
+              "seed-rows",
+              "custom-kind"
             ]
           },
           "size": {
@@ -21451,7 +21569,8 @@
             "enum": [
               "schema",
               "rule",
-              "seed-rows"
+              "seed-rows",
+              "custom-kind"
             ]
           },
           "hash": {
@@ -21823,6 +21942,7 @@
               "schema-diff",
               "translation",
               "localization",
+              "custom-kind",
               "absent",
               "inputs",
               "output-missing",
@@ -32718,7 +32838,8 @@
                 "operation",
                 "operation-member",
                 "outcome",
-                "error"
+                "error",
+                "custom"
               ]
             },
             "uniqueItems": true,
@@ -36917,6 +37038,117 @@
           }
         }
       },
+      "custom": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Custom element",
+        "description": "An instance of a custom kind the project declares in extensions/kinds/<type>.json (model/custom/<type>/).",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "package",
+          "type",
+          "description",
+          "rationale",
+          "decision",
+          "status",
+          "stereotypes",
+          "excludeStereotypes",
+          "tags",
+          "category",
+          "content",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "custom"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "package": {
+            "$ref": "#/components/schemas/id"
+          },
+          "type": {
+            "description": "The custom kind of the element: the type key of a file under extensions/kinds/ (MQ1019).",
+            "$ref": "#/components/schemas/key"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "excludeStereotypes": {
+            "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+            "$ref": "#/components/schemas/keyList"
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "content": {
+            "description": "The values of the fields the custom kind declares, checked against its properties and required (MQ3033). Free-form for the canonical writer: keys in ordinal order at every level.",
+            "type": "object",
+            "default": {}
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "type"
+        ],
+        "additionalProperties": false
+      },
       "placeholder": {
         "description": "A name a batch declares with as and uses anywhere in the batch.",
         "type": "string",
@@ -37641,8 +37873,9 @@
                   "minLength": 1
                 },
                 "for": {
+                  "description": "The unit's scope: model, each <kind>, each custom:<type> for the elements of a custom kind the project declares, or select <name> for a selector the pack's scripts register.",
                   "type": "string",
-                  "pattern": "^(model|each (package|entity|attribute|relation|enum|value object|database|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario|operation)|select [A-Za-z_][A-Za-z0-9_]*)$"
+                  "pattern": "^(model|each (package|entity|attribute|relation|enum|value object|database|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario|operation|custom:[a-z][a-z0-9]*(-[a-z0-9]+)*)|select [A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "where": {
                   "title": "Unit filters",

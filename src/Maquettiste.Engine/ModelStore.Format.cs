@@ -13,7 +13,7 @@ namespace Maquettiste.Engine;
 /// <param name="Skipped">The files left as they are because they are not valid enough to rewrite safely (not JSON, no known kind, a
 /// schema error), ordinal; validate gives the reasons.</param>
 /// <param name="Refused">The requested paths that are not model files (outside the model folder, not <c>maquettiste.json</c>, an
-/// element file or a locale shard, or missing), as given; nothing is written when any is refused.</param>
+/// element file, a locale shard or a custom kind file, or missing), as given; nothing is written when any is refused.</param>
 /// <param name="Total">The model files considered.</param>
 public sealed record ModelFormatResult(IReadOnlyList<string> Formatted, IReadOnlyList<string> Skipped, IReadOnlyList<string> Refused, int Total);
 
@@ -21,7 +21,8 @@ public sealed partial class ModelStore
 {
     /// <summary>
     /// Rewrites model files in canonical form (SPEC section 11), as <c>maquettiste format</c> does: <c>maquettiste.json</c> (which also
-    /// loses the retired <c>commit</c> flag, MQ1010), the element files under <c>model/</c> and the locale shards. A file already in
+    /// loses the retired <c>commit</c> flag, MQ1010), the element files under <c>model/</c>, the locale shards and the custom kind files
+    /// (<c>extensions/kinds/*.json</c>, next-phase-2-design.md section 4.2). A file already in
     /// canonical form is not touched; a file that is not valid enough to rewrite is left as it is and listed in
     /// <see cref="ModelFormatResult.Skipped"/>. The rewritten files are staged and renamed into place together under the store's write
     /// gate, then reloaded, so subscribers get one change set; a format changes no content, only bytes.
@@ -119,7 +120,9 @@ public sealed partial class ModelStore
     }
 
     private static ModelFileKind? Formattable(string modelPath) =>
-        ModelPaths.Classify(modelPath) is { } kind && kind is ModelFileKind.Settings or ModelFileKind.Element or ModelFileKind.LocaleShard ? kind : null;
+        ModelPaths.Classify(modelPath) is { } kind && kind is ModelFileKind.Settings or ModelFileKind.Element or ModelFileKind.LocaleShard or ModelFileKind.CustomKind
+            ? kind
+            : null;
 }
 
 /// <summary>The canonical bytes of one model file, shared by <see cref="ModelStore.FormatAsync"/> and <c>maquettiste format</c>.</summary>
@@ -129,7 +132,7 @@ internal static class ModelFormatter
     /// <param name="schemas">The schema registry.</param>
     /// <param name="json">The canonical writer.</param>
     /// <param name="bytes">The file.</param>
-    /// <param name="kind">The file kind: settings, element or locale shard.</param>
+    /// <param name="kind">The file kind: settings, element, locale shard or custom kind.</param>
     /// <param name="repoPath">The repo-relative path.</param>
     /// <returns>The canonical bytes.</returns>
     public static byte[]? Canonical(ISchemaRegistry schemas, ICanonicalJson json, byte[] bytes, ModelFileKind kind, string repoPath)
@@ -157,6 +160,9 @@ internal static class ModelFormatter
                     break;
                 case ModelFileKind.LocaleShard:
                     schemaFile = DocumentReader.LocaleShardSchema;
+                    break;
+                case ModelFileKind.CustomKind:
+                    schemaFile = "custom-kind.json";
                     break;
                 default:
                     if (!root.TryGetProperty("kind", out var kindValue) || kindValue.ValueKind != JsonValueKind.String || !KindInfo.TryGet(kindValue.GetString()!, out var info))

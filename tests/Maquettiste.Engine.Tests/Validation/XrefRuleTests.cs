@@ -203,7 +203,7 @@ public sealed class XrefRuleTests
     public async Task Operation_kinds_resolve_and_only_member_stays_reserved()
     {
         // Phase 2 (next-phase-2-design.md section 4.1): operation is an element kind, operation-member, outcome and error are
-        // sub-element kinds; only member (the members of custom elements) still dangles until its kind arrives.
+        // sub-element kinds; member (the members of custom elements, section 4.2) is one too, so nothing dangles for want of a kind.
         var b = new ModelBuilder(36);
         string send = b.NewId(), recipient = b.NewId(), applied = b.NewId(), alreadySent = b.NewId(), part = b.NewId();
         var invoice = b.Entity("Invoice").Key("id", "uuid");
@@ -230,11 +230,13 @@ public sealed class XrefRuleTests
 
         Assert.Equal([("MQ2001", "/properties/part"), ("MQ2002", "/properties/wrong")], found.Select(d => (d.Rule, d.JsonPointer!)));
         Assert.All(found, d => Assert.Equal(order.Id, d.ElementId));
-        Assert.Contains("(member arrives in a later phase, so no value of that kind exists yet.)", found[0].Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("arrives in a later phase", found[0].Message, StringComparison.Ordinal);
         Assert.False(XRef.IsReserved("operation"));
         Assert.False(XRef.IsReserved("outcome"));
         Assert.False(XRef.IsReserved("error"));
-        Assert.True(XRef.IsReserved("member"));
+        Assert.False(XRef.IsReserved("member"));
+        Assert.False(XRef.IsReserved("custom:setting"));
+        Assert.True(XRef.IsSubElementKind("member"));
         Assert.True(XRef.IsSubElementKind("operation-member"));
         Assert.False(XRef.IsSubElementKind("operation"));
 
@@ -320,5 +322,98 @@ public sealed class XrefRuleTests
         var report = await ValidationFixture.Validator().ValidateAsync(model, ValidationScope.All, null, Ct);
         Assert.DoesNotContain(report.Diagnostics, d => d.Rule is "MQ5001" or "MQ5004");
         return [.. report.Diagnostics.Where(d => Rules.Contains(d.Rule))];
+    }
+
+    // ---- custom element content (next-phase-2-design.md section 4.2) ----
+
+    [Fact]
+    public async Task Content_values_are_checked_like_properties()
+    {
+        var b = new ModelBuilder(51);
+        var customer = b.Entity("Customer").Key("id", "uuid");
+        string a = b.NewId(), c = b.NewId(), d = b.NewId(), ghost = b.NewId();
+        b.Add(CustomKinds.CustomFixture.Element(a, "by_name", "setting", """{ "code": "net_30" }"""));
+        b.Add(CustomKinds.CustomFixture.Element(c, "dangling", "setting", $$"""{ "code": "{{ghost}}" }"""));
+        b.Add(CustomKinds.CustomFixture.Element(d, "wrong_kind", "setting", $$"""{ "code": "{{customer.Id}}" }"""));
+        var model = CustomKinds.CustomFixture.Snapshot(b, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.SettingKind)]);
+
+        var found = await CustomKinds.CustomFixture.FindingsAsync(model, Rules);
+
+        Assert.Equal(
+            [("MQ2010", a, "/content/code"), ("MQ2001", c, "/content/code"), ("MQ2002", d, "/content/code")],
+            found.Select(f => (f.Rule, f.ElementId!, f.JsonPointer!)).OrderBy(f => f.Item1 == "MQ2010" ? 0 : f.Item1 == "MQ2001" ? 1 : 2));
+        Assert.Contains("(custom-kind:setting)", found.Single(f => f.Rule == "MQ2010").Message, StringComparison.Ordinal);
+        Assert.Contains("expects a row", found.Single(f => f.Rule == "MQ2002").Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_member_of_another_custom_element_is_MQ2011()
+    {
+        var b = new ModelBuilder(52);
+        string first = b.NewId(), second = b.NewId(), mine = b.NewId(), theirs = b.NewId(), line = b.NewId(), reply = b.NewId();
+        b.Add(CustomKinds.CustomFixture.Element(first, "invoice_layout", "layout", $$"""
+            { "sections": [ { "id": "{{mine}}", "name": "header", "lines": [ { "id": "{{line}}", "name": "number" } ] } ], "pick": "{{line}}" }
+            """));
+        b.Add(CustomKinds.CustomFixture.Element(second, "credit_layout", "layout", $$"""{ "sections": [ { "id": "{{theirs}}", "name": "header" } ], "pick": "{{mine}}" }"""));
+        b.Add(CustomKinds.CustomFixture.Element(reply, "late_reply", "scoped", $$"""{ "part": "{{theirs}}", "fine": "{{mine}}" }"""));
+        var scoped = CustomKinds.CustomFixture.KindDocument($$"""
+            { "type": "scoped", "properties": {
+                "part": { "type": "string", "x-ref": { "kind": "member", "of": "{{first}}" } },
+                "fine": { "type": "string", "x-ref": { "kind": "member", "of": "{{first}}" } } } }
+            """);
+        var model = CustomKinds.CustomFixture.Snapshot(b, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.LayoutKind), scoped]);
+
+        var found = await CustomKinds.CustomFixture.FindingsAsync(model, Rules);
+
+        Assert.Equal([("MQ2011", second, "/content/pick"), ("MQ2011", reply, "/content/part")], found.Select(f => (f.Rule, f.ElementId!, f.JsonPointer!)).Order());
+        Assert.Contains("of \"$element\" takes a member of custom credit_layout", found.Single(f => f.ElementId == second).Message, StringComparison.Ordinal);
+        Assert.Contains("not of custom invoice_layout", found.Single(f => f.ElementId == reply).Message, StringComparison.Ordinal);
+
+        // With kind member, an of that names no custom element is malformed (MQ2009 on the custom kind file).
+        var customer = b.Entity("Customer").Key("id", "uuid");
+        var wrongOf = CustomKinds.CustomFixture.KindDocument($$"""{ "type": "scoped", "properties": { "part": { "type": "string", "x-ref": { "kind": "member", "of": "{{customer.Id}}" } } } }""");
+        var malformed = await CustomKinds.CustomFixture.FindingsAsync(CustomKinds.CustomFixture.Snapshot(b, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.LayoutKind), wrongOf]), "MQ2009");
+        var problem = Assert.Single(malformed);
+        Assert.Equal((".maquettiste/extensions/kinds/scoped.json", "/properties/part/x-ref/of"), (problem.FilePath, problem.JsonPointer));
+    }
+
+    [Fact]
+    public async Task A_custom_element_of_another_type_is_MQ2002()
+    {
+        var b = new ModelBuilder(53);
+        string dueDays = b.NewId(), live = b.NewId();
+        b.Add(CustomKinds.CustomFixture.Element(dueDays, "due_days", "setting", """{ "value": 30 }"""));
+        b.Add(CustomKinds.CustomFixture.Element(live, "billing_live", "flag", """{ "on": true }"""));
+        var order = b.Entity("Order").Key("id", "uuid").Property("terms", dueDays).Property("switch", live).Property("anything", live);
+        var extension = PropertySchemaSetTests.Extension("""
+            { "terms": { "type": "string", "x-ref": { "kind": "custom:setting" } },
+              "switch": { "type": "string", "x-ref": { "kind": "custom:setting" } },
+              "anything": { "type": "string", "x-ref": { "kind": "custom" } } }
+            """);
+        var model = CustomKinds.CustomFixture.Snapshot(b, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.SettingKind), CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.FlagKind)], extension);
+
+        var found = await CustomKinds.CustomFixture.FindingsAsync(model, Rules);
+
+        var finding = Assert.Single(found);
+        Assert.Equal(("MQ2002", order.Id, "/properties/switch"), (finding.Rule, finding.ElementId!, finding.JsonPointer!));
+        Assert.Contains("a custom:flag; its schema (extension:links) expects a custom:setting", finding.Message, StringComparison.Ordinal);
+        Assert.Contains(model.ReferencesTo(dueDays), r => r.FromElementId == order.Id && r.Field == "terms");
+    }
+
+    [Fact]
+    public async Task A_value_under_an_undeclared_custom_kind_is_MQ2002()
+    {
+        var b = new ModelBuilder(54);
+        var dueDays = b.NewId();
+        b.Add(CustomKinds.CustomFixture.Element(dueDays, "due_days", "setting", """{ "value": 30 }"""));
+        var order = b.Entity("Order").Key("id", "uuid").Property("widget", dueDays);
+        var extension = PropertySchemaSetTests.Extension("""{ "widget": { "type": "string", "x-ref": { "kind": "custom:widget" } } }""");
+        var model = CustomKinds.CustomFixture.Snapshot(b, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.SettingKind)], extension);
+
+        var found = await CustomKinds.CustomFixture.FindingsAsync(model, Rules);
+
+        var finding = Assert.Single(found);
+        Assert.Equal(("MQ2002", order.Id, "/properties/widget"), (finding.Rule, finding.ElementId!, finding.JsonPointer!));
+        Assert.Empty(model.PropertySchemas.Diagnostics);
     }
 }

@@ -153,6 +153,17 @@ one.
   operation's request, result, error codes and handler interface. MCP `get_model_index` rows carry an operation's
   `subject` and `effect`, and `get_resolved_model` has the scope `operations`. Errors shared from stereotypes, file
   members, paging, the HTTP endpoint template and an operation screen with grids come later.
+- **Custom kinds.** A project can declare kinds of its own, one file each in `extensions/kinds/<type>.json` with a
+  display name, a plural name and a JSON Schema per content key; its elements are `kind: "custom"` files under
+  `model/custom/<type>/` that hold a `content` object the schema checks (MQ1017, MQ1019, MQ3033). An `x-member` array
+  makes each item a member with an id the engine mints, which references (`x-ref` kind `member`, with `of: "$element"`
+  for the same element) and translations (`content/<name>` for an `x-translatable` key) can name. Batches name them
+  `@custom:<type>.[Pkg.]<name>` and `@member:<type>.[Pkg.]<name>.<member>`. Templates get the scope
+  `each custom:<type>` (the variable `custom`) and the helper `custom_named`, and a changed custom kind file renders its
+  elements' units again. MCP `get_schema` takes `custom:<type>`, the index, element and kind tools and the CLI's
+  `model export` and `model stats` filter by `custom` or `custom:<type>`, and the extension file tools handle custom
+  kind files. An operation's `requires` can name a custom element. The editor shows custom elements as JSON for now.
+  The [user guide](user-guide.md#custom-kinds-extensionskindsjson) has the details.
 - **Fixes from the milestone D review.** The 37 notes of [issue #2](https://github.com/mattjcowan/maquettiste/issues/2)
   are fixed before release. Those a user can see:
   - On PostgreSQL, a value map that retypes an enum column first drops the views the model knows about, and those the

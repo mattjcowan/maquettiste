@@ -9,7 +9,8 @@ namespace Maquettiste.Cli.Commands;
 /// <summary>
 /// <c>maquettiste model export|stats|delete|materialize|apply</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
 /// canonical documents (or, with <c>--resolved</c>, the resolved model's flat records) as one JSON array or as one JSON value per line;
-/// <c>stats</c> counts the kinds present, per package with <c>--by package</c>. Both read the same pages the editor API and the MCP
+/// <c>stats</c> counts the kinds present, per package with <c>--by package</c>. Both take <c>--kind</c>, where <c>custom</c> means every custom
+/// element and <c>custom:&lt;type&gt;</c> one custom kind (next-phase-2-design.md section 4.2). Both read the same pages the editor API and the MCP
 /// server serve (<c>GET /api/model/elements</c>, <c>/api/model/resolved</c>, <c>/api/model/kinds</c>). <c>delete</c> deletes one element
 /// with a resolution, or with <c>--dry-run</c> prints what the delete would do (<c>GET /api/model/elements/{id}/delete-plan</c>).
 /// <c>apply</c> applies a batch file all or nothing, by name or by id, as the MCP tool <c>apply_batch</c> does (next-phase-1-design.md
@@ -35,7 +36,7 @@ internal static class ModelCommand
                     "--resolved", "--scope", "--database");
                 break;
             case "stats":
-                line.Expect("model stats", 2, "--format", "--by");
+                line.Expect("model stats", 2, "--format", "--by", "--kind");
                 break;
             case "delete":
                 line.Expect("model delete", 3, "--resolution", "--dry-run", "--format");
@@ -456,7 +457,9 @@ internal static class ModelCommand
         var line = context.Line;
         var byPackage = line.Choice("--by", "kind", "kind", "package") == "package";
         var json = line.Choice("--format", "text", "text", "json") == "json";
-        var result = ModelPages.Kinds(snapshot.Summaries(), byPackage);
+        var kind = line.Value("--kind");
+        var rows = string.IsNullOrEmpty(kind) ? snapshot.Summaries() : [.. snapshot.Summaries().Where(s => ModelPages.MatchesKind(s, kind))];
+        var result = ModelPages.Kinds(rows, byPackage);
         var text = new StringBuilder();
         if (json)
         {

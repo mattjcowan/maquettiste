@@ -334,4 +334,31 @@ public sealed class TemplateCacheAndHelperTests
             files: files, model: model);
         Assert.Equal("state:reference/Code<InvoiceState>;status:enum/InvoiceStatus;amount:scalar/Money;note:-;", unit.Text());
     }
+
+    /// <summary><c>custom_named</c> (next-phase-2-design.md section 4.2): by name or package path; a name two elements share fails the
+    /// unit until the path tells them apart.</summary>
+    [Fact]
+    public async Task Custom_named_finds_by_name_and_package_path_and_records_its_key()
+    {
+        var b = new ModelBuilder();
+        var billing = b.Package("Billing");
+        var sales = b.Package("Sales");
+        b.Add(Engine.Tests.CustomKinds.CustomFixture.Element("01JRCE00000000000000000021", "due_days", "setting", """{ "value": 30 }""", billing.Id));
+        b.Add(Engine.Tests.CustomKinds.CustomFixture.Element("01JRCE00000000000000000022", "due_days", "setting", """{ "value": 14 }""", sales.Id));
+        b.Add(Engine.Tests.CustomKinds.CustomFixture.Element("01JRCE00000000000000000023", "grace_days", "setting", """{ "value": 5 }"""));
+        var model = Engine.Tests.Resolution.ResolutionKit.Resolve(Engine.Tests.CustomKinds.CustomFixture.Snapshot(b,
+            [Engine.Tests.CustomKinds.CustomFixture.KindDocument(Engine.Tests.CustomKinds.CustomFixture.SettingKind)]));
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ (custom_named 'setting' 'Billing.due_days').content.value }}|{{ (custom_named 'setting' 'Sales.due_days').content.value }}|"
+            + "{{ (custom_named 'setting' 'grace_days').content.value }}|{{ (custom_named 'message' 'grace_days') == null }}", model: model);
+
+        Assert.Equal("30|14|5|true", unit.Text());
+        Assert.Contains("n:custom:setting.Billing.due_days", unit.ReadKeys);
+        Assert.Contains("e:01JRCE00000000000000000022", unit.ReadKeys);
+        var shared = await Adhoc.RenderAsync("{{ custom_named 'setting' 'due_days' }}", model: model);
+        var error = shared.Error();
+        Assert.Equal("MQ6006", error.Rule);
+        Assert.Contains("names 2 custom elements", error.Message, StringComparison.Ordinal);
+    }
 }

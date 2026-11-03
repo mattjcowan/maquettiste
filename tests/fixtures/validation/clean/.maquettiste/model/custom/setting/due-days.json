@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../.schema/v1/custom.json",
+  "kind": "custom",
+  "id": "01JPCST0000000000000000001",
+  "name": "due_days",
+  "package": "01JPKG00000000000000000001",
+  "type": "setting",
+  "content": {
+    "unit": "days",
+    "value": 30
+  }
+}
