@@ -42,6 +42,7 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
         new(ElementKind.Actor, "actor", typeof(Actor), "actor.json", "model/actors", null),
         new(ElementKind.Scenario, "scenario", typeof(Scenario), "scenario.json", ScenariosFolder, null),
         new(ElementKind.Migration, "migration", typeof(Migration), "migration.json", "model/databases/{db}/migrations/open", null),
+        new(ElementKind.Operation, "operation", typeof(Operation), "operation.json", OperationsFolder, null),
     ];
 
     /// <summary>The folder of seeds; each target's seeds share a sub-folder named after the target.</summary>
@@ -49,6 +50,9 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
 
     /// <summary>The folder of scenarios; each process's scenarios share a sub-folder named after the process's file stem.</summary>
     public const string ScenariosFolder = "model/scenarios";
+
+    /// <summary>The folder of operations; an operation with a subject lives in a sub-folder named after the subject's file stem.</summary>
+    public const string OperationsFolder = "model/operations";
 
     /// <summary>The folder of locale shards, one sub-folder per locale (<c>model/locales/&lt;locale&gt;/</c>).</summary>
     public const string LocalesFolder = "model/locales";

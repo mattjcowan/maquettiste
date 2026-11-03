@@ -89,7 +89,16 @@ export const KIND_FOLDERS: readonly KindFolder[] = [
   folder("seed", "Seed data", "seed", "seeds", "seed", 60, "domain", "Seed data of this domain's entities and relationships"),
   folder("process", "Processes", "process", "processes", "process", 70, "domain"),
   folder("scenario", "Scenarios", "scenario", "scenarios", "scenario", 75, "processes", "Scenarios of this process"),
-  folder("operation", "Operations", "operation", "operations", "operation", 80, "domain"),
+  folder(
+    "operation",
+    "Operations",
+    "operation",
+    "operations",
+    "operation",
+    80,
+    "domain",
+    "Operations: commands over the model, each with its input, outcomes and errors",
+  ),
   folder("business-event", "Business events", "business event", "business events", "event", 90, "domain"),
   folder("query", "Queries", "query", "queries", "query", 100, "domain"),
   folder("projection", "Projections", "projection", "projections", "projection", 110, "domain"),
@@ -262,6 +271,7 @@ export const KIND_LABELS: Record<ElementKind, string> = {
   actor: "Actor",
   scenario: "Scenario",
   migration: "Migration fact",
+  operation: "Operation",
 };
 
 /** A domain inside another domain. */

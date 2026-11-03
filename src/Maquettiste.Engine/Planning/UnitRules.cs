@@ -20,6 +20,7 @@ internal static class UnitRules
     [
         "model", "each package", "each entity", "each attribute", "each relation", "each enum", "each value object", "each database", "each table",
         "each view", "each sequence", "each routine", "each database type", "each sql object", "each query", "each reference type", "each seed", "each locale", "each process", "each actor", "each scenario",
+        "each operation",
     ];
 
     /// <summary>The MQ6021 message for an unknown scope, with the nearest valid one.</summary>

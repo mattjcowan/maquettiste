@@ -451,6 +451,7 @@ public sealed partial class GenerationService
         "each process" => typeof(RProcess),
         "each actor" => typeof(RActor),
         "each scenario" => typeof(RScenario),
+        "each operation" => typeof(ROperation),
         _ => null,
     };
 

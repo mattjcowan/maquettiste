@@ -1,0 +1,65 @@
+{{-
+# Shared names of the operation units for the csharp-dapper pack. Include this file after _csharp.scriban; it prints nothing.
+
+# The C# name of an operation's types: its Pascal name followed by its subject's ("SendInvoice"), or the Pascal name alone.
+func op_type(op)
+  if op.subject
+    ret (pascal op.name) + type_name(op.subject)
+  end
+  ret pascal op.name
+end
+
+# The C# type of an input or returns member: the type map's, a list when a collection, nullable when not required. A member
+# that holds a record key takes its key attribute's type.
+func member_type(m)
+  ret type_of m "csharp"
+end
+
+# The record of an outcome's inline returns ("SendInvoiceWaiting"); "" when the outcome returns no members.
+func returns_record(op, o)
+  if o.returns && !o.returns.entity && o.returns.members.size > 0
+    ret op_type(op) + (pascal o.name)
+  end
+  ret ""
+end
+
+# The C# type of an outcome's value: the entity's class or the inline record, IReadOnlyList<T> for a list; "" without a value.
+func returns_type(op, o)
+  if !o.returns
+    ret ""
+  end
+  $t = o.returns.entity ? type_name(o.returns.entity) : returns_record(op, o)
+  if $t == ""
+    ret ""
+  end
+  ret o.returns.is_list ? ("IReadOnlyList<" + $t + ">") : $t
+end
+
+# The key attributes a record-level operation takes besides its input: its subject's; none at collection level or without one.
+func key_attributes(op)
+  if op.level == "record" && op.subject && op.subject.key
+    ret op.subject.key.attributes
+  end
+  ret []
+end
+
+# The qualified name of a fired event: its process's name, a dot and the event's name ("InvoiceLifecycle.sent"). The subject's
+# lifecycle is looked at first, so most operations read no other process.
+func event_name(op, e)
+  if op.subject && op.subject.lifecycle
+    for x in op.subject.lifecycle.events
+      if x.id == e.id
+        ret op.subject.lifecycle.name + "." + e.name
+      end
+    end
+  end
+  for p in model.processes
+    for x in p.events
+      if x.id == e.id
+        ret p.name + "." + e.name
+      end
+    end
+  end
+  ret e.name
+end
+-}}

@@ -955,6 +955,99 @@
       },
       "required": ["id", "columns"],
       "additionalProperties": false
+    },
+    "operationError": {
+      "title": "Operation error",
+      "description": "An error an operation can report. Its display name and description are the texts a client shows.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "pluralName",
+        "code",
+        "input",
+        "description",
+        "rationale",
+        "decision",
+        "status",
+        "stereotypes",
+        "tags",
+        "category",
+        "properties",
+        "generation",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier",
+          "default": ""
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "pluralName": {
+          "type": "string"
+        },
+        "code": {
+          "description": "The stable text clients see; absent, the name.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+        },
+        "input": {
+          "description": "The input member the error points at, one of the operation's own (MQ3027).",
+          "$ref": "#/$defs/id"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "rationale": {
+          "description": "Markdown text: why the element is shaped this way.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "stereotypes": {
+          "$ref": "#/$defs/keyList",
+          "default": []
+        },
+        "tags": {
+          "$ref": "#/$defs/tagList",
+          "default": []
+        },
+        "category": {
+          "$ref": "#/$defs/id"
+        },
+        "properties": {
+          "$ref": "#/$defs/properties",
+          "default": {}
+        },
+        "generation": {
+          "$ref": "#/$defs/generation",
+          "default": {}
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
     }
   }
 }

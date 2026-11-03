@@ -624,7 +624,8 @@ public sealed class LocalizationIndex
     // ---- shards: scope and file name ----
 
     /// <summary>The shard scope of an element (section 3.1): a package's own id; <c>reference-data</c> for reference types and their
-    /// seeds; a seed's target's package; the element's package; else <c>root</c>. A package that does not exist gives <c>root</c>.</summary>
+    /// seeds; a seed's target's package; the element's package (an operation's own, never its subject's); else <c>root</c>. A package
+    /// that does not exist gives <c>root</c>.</summary>
     /// <param name="element">The owning element.</param>
     /// <returns>The scope.</returns>
     public string ScopeOf(Element element) => ScopeOf(element, _model.Get<Element>);
@@ -655,6 +656,7 @@ public sealed class LocalizationIndex
             Relation r => r.Package,
             Process process => process.Package,
             Scenario scenario => (find(scenario.Process) as Process)?.Package,
+            Operation operation => operation.Package,
             _ => null,
         };
         if (package == ReferenceDataScope)
@@ -809,11 +811,12 @@ public sealed class LocalizationIndex
                 Cell(row, rowSeed.Label), Cell(row, rowSeed.Description), false, false);
         }
 
-        if (entry.Kind is not ("attribute" or "end" or "enum-member" or "reference-field" or "category") && !ProcessNodeKinds.Contains(entry.Kind))
+        if (entry.Kind is not ("attribute" or "end" or "enum-member" or "reference-field" or "category") && !ProcessNodeKinds.Contains(entry.Kind)
+            && !OperationNodeKinds.Contains(entry.Kind))
             return null;
         if (!Json.JsonPointer.TryGet(document.Json, entry.JsonPointer, out var node) || node.ValueKind != JsonValueKind.Object)
             return null;
-        if (ProcessNodeKinds.Contains(entry.Kind))
+        if (ProcessNodeKinds.Contains(entry.Kind) || OperationNodeKinds.Contains(entry.Kind))
             return ProcessNode(entry, scope, node);
         var name = String(node, "name") ?? String(node, "role");
         var display = String(node, "displayName") ?? name ?? (entry.Kind == "reference-field" ? DefaultFieldName(entry.JsonPointer) : null);
@@ -834,8 +837,12 @@ public sealed class LocalizationIndex
     private static readonly FrozenSet<string> ProcessNodeKinds =
         FrozenSet.Create(StringComparer.Ordinal, "state", "transition", "event", "guard", "action", "invoke", "gate", "meaning", "step");
 
+    /// <summary>The sub-elements of operations (next-phase-2-design.md section 4.1): input and returns members, outcomes and own
+    /// errors. Each localizes its display name and description, as a process sub-element does.</summary>
+    private static readonly FrozenSet<string> OperationNodeKinds = FrozenSet.Create(StringComparer.Ordinal, "operation-member", "outcome", "error");
+
     /// <summary>
-    /// A process or scenario sub-element: a transition localizes its <c>displayName</c> only (the edge label, no fallback to a name it
+    /// A process, scenario or operation sub-element: a transition localizes its <c>displayName</c> only (the edge label, no fallback to a name it
     /// does not have), a scenario step its <c>description</c> only, and the others their display name (falling back to the name) and
     /// description. None has a plural.
     /// </summary>

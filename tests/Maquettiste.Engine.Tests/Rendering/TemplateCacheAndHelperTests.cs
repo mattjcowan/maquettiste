@@ -181,6 +181,85 @@ public sealed class TemplateCacheAndHelperTests
     }
 
     [Fact]
+    public async Task Type_of_maps_typed_and_key_members()
+    {
+        // File members are the second cut (next-phase-2-design.md section 4.1); the first cut maps typed and key members.
+        const string Pair = "01JR5NDT000000000000000001", PairA = "01JR5NDT000000000000000002", PairB = "01JR5NDT000000000000000003";
+        var b = new ModelBuilder(seed: 61);
+        var invoice = b.Entity("Invoice").Key("id", "uuid");
+        b.Add(new Entity
+        {
+            Id = Pair,
+            Name = "Pair",
+            Key = new EntityKey { Attributes = [PairA, PairB] },
+            Attributes =
+            [
+                new ModelAttribute { Id = PairA, Name = "a", Type = new TypeRef { Builtin = "uuid" } },
+                new ModelAttribute { Id = PairB, Name = "b", Type = new TypeRef { Builtin = "int32" } },
+            ],
+        });
+        b.Add(new Operation
+        {
+            Id = "01JR5NDT000000000000000010",
+            Name = "send",
+            Subject = invoice.Id,
+            Effect = OperationEffect.Change,
+            Input =
+            [
+                new OperationMember { Id = "01JR5NDT000000000000000011", Name = "recipient", Type = new TypeRef { Builtin = "string" }, Length = 254, Required = true },
+                new OperationMember { Id = "01JR5NDT000000000000000012", Name = "note", Type = new TypeRef { Builtin = "string" }, Length = 80 },
+                new OperationMember { Id = "01JR5NDT000000000000000013", Name = "copies", Type = new TypeRef { Builtin = "string" }, Length = 80, Collection = true },
+                new OperationMember { Id = "01JR5NDT000000000000000014", Name = "related", KeyOf = invoice.Id, Required = true },
+                new OperationMember { Id = "01JR5NDT000000000000000015", Name = "others", KeyOf = invoice.Id, Collection = true },
+                new OperationMember { Id = "01JR5NDT000000000000000016", Name = "pair", KeyOf = Pair, Required = true },
+            ],
+            Outcomes = [new OperationOutcome { Id = "01JR5NDT000000000000000017", Name = "done" }],
+        });
+        b.Database("db", Dialect.PostgreSql);
+        var model = Resolution.ResolutionKit.Resolve(b);
+        var send = model.Operations.Single();
+        var files = new Dictionary<string, string>
+        {
+            ["types/ts.json"] = "{ \"uuid\": \"string\", \"string\": \"string\", \"nullable\": \"{type} | null\", \"collection\": \"{type}[]\" }",
+        };
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ for m in operation.input limit:5 }}{{ m.name }}:{{ type_of m 'ts' }}/{{ type_of m 'postgresql' }};{{ end }}",
+            send, u => u with { For = "each operation" }, files, model);
+
+        Assert.Equal("recipient:string/varchar(254);note:string | null/varchar(80);copies:string[]/varchar(80);related:string/uuid;others:string[]/uuid;", unit.Text());
+        Assert.Contains("e:" + invoice.Id, unit.ReadKeys);
+        var composite = await Adhoc.RenderAsync("{{ type_of operation.input[5] 'ts' }}", send, u => u with { For = "each operation" }, files, model);
+        Assert.Equal("MQ6006", composite.Error().Rule);
+        Assert.Contains("member.key_of.key", composite.Error().Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task With_settings_keeps_every_list_of_the_model()
+    {
+        var b = new ModelBuilder(seed: 62);
+        var invoice = b.Entity("Invoice").Key("id", "uuid");
+        b.Add(new Operation
+        {
+            Id = "01JR5NDT000000000000000020", Name = "send", Subject = invoice.Id, Effect = OperationEffect.Change,
+            Outcomes = [new OperationOutcome { Id = "01JR5NDT000000000000000021", Name = "done" }],
+        });
+        var model = Resolution.ResolutionKit.Resolve(b);
+        var copy = Adhoc.WithSettings(model, s => s with { Limits = s.Limits with { TemplateLoopLimit = 50 } });
+
+        Assert.Equal(50, copy.Settings.Limits.TemplateLoopLimit);
+        Assert.Same(model.Operations, copy.Operations);
+        Assert.Single(copy.Operations);
+        var lists = typeof(Engine.Resolution.ResolvedModel).GetProperties()
+            .Where(p => p.PropertyType.IsGenericType && p.PropertyType.GetGenericTypeDefinition() == typeof(Engine.Resolution.RList<>)).ToList();
+        Assert.Contains(lists, p => p.Name == "Operations");
+        foreach (var list in lists)
+            Assert.True(ReferenceEquals(list.GetValue(model), list.GetValue(copy)), list.Name + " is not kept");
+        var unit = await Adhoc.RenderAsync("{{ operation.name }}", copy.Operations[0], u => u with { For = "each operation" }, model: copy);
+        Assert.Equal("send", unit.Text());
+    }
+
+    [Fact]
     public async Task Type_of_a_dialect_takes_a_custom_types_native_type()
     {
         var b = new ModelBuilder(seed: 57);

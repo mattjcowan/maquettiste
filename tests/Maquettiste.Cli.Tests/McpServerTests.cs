@@ -599,6 +599,130 @@ public sealed class McpEndOfInputTests
 public sealed class McpReadTests
 {
     [Fact]
+    public async Task Get_model_index_lists_an_operation_row()
+    {
+        // next-phase-2-design.md section 4.1: an operation's index row carries its subject and its effect.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        repo.Write(".maquettiste/model/operations/invoice/send.json", """
+            {
+              "$schema": "../../../.schema/v1/operation.json",
+              "kind": "operation",
+              "id": "01K9QPR0000000000000000001",
+              "name": "send",
+              "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+              "subject": "01J92P0V0FJ23CGSNKM7P1W5V7",
+              "effect": "change",
+              "outcomes": [
+                {
+                  "id": "01K9QPR0000000000000000002",
+                  "name": "applied"
+                }
+              ]
+            }
+
+            """);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var row = Assert.Single((await session.OkAsync("get_model_index", new { kind = "operation" })).AsArray())!;
+
+        Assert.Equal(("01K9QPR0000000000000000001", "operation", "send", "01J92P0V01KDRN8GX5PGYCNKSX", "01J92P0V0FJ23CGSNKM7P1W5V7", "change",
+                ".maquettiste/model/operations/invoice/send.json"),
+            ((string)row["id"]!, (string)row["kind"]!, (string)row["name"]!, (string)row["package"]!, (string)row["subject"]!, (string)row["effect"]!,
+                (string)row["path"]!));
+        Assert.Null((await session.OkAsync("get_model_index", new { kind = "entity" })).AsArray()[0]!["effect"]);
+    }
+
+    [Fact]
+    public async Task Get_resolved_model_scope_operations_pages_operation_records()
+    {
+        // next-phase-2-design.md section 4.1: one OperationRecord per operation, its parts inline and other objects by id.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        const string billing = "01J92P0V01KDRN8GX5PGYCNKSX", invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
+        repo.Write(".maquettiste/model/operations/invoice/send.json", $$"""
+            {
+              "$schema": "../../../.schema/v1/operation.json",
+              "kind": "operation",
+              "id": "01K9QPR0000000000000000001",
+              "name": "send",
+              "package": "{{billing}}",
+              "subject": "{{invoice}}",
+              "effect": "change",
+              "input": [
+                {
+                  "id": "01K9QPR0000000000000000005",
+                  "name": "recipient",
+                  "type": "string",
+                  "length": 254,
+                  "required": true
+                }
+              ],
+              "outcomes": [
+                {
+                  "id": "01K9QPR0000000000000000002",
+                  "name": "applied",
+                  "returns": {
+                    "entity": "{{invoice}}"
+                  }
+                },
+                {
+                  "id": "01K9QPR0000000000000000006",
+                  "name": "waiting",
+                  "completes": "later"
+                }
+              ],
+              "errors": [
+                {
+                  "id": "01K9QPR0000000000000000007",
+                  "name": "missing_recipient",
+                  "input": "01K9QPR0000000000000000005"
+                }
+              ]
+            }
+
+            """);
+        repo.Write(".maquettiste/model/operations/ping.json", """
+            {
+              "$schema": "../../.schema/v1/operation.json",
+              "kind": "operation",
+              "id": "01K9QPR0000000000000000003",
+              "name": "ping",
+              "effect": "read",
+              "outcomes": [
+                {
+                  "id": "01K9QPR0000000000000000004",
+                  "name": "pong"
+                }
+              ]
+            }
+
+            """);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var first = await session.OkAsync("get_resolved_model", new { scope = "operations", limit = 1 });
+        var ping = Assert.Single(first["items"]!.AsArray())!;
+        Assert.Equal(("operation", "ping", "read"), ((string)ping["kind"]!, (string)ping["name"]!, (string)ping["effect"]!));
+        Assert.Null(ping["subject"]);
+        Assert.Null(ping["level"]);
+        var second = await session.OkAsync("get_resolved_model", new { scope = "operations", limit = 1, cursor = (string)first["next"]! });
+        Assert.Null(second["next"]);
+        var send = Assert.Single(second["items"]!.AsArray())!;
+        Assert.Equal(("send", billing, invoice, "record", "01K9QPR0000000000000000002"),
+            ((string)send["name"]!, (string)send["package"]!, (string)send["subject"]!, (string)send["level"]!, (string)send["defaultOutcome"]!));
+        var recipient = Assert.Single(send["input"]!.AsArray())!;
+        Assert.Equal(("recipient", "string", 254, true), ((string)recipient["name"]!, (string)recipient["type"]!["builtin"]!, (int)recipient["length"]!, (bool)recipient["required"]!));
+        var outcomes = send["outcomes"]!.AsArray();
+        Assert.Equal((true, "now", invoice), ((bool)outcomes[0]!["isDefault"]!, (string)outcomes[0]!["completes"]!, (string)outcomes[0]!["returns"]!["entity"]!));
+        Assert.Equal((false, "later"), ((bool)outcomes[1]!["isDefault"]!, (string)outcomes[1]!["completes"]!));
+        Assert.Null(outcomes[1]!["returns"]);
+        var error = Assert.Single(send["errors"]!.AsArray())!;
+        Assert.Equal(("missing_recipient", "01K9QPR0000000000000000005"), ((string)error["code"]!, (string)error["input"]!));
+        Assert.Empty(send["fires"]!.AsArray());
+        Assert.Equal("send", (string)send["displayName"]!);
+    }
+
+    [Fact]
     public async Task Get_binding_drift_answers_only_drifted_bindings()
     {
         // next-phase-2-design.md section 3.3 (D35): InvoiceNote records provenance through a re-sync; renaming the notes table's body

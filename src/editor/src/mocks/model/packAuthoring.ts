@@ -192,6 +192,25 @@ const SCENARIO_MEMBERS: S["TemplateMember"][] = [
   { name: "start", type: "object" },
   { name: "steps", type: "list" },
 ];
+// An `each operation` unit's `operation` (next-phase-2-design.md section 4.1, first cut).
+const OPERATION_MEMBERS: S["TemplateMember"][] = [
+  { name: "default_outcome", type: "object" },
+  { name: "description", type: "string" },
+  { name: "display_name", type: "string" },
+  { name: "effect", type: "string" },
+  { name: "errors", type: "list" },
+  { name: "fires", type: "list" },
+  { name: "id", type: "string" },
+  { name: "input", type: "list" },
+  { name: "kind", type: "string" },
+  { name: "level", type: "string" },
+  { name: "name", type: "string" },
+  { name: "outcomes", type: "list" },
+  { name: "package", type: "object" },
+  { name: "requires", type: "list" },
+  { name: "stereotypes", type: "list" },
+  { name: "subject", type: "object" },
+];
 const SCOPE_MEMBERS: Record<string, S["TemplateMember"][]> = {
   "each table": TABLE_MEMBERS,
   "each view": VIEW_MEMBERS,
@@ -202,12 +221,14 @@ const SCOPE_MEMBERS: Record<string, S["TemplateMember"][]> = {
   "each process": PROCESS_MEMBERS,
   "each actor": ACTOR_MEMBERS,
   "each scenario": SCENARIO_MEMBERS,
+  "each operation": OPERATION_MEMBERS,
 };
 const MODEL_MEMBERS: S["TemplateMember"][] = [
   { name: "actors", type: "list" },
   { name: "databases", type: "list" },
   { name: "entities", type: "list" },
   { name: "enums", type: "list" },
+  { name: "operations", type: "list" },
   { name: "packages", type: "list" },
   { name: "processes", type: "list" },
   { name: "relations", type: "list" },

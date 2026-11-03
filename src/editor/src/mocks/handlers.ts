@@ -318,6 +318,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
         processes: "process",
         actors: "actor",
         scenarios: "scenario",
+        operations: "operation",
         databases: "database",
         tables: "table",
       };

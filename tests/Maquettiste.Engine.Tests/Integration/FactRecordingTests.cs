@@ -237,6 +237,35 @@ public sealed class FactRecordingTests
     }
 
     [Fact]
+    public async Task An_operation_edit_is_never_classified_even_when_requires_names_a_table()
+    {
+        // next-phase-2-design.md section 4.1: no database resolves an operation, so creating, editing or deleting one is never a
+        // database change, even when requires names a table and so puts the operation in that database's reach.
+        await using var repo = E2ERepo.Create(demo: false);
+        var created = await repo.CreateElementAsync($$"""
+            { "kind": "operation", "name": "send", "subject": "{{E2ERepo.InvoiceId}}", "effect": "change",
+              "input": [ { "id": "01JR5ND000000000000000000B", "name": "recipient", "type": "string" } ],
+              "outcomes": [ { "id": "01JR5ND000000000000000000C", "name": "applied" } ],
+              "requires": [ "{{NotesTableId}}", "{{NotesBodyColumnId}}" ] }
+            """);
+        var edited = await repo.EditAsync(created.Id!, o =>
+        {
+            o["input"]![0]!["length"] = 254;
+            o["effect"] = "read";
+            o["requires"] = new JsonArray(NotesTableId);
+        });
+        var document = await repo.Store.GetElementAsync(created.Id!, Ct);
+        var deleted = await repo.Store.DeleteAsync(created.Id!, document!.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
+        Assert.Empty(created.Facts!);
+        Assert.Empty(edited.Facts!);
+        Assert.Empty(deleted.Facts ?? []);
+        Assert.Empty(FactPaths(repo));
+        Assert.Empty(repo.Store.RecordingResolves);
+    }
+
+    [Fact]
     public async Task Batch_answers_carry_facts_on_the_batch_and_none_on_items()
     {
         await using var repo = E2ERepo.Create(demo: false);

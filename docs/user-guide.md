@@ -2125,6 +2125,142 @@ through the gate 3 fixture's solution); for TypeScript, `npx tsc --noEmit` then 
 (samples/typescript-pack/README.md). `maquettiste process verify` replays the same scenarios in the engine, without
 generated code, and is the faster check while you model.
 
+## Operations
+
+An **operation** is one command over the model: what it acts on, whether it reads or changes data, its input, the ways
+it ends, its errors and the process events it fires. The shape names no protocol, so a pack maps it to HTTP, messages, a
+command line or a job, in its own language. Maquettiste implies no operation: an entity has only the operations you
+model. Each operation is one file of kind `operation` under `.maquettiste/model/operations/`, in a folder named after
+its subject's file when it has a subject (`operations/invoice/send.json` for `send` on Invoice); changing the subject
+moves the file. The editor lists operations in an **Operations** folder under their domain (an operation without a
+`package` sits in its subject's) and opens one with its General fields, where the subject, level and effect are shown
+read-only, and the JSON tab, which edits the rest. Errors shared from stereotypes, file members and file returns,
+paging and an HTTP endpoint template come later.
+
+### The file shape
+
+```json
+{
+  "kind": "operation",
+  "id": "01K8QPN0000000000000000001",
+  "name": "send",
+  "subject": "01K8QPN0000000000000000010",
+  "effect": "change",
+  "input": [
+    { "id": "01K8QPN0000000000000000002", "name": "recipient", "type": "string", "length": 254, "required": true }
+  ],
+  "outcomes": [
+    { "id": "01K8QPN0000000000000000003", "name": "applied", "returns": { "entity": "01K8QPN0000000000000000010" } },
+    {
+      "id": "01K8QPN0000000000000000004",
+      "name": "waiting",
+      "completes": "later",
+      "returns": { "members": [{ "id": "01K8QPN0000000000000000005", "name": "trackingId", "type": "string" }] }
+    }
+  ],
+  "errors": [
+    { "id": "01K8QPN0000000000000000006", "name": "already_sent" },
+    { "id": "01K8QPN0000000000000000007", "name": "missing_recipient", "input": "01K8QPN0000000000000000002" }
+  ],
+  "fires": ["01K8QPN0000000000000000020"]
+}
+```
+
+- `subject`: the entity the operation acts on (Invoice here), optional and not owning. Deleting the entity is refused
+  while an operation names it, and both delete resolutions clear `subject`. An operation's name is unique among the
+  operations of its subject, so `archive` on Invoice and `archive` on Customer never meet; without a subject, it is
+  unique among the subject-less operations of its package.
+- `level`: `record` (the default) acts on one record of the subject and takes that record's key implicitly, so `input`
+  holds only the rest; `collection` acts on the whole set (a search, a create, a bulk change). It means something only
+  with a subject (MQ3023).
+- `effect`: required, `read` or `change`, whether or not the operation takes input.
+- `input`: the input members, in file order. A member is exactly one of two forms (MQ3024): a typed value, `type`, which
+  takes what an attribute's `type` takes (a built-in keyword, an enum, a value object, a custom scalar type or a
+  reference type), with `length`, `precision`, `scale`, `default` and `validation` as an attribute has them; or a record
+  key, `keyOf`, the id of an entity whose record's key the member holds (with `collection`, a list of keys, such as the
+  invoices a bulk change applies to). Either form takes `required`, `collection` and `sensitive`.
+- `outcomes` and `defaultOutcome`, `errors`, `fires` and `requires`: below.
+- `description`, `rationale`, `decision`, `status`, `stereotypes`, `tags`, `category` and `properties` annotate the
+  operation, each member, outcome and error, like any other part of the model. Their display names and descriptions
+  translate; the entries live in the shard of the operation file's own package, else the root.
+
+In a batch, an operation is found by its name, by its package path and name, or by its subject's name and its own
+(`@operation:Invoice.send`, `@operation:Billing.Invoice.send`); a member, outcome or error adds its name to the
+operation's form (`@operation-member:Invoice.send.recipient`, `@outcome:Invoice.send.waiting`). Saving an operation
+never records a migration fact: no database holds one.
+
+### Outcomes and returns
+
+An operation ends in one of its **outcomes**, at least one. `completes` is `now` (the default: the work is done when
+the outcome is reported) or `later` (accepted, and the work goes on). `defaultOutcome` names one of the operation's own
+outcomes (MQ3028); without it, the first is the default. An outcome's `returns` says what comes back, and an outcome
+without one returns nothing. A `returns` is exactly one of (MQ3025):
+
+- `members`: an inline shape, at least one member, written as input members are, except that a member of a returns
+  takes no `default` (MQ3024);
+- `entity`: records of an entity, its attributes as the shape.
+
+`list: true` makes either a list (the invoices a search finds, rather than one).
+
+### Errors
+
+Each error has a `name` (an identifier), an optional `code`, the stable text clients see (the name when it has none),
+and an optional `input`, the input member of the same operation that the error points at (MQ3027), such as
+`missing_recipient` pointing at `recipient`. Its display name and description are the texts a client shows, and they
+translate. Two errors of one operation may not share a name or a code (MQ3026), the name counting as the code of an
+error that has none.
+
+### Fires and requires
+
+`fires` lists the ids of the process events the operation fires, of any process (`sent` in the Invoice lifecycle, say).
+A `read` operation that fires an event is warning MQ3030, since an event changes state. The resolved event lists the
+operations that fire it (`fired_by`).
+
+`requires` lists ids of any element or sub-element that stands for what the operation requires: an actor, a row of a
+reference type that holds permission codes, or whatever the project uses. The engine gives the list no meaning; packs
+and scripts read it. It may not name the operation itself, one of its own members, outcomes or errors, a diagram or a
+migration fact (MQ3031).
+
+### The rules for operations
+
+Every rule below has a row in **Settings › Validation**, where its severity can be changed, and runs on every save and
+every `validate`. Names are identifiers (MQ3018) and unique where the file shape says (MQ3001).
+
+| Rule | Severity | What it reports |
+| --- | --- | --- |
+| MQ3023 | warning | An operation sets `level` `collection` without a subject; the level is ignored |
+| MQ3024 | error | A member is not exactly one of a typed value (`type`) or a record key (`keyOf`); a record key sets `default`, `length`, `precision`, `scale` or `validation`; or a member of a returns sets `default` |
+| MQ3025 | error | An outcome's `returns` is not exactly one of `members` or `entity` |
+| MQ3026 | error | Two errors of an operation share a name or a code (the code, else the name) |
+| MQ3027 | error | An error's `input` is not an input member of the operation that holds it |
+| MQ3028 | error | `defaultOutcome` names an outcome of another operation |
+| MQ3030 | warning | A `read` operation fires a process event; an event changes state |
+| MQ3031 | error | `requires` names the operation itself, one of its own sub-elements, a diagram or a migration fact |
+
+### Generating code from operations
+
+The engine runs no operation in your application: what an operation becomes is what the packs write. The scope `each
+operation` renders one unit per operation, the template variable being `operation`, with its `subject` (the entity, or
+null), `level` (null without a subject), `effect`, `input`, `outcomes` (each with `is_default`, `completes` and
+`returns`, whose `members`, `entity` and `is_list` say what comes back), `default_outcome`, `errors` (each with `code`
+and the `input` member it points at), `fires` (the events) and `requires` (the elements). A member has `type` or
+`key_of`, and `required`, `collection`, `default`, `length`, `precision`, `scale`, `sensitive` and `validation`.
+`type_of` maps a member: a typed member as an attribute (the `collection` pattern for a collection, `nullable` when not
+required), a record key through the type of its entity's key attribute (an entity with a composite key is MQ6006). An
+entity lists its operations (`entity.operations`). A filter takes tags, stereotypes, categories and packages (an
+operation's package is its file's, else its subject's) and refuses `database` and `abstract`. The same records are in
+MCP `get_resolved_model` and `maquettiste model export --resolved` under the scope `operations`.
+
+**The C# example pack (`csharp-dapper`)** has the unit `operation-contracts`, which writes, for each operation,
+`Operations/<package folder>/<Op>.g.cs`, where `<Op>` is the operation's Pascal name followed by its subject's
+(`SendInvoice` for `send` on Invoice), or the Pascal name alone without a subject. The file holds plain types with no
+dependency on a web framework: `SendInvoiceRequest`, a record of the input members; a record per outcome that returns
+members (`SendInvoiceWaiting`), while an outcome that returns an entity uses its class; `SendInvoiceErrors`, a constant
+per error code; `SendInvoiceResult`, with a nested record per outcome (`Applied`, `Waiting`) and `Failed(string Code,
+string? Input)`; and `ISendInvoiceHandler`, whose `HandleAsync` takes the subject's key at record level, the request and
+a cancellation token, and whose summary names the events the operation fires. You implement the handler and map it to
+your transport. packs/csharp-dapper/README.md has every detail.
+
 ## Packages and layering
 
 Every element can belong to a package (a domain): entities and relations as before, and now tables, views, sequences,
@@ -2374,6 +2510,7 @@ and where the result goes (the output pattern). `sql-ddl` has twelve units: `tab
 | `model` | once, with the whole model | one file for many: a template that loops over every entity writes them all into one file |
 | `each locale` | once per declared language | one file per language (a resource file, a dictionary) |
 | `each process`, `each actor`, `each scenario` | once per process, actor or scenario | one file each: a page per process, a test per scenario (see "Generating code from processes") |
+| `each operation` | once per operation | one file each, the template variable being `operation`: its `subject`, `level`, `effect`, `input`, `outcomes` (each with `completes` and `returns`, whose `members`, `entity` and `is_list` say what comes back), `errors` (each with `code`, the name when it has none, and the `input` it points at) and `fires`; `type_of` maps an input or returned member; a filter takes tags, stereotypes, categories and packages (an operation's package is its file's, else its subject's) and refuses `database` and `abstract`; `csharp-dapper` writes the request, result, error codes and handler interface of each one |
 | `select <name>` | once per element a pack script returns | `select roots` gives one file per element the pack's `roots` selector returns |
 
 A **filter** (`where`) narrows a scope: only entities tagged `api`, only one package, not the abstract ones. An element
@@ -3016,7 +3153,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste process export <process>` | The process as an XState machine config (`--format xstate`, the only format), on stdout or into `--out <file>`. What has no XState home travels under `meta.maquettiste`, so importing the file back over the process gives the same file. |
 | `maquettiste process import <file>` | Previews importing an XState config: `--domain <package>` (with `--name`, `--use lifecycle\|orchestration`, `--subject <entity>`) for a new process, or `--into <process>` to re-import over one, keeping the ids of what matches. Prints the diagnostics and how many ids are created and removed; `--apply` writes it as one change, refused (exit 3) when the process changed while the command ran and exit 1 when the import has errors. `--format json` prints the document. |
 | `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. |
-| `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations` (open migration facts by database, in applied order), `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
+| `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations` (open migration facts by database, in applied order), `processes`, `operations` (each operation's input members, outcomes with what they return, errors with their codes, and the events it fires and what it requires, by id) and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
 | `maquettiste model apply <batch.json>` | Applies a batch file all or nothing, as the agent server's `apply_batch` does: `{ "operations": [...] }` or the bare array of creates, updates, deletes and the schema, materialize, process, tag and reference-type refactor operations. Id fields take ids, qualified names such as `@table:billing.notes` or `@entity:Billing.Invoice`, and placeholders (`"as": "$pm"` names a new element for the whole batch), and the engine mints every missing id, so a batch needs no id written by hand (docs/mcp.md, "Batches by name"). A name or placeholder that finds nothing is MQ1012, a name that finds several is MQ1013 (use a longer form or the id), a misused identity (a placeholder declared twice, a misplaced `as`, a sub-element dropped and added again without its id) is MQ1014 and a malformed or misplaced name is MQ1015; any of them writes nothing. Prints a line per path written or deleted, then each name and placeholder with its id, and per reference-type refactor `<op> <type>: <n> uses, <m> rows moved, <k> rows removed, <t> translations removed`; `--dry-run` writes nothing and prints the diffs, the names, and a `+` or `-` line per diagnostic the change adds or removes; `--format json` prints the `apply_batch` answer. Exit 1 when the file is not a valid batch or the batch is invalid or refused, 3 on a conflict. The agent server's `patch_element` changes part of one element with an RFC 6902 JSON Patch instead; a patch that cannot be applied (an unknown operation, a path that does not resolve, a failed `test`, a change to `/id` or `/kind`) is MQ1016 and writes nothing. |

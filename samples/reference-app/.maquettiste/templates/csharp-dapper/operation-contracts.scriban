@@ -1,0 +1,111 @@
+{{-
+# The contracts of an operation (<Op> is its Pascal name followed by its subject's): <Op>Request with the input members (absent
+# without input), one record per outcome that returns members (<Op><Outcome>), <Op>Errors with one constant per error code,
+# <Op>Result with one nested record per outcome and Failed, and I<Op>Handler, whose HandleAsync takes the subject's key at
+# record level, the request and a cancellation token. Plain types: nothing here depends on a web framework.
+include "_csharp.scriban"
+include "_operation.scriban"
+op = operation
+name = op_type(op)
+request = name + "Request"
+keys = key_attributes(op)
+typed = []
+for m in op.input
+  if m.type
+    typed[typed.size] = m
+  end
+end
+for o in op.outcomes
+  if o.returns
+    for m in o.returns.members
+      if m.type
+        typed[typed.size] = m
+      end
+    end
+  end
+end
+for k in keys
+  typed[typed.size] = k
+end
+usings = namespaces_used(op, typed)
+for o in op.outcomes
+  if o.returns && o.returns.entity
+    entity_ns = ns(o.returns.entity)
+    if entity_ns != ns(op) && !(usings | array.contains entity_ns)
+      usings[usings.size] = entity_ns
+    end
+  end
+end
+usings = usings | array.sort
+func member_doc(m, what)
+  ret m.description ?? (what + " " + m.name + ".")
+end
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+{{- for u in usings }}
+using {{ u }};
+{{- end }}
+
+namespace {{ ns(op) }};
+{{- if op.input.size > 0 }}
+
+/// <summary>The input of operation {{ op.name }}.</summary>
+{{- for m in op.input }}
+/// <param name="{{ prop_name(m, request) }}">{{ member_doc(m, "Input member") | escape_xml }}</param>
+{{- end }}
+public sealed record {{ request }}({{ for m in op.input }}{{ if !for.first }}, {{ end }}{{ member_type(m) }} {{ prop_name(m, request) }}{{ end }});
+{{- end }}
+{{- for o in op.outcomes }}
+{{- record = returns_record(op, o) }}
+{{- if record != "" }}
+
+/// <summary>What outcome {{ o.name }} of operation {{ op.name }} returns.</summary>
+{{- for m in o.returns.members }}
+/// <param name="{{ prop_name(m, record) }}">{{ member_doc(m, "Returned member") | escape_xml }}</param>
+{{- end }}
+public sealed record {{ record }}({{ for m in o.returns.members }}{{ if !for.first }}, {{ end }}{{ member_type(m) }} {{ prop_name(m, record) }}{{ end }});
+{{- end }}
+{{- end }}
+{{- if op.errors.size > 0 }}
+
+/// <summary>The error codes of operation {{ op.name }}.</summary>
+public static class {{ name }}Errors
+{
+{{- for e in op.errors }}
+{{ doc(e.description ?? ("Error " + e.name + (e.input ? ", about input " + e.input.name : "") + "."), "    ") }}    public const string {{ cs_ident (pascal e.name) }} = {{ json e.code }};
+{{- end }}
+}
+{{- end }}
+
+{{ doc(op.description ?? ("The result of operation " + op.name + ": one record per outcome, or Failed with an error code."), "") }}public abstract record {{ name }}Result
+{
+{{- for o in op.outcomes }}
+{{- value = returns_type(op, o) }}
+{{ doc(o.description ?? ("Outcome " + o.name + (o.completes == "later" ? ": accepted now, completed later." : ".")), "    ") }}    public sealed record {{ pascal o.name }}{{ if value != "" }}({{ value }} Value){{ end }} : {{ name }}Result;
+{{- end }}
+
+    /// <summary>The operation failed.</summary>
+    /// <param name="Code">The error code{{ if op.errors.size > 0 }}, one of <see cref="{{ name }}Errors"/>{{ end }}.</param>
+    /// <param name="Input">The name of the input member the error points at, or null.</param>
+    public sealed record Failed(string Code, string? Input) : {{ name }}Result;
+}
+
+/// <summary>{{ if op.subject }}{{ op.name }} on {{ op.subject.name }}{{ else }}Operation {{ op.name }}{{ end }}{{ if op.fires.size > 0 }}; fires {{ for e in op.fires }}{{ if !for.first }}, {{ end }}{{ event_name(op, e) }}{{ end }}{{ end }}.</summary>
+public interface I{{ name }}Handler
+{
+    /// <summary>Runs operation {{ op.name }}.</summary>
+{{- for k in keys }}
+    /// <param name="{{ cs_ident (camel k.name) }}">The {{ op.subject.name }} record's {{ k.name }}.</param>
+{{- end }}
+{{- if op.input.size > 0 }}
+    /// <param name="request">The input.</param>
+{{- end }}
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>The result.</returns>
+    Task<{{ name }}Result> HandleAsync({{ for k in keys }}{{ type_of k.type "csharp" }} {{ cs_ident (camel k.name) }}, {{ end }}{{ if op.input.size > 0 }}{{ request }} request, {{ end }}CancellationToken cancellationToken);
+}

@@ -215,9 +215,10 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
                     Error(InvalidPack, $"Unit '{unit.Id}' is for '{unit.For}', which is never abstract: its 'where' cannot filter on 'abstract'.", pointer + "/where/abstract");
             }
 
-            if (unit.For is "each process" or "each actor" or "each scenario" && unit.Where is { } processWhere)
+            if (unit.For is "each process" or "each actor" or "each scenario" or "each operation" && unit.Where is { } processWhere)
             {
-                // Processes, actors and scenarios are mapped to no database and are never abstract (phase-3-design.md section 7.1).
+                // Processes, actors and scenarios are mapped to no database and are never abstract (phase-3-design.md section 7.1);
+                // neither are operations (next-phase-2-design.md section 4.1).
                 if (processWhere.Database is not null)
                     Error(InvalidPack, $"Unit '{unit.Id}' is for '{unit.For}', which is mapped to no database: its 'where' cannot name one.", pointer + "/where/database");
                 if (processWhere.Abstract is not null)

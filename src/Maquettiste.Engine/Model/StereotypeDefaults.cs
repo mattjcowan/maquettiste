@@ -54,7 +54,8 @@ internal sealed class StereotypeDefaults
 
     /// <summary>
     /// The package whose chain gives an element its package defaults: its own (a package's parent), else the phase 1 fallback: a
-    /// synthesized table's entity's (a child table's owner entity's) or relation's, a seed's target's, a scenario's process's.
+    /// synthesized table's entity's (a child table's owner entity's) or relation's, a seed's target's, a scenario's process's, an
+    /// operation's subject's (next-phase-2-design.md section 4.1).
     /// </summary>
     /// <param name="element">The element.</param>
     /// <returns>The package id, or <see langword="null"/>.</returns>
@@ -69,6 +70,7 @@ internal sealed class StereotypeDefaults
                 : overlay.Relation is { } relation ? OwnPackage(lookups.ElementById(relation)) : null,
             Seed seed => lookups.ElementById(seed.Target) is { } target and not Seed ? PackageOf(target) : null,
             Scenario scenario => OwnPackage(lookups.ElementById(scenario.Process)),
+            Operation { Subject: { } subject } => OwnPackage(lookups.ElementById(subject)),
             _ => null,
         };
 

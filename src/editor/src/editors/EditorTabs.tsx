@@ -52,6 +52,7 @@ import { RoutineEditor } from "./database/RoutineEditor";
 import { DatabaseTypeEditor } from "./database/DatabaseTypeEditor";
 import { SqlObjectEditor } from "./database/SqlObjectEditor";
 import { QueryEditor } from "./database/QueryEditor";
+import { OperationEditor } from "./operation/OperationEditor";
 
 /** A draft that is not yet saved as it shows: the tab's dirty marker. */
 const UNSAVED = new Set(["dirty", "saving", "invalid", "conflict"]);
@@ -382,6 +383,8 @@ export function EditorArea() {
         <SqlObjectEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "query" ? (
         <QueryEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "operation" ? (
+        <OperationEditor key={tab.id} id={tab.id} />
       ) : (
         <TypeEditor key={tab.id} id={tab.id} kind={tab.kind} />
       )}

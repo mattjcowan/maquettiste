@@ -171,18 +171,34 @@ internal sealed partial class ChangePlanner
             }
         }
 
-        var clear = new CascadeOp(reference.JsonPointer, false, reference, index);
-        var reason = TryOps(referrer, [.. ops, clear], narrow, out var widening);
-        if (reason is null)
+        // An operation member's `type` or `keyOf` is its one form (MQ3024), as a returns' `entity` is (MQ3025), and the schema cannot
+        // say so: clearing it would leave a part with neither. So the member or the returns goes with delete-dependents, and
+        // remove-references refuses.
+        var widening = false;
+        if (referrer.Element is Operation && IsOperationForm(reference.JsonPointer))
         {
-            Commit(referrerId, [.. ops, clear]);
-            return;
+            if (mode != DeleteResolution.DeleteDependents)
+            {
+                _cascadeRefused.Add((index, referrerId, reference,
+                    $"it types or keys an operation member, or is the entity an outcome returns, with {Label(target)}, and remove-references does not clear such a use; delete with delete-dependents to remove that member or return."));
+                return;
+            }
         }
-
-        if (mode != DeleteResolution.DeleteDependents)
+        else
         {
-            _cascadeRefused.Add((index, referrerId, reference, reason));
-            return;
+            var clear = new CascadeOp(reference.JsonPointer, false, reference, index);
+            var reason = TryOps(referrer, [.. ops, clear], narrow, out widening);
+            if (reason is null)
+            {
+                Commit(referrerId, [.. ops, clear]);
+                return;
+            }
+
+            if (mode != DeleteResolution.DeleteDependents)
+            {
+                _cascadeRefused.Add((index, referrerId, reference, reason));
+                return;
+            }
         }
 
         // A query whose required reference goes (a source, a column, a selected attribute) is deleted whole: its aliases tie its parts
@@ -298,7 +314,8 @@ internal sealed partial class ChangePlanner
                 continue;
             _changeByElement.TryAdd(referrerId, index);
             Touch(referrerId, current);
-            Stage(referrerId, element, node, info, current.ModelPath, outcome, current);
+            // A cleared value its folder follows (an operation's subject) moves the file, as a save would.
+            Stage(referrerId, element, node, info, Relocate(current, element), outcome, current);
         }
     }
 
@@ -601,6 +618,15 @@ internal sealed partial class ChangePlanner
         JsonPointer.TryParse(pointer, out var segments) && segments is ["redefines", _, "member"] ? JsonPointer.Build(segments[..2]) : null;
 
     /// <summary>
+    /// An operation member's form (<c>/input/&lt;n&gt;/type</c> or <c>keyOf</c>, the same under <c>/returns/members/</c>) or a
+    /// returns' <c>entity</c>: the one form its part has, so clearing it is never enough.
+    /// </summary>
+    private static bool IsOperationForm(string pointer) =>
+        pointer.EndsWith("/returns/entity", StringComparison.Ordinal)
+        || ((pointer.EndsWith("/type", StringComparison.Ordinal) || pointer.EndsWith("/keyOf", StringComparison.Ordinal))
+            && (pointer.StartsWith("/input/", StringComparison.Ordinal) || pointer.Contains("/returns/members/", StringComparison.Ordinal)));
+
+    /// <summary>
     /// The part of an entity's binding a reference at <paramref name="pointer"/> takes with it: the field, constant or listed column
     /// entry it sits in, else the whole binding; <see langword="null"/> outside <c>bindings</c>.
     /// </summary>
@@ -744,7 +770,8 @@ internal sealed partial class ChangePlanner
             outcome.Referrers.AddRange(ops.Select(o => o.Reference).Distinct());
             _changeByElement.TryAdd(referrerId, index);
             Touch(referrerId, referrer);
-            Stage(referrerId, element, node, info, referrer.ModelPath, outcome, referrer);
+            // A cleared value its folder follows (an operation's subject) moves the file, as a save would.
+            Stage(referrerId, element, node, info, Relocate(referrer, element), outcome, referrer);
             var removed = DocumentReader.Scan(referrer.Json).Ids
                 .Where(x => x.Pointer.Length > 0 && ops.Any(o => o.Remove && (x.Pointer == o.Pointer || IsUnder(x.Pointer, o.Pointer))))
                 .Select(x => x.Id)

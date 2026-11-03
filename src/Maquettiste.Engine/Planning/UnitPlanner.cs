@@ -375,6 +375,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             case "each process": return model.Processes;
             case "each actor": return model.Actors;
             case "each scenario": return model.Scenarios;
+            case "each operation": return model.Operations;
         }
 
         if (!unit.For.StartsWith("select ", StringComparison.Ordinal))

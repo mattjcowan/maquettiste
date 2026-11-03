@@ -173,6 +173,21 @@ public sealed class ModelIndexerPatchTests
             b.Relation("rel" + i, from, to, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many, fromRole: "r" + i, toNavigation: "n" + i);
         }
 
+        for (var i = 0; i < 6; i++) // operations: on a subject or not, with members, outcomes, errors and links (section 4.1)
+        {
+            var subject = entities[i * 4];
+            var key = b.NewId();
+            b.Add(new Operation
+            {
+                Id = b.NewId(), Name = "op" + i, Package = i % 2 == 0 ? null : packages[i % 3].Id, Subject = i % 3 == 2 ? null : subject.Id,
+                Effect = i % 2 == 0 ? OperationEffect.Read : OperationEffect.Change, Stereotypes = i % 3 == 0 ? ["audited"] : [],
+                Input = [new OperationMember { Id = key, Name = "other", KeyOf = entities[i + 1].Id }],
+                Outcomes = [new OperationOutcome { Id = b.NewId(), Name = "done", Returns = new OperationReturns { Entity = subject.Id, List = i % 2 == 0 } }],
+                Errors = [new OperationError { Id = b.NewId(), Name = "failed", Input = key }],
+                Requires = [entities[i + 2].Id],
+            });
+        }
+
         var main = b.Database("main", Dialect.PostgreSql);
         b.Mapping(main, entities[1]).Storage("status", StorageKind.String);
         var documents = b.BuildDocuments().OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
@@ -185,7 +200,7 @@ public sealed class ModelIndexerPatchTests
         var list = documents.ToList();
         var index = random.Next(list.Count);
         var doc = list[index];
-        switch (random.Next(9))
+        switch (random.Next(10))
         {
             case 0: // content change, same path (a new document instance); the element's status toggles retired (MQ2022's index)
                 list[index] = doc with
@@ -255,6 +270,22 @@ public sealed class ModelIndexerPatchTests
             case 8 when random.Next(4) == 0: // an id collision (full build; the first path wins)
                 list.Add(doc with { Path = doc.Path + ".dup" });
                 break;
+            case 9 when doc.Element is Operation operation: // re-point an operation's subject and key member, drop its errors
+            {
+                var targets = list.Where(d => d.Element is Entity).ToList();
+                var target = targets[random.Next(targets.Count)].Element.Id;
+                list[index] = doc with
+                {
+                    Element = operation with
+                    {
+                        Subject = random.Next(2) == 0 ? null : target,
+                        Input = [.. operation.Input.Select(m => m with { KeyOf = target })],
+                        Errors = [],
+                    },
+                    Hash = doc.Hash + "9",
+                };
+                break;
+            }
         }
 
         list.Sort((a, c) => string.CompareOrdinal(a.Path, c.Path));

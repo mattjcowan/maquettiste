@@ -11,6 +11,8 @@ namespace Maquettiste.Engine.Rendering;
 /// falls back to its base keyword's entry). A collection attribute takes the <c>collection</c> pattern; otherwise an attribute
 /// that is not required, or a nullable column, takes the <c>nullable</c> pattern. Reading a pack map records
 /// <c>t:&lt;pack&gt;/types/&lt;target&gt;.json</c>.</para>
+/// <para>An <b>operation member</b> (next-phase-2-design.md section 4.1) maps as an attribute does. A <c>keyOf</c> member maps through
+/// its entity's single key attribute, with that attribute's facets; a composite key, or none, is MQ6006.</para>
 /// <para>A <b>dialect target</b> (<c>postgresql</c>, <c>sqlserver</c>, <c>mysql</c>, <c>sqlite</c>, <c>oracle</c>, with the aliases
 /// of <see cref="SqlDialects.TryParse"/>) needs no file: a column of a database in that dialect yields its resolved native type;
 /// anything else goes through the dialect's type map (<c>typeMaps.&lt;dialect&gt;</c> overrides applied, recording
@@ -22,7 +24,7 @@ internal static class TypeOf
 {
     /// <summary>Maps a value to a type name for a target.</summary>
     /// <param name="context">The unit's context.</param>
-    /// <param name="value">An attribute, column, view column, type, element or keyword.</param>
+    /// <param name="value">An attribute, operation member, column, view column, type, element or keyword.</param>
     /// <param name="target">The target name.</param>
     /// <returns>The type name.</returns>
     public static string Map(TrackingTemplateContext context, object? value, string target)
@@ -54,6 +56,17 @@ internal static class TypeOf
                     return attribute.Required ? type : Wrap(map, "nullable", type);
                 }
 
+            case ROperationMember member:
+                {
+                    context.Recorder.RecordObject(member);
+                    var type = member.KeyOf is { } keyed
+                        ? ForType(context, KeyAttribute(context, member, keyed).Type, target, map)
+                        : ForType(context, MemberType(member), target, map);
+                    if (member.Collection)
+                        return Wrap(map, "collection", type);
+                    return member.Required ? type : Wrap(map, "nullable", type);
+                }
+
             case RColumn column:
                 {
                     context.Recorder.RecordObject(column);
@@ -83,7 +96,7 @@ internal static class TypeOf
             case string keyword:
                 return Keyword(keyword, target, map);
             default:
-                throw new RenderHelperException("MQ6006", $"`type_of` takes an attribute, column, type or keyword, not a {TemplateValues.TypeName(value)}.");
+                throw new RenderHelperException("MQ6006", $"`type_of` takes an attribute, operation member, column, type or keyword, not a {TemplateValues.TypeName(value)}.");
         }
     }
 
@@ -158,6 +171,22 @@ internal static class TypeOf
                 (length, precision, scale) = (attribute.Length, attribute.Precision, attribute.Scale);
                 custom = attribute.Type.Scalar;
                 break;
+            case ROperationMember member when member.KeyOf is { } keyed:
+                {
+                    context.Recorder.RecordObject(member);
+                    var key = KeyAttribute(context, member, keyed);
+                    keyword = KeywordOf(key.Type);
+                    (length, precision, scale) = (key.Length, key.Precision, key.Scale);
+                    custom = key.Type.Scalar;
+                    break;
+                }
+
+            case ROperationMember member:
+                context.Recorder.RecordObject(member);
+                keyword = KeywordOf(MemberType(member));
+                (length, precision, scale) = (member.Length, member.Precision, member.Scale);
+                custom = member.Type?.Scalar;
+                break;
             case RViewColumn viewColumn:
                 keyword = viewColumn.Type ?? "string";
                 break;
@@ -181,7 +210,7 @@ internal static class TypeOf
                 keyword = text;
                 break;
             default:
-                throw new RenderHelperException("MQ6006", $"`type_of` takes an attribute, column, type or keyword, not a {TemplateValues.TypeName(value)}.");
+                throw new RenderHelperException("MQ6006", $"`type_of` takes an attribute, operation member, column, type or keyword, not a {TemplateValues.TypeName(value)}.");
         }
 
         context.Recorder.Record("s:typeMaps");
@@ -194,6 +223,29 @@ internal static class TypeOf
             throw new RenderHelperException("MQ6006", $"`type_of`: the {DialectTypeMaps.Name(dialect)} type map has no entry for '{keyword}'.");
         return DialectTypeMaps.Render(map, keyword, length, precision, scale, conventions);
     }
+
+    /// <summary>
+    /// The key attribute a <c>keyOf</c> member holds the value of: its entity's single key attribute. A composite key, or none, is
+    /// MQ6006, since one member holds one value; a template maps <c>member.key_of.key.attributes</c> one by one instead.
+    /// </summary>
+    private static RAttribute KeyAttribute(TrackingTemplateContext context, ROperationMember member, REntity entity)
+    {
+        context.Recorder.RecordObject(entity);
+        if (entity.Key is not { Attributes.Count: 1 } key)
+        {
+            var count = entity.Key?.Attributes.Count ?? 0;
+            throw new RenderHelperException("MQ6006",
+                $"`type_of`: member '{member.Name}' holds a key of '{entity.Name}', whose key has {count} attributes, not one: map member.key_of.key.attributes one by one.");
+        }
+
+        var attribute = key.Attributes[0];
+        context.Recorder.RecordObject(attribute);
+        return attribute;
+    }
+
+    /// <summary>The type of a typed member; a member without one did not resolve its type and is MQ6006.</summary>
+    private static RType MemberType(ROperationMember member) =>
+        member.Type ?? throw new RenderHelperException("MQ6006", $"`type_of`: member '{member.Name}' has no type.");
 
     private static string KeywordOf(RType type) => type.Kind switch
     {

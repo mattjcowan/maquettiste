@@ -256,6 +256,8 @@ export interface paths {
          *       `scenarios`: the matching record.
          *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,
          *       actions, gates and invokes, actors by id.
+         *     - `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,
+         *       `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.
          *     - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
          *       indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
          *       for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
@@ -2787,7 +2789,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration" | "operation";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -2831,7 +2833,7 @@ export interface components {
              * @enum {string}
              */
             use?: "lifecycle" | "orchestration";
-            /** @description The entity whose lifecycle the process is, on process rows that have one. */
+            /** @description The entity whose lifecycle the process is, on process rows that have one; the entity an operation acts on, on operation rows that have one. */
             subject?: components["schemas"]["Ulid"];
             /** @description The number of states at every depth, on process rows. */
             stateCount?: number;
@@ -2844,6 +2846,11 @@ export interface components {
             process?: components["schemas"]["Ulid"];
             /** @description The number of steps, on scenario rows. */
             stepCount?: number;
+            /**
+             * @description The operation's effect, on operation rows (next-phase-2-design.md section 4.1).
+             * @enum {string}
+             */
+            effect?: "read" | "change";
         };
         RelationEndSummary: {
             entity: components["schemas"]["Ulid"];
@@ -2860,7 +2867,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"] | components["schemas"]["operation"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -3313,7 +3320,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty. */
@@ -3339,7 +3346,7 @@ export interface components {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
         };
-        /** @description The annotations of a state, transition, event, guard, action, gate or invoke. */
+        /** @description The annotations of a state, transition, event, guard, action, gate or invoke, and of an operation's member, outcome or error. */
         ProcessNodeAnnotations: {
             displayName: string;
             description: string | null;
@@ -3871,6 +3878,77 @@ export interface components {
             context: {
                 [key: string]: unknown;
             };
+        };
+        /** @description A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors; the events it fires and what it requires by id. */
+        OperationRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "operation";
+            name: string;
+            /** @description Its own package, else its subject's. */
+            package: string | null;
+            /** @description The id of the entity it acts on. */
+            subject: string | null;
+            /**
+             * @description Null without a subject.
+             * @enum {string|null}
+             */
+            level: "record" | "collection" | null;
+            /** @enum {string} */
+            effect: "read" | "change";
+            input: components["schemas"]["OperationMemberRecord"][];
+            outcomes: components["schemas"]["OperationOutcomeRecord"][];
+            /** @description The default outcome's id, the one named, else the first. */
+            defaultOutcome: string | null;
+            errors: components["schemas"]["OperationErrorRecord"][];
+            fires: string[];
+            requires: string[];
+        };
+        /** @description A member of an operation's input or of an outcome's returns, a typed value or a record key. */
+        OperationMemberRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            /** @description A typed value's type, or a record key's single key attribute's type; null for a key of several attributes. */
+            type: components["schemas"]["TypeRecord"] | null;
+            /** @description The id of the entity whose key the member holds. */
+            keyOf: string | null;
+            required: boolean;
+            /** @description The default, a plain value. */
+            default: unknown;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            collection: boolean;
+            sensitive: string | null;
+            validation: components["schemas"]["ValidationRecord"] | null;
+            /** @description The 0-based position in its list. */
+            order: number;
+        };
+        /** @description An outcome of an operation. */
+        OperationOutcomeRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            isDefault: boolean;
+            /** @enum {string} */
+            completes: "now" | "later";
+            returns: components["schemas"]["OperationReturnsRecord"] | null;
+        };
+        /** @description What an outcome returns, an inline shape (`members`) or records of an entity (`entity`). */
+        OperationReturnsRecord: {
+            /** @description The inline shape's members; empty unless the returns is of that form. */
+            members: components["schemas"]["OperationMemberRecord"][];
+            /** @description The id of the entity whose records are returned. */
+            entity: string | null;
+            list: boolean;
+        };
+        /** @description An error of an operation. */
+        OperationErrorRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            /** @description The stable text clients see, the code, else the name. */
+            code: string;
+            /** @description The id of the input member it points at. */
+            input: string | null;
         };
         /** @description A resolved database: every field of the database view (`DatabaseView`) with its kind. */
         DatabaseRecord: components["schemas"]["DatabaseView"] & {
@@ -8540,7 +8618,7 @@ export interface components {
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @default [] */
-            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event")[];
+            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event" | "operation" | "operation-member" | "outcome" | "error")[];
             /** @description A label, not a link: an element carries at most one stereotype of a group, its own and implied ones together (MQ2013). */
             group?: components["schemas"]["key"];
             /**
@@ -9811,6 +9889,293 @@ export interface components {
                 };
             };
         } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown);
+        /**
+         * Operation member
+         * @description An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).
+         */
+        member: {
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            /** @description A typed value's type, as an attribute takes it: a built-in keyword or a reference to an enum, value object, custom scalar type or reference type. */
+            type?: components["schemas"]["typeRef"];
+            /** @description A record key: the id of the entity whose record's key the member holds (with collection, a list of keys). */
+            keyOf?: components["schemas"]["id"];
+            length?: components["schemas"]["length"];
+            precision?: components["schemas"]["precision"];
+            scale?: components["schemas"]["scale"];
+            /** @default false */
+            required?: boolean;
+            /** @description The value a typed input member takes when none is given; never on a record key or a member of a returns (MQ3024). */
+            default?: unknown;
+            /** @default false */
+            collection?: boolean;
+            sensitive?: components["schemas"]["sensitivity"];
+            validation?: components["schemas"]["validation"];
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
+         * Returns
+         * @description What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.
+         */
+        returns: {
+            /** @description An inline shape: at least one member. */
+            members?: components["schemas"]["member"][];
+            /** @description Records of an entity, its attributes as the shape. */
+            entity?: components["schemas"]["id"];
+            /**
+             * @description Whether a list is returned.
+             * @default false
+             */
+            list?: boolean;
+        };
+        /**
+         * Outcome
+         * @description One way the operation ends.
+         */
+        outcome: {
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            /**
+             * @description now: the work is done when the outcome is reported; later: accepted and waiting.
+             * @default now
+             * @enum {unknown}
+             */
+            completes?: "now" | "later";
+            /** @description What the outcome returns; absent, it returns nothing. */
+            returns?: components["schemas"]["returns"];
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
+         * Operation error
+         * @description An error an operation can report. Its display name and description are the texts a client shows.
+         */
+        operationError: {
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            /** @description The stable text clients see; absent, the name. */
+            code?: string;
+            /** @description The input member the error points at, one of the operation's own (MQ3027). */
+            input?: components["schemas"]["id"];
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
+         * Operation
+         * @description A command over the model: its subject, effect, input, outcomes, errors and the process events it fires (model/operations/, in a sub-folder named after the subject's file stem when it has one).
+         */
+        operation: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "operation";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            package?: components["schemas"]["id"];
+            /** @description The entity the operation acts on; not owning. The file lives in model/operations/<subject file stem>/. */
+            subject?: components["schemas"]["id"];
+            /**
+             * @description record: one record of the subject, whose key the operation takes implicitly; collection: the whole set. Means something only with a subject (MQ3023).
+             * @default record
+             * @enum {unknown}
+             */
+            level?: "record" | "collection";
+            /**
+             * @description Whether the operation only reads data or changes it.
+             * @enum {unknown}
+             */
+            effect: "read" | "change";
+            /**
+             * @description The input members, in file order.
+             * @default []
+             */
+            input?: components["schemas"]["member"][];
+            /** @description The ways the operation ends, in file order. */
+            outcomes: components["schemas"]["outcome"][];
+            /** @description One of the operation's own outcomes (MQ3028); absent, the first. */
+            defaultOutcome?: components["schemas"]["id"];
+            /**
+             * @description The operation's own errors, in file order.
+             * @default []
+             */
+            errors?: components["schemas"]["operationError"][];
+            /**
+             * @description Process event ids, of any process, that the operation fires.
+             * @default []
+             */
+            fires?: components["schemas"]["idList"];
+            /**
+             * @description Ids of any element or sub-element that stand for what the operation requires; the engine gives the list no meaning (MQ3031).
+             * @default []
+             */
+            requires?: components["schemas"]["idList"];
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+            $defs: {
+                /**
+                 * Operation member
+                 * @description An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).
+                 */
+                member: {
+                    id: components["schemas"]["id"];
+                    /** @default  */
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    pluralName?: string;
+                    /** @description A typed value's type, as an attribute takes it: a built-in keyword or a reference to an enum, value object, custom scalar type or reference type. */
+                    type?: components["schemas"]["typeRef"];
+                    /** @description A record key: the id of the entity whose record's key the member holds (with collection, a list of keys). */
+                    keyOf?: components["schemas"]["id"];
+                    length?: components["schemas"]["length"];
+                    precision?: components["schemas"]["precision"];
+                    scale?: components["schemas"]["scale"];
+                    /** @default false */
+                    required?: boolean;
+                    /** @description The value a typed input member takes when none is given; never on a record key or a member of a returns (MQ3024). */
+                    default?: unknown;
+                    /** @default false */
+                    collection?: boolean;
+                    sensitive?: components["schemas"]["sensitivity"];
+                    validation?: components["schemas"]["validation"];
+                    description?: components["schemas"]["description"];
+                    /** @description Markdown text: why the element is shaped this way. */
+                    rationale?: string;
+                    /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                    decision?: string;
+                    status?: components["schemas"]["status"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default [] */
+                    tags?: components["schemas"]["tagList"];
+                    category?: components["schemas"]["id"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
+                    /** @default {} */
+                    generation?: components["schemas"]["generation"];
+                    source?: components["schemas"]["source"];
+                };
+                /**
+                 * Outcome
+                 * @description One way the operation ends.
+                 */
+                outcome: {
+                    id: components["schemas"]["id"];
+                    /** @default  */
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    pluralName?: string;
+                    /**
+                     * @description now: the work is done when the outcome is reported; later: accepted and waiting.
+                     * @default now
+                     * @enum {unknown}
+                     */
+                    completes?: "now" | "later";
+                    /** @description What the outcome returns; absent, it returns nothing. */
+                    returns?: components["schemas"]["returns"];
+                    description?: components["schemas"]["description"];
+                    /** @description Markdown text: why the element is shaped this way. */
+                    rationale?: string;
+                    /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                    decision?: string;
+                    status?: components["schemas"]["status"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default [] */
+                    tags?: components["schemas"]["tagList"];
+                    category?: components["schemas"]["id"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
+                    /** @default {} */
+                    generation?: components["schemas"]["generation"];
+                    source?: components["schemas"]["source"];
+                };
+                /**
+                 * Returns
+                 * @description What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.
+                 */
+                returns: {
+                    /** @description An inline shape: at least one member. */
+                    members?: components["schemas"]["member"][];
+                    /** @description Records of an entity, its attributes as the shape. */
+                    entity?: components["schemas"]["id"];
+                    /**
+                     * @description Whether a list is returned.
+                     * @default false
+                     */
+                    list?: boolean;
+                };
+            };
+        };
         /** @description A name a batch declares with as and uses anywhere in the batch. */
         placeholder: string;
         /** @description An element or sub-element by kind and stored name: @kind:path, its segments separated by dots, a segment with a dot, quote or white space written in double quotes. */
@@ -10745,7 +11110,7 @@ export interface operations {
                  */
                 snapshot?: components["parameters"]["SnapshotQuery"];
                 /** @description What to read. */
-                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries" | "migrations";
+                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "operations" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries" | "migrations";
                 /** @description A database id; only what is mapped to it. */
                 database?: components["schemas"]["Ulid"];
                 /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */

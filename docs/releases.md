@@ -143,6 +143,16 @@ one.
   cannot apply. MQ4113 refuses an open value map that maps away a live code, MQ4114 warns when a plain save changes a
   kept row's code or a type's name, and `validate --against` reports such a change that no value map explains
   (MQ4112). MQ4106 and MQ4103 cover value maps.
+- **Operations, first cut.** A new kind, `operation`, models one command over the model, in a file under
+  `model/operations/` (in a folder per subject): its subject entity (one record or the whole collection, or none),
+  whether it reads or changes data, its input members, its outcomes (each completing now or later, and returning
+  members, records of an entity or a list of either), its errors (a stable `code`, the name when it has none, and the
+  input an error points at), the process events it fires and what it requires. Rules MQ3023 to MQ3028, MQ3030 and MQ3031
+  check them. The editor lists operations under their domain and opens them with General and JSON tabs. Templates get
+  the scope `each operation` (`type_of` maps a member), and csharp-dapper's new `operation-contracts` unit writes each
+  operation's request, result, error codes and handler interface. MCP `get_model_index` rows carry an operation's
+  `subject` and `effect`, and `get_resolved_model` has the scope `operations`. Errors shared from stereotypes, file
+  members, paging, the HTTP endpoint template and an operation screen with grids come later.
 - **Fixes from the milestone D review.** The 37 notes of [issue #2](https://github.com/mattjcowan/maquettiste/issues/2)
   are fixed before release. Those a user can see:
   - On PostgreSQL, a value map that retypes an enum column first drops the views the model knows about, and those the

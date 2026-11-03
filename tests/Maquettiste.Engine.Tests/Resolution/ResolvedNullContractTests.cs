@@ -55,6 +55,7 @@ public sealed class ResolvedNullContractTests
         ["REnumMember.DisplayName"] = "the file's displayName, else the name",
         ["RProcessNode.DisplayName"] = "the file's displayName, else the name (a transition's label)",
         ["RScenario.Start"] = "the file's start, else a start with its fields' defaults (no context values, the default instant)",
+        ["ROperationError.Code"] = "the file's code, else the error's name (next-phase-2-design.md section 4.1)",
     };
 
     private const string Slot =
@@ -150,12 +151,12 @@ public sealed class ResolvedNullContractTests
     /// <summary>
     /// What no fixture model holds: a routine, a database type and a SQL object on SQLite whose files have no SQLite text (so no body
     /// and no native name), a routine that returns a table, routine settings, a partitioned table with an exclusion constraint and
-    /// storage parameters, a derived attribute and a view's generation hints.
+    /// storage parameters, a derived attribute, a view's generation hints and an operation with members, outcomes and an error.
     /// </summary>
     private static ModelSnapshot Uncovered()
     {
         var b = new ModelBuilder(seed: 557);
-        b.Entity("Invoice").Key("id", "uuid").Attr("total", "decimal").Attr("doubled", "decimal", a => a.Derived("total * 2"));
+        var invoice = b.Entity("Invoice").Key("id", "uuid").Attr("total", "decimal").Attr("doubled", "decimal", a => a.Derived("total * 2"));
         var main = b.Database("main", Dialect.PostgreSql);
         var local = b.Database("local", Dialect.Sqlite);
         b.Table("bookings", main).Column("id", "int64", nullable: false).Column("during", "string").PrimaryKey("id").Edit(t => t with
@@ -186,6 +187,18 @@ public sealed class ResolvedNullContractTests
         {
             Id = b.NewId(), Name = "booking_totals", Database = main.Id, Body = new Dictionary<string, string> { ["*"] = "select 1 as one" },
             Generation = new Dictionary<string, GenerationHints> { ["sql-ddl"] = new GenerationHints { Rename = "totals" } },
+        });
+        var recipient = b.NewId();
+        b.Add(new Operation
+        {
+            Id = b.NewId(), Name = "send", Subject = invoice.Id, Effect = OperationEffect.Change,
+            Input = [new OperationMember { Id = recipient, Name = "recipient", Type = new TypeRef { Builtin = "string" } }, new OperationMember { Id = b.NewId(), Name = "copy", KeyOf = invoice.Id }],
+            Outcomes =
+            [
+                new OperationOutcome { Id = b.NewId(), Name = "applied", Returns = new OperationReturns { Entity = invoice.Id } },
+                new OperationOutcome { Id = b.NewId(), Name = "waiting", Returns = new OperationReturns { Members = [new OperationMember { Id = b.NewId(), Name = "trackingId", Type = new TypeRef { Builtin = "ulid" } }] } },
+            ],
+            Errors = [new OperationError { Id = b.NewId(), Name = "missing_recipient", Input = recipient }],
         });
         return b.Build();
     }

@@ -12,8 +12,9 @@ namespace Maquettiste.Engine.Model;
 /// <summary>
 /// One <c>x-ref</c> keyword of a property schema (next-phase-1-design.md section 4.1): the value at that place is the id of an
 /// element or sub-element of one of <see cref="Kinds"/>. Kinds are index kind names: element kind names, the sub-element kinds of
-/// <see cref="IndexEntry.Kind"/>, or a reserved kind (<c>operation</c>, <c>outcome</c>, <c>error</c>, <c>member</c>, <c>custom</c>,
-/// <c>custom:&lt;type&gt;</c>) whose values dangle until the kind exists.
+/// <see cref="IndexEntry.Kind"/>, or a reserved kind (<c>member</c>, <c>custom</c>, <c>custom:&lt;type&gt;</c>) whose values dangle
+/// until the kind exists. <c>operation</c> became an element kind and <c>operation-member</c>, <c>outcome</c> and <c>error</c>
+/// sub-element kinds (next-phase-2-design.md section 4.1).
 /// </summary>
 /// <param name="Kinds">The kinds the value may name, in file order.</param>
 /// <param name="Of">For sub-element kinds: <see cref="ElementScope"/> (a member of the host's top-level element) or an element id
@@ -25,8 +26,8 @@ internal sealed record XRef(IReadOnlyList<string> Kinds, string? Of, bool SameDa
     /// <summary>The <c>of</c> value that scopes a sub-element to the host's top-level element.</summary>
     public const string ElementScope = "$element";
 
-    /// <summary>The reserved kinds that name sub-elements (phase 2 adds them).</summary>
-    public static readonly FrozenSet<string> ReservedSubElementKinds = new[] { "operation", "outcome", "error", "member" }.ToFrozenSet(StringComparer.Ordinal);
+    /// <summary>The reserved kinds that name sub-elements: the members of custom elements (next-phase-2-design.md section 4.2).</summary>
+    public static readonly FrozenSet<string> ReservedSubElementKinds = new[] { "member" }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>The kinds <c>sameDatabase</c> fits: the physical objects and their parts.</summary>
     public static readonly FrozenSet<string> PhysicalKinds =
@@ -247,7 +248,8 @@ internal readonly record struct XRefSite(PropertyHost Host, string Pointer, stri
 
 /// <summary>
 /// One holder of custom properties in a model document (next-phase-1-design.md section 4.1): the element, its attributes, enum
-/// members and table columns, and a process's states, transitions and events. Every walk over <c>properties</c> (extension
+/// members and table columns, a process's states, transitions and events, and an operation's members (input, then each outcome's
+/// returns), outcomes and errors (next-phase-2-design.md section 4.1). Every walk over <c>properties</c> (extension
 /// validation, the <c>x-ref</c> walk of the index and the validator, localization and the batches) visits this set.
 /// </summary>
 /// <param name="Pointer">The holder's pointer in the document (<c>""</c> for the element).</param>
@@ -264,7 +266,8 @@ internal readonly record struct PropertyHost(string Pointer, string Id, string K
     IReadOnlyDictionary<string, JsonElement> Properties, IReadOnlyList<string>? EffectiveKeys = null)
 {
     /// <summary>The holders of a document, in walk order: the element, attributes, enum members, columns, states (depth first),
-    /// transitions, events.</summary>
+    /// transitions, events; for an operation its input members, then each outcome followed by its returns' members, then its
+    /// errors.</summary>
     /// <param name="element">The top-level element.</param>
     /// <param name="effectiveKeys">The element's keys with defaults (<see cref="ModelSnapshot.PropertyKeys"/>), or <see langword="null"/>
     /// when the model declares no default stereotype.</param>
@@ -293,6 +296,25 @@ internal readonly record struct PropertyHost(string Pointer, string Id, string K
         {
             for (var i = 0; i < table.Columns.Count; i++)
                 yield return Item(table.Columns[i], At("/columns", i), "column");
+        }
+
+        if (element is Operation operation)
+        {
+            for (var i = 0; i < operation.Input.Count; i++)
+                yield return Item(operation.Input[i], At("/input", i), "operation-member");
+            for (var i = 0; i < operation.Outcomes.Count; i++)
+            {
+                var outcome = operation.Outcomes[i];
+                var at = At("/outcomes", i);
+                yield return Item(outcome, at, "outcome");
+                var members = outcome.Returns?.Members ?? [];
+                for (var j = 0; j < members.Count; j++)
+                    yield return Item(members[j], At(at + "/returns/members", j), "operation-member");
+            }
+
+            for (var i = 0; i < operation.Errors.Count; i++)
+                yield return Item(operation.Errors[i], At("/errors", i), "error");
+            yield break;
         }
 
         if (element is not Process process)
@@ -943,11 +965,12 @@ internal sealed class PropertySchemaSet
 
     /// <summary>
     /// The holder kinds whose nodes localization translates (next-phase-1-design.md section 4.4): the localizable element kinds and
-    /// the sub-elements <see cref="PropertyHost.Of"/> reaches on them (attributes, enum members, states, transitions, events). Physical
+    /// the sub-elements <see cref="PropertyHost.Of"/> reaches on them (attributes, enum members, states, transitions, events, and an
+    /// operation's members, outcomes and errors). Physical
     /// objects and their columns, mappings, diagrams and the vocabulary containers have no translations.
     /// </summary>
     internal static readonly FrozenSet<string> TranslatedHolderKinds = global::Maquettiste.Engine.Localization.LocaleChains.ElementKinds.Select(k => KindInfo.Get(k).Name)
-        .Concat(["attribute", "enum-member", "state", "transition", "event"]).ToFrozenSet(StringComparer.Ordinal);
+        .Concat(["attribute", "enum-member", "state", "transition", "event", "operation-member", "outcome", "error"]).ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>The subschema applicators a nested <c>x-translatable</c> can sit under: those holding one schema, a map of schemas or an
     /// array of schemas.</summary>

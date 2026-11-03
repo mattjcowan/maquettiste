@@ -328,6 +328,7 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row): string | undefine
   if (r.kind === "seed" && r.rowCount != null) return plural(r.rowCount, "row", "rows");
   if (r.kind === "process") return processSecondary(r, r.subject ? nameOf(r.subject) : undefined, undefined);
   if (r.kind === "actor") return actorSecondary(r);
+  if (r.kind === "operation") return [r.subject ? nameOf(r.subject) : undefined, r.effect].filter(Boolean).join(" · ");
   return undefined;
 }
 
@@ -458,6 +459,8 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
   for (const [old, row] of steps) {
     const kind = row?.kind ?? old?.kind ?? "";
     if (PHASE3.includes(kind) || (kind === "package" && listsProcesses)) return null;
+    // An operation without a domain of its own sits in its subject's, which the patch's folder keys do not know.
+    if (kind === "operation") return null;
   }
 
   // Plan: every change is checked before anything is touched.
@@ -830,6 +833,8 @@ export function buildForest(input: TreeInput): Forest {
       }
       pkg = target ? (target.package ?? null) : pkg;
     }
+    // An operation's domain is its file's, else its subject's (next-phase-2-design.md section 4.1).
+    if (r.kind === "operation" && !pkg && r.subject) pkg = byId.get(r.subject)?.package ?? null;
     const at = projectFolderOf(r);
     const folderId = at >= 0 ? `f:${at}` : r.kind;
     if (isPackage(pkg)) put(pkg!, folderId, r);

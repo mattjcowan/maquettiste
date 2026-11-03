@@ -869,6 +869,8 @@ paths:
           `scenarios`: the matching record.
         - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,
           actions, gates and invokes, actors by id.
+        - `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,
+          `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.
         - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
           indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
           for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
@@ -894,7 +896,7 @@ paths:
           description: What to read.
           schema:
             type: string
-            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects, queries, migrations]
+            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, operations, databases, tables, routines, database-types, sql-objects, queries, migrations]
             default: all
         - name: database
           in: query
@@ -7569,7 +7571,7 @@ components:
                   - type: 'null'
     ElementKind:
       type: string
-      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario, migration]
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario, migration, operation]
     ChangeSource:
       type: string
       enum: [editor, disk, cli, engine]
@@ -7649,7 +7651,7 @@ components:
           type: string
           enum: [lifecycle, orchestration]
         subject:
-          description: The entity whose lifecycle the process is, on process rows that have one.
+          description: The entity whose lifecycle the process is, on process rows that have one; the entity an operation acts on, on operation rows that have one.
           $ref: '#/components/schemas/Ulid'
         stateCount:
           type: integer
@@ -7666,6 +7668,10 @@ components:
           type: integer
           minimum: 0
           description: The number of steps, on scenario rows.
+        effect:
+          description: The operation's effect, on operation rows (next-phase-2-design.md section 4.1).
+          type: string
+          enum: [read, change]
     RelationEndSummary:
       x-engine-addition: E5
       x-engine-record: Maquettiste.Engine.Model.RelationEndSummary
@@ -7732,6 +7738,7 @@ components:
         - $ref: '../../schemas/v1/actor.json'
         - $ref: '../../schemas/v1/scenario.json'
         - $ref: '../../schemas/v1/migration.json'
+        - $ref: '../../schemas/v1/operation.json'
     NewModelDocument:
       description: 'A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other.'
       type: object
@@ -8689,6 +8696,7 @@ components:
             - $ref: '#/components/schemas/ProcessRecord'
             - $ref: '#/components/schemas/ActorRecord'
             - $ref: '#/components/schemas/ScenarioRecord'
+            - $ref: '#/components/schemas/OperationRecord'
             - $ref: '#/components/schemas/DatabaseRecord'
             - $ref: '#/components/schemas/TableRecord'
             - $ref: '#/components/schemas/RoutineRecord'
@@ -8738,7 +8746,7 @@ components:
             $ref: '#/components/schemas/GenerationHintsView'
           description: Generation hints by pack name or `*`.
     ProcessNodeAnnotations:
-      description: The annotations of a state, transition, event, guard, action, gate or invoke.
+      description: The annotations of a state, transition, event, guard, action, gate or invoke, and of an operation's member, outcome or error.
       type: object
       required: [displayName, description, stereotypes, properties]
       properties:
@@ -9917,6 +9925,153 @@ components:
         context:
           type: object
           additionalProperties: true
+    OperationRecord:
+      x-engine-record: Maquettiste.Engine.OperationRecord
+      description: 'A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors; the events it fires and what it requires by id.'
+      allOf:
+      - $ref: '#/components/schemas/ResolvedAnnotations'
+      - type: object
+        required: [id, kind, name, package, subject, level, effect, input, outcomes, defaultOutcome, errors, fires, requires]
+        properties:
+          id:
+            type: string
+          kind:
+            type: string
+            const: operation
+          name:
+            type: string
+          package:
+            type: [string, 'null']
+            description: Its own package, else its subject's.
+          subject:
+            type: [string, 'null']
+            description: The id of the entity it acts on.
+          level:
+            description: Null without a subject.
+            type: [string, 'null']
+            enum: [record, collection, null]
+          effect:
+            type: string
+            enum: [read, change]
+          input:
+            type: array
+            items:
+              $ref: '#/components/schemas/OperationMemberRecord'
+          outcomes:
+            type: array
+            items:
+              $ref: '#/components/schemas/OperationOutcomeRecord'
+          defaultOutcome:
+            type: [string, 'null']
+            description: The default outcome's id, the one named, else the first.
+          errors:
+            type: array
+            items:
+              $ref: '#/components/schemas/OperationErrorRecord'
+          fires:
+            type: array
+            items:
+              type: string
+          requires:
+            type: array
+            items:
+              type: string
+    OperationMemberRecord:
+      x-engine-record: Maquettiste.Engine.OperationMemberRecord
+      description: A member of an operation's input or of an outcome's returns, a typed value or a record key.
+      allOf:
+      - $ref: '#/components/schemas/ProcessNodeAnnotations'
+      - type: object
+        required: [id, name, type, keyOf, required, default, length, precision, scale, collection, sensitive, validation, order]
+        properties:
+          id:
+            type: string
+          name:
+            type: string
+          type:
+            description: A typed value's type, or a record key's single key attribute's type; null for a key of several attributes.
+            oneOf:
+            - $ref: '#/components/schemas/TypeRecord'
+            - type: 'null'
+          keyOf:
+            type: [string, 'null']
+            description: The id of the entity whose key the member holds.
+          required:
+            type: boolean
+          default:
+            description: The default, a plain value.
+          length:
+            type: [integer, 'null']
+          precision:
+            type: [integer, 'null']
+          scale:
+            type: [integer, 'null']
+          collection:
+            type: boolean
+          sensitive:
+            type: [string, 'null']
+          validation:
+            oneOf:
+            - $ref: '#/components/schemas/ValidationRecord'
+            - type: 'null'
+          order:
+            type: integer
+            description: The 0-based position in its list.
+    OperationOutcomeRecord:
+      x-engine-record: Maquettiste.Engine.OperationOutcomeRecord
+      description: An outcome of an operation.
+      allOf:
+      - $ref: '#/components/schemas/ProcessNodeAnnotations'
+      - type: object
+        required: [id, name, isDefault, completes, returns]
+        properties:
+          id:
+            type: string
+          name:
+            type: string
+          isDefault:
+            type: boolean
+          completes:
+            type: string
+            enum: [now, later]
+          returns:
+            oneOf:
+            - $ref: '#/components/schemas/OperationReturnsRecord'
+            - type: 'null'
+    OperationReturnsRecord:
+      x-engine-record: Maquettiste.Engine.OperationReturnsRecord
+      description: What an outcome returns, an inline shape (`members`) or records of an entity (`entity`).
+      type: object
+      required: [members, entity, list]
+      properties:
+        members:
+          type: array
+          description: The inline shape's members; empty unless the returns is of that form.
+          items:
+            $ref: '#/components/schemas/OperationMemberRecord'
+        entity:
+          type: [string, 'null']
+          description: The id of the entity whose records are returned.
+        list:
+          type: boolean
+    OperationErrorRecord:
+      x-engine-record: Maquettiste.Engine.OperationErrorRecord
+      description: An error of an operation.
+      allOf:
+      - $ref: '#/components/schemas/ProcessNodeAnnotations'
+      - type: object
+        required: [id, name, code, input]
+        properties:
+          id:
+            type: string
+          name:
+            type: string
+          code:
+            type: string
+            description: The stable text clients see, the code, else the name.
+          input:
+            type: [string, 'null']
+            description: The id of the input member it points at.
     DatabaseRecord:
       x-engine-record: Maquettiste.Engine.DatabaseRecord
       description: 'A resolved database: every field of the database view (`DatabaseView`) with its kind.'

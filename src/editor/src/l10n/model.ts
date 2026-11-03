@@ -159,6 +159,10 @@ export const REQUIRE_KINDS = [
   "enum-member",
   "reference-field",
   "reference-row",
+  "operation",
+  "operation-member",
+  "outcome",
+  "error",
 ] as const;
 
 const BCP47 = /^[A-Za-z]{2,3}(?:-[A-Za-z]{4})?(?:-(?:[A-Za-z]{2}|\d{3}))?(?:-(?:[A-Za-z\d]{5,8}|\d[A-Za-z\d]{3}))*$/;

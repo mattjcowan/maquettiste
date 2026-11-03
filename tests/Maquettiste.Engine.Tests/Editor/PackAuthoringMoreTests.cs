@@ -211,6 +211,25 @@ public sealed class PackAuthoringMoreTests
     }
 
     [Fact]
+    public async Task Template_context_of_an_each_operation_unit_lists_the_operation_members()
+    {
+        await using var repo = EditorRepo.Create();
+        var node = JsonNode.Parse(File.ReadAllText(PackPath(repo, "pack.json")))!;
+        node["units"]!.AsArray().Add(new JsonObject { ["id"] = "op", ["template"] = "table.scriban", ["for"] = "each operation", ["output"] = "op/{{ element.id }}.txt" });
+        File.WriteAllText(PackPath(repo, "pack.json"), node.ToJsonString());
+
+        var context = await repo.Service.GetTemplateContextAsync("sql-ddl", "op", Ct);
+
+        Assert.NotNull(context);
+        Assert.Equal("each operation", context.Scope);
+        Assert.Contains(context.Variables, v => v.Name == "operation");
+        foreach (var (name, type) in new[] { ("input", "list"), ("outcomes", "list"), ("errors", "list"), ("fires", "list"), ("requires", "list"), ("effect", "string"), ("level", "string") })
+            Assert.Contains(context.Members["element"], m => m.Name == name && m.Type == type);
+        Assert.Contains(context.Members["element"], m => m.Name is "subject" or "default_outcome");
+        Assert.Contains(context.Members["model"], m => m.Name == "operations");
+    }
+
+    [Fact]
     public async Task The_template_context_and_the_pack_read_list_what_the_packs_own_scripts_register()
     {
         await using var repo = EditorRepo.Create();

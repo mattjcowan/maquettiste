@@ -1,0 +1,417 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Operation",
+  "description": "A command over the model: its subject, effect, input, outcomes, errors and the process events it fires (model/operations/, in a sub-folder named after the subject's file stem when it has one).",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "package",
+    "subject",
+    "level",
+    "effect",
+    "input",
+    "outcomes",
+    "defaultOutcome",
+    "errors",
+    "fires",
+    "requires",
+    "description",
+    "rationale",
+    "decision",
+    "status",
+    "stereotypes",
+    "excludeStereotypes",
+    "tags",
+    "category",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "operation"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/identifier",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "package": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "subject": {
+      "description": "The entity the operation acts on; not owning. The file lives in model/operations/<subject file stem>/.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "level": {
+      "description": "record: one record of the subject, whose key the operation takes implicitly; collection: the whole set. Means something only with a subject (MQ3023).",
+      "enum": [
+        "record",
+        "collection"
+      ],
+      "default": "record"
+    },
+    "effect": {
+      "description": "Whether the operation only reads data or changes it.",
+      "enum": [
+        "read",
+        "change"
+      ]
+    },
+    "input": {
+      "description": "The input members, in file order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/member"
+      },
+      "default": []
+    },
+    "outcomes": {
+      "description": "The ways the operation ends, in file order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/outcome"
+      },
+      "minItems": 1
+    },
+    "defaultOutcome": {
+      "description": "One of the operation's own outcomes (MQ3028); absent, the first.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "errors": {
+      "description": "The operation's own errors, in file order.",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/operationError"
+      },
+      "default": []
+    },
+    "fires": {
+      "description": "Process event ids, of any process, that the operation fires.",
+      "$ref": "common.json#/$defs/idList",
+      "default": []
+    },
+    "requires": {
+      "description": "Ids of any element or sub-element that stand for what the operation requires; the engine gives the list no meaning (MQ3031).",
+      "$ref": "common.json#/$defs/idList",
+      "default": []
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": [
+    "kind",
+    "id",
+    "name",
+    "effect",
+    "outcomes"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "member": {
+      "title": "Operation member",
+      "description": "An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "pluralName",
+        "type",
+        "keyOf",
+        "length",
+        "precision",
+        "scale",
+        "required",
+        "default",
+        "collection",
+        "sensitive",
+        "validation",
+        "description",
+        "rationale",
+        "decision",
+        "status",
+        "stereotypes",
+        "tags",
+        "category",
+        "properties",
+        "generation",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier",
+          "default": ""
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "pluralName": {
+          "type": "string"
+        },
+        "type": {
+          "description": "A typed value's type, as an attribute takes it: a built-in keyword or a reference to an enum, value object, custom scalar type or reference type.",
+          "$ref": "common.json#/$defs/typeRef"
+        },
+        "keyOf": {
+          "description": "A record key: the id of the entity whose record's key the member holds (with collection, a list of keys).",
+          "$ref": "common.json#/$defs/id"
+        },
+        "length": {
+          "$ref": "common.json#/$defs/length"
+        },
+        "precision": {
+          "$ref": "common.json#/$defs/precision"
+        },
+        "scale": {
+          "$ref": "common.json#/$defs/scale"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "default": {
+          "description": "The value a typed input member takes when none is given; never on a record key or a member of a returns (MQ3024)."
+        },
+        "collection": {
+          "type": "boolean",
+          "default": false
+        },
+        "sensitive": {
+          "$ref": "common.json#/$defs/sensitivity"
+        },
+        "validation": {
+          "$ref": "common.json#/$defs/validation"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        },
+        "rationale": {
+          "description": "Markdown text: why the element is shaped this way.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "status": {
+          "$ref": "common.json#/$defs/status"
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        },
+        "tags": {
+          "$ref": "common.json#/$defs/tagList",
+          "default": []
+        },
+        "category": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "properties": {
+          "$ref": "common.json#/$defs/properties",
+          "default": {}
+        },
+        "generation": {
+          "$ref": "common.json#/$defs/generation",
+          "default": {}
+        },
+        "source": {
+          "$ref": "common.json#/$defs/source"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outcome": {
+      "title": "Outcome",
+      "description": "One way the operation ends.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "pluralName",
+        "completes",
+        "returns",
+        "description",
+        "rationale",
+        "decision",
+        "status",
+        "stereotypes",
+        "tags",
+        "category",
+        "properties",
+        "generation",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier",
+          "default": ""
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "pluralName": {
+          "type": "string"
+        },
+        "completes": {
+          "description": "now: the work is done when the outcome is reported; later: accepted and waiting.",
+          "enum": [
+            "now",
+            "later"
+          ],
+          "default": "now"
+        },
+        "returns": {
+          "description": "What the outcome returns; absent, it returns nothing.",
+          "$ref": "#/$defs/returns"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        },
+        "rationale": {
+          "description": "Markdown text: why the element is shaped this way.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "status": {
+          "$ref": "common.json#/$defs/status"
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        },
+        "tags": {
+          "$ref": "common.json#/$defs/tagList",
+          "default": []
+        },
+        "category": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "properties": {
+          "$ref": "common.json#/$defs/properties",
+          "default": {}
+        },
+        "generation": {
+          "$ref": "common.json#/$defs/generation",
+          "default": {}
+        },
+        "source": {
+          "$ref": "common.json#/$defs/source"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "returns": {
+      "title": "Returns",
+      "description": "What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.",
+      "type": "object",
+      "x-order": [
+        "members",
+        "entity",
+        "list"
+      ],
+      "properties": {
+        "members": {
+          "description": "An inline shape: at least one member.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/member"
+          },
+          "minItems": 1
+        },
+        "entity": {
+          "description": "Records of an entity, its attributes as the shape.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "list": {
+          "description": "Whether a list is returned.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

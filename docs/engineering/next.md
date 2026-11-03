@@ -10,13 +10,17 @@ How to read the tables:
 - **Requested** is "yes" when a team that uses Maquettiste asked for the item, whatever its status here. Where the team
   asked for more than the item builds, or for a different form, the notes say so and "Not doing" lists what was
   declined.
-- **Status** is "built" with the version, "proposed" with a call, "covered" by other items, or "not doing".
-- **Proposed** calls come from the proposal of 2026-11-02 and wait on the owner's decision. Until the owner decides,
-  the order in section 7 of `next-phase-2-design.md` stands. *Build next*: most teams need it soon. *Later*: kept on
-  the roadmap with no date; picked when what it depends on exists, or when it becomes the most needed. The proposal
-  also dropped six items; the owner moved them to *later* on 2026-11-02, so nothing on the roadmap is dropped.
+- **Status** is "built" with the version, "build next" or "later", "covered" by other items, or "not doing".
+- **Build next** and **later** are the owner's decisions of 2026-11-02, taken after an independent review of every item
+  not built. *Build next*: most teams need it soon. *Later*: kept on the roadmap with no date; picked when what it
+  depends on exists, or when it becomes the most needed. Nothing on the roadmap is dropped.
 
-Every item not built yet was requested, except projections (3.12), views (3.13) and declared environments (6.9).
+Every roadmap item not built yet was requested, except projections (3.12), views (3.13) and declared environments
+(6.9). The older open work at the end came from the owner's reviews.
+
+The build-next order, one pull request each: operations, first cut (3.6); project-defined kinds (3.7); the small fixes
+marked below, validation speed first; tests for packs (8.2); library packs with exports (5.1, 5.3); calculated values
+(5.2); declarative rules and suppressions (8.3); the model diff with impact before apply (7.3, 7.2).
 
 ## Phase 1: built in 0.11.0
 
@@ -40,9 +44,10 @@ Designed in `next-phase-1-design.md`. 0.11.0 is a preview and not released yet.
 | 7.5 | MCP answers that fit an agent's context | yes | Built, 0.11.0 | |
 | 8.4 | Script rules that scale | yes | Built, 0.11.0 | |
 
-## Phase 2, milestone D: built in 0.12.0
+## Phase 2: built in 0.12.0
 
-Designed in section 3 of `next-phase-2-design.md`. In pull request #1, waiting to merge.
+Milestone D is designed in section 3 of `next-phase-2-design.md` and was merged in pull request #1. The first cut of
+operations is designed in section 4.1. 0.12.0 is not released yet.
 
 | # | Item | Requested | Status | Design |
 | --- | --- | --- | --- | --- |
@@ -51,46 +56,47 @@ Designed in section 3 of `next-phase-2-design.md`. In pull request #1, waiting t
 | 3.5 | Bindings that record their provenance; a drift rule and re-sync; materialize types attributes by reference type | yes | Built, 0.12.0 | [3.3](next-phase-2-design.md#33-bindings-that-record-their-provenance-and-drift) |
 | 6.6 | Seed foreign keys by natural key, stable derived ids, rows computed by a script | yes | Built, 0.12.0 | [3.4](next-phase-2-design.md#34-seeds-by-natural-key-stable-ids-and-scripted-rows) |
 | 6.7 | Rename, retire and merge reference-type codes and types, each recording a value map | yes | Built, 0.12.0 | [3.5](next-phase-2-design.md#35-reference-type-refactors) |
+| 3.6 | Operations, first cut: the kind with `subject`, `level` and `effect`; input members by type or key; outcomes with `completes` and `returns`; errors with `code` and `input`; `fires` and `requires`; `each operation`; csharp-dapper's `operation-contracts` unit | yes | Built, 0.12.0 | [4.1](next-phase-2-design.md#41-operations) |
 
 ## Left over from built items
 
 | Item | Requested | Status | Notes |
 | --- | --- | --- | --- |
-| Editor screens for the items above | yes | Not scheduled | Each item ships in the engine, the CLI and MCP first; the generic JSON form edits what has no screen yet. Each design section lists its screens under "Editor follow-ups". |
-| Sealing facts into a revision, and squashing (6.2) | yes | Not scheduled | Deferred when the ledger was built. Facts stay open until then. |
-| Rationale, decision and status in templates for enum members, stereotypes and categories (3.11) | yes | Not scheduled | |
+| Editor screens for the items above | yes | Later | Screens for operations and project-defined kinds come first, since the JSON form handles their nested members worst. Each item ships in the engine, the CLI and MCP first; the generic JSON form edits what has no screen yet. Each design section lists its screens under "Editor follow-ups". |
+| Sealing facts into a revision, and squashing (6.2) | yes | Later | Built with the live planner (6.1): squashing must check each environment's ledger, which only 6.1 reads. Facts stay open until then. |
+| Rationale, decision and status in templates for enum members, stereotypes and categories (3.11) | yes | Build next | One of the small fixes. |
 
 ## Phase 2: not built yet
 
-Designed in sections 4 to 6 of `next-phase-2-design.md`: 98 tasks. The seven *build next* items hold 53 of them as
-designed, fewer with operations cut down.
+Designed in sections 4 to 6 of `next-phase-2-design.md`. The *build next* items hold 54 tasks as designed.
 
-| # | Item | Requested | Proposed | Tasks | Design | Notes |
+| # | Item | Requested | Status | Tasks | Design | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 3.6 | Operations: API commands as elements | yes | Build next, a first cut | 12 | [4.1](next-phase-2-design.md#41-operations) | The first cut: the kind, input, outcomes, errors and the template scope. The team also asked for shared errors contributed by stereotypes, files and paging; those come later. |
 | 3.7 | Project-defined kinds (`custom`), with members that have ids | yes | Build next | 10 | [4.2](next-phase-2-design.md#42-project-defined-kinds) | |
-| 8.2 | Tests for packs (`maquettiste pack test`) | yes | Build next | 7 | [5.4](next-phase-2-design.md#54-tests-for-packs) | No longer waits for DDL steps (5.8). |
-| 5.2 | Values calculated once by project scripts | yes | Build next | 6 | [5.5](next-phase-2-design.md#55-values-calculated-by-project-scripts) | |
-| 8.3 | Declarative rules and per-element suppressions | yes | Build next | 7 | [5.6](next-phase-2-design.md#56-declarative-rules) | Conditions written in the expression language come with 3.8. |
+| 8.2 | Tests for packs (`maquettiste pack test`) | yes | Build next | 7 | [5.4](next-phase-2-design.md#54-tests-for-packs) | No longer waits for DDL steps (5.8). Its cases on the shipped packs pin their output, which 5.8 needs later. |
+| 5.1 | Library packs: shared partials and helpers | yes | Build next | 8 | [5.2](next-phase-2-design.md#52-library-packs) | A project typically runs several packs (database, API, data access, docs, agents) that share partials and helpers. |
+| 5.3 | Packs that read each other's exports | yes | Build next | 5 | [5.3](next-phase-2-design.md#53-packs-that-read-each-others-exports) | Built with 5.1. The API pack reads the class names the data access pack generated; only the pack that generates a name knows it. |
+| 5.2 | Values calculated once by project scripts | yes | Build next | 6 | [5.5](next-phase-2-design.md#55-values-calculated-by-project-scripts) | Costs nothing unless a project declares values. After the validation speed fix, with its own time budget on the bench model. |
+| 8.3 | Declarative rules and per-element suppressions | yes | Build next | 7 | [5.6](next-phase-2-design.md#56-declarative-rules) | Takes the resolved-checks stage designed in 5.5. Conditions written in the expression language come with 3.8. |
 | 7.2 | Impact before apply | yes | Build next | 5 | [6.1](next-phase-2-design.md#61-impact-before-apply) | Leaves out the export keys of 5.3. Migration steps and their grade come with 6.1. |
 | 7.3 | A model diff between two models | yes | Build next | 6 | [6.2](next-phase-2-design.md#62-a-model-diff-between-two-models) | Compares snapshots, folders and the working model. |
-| 5.1 | Library packs: shared partials and helpers | yes | Later | 8 | [5.2](next-phase-2-design.md#52-library-packs) | Matters to teams with several custom packs; calculated values (5.2) cover most shared naming. |
-| 5.3 | Packs that read each other's exports | yes | Later | 5 | [5.3](next-phase-2-design.md#53-packs-that-read-each-others-exports) | Matters to teams with several cooperating packs. |
-| 5.8 | DDL as structured steps from the engine | yes | Later | 18 | [5.1](next-phase-2-design.md#51-ddl-as-structured-steps-from-the-engine) | The same output; it pays off with the live planner (6.1). |
+| 3.6 | Operations, second cut: shared errors contributed by stereotypes, file members and returns, paging, csharp-dapper's `operation-endpoints` unit | yes | Later | E5, and parts of E7, E8 and E10 | [4.1](next-phase-2-design.md#41-operations) | Each part is marked "Second cut" in the design. Projection returns come with 3.12. |
+| 5.8 | DDL as structured steps from the engine | yes | Later | 18 | [5.1](next-phase-2-design.md#51-ddl-as-structured-steps-from-the-engine) | The same output; built with the live planner (6.1), the only item it pays back, never on its own. |
 | 3.10 | Requirements: `satisfies`, `verifies` and a coverage report | yes | Later | 6 | [4.3](next-phase-2-design.md#43-requirements) | Valuable for regulated teams; not needed to generate code. The roadmap had moved it up to phase 2. |
 | 4.2 | Shared process guards, actions and gate policies | yes | Later | 4 | [4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies) | For teams that model many processes. |
 | 6.9 | Declared environments | no | Later | 4 | [6.3](next-phase-2-design.md#63-declared-environments) | Added by the roadmap's review; mostly preparation for reading live databases. |
 
 ## Phase 3: not designed yet
 
-| # | Item | Requested | Proposed | Notes |
+| # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
 | 3.8 | One expression language for checks, validations, derived values and guards, lowered to SQL and JavaScript | yes | Later | Large. Built when guards or projections come next. |
 | 3.12 | Projections | no | Later | Added by the roadmap's review; operation payloads and scenarios use them. Needs 3.8. |
-| 5.5 | The query kind for hand-written SQL, and CTEs in the structured query | yes | Later | For database-first teams. Written tables and result columns are declared, not read from the SQL text. |
+| 5.5 | The query kind for hand-written SQL, and CTEs in the structured query | yes | Later | For database-first teams. Written tables and result columns are declared, not read from the SQL text. Includes raw SQL as a binding's read source (from the bindings work below). |
 | 6.1 | A live PostgreSQL planner: `db plan`, `db apply`, `db adopt` | yes | Later | Large, PostgreSQL only. Built when more than one team manages databases with Maquettiste. |
 | 6.5 | `db check`: generated DDL run against a scratch database | yes | Later | The second part of 6.5. A SQL parser is decided after `db check` shows how much is left. |
-| 6.3 | Typed triggers and row-level security policies; SQL objects that revert | yes | Later | SQL objects cover these today. Typed grants are in "Not doing". |
+| 6.3 | SQL objects that revert | yes | Later | Built with the live planner (6.1), which runs the revert statements. |
+| 6.3 | Typed triggers and row-level security policies | yes | Later | SQL objects cover these today. Typed grants are in "Not doing". |
 | 7.6 | Conventions tied to the rules that check them; where each resolved value came from | yes | Later | Helps agents explain answers. |
 | 4.1 | A lifecycle bound to a reference type or a status column | yes | Later | For teams that model processes. |
 | 4.3 | Approval gates with stages | yes | Later | Until then, gates, stereotypes and custom kinds (3.7) can model stages. |
@@ -99,16 +105,16 @@ designed, fewer with operations cut down.
 
 ## Phase 4: not designed yet
 
-| # | Item | Requested | Proposed | Notes |
+| # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
-| 3.13 | Views of the model: saved criteria that select elements | no | Later | Added by the roadmap's review; the documentation pack (5.6) would use views as its viewpoints. |
+| 3.13 | Views of the model: saved criteria that select elements | no | Later | Added by the roadmap's review. Part of the documentation pack (5.6), as its viewpoints, not an item of its own. |
 | 5.10 | The trace map from generated lines to element ids | yes | Later | The second part of 5.10. |
 | 5.6 | Model documentation as an example pack | yes | Later | The team asked for an export in the engine; it is a pack instead. The process-docs pack covers part of it. |
-| 9 | SysML v2 export as an example pack | yes | Later | Built when a team asks. Import is in "Not doing". |
+| 9 | SysML v2 export as an example pack | yes | Later | A pack written from the resolved model, as any team could. Import is in "Not doing". |
 | 4.6 | Charts joined to operations; the process runtime generated from them | yes | Later | Needs operations (3.6) and the expression language (3.8). The engine runs no process; packs generate the runtime. |
 | 4.5 | A structure hash per process, and records in flight when a process changes | yes | Later | Needs the lifecycle (4.1); the state map is a step in the migration ledger (6.2). |
 | 8.1 | Scenarios run against the running system | yes | Later | Needs operations (3.6) and projections (3.12); the team writes the test template. |
-| 8.5 | Upgrade tests from history | yes | Covered | No separate feature: build the previous version from a folder or snapshot, migrate, run the suite. The guide page for it is not written yet. |
+| 8.5 | Upgrade tests from history | yes | Covered | No separate feature: build the previous version from a folder or snapshot, migrate, run the suite. The guide page for it is build next, one of the small fixes. |
 
 ## Not doing
 
@@ -147,7 +153,7 @@ Decided on 2026-10-30, each with what to use instead.
 Queued at 0.7.1, before the roadmap, from the owner's reviews; none of it was requested by a team that uses
 Maquettiste. The old item "Migrations as recorded facts" became the migration ledger (6.2) and is built.
 
-### Validation speed (needs no decision)
+### Validation speed (build next, the first of the small fixes)
 
 The gate 3 bench line "MQ90xx-MQ92xx, whole model, added to validate" has a 400 ms budget. It measured 359 ms at gate 3;
 since the database designer, bindings and DDL rounds (0.6.0) it runs between 400 and 850 ms, so the line misses on most
@@ -167,11 +173,12 @@ Milestone D added provenance, drift and re-sync (3.5).
 Left:
 
 - **Raw SQL as a read source.** A binding reads from a hand-written SQL statement, not only a table, view or query.
+  Moved to the query kind (5.5).
 - **Split.** One entity read from and written to several tables.
 - **Routine bindings.** Read, write and delete through stored routines.
 - **Converters** as named, reusable elements on a field map.
-- **The unmapped-attribute rule in the engine.** MQ4058 (an attribute of a bound entity that no column maps) exists in
-  the editor's mock only; the engine should report it too.
+- **The unmapped-attribute rule in the engine (build next, one of the small fixes).** MQ4058 (an attribute of a bound
+  entity that no column maps) exists in the editor's mock only; the engine should report it too.
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
 
@@ -223,8 +230,8 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 
 ### Smaller items
 
-- **Explain still prepares the whole pack.** Explaining one unit (an explicit click) runs a full dry-run preparation; it
-  should plan only the unit asked about, as the preview now does.
+- **Explain still prepares the whole pack (build next, one of the small fixes).** Explaining one unit (an explicit
+  click) runs a full dry-run preparation; it should plan only the unit asked about, as the preview now does.
 - **The store rescans every file per request.** Reading the model snapshot stats every model file each time (about
   150 ms on 40,000 files); a file watcher or a cheaper change check would remove most of a warm preview's time.
 - **Oracle DDL against a server.** Every other dialect ran against a real server in 0.6.0; Oracle did not.

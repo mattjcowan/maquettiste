@@ -1,0 +1,37 @@
+{
+  "$schema": "../../../.schema/v1/operation.json",
+  "kind": "operation",
+  "id": "01JQPN00000000000000000001",
+  "name": "send",
+  "package": "01JPKG00000000000000000001",
+  "subject": "01JENT00000000000000000002",
+  "effect": "change",
+  "input": [
+    {
+      "id": "01JQPN00000000000000000002",
+      "name": "recipient",
+      "type": "string",
+      "length": 254,
+      "required": true
+    }
+  ],
+  "outcomes": [
+    {
+      "id": "01JQPN00000000000000000003",
+      "name": "applied",
+      "returns": {
+        "entity": "01JENT00000000000000000002"
+      }
+    }
+  ],
+  "errors": [
+    {
+      "id": "01JQPN00000000000000000004",
+      "name": "missing_recipient",
+      "input": "01JQPN00000000000000000002"
+    }
+  ],
+  "fires": [
+    "01JPRX00000000000000009001"
+  ]
+}

@@ -8,6 +8,7 @@ export const STEREOTYPE_KIND_GROUPS = [
   { label: "Parts", kinds: ["attribute", "enum-member"] },
   { label: "Databases", kinds: ["database", "table", "column", "view", "sequence", "routine", "database-type", "sql-object", "query", "mapping"] },
   { label: "Processes", kinds: ["process", "actor", "scenario", "state", "transition", "event"] },
+  { label: "Operations", kinds: ["operation", "operation-member", "outcome", "error"] },
   { label: "Settings", kinds: ["tag-vocabulary", "category-tree", "stereotype"] },
 ] as const satisfies readonly { label: string; kinds: readonly StereotypeKind[] }[];
 

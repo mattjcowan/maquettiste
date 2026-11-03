@@ -226,11 +226,11 @@ internal sealed class ModelPaths
     /// <summary>
     /// The conventional folder of an element (engine-design.md section 2.2). A database's folder is <c>model/databases/&lt;stem&gt;</c>
     /// (a collision adds the id suffix, see <see cref="DatabaseFolder"/>); tables, views, sequences, routines, database types, SQL objects and queries live in their database's
-    /// actual folder, found through <paramref name="databaseFolder"/>, and migration facts in its <c>migrations/open</c> folder; a seed lives in <c>model/seeds/&lt;target stem&gt;</c> and a scenario in <c>model/scenarios/&lt;process stem&gt;</c>.
+    /// actual folder, found through <paramref name="databaseFolder"/>, and migration facts in its <c>migrations/open</c> folder; a seed lives in <c>model/seeds/&lt;target stem&gt;</c>, a scenario in <c>model/scenarios/&lt;process stem&gt;</c> and an operation with a subject in <c>model/operations/&lt;subject stem&gt;</c>.
     /// </summary>
     /// <param name="element">The element.</param>
     /// <param name="databaseFolder">Returns the model-relative folder of a database id, or <see langword="null"/> when unknown.</param>
-    /// <param name="targetStem">Returns the file stem of a seed's target or a scenario's process, or <see langword="null"/> when unknown (the lowercase id is used).</param>
+    /// <param name="targetStem">Returns the file stem of a seed's target, a scenario's process or an operation's subject, or <see langword="null"/> when unknown (the lowercase id is used).</param>
     /// <returns>The model-relative folder.</returns>
     public static string ConventionalFolder(Element element, Func<string, string?> databaseFolder, Func<string, string?>? targetStem = null)
     {
@@ -250,6 +250,7 @@ internal sealed class ModelPaths
             Migration m => Under(m.Database, "migrations/open"),
             Seed seed => KindInfo.SeedsFolder + "/" + (targetStem?.Invoke(seed.Target) ?? seed.Target.ToLowerInvariant()),
             Scenario scenario => KindInfo.ScenariosFolder + "/" + (targetStem?.Invoke(scenario.Process) ?? scenario.Process.ToLowerInvariant()),
+            Operation { Subject: { } subject } => KindInfo.OperationsFolder + "/" + (targetStem?.Invoke(subject) ?? subject.ToLowerInvariant()),
             _ => KindInfo.Get(element.Kind).Folder,
         };
     }
@@ -279,7 +280,8 @@ internal sealed class ModelPaths
         var name = FileNameOf(modelPath);
         var inFolder = FolderOf(modelPath) == folder
             || (element is Seed seed && FolderOf(modelPath) == folder + Suffix(seed.Target)) // a target folder suffixed on a collision
-            || (element is Scenario scenario && FolderOf(modelPath) == folder + Suffix(scenario.Process)); // a process folder, likewise
+            || (element is Scenario scenario && FolderOf(modelPath) == folder + Suffix(scenario.Process)) // a process folder, likewise
+            || (element is Operation { Subject: { } subject } && FolderOf(modelPath) == folder + Suffix(subject)); // a subject folder, likewise
         return inFolder && (name == FileName(element, false) || name == FileName(element, true));
     }
 

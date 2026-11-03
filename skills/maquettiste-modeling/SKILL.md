@@ -1,6 +1,6 @@
 ---
 name: maquettiste-modeling
-description: Editing a Maquettiste model (the JSON under .maquettiste/) in a repository that uses Maquettiste, validating it and generating code. Use when asked to add or change entities, relations, enums, types, reference data, seeds, translations, databases, mappings, diagrams, processes, actors, scenarios or templates.
+description: Editing a Maquettiste model (the JSON under .maquettiste/) in a repository that uses Maquettiste, validating it and generating code. Use when asked to add or change entities, relations, enums, types, reference data, seeds, translations, databases, mappings, diagrams, processes, actors, scenarios, operations or templates.
 ---
 
 # Modeling with Maquettiste
@@ -31,6 +31,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
 | actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
+| operations/<subject>/ | operation: one command over the model (`subject`, `level`, `effect`, `input`, `outcomes`, `errors`, `fires`, `requires`) | in `operations/` itself without a subject; the subject is not owning, so deleting the entity is refused while an operation names it |
 | diagrams/ | canvas membership and positions only (a process's diagram holds its chart's places) | never own elements |
 | vocabularies/ | tags, categories, stereotypes | |
 
@@ -160,6 +161,31 @@ root-level states must equal its bound enum's members, in order (MQ9203).
   preview until `--apply`; `verify` exits 1 on a failing scenario).
 - The engine creates no table and runs no process in the application: where instances, history and audit records live is
   the project's mapping or a pack parameter (`processTables` in sql-ddl). Never add entities or databases for them unasked.
+
+## Operations
+
+An operation is one command over the model, in one file: an optional `subject` entity, `level` (`record`, the default,
+takes the subject record's key implicitly; `collection` acts on the whole set), a required `effect` (`read` or
+`change`), `input` members, one or more `outcomes`, `errors`, `fires` and `requires`. No operation is implied per
+entity; model only the commands asked for.
+
+- An input member is exactly one of a typed value (`type`, as an attribute takes it) or a record key (`keyOf`, an entity
+  id; with `collection`, a list of keys) (MQ3024). A record key takes no `default`, `length`, `precision`, `scale` or
+  `validation`.
+- An outcome `completes` `now` (the default) or `later` (accepted and waiting). Its optional `returns` is exactly one of
+  `members` (an inline shape; no `default`) or `entity` (records of that entity), with `list: true` for a list (MQ3025).
+  `defaultOutcome` names one of the operation's own outcomes; absent, the first.
+- An error has a `name`, an optional `code` (the stable text clients see; absent, the name) and an optional `input`, one
+  of the operation's own input members (MQ3027). Names and codes are unique per operation (MQ3026).
+- `fires` lists process event ids, of any process; a `read` operation that fires one is MQ3030. `requires` lists ids of
+  any element or sub-element that stand for what the operation requires (an actor, a permission code's row); the engine
+  gives it no meaning, and it may not name the operation, its own parts, a diagram or a migration fact (MQ3031).
+- In `apply_batch`, `@operation:Invoice.send` finds `send` on Invoice, and `@operation-member:Invoice.send.recipient`,
+  `@outcome:Invoice.send.waiting` and `@error:Invoice.send.missing_recipient` its parts.
+- Templates read operations through `each operation` (the variable `operation`; `type_of` maps a member), and
+  `get_resolved_model` has the scope `operations`. csharp-dapper's `operation-contracts` unit writes each operation's
+  request, result, error codes and handler interface.
+- Errors shared from stereotypes, file members and returns, paging and an endpoint template come later.
 
 ## Fallback: editing the files
 

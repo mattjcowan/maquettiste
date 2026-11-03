@@ -16,6 +16,26 @@ public sealed class ReadTrackingTests
     private static IReadOnlyList<string> Sorted(IEnumerable<string> keys) => [.. keys.Distinct().Order(StringComparer.Ordinal)];
 
     [Fact]
+    public async Task Adding_an_operation_that_fires_an_event_re_renders_units_that_read_fired_by()
+    {
+        await using var s = await Operations.OperationFixture.OpenAsync(withSend: false);
+        var before = s.Model;
+        await Operations.OperationFixture.CreateAsync(s, Operations.OperationFixture.SendJson());
+        var after = s.Model;
+        var model = Planning.PlanningKit.Resolve(after);
+        var process = model.Processes.Single(p => p.Id == Operations.OperationFixture.Dispatch);
+
+        var unit = await Adhoc.RenderAsync("{{ for e in process.events }}{{ e.name }}:{{ for o in e.fired_by }}{{ o.name }}{{ end }}{{ end }}",
+            process, u => u with { For = "each process" }, model: model);
+
+        // The unit read the event's referrers, and adding send changed them: the next plan renders it again.
+        Assert.Equal("sent:send", unit.Text());
+        var referrers = "r:" + Operations.OperationFixture.Sent;
+        Assert.Contains(referrers, unit.ReadKeys);
+        Assert.NotEqual(before.ReferrersHash(Operations.OperationFixture.Sent), after.ReferrersHash(Operations.OperationFixture.Sent));
+    }
+
+    [Fact]
     public async Task A_template_that_reads_nothing_records_only_its_template()
     {
         var unit = await Adhoc.RenderAsync("static text");

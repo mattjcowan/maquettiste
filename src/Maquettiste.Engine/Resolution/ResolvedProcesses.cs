@@ -219,6 +219,10 @@ public sealed class REvent : RProcessNode
 
     /// <summary>The transitions that trigger on the event, in priority order.</summary>
     public RList<RTransition> Transitions { get; internal set; } = RList<RTransition>.Empty;
+
+    /// <summary>The operations whose <c>fires</c> names the event, in <see cref="ResolvedModel.Operations"/> order (next-phase-2-design.md
+    /// section 4.1).</summary>
+    public RList<ROperation> FiredBy { get; internal set; } = RList<ROperation>.Empty;
 }
 
 /// <summary>A named guard.</summary>

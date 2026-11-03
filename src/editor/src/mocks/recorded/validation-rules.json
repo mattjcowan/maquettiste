@@ -536,6 +536,70 @@
     "canBeOff": true
   },
   {
+    "id": "MQ3023",
+    "defaultSeverity": "warning",
+    "description": "An operation sets level collection without a subject; the level is ignored.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3024",
+    "defaultSeverity": "error",
+    "description": "An operation member is not exactly one of a typed value (type) or a record key (keyOf); a record key sets default, length, precision, scale or validation; or a member of a returns sets default.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3025",
+    "defaultSeverity": "error",
+    "description": "An outcome's returns is not exactly one of members or entity.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3026",
+    "defaultSeverity": "error",
+    "description": "Two errors of an operation share a name or a code (the code, else the name).",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3027",
+    "defaultSeverity": "error",
+    "description": "An error's input is not an input member of the operation that holds it.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3028",
+    "defaultSeverity": "error",
+    "description": "defaultOutcome names an outcome of another operation.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3030",
+    "defaultSeverity": "warning",
+    "description": "A read operation fires a process event; an event changes state.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3031",
+    "defaultSeverity": "error",
+    "description": "requires names the operation itself, one of its own sub-elements, a diagram or a migration fact.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
     "id": "MQ4001",
     "defaultSeverity": "error",
     "description": "Identifier longer than the dialect's limit.",

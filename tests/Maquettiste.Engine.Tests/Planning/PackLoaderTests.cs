@@ -76,6 +76,16 @@ public sealed class PackLoaderTests
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each attribute\", \"where\": { \"abstract\": true } } ] }", "MQ6001", "/units/0/where/abstract")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"scripts\": [\"nope.js\"], \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/scripts/0")]
     public async Task Invalid_pack_json_is_reported_and_the_pack_left_out(string json, string rule, string pointer)
+        => await AssertLeftOut(json, rule, pointer);
+
+    [Theory]
+    [InlineData("{ \"database\": \"main\" }", "/units/0/where/database")]
+    [InlineData("{ \"abstract\": false }", "/units/0/where/abstract")]
+    public async Task An_each_operation_unit_refuses_database_and_abstract_filters(string where, string pointer) => await AssertLeftOut(
+        "{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each operation\", \"where\": "
+        + where + " } ] }", "MQ6001", pointer);
+
+    private static async Task AssertLeftOut(string json, string rule, string pointer)
     {
         await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
         f.WritePackFile("basic", "pack.json", json);

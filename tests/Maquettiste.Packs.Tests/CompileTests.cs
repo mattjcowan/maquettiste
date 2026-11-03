@@ -24,6 +24,20 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Csharp_dapper_operation_contracts_compile()
+    {
+        // send on Invoice without the lifecycle: the contracts refer to the entity class, so they build with the rest of the output.
+        using var repo = PackRepo.Billing();
+        repo.AddSendOperation(lifecycle: false);
+        await repo.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+        Assert.True(File.Exists(repo.PathOf("src/Generated/Operations/Billing/SendInvoice.g.cs")));
+        var project = Path.Combine(repo.Repo.Root, "compile");
+        WriteProject(project, repo.PathOf("src/Generated"), program: null);
+
+        await BuildOrSkipAsync(project);
+    }
+
+    [Fact]
     public async Task Query_rows_with_typed_columns_compile()
     {
         // next-phase-2-design.md section 3.2 (D26): a row record field that reads a column typed by an enum is the enum (a stored code
