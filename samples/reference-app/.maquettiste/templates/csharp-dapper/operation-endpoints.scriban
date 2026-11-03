@@ -1,0 +1,190 @@
+{{-
+# The HTTP endpoint of an operation (<Op> as in operation-contracts): one route that calls I<Op>Handler from the service
+# container. The mapping is the pack's own convention (see _operation.scriban): the route is /<kebab plural subject>, then one
+# segment per key attribute at record level, then /<kebab name>, or /operations/<kebab name> without a subject; GET for a read
+# without input, else POST. An outcome that completes now answers 200 with its value (a file is streamed with its first media
+# type) or 204 without one; one that completes later answers 202. An error answers with problem details (RFC 9457) carrying
+# code and input: status 422 when it points at an input, 409 otherwise, unless the error has an integer property httpStatus.
+# A file input is a multipart part named after its member; the other members are a JSON part named request. Paging inputs
+# come from the query string, pageSize capped at the smallest maxPageSize.
+# Written only when the endpointsFolder parameter names a folder; the code uses ASP.NET Core minimal APIs (the project references
+# the Microsoft.AspNetCore.App framework). The handler's own locals start with __, which no camel-cased member name gives, so
+# a file member named form, result or file keeps a local of its own.
+include "_csharp.scriban"
+include "_operation.scriban"
+op = operation
+name = op_type(op)
+request = name + "Request"
+endpoint = name + "Endpoint"
+keys = key_attributes(op)
+route = op_route(op)
+verb = op_verb(op)
+files = []
+fields = []
+for m in op.input
+  if m.is_file
+    files[files.size] = m
+  else
+    fields[fields.size] = m
+  end
+end
+form = name + "Form"
+max = max_page_size(op)
+usings = namespaces_used(op, keys | array.concat fields)
+if pack.params.endpointsFolder != ""
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+{{- if files.size > 0 }}
+using System.Linq;
+using System.Text.Json;
+{{- end }}
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+{{- for u in usings }}
+using {{ u }};
+{{- end }}
+
+namespace {{ ns(op) }};
+
+/// <summary>The HTTP endpoint of operation {{ op.name }}{{ if op.subject }} on {{ op.subject.name }}{{ end }}: {{ verb }} {{ route }}.</summary>
+public static class {{ endpoint }}
+{
+    /// <summary>The route.</summary>
+    public const string Route = {{ json route }};
+
+    /// <summary>Maps {{ verb }} {{ route }}.</summary>
+    /// <param name="routes">The route builder.</param>
+    /// <returns>The route builder.</returns>
+    public static IEndpointRouteBuilder Map{{ endpoint }}(this IEndpointRouteBuilder routes)
+    {
+        ArgumentNullException.ThrowIfNull(routes);
+        routes.Map{{ verb == "GET" ? "Get" : "Post" }}(Route, HandleAsync);
+        return routes;
+    }
+
+    /// <summary>{{ verb }} {{ route }}: runs operation {{ op.name }} through <see cref="I{{ name }}Handler"/>.</summary>
+{{- for k in keys }}
+    /// <param name="{{ cs_ident (camel k.name) }}">The {{ op.subject.name }} record's {{ k.name }}.</param>
+{{- end }}
+{{- if files.size > 0 }}
+    /// <param name="http">The request, read as a multipart form.</param>
+{{- else if op.input.size > 0 }}
+    /// <param name="request">The input, from the JSON body.</param>
+{{- end }}
+{{- paging = paging_kinds(op) }}
+{{- if paging | array.contains "cursor" }}
+    /// <param name="cursor">The cursor of the page to return, from the query string.</param>
+{{- end }}
+{{- if paging | array.contains "page" }}
+    /// <param name="page">The page to return, from 1, from the query string.</param>
+{{- end }}
+{{- if paging.size > 0 }}
+    /// <param name="pageSize">The page size, from the query string; capped at {{ max }}.</param>
+{{- end }}
+    /// <param name="handler">The handler, from the service container.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The response.</returns>
+    public static async Task<IResult> HandleAsync({{ for k in keys }}{{ type_of k.type "csharp" }} {{ cs_ident (camel k.name) }}, {{ end }}
+{{- if files.size > 0 }}HttpRequest http, {{ else if op.input.size > 0 }}{{ request }} request, {{ end }}
+{{- if paging | array.contains "cursor" }}string? cursor, {{ end }}{{ if paging | array.contains "page" }}int? page, {{ end }}{{ if paging.size > 0 }}int? pageSize, {{ end -}}
+[FromServices] I{{ name }}Handler handler, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+{{- if files.size > 0 }}
+        ArgumentNullException.ThrowIfNull(http);
+        var __form = await http.ReadFormAsync(cancellationToken).ConfigureAwait(false);
+{{- if fields.size > 0 }}
+        var __fields = __form.TryGetValue("request", out var __json) && __json.Count > 0
+            ? JsonSerializer.Deserialize<{{ form }}>(__json.ToString(), JsonOptions)
+            : null;
+        if (__fields is null)
+            return Missing("request");
+{{- end }}
+{{- for m in files }}
+{{- if m.collection }}
+        var {{ cs_ident (camel m.name) }} = __form.Files.GetFiles({{ json m.name }}).Select(__part => __part.OpenReadStream()).ToList();
+{{- else }}
+        var {{ cs_ident (camel m.name) }} = __form.Files.GetFile({{ json m.name }})?.OpenReadStream();
+{{- if m.required }}
+        if ({{ cs_ident (camel m.name) }} is null)
+            return Missing({{ json m.name }});
+{{- end }}
+{{- end }}
+{{- end }}
+        var __request = new {{ request }}({{ for m in op.input }}{{ if !for.first }}, {{ end }}{{ if m.is_file }}{{ cs_ident (camel m.name) }}{{ else }}__fields.{{ prop_name(m, form) }}{{ end }}{{ end }});
+{{- end }}
+{{- if paging.size > 0 }}
+        var __size = Math.Clamp(pageSize ?? {{ max }}, 1, {{ max }});
+{{- end }}
+        var __result = await handler.HandleAsync({{ for k in keys }}{{ cs_ident (camel k.name) }}, {{ end }}{{ if op.input.size > 0 }}{{ files.size > 0 ? "__request" : "request" }}, {{ end }}
+{{- if paging | array.contains "cursor" }}cursor, {{ end }}{{ if paging | array.contains "page" }}Math.Max(page ?? 1, 1), {{ end }}{{ if paging.size > 0 }}__size, {{ end -}}
+cancellationToken).ConfigureAwait(false);
+        return __result switch
+        {
+{{- for o in op.outcomes }}
+{{- value = returns_type(op, o) }}
+{{- if o.completes == "later" }}
+            {{ name }}Result.{{ pascal o.name }}{{ if value != "" && !o.returns.is_file }} __later => Results.Accepted(null, __later.Value),{{ else }} => Results.Accepted(),{{ end }}
+{{- else if value == "" }}
+            {{ name }}Result.{{ pascal o.name }} => Results.NoContent(),
+{{- else if o.returns.is_file }}
+            {{ name }}Result.{{ pascal o.name }} __file => Results.Stream(__file.Value, {{ json (o.returns.media_types.size > 0 ? o.returns.media_types[0] : "application/octet-stream") }}),
+{{- else }}
+            {{ name }}Result.{{ pascal o.name }} __done => Results.Ok(__done.Value),
+{{- end }}
+{{- end }}
+            {{ name }}Result.Failed __failed => Problem(__failed.Code, __failed.Input, StatusOf(__failed)),
+            _ => throw new InvalidOperationException("Operation {{ op.name }} returned an unknown result."),
+        };
+    }
+
+    /// <summary>The HTTP status of a failure: its error's, else 422 when it points at an input and 409 otherwise.</summary>
+    /// <param name="failed">The failure.</param>
+    /// <returns>The status code.</returns>
+    public static int StatusOf({{ name }}Result.Failed failed)
+    {
+        ArgumentNullException.ThrowIfNull(failed);
+{{- if op.errors.size > 0 }}
+        return failed.Code switch
+        {
+{{- for e in op.errors }}
+            {{ name }}Errors.{{ cs_ident (pascal e.name) }} => {{ error_status(e) }},
+{{- end }}
+            _ => failed.Input is null ? 409 : 422,
+        };
+{{- else }}
+        return failed.Input is null ? 409 : 422;
+{{- end }}
+    }
+
+    private static IResult Problem(string code, string? input, int status) => Results.Problem(new ProblemDetails
+    {
+        Status = status,
+        Title = code,
+        Extensions = { ["code"] = code, ["input"] = input },
+    });
+{{- if files.size > 0 }}
+
+    private static IResult Missing(string part) => Problem("missing_part", part, 400);
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+{{- if fields.size > 0 }}
+
+    /// <summary>The members of the request that are not files, sent as the JSON part named request.</summary>
+{{- for m in fields }}
+    /// <param name="{{ prop_name(m, form) }}">Input member {{ m.name }}.</param>
+{{- end }}
+    private sealed record {{ form }}({{ for m in fields }}{{ if !for.first }}, {{ end }}{{ member_type(m) }} {{ prop_name(m, form) }}{{ end }});
+{{- end }}
+{{- end }}
+}
+{{ end -}}
+{{- file (join_path pack.params.endpointsFolder "Operations" (package_folder op) (endpoint + ".g.cs")) content -}}
+{{- end -}}

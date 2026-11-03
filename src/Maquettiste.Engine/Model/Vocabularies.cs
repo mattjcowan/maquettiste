@@ -151,6 +151,12 @@ public sealed record Stereotype : Element, IPackaged
     /// <summary>Indexes every carrier inherits, over the stereotype's own columns.</summary>
     public IReadOnlyList<TableIndex> Indexes { get; init; } = [];
 
+    /// <summary>
+    /// Errors every operation whose effective set holds the stereotype inherits (next-phase-2-design.md section 4.1), keyed
+    /// <c>&lt;operationId&gt;.&lt;errorId&gt;</c> in each operation. A stereotype's error points at no input member (MQ3027).
+    /// </summary>
+    public IReadOnlyList<OperationError> Errors { get; init; } = [];
+
     /// <summary>An icon name.</summary>
     public string? Icon { get; init; }
 

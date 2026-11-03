@@ -59,6 +59,12 @@ public sealed class ROperationMember : RElement
     /// <summary>The entity whose record key the member holds, or <see langword="null"/> for a typed value.</summary>
     public REntity? KeyOf { get; internal set; }
 
+    /// <summary>Whether the member is a file: bytes with a name and a media type; <see cref="Length"/> caps its size in bytes.</summary>
+    public bool IsFile { get; internal set; }
+
+    /// <summary>The media types a file member accepts, in file order; empty accepts any.</summary>
+    public IReadOnlyList<string> MediaTypes { get; internal set; } = [];
+
     /// <summary>Whether a value must be given.</summary>
     public bool Required { get; internal set; }
 
@@ -115,17 +121,33 @@ public sealed class ROperationReturns
     /// <summary>The entity whose records are returned, its attributes as the shape, or <see langword="null"/>.</summary>
     public REntity? Entity { get; internal set; }
 
+    /// <summary>Whether a file is returned (a download; streaming is a file).</summary>
+    public bool IsFile { get; internal set; }
+
+    /// <summary>The media types a file result may have, in file order, the first the usual one.</summary>
+    public IReadOnlyList<string> MediaTypes { get; internal set; } = [];
+
     /// <summary>Whether a list is returned.</summary>
     public bool IsList { get; internal set; }
+
+    /// <summary>How a list is paged: <c>page</c> or <c>cursor</c>; <see langword="null"/> for an unpaged list or no list.</summary>
+    public string? Paging { get; internal set; }
+
+    /// <summary>The largest page a caller may ask for, set with <see cref="Paging"/>.</summary>
+    public int? MaxPageSize { get; internal set; }
 }
 
-/// <summary>A resolved error of an operation.</summary>
+/// <summary>
+/// A resolved error of an operation: its own (by its id) or one a stereotype contributes (by its keyed id
+/// <c>&lt;operationId&gt;.&lt;errorId&gt;</c>, with <see cref="MemberOrigin"/> naming the stereotype); or a stereotype's error as its
+/// definition lists it (<see cref="RStereotypeDefinition.Errors"/>), with no operation.
+/// </summary>
 public sealed class ROperationError : RElement
 {
     /// <inheritdoc/>
     public override string Kind => "error";
 
-    /// <summary>The operation that holds the error.</summary>
+    /// <summary>The operation that holds the error; <see langword="null"/> in <see cref="RStereotypeDefinition.Errors"/>.</summary>
     public ROperation? Operation { get; internal set; }
 
     /// <summary>The stable text clients see: the code, else the name.</summary>

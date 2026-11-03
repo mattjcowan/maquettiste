@@ -174,8 +174,22 @@ one.
   check them. The editor lists operations under their domain and opens them with General and JSON tabs. Templates get
   the scope `each operation` (`type_of` maps a member), and csharp-dapper's new `operation-contracts` unit writes each
   operation's request, result, error codes and handler interface. MCP `get_model_index` rows carry an operation's
-  `subject` and `effect`, and `get_resolved_model` has the scope `operations`. Errors shared from stereotypes, file
-  members, paging, the HTTP endpoint template and an operation screen with grids come later.
+  `subject` and `effect`, and `get_resolved_model` has the scope `operations`. An operation screen with grids comes
+  later.
+- **Operations, second cut.** A stereotype can declare `errors`, and every operation that carries it, or receives it
+  from a package's default stereotypes, inherits them by id (`<operation id>.<error id>`); the operation's `excludes`
+  drops one and a `redefines` entry changes only its `input`, display name or description, so a shared code stays
+  shared. An inherited error takes its stereotype error's translations unless the operation redefines that text, and
+  its resolved record carries `memberOrigin`. Removing an error from the stereotype drops the entries that name it.
+  A custom property that names the inherited error by its keyed id is cleared in the same save when it is optional
+  and reported by MQ2001 when it is required, so the user removes it first, as for a table's inherited column.
+  New rule MQ3029 (a stereotype with errors that does not apply to operations); MQ3026 and MQ3027 count inherited
+  errors and redefinitions, MQ3026 also reports two stereotypes that give an operation an error of one id, and MQ2027 and MQ2028 judge the operation's `redefines` and `excludes`. Input members can be
+  files (`file`, `mediaTypes`, `length` as a byte cap), a `returns` can be a file, and a list can be paged (`paging`
+  `page` or `cursor`, with `maxPageSize`); MQ3024 and MQ3025 check both, and `type_of` maps a file member through the
+  type map's `file` entry. csharp-dapper maps a file to `System.IO.Stream`, writes a page record and the paging inputs,
+  and its new `operation-endpoints` unit writes one ASP.NET Core minimal API route per operation when `endpointsFolder`
+  is set (`POST /invoices/{id}/send` for `send` on Invoice), answering 200, 204, 202 or problem details.
 - **Custom kinds.** A project can declare kinds of its own, one file each in `extensions/kinds/<type>.json` with a
   display name, a plural name and a JSON Schema per content key; its elements are `kind: "custom"` files under
   `model/custom/<type>/` that hold a `content` object the schema checks (MQ1017, MQ1019, MQ3033). An `x-member` array

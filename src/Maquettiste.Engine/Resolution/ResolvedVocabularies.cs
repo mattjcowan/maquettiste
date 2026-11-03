@@ -28,6 +28,12 @@ public sealed class RStereotypeDefinition : RElement
     /// <summary>The default custom property values, as plain CLR values by ordinal key.</summary>
     public IReadOnlyDictionary<string, object?> DefaultProperties { get; internal set; } = FrozenDictionary<string, object?>.Empty;
 
+    /// <summary>
+    /// The errors the stereotype contributes to the operations that carry it, in file order, each by its own id with no operation and
+    /// no input (next-phase-2-design.md section 4.1): a pack can write one set of constants per stereotype.
+    /// </summary>
+    public RList<ROperationError> Errors { get; internal set; } = RList<ROperationError>.Empty;
+
     /// <summary>The icon name, or <see langword="null"/>.</summary>
     public string? Icon { get; internal set; }
 

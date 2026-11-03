@@ -2,7 +2,7 @@
   "name": "csharp-dapper",
   "version": "1.0.0",
   "engine": ">=1.0 <2.0",
-  "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package; for operations, the request, result, error codes and handler interface; for processes, the states, definition and contracts, handlers, services, machine and store as pairs, HTTP endpoints with regions, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario; optionally, a managed block in an ignore file that keeps the generated folder out of version control.",
+  "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package; for operations, the request, result, error codes and handler interface (operation-contracts) and, with endpointsFolder, one HTTP endpoint each (operation-endpoints); for processes, the states, definition and contracts, handlers, services, machine and store as pairs, HTTP endpoints with regions, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario; optionally, a managed block in an ignore file that keeps the generated folder out of version control.",
   "parameters": {
     "database": "",
     "endpointsFolder": "",
@@ -68,6 +68,11 @@
       "template": "operation-contracts.scriban",
       "for": "each operation",
       "output": "{{ join_path pack.params.generatedFolder \"Operations\" (package_folder operation) ((pascal operation.name) + (operation.subject ? (pascal operation.subject.name) : \"\") + \".g.cs\") }}"
+    },
+    {
+      "id": "operation-endpoints",
+      "template": "operation-endpoints.scriban",
+      "for": "each operation"
     },
     {
       "id": "registrations",

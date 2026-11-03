@@ -68,7 +68,7 @@ public sealed class LocalizationHelperTests
         Assert.Contains("content/<name>", wrong.Error().Message, StringComparison.Ordinal);
     }
 
-    /// <summary>Own errors only: an inherited error's translation is the second cut (next-phase-2-design.md section 4.1).</summary>
+    /// <summary>Own parts and own errors (next-phase-2-design.md section 4.1); inherited errors are the next test.</summary>
     [Fact]
     public async Task An_operations_members_outcomes_and_errors_take_their_translations()
     {
@@ -100,5 +100,47 @@ public sealed class LocalizationHelperTests
         Assert.Equal("Préparer|Portions|Combien d'assiettes.|Prêt|Trop|Too many|false", unit.Text());
         Assert.Contains("l:fr:" + prepare, unit.ReadKeys);
         Assert.Contains("e:" + prepare, unit.ReadKeys);
+    }
+
+    /// <summary>
+    /// An error an operation inherits from a stereotype takes the stereotype error's translations (its <c>l:</c> key is the stereotype's);
+    /// a facet the operation's redefinition states is its own text in every locale.
+    /// </summary>
+    [Fact]
+    public async Task An_inherited_error_takes_its_stereotype_errors_translation_unless_redefined()
+    {
+        const string common = "01JRDQ00000000000000000021", notFound = "01JRDQ00000000000000000022", prepare = "01JRDQ00000000000000000023";
+        const string done = "01JRDQ00000000000000000024";
+        var (h, store) = await Kit.OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        foreach (var json in new[]
+        {
+            $$"""
+            { "kind": "stereotype", "id": "{{common}}", "key": "common-errors", "name": "CommonErrors", "appliesTo": ["operation"],
+              "errors": [ { "id": "{{notFound}}", "name": "not_found", "displayName": "Not found", "description": "No such record." } ] }
+            """,
+            $$"""
+            { "kind": "operation", "id": "{{prepare}}", "name": "prepare", "subject": "{{Kit.Recipe}}", "effect": "change",
+              "outcomes": [ { "id": "{{done}}", "name": "done" } ], "stereotypes": [ "common-errors" ],
+              "redefines": [ { "member": "{{notFound}}", "description": "No such recipe." } ] }
+            """,
+        })
+        {
+            var created = await store.CreateAsync(System.Text.Encoding.UTF8.GetBytes(json), ChangeSource.Editor, Kit.Ct);
+            Assert.True(created.Outcome == SaveOutcome.Saved, string.Join("; ", created.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        }
+
+        await Kit.Translate(store, "fr", new TranslationEdit(notFound, "displayName", "Introuvable"), new TranslationEdit(notFound, "description", "Aucun enregistrement."));
+        var model = ResolutionKit.Resolve(store.Current!);
+        var operation = model.Operations.Single();
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ display_name operation.errors[0] 'fr' }}|{{ display_name operation.errors[0] }}|{{ description_of operation.errors[0] 'fr' }}|"
+            + "{{ has_translation operation.errors[0] 'displayName' 'fr' }}/{{ has_translation operation.errors[0] 'description' 'fr' }}",
+            operation, u => u with { For = "each operation" }, model: model);
+
+        Assert.Equal("Introuvable|Not found|No such recipe.|true/false", unit.Text());
+        Assert.Contains("l:fr:" + common, unit.ReadKeys);
     }
 }

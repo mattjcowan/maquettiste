@@ -24,6 +24,48 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Csharp_dapper_operation_output_compiles_with_the_web_framework()
+    {
+        // send on Invoice without the lifecycle, attach (files) and browse (a paged list), with endpointsFolder outside the generated
+        // folder: the contracts and the endpoints build together against the ASP.NET Core shared framework. archive's file members carry
+        // the names the endpoint's own locals had before they took the __ prefix (form, fields, result, file).
+        using var repo = PackRepo.Billing();
+        repo.AddSendOperation(lifecycle: false);
+        OperationPackTests.AddAttachAndBrowse(repo);
+        repo.Write(".maquettiste/model/operations/customer/archive.json", """
+            {
+              "kind": "operation",
+              "id": "01JR5NH0000000000000000031",
+              "name": "archive",
+              "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+              "subject": "01J92P0V0ETQKXXP951CMMNHH3",
+              "effect": "change",
+              "input": [
+                { "id": "01JR5NH0000000000000000032", "name": "form", "file": true, "required": true },
+                { "id": "01JR5NH0000000000000000033", "name": "fields", "file": true },
+                { "id": "01JR5NH0000000000000000034", "name": "result", "file": true },
+                { "id": "01JR5NH0000000000000000035", "name": "file", "file": true },
+                { "id": "01JR5NH0000000000000000036", "name": "note", "type": "string", "length": 200 }
+              ],
+              "outcomes": [ { "id": "01JR5NH0000000000000000037", "name": "stored", "returns": { "file": true } } ]
+            }
+
+            """);
+        repo.EditJson(".maquettiste/maquettiste.json", settings =>
+        {
+            settings["outputs"]!["allow"]!.AsArray().Add(new System.Text.Json.Nodes.JsonObject { ["path"] = "src/Api" });
+            settings["packs"]!["csharp-dapper"]!["output"] = "src";
+            settings["packs"]!["csharp-dapper"]!["parameters"] = new System.Text.Json.Nodes.JsonObject { ["generatedFolder"] = "Generated", ["partialFolder"] = "Generated", ["endpointsFolder"] = "Api" };
+        });
+        await repo.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+        Assert.True(File.Exists(repo.PathOf("src/Api/Operations/Billing/SendInvoiceEndpoint.g.cs")));
+        var project = Path.Combine(repo.Repo.Root, "compile");
+        WriteProject(project, repo.PathOf("src/Generated"), program: null, web: true, second: repo.PathOf("src/Api"));
+
+        await BuildOrSkipAsync(project);
+    }
+
+    [Fact]
     public async Task Csharp_dapper_operation_contracts_compile()
     {
         // send on Invoice without the lifecycle: the contracts refer to the entity class, so they build with the rest of the output.
@@ -242,9 +284,11 @@ public sealed class CompileTests
         Console.WriteLine("bindings round trip ok");
         """;
 
-    private static void WriteProject(string folder, string generated, string? program)
+    private static void WriteProject(string folder, string generated, string? program, bool web = false, string? second = null)
     {
         Directory.CreateDirectory(folder);
+        var framework = web ? """    <FrameworkReference Include="Microsoft.AspNetCore.App" />""" : "";
+        var secondFolder = second is null ? "" : $"""    <Compile Include="{second}/**/*.cs" />""";
         var sqlite = program is null ? "" : $"""    <PackageReference Include="Microsoft.Data.Sqlite" Version="{SqliteVersion}" />""";
         File.WriteAllText(Path.Combine(folder, "RoundTrip.csproj"), $"""
             <Project Sdk="Microsoft.NET.Sdk">
@@ -259,6 +303,8 @@ public sealed class CompileTests
               </PropertyGroup>
               <ItemGroup>
                 <Compile Include="{generated}/**/*.cs" />
+            {secondFolder}
+            {framework}
                 <Compile Include="Program.cs" Condition="Exists('Program.cs')" />
                 <PackageReference Include="Dapper" Version="{DapperVersion}" />
             {sqlite}

@@ -5,7 +5,8 @@ namespace Maquettiste.Engine.Resolution;
 /// <summary>
 /// Operations (next-phase-2-design.md section 4.1). Runs after the processes, since an operation's fired events and each event's
 /// <see cref="REvent.FiredBy"/> need the resolved events; <see cref="ROperation.Requires"/> is linked after every other pass
-/// (<see cref="LinkOperationRequires"/>). The first cut resolves own errors only.
+/// (<see cref="LinkOperationRequires"/>). An operation's errors are its own, then those the stereotypes of its effective set contribute
+/// (<see cref="OperationErrors"/>), keyed <c>&lt;operationId&gt;.&lt;errorId&gt;</c>.
 /// </summary>
 internal sealed partial class ResolveRun
 {
@@ -90,7 +91,11 @@ internal sealed partial class ResolveRun
                 var resolved = new ROperationReturns
                 {
                     Members = new RList<ROperationMember>(returns.Members is { } members ? Members(members, r, outcome) : [], fileKeys),
+                    IsFile = returns.File,
+                    MediaTypes = [.. returns.MediaTypes],
                     IsList = returns.List,
+                    Paging = returns.Paging is { } paging ? ResolutionValues.Kebab(paging) : null,
+                    MaxPageSize = returns.MaxPageSize,
                 };
                 if (returns.Entity is { } entityId)
                 {
@@ -124,7 +129,44 @@ internal sealed partial class ResolveRun
             errors.Add(error);
         }
 
-        r.Errors = new RList<ROperationError>(errors, fileKeys);
+        // Inherited errors follow the own ones; the list changes with the stereotypes of the effective set and the packages whose defaults
+        // reach the operation.
+        var errorKeys = new DependencySet(Keys).AddRange(fileKeys);
+        AddPackageChain(errorKeys, Model.HolderOf(operation).Package);
+        foreach (var applied in AppliedOf(operation))
+            errorKeys.Element(applied.Stereotype.Id);
+        foreach (var inherited in OperationErrors.Of(Model, operation))
+        {
+            // Two stereotypes giving an error of one id: the first in effective-set order stays, the second is MQ3026.
+            if (_byId.ContainsKey(inherited.Key))
+                continue;
+            var source = inherited.Member;
+            var error = new ROperationError { Operation = r, Code = source.Code ?? source.Name };
+            var errorDeps = DepsOf(error);
+            var stereotypeId = inherited.From.Stereotype.Id;
+            var descriptionOwner = inherited.Redefined.Contains("description", StringComparer.Ordinal) ? operation.Id : stereotypeId;
+            FillCommon(error, source, Model.GetDocument(descriptionOwner)?.SidecarText, errorDeps);
+            error.Id = inherited.Key;
+            errorDeps.Element(operation.Id).Element(stereotypeId);
+            error.Package = r.Package;
+            error.Input = source.Input is { } input ? r.Input.FirstOrDefault(m => string.Equals(m.Id, input, StringComparison.Ordinal)) : null;
+            error.MemberOrigin = new RMemberOrigin
+            {
+                Source = inherited.From.Source switch
+                {
+                    StereotypeSource.SchemaDefault => "schema-default",
+                    StereotypeSource.PackageDefault => "package-default",
+                    _ => "stereotype",
+                },
+                Stereotype = StereotypeEntryOf(r, inherited.From),
+                MemberId = inherited.MemberId,
+                Redefined = inherited.Redefined,
+            };
+            Register(error);
+            errors.Add(error);
+        }
+
+        r.Errors = new RList<ROperationError>(errors, errorKeys.ToList());
 
         // A fired event exists while its process file holds it: the list depends on those files too.
         var firesKeys = new DependencySet(Keys).AddRange(fileKeys);
@@ -140,6 +182,40 @@ internal sealed partial class ResolveRun
         r.Fires = new RList<REvent>(fired, firesKeys.ToList());
     }
 
+    /// <summary>The operation's resolved entry for an applied stereotype (its annotations list the effective set in order).</summary>
+    private RStereotype? StereotypeEntryOf(ROperation r, AppliedStereotype from)
+    {
+        if (Model.Get<Operation>(r.Id) is not { } operation)
+            return null;
+        var effective = AppliedOf(operation);
+        for (var i = 0; i < effective.Count && i < r.Stereotypes.Count; i++)
+        {
+            if (effective[i].Equals(from))
+                return r.Stereotypes[i];
+        }
+
+        return r.Stereotypes.FirstOrDefault(s => string.Equals(s.Key, from.Stereotype.Key, StringComparison.Ordinal));
+    }
+
+    /// <summary>A stereotype's own errors, resolved on its definition (<see cref="RStereotypeDefinition.Errors"/>): no operation, no input.</summary>
+    private RList<ROperationError> StereotypeErrors(Stereotype stereotype, RStereotypeDefinition definition)
+    {
+        var sidecar = Model.GetDocument(stereotype.Id)?.SidecarText;
+        var errors = new List<ROperationError>(stereotype.Errors.Count);
+        foreach (var source in stereotype.Errors.DistinctBy(e => e.Id, StringComparer.Ordinal))
+        {
+            var error = new ROperationError { Code = source.Code ?? source.Name };
+            var deps = DepsOf(error);
+            FillCommon(error, source, sidecar, deps);
+            deps.Element(stereotype.Id);
+            error.Package = definition.Package;
+            Register(error);
+            errors.Add(error);
+        }
+
+        return new RList<ROperationError>(errors, new DependencySet(Keys).Element(stereotype.Id).ToList());
+    }
+
     private List<ROperationMember> Members(IReadOnlyList<OperationMember> members, ROperation operation, ROperationOutcome? outcome)
     {
         var list = new List<ROperationMember>(members.Count);
@@ -153,6 +229,8 @@ internal sealed partial class ResolveRun
             m.Required = source.Required;
             m.Default = ResolutionValues.Plain(source.Default);
             m.Collection = source.Collection;
+            m.IsFile = source.File;
+            m.MediaTypes = [.. source.MediaTypes];
             m.Sensitive = source.Sensitive is { } sensitive ? ResolutionValues.Kebab(sensitive) : null;
             RScalarType? scalar = null;
             if (source.Type is { } type)

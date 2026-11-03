@@ -12,7 +12,8 @@ namespace Maquettiste.Engine.Rendering;
 /// that is not required, or a nullable column, takes the <c>nullable</c> pattern. Reading a pack map records
 /// <c>t:&lt;pack&gt;/types/&lt;target&gt;.json</c>.</para>
 /// <para>An <b>operation member</b> (next-phase-2-design.md section 4.1) maps as an attribute does. A <c>keyOf</c> member maps through
-/// its entity's single key attribute, with that attribute's facets; a composite key, or none, is MQ6006.</para>
+/// its entity's single key attribute, with that attribute's facets; a composite key, or none, is MQ6006. A <c>file</c> member takes the
+/// map's <c>file</c> entry, MQ6006 when the map has none or the target is a SQL dialect.</para>
 /// <para>A <b>dialect target</b> (<c>postgresql</c>, <c>sqlserver</c>, <c>mysql</c>, <c>sqlite</c>, <c>oracle</c>, with the aliases
 /// of <see cref="SqlDialects.TryParse"/>) needs no file: a column of a database in that dialect yields its resolved native type;
 /// anything else goes through the dialect's type map (<c>typeMaps.&lt;dialect&gt;</c> overrides applied, recording
@@ -59,7 +60,10 @@ internal static class TypeOf
             case ROperationMember member:
                 {
                     context.Recorder.RecordObject(member);
-                    var type = member.KeyOf is { } keyed
+                    var type = member.IsFile
+                        ? map.TryGetValue("file", out var file) ? file
+                            : throw new RenderHelperException("MQ6006", $"`type_of`: member '{member.Name}' is a file, and types/{target}.json has no 'file' entry.")
+                        : member.KeyOf is { } keyed
                         ? ForType(context, KeyAttribute(context, member, keyed).Type, target, map)
                         : ForType(context, MemberType(member), target, map);
                     if (member.Collection)
@@ -171,6 +175,9 @@ internal static class TypeOf
                 (length, precision, scale) = (attribute.Length, attribute.Precision, attribute.Scale);
                 custom = attribute.Type.Scalar;
                 break;
+            case ROperationMember { IsFile: true } file:
+                context.Recorder.RecordObject(file);
+                throw new RenderHelperException("MQ6006", $"`type_of`: member '{file.Name}' is a file, which has no {DialectTypeMaps.Name(dialect)} type; map it with a pack type map's 'file' entry.");
             case ROperationMember member when member.KeyOf is { } keyed:
                 {
                     context.Recorder.RecordObject(member);

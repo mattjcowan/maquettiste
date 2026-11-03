@@ -3985,7 +3985,7 @@ export interface components {
             /** @description Its JSON pointer in the element's file. */
             pointer: string;
         };
-        /** @description A member of an operation's input or of an outcome's returns, a typed value or a record key. */
+        /** @description A member of an operation's input or of an outcome's returns, a typed value, a record key or a file. */
         OperationMemberRecord: components["schemas"]["ProcessNodeAnnotations"] & {
             id: string;
             name: string;
@@ -3993,6 +3993,10 @@ export interface components {
             type: components["schemas"]["TypeRecord"] | null;
             /** @description The id of the entity whose key the member holds. */
             keyOf: string | null;
+            /** @description Whether the member is a file; `length` caps its size in bytes. */
+            file: boolean;
+            /** @description The media types a file member accepts; empty accepts any. */
+            mediaTypes: string[];
             required: boolean;
             /** @description The default, a plain value. */
             default: unknown;
@@ -4014,15 +4018,26 @@ export interface components {
             completes: "now" | "later";
             returns: components["schemas"]["OperationReturnsRecord"] | null;
         };
-        /** @description What an outcome returns, an inline shape (`members`) or records of an entity (`entity`). */
+        /** @description What an outcome returns, an inline shape (`members`), records of an entity (`entity`) or a file (`file`). */
         OperationReturnsRecord: {
             /** @description The inline shape's members; empty unless the returns is of that form. */
             members: components["schemas"]["OperationMemberRecord"][];
             /** @description The id of the entity whose records are returned. */
             entity: string | null;
+            /** @description Whether a file is returned. */
+            file: boolean;
+            /** @description The media types a file result may have, the first the usual one. */
+            mediaTypes: string[];
             list: boolean;
+            /**
+             * @description How a list is paged; null for an unpaged list.
+             * @enum {string|null}
+             */
+            paging: "page" | "cursor" | null;
+            /** @description The largest page a caller may ask for, set with `paging`. */
+            maxPageSize: number | null;
         };
-        /** @description An error of an operation. */
+        /** @description An error of an operation, its own or one a stereotype contributes (by its keyed id `<operationId>.<errorId>`). */
         OperationErrorRecord: components["schemas"]["ProcessNodeAnnotations"] & {
             id: string;
             name: string;
@@ -4030,6 +4045,8 @@ export interface components {
             code: string;
             /** @description The id of the input member it points at. */
             input: string | null;
+            /** @description Where an inherited error comes from; null for an own error. */
+            memberOrigin: components["schemas"]["MemberOriginView"] | null;
         };
         /** @description A resolved database: every field of the database view (`DatabaseView`) with its kind. */
         DatabaseRecord: components["schemas"]["DatabaseView"] & {
@@ -5052,7 +5069,8 @@ export interface components {
          * @description Where a member of a table comes from when a stereotype of the table's effective set contributes it
          *     (next-phase-2-design.md 3.1). The member's key in the table is `<tableKey>.<memberId>`, the keyed id that seeds,
          *     indexes, bindings and queries write; change the member on the stereotype, or with the table's `redefines` and
-         *     `excludes`, never by copying it as an own column.
+         *     `excludes`, never by copying it as an own column. An operation's inherited error (next-phase-2-design.md 4.1) carries
+         *     the same view, its key `<operationId>.<errorId>`.
          */
         MemberOriginView: {
             /**
@@ -8812,6 +8830,37 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
+         * Operation error
+         * @description An error an operation can report. Its display name and description are the texts a client shows.
+         */
+        operationError: {
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            /** @description The stable text clients see; absent, the name. */
+            code?: string;
+            /** @description The input member the error points at, one of the operation's own (MQ3027). */
+            input?: components["schemas"]["id"];
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
          * Stereotype
          * @description A typed marker that adds virtual attributes, default property values and, for tables, inherited columns, keys, indexes and checks.
          */
@@ -8939,6 +8988,11 @@ export interface components {
              * @default []
              */
             indexes?: components["schemas"]["tableIndex"][];
+            /**
+             * @description Errors every operation that carries the stereotype inherits, each keyed <operation id>.<error id> in the operation; an operation can redefine one's input, displayName and description, or exclude it. A stereotype with errors applies to operations (MQ3029).
+             * @default []
+             */
+            errors?: components["schemas"]["operationError"][];
             icon?: string;
             color?: string;
             /** @default {} */
@@ -10128,7 +10182,7 @@ export interface components {
         } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown);
         /**
          * Operation member
-         * @description An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).
+         * @description An input member, or a member of an outcome's inline returns: exactly one of a typed value (type), a record key (keyOf) or a file (file) (MQ3024).
          */
         member: {
             id: components["schemas"]["id"];
@@ -10140,6 +10194,16 @@ export interface components {
             type?: components["schemas"]["typeRef"];
             /** @description A record key: the id of the entity whose record's key the member holds (with collection, a list of keys). */
             keyOf?: components["schemas"]["id"];
+            /**
+             * @description A file: bytes with a name and a media type; length caps its size in bytes.
+             * @default false
+             */
+            file?: boolean;
+            /**
+             * @description The media types a file member accepts; empty accepts any. Only on a file (MQ3024).
+             * @default []
+             */
+            mediaTypes?: string[];
             length?: components["schemas"]["length"];
             precision?: components["schemas"]["precision"];
             scale?: components["schemas"]["scale"];
@@ -10170,7 +10234,7 @@ export interface components {
         };
         /**
          * Returns
-         * @description What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.
+         * @description What an outcome returns: exactly one of members, entity or file (MQ3025). It has no id; it is part of its outcome.
          */
         returns: {
             /** @description An inline shape: at least one member. */
@@ -10178,10 +10242,27 @@ export interface components {
             /** @description Records of an entity, its attributes as the shape. */
             entity?: components["schemas"]["id"];
             /**
-             * @description Whether a list is returned.
+             * @description A file (a download; streaming is a file).
+             * @default false
+             */
+            file?: boolean;
+            /**
+             * @description The media types a file result may have, the first the usual one. Only beside file (MQ3025).
+             * @default []
+             */
+            mediaTypes?: string[];
+            /**
+             * @description Whether a list is returned; never beside file (MQ3025).
              * @default false
              */
             list?: boolean;
+            /**
+             * @description How a list is paged: page (a page number) or cursor (an opaque cursor). Set with list and maxPageSize (MQ3025); the paging inputs are implied, never declared as members.
+             * @enum {unknown}
+             */
+            paging?: "page" | "cursor";
+            /** @description The largest page a caller may ask for; set with paging (MQ3025). */
+            maxPageSize?: number;
         };
         /**
          * Outcome
@@ -10219,35 +10300,17 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
-         * Operation error
-         * @description An error an operation can report. Its display name and description are the texts a client shows.
+         * Error redefinition
+         * @description An exception to one inherited error: the stereotype error it names (member) and the facets it states. It has no id of its own.
          */
-        operationError: {
-            id: components["schemas"]["id"];
-            /** @default  */
-            name: components["schemas"]["identifier"];
-            displayName?: string;
-            pluralName?: string;
-            /** @description The stable text clients see; absent, the name. */
-            code?: string;
-            /** @description The input member the error points at, one of the operation's own (MQ3027). */
+        errorRedefinition: {
+            /** @description The id of the stereotype error the entry redefines. */
+            member: components["schemas"]["id"];
+            /** @description The input member of this operation the error points at (MQ3027). */
             input?: components["schemas"]["id"];
+            /** @description The display name for this operation; it shows in every locale. */
+            displayName?: string;
             description?: components["schemas"]["description"];
-            /** @description Markdown text: why the element is shaped this way. */
-            rationale?: string;
-            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
-            decision?: string;
-            status?: components["schemas"]["status"];
-            /** @default [] */
-            stereotypes?: components["schemas"]["keyList"];
-            /** @default [] */
-            tags?: components["schemas"]["tagList"];
-            category?: components["schemas"]["id"];
-            /** @default {} */
-            properties?: components["schemas"]["properties"];
-            /** @default {} */
-            generation?: components["schemas"]["generation"];
-            source?: components["schemas"]["source"];
         };
         /**
          * Operation
@@ -10291,6 +10354,16 @@ export interface components {
              */
             errors?: components["schemas"]["operationError"][];
             /**
+             * @description Per-operation exceptions to the errors the operation inherits from its stereotypes: each entry names a stereotype error by its id and states only the facets it changes (input, displayName, description). The error keeps its keyed id (<operation id>.<error id>); name and code are not redefinable (MQ2027).
+             * @default []
+             */
+            redefines?: components["schemas"]["errorRedefinition"][];
+            /**
+             * @description Ids of stereotype errors the operation does not inherit (MQ2028).
+             * @default []
+             */
+            excludes?: components["schemas"]["idList"];
+            /**
              * @description Process event ids, of any process, that the operation fires.
              * @default []
              */
@@ -10323,7 +10396,7 @@ export interface components {
             $defs: {
                 /**
                  * Operation member
-                 * @description An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).
+                 * @description An input member, or a member of an outcome's inline returns: exactly one of a typed value (type), a record key (keyOf) or a file (file) (MQ3024).
                  */
                 member: {
                     id: components["schemas"]["id"];
@@ -10335,6 +10408,16 @@ export interface components {
                     type?: components["schemas"]["typeRef"];
                     /** @description A record key: the id of the entity whose record's key the member holds (with collection, a list of keys). */
                     keyOf?: components["schemas"]["id"];
+                    /**
+                     * @description A file: bytes with a name and a media type; length caps its size in bytes.
+                     * @default false
+                     */
+                    file?: boolean;
+                    /**
+                     * @description The media types a file member accepts; empty accepts any. Only on a file (MQ3024).
+                     * @default []
+                     */
+                    mediaTypes?: string[];
                     length?: components["schemas"]["length"];
                     precision?: components["schemas"]["precision"];
                     scale?: components["schemas"]["scale"];
@@ -10400,7 +10483,7 @@ export interface components {
                 };
                 /**
                  * Returns
-                 * @description What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.
+                 * @description What an outcome returns: exactly one of members, entity or file (MQ3025). It has no id; it is part of its outcome.
                  */
                 returns: {
                     /** @description An inline shape: at least one member. */
@@ -10408,10 +10491,40 @@ export interface components {
                     /** @description Records of an entity, its attributes as the shape. */
                     entity?: components["schemas"]["id"];
                     /**
-                     * @description Whether a list is returned.
+                     * @description A file (a download; streaming is a file).
+                     * @default false
+                     */
+                    file?: boolean;
+                    /**
+                     * @description The media types a file result may have, the first the usual one. Only beside file (MQ3025).
+                     * @default []
+                     */
+                    mediaTypes?: string[];
+                    /**
+                     * @description Whether a list is returned; never beside file (MQ3025).
                      * @default false
                      */
                     list?: boolean;
+                    /**
+                     * @description How a list is paged: page (a page number) or cursor (an opaque cursor). Set with list and maxPageSize (MQ3025); the paging inputs are implied, never declared as members.
+                     * @enum {unknown}
+                     */
+                    paging?: "page" | "cursor";
+                    /** @description The largest page a caller may ask for; set with paging (MQ3025). */
+                    maxPageSize?: number;
+                };
+                /**
+                 * Error redefinition
+                 * @description An exception to one inherited error: the stereotype error it names (member) and the facets it states. It has no id of its own.
+                 */
+                errorRedefinition: {
+                    /** @description The id of the stereotype error the entry redefines. */
+                    member: components["schemas"]["id"];
+                    /** @description The input member of this operation the error points at (MQ3027). */
+                    input?: components["schemas"]["id"];
+                    /** @description The display name for this operation; it shows in every locale. */
+                    displayName?: string;
+                    description?: components["schemas"]["description"];
                 };
             };
         };

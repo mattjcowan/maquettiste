@@ -3,9 +3,10 @@
 A C# model and [Dapper](https://github.com/DapperLib/Dapper) data access layer from the resolved model: entity classes
 as generated and hand-written halves of one partial class, enums, value objects, a repository per mapped entity, one
 registration file per package and Dapper type handlers; for operations, the request, result, error codes and handler
-interface (see Operations); for processes, their states, definitions and contracts, the handlers, services, machine and
-store as generated and hand-written pairs, HTTP endpoints with user-code regions, a typed in-process dispatcher with
-pipeline behaviours, a generated statechart interpreter and one xunit test per scenario (see Processes).
+interface, and with `endpointsFolder` one HTTP endpoint each (see Operations); for processes, their states, definitions
+and contracts, the handlers, services, machine and store as generated and hand-written pairs, HTTP endpoints with
+user-code regions, a typed in-process dispatcher with pipeline behaviours, a generated statechart interpreter and one
+xunit test per scenario (see Processes).
 
 The pack writes to one output root. `maquettiste init --pack csharp-dapper` sets `packs.csharp-dapper.output` to
 `src/Generated` and allows that folder; `generate` rewrites it whenever the model changes, and whether you commit it or keep it out
@@ -26,6 +27,7 @@ For entity `Invoice` in package `Billing`:
 | `repository` | file blocks | `each entity` | `Billing/InvoiceRepository.g.cs`: `IInvoiceRepository` and `InvoiceRepository` |
 | `query` | `overwrite` | `each query` | `Queries/InvoicesByCustomerQuery.g.cs`: `IInvoicesByCustomerQuery` and `InvoicesByCustomerQuery` (see Queries) |
 | `operation-contracts` | `overwrite` | `each operation` | `Operations/Billing/SendInvoice.g.cs`: the request, result, error codes and handler interface of operation `send` on Invoice (see Operations) |
+| `operation-endpoints` | `overwrite` | `each operation` | Only with `endpointsFolder` set: `<endpointsFolder>/Operations/Billing/SendInvoiceEndpoint.g.cs`, one route that calls the handler (see Operations) |
 | `registrations` | file blocks | `model` | `Billing/BillingRepositories.g.cs`: one per package with repositories; `Queries/QueryRegistrations.g.cs` when the model has queries |
 | `type-handlers` | `overwrite` | `model` | `DapperTypeHandlers.g.cs`: the Dapper type handlers and `UlidGenerator` |
 | `seed-loader` | `overwrite` (file block) | `model` | With `seedLoader`: `SeedDataLoader.g.cs`, `SeedDataLoader` and `SeedDialect`. `new SeedDataLoader(connection, SeedDialect.PostgreSql, "data/main").LoadAsync("dev")` applies the seed-data pack's files for a database (`manifest.json` and its CSVs, or `seed-data.json`) in their order: a seed's rows when it belongs to every environment or to the one given, inserted when their key is missing (`once`), or also updated (`converge`, deleting the rows the seed does not hold with `delete`), with parameterized statements found by the table's key. `SeedHash` lets an application skip a load it has done. Nothing calls it. |
@@ -234,14 +236,18 @@ holds plain types in the package's namespace, with no dependency on a web framew
   map, nullable when not required and `IReadOnlyList<T>` for a collection; a member that holds a record key takes its
   key attribute's type.
 - `<Op><Outcome>`, a record of the members an outcome returns inline. An outcome that returns records of an entity uses
-  the entity's class instead; a list is `IReadOnlyList<T>`.
-- `<Op>Errors`, one constant per error: the Pascal name of the error, holding its code (the name when it has none).
-  Absent without errors.
+  the entity's class instead, and a file a `System.IO.Stream` (the type map's `file` entry, which a file input member
+  takes too); a list is `IReadOnlyList<T>`.
+- `<Op><Outcome>Page`, for a paged list: `Items` and `Next` (a cursor, null on the last page) or `Page` (from 1), with
+  the constant `MaxPageSize`.
+- `<Op>Errors`, one constant per error, own and inherited from the operation's stereotypes: the Pascal name of the
+  error, holding its code (the name when it has none). Absent without errors.
 - `<Op>Result`, an abstract record with one nested record per outcome (`Value` holds what the outcome returns; an
   outcome that returns nothing has no `Value`) and `Failed(string Code, string? Input)`, where `Input` names the input
   member the error points at.
 - `I<Op>Handler`, whose `HandleAsync` takes the subject's key at record level (one parameter per key attribute), the
-  request, and a cancellation token. Its summary names the process events the operation fires.
+  request, the paging inputs a paged list implies (`cursor` or `page`, then `pageSize`), and a cancellation token. Its
+  summary names the process events the operation fires.
 
 For `send` on Invoice:
 
@@ -262,8 +268,23 @@ public interface ISendInvoiceHandler
 }
 ```
 
-The pack writes no implementation and no HTTP endpoint for an operation: you implement the handler and expose it as your
-application does.
+The pack writes no implementation: you implement the handler. When `endpointsFolder` names a folder, the
+`operation-endpoints` unit writes `<endpointsFolder>/Operations/<package folder>/<Op>Endpoint.g.cs`, a static class
+with `Map<Op>Endpoint` (ASP.NET Core minimal APIs, so the project references the `Microsoft.AspNetCore.App` framework)
+and one route that resolves `I<Op>Handler` from the service container. The file is overwritten on every run; it has no
+regions. The HTTP mapping is this pack's own convention:
+
+- The route is `/<kebab plural subject>`, then one segment per key attribute at record level (`/{id}`), then
+  `/<kebab name>`; without a subject, `/operations/<kebab name>`. `send` on Invoice is `POST /invoices/{id}/send`.
+- GET for a read without input, else POST. A JSON body binds the request; with a file input the request is a multipart
+  form: each file is a part named after its member, and the other members are one JSON part named `request`.
+- An outcome that completes now answers 200 with its value (a file is streamed with its first media type) or 204
+  without one; an outcome that completes later answers 202.
+- An error answers with problem details (RFC 9457) whose title and `code` are the error code and whose `input` names the
+  input member: status 422 when the error points at an input, 409 otherwise, unless the error has an integer property
+  `httpStatus` (stereotype parameters can give one to every error a stereotype contributes).
+- Paging inputs come from the query string (`cursor` or `page`, and `pageSize`); `pageSize` is capped at the smallest
+  `maxPageSize`.
 
 ## Processes
 
@@ -414,7 +435,7 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 | `generatedFolder` | `""` | Folder (under the pack output) for generated files. |
 | `partialFolder` | `""` | Folder (under the pack output) for the once-written companions. |
 | `seedLoader` | `false` | Also write `SeedDataLoader.g.cs` (unit `seed-loader`): a class that loads the seed-data pack's output for one database with Dapper. Off, nothing changes. |
-| `endpointsFolder` | `""` | Folder (under the pack output) for the process endpoint files; empty writes none. Keep it in a folder you commit: the files have user-code regions. |
+| `endpointsFolder` | `""` | Folder (under the pack output) for the process and operation endpoint files; empty writes none. Keep it in a folder you commit: the process files have user-code regions. |
 | `testsFolder` | `""` | Folder (under the pack output) for the generated scenario tests (a test project's); empty writes none. |
 | `gitignorePath` | `""` | Path (under the pack output) of an ignore file that gets a managed block listing `generatedFolder`; empty writes none. Allow the file in `outputs.allow`. |
 
@@ -440,8 +461,9 @@ the diff before keeping it. In this repository `ShippedPackTests` in `tests/Maqu
 | `entity.scriban`, `entity.partial.scriban` | The generated and hand-written halves of an entity. |
 | `enum.scriban`, `value-object.scriban`, `repository.scriban`, `registrations.scriban`, `type-handlers.scriban` | The other units. |
 | `_binding.scriban` | The repository of a bound entity, from its binding's statements (included by `repository.scriban`). |
-| `_operation.scriban` | Shared functions of the operation unit: the type name, member and return types, key parameters, fired events. |
+| `_operation.scriban` | Shared functions of the operation units: the type name, member and return types, paging, key parameters, fired events and the HTTP mapping. |
 | `operation-contracts.scriban` | The contracts of an operation. |
+| `operation-endpoints.scriban` | The HTTP endpoint of an operation, with `endpointsFolder`. |
 | `_process.scriban` | Shared functions of the process units: names, folders, attribute types, C# literals, the translator's input. |
 | `process-*.scriban`, `*.partial.scriban` | The process units and their companions. |
 | `dispatch*.scriban`, `interpreter*.scriban`, `actors.scriban`, `scenario-tests.scriban` | The model-level process units and the scenario tests. |

@@ -260,8 +260,8 @@ internal readonly record struct XRefSite(PropertyHost Host, string Pointer, stri
 
 /// <summary>
 /// One holder of custom properties in a model document (next-phase-1-design.md section 4.1): the element, its attributes, enum
-/// members and table columns, a process's states, transitions and events, and an operation's members (input, then each outcome's
-/// returns), outcomes and errors (next-phase-2-design.md section 4.1). Every walk over <c>properties</c> (extension
+/// members and table columns, a process's states, transitions and events, a stereotype's errors, and an operation's members (input,
+/// then each outcome's returns), outcomes and errors (next-phase-2-design.md section 4.1). Every walk over <c>properties</c> (extension
 /// validation, the <c>x-ref</c> walk of the index and the validator, localization and the batches) visits this set.
 /// </summary>
 /// <param name="Pointer">The holder's pointer in the document (<c>""</c> for the element).</param>
@@ -298,6 +298,12 @@ internal readonly record struct PropertyHost(string Pointer, string Id, string K
         };
         for (var i = 0; i < attributes.Count; i++)
             yield return Item(attributes[i], At("/attributes", i), "attribute");
+        if (element is Stereotype stereotype)
+        {
+            for (var i = 0; i < stereotype.Errors.Count; i++)
+                yield return Item(stereotype.Errors[i], At("/errors", i), "error");
+        }
+
         if (element is EnumType enumType)
         {
             for (var i = 0; i < enumType.Members.Count; i++)

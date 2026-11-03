@@ -36,6 +36,7 @@
     "foreignKeys",
     "checks",
     "indexes",
+    "errors",
     "icon",
     "color",
     "properties",
@@ -337,6 +338,14 @@
       "type": "array",
       "items": {
         "$ref": "common.json#/$defs/tableIndex"
+      },
+      "default": []
+    },
+    "errors": {
+      "description": "Errors every operation that carries the stereotype inherits, each keyed <operation id>.<error id> in the operation; an operation can redefine one's input, displayName and description, or exclude it. A stereotype with errors applies to operations (MQ3029).",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/operationError"
       },
       "default": []
     },

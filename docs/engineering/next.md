@@ -60,6 +60,7 @@ rules (5.6) in #9; the model diff and impact before apply (6.1, 6.2) follow. 0.1
 | 6.6 | Seed foreign keys by natural key, stable derived ids, rows computed by a script | yes | Built, 0.12.0 | [3.4](next-phase-2-design.md#34-seeds-by-natural-key-stable-ids-and-scripted-rows) |
 | 6.7 | Rename, retire and merge reference-type codes and types, each recording a value map | yes | Built, 0.12.0 | [3.5](next-phase-2-design.md#35-reference-type-refactors) |
 | 3.6 | Operations, first cut: the kind with `subject`, `level` and `effect`; input members by type or key; outcomes with `completes` and `returns`; errors with `code` and `input`; `fires` and `requires`; `each operation`; csharp-dapper's `operation-contracts` unit | yes | Built, 0.12.0 | [4.1](next-phase-2-design.md#41-operations) |
+| 3.6 | Operations, second cut: errors shared from stereotypes (`redefines`, `excludes`, MQ3029), file members and returns, paging, csharp-dapper's `operation-endpoints` unit | yes | Built, 0.12.0 | [4.1](next-phase-2-design.md#41-operations) |
 | 3.7 | Project-defined kinds: the `custom` kind with project-declared types in kind files, members that have ids, content validation, translations, `each custom:<type>` and the tools for kind files and rows | yes | Built, 0.12.0 | [4.2](next-phase-2-design.md#42-project-defined-kinds) |
 | 5.1 | Library packs: `uses` with version ranges, shared partials and namespaced helpers, libraries in project rule scripts, `pack new --library` | yes | Built, 0.12.0 | [5.2](next-phase-2-design.md#52-library-packs) |
 | 5.3 | Packs that read each other's exports: unit `exports`, `exported`, incremental keys that follow them, `pack exports` | yes | Built, 0.12.0 | [5.3](next-phase-2-design.md#53-packs-that-read-each-others-exports) |
@@ -84,7 +85,6 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 
 | # | Item | Requested | Status | Tasks | Design | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 3.6 | Operations, second cut: shared errors contributed by stereotypes, file members and returns, paging, csharp-dapper's `operation-endpoints` unit | yes | Later | E5, and parts of E7, E8 and E10 | [4.1](next-phase-2-design.md#41-operations) | Each part is marked "Second cut" in the design. Projection returns come with 3.12. |
 | 5.8 | DDL as structured steps from the engine | yes | Later | 18 | [5.1](next-phase-2-design.md#51-ddl-as-structured-steps-from-the-engine) | The same output; built with the live planner (6.1), the only item it pays back, never on its own. |
 | 3.10 | Requirements: `satisfies`, `verifies` and a coverage report | yes | Later | 6 | [4.3](next-phase-2-design.md#43-requirements) | Valuable for regulated teams; not needed to generate code. The roadmap had moved it up to phase 2. |
 | 4.2 | Shared process guards, actions and gate policies | yes | Later | 4 | [4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies) | For teams that model many processes. |

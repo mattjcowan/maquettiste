@@ -13,7 +13,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// billing fixture. The copy gains the lifecycle <c>InvoiceLifecycle</c> (subject Invoice, states <c>Draft</c> and <c>Sent</c>, event
 /// <c>sent</c> from <c>Draft</c> to <c>Sent</c>), Invoice's <c>lifecycle</c> naming it, and <c>send</c> on Invoice firing <c>sent</c>.
 /// The first cut keeps typed and key members, outcomes returning members or an entity (a list too), errors with a code and an
-/// input, <c>fires</c>, <c>requires</c> and the <c>each operation</c> scope; shared errors are the second cut.
+/// input, <c>fires</c>, <c>requires</c> and the <c>each operation</c> scope; the second cut adds errors shared from a stereotype.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
 public sealed class OperationTests
@@ -38,6 +38,12 @@ public sealed class OperationTests
     private const string Customers = "01JR5NE0000000000000000022";
     private const string Found = "01JR5NE0000000000000000023";
     private const string TooBroad = "01JR5NE0000000000000000024";
+    private const string CommonErrors = "01JR5NE0000000000000000030";
+    private const string NotFound = "01JR5NE0000000000000000031";
+    private const string StaleVersion = "01JR5NE0000000000000000032";
+    private const string Void = "01JR5NE0000000000000000033";
+    private const string Voided = "01JR5NE0000000000000000034";
+    private const string OwnNotFound = "01JR5NE0000000000000000035";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -160,6 +166,47 @@ public sealed class OperationTests
     /// returning a list of invoices, with an error whose code differs from its name, requiring an actor; and an <c>each operation</c>
     /// unit rendering one file per operation.
     /// </summary>
+    [Fact]
+    public async Task Shared_errors_come_from_a_stereotype_by_id()
+    {
+        await using var repo = await SendCopyAsync();
+        await repo.CreateElementAsync($$"""
+            { "kind": "stereotype", "id": "{{CommonErrors}}", "key": "common-errors", "name": "CommonErrors", "appliesTo": ["operation"],
+              "errors": [ { "id": "{{NotFound}}", "name": "not_found" }, { "id": "{{StaleVersion}}", "name": "stale_version" } ] }
+            """);
+        Assert.Equal(SaveOutcome.Saved, (await TrySaveAsync(repo, Send, n => n["stereotypes"] = new JsonArray("common-errors"))).Outcome);
+        await repo.CreateElementAsync($$"""
+            { "kind": "operation", "id": "{{Void}}", "name": "void", "package": "{{Billing}}", "subject": "{{Invoice}}", "effect": "change",
+              "outcomes": [ { "id": "{{Voided}}", "name": "voided" } ],
+              "redefines": [ { "member": "{{NotFound}}", "description": "No invoice has this id." } ],
+              "excludes": [ "{{StaleVersion}}" ],
+              "stereotypes": [ "common-errors" ] }
+            """);
+
+        var diagnostics = await DiagnosticsAsync(repo);
+
+        Assert.True(diagnostics.Count == 0, Describe(diagnostics));
+        var model = await ResolveAsync(repo);
+        var send = model.Operations.Single(o => o.Id == Send);
+        Assert.Equal([AlreadySent, MissingRecipient, Send + "." + NotFound, Send + "." + StaleVersion], send.Errors.Select(e => e.Id));
+        var voided = Assert.Single(model.Operations.Single(o => o.Id == Void).Errors);
+        Assert.Equal((Void + "." + NotFound, "stereotype", "No invoice has this id."), (voided.Id, voided.MemberOrigin.Source, voided.Description));
+        Assert.Equal(["description"], voided.MemberOrigin.Redefined);
+
+        // A code change is the stereotype's alone: one file written, both resolved codes follow.
+        var recoded = await TrySaveAsync(repo, CommonErrors, n => n["errors"]![0]!["code"] = "missing");
+        Assert.Equal(SaveOutcome.Saved, recoded.Outcome);
+        Assert.Equal([CommonErrors], recoded.Changes!.Changed.Select(c => c.Id));
+        model = await ResolveAsync(repo);
+        Assert.Equal("missing", model.Operations.Single(o => o.Id == Send).Errors[2].Code);
+        Assert.Equal("missing", model.Operations.Single(o => o.Id == Void).Errors[0].Code);
+
+        // An own not_found beside the inherited one is MQ3026.
+        var clash = await TrySaveAsync(repo, Send, n => ((JsonArray)n["errors"]!).Add(new JsonObject { ["id"] = OwnNotFound, ["name"] = "not_found" }));
+        Assert.Equal(SaveOutcome.Invalid, clash.Outcome);
+        Assert.Contains(clash.Diagnostics, d => d.Rule == "MQ3026" && d.JsonPointer == "/stereotypes/0");
+    }
+
     [Fact]
     public async Task Search_takes_keys_returns_a_list_requires_an_actor_and_each_operation_renders_both()
     {

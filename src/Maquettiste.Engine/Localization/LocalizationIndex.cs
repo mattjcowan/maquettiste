@@ -973,7 +973,8 @@ public sealed class LocalizationIndex
         FrozenSet.Create(StringComparer.Ordinal, "state", "transition", "event", "guard", "action", "invoke", "gate", "meaning", "step");
 
     /// <summary>The sub-elements of operations (next-phase-2-design.md section 4.1): input and returns members, outcomes and own
-    /// errors. Each localizes its display name and description, as a process sub-element does.</summary>
+    /// errors, and a stereotype's errors, in the stereotype's shard. Each localizes its display name and description, as a process
+    /// sub-element does; an error an operation inherits reads its stereotype error's entries.</summary>
     private static readonly FrozenSet<string> OperationNodeKinds = FrozenSet.Create(StringComparer.Ordinal, "operation-member", "outcome", "error");
 
     /// <summary>

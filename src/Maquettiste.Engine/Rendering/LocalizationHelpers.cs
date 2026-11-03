@@ -92,6 +92,7 @@ internal static class LocalizationHelpers
         return value switch
         {
             null => (null, null),
+            ROperationError { MemberOrigin.MemberId: { } memberId } inherited => InheritedError(inherited, memberId, field),
             RElement e => (e.Id, field switch
             {
                 LocalizationIndex.DisplayNameField => e.DisplayName,
@@ -131,6 +132,22 @@ internal static class LocalizationHelpers
             RObject other => (other.Id, Source(other.Id)),
             _ => throw new RenderHelperException("MQ6006", $"`{helper}` takes a model element, sub-element, row or id, not a {TemplateValues.TypeName(value)}."),
         };
+    }
+
+    /// <summary>
+    /// An error an operation inherits from a stereotype (next-phase-2-design.md section 4.1): its texts are the stereotype error's, so its
+    /// translations apply through that id; a facet the operation's redefinition states is its own text in every locale (no node).
+    /// </summary>
+    private static (string? Id, string? Default) InheritedError(ROperationError error, string memberId, string field)
+    {
+        var (text, facet) = field switch
+        {
+            LocalizationIndex.DisplayNameField => (error.DisplayName, "displayName"),
+            LocalizationIndex.PluralNameField => (error.PluralName, "pluralName"),
+            LocalizationIndex.DescriptionField => (error.Description, "description"),
+            _ => ((string?)null, ""),
+        };
+        return error.MemberOrigin.Redefined.Contains(facet, StringComparer.Ordinal) ? (null, text) : (memberId, text);
     }
 
     /// <summary>A database object's own text of a standard field, or <see langword="null"/> when its file sets none; the read is recorded.</summary>

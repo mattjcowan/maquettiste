@@ -114,6 +114,7 @@ public sealed class ResolvedCoverageTests
         new("outcome", "operation.json", "$defs/outcome", typeof(ROperationOutcome)),
         new("outcome returns", "operation.json", "$defs/returns", typeof(ROperationReturns)),
         new("error", "common.json", "$defs/operationError", typeof(ROperationError)),
+        new("stereotype error", "stereotype.json", "errors/[]", typeof(ROperationError)),
 
         // Custom elements (next-phase-2-design.md section 4.2).
         new("custom", "custom.json", "", typeof(RCustom)),
@@ -166,6 +167,9 @@ public sealed class ResolvedCoverageTests
             map[("stereotype", member)] = reason;
         map[("table", "redefines")] = reason;
         map[("table", "excludes")] = reason;
+        // An operation's redefines and excludes shape the errors it inherits (next-phase-2-design.md section 4.1).
+        map[("operation", "redefines")] = "applied to Errors (MemberOrigin)";
+        map[("operation", "excludes")] = "applied to Errors (MemberOrigin)";
         return map;
     }
 
@@ -185,6 +189,8 @@ public sealed class ResolvedCoverageTests
         [("state", "states")] = "Children",
         // A returns' list flag is IsList (next-phase-2-design.md section 4.1).
         [("outcome returns", "list")] = "IsList",
+        [("outcome returns", "file")] = "IsFile",
+        [("operation member", "file")] = "IsFile",
     };
 
     /// <summary>

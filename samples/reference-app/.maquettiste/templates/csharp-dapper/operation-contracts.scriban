@@ -1,8 +1,9 @@
 {{-
 # The contracts of an operation (<Op> is its Pascal name followed by its subject's): <Op>Request with the input members (absent
-# without input), one record per outcome that returns members (<Op><Outcome>), <Op>Errors with one constant per error code,
-# <Op>Result with one nested record per outcome and Failed, and I<Op>Handler, whose HandleAsync takes the subject's key at
-# record level, the request and a cancellation token. Plain types: nothing here depends on a web framework.
+# without input), one record per outcome that returns members (<Op><Outcome>), one per paged list (<Op><Outcome>Page),
+# <Op>Errors with one constant per error code, own and inherited, <Op>Result with one nested record per outcome and Failed, and
+# I<Op>Handler, whose HandleAsync takes the subject's key at record level, the request, the paging inputs a paged list implies
+# and a cancellation token. A file is a System.IO.Stream. Plain types: nothing here depends on a web framework.
 include "_csharp.scriban"
 include "_operation.scriban"
 op = operation
@@ -70,6 +71,23 @@ public sealed record {{ request }}({{ for m in op.input }}{{ if !for.first }}, {
 {{- end }}
 public sealed record {{ record }}({{ for m in o.returns.members }}{{ if !for.first }}, {{ end }}{{ member_type(m) }} {{ prop_name(m, record) }}{{ end }});
 {{- end }}
+{{- page = page_record(op, o) }}
+{{- if page != "" }}
+
+/// <summary>A page of what outcome {{ o.name }} of operation {{ op.name }} returns.</summary>
+/// <param name="Items">The items of the page.</param>
+{{- if o.returns.paging == "cursor" }}
+/// <param name="Next">The cursor of the next page, or null on the last one.</param>
+public sealed record {{ page }}(IReadOnlyList<{{ item_type(op, o) }}> Items, string? Next)
+{{- else }}
+/// <param name="Page">The number of this page, from 1.</param>
+public sealed record {{ page }}(IReadOnlyList<{{ item_type(op, o) }}> Items, int Page)
+{{- end }}
+{
+    /// <summary>The largest page a caller may ask for.</summary>
+    public const int MaxPageSize = {{ o.returns.max_page_size }};
+}
+{{- end }}
 {{- end }}
 {{- if op.errors.size > 0 }}
 
@@ -105,7 +123,17 @@ public interface I{{ name }}Handler
 {{- if op.input.size > 0 }}
     /// <param name="request">The input.</param>
 {{- end }}
+{{- paging = paging_kinds(op) }}
+{{- if paging | array.contains "cursor" }}
+    /// <param name="cursor">The cursor of the page to return, or null for the first.</param>
+{{- end }}
+{{- if paging | array.contains "page" }}
+    /// <param name="page">The page to return, from 1.</param>
+{{- end }}
+{{- if paging.size > 0 }}
+    /// <param name="pageSize">The page size, from 1 to the page record's MaxPageSize.</param>
+{{- end }}
     /// <param name="cancellationToken">Cancels the operation.</param>
     /// <returns>The result.</returns>
-    Task<{{ name }}Result> HandleAsync({{ for k in keys }}{{ type_of k.type "csharp" }} {{ cs_ident (camel k.name) }}, {{ end }}{{ if op.input.size > 0 }}{{ request }} request, {{ end }}CancellationToken cancellationToken);
+    Task<{{ name }}Result> HandleAsync({{ for k in keys }}{{ type_of k.type "csharp" }} {{ cs_ident (camel k.name) }}, {{ end }}{{ if op.input.size > 0 }}{{ request }} request, {{ end }}{{ paging_parameters(op, false) }}CancellationToken cancellationToken);
 }

@@ -31,7 +31,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
 | actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
-| operations/<subject>/ | operation: one command over the model (`subject`, `level`, `effect`, `input`, `outcomes`, `errors`, `fires`, `requires`) | in `operations/` itself without a subject; the subject is not owning, so deleting the entity is refused while an operation names it |
+| operations/<subject>/ | operation: one command over the model (`subject`, `level`, `effect`, `input`, `outcomes`, `errors`, `redefines`, `excludes`, `fires`, `requires`) | in `operations/` itself without a subject; the subject is not owning, so deleting the entity is refused while an operation names it |
 | custom/<type>/ | custom element (`kind: "custom"`): an element of a kind the project declares in `extensions/kinds/<type>.json`, its fields under `content` | see Custom kinds below |
 | diagrams/ | canvas membership and positions only (a process's diagram holds its chart's places) | never own elements |
 | vocabularies/ | tags, categories, stereotypes | |
@@ -196,14 +196,21 @@ takes the subject record's key implicitly; `collection` acts on the whole set), 
 `change`), `input` members, one or more `outcomes`, `errors`, `fires` and `requires`. No operation is implied per
 entity; model only the commands asked for.
 
-- An input member is exactly one of a typed value (`type`, as an attribute takes it) or a record key (`keyOf`, an entity
-  id; with `collection`, a list of keys) (MQ3024). A record key takes no `default`, `length`, `precision`, `scale` or
-  `validation`.
+- An input member is exactly one of a typed value (`type`, as an attribute takes it), a record key (`keyOf`, an entity
+  id; with `collection`, a list of keys) or a file (`file: true`, with `mediaTypes` and `length` as a byte cap)
+  (MQ3024). A record key takes no `default`, `length`, `precision`, `scale` or `validation`; a file no `default`,
+  `precision`, `scale` or `validation`; only a file takes `mediaTypes`.
 - An outcome `completes` `now` (the default) or `later` (accepted and waiting). Its optional `returns` is exactly one of
-  `members` (an inline shape; no `default`) or `entity` (records of that entity), with `list: true` for a list (MQ3025).
-  `defaultOutcome` names one of the operation's own outcomes; absent, the first.
+  `members` (an inline shape; no `default`), `entity` (records of that entity) or `file` (a download, with
+  `mediaTypes`), with `list: true` for a list of members or records; a list may set `paging` (`page` or `cursor`) with
+  `maxPageSize`, always together, and declares no paging input members (MQ3025). `defaultOutcome` names one of the operation's own
+  outcomes; absent, the first.
 - An error has a `name`, an optional `code` (the stable text clients see; absent, the name) and an optional `input`, one
-  of the operation's own input members (MQ3027). Names and codes are unique per operation (MQ3026).
+  of the operation's own input members (MQ3027). Names and codes are unique per operation, own and inherited (MQ3026).
+- Errors many operations share go on a stereotype that applies to operations (MQ3029), in its `errors` (no `input`).
+  Every carrier inherits them as `<operation id>.<error id>`; the operation's `excludes` drops one by the stereotype
+  error's id, and a `redefines` entry (`member`, then only `input`, `displayName` or `description`) adjusts one
+  (MQ2027, MQ2028). Never copy a shared error as an own one; change its code on the stereotype.
 - `fires` lists process event ids, of any process; a `read` operation that fires one is MQ3030. `requires` lists ids of
   any element or sub-element that stand for what the operation requires (an actor, a permission code's row); the engine
   gives it no meaning, and it may not name the operation, its own parts, a diagram or a migration fact (MQ3031).
@@ -211,8 +218,8 @@ entity; model only the commands asked for.
   `@outcome:Invoice.send.waiting` and `@error:Invoice.send.missing_recipient` its parts.
 - Templates read operations through `each operation` (the variable `operation`; `type_of` maps a member), and
   `get_resolved_model` has the scope `operations`. csharp-dapper's `operation-contracts` unit writes each operation's
-  request, result, error codes and handler interface.
-- Errors shared from stereotypes, file members and returns, paging and an endpoint template come later.
+  request, result, error codes and handler interface, and `operation-endpoints` one HTTP route per operation when the
+  pack parameter `endpointsFolder` is set.
 
 ## Custom kinds
 

@@ -247,6 +247,7 @@ internal sealed partial class ResolveRun
             r.DefaultProperties = stereotype.DefaultProperties.Count == 0
                 ? FrozenDictionary<string, object?>.Empty
                 : ResolutionValues.PlainMap(stereotype.DefaultProperties);
+            r.Errors = StereotypeErrors(stereotype, r);
             r.Icon = stereotype.Icon;
             r.Color = stereotype.Color;
             Register(r);
