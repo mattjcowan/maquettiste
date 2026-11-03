@@ -1,12 +1,14 @@
 # Next capabilities, phase 3: design
 
-**Status (2026-11-03): a draft for the owner's review. Nothing in this file is built.** It designs one roadmap item of
-phase 3, scope 3.8: one expression language for checks, validations, derived values and guards. Its settled input is
-section 3.8 of `tmp/scope-next-capabilities.md`, with item 7 of section 13, item 4 of section 14 and item 1 of section
-16, and section 4.4 of `tmp/response-next-capabilities.md`; this file keeps to them and decides only what they leave
-open. `next-phase-1-design.md` and `next-phase-2-design.md` stay binding for what they built; `phase-3-design.md` is the
-earlier design of processes, not this phase. `docs/api/openapi.yaml` and `schemas/v1/` remain the source of truth for
-their contracts. File, type, member, rule, verb and tool names here are binding once the owner accepts the draft.
+**Status (2026-11-03): approved by the owner, with the recommended answer to each question in section 4. Nothing in
+this file is built yet.** It designs one roadmap item of phase 3, item 3.8 of `next.md`: one expression language for
+checks, validations, derived values and guards. It keeps to the roadmap's decisions of 2026-10-30 for that item (a
+closed, typed core lowered to SQL and JavaScript, three-valued null semantics, a typed tree of ids with a textual form,
+named constraints, no emitters for other languages, the evaluation mode set by the use site, PostgreSQL and JavaScript
+first) and decides only what they leave open. `next-phase-1-design.md` and `next-phase-2-design.md` stay binding for
+what they built; `phase-3-design.md` is the earlier design of processes, not this phase. `docs/api/openapi.yaml` and
+`schemas/v1/` remain the source of truth for their contracts. File, type, member, rule, verb and tool names here are
+binding.
 
 ## 1. Scope
 
@@ -709,29 +711,29 @@ next unreleased version.
 
 H15 to H19 are free.
 
-## 4. Open questions for the owner
+## 4. Questions for the owner, answered
 
-Each question carries a recommendation; the owner decides.
+The owner accepted the recommended answer to each question on 2026-11-03; the sections above already follow them.
 
 1. **Entity checks and tables.** This draft writes an entity check into a table only when the binding lists it
    (decision 16). The other choice is every check whose paths the binding maps, with an opt-out.
 
-   Recommended: keep the explicit list, which keeps mapping explicit and which materializing a table from an entity
+   Accepted: keep the explicit list, which keeps mapping explicit and which materializing a table from an entity
    can fill, plus the drift warning MQ3115, so a check the list leaves out is reported.
 2. **Reading trees in pull requests.** Files hold the tree, so a reviewer of a model change sees JSON, not
    `issuedOn <= dueOn`. Storing the text beside the tree would read better but would make every rename rewrite every
    file that prints the name.
 
-   Recommended: store the tree only, with the model diff (scope 7.3) printing the text, and have `get_element` return
+   Accepted: store the tree only, with the model diff (scope 7.3) printing the text, and have `get_element` return
    `text` beside each tree, so agents never read ULIDs; on a save that sends both, whichever differs from the file
    wins.
 3. **Time zone.** `date_of`, `date_part` and month arithmetic on offset timestamps use UTC, and a `datetime` compared
    with a `datetimeoffset` reads as UTC, so "today" at a guard is the UTC date. A project time zone setting is
    possible later. Is UTC acceptable for the active team?
 
-   Recommended: use UTC, and say so in the pre-release note; a project time zone later is one switch.
+   Accepted: use UTC, and say so in the pre-release note; a project time zone later is one switch.
 4. **Existing guards.** This draft converts nothing: guards stay JavaScript until a person rewrites them with the
    guide's step (decision 19). The other choice is a batch operation that converts the C# example pack's subset, with
    an info rule (MQ3112, left unused) pointing at each guard it would convert.
 
-   Recommended: no MQ3112 and no converter.
+   Accepted: no MQ3112 and no converter.
