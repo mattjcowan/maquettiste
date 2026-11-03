@@ -260,6 +260,10 @@ export interface paths {
          *       `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.
          *     - `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and
          *       its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.
+         *     - `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its
+         *       `message`. An entity's `checks` and a derived attribute's `value` are written in the same expression language: each
+         *       `ExpressionRecord` has the `text` printed from current names, its `type`, whether it is `nullable` and the `tree` of ids
+         *       the file holds; a model without expressions has none of these keys.
          *     - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
          *       indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
          *       for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
@@ -3367,7 +3371,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["ConstraintRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise the failures of the calculated values the page reads (MQ5010, MQ5011, MQ5013). */
@@ -3449,6 +3453,8 @@ export interface components {
             lifecycle: string | null;
             /** @description The entity's bindings (erratum E43), one per database it is bound to, by database name. A bound entity has no mapping in that database. */
             bindings?: components["schemas"]["EntityBindingRecord"][];
+            /** @description The entity checks (next-phase-3-design.md section 3.1), the root base's first; absent for an entity without any. */
+            checks?: components["schemas"]["EntityCheckRecord"][];
         };
         /** @description A resolved attribute. */
         AttributeRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -3500,8 +3506,37 @@ export interface components {
         };
         /** @description A derived attribute's expression. */
         DerivedRecord: {
+            /** @description The raw expression; empty when the value is written in the expression language. */
             expression: string;
             stored: boolean;
+            /** @description The value written in the expression language; absent for a raw expression. */
+            value?: components["schemas"]["ExpressionRecord"];
+        };
+        /** @description An expression of the one expression language (next-phase-3-design.md section 3.1). */
+        ExpressionRecord: {
+            /** @description The text form, printed from current names, so a rename changes it and never the file. */
+            text: string;
+            /** @description The type as messages write it (`bool`, `int32`, `decimal`, `date`, `enum <id>`, `code <id>`). */
+            type: string;
+            nullable: boolean;
+            /** @description The tree as the file holds it (`common.json#/$defs/expr`), paths, enum members, codes and constraints by id. */
+            tree: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description An entity check: a condition every record of the entity meets, unknown passing. A binding that lists it writes it into its table. */
+        EntityCheckRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            name: string;
+            /** @description The attribute a failure points at. */
+            attribute: string | null;
+            /** @description The condition; null when it does not type (validation says why). */
+            condition: components["schemas"]["ExpressionRecord"] | null;
+            message: string | null;
+            /** @description Comes from a base entity. */
+            isInherited: boolean;
+            /** @description The ids of the bindings that list it, by database name. */
+            bindings: string[];
         };
         /** @description Validation of an attribute or scalar type. */
         ValidationRecord: {
@@ -3984,6 +4019,26 @@ export interface components {
             parent: string | null;
             /** @description Its JSON pointer in the element's file. */
             pointer: string;
+        };
+        /** @description A named constraint (next-phase-3-design.md section 3.1): one condition over typed parameters, inlined where a site cites it with `satisfies`. */
+        ConstraintRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "constraint";
+            name: string;
+            package: string | null;
+            parameters: components["schemas"]["ConstraintParameterRecord"][];
+            /** @description The condition over the parameters; null when it does not type (validation says why). */
+            condition: components["schemas"]["ExpressionRecord"] | null;
+            message: string | null;
+        };
+        /** @description A typed parameter of a named constraint. */
+        ConstraintParameterRecord: {
+            id: string;
+            name: string;
+            type: components["schemas"]["TypeRecord"];
+            displayName: string;
+            description: string | null;
         };
         /** @description A member of an operation's input or of an outcome's returns, a typed value, a record key or a file. */
         OperationMemberRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -11704,7 +11759,7 @@ export interface operations {
                  */
                 snapshot?: components["parameters"]["SnapshotQuery"];
                 /** @description What to read. */
-                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "operations" | "custom-elements" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries" | "migrations";
+                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "operations" | "custom-elements" | "constraints" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries" | "migrations";
                 /** @description A database id; only what is mapped to it. */
                 database?: components["schemas"]["Ulid"];
                 /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */

@@ -38,10 +38,11 @@ internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string Sub
 }
 
 /// <summary>
-/// The expression sites of the model and the scope each reads (next-phase-3-design.md section 3.1): a table's or stereotype's
-/// columns at its checks; an entity's attributes (its bases' too, value-object members as <c>attribute.member</c>) at its checks and
-/// derived values; an operation's input and its subject's attributes (under <c>subject</c>) at its guards; a process's context and
-/// the payloads of the events that use a guard (under <c>event</c>) at the guard; a constraint's parameters at its condition.
+/// The expression sites of the model and the scope each reads (next-phase-3-design.md section 3.1): a table's columns (with those its
+/// stereotypes contribute, by keyed id) or a stereotype's at its checks; an entity's attributes (its bases' too, value-object members
+/// as <c>attribute.member</c>) at its checks and derived values; an operation's input and its subject's attributes (under
+/// <c>subject</c>) at its guards; a process's context and the payloads of the events that use a guard (under <c>event</c>) at the
+/// guard; a constraint's parameters at its condition.
 /// </summary>
 internal static class ExprSites
 {
@@ -52,7 +53,12 @@ internal static class ExprSites
         switch (element)
         {
             case Table table:
-                AddChecks(sites, table.Checks, s => Columns(s, model, table.Columns));
+                // A table's checks read its own columns and those its stereotypes contribute, by their keyed ids.
+                AddChecks(sites, table.Checks, s =>
+                {
+                    Columns(s, model, table.Columns);
+                    Columns(s, model, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
+                });
                 break;
             case Stereotype stereotype:
                 AddChecks(sites, stereotype.Checks, s => Columns(s, model, stereotype.Columns));
@@ -435,11 +441,22 @@ internal static class ExpressionRules
         }
     }
 
-    /// <summary>MQ3110 on the checks a binding lists; MQ3115 on an entity check no binding lists though one could enforce it.</summary>
+    /// <summary>
+    /// MQ3110 on the checks a binding lists, which may be the entity's own or, by id, its bases'; MQ3115 on an entity check no binding
+    /// lists though one could enforce it.
+    /// </summary>
     private static void CheckBindings(ModelSnapshot model, Entity entity, Dictionary<string, Expr> trees, Report report)
     {
         if (entity.Checks.Count == 0 && entity.Bindings.All(b => b.Checks.Count == 0))
             return;
+        var inherited = new Dictionary<string, Expr>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
+        for (var b = entity.Base is { } first ? model.Get<Entity>(first) : null; b is not null && seen.Add(b.Id); b = b.Base is { } next ? model.Get<Entity>(next) : null)
+        {
+            foreach (var check in b.Checks)
+                inherited.TryAdd(check.Id, check.Condition);
+        }
+
         var listed = new HashSet<string>(StringComparer.Ordinal);
         var enforceable = new HashSet<string>(StringComparer.Ordinal);
         for (var j = 0; j < entity.Bindings.Count; j++)
@@ -456,9 +473,9 @@ internal static class ExpressionRules
             {
                 var id = binding.Checks[k];
                 var at = Ptr.At(Ptr.At("/bindings", j) + "/checks", k);
-                if (entity.Checks.All(c => c.Id != id))
+                if (entity.Checks.All(c => c.Id != id) && !inherited.ContainsKey(id))
                 {
-                    report.Add("MQ3110", $"The binding lists '{id}', which is not a check of this entity; list one of the entity's checks.", at, binding.Id);
+                    report.Add("MQ3110", $"The binding lists '{id}', which is not a check of this entity or of its bases; list one of the entity's checks.", at, binding.Id);
                     continue;
                 }
 
@@ -469,7 +486,7 @@ internal static class ExpressionRules
                 }
 
                 listed.Add(id);
-                if (trees.TryGetValue(id, out var tree) && Unmapped(model, binding, table, tree) is { } problem)
+                if ((trees.GetValueOrDefault(id) ?? inherited.GetValueOrDefault(id)) is { } tree && Unmapped(model, binding, table, tree) is { } problem)
                     report.Add("MQ3110", problem, at, binding.Id);
             }
         }

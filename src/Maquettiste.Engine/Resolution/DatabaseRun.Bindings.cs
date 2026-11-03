@@ -60,13 +60,29 @@ internal sealed partial class DatabaseRun
 
     private static string Pointer(int index) => "/bindings/" + index.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Adds the files of the entities bound to an object (its id or key) to its dependency keys: its <c>BoundBy</c> lists them.</summary>
+    /// <summary>
+    /// Adds the files of the entities bound to an object (its id or key) to its dependency keys: its <c>BoundBy</c> lists them. A binding
+    /// that lists entity checks also adds what their conditions name (an enum, a seed, a constraint), since the checks it writes into its
+    /// table read them.
+    /// </summary>
     private void AddBinderKeys(DependencySet deps, string key)
     {
         if (_bindersBySource.Count == 0 || !_bindersBySource.TryGetValue(key, out var entities))
             return;
         foreach (var entityId in entities)
+        {
             deps.Element(entityId);
+            if (_bindingByEntity[entityId].Binding.Checks.Count == 0 || _run.EntityById(entityId) is not { } entity)
+                continue;
+            foreach (var check in entity.Checks)
+            {
+                if (_bindingByEntity[entityId].Binding.Checks.Contains(check.Id, StringComparer.Ordinal))
+                {
+                    foreach (var name in check.Names)
+                        deps.Element(name);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -108,6 +124,7 @@ internal sealed partial class DatabaseRun
             _run.SetEntityBinding(entity, _db.Name, binding);
             _run.Register(binding);
             built.Add(binding);
+            AddBindingChecks(entity, file, index, binding);
             foreach (var target in new object?[] { binding.SourceTable, binding.SourceView, binding.SourceQuery, binding.WriteTable })
             {
                 if (target is null)
@@ -137,6 +154,54 @@ internal sealed partial class DatabaseRun
         }
 
         ShowBoundSensitivity(built);
+    }
+
+    /// <summary>
+    /// The entity checks a binding lists (next-phase-3-design.md section 3.1, decision 16), each lowered through the binding's field map
+    /// onto its write table and added to that table's checks after its own, named by the naming convention from the check's name, with
+    /// <see cref="RMemberOrigin.Source"/> <c>binding</c>; each check lists the binding. A check whose paths the binding does not map to
+    /// varying columns of its write table, or a binding without one, adds nothing (MQ3110); on a dialect other than PostgreSQL the DDL
+    /// leaves it out (MQ4056).
+    /// </summary>
+    private void AddBindingChecks(REntity entity, EntityBinding file, int index, REntityBinding binding)
+    {
+        if (file.Checks.Count == 0)
+            return;
+        var added = new List<RCheck>();
+        for (var k = 0; k < file.Checks.Count; k++)
+        {
+            var id = file.Checks[k];
+            if (entity.Checks.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.Ordinal)) is not { } check)
+                continue;
+            if (!check.ListedBy.Contains(binding))
+                check.ListedBy.Add(binding);
+            if (binding.WriteTable is not { } table || check.Condition?.Root is not { } source)
+                continue;
+            var columns = new Dictionary<string, RColumn>(StringComparer.Ordinal);
+            foreach (var path in ExprResolution.Paths(source.Typed))
+            {
+                var field = binding.Fields.FirstOrDefault(f => string.Equals(f.AttributeRef, path, StringComparison.Ordinal));
+                if (field?.WriteColumn is { } column && !ExprResolution.ColumnOf(column).FixedLength)
+                    columns[path] = column;
+            }
+
+            var name = Render(_conv.CheckName, ("table", table.Name), ("name", check.Name));
+            if (LowerCheck(source, columns, $"Check '{name}' that the binding of entity '{entity.Name}' writes into table '{table.Name}' of database '{_db.Name}'",
+                entity.Id, Pointer(index) + "/checks/" + k.ToString(CultureInfo.InvariantCulture)) is not { } lowered)
+                continue;
+            added.Add(new RCheck
+            {
+                Id = check.Id,
+                Name = name,
+                Expression = lowered.Sql,
+                Condition = lowered.Condition,
+                Shape = lowered.Shape,
+                MemberOrigin = RMemberOrigin.Binding,
+            });
+        }
+
+        if (added.Count > 0 && binding.WriteTable is { } written)
+            written.Checks = [.. written.Checks, .. added];
     }
 
     /// <summary>

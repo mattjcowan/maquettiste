@@ -149,14 +149,7 @@ internal sealed partial class DatabaseRun
                     Where = x.Spec.Where,
                     Deferrable = ResolutionValues.Kebab(x.Spec.Deferrable),
                 })];
-            t.Table.Checks = [.. t.Checks.Select(c => new RCheck
-            {
-                Id = c.Id,
-                Name = c.Name ?? Render(_conv.CheckName, ("table", t.Table.Name), ("name", c.Ordinal.ToString(CultureInfo.InvariantCulture))),
-                Expression = c.Expression,
-                Column = c.Column is null ? null : t.Resolve(c.Column),
-                MemberOrigin = c.Origin ?? RMemberOrigin.Own,
-            })];
+            t.Table.Checks = [.. t.Checks.Select(c => ResolveCheck(t, c)).OfType<RCheck>()];
         }
 
         // Each table's keys are frozen on their own (in parallel: a table's set shares only immutable arrays with others).

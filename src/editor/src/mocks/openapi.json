@@ -1230,7 +1230,7 @@
         ],
         "operationId": "getResolvedModel",
         "summary": "The resolved model as flat records, in pages",
-        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.\n- `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and\n  its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
+        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.\n- `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and\n  its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.\n- `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its\n  `message`. An entity's `checks` and a derived attribute's `value` are written in the same expression language: each\n  `ExpressionRecord` has the `text` printed from current names, its `type`, whether it is `nullable` and the `tree` of ids\n  the file holds; a model without expressions has none of these keys.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
         "parameters": [
@@ -1258,6 +1258,7 @@
                 "scenarios",
                 "operations",
                 "custom-elements",
+                "constraints",
                 "databases",
                 "tables",
                 "routines",
@@ -13392,6 +13393,9 @@
                   "$ref": "#/components/schemas/CustomRecord"
                 },
                 {
+                  "$ref": "#/components/schemas/ConstraintRecord"
+                },
+                {
                   "$ref": "#/components/schemas/DatabaseRecord"
                 },
                 {
@@ -13738,6 +13742,13 @@
                 "items": {
                   "$ref": "#/components/schemas/EntityBindingRecord"
                 }
+              },
+              "checks": {
+                "type": "array",
+                "description": "The entity checks (next-phase-3-design.md section 3.1), the root base's first; absent for an entity without any.",
+                "items": {
+                  "$ref": "#/components/schemas/EntityCheckRecord"
+                }
               }
             }
           }
@@ -13984,12 +13995,110 @@
         ],
         "properties": {
           "expression": {
-            "type": "string"
+            "type": "string",
+            "description": "The raw expression; empty when the value is written in the expression language."
           },
           "stored": {
             "type": "boolean"
+          },
+          "value": {
+            "$ref": "#/components/schemas/ExpressionRecord",
+            "description": "The value written in the expression language; absent for a raw expression."
           }
         }
+      },
+      "ExpressionRecord": {
+        "x-engine-record": "Maquettiste.Engine.ExpressionRecord",
+        "description": "An expression of the one expression language (next-phase-3-design.md section 3.1).",
+        "type": "object",
+        "required": [
+          "text",
+          "type",
+          "nullable",
+          "tree"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text form, printed from current names, so a rename changes it and never the file."
+          },
+          "type": {
+            "type": "string",
+            "description": "The type as messages write it (`bool`, `int32`, `decimal`, `date`, `enum <id>`, `code <id>`)."
+          },
+          "nullable": {
+            "type": "boolean"
+          },
+          "tree": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The tree as the file holds it (`common.json#/$defs/expr`), paths, enum members, codes and constraints by id."
+          }
+        }
+      },
+      "EntityCheckRecord": {
+        "x-engine-record": "Maquettiste.Engine.EntityCheckRecord",
+        "description": "An entity check: a condition every record of the entity meets, unknown passing. A binding that lists it writes it into its table.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "attribute",
+              "condition",
+              "message",
+              "isInherited",
+              "bindings"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "attribute": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The attribute a failure points at."
+              },
+              "condition": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ExpressionRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The condition; null when it does not type (validation says why)."
+              },
+              "message": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "isInherited": {
+                "type": "boolean",
+                "description": "Comes from a base entity."
+              },
+              "bindings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The ids of the bindings that list it, by database name."
+              }
+            }
+          }
+        ]
       },
       "ValidationRecord": {
         "x-engine-record": "Maquettiste.Engine.ValidationRecord",
@@ -16144,6 +16253,100 @@
           "pointer": {
             "type": "string",
             "description": "Its JSON pointer in the element's file."
+          }
+        }
+      },
+      "ConstraintRecord": {
+        "x-engine-record": "Maquettiste.Engine.ConstraintRecord",
+        "description": "A named constraint (next-phase-3-design.md section 3.1): one condition over typed parameters, inlined where a site cites it with `satisfies`.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "parameters",
+              "condition",
+              "message"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "constraint"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ConstraintParameterRecord"
+                }
+              },
+              "condition": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ExpressionRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The condition over the parameters; null when it does not type (validation says why)."
+              },
+              "message": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ConstraintParameterRecord": {
+        "x-engine-record": "Maquettiste.Engine.ConstraintParameterRecord",
+        "description": "A typed parameter of a named constraint.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "type",
+          "displayName",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TypeRecord"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

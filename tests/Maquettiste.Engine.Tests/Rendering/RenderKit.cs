@@ -188,6 +188,7 @@ internal static class Adhoc
         Scenarios = model.Scenarios,
         Operations = model.Operations,
         CustomElements = model.CustomElements,
+        Constraints = model.Constraints,
         Databases = model.Databases,
         Migrations = model.Migrations,
         Stereotypes = model.Stereotypes,

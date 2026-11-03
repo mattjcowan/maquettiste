@@ -40,7 +40,10 @@ Deviations and notes:
   snapshot keys are derived from every property that tells two objects of a table apart, never from the name: `pk`;
   `uq:<column keys>`; `fk:<column keys>-><referenced table key>(<referenced column keys>)`;
   `ix:<column keys, " desc" when descending>` followed, only when not the default, by `;unique`, `;using=<method>`,
-  `;include=<column keys>` and `;where=<16 hex of SHA-256(predicate)>`; `ck:<16 hex of SHA-256(expression)>`. Only otherwise
+  `;include=<column keys>` and `;where=<16 hex of SHA-256(predicate)>`; `ck:<16 hex of SHA-256(expression)>`, or for a check
+  written in the expression language `ck:<16 hex of its shape>` (next-phase-3-design.md decision 22: the SHA-256 of the check
+  lowered with column keys in place of names, recorded as `shape`; equal shapes compare unchanged, so a column rename keeps the
+  check, which PostgreSQL renames inside it). Only otherwise
   identical definitions can collide; they get `#2`, `#3` ordered by their remaining properties (an FK's actions), then name,
   so two partial indexes on the same columns keep their own keys when one is renamed. Renaming a constraint or index is
   `Renamed`; changing a key-forming property (columns, an FK's target, an index's uniqueness, method, included columns or

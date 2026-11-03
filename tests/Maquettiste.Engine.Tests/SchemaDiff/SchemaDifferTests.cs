@@ -2,6 +2,7 @@ using System.Text.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.SchemaDiff;
+using Maquettiste.Engine.Tests.Expressions;
 using static Maquettiste.Engine.Tests.SchemaDiff.PhysicalBuilder;
 
 namespace Maquettiste.Engine.Tests.SchemaDiff;
@@ -386,6 +387,42 @@ public sealed class SchemaDifferTests
         Assert.Equal((ChangeKind.Renamed, "ck_customer_name", "ck_client_name"), (check.Kind, check.OldName, check.NewName));
         var fk = Assert.Single(diff.Tables.Single(t => t.Key == InvoiceKey).ForeignKeys);
         Assert.Equal((ChangeKind.Added, "fk:a-total->" + InvoiceKey + "(id)", "fk_self"), (fk.Kind, fk.Key, fk.NewName));
+    }
+
+    /// <summary>
+    /// A check written in the expression language keeps its identity across a column rename (next-phase-3-design.md section 3.1,
+    /// decision 22): PostgreSQL renames the column inside the check, so equal shapes are unchanged though the text changed; changing
+    /// what the check reads is a new check.
+    /// </summary>
+    [Fact]
+    public async Task A_column_rename_keeps_a_tree_check()
+    {
+        using var repo = ExpressionRuleTests.Repo();
+        ExpressionRuleTests.TableCheck(repo, $$"""{ "op": "gt", "args": [{ "path": ["{{ExpressionRuleTests.PriceColumnId}}"] }, { "value": 0 }] }""");
+        var before = _differ.Capture(await MainAsync(repo), 1);
+        var check = Assert.Single(before.Tables.Single(t => t.Name == "products").Checks);
+        Assert.Equal("price > 0", check.Expression);
+        Assert.Equal("ck:" + check.Shape![..16], check.Key);
+
+        ExpressionRuleTests.Edit(repo, ExpressionRuleTests.TablePath, t => t["columns"]![3]!["name"] = "unit_price");
+        var renamed = await MainAsync(repo);
+        Assert.Equal("unit_price > 0", Assert.Single(renamed.Tables.Single(t => t.Name == "products").Checks).Expression);
+        var table = Assert.Single(_differ.Diff(before, renamed).Tables);
+        Assert.Equal([(ChangeKind.Renamed, "price", "unit_price")], table.Columns.Select(c => (c.Kind, c.OldName, c.NewName)));
+        Assert.Empty(table.Checks);
+        Assert.Equal(check.Shape, Assert.Single(_differ.Capture(renamed, 2).Tables.Single(t => t.Name == "products").Checks).Shape);
+
+        ExpressionRuleTests.TableCheck(repo, $$"""{ "op": "ge", "args": [{ "path": ["{{ExpressionRuleTests.PriceColumnId}}"] }, { "value": 0 }] }""");
+        var changed = Assert.Single(_differ.Diff(before, await MainAsync(repo)).Tables);
+        Assert.Equal([ChangeKind.Added, ChangeKind.Dropped], changed.Checks.Select(c => c.Kind));
+    }
+
+    /// <summary>The bindings fixture's database, resolved.</summary>
+    private static async Task<RDatabase> MainAsync(Maquettiste.Testing.TempRepo repo)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var snapshot = await new ModelStore(repo.Options).GetSnapshotAsync(ct);
+        return (await new ModelResolver(repo.Options).ResolveAsync(snapshot, null, ct)).Databases.Single(d => d.Name == "main");
     }
 
     [Fact]

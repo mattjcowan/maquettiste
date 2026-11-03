@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
@@ -19,6 +21,7 @@ public sealed record ResolvedQuery(string Scope = "all", string? Database = null
 /// <param name="Items">The records, by (kind, name, id): <see cref="PackageRecord"/>, <see cref="EntityRecord"/>, <see cref="RelationRecord"/>,
 /// <see cref="EnumRecord"/>, <see cref="ValueObjectRecord"/>, <see cref="ScalarTypeRecord"/>, <see cref="ReferenceTypeRecord"/>,
 /// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>, <see cref="OperationRecord"/>, <see cref="CustomRecord"/>,
+/// <see cref="ConstraintRecord"/>,
 /// <see cref="DatabaseRecord"/>, <see cref="TableRecord"/>, <see cref="RoutineRecord"/>, <see cref="DatabaseTypeRecord"/> or
 /// <see cref="SqlObjectRecord"/>, <see cref="QueryRecord"/> or <see cref="MigrationRecord"/> (by database name, then applied order); each
 /// has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
@@ -88,12 +91,44 @@ public sealed record PackageRecord(string Id, string Kind, string Name, string? 
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
 /// <param name="Bindings">The entity's bindings, one per database it is bound to, by database name (erratum E43).</param>
+/// <param name="Checks">The entity checks, the root base's first (next-phase-3-design.md section 3.1); <see langword="null"/>, and left out of
+/// the JSON, for an entity without any.</param>
 public sealed record EntityRecord(string Id, string Kind, string Name, string? Package, bool IsAbstract, string? Base, IReadOnlyList<string> Derived,
     IReadOnlyList<AttributeRecord> Attributes, KeyRecord? Key, IReadOnlyList<AlternateKeyRecord> AlternateKeys, IReadOnlyList<NavigationRecord> Navigations,
     IReadOnlyList<string> Relations, IReadOnlyList<EntityMappingRecord> Mappings, bool IsPromoted, string? PromotedFrom, IReadOnlyList<string> Seeds,
     string? Lifecycle, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
-    IReadOnlyList<EntityBindingRecord> Bindings);
+    IReadOnlyList<EntityBindingRecord> Bindings,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<EntityCheckRecord>? Checks = null);
+
+/// <summary>
+/// An expression (next-phase-3-design.md section 3.1): its text printed from current names, its type, and the tree of ids the file holds.
+/// </summary>
+/// <param name="Text">The text form, printed from current names, so a rename changes it and never the file.</param>
+/// <param name="Type">The type as messages write it: <c>bool</c>, <c>int32</c>, <c>decimal</c>, <c>date</c>, <c>enum &lt;id&gt;</c>, <c>code &lt;id&gt;</c>…</param>
+/// <param name="Nullable">Whether it may be null.</param>
+/// <param name="Tree">The tree as the file holds it: paths, enum members, codes and constraints by id.</param>
+public sealed record ExpressionRecord(string Text, string Type, bool Nullable, JsonElement Tree);
+
+/// <summary>An entity check: a condition every record of the entity meets, unknown passing (next-phase-3-design.md section 3.1).</summary>
+/// <param name="Id">The check's id.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Attribute">The id of the attribute a failure points at, or <see langword="null"/>.</param>
+/// <param name="Condition">The condition, or <see langword="null"/> when it does not type (validation says why).</param>
+/// <param name="Message">The text a failure reports, or <see langword="null"/>.</param>
+/// <param name="IsInherited">Whether the check comes from a base entity.</param>
+/// <param name="Bindings">The ids of the bindings that list it, by database name: each enforces it on its write table.</param>
+/// <param name="DisplayName">As <see cref="PackageRecord.DisplayName"/>.</param>
+/// <param name="PluralName">As <see cref="PackageRecord.PluralName"/>.</param>
+/// <param name="Description">As <see cref="PackageRecord.Description"/>.</param>
+/// <param name="Tags">As <see cref="PackageRecord.Tags"/>.</param>
+/// <param name="Category">As <see cref="PackageRecord.Category"/>.</param>
+/// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
+/// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
+/// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+public sealed record EntityCheckRecord(string Id, string Name, string? Attribute, ExpressionRecord? Condition, string? Message, bool IsInherited,
+    IReadOnlyList<string> Bindings, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
 
 /// <summary>A resolved attribute of an entity, value object, relation, process context or event payload.</summary>
 /// <param name="Id">The attribute id.</param>
@@ -151,9 +186,12 @@ public sealed record AttributeRecord(string Id, string Name, string Owner, strin
 public sealed record TypeRecord(string Kind, string Name, string? Builtin, string? Enum, string? ValueObject, string? Scalar, string? ReferenceType);
 
 /// <summary>A derived attribute's expression.</summary>
-/// <param name="Expression">The expression.</param>
+/// <param name="Expression">The raw expression; empty when the value is written in the expression language.</param>
 /// <param name="Stored">Whether the value is stored.</param>
-public sealed record DerivedRecord(string Expression, bool Stored);
+/// <param name="Value">The value written in the expression language (next-phase-3-design.md section 3.1); <see langword="null"/>, and left
+/// out of the JSON, for a raw expression.</param>
+public sealed record DerivedRecord(string Expression, bool Stored,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? Value = null);
 
 /// <summary>Validation of an attribute or scalar type.</summary>
 /// <param name="Min">The minimum.</param>
@@ -799,6 +837,34 @@ public sealed record CustomRecord(string Id, string Kind, string Name, string Ty
 /// <param name="Pointer">Its JSON pointer in the element's file.</param>
 public sealed record MemberRecord(string Id, string? Name, string Array, string? Parent, string Pointer);
 
+/// <summary>A named constraint (next-phase-3-design.md section 3.1): one condition over typed parameters, inlined where a site cites it.</summary>
+/// <param name="Id">The constraint's id.</param>
+/// <param name="Kind"><c>constraint</c>.</param>
+/// <param name="Name">The name a <c>satisfies</c> writes.</param>
+/// <param name="Package">The package's id.</param>
+/// <param name="Parameters">The typed parameters, in order.</param>
+/// <param name="Condition">The condition over the parameters, or <see langword="null"/> when it does not type (validation says why).</param>
+/// <param name="Message">The text a failure reports, or <see langword="null"/>.</param>
+/// <param name="DisplayName">As <see cref="PackageRecord.DisplayName"/>.</param>
+/// <param name="PluralName">As <see cref="PackageRecord.PluralName"/>.</param>
+/// <param name="Description">As <see cref="PackageRecord.Description"/>.</param>
+/// <param name="Tags">As <see cref="PackageRecord.Tags"/>.</param>
+/// <param name="Category">As <see cref="PackageRecord.Category"/>.</param>
+/// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
+/// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
+/// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+public sealed record ConstraintRecord(string Id, string Kind, string Name, string? Package, IReadOnlyList<ConstraintParameterRecord> Parameters,
+    ExpressionRecord? Condition, string? Message, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+
+/// <summary>A parameter of a named constraint.</summary>
+/// <param name="Id">The parameter's id, which the condition's paths name.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Type">Its type, an attribute's type.</param>
+/// <param name="DisplayName">The display name (the name when none is set).</param>
+/// <param name="Description">The description text, or <see langword="null"/>.</param>
+public sealed record ConstraintParameterRecord(string Id, string Name, TypeRecord Type, string DisplayName, string? Description);
+
 /// <summary>A resolved database: the database view (<see cref="DatabaseView"/>) with its kind.</summary>
 /// <param name="Id">The database id.</param>
 /// <param name="Kind"><c>database</c>.</param>
@@ -913,6 +979,7 @@ public static class ResolvedRecords
         ["scenarios"] = "scenario",
         ["operations"] = "operation",
         ["custom-elements"] = "custom",
+        ["constraints"] = "constraint",
         ["databases"] = "database",
         ["tables"] = "table",
         ["routines"] = "routine",
@@ -1014,6 +1081,12 @@ public static class ResolvedRecords
         {
             foreach (var c in model.CustomElements)
                 yield return new Entry("custom", c.Name, c.Id, () => context.Custom(c), c);
+        }
+
+        if (all || scope == "constraints")
+        {
+            foreach (var c in model.Constraints)
+                yield return new Entry("constraint", c.Name, c.Id, () => context.Constraint(c), c);
         }
 
         if (all || scope == "databases")
@@ -1145,14 +1218,29 @@ public static class ResolvedRecords
                     m.Value.DiscriminatorColumn?.Key, Plain(m.Value.DiscriminatorValue), [.. m.Value.Columns.Select(c => new ColumnMappingRecord(c.AttributePath, c.Column.Key))]))],
                 e.IsPromoted, e.PromotedFrom?.Id, Ids(e.Seeds), e.Lifecycle?.Id,
                 e.DisplayName!, e.PluralName!, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation,
-                [.. e.Bindings.OrderBy(b => b.Key, StringComparer.Ordinal).Select(b => BindingViews.Record(b.Value))]);
+                [.. e.Bindings.OrderBy(b => b.Key, StringComparer.Ordinal).Select(b => BindingViews.Record(b.Value))],
+                e.Checks.Count == 0 ? null : [.. e.Checks.Select(c => new EntityCheckRecord(c.Id, c.Name, c.Attribute?.Id, Expression(c.Condition), c.Message,
+                    c.IsInherited, Ids(c.Bindings), c.DisplayName!, c.PluralName!, c.Description, c.Tags, c.Category?.Id, Keys(c.Stereotypes), Plain(c.Properties),
+                    c.Generation))]);
         }
+
+        public ConstraintRecord Constraint(RConstraint c) => new(c.Id, "constraint", c.Name, c.Package?.Id,
+            [.. c.Parameters.Select(p => new ConstraintParameterRecord(p.Id, p.Name, Type(p.Type), p.DisplayName!, p.Description))],
+            Expression(c.Condition), c.Message, c.DisplayName!, c.PluralName!, c.Description, c.Tags, c.Category?.Id, Keys(c.Stereotypes), Plain(c.Properties),
+            c.Generation);
+
+        /// <summary>An expression's record: its text, type and the tree as stored; <see langword="null"/> for none.</summary>
+        private static ExpressionRecord? Expression(RExpression? e) => e?.Root is { } root
+            ? new ExpressionRecord(e.Text, e.Type.ToString(), e.Nullable, JsonSerializer.SerializeToElement(root.Tree, EngineJson.Options))
+            : null;
+
+        private static TypeRecord Type(RType t) => new(t.Kind, t.Name, t.Builtin, t.Enum?.Id, t.ValueObject?.Id, t.Scalar?.Id, t.ReferenceType?.Id);
 
         public AttributeRecord Attribute(RAttribute a, IReadOnlySet<string>? key = null) => new(
             a.Id, a.Name, a.Owner.Id, a.DeclaringEntity?.Id,
             new TypeRecord(a.Type.Kind, a.Type.Name, a.Type.Builtin, a.Type.Enum?.Id, a.Type.ValueObject?.Id, a.Type.Scalar?.Id, a.Type.ReferenceType?.Id),
             a.Required, Plain(a.Default), a.DefaultExpression, a.Length, a.Precision, a.Scale, a.Collection, a.Unique, a.Indexed, a.ReadOnly, a.Immutable,
-            a.Derived is { } d ? new DerivedRecord(d.Expression, d.Stored) : null, a.Sensitive, Validation(a.Validation), a.Order,
+            a.Derived is { } d ? new DerivedRecord(d.Expression, d.Stored, Expression(d.Value)) : null, a.Sensitive, Validation(a.Validation), a.Order,
             key is not null && key.Contains(a.Id), a.IsInherited, a.IsVirtual, a.FromStereotype?.Key,
             a.Reference is { } r ? new ReferenceUsageRecord(r.Type.Id, r.IsCollection, r.Required, Ids(Scripted(() => r.Allowed, RList<RRow>.Empty)),
                 Scripted(() => r.DefaultRow, null)?.Id, Storage(r.Storage)) : null,

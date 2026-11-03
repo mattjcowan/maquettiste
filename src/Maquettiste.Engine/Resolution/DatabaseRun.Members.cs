@@ -73,10 +73,18 @@ internal sealed partial class DatabaseRun
                 FromFile: true, Id: m.Key, Storage: Storage([index.Storage]), Origin: OriginOf(t, m)));
         }
 
-        // Inherited checks continue the own checks' ordinal.
+        // Inherited checks continue the own checks' ordinal; one in the expression language reads the stereotype's columns, keyed in the table.
         var ordinal = t.Checks.Count;
         foreach (var m in set.Checks)
         {
+            if (m.Member.Expression.Count == 0 && m.Member.Condition is not null)
+            {
+                var (pinId, pointer) = MemberPin(t, m.MemberId, m.From);
+                if (TypeCheck(t, m.From.Stereotype, m.MemberId, m.Member.Name, set.TableKey, pinId, pointer) is { } tree)
+                    t.Checks.Add(new CheckSpec("", m.Member.Name, ++ordinal, m.Key, m.Member.Column, OriginOf(t, m)) { Tree = tree });
+                continue;
+            }
+
             if (ForDialect(m.Member.Expression) is { } expression)
                 t.Checks.Add(new CheckSpec(expression, m.Member.Name, ++ordinal, m.Key, m.Member.Column, OriginOf(t, m)));
         }

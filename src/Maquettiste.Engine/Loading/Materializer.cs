@@ -278,15 +278,19 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
 
         node["foreignKeys"] = foreignKeys;
         var checks = new JsonArray();
-        foreach (var check in table.Checks.Where(c => c.MemberOrigin.MemberId is null))
+        // A check an entity's binding writes stays with the binding; a check in the expression language keeps its tree.
+        foreach (var check in table.Checks.Where(c => c.MemberOrigin.MemberId is null && c.MemberOrigin.Source != "binding"))
         {
             var file = overlay?.Checks.FirstOrDefault(x => x.Id == check.Id);
             var checkNode = new JsonObject
             {
                 ["id"] = check.Id ?? ids.NewId(),
                 ["name"] = check.Name,
-                ["expression"] = file is not null ? JsonSerializer.SerializeToNode(file.Expression) : new JsonObject { ["*"] = check.Expression },
             };
+            if (file?.Condition is { } condition && file.Expression.Count == 0)
+                checkNode["condition"] = JsonSerializer.SerializeToNode(condition, EngineJson.Options);
+            else
+                checkNode["expression"] = file is not null ? JsonSerializer.SerializeToNode(file.Expression) : new JsonObject { ["*"] = check.Expression };
             if (check.Column is { } checkColumn)
                 checkNode["column"] = Col(checkColumn);
             checks.Add(checkNode);

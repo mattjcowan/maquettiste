@@ -155,9 +155,11 @@ renaming an attribute or a column never breaks it. A team that writes no express
     reports through it.
 21. **Rule conditions read members.** A declared rule's `expression` reads the selected object's members with phase 2's
     path syntax. Reason: rules judge the resolved model, whose members are names of the API, not user names.
-22. **A CHECK keeps its identity across a column rename.** A tree check's snapshot carries a hash of its id tree, and
-    the differ treats equal hashes as unchanged. Reason: PostgreSQL renames columns inside checks itself; dropping and
-    re-adding the check would rescan the table for nothing.
+22. **A CHECK keeps its identity across a column rename.** A tree check's snapshot carries a hash of its lowered SQL
+    with column keys in place of column names, and the differ treats equal hashes as unchanged. Reason: PostgreSQL
+    renames columns inside checks itself; dropping and re-adding the check would rescan the table for nothing. The
+    hash is of the lowered check, not the stored tree, so a change to a cited constraint, a binding's field map or an
+    enum's stored value still changes the check.
 23. **A project without expressions pays nothing.** No runtime is loaded, nothing is typed or lowered, no new key is
     written to any file, record or snapshot, and JavaScript lowering happens only when a template or tool reads it.
 24. **Previews read one element.** `preview_expression` reads the element, the elements its paths name and, for SQL,
@@ -203,7 +205,7 @@ guards MQ3107 reports only both:
 | `operation.json` | `guards`, after `errors`: `id`, `name`, `displayName`, `condition`, `error`, `description` | `error` is an operation error id, own or inherited |
 | `declared-rules.json` | `expression` in a condition (`expr`) | Beside `all`, `any`, `not`, `has`, `equals`, `count`, `references`, `referencedBy` |
 | `constraint.json` (new kind) | `parameters`, `condition` | Below |
-| `snapshot.json` | `shape` on a check | The hash of its id tree, tree checks only |
+| `snapshot.json` | `shape` on a check | The hash of its lowered SQL with column keys in place of names, tree checks only |
 | `batch.json` | operation `text-to-trees` | |
 
 A `constraint` lives in `model/constraints/<id>.json` (`KindInfo.ConstraintsFolder`). Its `x-order`: `$schema`,
@@ -419,7 +421,9 @@ pool per rule-file hash. Nothing else lowers.
 - **Table and column checks.** A check holds `expression` or `condition`. A column check's condition must read its
   `column` (MQ3114). Stereotype checks use the same definition, so contributed checks name contributed columns by
   key and are inherited by id as today. Resolution lowers the tree into `RCheck.Expression` and keeps the typed tree
-  in `RCheck.Condition`; the snapshot records `shape`. The migration classifier already compares the resolved
+  in `RCheck.Condition`; the snapshot records `shape`, the hash of the lowered check with column keys in place of
+  column names, so a column rename keeps the check while a change to a cited constraint, a binding's field map or an
+  enum's stored value changes it. The migration classifier already compares the resolved
   database before and after a write, so a changed tree check records its fact like a text check.
 - **Entity checks (attribute and entity validations).** `checks` on the entity hold cross-attribute rules and
   single-attribute rules alike; `attribute` is where a failure points, `/issuedOn` in an API error. A binding's `checks`
@@ -737,3 +741,13 @@ The owner accepted the recommended answer to each question on 2026-11-03; the se
    an info rule (MQ3112, left unused) pointing at each guard it would convert.
 
    Accepted: no MQ3112 and no converter.
+5. **Limits the review of H1 to H6 found.** Three differences between the two lowerings remain after the review:
+   a regular expression with nested repetition (`^(a+)+$`) can take exponential time in JavaScript, where PostgreSQL
+   stays fast and the engine's sandbox stops a match after 250 ms; a `double` that overflows is an error in
+   PostgreSQL and infinity in JavaScript; a JSON column holding the JSON value `null` is SQL null in JavaScript, so
+   `json_type` answers null where PostgreSQL answers `'null'`. The other choices were refusing nested repetition
+   (MQ3105, which also refuses dotted-name patterns such as `^([a-z]+\.)*[a-z]+$`) or a linear-time matcher in the
+   runtime.
+
+   Accepted (2026-11-03): keep the subset and state the three limits in the expressions guide (H13). The C# example
+   renderer (H12) matches with .NET's linear-time mode, so generated C# never backtracks.

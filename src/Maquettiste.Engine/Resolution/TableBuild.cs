@@ -121,7 +121,18 @@ internal sealed record IndexColumnSpec(string? Column, bool Descending, string? 
 
 /// <summary>A check constraint to resolve; <paramref name="Origin"/> is <see langword="null"/> for the table's own, else the stereotype that
 /// contributes it.</summary>
-internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, string? Id = null, string? Column = null, RMemberOrigin? Origin = null);
+internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, string? Id = null, string? Column = null, RMemberOrigin? Origin = null)
+{
+    /// <summary>A check written in the expression language: its typed tree, lowered once the table's columns are final; else <see langword="null"/>.</summary>
+    public TreeCheck? Tree { get; init; }
+}
+
+/// <summary>A table's check written in the expression language (next-phase-3-design.md section 3.1), typed when its file is read.</summary>
+/// <param name="Source">The tree, typed in the scope of the file that holds it.</param>
+/// <param name="KeyPrefix">For a check a stereotype contributes, the table key its columns are keyed under; else <see langword="null"/>.</param>
+/// <param name="ElementId">The element a finding about it goes on.</param>
+/// <param name="Pointer">Its pointer there.</param>
+internal sealed record TreeCheck(ExprRoot Source, string? KeyPrefix, string ElementId, string? Pointer);
 
 /// <summary>A foreign key to resolve; <see cref="Result"/> exists from the start so mappings can hold it.</summary>
 internal sealed class ForeignKeySpec(TableBuild host, IReadOnlyList<string> columns, TableBuild? target, string? targetKey,

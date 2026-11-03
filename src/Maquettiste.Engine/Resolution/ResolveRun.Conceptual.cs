@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Text;
 
@@ -32,6 +33,7 @@ internal sealed partial class ResolveRun
     private List<REnum> _enumOrder = [];
     private List<RScalarType> _scalarOrder = [];
     private List<REntity> _entityOrder = [];
+    private List<RConstraint> _constraintOrder = [];
     private List<RRelation> _relationOrder = [];
     private IReadOnlyList<string> _entityMembership = [];
     private readonly Dictionary<string, List<string>> _mappingKeysByTarget = new(StringComparer.Ordinal);
@@ -98,6 +100,11 @@ internal sealed partial class ResolveRun
 
     /// <summary>A resolved entity by id.</summary>
     public REntity? EntityById(string id) => _entities.GetValueOrDefault(id);
+
+    /// <summary>The resolved enum member of an id, or <see langword="null"/> (a reference-type code, or an id of nothing).</summary>
+    public REnumMember? EnumMemberOf(string id) => Model.TryGetEntry(id, out var entry) && _enums.TryGetValue(entry.OwnerId, out var e)
+        ? e.Members.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.Ordinal))
+        : null;
 
     /// <summary>A resolved enum by id.</summary>
     public REnum? EnumById(string id) => _enums.GetValueOrDefault(id);
@@ -206,6 +213,7 @@ internal sealed partial class ResolveRun
         foreach (var enumType in Model.All<EnumType>())
             ResolveEnum(enumType);
         ResolveReferenceTypes();
+        ResolveConstraints();
         var valueObjects = Model.All<ValueObject>();
         foreach (var valueObject in valueObjects)
             _valueObjects[valueObject.Id] = new RValueObject();
@@ -480,6 +488,7 @@ internal sealed partial class ResolveRun
         r.Attributes = new RList<RAttribute>(attributes, deps.ToList());
         var own = entity.Attributes.Select(a => attributes.First(x => string.Equals(x.Id, a.Id, StringComparison.Ordinal))).ToList();
         r.OwnAttributes = new RList<RAttribute>(own, [Keys.Element(entity.Id)]);
+        ResolveExpressions(r, chain, flattened, attributes, registrations);
 
         // The key and alternate keys come from the hierarchy root (the key) and every level (alternate keys).
         var root = chain[0];
@@ -504,6 +513,126 @@ internal sealed partial class ResolveRun
         })];
         registrations.Add(r);
         return registrations;
+    }
+
+    /// <summary>
+    /// An entity's expressions (next-phase-3-design.md section 3.1): its checks, the root base's first, each typed in the scope of the
+    /// entity that declares it (an inherited check is the base's, by id), and the tree value of each derived attribute it declares or
+    /// inherits. Paths end at the entity's own attribute objects; what a condition names beyond them (an enum, a seed, a constraint)
+    /// joins the dependency keys of the check or attribute. An entity without checks or tree values does nothing here.
+    /// </summary>
+    private void ResolveExpressions(REntity r, List<Entity> chain, List<(ModelAttribute Attribute, Entity Declaring, AppliedStereotype? Applied)> flattened,
+        List<RAttribute> attributes, List<IResolvedObject> registrations)
+    {
+        var entity = chain[^1];
+        if (chain.All(level => level.Checks.Count == 0) && flattened.All(x => x.Attribute.Derived?.Value is null))
+            return;
+        var byId = attributes.ToDictionary(a => a.Id, StringComparer.Ordinal);
+        object? Target(ExprMember member) => AttributeTarget(byId, member.Id);
+
+        var checks = new List<REntityCheck>();
+        var listKeys = new DependencySet(Keys);
+        foreach (var level in chain)
+        {
+            listKeys.Element(level.Id);
+            foreach (var check in level.Checks)
+            {
+                var c = new REntityCheck { Entity = r, IsInherited = !string.Equals(level.Id, entity.Id, StringComparison.Ordinal), Message = check.Message };
+                var deps = DepsOf(c);
+                FillCommon(c, check, null, deps);
+                deps.Element(level.Id).Element(entity.Id);
+                c.Package = r.Package;
+                c.Attribute = check.Attribute is { } attribute
+                    ? byId.GetValueOrDefault(attribute) ?? byId.GetValueOrDefault(attribute.Split('.', '@', ':')[^1])
+                    : null;
+                if (ExprResolution.Type(Model, level, check.Id) is { } typed)
+                {
+                    var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Check,
+                        ExprResolution.ApiColumns(Model, check.Id, Model.GetDocument(level.Id)?.Path));
+                    c.Condition = ExprResolution.Build(root, Target, EnumMemberOf);
+                    c.Names = ExprResolution.Names(Model, typed.Typed);
+                    foreach (var name in c.Names)
+                        deps.Element(name);
+                }
+
+                checks.Add(c);
+                if (!c.IsInherited)
+                    registrations.Add(c);
+            }
+        }
+
+        r.Checks = new RList<REntityCheck>(checks, listKeys.ToList());
+        foreach (var (attribute, declaring, applied) in flattened)
+        {
+            if (applied is not null || attribute.Derived?.Value is null || byId.GetValueOrDefault(attribute.Id)?.Derived is not { } derived
+                || ExprResolution.Type(Model, declaring, attribute.Id) is not { } typed)
+                continue;
+            var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Value,
+                ExprResolution.ApiColumns(Model, attribute.Id, Model.GetDocument(declaring.Id)?.Path));
+            derived.Value = ExprResolution.Build(root, Target, EnumMemberOf);
+            var deps = DepsOf(byId[attribute.Id]);
+            foreach (var name in ExprResolution.Names(Model, typed.Typed))
+                deps.Element(name);
+        }
+    }
+
+    /// <summary>The attribute a path of an entity's expression ends at: an attribute, or a value object member's (<c>attributeId.memberId</c>).</summary>
+    private static RAttribute? AttributeTarget(Dictionary<string, RAttribute> attributes, string id)
+    {
+        if (attributes.TryGetValue(id, out var attribute))
+            return attribute;
+        var dot = id.IndexOf('.', StringComparison.Ordinal);
+        return dot > 0 && attributes.TryGetValue(id[..dot], out var owner) && owner.Type.ValueObject is { } valueObject
+            ? valueObject.Attributes.FirstOrDefault(m => string.Equals(m.Id, id[(dot + 1)..], StringComparison.Ordinal))
+            : null;
+    }
+
+    /// <summary>
+    /// The named constraints (next-phase-3-design.md section 3.1), by (package qualified name, name, id): each with its typed parameters
+    /// and its condition typed against them. A constraint depends on its file and on what its condition names (another constraint it
+    /// cites, an enum, a seed); a parameter on its constraint's file and its type.
+    /// </summary>
+    private void ResolveConstraints()
+    {
+        var constraints = Model.All<Constraint>();
+        if (constraints.Count == 0)
+            return;
+        var resolved = new List<RConstraint>(constraints.Count);
+        foreach (var constraint in constraints)
+        {
+            var r = new RConstraint { Message = constraint.Message };
+            var deps = DepsOf(r);
+            FillCommon(r, constraint, deps);
+            r.Package = PackageOf(constraint.Package);
+            var parameters = new List<RConstraintParameter>(constraint.Parameters.Count);
+            foreach (var parameter in constraint.Parameters)
+            {
+                var p = new RConstraintParameter { Constraint = r };
+                var parameterDeps = DepsOf(p);
+                FillCommon(p, parameter, null, parameterDeps);
+                parameterDeps.Element(constraint.Id);
+                p.Package = r.Package;
+                p.Type = TypeOf(parameter.Type, parameterDeps, out _);
+                parameters.Add(p);
+                Register(p);
+            }
+
+            r.Parameters = new RList<RConstraintParameter>(parameters, [Keys.Element(constraint.Id)]);
+            if (ExprResolution.Type(Model, constraint, constraint.Id) is { } typed)
+            {
+                var byId = parameters.ToDictionary(p => p.Id, StringComparer.Ordinal);
+                var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Check,
+                    ExprResolution.ApiColumns(Model, constraint.Id, Model.GetDocument(constraint.Id)?.Path));
+                r.Condition = ExprResolution.Build(root, m => byId.GetValueOrDefault(m.Id), EnumMemberOf);
+                foreach (var name in ExprResolution.Names(Model, typed.Typed))
+                    deps.Element(name);
+            }
+
+            Register(r);
+            resolved.Add(r);
+        }
+
+        _constraintOrder = Sorted(resolved);
     }
 
     /// <summary>A relation built by <see cref="BuildRelation"/>, waiting for <see cref="CommitRelation"/>.</summary>
@@ -738,6 +867,8 @@ internal sealed partial class ResolveRun
         r.Derived = new RList<REntity>(derivedByBase.TryGetValue(r, out var derivedList) ? derivedList : [], [Keys.Referrers(r.Id)]);
         r.Mappings = _entityMappings.TryGetValue(r.Id, out var mappings) ? SortedMap(mappings) : ImmutableSortedDictionary<string, REntityMapping>.Empty;
         r.Bindings = _entityBindings.TryGetValue(r.Id, out var bindings) ? SortedMap(bindings) : ImmutableSortedDictionary<string, REntityBinding>.Empty;
+        foreach (var check in r.Checks)
+            check.Bindings = new RList<REntityBinding>(check.ListedBy, [Keys.Element(r.Id), .. DatabaseKeys]);
         if (r.Key is { } key && _keySequences.TryGetValue(r.Id, out var sequences))
             key.Sequences = SortedMap(sequences);
         return navigations;

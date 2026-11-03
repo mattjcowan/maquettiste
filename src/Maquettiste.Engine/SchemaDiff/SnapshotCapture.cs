@@ -21,7 +21,9 @@ namespace Maquettiste.Engine.SchemaDiff;
 /// operator class when it has one; <c> desc</c> for descending), followed only when they differ from
 /// the default by <c>;unique</c>, <c>;using=&lt;method&gt;</c>, <c>;include=&lt;column keys&gt;</c> and
 /// <c>;where=&lt;16 hex of the SHA-256 of the predicate&gt;</c>;</description></item>
-/// <item><description>a check is <c>ck:</c> + the first 16 hex characters of the SHA-256 of its expression.</description></item>
+/// <item><description>a check is <c>ck:</c> + the first 16 hex characters of the SHA-256 of its expression; a check written in the
+/// expression language, of its shape (<see cref="SnapshotCheck.Shape"/>, the check written with column keys in place of column names),
+/// so a column rename keeps it (next-phase-3-design.md section 3.1, decision 22).</description></item>
 /// </list>
 /// Column keys are joined with <c>,</c>. Only objects whose definitions are otherwise identical can derive the same key; those
 /// are ordered by their remaining properties (a foreign key's actions), then by name (ordinal), and the second and later get
@@ -159,8 +161,8 @@ internal static class SnapshotCapture
                 Where = x.Where,
                 Deferrable = PlainValues.Parse(x.Deferrable, Deferrability.NotDeferrable),
             });
-        var checks = AssignKeys(table.Checks, c => "ck:" + ContentHash.Of(c.Expression)[..16], _ => "", c => c.Name,
-            (c, key) => new SnapshotCheck { Key = key, Name = c.Name, Expression = c.Expression });
+        var checks = AssignKeys(table.Checks, c => "ck:" + (c.Shape ?? ContentHash.Of(c.Expression))[..16], _ => "", c => c.Name,
+            (c, key) => new SnapshotCheck { Key = key, Name = c.Name, Expression = c.Expression, Shape = c.Shape });
         var indexes = AssignKeys(table.Indexes, IndexKey, _ => "", i => i.Name,
             (i, key) => new SnapshotIndex
             {
