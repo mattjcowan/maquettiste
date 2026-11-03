@@ -1,6 +1,6 @@
 # Model snapshots
 
-Phase A of `next.md` item 4 ("Model service"), engine and server side, built 2026-10-05. A snapshot is a named, immutable
+Phase A of the model service in `next.md`, engine and server side, built 2026-10-05. A snapshot is a named, immutable
 copy of the whole model at a point in time: taken, listed, renamed and published, deleted, opened read-only ("as of"),
 compared with another snapshot or with the working model, restored into the working model, exported and imported. The
 editor's side (the picker, the as-of mode, the compare view) followed the same day; section 10 describes it. Erratum E45

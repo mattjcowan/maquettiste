@@ -1,13 +1,15 @@
 # Next capabilities, phase 2: design
 
-**Status (2026-11-01): draft for the owner's review; nothing is built.** Phase 2 is the second row of section 11 of
-the next-capabilities scope (`tmp/scope-next-capabilities.md`): the model shrinks, commands and a project's own
-concepts become elements, and requirements tell agents why before they edit. Sections 13 to 16 of the scope revise
-its older text, and this design follows them. `next-phase-1-design.md` stays binding for what phase 1 built, and
-`engine-design.md`, `phase2-design.md`, `phase-3-design.md` and `snapshots.md` stay binding for everything this file
-does not change; `docs/api/openapi.yaml` and `schemas/v1/` remain the source of truth for their contracts. Public
-engine signatures change only as written here. File, type, member, rule, verb and tool names here are binding. Where
-code and this file disagree during the build, fix one of them in the same change.
+**Status (2026-11-02): milestone D (section 3) is built, in 0.12.0; milestones E to G are not built.** Which of their
+items come next waits on the owner's decision on the proposal in `next.md`. Phase 2 is the second phase of the roadmap
+of 2026-10-30, which `next.md` lists with its item numbers ("scope 3.3" here is item 3.3 there): the model shrinks,
+commands and a project's own concepts become elements, and requirements tell agents why before they edit. The
+roadmap's later decisions of that day hold here, among them no dependency on version control, and PostgreSQL, the CLI
+and MCP first. `next-phase-1-design.md` stays binding for what phase 1 built, and `engine-design.md`,
+`phase2-design.md`, `phase-3-design.md` and `snapshots.md` stay binding for everything this file does not change;
+`docs/api/openapi.yaml` and `schemas/v1/` remain the source of truth for their contracts. Public engine signatures
+change only as written here. File, type, member, rule, verb and tool names here are binding. Where code and this file
+disagree during the build, fix one of them in the same change.
 
 ## 1. Scope and decisions
 
@@ -62,8 +64,8 @@ Decisions that hold across sections (each section lists its own under "Decisions
    properties and "outputs" a pack's generated files. New names avoid them.
 8. **Rule ids** come from the blocks in section 2.2. Ids left free in a block stay reserved for phase 2 follow-ups.
 9. **Release notes** go under `## 0.12.0 (unreleased)` in `docs/releases.md`; the owner sets the version and date at
-   release. A milestone may land as a pre-release when the owner chooses, with a short note that uses billing and
-   invented names only.
+   release. A milestone may land as a pre-release when the owner chooses. Customers follow each change through its
+   pull request into `main`, whose description uses billing and invented names only.
 
 Decisions taken after the section reviews (2026-11-01), each recorded in its section:
 
@@ -9484,10 +9486,10 @@ mocks (`editor` regenerates them) and the recorded rule list (`record` rewrites 
    shipped packs' cases and helper tests (`ShippedPackTests`).
 3. `PG P` without a filter: the pack tests, including those that need the PostgreSQL container.
 4. `editor`, since every milestone touches `src/editor` or `docs/api/openapi.yaml`.
-5. When the owner lands the milestone as a pre-release (decision 9 of section 1), a short note
-   `tmp/response-next-capabilities-note-<slug>.md`: what changed and how to try it, with billing and invented names
-   only. The slugs are `shared-structure`, `own-concepts`, `packs-and-rules` and `agents-and-environments`. No task
-   waits for a note to be read.
+5. A pull request into `main` whose description is the customers' record of the milestone (decision 9 of section 1):
+   what changed and why, how to try it, upgrade checks, new rule ids and what is deferred, with billing and invented
+   names only. `next.md` is updated in the same change. No task waits for the pull request to be read; the owner
+   merges it.
 6. A commit script `tmp/NN-commit-<slug>.sh` (the next free number) that commits the milestone. The owner runs it; no
    task commits.
 

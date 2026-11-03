@@ -1,9 +1,153 @@
 # Next
 
-The work queued after 0.7.1 (2026-10-04), in the order proposed. Each item says where it stands and what it waits on.
-When an item is built, its record moves to `status.md` (and the design documents) and it leaves this file.
+The one list of what is not built yet, and of every item on the roadmap of 2026-10-30 with where it stands. It
+changes with every change that builds, moves or drops an item. The record of what is built stays in `status.md`, the
+design documents and `docs/releases.md`.
 
-## 1. Validation speed (proposed next; needs no decision)
+How to read the tables:
+
+- **#** is the roadmap's item number. The designs cite these numbers ("scope 3.3").
+- **Requested** is "yes" when a team that uses Maquettiste asked for the item, whatever its status here. Where the team
+  asked for more than the item builds, or for a different form, the notes say so and "Not doing" lists what was
+  declined.
+- **Status** is "built" with the version, "proposed" with a call, "covered" by other items, or "not doing".
+- **Proposed** calls come from the proposal of 2026-11-02 and wait on the owner's decision. Until the owner decides,
+  the order in section 7 of `next-phase-2-design.md` stands. *Build next*: most teams need it soon. *Later*: useful,
+  but nothing waits on it; built when a second team asks, or when what it depends on exists. *Drop*: better served by
+  a team's own packs, code or tools, or by what the product already has.
+
+Every item not built yet was requested, except projections (3.12), views (3.13) and declared environments (6.9).
+
+## Phase 1: built in 0.11.0
+
+Designed in `next-phase-1-design.md`. 0.11.0 is a preview and not released yet.
+
+| # | Item | Requested | Status | Notes |
+| --- | --- | --- | --- | --- |
+| 3.1 | Typed references inside extension properties (`x-ref`), stored as ids, with names converted to ids | yes | Built, 0.11.0 | The editor's forms do not show the new keys yet; the JSON tab edits them. |
+| 3.2 | Stereotype groups, `requires`, `conflicts`, `implies` and typed parameters | yes | Built, 0.11.0 | |
+| 3.4 | Package membership for every kind, and `dependsOn` layering | yes | Built, 0.11.0 | A package owning database schemas, and model import by package, are in "Not doing". |
+| 3.9 | Translatable text in extension properties (`x-translatable`), and a refactor from tags to a typed property | yes | Built, 0.11.0 | Typed `key:value` tags are in "Not doing". |
+| 3.11 | `rationale`, `decision` and `status` on every element | yes | Built, 0.11.0 | Templates do not see them on enum members, stereotypes and categories yet. |
+| 5.4 | Seeds by name in templates (`seed_named`, `seed_row`) | yes | Built, 0.11.0 | |
+| 5.7 | Copy units and closing block markers | yes | Built, 0.11.0 | |
+| 5.9 | Template helpers and the null contract of the resolved model | yes | Built, 0.11.0 | |
+| 5.10 | Generation by unit or element; baselines from a model snapshot or a folder | yes | Built, 0.11.0 | The trace map is phase 4. Generation at a git ref is in "Not doing". |
+| 6.2 | Migration facts in a ledger, `validate --against`, fold, and the ledger table contract (version 1, frozen 2026-11-01) | yes | Built, 0.11.0 | Left: sealing facts into a revision and squashing (deferred), and facts for dialects other than PostgreSQL (MQ4056 until a team needs one). |
+| 6.5 | Index and constraint name rules per dialect; literal defaults checked against their type | yes | Built, 0.11.0 | The first part of 6.5; `db check` is phase 3. |
+| 6.8 | Index `nulls`, `range` and `multirange` types, SQL objects with environments and run-once | yes | Built, 0.11.0 | |
+| 7.1 | Batches by name, with ids minted by the engine | yes | Built, 0.11.0 | |
+| 7.5 | MCP answers that fit an agent's context | yes | Built, 0.11.0 | |
+| 8.4 | Script rules that scale | yes | Built, 0.11.0 | |
+
+## Phase 2, milestone D: built in 0.12.0
+
+Designed in section 3 of `next-phase-2-design.md`. In pull request #1, waiting to merge.
+
+| # | Item | Requested | Status | Design |
+| --- | --- | --- | --- | --- |
+| 3.3 | Stereotypes that contribute columns, keys, indexes and checks, inherited by id; redefinition by facet; schema and package default stereotypes; fold into a stereotype | yes | Built, 0.12.0 | [3.1](next-phase-2-design.md#31-stereotypes-that-contribute-structure) |
+| 6.4 | Columns typed by an enum, a reference type or a scalar type next to their physical type; `sensitive` on columns | yes | Built, 0.12.0 | [3.2](next-phase-2-design.md#32-columns-typed-by-reference-types-enums-and-scalar-types) |
+| 3.5 | Bindings that record their provenance; a drift rule and re-sync; materialize types attributes by reference type | yes | Built, 0.12.0 | [3.3](next-phase-2-design.md#33-bindings-that-record-their-provenance-and-drift) |
+| 6.6 | Seed foreign keys by natural key, stable derived ids, rows computed by a script | yes | Built, 0.12.0 | [3.4](next-phase-2-design.md#34-seeds-by-natural-key-stable-ids-and-scripted-rows) |
+| 6.7 | Rename, retire and merge reference-type codes and types, each recording a value map | yes | Built, 0.12.0 | [3.5](next-phase-2-design.md#35-reference-type-refactors) |
+
+## Left over from built items
+
+| Item | Requested | Status | Notes |
+| --- | --- | --- | --- |
+| Editor screens for the items above | yes | Not scheduled | Each item ships in the engine, the CLI and MCP first; the generic JSON form edits what has no screen yet. Each design section lists its screens under "Editor follow-ups". |
+| Sealing facts into a revision, and squashing (6.2) | yes | Not scheduled | Deferred when the ledger was built. Facts stay open until then. |
+| Rationale, decision and status in templates for enum members, stereotypes and categories (3.11) | yes | Not scheduled | |
+
+## Phase 2: not built yet
+
+Designed in sections 4 to 6 of `next-phase-2-design.md`: 98 tasks. The seven *build next* items hold 53 of them as
+designed, fewer with operations cut down.
+
+| # | Item | Requested | Proposed | Tasks | Design | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| 3.6 | Operations: API commands as elements | yes | Build next, a first cut | 12 | [4.1](next-phase-2-design.md#41-operations) | The first cut: the kind, input, outcomes, errors and the template scope. The team also asked for shared errors contributed by stereotypes, files and paging; those come later. |
+| 3.7 | Project-defined kinds (`custom`), with members that have ids | yes | Build next | 10 | [4.2](next-phase-2-design.md#42-project-defined-kinds) | |
+| 8.2 | Tests for packs (`maquettiste pack test`) | yes | Build next | 7 | [5.4](next-phase-2-design.md#54-tests-for-packs) | No longer waits for DDL steps (5.8). |
+| 5.2 | Values calculated once by project scripts | yes | Build next | 6 | [5.5](next-phase-2-design.md#55-values-calculated-by-project-scripts) | |
+| 8.3 | Declarative rules and per-element suppressions | yes | Build next | 7 | [5.6](next-phase-2-design.md#56-declarative-rules) | Conditions written in the expression language come with 3.8. |
+| 7.2 | Impact before apply | yes | Build next | 5 | [6.1](next-phase-2-design.md#61-impact-before-apply) | Leaves out the export keys of 5.3. Migration steps and their grade come with 6.1. |
+| 7.3 | A model diff between two models | yes | Build next | 6 | [6.2](next-phase-2-design.md#62-a-model-diff-between-two-models) | Compares snapshots, folders and the working model. |
+| 5.1 | Library packs: shared partials and helpers | yes | Later | 8 | [5.2](next-phase-2-design.md#52-library-packs) | Matters to teams with several custom packs; calculated values (5.2) cover most shared naming. |
+| 5.3 | Packs that read each other's exports | yes | Later | 5 | [5.3](next-phase-2-design.md#53-packs-that-read-each-others-exports) | Matters to teams with several cooperating packs. |
+| 5.8 | DDL as structured steps from the engine | yes | Later | 18 | [5.1](next-phase-2-design.md#51-ddl-as-structured-steps-from-the-engine) | The same output; it pays off with the live planner (6.1). |
+| 3.10 | Requirements: `satisfies`, `verifies` and a coverage report | yes | Later | 6 | [4.3](next-phase-2-design.md#43-requirements) | Valuable for regulated teams; not needed to generate code. The roadmap had moved it up to phase 2. |
+| 4.2 | Shared process guards, actions and gate policies | yes | Later | 4 | [4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies) | For teams that model many processes. |
+| 6.9 | Declared environments | no | Later | 4 | [6.3](next-phase-2-design.md#63-declared-environments) | Added by the roadmap's review; mostly preparation for reading live databases. |
+
+## Phase 3: not designed yet
+
+| # | Item | Requested | Proposed | Notes |
+| --- | --- | --- | --- | --- |
+| 3.8 | One expression language for checks, validations, derived values and guards, lowered to SQL and JavaScript | yes | Later | Large. Built when guards or projections come next. |
+| 3.12 | Projections | no | Later | Added by the roadmap's review; operation payloads and scenarios use them. Needs 3.8. |
+| 5.5 | The query kind for hand-written SQL, and CTEs in the structured query | yes | Later | For database-first teams. Written tables and result columns are declared, not read from the SQL text. |
+| 6.1 | A live PostgreSQL planner: `db plan`, `db apply`, `db adopt` | yes | Later | Large, PostgreSQL only. Built when more than one team manages databases with Maquettiste. |
+| 6.5 | `db check`: generated DDL run against a scratch database | yes | Later | The second part of 6.5. A SQL parser is decided after `db check` shows how much is left. |
+| 6.3 | Typed triggers and row-level security policies; SQL objects that revert | yes | Later | SQL objects cover these today. Typed grants are in "Not doing". |
+| 7.6 | Conventions tied to the rules that check them; where each resolved value came from | yes | Later | Helps agents explain answers. |
+| 4.1 | A lifecycle bound to a reference type or a status column | yes | Later | For teams that model processes. |
+| 4.3 | Approval gates with stages | yes | Drop | Gates, stereotypes and custom kinds (3.7) can model stages. |
+| 4.4 | Timers from elements, task contracts, editable fields per state | yes | Drop | Runtime behaviour of a team's workflow engine. |
+| 7.4 | A merge driver for model files | yes | Drop | Ties the product to git; the model diff (7.3) covers review. |
+
+## Phase 4: not designed yet
+
+| # | Item | Requested | Proposed | Notes |
+| --- | --- | --- | --- | --- |
+| 3.13 | Views of the model: saved criteria that select elements | no | Later | Added by the roadmap's review; the documentation pack (5.6) would use views as its viewpoints. |
+| 5.10 | The trace map from generated lines to element ids | yes | Later | The second part of 5.10. |
+| 5.6 | Model documentation as an example pack | yes | Later | The team asked for an export in the engine; it is a pack instead. The process-docs pack covers part of it. |
+| 9 | SysML v2 export as an example pack | yes | Later | Built when a team asks. Import is in "Not doing". |
+| 4.6 | Charts joined to operations; the process runtime generated from them | yes | Drop | The engine does not run processes; a team's packs can generate the runtime. |
+| 4.5 | A structure hash per process, and records in flight when a process changes | yes | Drop | A runtime concern of the team's own system. |
+| 8.1 | Scenarios run against the running system | yes | Drop | Belongs in the team's test suite. |
+| 8.5 | Upgrade tests from history | yes | Covered | No separate feature: build the previous version from a folder or snapshot, migrate, run the suite. The guide page for it is not written yet. |
+
+## Not doing
+
+Decided on 2026-10-30, each with what to use instead.
+
+| Not doing | Instead | Requested |
+| --- | --- | --- |
+| A separate trait (mixin) kind | Stereotypes that contribute structure, inherited by id (3.3) | yes |
+| A stored by-name binding mode | Map by name as an authoring action, with provenance, a drift rule and re-sync (3.5) | yes |
+| Relations inferred from foreign keys when the model resolves | Materialize writes them; bindings stay explicit (3.5) | yes |
+| A package owning database schemas | Tables in packages; the database routes packages to schemas (3.4) | yes |
+| Model import by package now | Cross-model imports, with phase C of the model service (below) | yes |
+| New engine kinds per project concept | One `custom` kind with a project schema per type (3.7) | yes |
+| A built-in message kind | A custom kind with translatable text (3.7, 3.9) | yes |
+| Typed `key:value` tags | Properties through extension schemas, and the tags-to-property refactor (3.9) | yes |
+| Open issues stored on elements | A tracker link in `decision` (3.11) | yes |
+| Engine emitters for C# or other languages | The engine lowers expressions to SQL and JavaScript; packs render other languages from the typed tree (3.8) | yes |
+| Connectors to outside requirement tools | CSV or JSON import by external id (3.10) | no |
+| Business calendars and escalation chains in the engine | Custom kinds (3.7); an escalation is a chain of timers | yes |
+| A version element for processes | A structure hash per process, and a state map in the ledger (4.5) | yes |
+| The engine running processes | Packs generate the runtime from the chart (4.6) | no |
+| Documentation or SysML v2 export in the engine | Example packs (5.6, 9) | yes |
+| SysML v2 import | None planned | yes |
+| Migration facts stored on elements | One fact file each in the ledger, projected onto resolved elements (6.2) | yes |
+| Element ids in database object comments | The ledger table (6.1, 6.2) | yes |
+| Typed grants; roles as product elements | Grants as SQL objects that revert; roles as names or a custom kind (6.3) | yes |
+| Seed rows stored by column name | Rows keyed by column id; names accepted on every input (6.6) | yes |
+| Reading version control: a git provider, `generate --at <ref>`, baselines and diffs from git refs | A model snapshot or a folder; Maquettiste also runs hosted, with no repository (5.10, 7.3) | yes |
+| A physical snapshot committed with each revision | One hash per object; baselines from a model snapshot or a folder (6.2). The committed physical snapshot stays as an option. | no |
+| Prompting for migration facts | One classifier records facts on every write; only intent is left pending (6.2) | no |
+| Redefinition by restating a whole member | Redefinition by facet, keeping the inherited id (3.3) | no |
+| JavaScript guards on operations until the expression language | No guard on operations until 3.8 (3.6) | no |
+
+## Other open work
+
+Queued at 0.7.1, before the roadmap, from the owner's reviews; none of it was requested by a team that uses
+Maquettiste. The old item "Migrations as recorded facts" became the migration ledger (6.2) and is built.
+
+### Validation speed (needs no decision)
 
 The gate 3 bench line "MQ90xx-MQ92xx, whole model, added to validate" has a 400 ms budget. It measured 359 ms at gate 3;
 since the database designer, bindings and DDL rounds (0.6.0) it runs between 400 and 850 ms, so the line misses on most
@@ -14,10 +158,11 @@ local runs and on some CI runs. The time is spent in whole-model validation, not
 - Fix at the cause; never raise the budget.
 - Also check the editor's validation on the 5,000-entity scale dataset (`explorer-redesign.md` §4.5).
 
-## 2. Bindings, the rest (`binding` phases B and C)
+### Bindings, the rest (`binding` phases B and C)
 
 Built in 0.6.0: an entity binds to a table, view or query of a database, with constant columns, a field map, write
 columns and delete by key or soft delete; bulk auto-map, create tables, remove bindings, entities from tables.
+Milestone D added provenance, drift and re-sync (3.5).
 
 Left:
 
@@ -30,57 +175,30 @@ Left:
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
 
-## 3. Migrations as recorded facts (proposal; needs answers)
-
-Migrations become a model kind: a `migration` per database holds ordered steps (data, never SQL) with guards, checked
-against the schema diff instead of inferred from it. A change made outside Maquettiste can be recorded; the editor and
-the agent server can record steps as changes are made (asking first or automatically, by setting). Any pack can render
-the facts: `sql-ddl` first, later an attribute-based C# migration pack and a docs pack.
-
-Phases: A (the kind, steps, guards, validation against the diff, sealing on generate, manual authoring, `sql-ddl` on
-facts); B (live recording, ask or automatic); C (the C# migration pack and the docs pack).
-
-Open questions:
-
-1. One open migration per database that accumulates steps until sealed, or one per change? Proposed: one open per
-   database; sealing is the revision.
-2. Does `generate` seal automatically, or only an explicit Close revision? Proposed: generate seals, with a setting to
-   require explicit closing.
-3. Do data-only migrations (backfills, no schema change) get revisions of their own? Proposed: yes, same kind.
-
-## 4. Model service: persistence providers, snapshots, a model library (snapshots built in 0.8.0)
+### Model service: persistence providers, snapshots, a model library (snapshots built in 0.8.0)
 
 The model stops being only "the JSON files in this checkout" and becomes something an instance serves; generation stays
 something a checkout does. One central instance can hold many models (title, entity and table counts, last updated),
 each with snapshots (name, date) that can be opened read-only, restored, compared, exported and imported.
 
-**Built (2026-10-05, phase A, engine and server; docs/engineering/snapshots.md, erratum E45).** The document store
-interface under `ModelStore` with the model folder as its provider (a pure refactor) and a read-only snapshot archive as the
-second; snapshots as deterministic zip archives under `.maquettiste/model-snapshots/` (packs off by default, held on
-request): take, list, rename and publish, delete, open read-only ("as of", through `?snapshot=<id>` on the editor's model
-reads), compare (with each other or the working model; per-element fields on demand), restore (after a `before-restore-`
-safety snapshot; refused while generation runs), export and import; over the API (`/api/snapshots`, with the mock serving
-them), the CLI (`maquettiste snapshot …`) and the MCP tools (`list_snapshots`, `create_snapshot`, `compare_snapshots`,
-`restore_snapshot`).
+**Built (2026-10-05, phase A, engine, server and editor).** Snapshots as deterministic zip archives under
+`.maquettiste/model-snapshots/`, with take, list, rename and publish, delete, open read-only, compare, restore, export
+and import, over the API, the CLI, MCP and the editor. `snapshots.md` and erratum E45 record them.
 
-**Editor built (2026-10-05; snapshots.md section 10).** The snapshot picker on the project name (search, take with packs off
-by default, import, and per snapshot open, compare, restore, export, rename, publish and delete, by role), the as-of mode
-(`?snapshot=<id>` in the URL, every read scoped and every write off, a one-line banner in the top bar), the compare view
-(changes by kind in pages, the conflict view's diff per element) and restore with "Undo: restore before-restore-…"; the mock
-serves as-of reads, export and import. An import over the host's 512 MiB request bound is now a 413 with MQ1011, not a 503.
+Left in phase A: instance capabilities (`model: read`, `generation: off`, `packs: read|off`); generating from a snapshot
+with its packs.
 
-Left in phase A: instance capabilities (`model: read`, `generation: off`, `packs: read|off`); generating from a snapshot with its packs.
-
-**Snapshots in object storage (asked 2026-10-05, on hold).** Keep snapshot archives in an S3-compatible bucket instead of
-the model folder. The credentials never go in `maquettiste.json` (it is in the repository): they are host site variables,
-the secret key marked secret (encrypted by the host, never sent back), and environment variables for the CLI. Settings ›
-Snapshots shows where snapshots go and a connection test, never the key. Every snapshot operation works the same; opening
-one downloads its archive once into the cache; compare reads the two small index entries first. Proposed, to confirm when
-it is picked up: the bucket is the only store when configured, with a one-time "Upload local snapshots"; configured per
-instance (fits the central service), not per project.
+**Snapshots in object storage (asked 2026-10-05, on hold).** Keep snapshot archives in an S3-compatible bucket instead
+of the model folder. The credentials never go in `maquettiste.json` (it is in the repository): they are host site
+variables, the secret key marked secret (encrypted by the host, never sent back), and environment variables for the CLI.
+Settings › Snapshots shows where snapshots go and a connection test, never the key. Every snapshot operation works the
+same; opening one downloads its archive once into the cache; compare reads the two small index entries first. Proposed,
+to confirm when it is picked up: the bucket is the only store when configured, with a one-time "Upload local snapshots";
+configured per instance (fits the central service), not per project.
 
 Phases B (an http provider, multi-model service mode, the library picker, `generate --model <url>`) and C (a database
-provider with versions as history, accounts and single sign-on, per-model permissions, cross-model imports) are unchanged.
+provider with versions as history, accounts and single sign-on, per-model permissions, cross-model imports) are
+unchanged.
 
 Decided: one central service, many models, one URL; working models are visible, and a snapshot can be marked published;
 packs travel with a snapshot only when asked; compare is in phase A; snapshots are zip files on the file provider.
@@ -89,12 +207,13 @@ Open questions:
 
 1. Do developers need a local copy of the model, or is `generate --model <url>` enough (and what about offline work)?
 2. Auth for the first cut: is one shared token per instance enough until accounts arrive?
-3. Should cross-model imports (shared vocabularies) be designed now, since they shape the archive format (it can carry an
-   `imports` list later)?
+3. Should cross-model imports (shared vocabularies) be designed now, since they shape the archive format (it can carry
+   an `imports` list later)?
 4. Should anything in a working model be hidden from a reviewer?
-5. Should a project keep its snapshots out of git (the product writes no ignore file), or are they model history to commit?
+5. Should a project keep its snapshots out of version control (the product writes no ignore file), or are they model
+   history to keep?
 
-## 5. The assistant, next steps
+### The assistant, next steps
 
 Built in 0.7.0: the sidebar reads the whole model and proposes model changes as reviewed diffs.
 
@@ -102,19 +221,20 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 - Let it run a plan and show the diff (apply stays a user action).
 - Drafting a template from an example output (the spec's last assist task) waits on pack writes.
 
-## 6. Smaller items
+### Smaller items
 
 - **Explain still prepares the whole pack.** Explaining one unit (an explicit click) runs a full dry-run preparation; it
   should plan only the unit asked about, as the preview now does.
 - **The store rescans every file per request.** Reading the model snapshot stats every model file each time (about
   150 ms on 40,000 files); a file watcher or a cheaper change check would remove most of a warm preview's time.
 - **Oracle DDL against a server.** Every other dialect ran against a real server in 0.6.0; Oracle did not.
-- **Lock files.** The project-reference ranges in `packages.lock.json` still read `1.0.0-alpha.1` (harmless metadata from
-  the first restore). Refreshing them would mean a release script that re-evaluates the locks at every version bump.
+- **Lock files.** The project-reference ranges in `packages.lock.json` still read `1.0.0-alpha.1` (harmless metadata
+  from the first restore). Refreshing them would mean a release script that re-evaluates the locks at every version
+  bump.
 - **Regex limit tests.** Since the retry in 0.7.1, the catastrophic-pattern tests take about 0.5 s against a 1 s bound;
   watch them on slow runners.
 
-## 7. Editor approachability (waits on a walkthrough with the owner)
+### Editor approachability (waits on a walkthrough with the owner)
 
 - A reorganization for non-experts: onboarding, naming, empty states, a clearer first screen. Collect confusion points
   in a live walkthrough first.

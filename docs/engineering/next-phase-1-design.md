@@ -1,13 +1,13 @@
 # Next capabilities, phase 1: design
 
-**Status (2026-10-30): binding for phase 1; nothing is built yet.** Phase 1 is the first row of section 11 of the
-next-capabilities scope (`tmp/scope-next-capabilities.md`, settled with the active customer on 2026-10-30): typed
-links, the migration ledger, batches and answers that fit an agent, and scoped generation. Sections 13 to 16 of the
-scope revise its older text, and this design follows them. `engine-design.md` stays binding for everything this file
+**Status (2026-11-02): built, in 0.11.0.** Phase 1 is the first phase of the roadmap of 2026-10-30, which `next.md`
+lists with its item numbers ("scope 6.2" here is item 6.2 there): typed links, the migration ledger, batches and answers
+that fit an agent, and scoped generation. The roadmap's later decisions of that day hold here, among them no dependency
+on version control, and PostgreSQL, the CLI and MCP first. `engine-design.md` stays binding for everything this file
 does not change, with `phase2-design.md`, `phase-3-design.md` and `snapshots.md`; `docs/api/openapi.yaml` and
 `schemas/v1/` remain the source of truth for their contracts. Public engine signatures change only as written here.
-File, type, member, rule, verb and tool names here are binding. Where code and this file disagree during the build,
-fix one of them in the same change.
+File, type, member, rule, verb and tool names here are binding. Where code and this file disagree during the build, fix
+one of them in the same change.
 
 ## 1. Scope and decisions
 
