@@ -12,9 +12,9 @@ How to read the tables:
   declined.
 - **Status** is "built" with the version, "proposed" with a call, "covered" by other items, or "not doing".
 - **Proposed** calls come from the proposal of 2026-11-02 and wait on the owner's decision. Until the owner decides,
-  the order in section 7 of `next-phase-2-design.md` stands. *Build next*: most teams need it soon. *Later*: useful,
-  but nothing waits on it; built when a second team asks, or when what it depends on exists. *Drop*: better served by
-  a team's own packs, code or tools, or by what the product already has.
+  the order in section 7 of `next-phase-2-design.md` stands. *Build next*: most teams need it soon. *Later*: kept on
+  the roadmap with no date; picked when what it depends on exists, or when it becomes the most needed. The proposal
+  also dropped six items; the owner moved them to *later* on 2026-11-02, so nothing on the roadmap is dropped.
 
 Every item not built yet was requested, except projections (3.12), views (3.13) and declared environments (6.9).
 
@@ -93,9 +93,9 @@ designed, fewer with operations cut down.
 | 6.3 | Typed triggers and row-level security policies; SQL objects that revert | yes | Later | SQL objects cover these today. Typed grants are in "Not doing". |
 | 7.6 | Conventions tied to the rules that check them; where each resolved value came from | yes | Later | Helps agents explain answers. |
 | 4.1 | A lifecycle bound to a reference type or a status column | yes | Later | For teams that model processes. |
-| 4.3 | Approval gates with stages | yes | Drop | Gates, stereotypes and custom kinds (3.7) can model stages. |
-| 4.4 | Timers from elements, task contracts, editable fields per state | yes | Drop | Runtime behaviour of a team's workflow engine. |
-| 7.4 | A merge driver for model files | yes | Drop | Ties the product to git; the model diff (7.3) covers review. |
+| 4.3 | Approval gates with stages | yes | Later | Until then, gates, stereotypes and custom kinds (3.7) can model stages. |
+| 4.4 | Timers from elements, task contracts, editable fields per state | yes | Later | Close to a team's workflow engine; after the lifecycle (4.1) and shared guards (4.2). |
+| 7.4 | A merge driver for model files | yes | Later | An optional integration for teams that keep models in git; the product never needs it. The model diff (7.3) covers review. |
 
 ## Phase 4: not designed yet
 
@@ -105,9 +105,9 @@ designed, fewer with operations cut down.
 | 5.10 | The trace map from generated lines to element ids | yes | Later | The second part of 5.10. |
 | 5.6 | Model documentation as an example pack | yes | Later | The team asked for an export in the engine; it is a pack instead. The process-docs pack covers part of it. |
 | 9 | SysML v2 export as an example pack | yes | Later | Built when a team asks. Import is in "Not doing". |
-| 4.6 | Charts joined to operations; the process runtime generated from them | yes | Drop | The engine does not run processes; a team's packs can generate the runtime. |
-| 4.5 | A structure hash per process, and records in flight when a process changes | yes | Drop | A runtime concern of the team's own system. |
-| 8.1 | Scenarios run against the running system | yes | Drop | Belongs in the team's test suite. |
+| 4.6 | Charts joined to operations; the process runtime generated from them | yes | Later | Needs operations (3.6) and the expression language (3.8). The engine runs no process; packs generate the runtime. |
+| 4.5 | A structure hash per process, and records in flight when a process changes | yes | Later | Needs the lifecycle (4.1); the state map is a step in the migration ledger (6.2). |
+| 8.1 | Scenarios run against the running system | yes | Later | Needs operations (3.6) and projections (3.12); the team writes the test template. |
 | 8.5 | Upgrade tests from history | yes | Covered | No separate feature: build the previous version from a folder or snapshot, migrate, run the suite. The guide page for it is not written yet. |
 
 ## Not doing
