@@ -581,12 +581,23 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `sqliteBail` | `false` | Write `.bail on` at the top of every SQLite migration, so the `sqlite3` shell stops at the first error without `-bail`; only for the `sqlite3` shell (other runners refuse dot-commands). |
 | `schemaScript` | `"inline"` | `inline` puts every table's DDL in `schema.sql` (runs with any client); `include` writes client include directives instead (`\ir` for psql, `:r` for sqlcmd followed by `GO`, `.read` for sqlite3; paths use `/`, which sqlcmd accepts on every OS; run sqlcmd and sqlite3 from the database folder). |
 
+## Tests
+
+`tests/billing-small/` is the pack's case: a PostgreSQL database `main` with the tables `customers` and `invoices`, a
+foreign key between them and a table seed of two customers, and under `expected/` the files the pack writes for it (the
+two table scripts, `schema.sql`, `seed.sql` and the first migration). `tests/helpers.test.js` tests each helper of
+`helpers.js`. Copy the pack folder, `tests/` included, into a project's `.maquettiste/templates/` and run
+`maquettiste pack test sql-ddl`: the case runs as a project of its own and its output is compared byte for byte with
+`expected/`. `--update` rewrites `expected/` from the output; review the diff before keeping it. In this repository
+`ShippedPackTests` in `tests/Maquettiste.Cli.Tests` runs it, and `MAQUETTISTE_UPDATE_GOLDEN=1` updates it.
+
 ## Files
 
 | File | Holds |
 | --- | --- |
 | `pack.json` | Units and parameter defaults. |
 | `helpers.js` | The `ddl_order` / `ddl_cycle_breaks` helpers (foreign-key dependency order) and `reference_realization` (the `strategyMap` lookup). |
+| `tests/` | The `billing-small` case and `helpers.test.js` (see Tests); the starter the CLI embeds leaves them out. |
 | `_sql.scriban` | Shared functions: quoting, qualified names, column definitions, foreign keys, indexes, comments. |
 | `_table.scriban` | The `CREATE TABLE` block of one table, used by `table`, `schema` and `migration`. |
 | `_objects.scriban` | Sequences, views, routines, database types, SQL objects, schemas, include directives and the dependency specs for `ddl_order` (foreign keys, and `dependsOn` for the DDL order). |

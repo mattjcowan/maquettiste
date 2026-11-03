@@ -41,7 +41,8 @@ public sealed record PackSummary(string Name, string? Version, string? Descripti
 /// <param name="Size">Bytes.</param>
 /// <param name="Hash">The SHA-256 of the bytes (the file's ETag).</param>
 /// <param name="Role"><c>manifest</c>, <c>template</c> (a unit names it), <c>partial</c> (a template includes it), <c>script</c>,
-/// <c>type-map</c>, <c>copy-source</c> (a copy unit's sources match it) or <c>other</c>, derived with the loader's own rules (GU2).</param>
+/// <c>type-map</c>, <c>copy-source</c> (a copy unit's sources match it), <c>test</c> (under the pack's <c>tests/</c> folder: a test case
+/// or a helper test, never loaded or parsed) or <c>other</c>, derived with the loader's own rules (GU2).</param>
 /// <param name="UsedBy">What uses it: <c>unit:&lt;id&gt;</c>, <c>companion:&lt;id&gt;</c> and <c>include:&lt;path&gt;</c>, ordinal.</param>
 public sealed record PackFileInfo(string Path, long Size, string Hash, string Role, IReadOnlyList<string> UsedBy);
 
@@ -116,11 +117,15 @@ internal static partial class PackAuthoring
     /// existing ancestor and of the target must stay inside the real pack folder, so a link to another pack or the model is refused
     /// (generation-ui.md section 5.1, the pack file guard).
     /// </summary>
-    public static string Resolve(string packRoot, string path)
+    public static string Resolve(string packRoot, string path) => Resolve(packRoot, path, allowHidden: false);
+
+    /// <summary>As <see cref="Resolve(string, string)"/>; <paramref name="allowHidden"/> admits dot files and folders (an expected tree
+    /// mirrors whatever a unit writes).</summary>
+    private static string Resolve(string packRoot, string path, bool allowHidden)
     {
         var full = PackFiles.Resolve(packRoot, path)
             ?? throw new PackPathException($"'{path}' must be a relative path inside the pack folder, with '/' separators and no '.' or '..' segment.");
-        if (path.Split('/').Any(s => s.StartsWith('.')))
+        if (!allowHidden && path.Split('/').Any(s => s.StartsWith('.')))
             throw new PackPathException($"'{path}' names a hidden file or folder, which packs do not use.");
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(packRoot));
         var realRoot = RealPath(root);
@@ -357,9 +362,9 @@ internal static partial class PackAuthoring
     }
 
     /// <summary>
-    /// Creates a pack (<c>POST /api/packs</c>): <c>empty</c> writes a <c>pack.json</c> with one <c>each entity</c> unit and its template;
-    /// the name of a pack of this project copies that pack's files; <paramref name="starters"/> (the command line's built-in starters)
-    /// supply other names. <c>conflict</c> when the folder exists; <c>invalid</c> for an unknown starter.
+    /// Creates a pack (<c>POST /api/packs</c>): <c>empty</c> writes a <c>pack.json</c> with one <c>each entity</c> unit, its template and
+    /// an example case; a library writes <see cref="LibraryStarter"/>; the name of a pack of this project copies that pack's files but
+    /// its <c>tests/</c>; <paramref name="starters"/> (the command line's built-in starters) supply other names. <c>conflict</c> when the folder exists; <c>invalid</c> for an unknown starter.
     /// </summary>
     public static async Task<PackWriteResult> CreateAsync(EngineServices services, string name, string from,
         IReadOnlyDictionary<string, IReadOnlyList<KeyValuePair<string, byte[]>>>? starters, CancellationToken ct, bool library = false)
@@ -402,6 +407,8 @@ internal static partial class PackAuthoring
                 }),
             };
             files["entity.scriban"] = Encoding.UTF8.GetBytes("{{ entity.name }}\n{{~ for attribute in entity.attributes ~}}\n- {{ attribute.name }}\n{{~ end ~}}\n");
+            foreach (var (path, text) in ExampleCase(name, "invoice.txt", "Invoice\n- id\n- number\n"))
+                files[path] = Encoding.UTF8.GetBytes(text);
         }
         else
         {
@@ -416,6 +423,9 @@ internal static partial class PackAuthoring
             JsonObject? found = null;
             foreach (var (path, bytes) in source)
             {
+                // The copy's tests stay behind: its name, and so its banners, differ (next-phase-2-design.md section 5.4).
+                if (PackFileRoles.IsTest(path))
+                    continue;
                 if (path == "pack.json")
                     found = JsonNode.Parse(bytes, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip }) as JsonObject;
                 else
@@ -442,8 +452,78 @@ internal static partial class PackAuthoring
     }
 
     /// <summary>
-    /// The files of a new library pack besides its <c>pack.json</c>: <c>partials/header.scriban</c> and a <c>helpers.js</c> with one helper.
-    /// <c>maquettiste pack new --library</c> writes the same files.
+    /// The <c>tests/.gitattributes</c> every starter writes, the one dot file a new pack holds: an expected tree is compared byte for
+    /// byte, so version control must leave its line endings as they are (next-phase-2-design.md section 5.4).
+    /// </summary>
+    public static KeyValuePair<string, string> TestsAttributes { get; } =
+        new(PackFileRoles.TestsFolder + "/.gitattributes", "# Expected output is compared byte for byte: never convert line endings.\n* -text\n");
+
+    /// <summary>
+    /// The example case a new pack starts with (next-phase-2-design.md section 5.4): <see cref="TestsAttributes"/>, then
+    /// <c>tests/example/</c> with a project that sends the pack's output to <c>out</c>, a model of one package and one entity with two
+    /// attributes, and the one expected file.
+    /// </summary>
+    /// <param name="name">The pack name.</param>
+    /// <param name="file">The expected file's path under the output folder.</param>
+    /// <param name="expected">The expected file's text.</param>
+    /// <returns>Pack-relative path to text, ordinal.</returns>
+    public static IReadOnlyList<KeyValuePair<string, string>> ExampleCase(string name, string file, string expected) =>
+    [
+        TestsAttributes,
+        new("tests/example/expected/" + file, expected),
+        new("tests/example/maquettiste.json", $$"""
+            {
+              "formatVersion": 1,
+              "name": "example",
+              "packs": {
+                "{{name}}": {
+                  "output": "out"
+                }
+              }
+            }
+
+            """),
+        new("tests/example/model/entities/invoice.json", """
+            {
+              "kind": "entity",
+              "id": "01JB0000000000000000000E01",
+              "name": "Invoice",
+              "package": "01JB0000000000000000000P01",
+              "key": {
+                "attributes": [
+                  "01JB0000000000000000000A01"
+                ]
+              },
+              "attributes": [
+                {
+                  "id": "01JB0000000000000000000A01",
+                  "name": "id",
+                  "type": "uuid",
+                  "required": true
+                },
+                {
+                  "id": "01JB0000000000000000000A02",
+                  "name": "number",
+                  "type": "text",
+                  "required": true
+                }
+              ]
+            }
+
+            """),
+        new("tests/example/model/packages/billing.json", """
+            {
+              "kind": "package",
+              "id": "01JB0000000000000000000P01",
+              "name": "Billing"
+            }
+
+            """),
+    ];
+
+    /// <summary>
+    /// The files of a new library pack besides its <c>pack.json</c>: <c>partials/header.scriban</c>, a <c>helpers.js</c> with one helper,
+    /// <see cref="TestsAttributes"/> and <c>tests/helpers.test.js</c> testing it. <c>maquettiste pack new --library</c> writes the same files.
     /// </summary>
     /// <param name="name">The pack name, for the comments.</param>
     /// <returns>Pack-relative path to text, ordinal.</returns>
@@ -467,11 +547,99 @@ internal static partial class PackAuthoring
                 {{~ end ~}}
 
                 """),
+            TestsAttributes,
+            new("tests/helpers.test.js", """
+                // Helper tests: maquettiste pack test runs each one against this pack's helpers.
+                maquettiste.test("title_case capitalizes each word", (assert, helpers) => {
+                  assert.equal(helpers.title_case("invoice line"), "Invoice Line");
+                  assert.equal(helpers.title_case("late-fee"), "Late-Fee");
+                });
+
+                """),
         ];
     }
 
     /// <summary>The folder's files, pack-relative, hidden segments left out, ordinal.</summary>
     public static IReadOnlyList<string> EnumerateFiles(string root) => PackFileRoles.EnumerateFiles(root);
+
+    /// <summary>
+    /// Makes a folder of a pack hold exactly the given files (a test case's <c>expected/</c> tree under <c>--update</c>,
+    /// next-phase-2-design.md section 5.4): adds and replaces the files whose bytes differ, deletes every other file under it (dot files
+    /// included) and the folders left empty, under the pack write gate and the model write guard. Nothing outside the folder changes.
+    /// Every path, existing and given, is checked before anything on disk changes, so a refused path, or a link at or under the folder
+    /// (<see cref="Links"/>), leaves the folder as it was.
+    /// </summary>
+    /// <param name="services">The engine services (the write guard).</param>
+    /// <param name="name">The pack.</param>
+    /// <param name="folder">The pack-relative folder, <c>/</c> separators.</param>
+    /// <param name="files">Folder-relative path to bytes.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The folder-relative paths added, replaced or deleted, ordinal.</returns>
+    /// <exception cref="PackPathException">The folder or a path is refused, or a link is at or under the folder; nothing changed.</exception>
+    internal static async Task<IReadOnlyList<string>> ReplaceTreeAsync(EngineServices services, string name, string folder,
+        IReadOnlyDictionary<string, byte[]> files, CancellationToken ct)
+    {
+        var pack = PackRoot(services.Options, name);
+        var root = Resolve(pack, folder);
+        string Checked(string path, string verb)
+        {
+            var full = Resolve(pack, folder + "/" + path, allowHidden: true);
+            var check = services.EnginePaths.CheckEngineWrite(WriteTarget.Model, full);
+            return check.Allowed ? full : throw new PackPathException($"'{folder}/{path}' may not be {verb}: {check.Reason}");
+        }
+
+        var changed = new SortedSet<string>(StringComparer.Ordinal);
+        await WriteGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (Links(pack, folder) is [var link, ..])
+                throw new PackPathException($"'{link}' is a link; links are refused under a pack's tests, so nothing under '{folder}' changed.");
+            var existing = Directory.Exists(root)
+                ? Directory.EnumerateFiles(root, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0 })
+                    .Select(f => Path.GetRelativePath(root, f).Replace(Path.DirectorySeparatorChar, '/')).ToList()
+                : [];
+            var deletes = existing.Where(p => !files.ContainsKey(p)).Order(StringComparer.Ordinal).Select(p => (Path: p, Full: Checked(p, "deleted"))).ToList();
+            var writes = new List<(string Path, string Full, byte[] Bytes)>();
+            foreach (var (path, bytes) in files.OrderBy(f => f.Key, StringComparer.Ordinal))
+            {
+                ct.ThrowIfCancellationRequested();
+                var full = Checked(path, "written");
+                var disk = await AtomicFile.ReadIfExistsAsync(full, ct).ConfigureAwait(false);
+                if (disk is null || !disk.AsSpan().SequenceEqual(bytes))
+                    writes.Add((path, full, bytes));
+            }
+
+            // Every path passed: from here on the folder changes, and cancellation no longer stops it halfway.
+            foreach (var (path, full) in deletes)
+            {
+                File.Delete(full);
+                changed.Add(path);
+            }
+
+            if (Directory.Exists(root))
+            {
+                // Before the writes, so a file may take the place of a folder its deletes emptied.
+                foreach (var dir in Directory.EnumerateDirectories(root, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0 })
+                    .OrderByDescending(d => d.Length))
+                {
+                    if (!Directory.EnumerateFileSystemEntries(dir).Any())
+                        Directory.Delete(dir);
+                }
+            }
+
+            foreach (var (path, full, bytes) in writes)
+            {
+                await WriteGuardedAsync(services, full, bytes, CancellationToken.None).ConfigureAwait(false);
+                changed.Add(path);
+            }
+        }
+        finally
+        {
+            WriteGate.Release();
+        }
+
+        return [.. changed];
+    }
 
     /// <summary>Roles and users of every file of a pack (<see cref="PackFileRoles.DescribeAsync"/>, shared with the loader).</summary>
     /// <remarks>Also lists the packs that include a file with a literal <c>&lt;pack&gt;:&lt;path&gt;</c> name (<c>include:&lt;pack&gt;:&lt;path&gt;</c>), so
@@ -585,6 +753,56 @@ internal static partial class PackAuthoring
 
     private static PackWriteResult Invalid(string message, string file, string rule = "MQ6001", string? pointer = null) =>
         new(SaveOutcome.Invalid, null, null, [RuleCatalog.Create(rule, message, filePath: file, jsonPointer: pointer)], []);
+
+    /// <summary>
+    /// The links at or under a pack-relative folder (<see cref="IsLink"/>): each segment of the folder's path from the pack folder down,
+    /// then every entry below it; pack-relative with <c>/</c>, ordinal. A link is listed and never followed, so nothing it points at is
+    /// read (the pack tests refuse them, next-phase-2-design.md section 5.4).
+    /// </summary>
+    /// <param name="packRoot">The pack folder.</param>
+    /// <param name="folder">The pack-relative folder, <c>/</c> separators.</param>
+    /// <returns>The links' pack-relative paths.</returns>
+    internal static IReadOnlyList<string> Links(string packRoot, string folder)
+    {
+        var links = new List<string>();
+        var current = Path.TrimEndingDirectorySeparator(Path.GetFullPath(packRoot));
+        var relative = "";
+        foreach (var segment in folder.Split('/'))
+        {
+            current = Path.Combine(current, segment);
+            relative = relative.Length == 0 ? segment : relative + "/" + segment;
+            var info = new FileInfo(current);
+            if ((int)info.Attributes == -1)
+                return links;
+            if (IsLink(info))
+                return [relative];
+        }
+
+        var options = new EnumerationOptions { RecurseSubdirectories = false, AttributesToSkip = 0, IgnoreInaccessible = false, MatchType = MatchType.Simple };
+        void Walk(DirectoryInfo directory, string prefix)
+        {
+            foreach (var entry in directory.EnumerateFileSystemInfos("*", options).OrderBy(e => e.Name, StringComparer.Ordinal))
+            {
+                var path = prefix + "/" + entry.Name;
+                if (IsLink(entry))
+                    links.Add(path);
+                else if (entry is DirectoryInfo sub)
+                    Walk(sub, path);
+            }
+        }
+
+        if (Directory.Exists(current))
+            Walk(new DirectoryInfo(current), relative);
+        links.Sort(StringComparer.Ordinal);
+        return links;
+    }
+
+    /// <summary>Whether an existing entry is a link: a symbolic link, a junction or any other reparse point. Never follows it.</summary>
+    private static bool IsLink(FileSystemInfo entry)
+    {
+        var attributes = entry.Attributes;
+        return (int)attributes != -1 && ((attributes & FileAttributes.ReparsePoint) != 0 || entry.LinkTarget is not null);
+    }
 
     private static string RealPath(string path)
     {

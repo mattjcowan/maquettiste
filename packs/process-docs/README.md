@@ -63,12 +63,22 @@ Set them in `maquettiste.json` under `packs.process-docs.parameters`.
 | `diagrams` | `true` | Write the state diagram on each process page; `false` leaves the section out (for renderers that do not draw diagram text). |
 | `title` | `"Process documentation"` | The heading of `index.md`. |
 
+## Tests
+
+`tests/billing-small/` is the pack's case: an `InvoiceLifecycle` process with three states, an actor `Clerk` and one
+scenario, and under `expected/` the four pages the pack writes for it. `tests/helpers.test.js` tests each helper of
+`helpers.js`. Copy the pack folder, `tests/` included, into a project's `.maquettiste/templates/` and run
+`maquettiste pack test process-docs`: the case runs as a project of its own and its output is compared byte for byte
+with `expected/`. `--update` rewrites `expected/` from the output; review the diff before keeping it. In this repository
+`ShippedPackTests` in `tests/Maquettiste.Cli.Tests` runs it, and `MAQUETTISTE_UPDATE_GOLDEN=1` updates it.
+
 ## Files
 
 | File | Holds |
 | --- | --- |
 | `pack.json` | Units and parameter defaults. |
 | `helpers.js` | Pure string helpers: `md_cell` (escaped text for a table cell), `md_code` (a code span safe in a table), `diagram_text` (entity codes for diagram text) and `diagram_reserved`. |
+| `tests/` | The `billing-small` case and `helpers.test.js` (see Tests). |
 | `_docs.scriban` | Shared functions: lists of names and links, attribute types, trigger wording, transition numbers and the state diagram. |
 | `process-page.scriban`, `actor-page.scriban`, `scenario-page.scriban`, `index.scriban` | The unit templates. |
 

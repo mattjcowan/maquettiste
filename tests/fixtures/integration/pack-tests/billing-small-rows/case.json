@@ -1,0 +1,7 @@
+{
+  "description": "The billing-small model with the Row suffix.",
+  "model": "billing-small",
+  "parameters": {
+    "suffix": "Row"
+  }
+}

@@ -12,16 +12,28 @@ namespace Maquettiste.Engine.Planning;
 /// (<c>scripts</c>, or every <c>*.js</c> no copy unit copies when the list is empty), type maps (<c>types/*.json</c> no copy unit
 /// copies), the units' templates and companions, literal <c>include</c>s (partials), the files copy units copy (<c>copy-source</c>,
 /// never parsed or loaded), and the unit-level parse pass: MQ6003 for a template or partial a unit reaches, MQ6025 for a file no
-/// unit reaches that does not parse.
+/// unit reaches that does not parse. The <c>tests/</c> folder is reserved for the pack's tests (next-phase-2-design.md section 5.4):
+/// every file under it has the role <c>test</c>, and none is a script, a type map, a template, a partial or a copy source.
 /// </summary>
 internal static partial class PackFileRoles
 {
+    /// <summary>The folder of a pack that holds its tests: cases and helper test files (<see cref="IsTest"/>).</summary>
+    public const string TestsFolder = "tests";
+
     private const string ParseError = "MQ6003";
     private const string Unreached = "MQ6025";
     private static readonly UTF8Encoding StrictUtf8 = new(false, throwOnInvalidBytes: true);
 
     [GeneratedRegex("""include\s+["']([^"'\r\n]+)["']""", RegexOptions.CultureInvariant)]
     private static partial Regex IncludePattern();
+
+    /// <summary>
+    /// Whether a pack-relative path lies under the pack's <c>tests/</c> folder, which holds its tests and nothing a run reads
+    /// (next-phase-2-design.md section 5.4).
+    /// </summary>
+    /// <param name="path">The pack-relative path, <c>/</c> separators.</param>
+    /// <returns><see langword="true"/> for a path under <c>tests/</c>.</returns>
+    public static bool IsTest(string path) => path.StartsWith(TestsFolder + "/", StringComparison.Ordinal);
 
     /// <summary>The folder's files, pack-relative, hidden segments left out, ordinal.</summary>
     public static IReadOnlyList<string> EnumerateFiles(string root) =>
@@ -52,8 +64,8 @@ internal static partial class PackFileRoles
     }
 
     /// <summary>
-    /// The pack's scripts: its <c>scripts</c> list, or every <c>*.js</c> file no copy unit copies when the list is empty. A file the
-    /// list names is a script even when a copy unit also copies it.
+    /// The pack's scripts: its <c>scripts</c> list, or every <c>*.js</c> file outside <c>tests/</c> no copy unit copies when the list is
+    /// empty. A file the list names is a script even when a copy unit also copies it (one under <c>tests/</c> fails the load, MQ6001).
     /// </summary>
     /// <param name="paths">The pack's files (<see cref="EnumerateFiles"/>).</param>
     /// <param name="manifest">The manifest, when it parses.</param>
@@ -62,7 +74,7 @@ internal static partial class PackFileRoles
     public static IReadOnlyList<string> Scripts(IReadOnlyList<string> paths, PackManifest? manifest, IReadOnlySet<string> copied) =>
         manifest is { Scripts.Count: > 0 }
             ? manifest.Scripts
-            : [.. paths.Where(p => p.EndsWith(".js", StringComparison.Ordinal) && !copied.Contains(p))];
+            : [.. paths.Where(p => p.EndsWith(".js", StringComparison.Ordinal) && !copied.Contains(p) && !IsTest(p))];
 
     /// <summary>The pack's type maps: the <c>types/&lt;target&gt;.json</c> files (<see cref="IsTypeMap"/>) no copy unit copies.</summary>
     /// <param name="paths">The pack's files (<see cref="EnumerateFiles"/>).</param>
@@ -96,7 +108,7 @@ internal static partial class PackFileRoles
             if (user.StartsWith('.') || string.Equals(user, name, StringComparison.Ordinal) || !File.Exists(manifest)
                 || !PackUses.LightUses(await File.ReadAllBytesAsync(manifest, ct).ConfigureAwait(false)).Contains(name, StringComparer.Ordinal))
                 continue;
-            foreach (var path in EnumerateFiles(folder))
+            foreach (var path in EnumerateFiles(folder).Where(p => !IsTest(p)))
             {
                 string text;
                 try
@@ -178,7 +190,7 @@ internal static partial class PackFileRoles
         foreach (var (path, text) in texts)
         {
             // A copy source is copied as it is, so its text is no template and its includes reach nothing.
-            if (scripts.Contains(path) || path == "pack.json" || typeMaps.Contains(path) || (copied.Contains(path) && !named.Contains(path)))
+            if (scripts.Contains(path) || path == "pack.json" || typeMaps.Contains(path) || (copied.Contains(path) && !named.Contains(path)) || IsTest(path))
                 continue;
             foreach (Match match in IncludePattern().Matches(text))
             {
@@ -192,7 +204,7 @@ internal static partial class PackFileRoles
         }
 
         return [.. paths.Select(p => new PackFileInfo(p, hashes[p].Size, hashes[p].Hash,
-            p == "pack.json" ? "manifest" : scripts.Contains(p) ? "script" : typeMaps.Contains(p) ? "type-map" : named.Contains(p) ? "template"
+            p == "pack.json" ? "manifest" : IsTest(p) ? "test" : scripts.Contains(p) ? "script" : typeMaps.Contains(p) ? "type-map" : named.Contains(p) ? "template"
             : included.Contains(p) ? "partial" : copied.Contains(p) ? "copy-source" : "other", [.. used[p]]))];
     }
 
@@ -225,12 +237,13 @@ internal static partial class PackFileRoles
 
     /// <summary>
     /// MQ6003 for a template or partial: parsed with the delimiters of each unit that names it (the default ones otherwise), reported at
-    /// that unit. A file no unit reaches (<paramref name="reached"/> false) that fails with the default delimiters is MQ6025.
+    /// that unit. A file no unit reaches (<paramref name="reached"/> false) that fails with the default delimiters is MQ6025. A file
+    /// under <c>tests/</c> is never a template and answers nothing.
     /// </summary>
     public static List<Diagnostic> Parse(string relative, string path, string text, PackManifest manifest, bool reached)
     {
         var result = new List<Diagnostic>();
-        if (path.EndsWith(".js", StringComparison.Ordinal) || path.EndsWith(".json", StringComparison.Ordinal) || path.EndsWith(".md", StringComparison.Ordinal))
+        if (IsTest(path) || path.EndsWith(".js", StringComparison.Ordinal) || path.EndsWith(".json", StringComparison.Ordinal) || path.EndsWith(".md", StringComparison.Ordinal))
             return result;
         var repoPath = relative + "/" + path;
         var units = manifest.Units.Where(u => string.Equals(u.Template, path, StringComparison.Ordinal)

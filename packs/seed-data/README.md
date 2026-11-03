@@ -45,3 +45,12 @@ The manifest (and the JSON file) holds:
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `format` | `"csv"` | `csv`: a manifest and one CSV per table; `json`: one `seed-data.json` per database. |
+
+## Tests
+
+`tests/billing-small/` is the pack's case: a database `main` with a `customers` table and a seed of two rows, and under
+`expected/` the manifest and the CSV the pack writes for it. Copy the pack folder, `tests/` included, into a project's
+`.maquettiste/templates/` and run `maquettiste pack test seed-data`: the case runs as a project of its own and its
+output is compared byte for byte with `expected/`. `--update` rewrites `expected/` from the output; review the diff
+before keeping it. In this repository `ShippedPackTests` in `tests/Maquettiste.Cli.Tests` runs it, and
+`MAQUETTISTE_UPDATE_GOLDEN=1` updates it.

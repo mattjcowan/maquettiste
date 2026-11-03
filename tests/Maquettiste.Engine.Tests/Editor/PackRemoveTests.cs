@@ -25,7 +25,8 @@ public sealed class PackRemoveTests
         var removed = await repo.Service.DeletePackAsync("sql-ddl", pack!.Hash, Ct);
 
         Assert.Equal(SaveOutcome.Saved, removed.Outcome);
-        Assert.Equal(pack.Files.Select(f => f.Path).Order(StringComparer.Ordinal), removed.Files);
+        // The pack lists no hidden file; the folder also holds the shipped tests/.gitattributes, which moves with it.
+        Assert.Equal(pack.Files.Select(f => f.Path).Append("tests/.gitattributes").Order(StringComparer.Ordinal), removed.Files);
         Assert.Equal(outputs.Order(StringComparer.Ordinal), removed.Untracked);
         Assert.NotNull(removed.SettingsHash);
         Assert.False(Directory.Exists(repo.Repo.PathOf(".maquettiste/templates/sql-ddl")));
@@ -75,7 +76,8 @@ public sealed class PackRemoveTests
         Assert.Equal(SaveOutcome.Saved, removed.Outcome);
         Assert.Null(removed.SettingsHash);
         Assert.Empty(removed.Untracked);
-        Assert.Equal(["entity.scriban", "pack.json"], removed.Files);
+        Assert.Equal(["entity.scriban", "pack.json", "tests/.gitattributes", "tests/example/expected/invoice.txt", "tests/example/maquettiste.json",
+            "tests/example/model/entities/invoice.json", "tests/example/model/packages/billing.json"], removed.Files);
         Assert.Equal(before, (await repo.Store.GetSettingsAsync(Ct)).Hash);
         Assert.False(Directory.Exists(repo.Repo.PathOf(".maquettiste/templates/docs")));
     }

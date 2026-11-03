@@ -1,0 +1,44 @@
+{
+  "kind": "entity",
+  "id": "01JD0000000000000000000E02",
+  "name": "Invoice",
+  "package": "01JD0000000000000000000P01",
+  "key": {
+    "attributes": [
+      "01JD0000000000000000000A11"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JD0000000000000000000A11",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JD0000000000000000000A12",
+      "name": "number",
+      "type": "string",
+      "required": true
+    },
+    {
+      "id": "01JD0000000000000000000A13",
+      "name": "status",
+      "type": {
+        "ref": "01JD0000000000000000000N01"
+      },
+      "required": true
+    },
+    {
+      "id": "01JD0000000000000000000A14",
+      "name": "total",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "id": "01JD0000000000000000000A15",
+      "name": "issuedOn",
+      "type": "date"
+    }
+  ]
+}

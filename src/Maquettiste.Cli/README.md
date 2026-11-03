@@ -191,10 +191,13 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   after its predecessor or the run ends. `generate --check` hides the write stage in every style (its file count still feeds
   the summary).
 - **pack new:** `--from empty` writes a canonical `pack.json` (one `each entity` unit with output `{{ kebab entity.name }}.txt`),
-  `entity.scriban` and `helpers.js`; `--from sql-ddl|csharp-dapper` copies that starter pack and renames it. `--library`
-  writes a library pack: a `pack.json` without units, `partials/header.scriban` and a `helpers.js` with one helper (the
-  engine's `PackAuthoring.LibraryStarter`, which `new_pack` and `POST /api/packs` with `library` write too); with a
-  `--from` other than `empty` it is a usage error (exit 4). Names must be kebab-case; an existing folder is refused (exit 4).
+  `entity.scriban`, `helpers.js`, an example case `tests/example/` (one package, one entity with two attributes, the
+  expected file whose banner names the new pack) and `tests/helpers.test.js` for `shout`; `--from sql-ddl|csharp-dapper`
+  copies that starter pack, which carries no `tests/` (the csproj excludes it), and renames it. `--library` writes a
+  library pack: a `pack.json` without units, `partials/header.scriban`, a `helpers.js` with one helper and
+  `tests/helpers.test.js` (the engine's `PackAuthoring.LibraryStarter`, which `new_pack` and `POST /api/packs` with
+  `library` write too); with a `--from` other than `empty` it is a usage error (exit 4). Names must be kebab-case; an
+  existing folder is refused (exit 4).
 - **bench:** `--out --seed --entities --relations --enums --fanout --keep --baseline --max-regression --format --no-example-packs`
   (fanout pack only, as `bench/Maquettiste.Bench --no-example-packs`) and the global
   `--jobs` (default 8) map onto `BenchmarkOptions`, plus `OneShotCommand` = this `maquettiste` executable (its app host, or `dotnet` and
@@ -245,3 +248,14 @@ see `bench/README.md`, "One-shot CLI"). They apply to this process only; a host 
 `maquettiste pack exports <pack> [--element <id>]... [--format text|json]` prints a pack's export records for at most
 20 elements, or its model-scope record without `--element`: one block per element (`Invoice (entity)`), one line per
 value (`class_name = InvoiceRecord`, `members/<attribute id> = Number`). Exit 1 when a record failed.
+
+## pack test
+
+`maquettiste pack test [<pack>...] [--case <name>]... [--update] [--format text|json]` runs the tests in each pack's
+`tests/` folder (every pack that has one by default; next-phase-2-design.md section 5.4). Text prints, per pack, its
+load or test file errors, one line per case and per helper test (`PASS`, `FAIL`, `UPDATED`, `ERROR`), the paths of a
+failing or updated case with the diffs of a failing one, `file:line:column` and the message under a failing test, then
+`N passed, M failed` (`, K updated` after an update). `--case` runs only the cases named and no helper test. Exit 0 when
+everything passed or was updated, 1 on any failure or error, 4 for an unknown pack or a case no tested pack has. The
+global `--jobs` sets each case run's parallelism. MCP: `test_pack` answers the same report, each diff cut to
+`maxDiffLines` (default 40, at most 200).

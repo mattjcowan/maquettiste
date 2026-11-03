@@ -1768,6 +1768,30 @@
     "canBeOff": true
   },
   {
+    "id": "MQ6051",
+    "defaultSeverity": "error",
+    "description": "A pack test case's output differs from its expected tree: a file added, missing or different.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6052",
+    "defaultSeverity": "error",
+    "description": "A pack helper test fails: an assertion fails, the test throws or it hits a sandbox limit.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6053",
+    "defaultSeverity": "error",
+    "description": "A pack test is malformed: a case without a project or expected/, a case holding templates/, an invalid case.json or one naming a missing case, cases in a pack without units, a test file that does not load or registers anything but tests, or two tests with one name.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
     "id": "MQ7001",
     "defaultSeverity": "error",
     "description": "Duplicate code in a reference type, across all its seeds.",

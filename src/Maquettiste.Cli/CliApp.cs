@@ -174,6 +174,10 @@ public sealed class CliApp(CliEnvironment environment)
                                   leaves them); the files it generated stay tracked; --format text|json
           pack exports <pack>   Print the names a pack exports per element, evaluated now from the model: --element <id>
                                   (repeatable, at most 20; without it, the model-scope record), --format text|json
+          pack test [<pack>...] Run the tests in each pack's tests/ folder (every pack that has one by default): each case
+                                  runs as a fresh project and its output must equal its expected/ tree; tests/*.test.js
+                                  run the helper tests. --case <name> (repeatable; runs no helper tests), --update
+                                  (rewrite each case's expected/ from its output), --format text|json; exit 1 on a failure
           bench                 Run the synthetic benchmark
                                   --out <dir>, --seed, --entities, --relations, --enums, --fanout, --keep,
                                   --baseline <file>, --max-regression <percent>, --format text|json, --no-example-packs,

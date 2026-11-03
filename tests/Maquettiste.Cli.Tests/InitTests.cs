@@ -263,12 +263,29 @@ public sealed class InitTests
     {
         var folder = Path.Combine(Fixtures.RepoRoot, "packs", pack);
         var onDisk = Directory.Exists(folder)
-            ? Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(folder, f).Replace('\\', '/')).Order(StringComparer.Ordinal).ToList()
+            ? Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(folder, f).Replace('\\', '/'))
+                .Where(f => !f.StartsWith("tests/", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToList()
             : [];
         var files = StarterPacks.Files(pack, out var embedded);
         Assert.Equal(onDisk.Count > 0, embedded);
         if (embedded)
             Assert.Equal(onDisk, files.Select(f => f.Key).ToList());
+    }
+
+    /// <summary>The shipped packs hold a case under <c>tests/</c>; the embedded starters leave it out (next-phase-2-design.md section 5.4).</summary>
+    [Theory]
+    [InlineData("sql-ddl")]
+    [InlineData("csharp-dapper")]
+    public async Task Starter_packs_carry_no_tests(string pack)
+    {
+        Assert.True(Directory.Exists(Path.Combine(Fixtures.RepoRoot, "packs", pack, "tests")));
+        Assert.DoesNotContain(StarterPacks.Files(pack, out _), f => f.Key.StartsWith("tests/", StringComparison.Ordinal));
+
+        using var repo = CliRepo.Empty();
+        Assert.Equal(0, (await repo.RunAsync("init", "--pack", pack)).ExitCode);
+        Assert.False(Directory.Exists(repo.PathOf(".maquettiste/templates/" + pack + "/tests")));
+        Assert.Equal(0, (await repo.RunAsync("pack", "new", "copy", "--from", pack)).ExitCode);
+        Assert.False(Directory.Exists(repo.PathOf(".maquettiste/templates/copy/tests")));
     }
 
     [Fact]

@@ -33,10 +33,10 @@
   </ItemGroup>
 
   <!-- The packs the synthetic repo needs (engine-design.md section 17), embedded so maquettiste bench works from an installed tool:
-       the two example packs and the bench-only fanout pack, under Maquettiste.Bench.Packs/<pack>/<path>. -->
+       the two example packs (without their tests/ folders) and the bench-only fanout pack, under Maquettiste.Bench.Packs/<pack>/<path>. -->
   <ItemGroup>
-    <EmbeddedResource Include="../../packs/sql-ddl/**/*" WithCulture="false" LogicalName="Maquettiste.Bench.Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" />
-    <EmbeddedResource Include="../../packs/csharp-dapper/**/*" WithCulture="false" LogicalName="Maquettiste.Bench.Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../packs/sql-ddl/**/*" Exclude="../../packs/sql-ddl/tests/**" WithCulture="false" LogicalName="Maquettiste.Bench.Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../packs/csharp-dapper/**/*" Exclude="../../packs/csharp-dapper/tests/**" WithCulture="false" LogicalName="Maquettiste.Bench.Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="../packs/fanout/**/*" WithCulture="false" LogicalName="Maquettiste.Bench.Packs/fanout/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/fanout/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 

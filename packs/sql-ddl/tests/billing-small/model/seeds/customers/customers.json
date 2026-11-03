@@ -1,0 +1,15 @@
+{
+  "kind": "seed",
+  "id": "01JC0000000000000000000S01",
+  "name": "customers",
+  "target": "01JC0000000000000000000T01",
+  "columns": [
+    "01JC0000000000000000000C02",
+    "01JC0000000000000000000C03"
+  ],
+  "key": "01JC0000000000000000000Q01",
+  "rows": [
+    { "id": "01JC0000000000000000000R01", "values": ["Harbor Bakery", "billing@harbor-bakery.example"] },
+    { "id": "01JC0000000000000000000R02", "values": ["Maple Freight", "accounts@maple-freight.example"] }
+  ]
+}

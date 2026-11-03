@@ -2694,17 +2694,18 @@ database's schema script.
 ### Make your own pack from a starter
 
 In the editor, **+** in the Generate explorer header (or **New pack…** in the palette): a name, then **Start from**
-**Empty pack** (one each-entity unit and its template, ready to edit) or **Copy of** a pack of this project. From a terminal, `maquettiste pack new <name> --from sql-ddl`
-(or `csharp-dapper`, or `empty`). Then give it an output base under an allowed root (below) in the pack editor's header
-or in `maquettiste.json`, edit its units and templates, and plan. The copy is yours: change it freely; the example
-packs are not updated under you. To remove a pack, use **Remove pack…** in the pack editor's header (or
-`maquettiste pack remove <name> --apply`): it deletes the pack's folder and its `packs.<name>` settings entry, and the
-files it generated stay on disk, no longer tracked. To rename a pack, use **Rename pack…** beside it (or
-`maquettiste pack rename <name> <new-name> --apply`): the folder, the `packs.<name>` settings entry and the record of
-the files it generated move to the new name together, so those files stay tracked. Generation hints keyed by the old
-name (`generation.<name>` on elements, tables, columns and other parts) move to the new name too: the dialog's **Also
-update the generation hints that name this pack** is ticked by default and saves them as one change you can undo, and
-the command does the same unless you add `--keep-hints`.
+**Empty pack** (one each-entity unit and its template, ready to edit) or **Copy of** a pack of this project. From a
+terminal, `maquettiste pack new <name> --from sql-ddl` (or `csharp-dapper`, or `empty`). An empty pack starts with an
+example test case under `tests/` (see "Test a pack" below); a copy starts without tests, since its name and banners
+differ. Then give it an output base under an allowed root (below) in the pack editor's header or in `maquettiste.json`,
+edit its units and templates, and plan. The copy is yours: change it freely; the example packs are not updated under
+you. To remove a pack, use **Remove pack…** in the pack editor's header (or `maquettiste pack remove <name> --apply`):
+it deletes the pack's folder and its `packs.<name>` settings entry, and the files it generated stay on disk, no longer
+tracked. To rename a pack, use **Rename pack…** beside it (or `maquettiste pack rename <name> <new-name> --apply`): the
+folder, the `packs.<name>` settings entry and the record of the files it generated move to the new name together, so
+those files stay tracked. Generation hints keyed by the old name (`generation.<name>` on elements, tables, columns and
+other parts) move to the new name too: the dialog's **Also update the generation hints that name this pack** is ticked
+by default and saves them as one change you can undo, and the command does the same unless you add `--keep-hints`.
 
 ### Library packs: share partials and helpers
 
@@ -2773,6 +2774,49 @@ whitespace trimmed.
 - Rules: MQ6047 (a template reads a pack its pack does not use, or an export template reads its own pack), MQ6048 (two
   units of one pack give one name different values for one element), MQ6049 (`each` names no list of items with
   ids, or two items share an id) and MQ6050 (a unit reads exports that failed to evaluate; it is not rendered).
+
+### Test a pack
+
+A pack can carry its own tests in a `tests/` folder, which generation never reads. Each folder directly under `tests/`
+is a **case**: a small project (`maquettiste.json` and `model/`) and `expected/`, the files the pack must write for it.
+Each `tests/*.test.js` file holds **helper tests**, which call the pack's helpers with plain values:
+
+```js
+maquettiste.test("record_name adds the suffix", (assert, helpers) => {
+  assert.equal(helpers.record_name({ name: "invoice" }), "InvoiceRecord");
+});
+```
+
+`maquettiste pack test` runs the tests of every pack that has them; name packs to run only theirs, and `--case <name>`
+(repeatable) to run only those cases. Each case runs as a fresh project in a temporary folder, with the pack and the
+packs it uses, and its output must equal `expected/` byte for byte. The project's own outputs, manifests and unit states
+never change.
+
+```
+$ maquettiste pack test records
+records
+  PASS case billing-small
+  FAIL case billing-small-rows
+    differs Billing/InvoiceRow.cs
+      --- a/Billing/InvoiceRow.cs
+      +++ b/Billing/InvoiceRow.cs
+      ...
+  PASS test tests/helpers.test.js: record_name adds the suffix
+2 passed, 1 failed
+```
+
+Exit 0 when everything passed, 1 when a case or test failed, 4 on a usage error or an unknown pack; `--format json`
+writes the report. `--update` writes each run case's `expected/` from its output (and nothing else), for a new case or
+an intended change: review the diff before keeping it. A `case.json` in a case can name another case's `model` and
+override `parameters`, so one model serves several variants. `pack new` writes an example case and a helper test; the
+MCP tool `test_pack` runs the same tests and answers the same report. packs/README.md, section 9, has the folder layout
+and the assert API, and the [Share and test packs](guides/share-and-test-packs.md) guide walks through an example.
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| MQ6051 | error | A case's output differs from `expected/`: a file added, missing or different, with a diff. |
+| MQ6052 | error | A helper test fails: an assertion fails, the test throws or it hits a sandbox limit, at the failing statement. |
+| MQ6053 | error | A malformed test: a case without a project or `expected/`, a case holding `templates/`, an invalid `case.json`, cases in a pack without units, a test file that registers anything but tests, or two tests with one name. |
 
 ### outputs.allow: what generation may touch
 
@@ -3246,6 +3290,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste snapshot restore <id>` | Previews what restoring the snapshot changes; `--apply` takes a safety snapshot of the working model (`before-restore-<time>`, restore it to undo) and then makes the working model the snapshot's; `--packs` restores its packs too. Refused (exit 4) while a generation run holds the run lock. |
 | `maquettiste snapshot export <id> --out <file>` | Copies a snapshot's archive out of the model folder, to mail or share; `snapshot import <file>` checks an archive (paths, sizes, metadata, every document parses and is canonical) and stores it as a new snapshot without touching the working model (exit 1 and the reasons when refused). |
 | `maquettiste pack new <name>` | Scaffolds a pack under `.maquettiste/templates/<name>/` (`--from empty`, `sql-ddl` or `csharp-dapper`). Give it an `output` under an allowed root in `maquettiste.json` before the next `generate` (packs/README.md). |
+| `maquettiste pack test [<pack>...]` | Runs the packs' own tests: each case under `tests/` against its `expected/` tree, then the helper tests (`--case <name>` for one case, `--update` to rewrite `expected/`). Exit 0 when all pass, 1 when any fails (see "Test a pack"). |
 
 Progress (`--progress plain`, the default when stderr is not a terminal) prints each stage once, in order, with a start
 and a done line; `generate --check` prints no write stage, since it writes nothing. When the operating system refuses a

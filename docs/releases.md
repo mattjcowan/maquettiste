@@ -18,6 +18,16 @@ one.
   includes is refused. New rules MQ6042 to MQ6046. The
   [user guide](user-guide.md#library-packs-share-partials-and-helpers) and the new
   [Share and test packs](guides/share-and-test-packs.md) guide have the details.
+- **Tests for packs.** A pack can carry its own tests in a `tests/` folder, which generation never reads. A folder
+  there is a case: a small project and `expected/`, the files the pack must write for it, compared byte for byte; a
+  `case.json` can reuse another case's model with other parameters. `tests/*.test.js` files test the pack's helpers
+  with an assert API. `maquettiste pack test [<pack>...]` (`--case`, `--update`, `--format json`) and the MCP tool
+  `test_pack` run them in temporary projects and leave the project untouched; `--update` rewrites `expected/`. New
+  rules MQ6051 to MQ6053. `pack new` starts a pack with an example case and a helper test, and a library with a helper
+  test; the embedded starters and copies of a project's pack leave `tests/` out. Each shipped pack (`sql-ddl`,
+  `csharp-dapper`, `process-docs`, `seed-data`) holds a small `billing-small` case and tests of its helpers. The
+  [user guide](user-guide.md#test-a-pack) and the [Share and test packs](guides/share-and-test-packs.md) guide have the
+  details.
 - **Unit state format 5.** The unit state format moves to version 5, so the first generate after upgrading re-renders
   every unit once.
 - **Stereotypes that contribute structure.** A stereotype that applies to tables can carry `columns`, a `primaryKey`,

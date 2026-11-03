@@ -21469,7 +21469,7 @@
           },
           "role": {
             "type": "string",
-            "description": "`copy-source`: a copy unit's sources match the file, which is copied as it is and never parsed.",
+            "description": "`copy-source`: a copy unit's sources match the file, which is copied as it is and never parsed. `test`: the file is under the pack's `tests/` folder (a test case or a helper test), never loaded or parsed.",
             "enum": [
               "manifest",
               "template",
@@ -21477,6 +21477,7 @@
               "script",
               "type-map",
               "copy-source",
+              "test",
               "other"
             ]
           },

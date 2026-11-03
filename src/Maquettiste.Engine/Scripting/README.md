@@ -243,3 +243,19 @@ id. `ScriptErrorException` is `internal` (its consumers, W2, W5 and W6, are in t
   table list's keys (one per model file) once per item. Recorded keys form a set, so recording a list again in the same call adds
   nothing; the per-call memo is cleared at the start and end of every call. `LargeModelWalkTests` walks 5,000 items whose list has
   20,000 membership keys in well under the 2 s limit and checks the keys recorded.
+
+## Helper tests (next-phase-2-design.md section 5.4)
+
+`ScriptSandboxFactory.CreateTestPool` builds a one-engine pool for a pack's `tests/*.test.js` files: the pack's scripts
+load as usual, the assert object (`ScriptTests.Prelude`, run under the internal source name `maquettiste:assert`, so a
+failure points at the test's call) and a frozen object of the pack's helpers (the registered functions themselves,
+ordinal) are built, the globals freeze, and then each test file loads in its own function scope
+(`PreparedScript.PrepareAll(..., scoped: true)`, the rule-file form). Only a test pool has `maquettiste.test`, and it
+works only while a test file loads; a test file that calls any other registration, repeats a test name of its own file,
+throws, hits a limit or has a syntax error is a `ScriptTestFailure` and registers no test, while the other files still
+load. Test names are unique per file. `RunTest` is one `Run` call with the context's parameters (the pack's
+`pack.json` defaults) and libraries (each used pack in its own pool with its own defaults); an `AssertionError` reads
+its own message, any other throw or limit the usual sandbox message. `AssertionError.prototype.name` is defined, not
+assigned, since assigning over a frozen `Error.prototype.name` throws in strict mode. A pack's top-level `const` values
+are not frozen (they live in the global lexical scope, not on the global object), so a test can mutate a top-level array
+a pack keeps.

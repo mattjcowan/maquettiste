@@ -16,7 +16,7 @@ public sealed class McpSurfaceTests
         "get_translations", "import_process", "import_seed_csv", "list_extension_files", "list_migrations", "list_pack_files", "list_packs", "list_snapshots", "list_validation_rules",
         "localization_status", "move_extension_file", "move_pack_file", "new_pack", "patch_element", "plan", "preview_binding_sql", "preview_materialize", "preview_query_sql", "preview_seed_rows", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
         "reference_type_usage", "rename_pack", "restore_snapshot", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
-        "sync_enum_from_process", "tag_usage", "unit_paths", "validate", "verify_scenarios", "write_extension_file", "write_pack_file",
+        "sync_enum_from_process", "tag_usage", "test_pack", "unit_paths", "validate", "verify_scenarios", "write_extension_file", "write_pack_file",
     ];
 
     [Fact]

@@ -333,3 +333,21 @@ export (used packs read only); forced and check runs reuse none. `PlanUnit.Expor
 record the values a plan used; apply seeds a table from them, never evaluates, and is stale when an export-only unit's
 export input hash changed or a record needs a unit the plan did not seed. `PlanExplainer.KindOf` reads the prefix up to
 the colon, so `px:` keys are causes of kind `exports`.
+
+## Pack tests (next-phase-2-design.md section 5.4)
+
+`PackTestRunner` runs one pack's tests; `GenerationService.TestPackAsync` runs it for each named pack (every pack with
+a `tests/` folder by default), one test run at a time per service and without the run lock. A case is copied into
+`<temp>/maquettiste-pack-test/<random>/project/.maquettiste/` (the case's files, those of the case its `case.json`
+names first, the pack and its uses closure without `tests/`), its `maquettiste.json` rewritten canonically (the pack
+enabled, its output, `out` when empty, the only allowed output, `case.json` parameters merged over the pack's), and
+one apply runs there with fresh services, a fresh `ModelStore` and a cache folder beside the project. The temporary
+folder's real path is used (macOS reaches the temp folder through a link). Its output folder is compared with
+`expected/` byte for byte, dot files included; a run that does not succeed is an `error` case with its error
+diagnostics, their paths mapped back to the case (or the case whose model it takes) and to the project's pack.
+Choices the design leaves open: a case that names a `model` and holds project files of its own has them laid over the
+named case's; a case list that matches no tested pack, or an unknown pack, is an `ArgumentException` (exit 4,
+`not-found` or `bad-request`); a pack that does not load is one failure in the report's `Failed`, as is each malformed
+test file. `--update` rewrites `expected/` through `PackAuthoring.ReplaceTreeAsync`, under the pack write gate and the
+model write guard; the outcome is `updated` only when a file changed, else `passed`. `LastRun.HashTemplatesAsync`
+never lists a pack's `tests/` folder.

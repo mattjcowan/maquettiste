@@ -1,0 +1,43 @@
+{
+  "kind": "table",
+  "id": "01JC0000000000000000000T01",
+  "name": "customers",
+  "database": "01JC0000000000000000000D01",
+  "columns": [
+    {
+      "id": "01JC0000000000000000000C01",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "stableId": true
+    },
+    {
+      "id": "01JC0000000000000000000C02",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01JC0000000000000000000C03",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01JC0000000000000000000C01"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01JC0000000000000000000Q01",
+      "name": "uq_customers_email",
+      "columns": [
+        "01JC0000000000000000000C03"
+      ]
+    }
+  ]
+}

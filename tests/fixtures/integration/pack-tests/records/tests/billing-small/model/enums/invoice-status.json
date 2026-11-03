@@ -1,0 +1,18 @@
+{
+  "kind": "enum",
+  "id": "01JG0000000000000000000N01",
+  "name": "InvoiceStatus",
+  "package": "01JG0000000000000000000P01",
+  "members": [
+    {
+      "id": "01JG0000000000000000000V01",
+      "name": "Draft",
+      "value": 0
+    },
+    {
+      "id": "01JG0000000000000000000V02",
+      "name": "Sent",
+      "value": 1
+    }
+  ]
+}

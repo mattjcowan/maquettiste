@@ -282,6 +282,9 @@ public static class RuleCatalog
         new("MQ6048", E, "Two units of one pack export one name for one element with different values."),
         new("MQ6049", E, "An export's each names a member that is not a list of items with ids, or two items share an id."),
         new("MQ6050", E, "A unit reads exports that failed to evaluate; it is not rendered."),
+        new("MQ6051", E, "A pack test case's output differs from its expected tree: a file added, missing or different."),
+        new("MQ6052", E, "A pack helper test fails: an assertion fails, the test throws or it hits a sandbox limit."),
+        new("MQ6053", E, "A pack test is malformed: a case without a project or expected/, a case holding templates/, an invalid case.json or one naming a missing case, cases in a pack without units, a test file that does not load or registers anything but tests, or two tests with one name."),
 
         new("MQ7001", E, "Duplicate code in a reference type, across all its seeds."),
         new("MQ7002", W, "Two codes of one reference type differ only by case."),

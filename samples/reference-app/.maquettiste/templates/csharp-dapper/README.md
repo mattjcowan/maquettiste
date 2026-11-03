@@ -418,12 +418,23 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 | `testsFolder` | `""` | Folder (under the pack output) for the generated scenario tests (a test project's); empty writes none. |
 | `gitignorePath` | `""` | Path (under the pack output) of an ignore file that gets a managed block listing `generatedFolder`; empty writes none. Allow the file in `outputs.allow`. |
 
+## Tests
+
+`tests/billing-small/` is the pack's case: a package `Billing` with the entities `Customer` and `Invoice` and the enum
+`InvoiceStatus`, and under `expected/` the files the pack writes for it (both halves of each entity, the enum and the
+type handlers). `tests/helpers.test.js` tests each helper of `helpers.js`. Copy the pack folder, `tests/` included, into
+a project's `.maquettiste/templates/` and run `maquettiste pack test csharp-dapper`: the case runs as a project of its
+own and its output is compared byte for byte with `expected/`. `--update` rewrites `expected/` from the output; review
+the diff before keeping it. In this repository `ShippedPackTests` in `tests/Maquettiste.Cli.Tests` runs it, and
+`MAQUETTISTE_UPDATE_GOLDEN=1` updates it.
+
 ## Files
 
 | File | Holds |
 | --- | --- |
 | `pack.json` | Units and parameter defaults. |
 | `helpers.js` | `join_path`, `package_folder`, `cs_ident` (escapes C# keywords), `cs_value_type`, `cs_expression` (the expression translator), `cs_line` (one comment line: every line break becomes a space, for every comment context of the process units) and `ulid_uuid`. |
+| `tests/` | The `billing-small` case and `helpers.test.js` (see Tests); the starter the CLI embeds leaves them out. |
 | `_csharp.scriban` | Shared functions: namespaces, property names and types, XML documentation, file header. |
 | `_dapper.scriban` | Mapping choice, the row model and the entity/row conversions. |
 | `entity.scriban`, `entity.partial.scriban` | The generated and hand-written halves of an entity. |

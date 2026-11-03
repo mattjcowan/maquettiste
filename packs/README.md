@@ -15,8 +15,16 @@ of your own.
 `sql-ddl` and `csharp-dapper` are embedded into the CLI: `maquettiste init --pack <name>` copies one into
 `.maquettiste/templates/<name>/`, and `maquettiste pack new <name> --from <pack>` starts a new pack from one; the bench generates
 them over a synthetic model of 5,000 entities. A project uses `process-docs` or `seed-data` by copying its folder into
-`.maquettiste/templates/` (each README shows the settings). The tests of all four are in `tests/Maquettiste.Packs.Tests/` (golden output under
-`tests/fixtures/golden/`; `MAQUETTISTE_UPDATE_GOLDEN=1` rewrites it).
+`.maquettiste/templates/` (each README shows the settings).
+
+Each of the four carries its own tests under `tests/`: one small case, `billing-small`, with a model of a handful of
+billing elements and the files the pack writes for it, and, except for `seed-data`, which has no helpers,
+`helpers.test.js` for its helpers. Copy a pack, `tests/` included, into a project and run `maquettiste pack test <pack>`
+(see "9. Testing a pack"). The embedded starters leave `tests/` out, and so does `new_pack` when it copies a pack of the
+project. In this repository `ShippedPackTests` (`tests/Maquettiste.Cli.Tests/`) runs `pack test` over the four packs,
+and the larger tests stay in `tests/Maquettiste.Packs.Tests/`: golden output of the shared billing fixture under
+`tests/fixtures/golden/`, compiled C# and SQL run against real databases. `MAQUETTISTE_UPDATE_GOLDEN=1` rewrites both
+the goldens and the cases' `expected/` trees; review the diff before keeping it.
 
 ## Writing a pack
 
@@ -257,12 +265,70 @@ serves others has no `units` (a library); `maquettiste pack new naming --library
 - **Renames and deletes.** Renaming a pack rewrites every `uses` entry that names it and lists the files whose text
   still names it; deleting a used pack, or a partial another pack includes, is refused until those users change.
 
-### 9. Test the pack
+### 9. Testing a pack
 
-Generate a known model and compare the output byte for byte, as `tests/Maquettiste.Packs.Tests` does for the billing fixture;
-run generation twice and `generate --check` to prove that a second run is clean; compile or execute the output where you can
-(the tests build the C# with Dapper and run the repositories against SQLite built from the sql-ddl output). Run
-`maquettiste validate` to see pack errors (MQ6xxx) with file, line and column.
+A pack carries its tests in its `tests/` folder, and `maquettiste pack test [<pack>...]` runs them (the MCP tool
+`test_pack` answers the same report). Generation never reads `tests/`: a template, script or partial there is not part
+of the pack, and an edit there renders nothing again. `maquettiste pack new` starts a pack with an example case and a
+helper test, and a library with a helper test.
+
+**Cases.** A folder directly under `tests/` is a case: a small project of its own and the files the pack must write for
+it.
+
+```
+tests/
+  .gitattributes        * -text
+  billing-small/
+    maquettiste.json    { "formatVersion": 1, "name": "billing-small", "packs": { "records": { "output": "out" } } }
+    model/              packages/billing.json, entities/invoice.json, entities/customer.json, ...
+    expected/           Billing/InvoiceRecord.cs, Billing/CustomerRecord.cs
+  billing-small-rows/
+    case.json           { "model": "billing-small", "parameters": { "suffix": "Row" } }
+    expected/           Billing/InvoiceRow.cs, Billing/CustomerRow.cs
+  helpers.test.js
+```
+
+Each case runs as a fresh project in a temporary folder: its `maquettiste.json` and `model/`, the pack and the packs it
+uses. The files the pack writes under its output folder must equal `expected/` byte for byte; a file written but not
+expected is `added`, one expected but not written `missing`, and one whose bytes differ `differs`, with a unified diff
+(MQ6051). The project itself does not change: no output, manifest, unit state or plan of it is touched. A case's model
+needs what the project's would (an entity needs its key), and errors in it fail the case with the run's diagnostics.
+
+`case.json` is optional: `description` is shown in the report, `model` names another case whose `maquettiste.json` and
+`model/` this case runs on, and `parameters` are merged over the case's `packs.<pack>.parameters`. A parameter variant
+is then a `case.json` and an `expected/` tree, with no model of its own.
+
+**Expected output.** `maquettiste pack test <pack> --update` writes each case's `expected/` from what the pack writes
+and deletes the files it no longer writes; `--case <name>` limits it to one case. Review the diff before keeping it: an
+update records whatever the templates produce. The comparison is byte for byte, so keep `expected/` away from anything
+that converts line endings: a `tests/.gitattributes` holding `* -text` stops version control from doing it.
+
+**Helper tests.** Each `tests/*.test.js` file tests the pack's helpers in the script sandbox, under the project's
+limits:
+
+```js
+maquettiste.test("record_name adds the suffix", (assert, helpers) => {
+  assert.equal(helpers.record_name({ name: "invoice" }), "InvoiceRecord");
+});
+```
+
+`helpers` holds what `helpers.js` registers, `maquettiste.params` the pack's default parameters and
+`maquettiste.use("<pack>")` the helpers of a pack it uses. A test gets no model: it passes the plain values the helper
+reads. The assert API is `equal(actual, expected, message?)` (`===`, with `NaN` equal to itself), `deepEqual` (plain
+values, arrays by position, objects by key in any order), `ok(value, message?)`, `throws(fn, message?)` (returns the
+error's message) and `fail(message?)`. A failing test is MQ6052 at the failing statement's line and column. A library
+has no cases: its helpers are tested here and its partials through the cases of a pack that uses it.
+
+**Results.** One line per case and per test, `PASS`, `FAIL`, `UPDATED` or `ERROR`, the differing paths and their diffs
+under a failing case, then `N passed, M failed`. Exit 0 when everything passed or was updated, 1 when anything failed, 4
+on a usage error or an unknown pack. MQ6053 marks a malformed test: a case without a project or `expected/`, a case
+holding `templates/`, an invalid `case.json`, cases in a pack without units, a test file that registers anything but
+tests, or two tests with one name.
+
+Beyond the cases, run generation twice and `generate --check` to prove that a second run is clean, and compile or
+execute the output where you can (the repository's tests build the C# with Dapper and run the repositories against
+SQLite built from the sql-ddl output). Run `maquettiste validate` to see pack errors (MQ6xxx) with file, line and
+column.
 
 ## Exports
 

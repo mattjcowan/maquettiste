@@ -118,4 +118,21 @@ public sealed class RunRecordTests
         [new FolderStamp("/cache/units", [new FileStamp("e2e.v1.bin", 100, 200)]), new FolderStamp("/cache/manifest", [])],
         "committed-hash",
         [new OutputStamp("db/a.sql", false, 12, 34), new OutputStamp("src/b.cs", true, 0, 0), new OutputStamp("src/c.cs", false, 1, 2)]);
+
+    [Fact]
+    public async Task An_edit_under_a_packs_tests_folder_keeps_the_last_run()
+    {
+        using var repo = new TempRepo();
+        repo.WriteFile(".maquettiste/templates/records/pack.json", "{}");
+        repo.WriteFile(".maquettiste/templates/records/tests/case/expected/A.cs", "a");
+        var lastRun = new LastRun(EngineServices.Create(repo.Options));
+        var before = await lastRun.HashTemplatesAsync(Ct);
+
+        repo.WriteFile(".maquettiste/templates/records/tests/case/expected/A.cs", "b");
+        repo.WriteFile(".maquettiste/templates/records/tests/helpers.test.js", "maquettiste.test('a', () => {});");
+        Assert.Equal(before, await lastRun.HashTemplatesAsync(Ct));
+
+        repo.WriteFile(".maquettiste/templates/records/record.scriban", "x");
+        Assert.NotEqual(before, await lastRun.HashTemplatesAsync(Ct));
+    }
 }
