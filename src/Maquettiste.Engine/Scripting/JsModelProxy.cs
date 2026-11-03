@@ -144,6 +144,10 @@ internal sealed class JsModelProxy : ObjectInstance
         var member = _table.Members[index];
         var value = member.Function switch
         {
+            // An object's calculated values (next-phase-2-design.md section 5.5): their own proxy, which knows the object's kind even when
+            // the project declares none, so an undeclared read is MQ5012 and records what its kind declares.
+            ProxyFunction.None when member.Property!.PropertyType == typeof(RCalculated) && Target is RAnnotated annotated =>
+                new JsCalculatedProxy(_values, RCalculated.Of(annotated)),
             ProxyFunction.None => _values.ToJs(member.Property!.GetValue(Target)),
             _ => CreateFunction(member),
         };
@@ -192,6 +196,131 @@ internal sealed class JsModelProxy : ObjectInstance
 /// <see langword="false"/>. Reading its length or an item of an <see cref="RList{T}"/> records the list's
 /// <see cref="RList{T}.MembershipKeys"/>.
 /// </summary>
+/// <summary>
+/// An object's calculated values as scripts see them (next-phase-2-design.md section 5.5): a frozen object whose own keys are the names
+/// the object's kind declares, ordinal. Reading a key evaluates the value (or reuses it) and records its keys into the call's recorder;
+/// <c>"name" in calculated</c> and the key list evaluate nothing and record what the kind declares (<c>cv:&lt;kind&gt;</c>). Reading an
+/// undeclared name is a <c>TypeError</c> that carries MQ5012. A read of a failed value throws, and fails the call even when the script
+/// catches the error.
+/// </summary>
+internal sealed class JsCalculatedProxy : ObjectInstance
+{
+    private readonly ScriptValues _values;
+    private readonly RCalculated _view;
+    private readonly Dictionary<string, JsValue> _read = new(StringComparer.Ordinal);
+
+    internal JsCalculatedProxy(ScriptValues values, RCalculated view)
+        : base(values.Engine)
+    {
+        _values = values;
+        _view = view;
+        Prototype = values.Engine.Intrinsics.Object.PrototypeObject;
+        base.PreventExtensions();
+    }
+
+    public override object ToObject() => _view;
+
+    public override JsValue Get(JsValue property, JsValue receiver)
+    {
+        if (property is not JsString text)
+            return base.Get(property, receiver);
+        var name = text.ToString();
+        if (IsDeclared(name))
+            return Read(name);
+        // Members every object inherits (toString, valueOf) and toJSON, which JSON.stringify asks for, read as on a plain object.
+        if (string.Equals(name, "toJSON", StringComparison.Ordinal) || Prototype?.HasProperty(property) == true)
+            return base.Get(property, receiver);
+        var names = _view.ReadNames(_values.State.Reads);
+        var kind = _view.Owner?.Kind ?? "this object";
+        var declared = names.Count == 0 ? $"{kind} declares no calculated value" : $"the names {kind} declares are {string.Join(", ", names)}";
+        var error = new JavaScriptException(Engine.Intrinsics.TypeError,
+            $"The calculated value '{name}' is not declared for {kind} ({declared}); test for it with \"{name}\" in element.calculated.");
+        _values.NoteUndeclared(error.Error);
+        throw error;
+    }
+
+    public override PropertyDescriptor GetOwnProperty(JsValue property) =>
+        property is JsString text && IsDeclared(text.ToString())
+            ? new PropertyDescriptor(Read(text.ToString()), PropertyFlag.OnlyEnumerable)
+            : PropertyDescriptor.Undefined;
+
+    protected override bool TryGetOwnPropertyValue(JsValue property, JsValue receiver, out JsValue value)
+    {
+        if (property is JsString text && IsDeclared(text.ToString()))
+        {
+            value = Read(text.ToString());
+            return true;
+        }
+
+        value = Undefined;
+        return false;
+    }
+
+    protected override OwnPropertyProbe ProbeOwnProperty(JsValue property) =>
+        property is JsString text && IsDeclared(text.ToString()) ? OwnPropertyProbe.Enumerable : OwnPropertyProbe.Missing;
+
+    public override bool HasProperty(JsValue property) =>
+        (property is JsString text && IsDeclared(text.ToString())) || base.HasProperty(property);
+
+    public override List<JsValue> GetOwnPropertyKeys(Types types = Types.Empty | Types.String | Types.Symbol)
+    {
+        var names = _view.ReadNames(_values.State.Reads);
+        var keys = new List<JsValue>(names.Count);
+        if ((types & Types.String) != 0)
+        {
+            foreach (var name in names)
+                keys.Add(new JsString(name));
+        }
+
+        return keys;
+    }
+
+    public override IEnumerable<KeyValuePair<JsValue, PropertyDescriptor>> GetOwnProperties()
+    {
+        foreach (var name in _view.ReadNames(_values.State.Reads))
+            yield return new KeyValuePair<JsValue, PropertyDescriptor>(new JsString(name), new PropertyDescriptor(Read(name), PropertyFlag.OnlyEnumerable));
+    }
+
+    public override bool Set(JsValue property, JsValue value, JsValue receiver) => false;
+
+    public override bool DefineOwnProperty(JsValue property, PropertyDescriptor desc) => false;
+
+    public override bool Delete(JsValue property) => false;
+
+    public override bool PreventExtensions() => true;
+
+    public override void RemoveOwnProperty(JsValue property)
+    {
+    }
+
+    /// <summary>Whether the object's kind declares a name; records <c>cv:&lt;kind&gt;</c>, evaluates nothing.</summary>
+    private bool IsDeclared(string name) => _view.Declares(name, _values.State.Reads);
+
+    private JsValue Read(string name)
+    {
+        object? value;
+        try
+        {
+            value = _view.Read(name, _values.State.Reads, _values.State.Token);
+        }
+        catch (CalculatedValueException e)
+        {
+            _values.NoteFailedRead(e.Diagnostic);
+            throw new JavaScriptException(Engine.Intrinsics.Error, e.Diagnostic.Message);
+        }
+        finally
+        {
+            _values.ResetMemoryBaseline();
+        }
+
+        if (_read.TryGetValue(name, out var done))
+            return done;
+        var converted = _values.ToJs(value);
+        _read[name] = converted;
+        return converted;
+    }
+}
+
 internal sealed class JsListProxy : ArrayLikeObject
 {
     private readonly ScriptValues _values;

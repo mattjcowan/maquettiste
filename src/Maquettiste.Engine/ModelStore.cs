@@ -487,8 +487,10 @@ public sealed partial class ModelStore : IAsyncDisposable
         var whole = scope.ElementIds is null && scope.IncludeReferrers && scope.IncludeScriptRules && !scope.DeferScriptedRows;
         var report = whole ? await WholeReportAsync(snapshot, ct).ConfigureAwait(false)
             : await _services.Validator.ValidateAsync(snapshot, scope, null, ct).ConfigureAwait(false);
-        IReadOnlyList<Diagnostic> found = whole && report.Diagnostics.Any(Generation.Outcomes.BlocksResolution) ? []
+        var findings = whole && report.Diagnostics.Any(Generation.Outcomes.BlocksResolution) ? ResolverFindings.Empty
             : await ResolverFindingsAsync(snapshot, ct).ConfigureAwait(false);
+        // The resolved rules' findings are script rules' (next-phase-2-design.md section 5.5): left out as the validator leaves its own.
+        IReadOnlyList<Diagnostic> found = scope.IncludeScriptRules ? [.. findings.Findings, .. findings.ScriptFindings] : findings.Findings;
         if (committedStale && await CommittedStaleFindingsAsync(snapshot, ct).ConfigureAwait(false) is { Count: > 0 } stale)
             found = [.. found, .. stale];
         var seen = report.Diagnostics.Select(LoadKey).ToHashSet(StringComparer.Ordinal);
@@ -656,7 +658,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     {
         var loadDiagnostics = before.LoadDiagnostics.Where(d => !string.Equals(d.FilePath, repoPath, StringComparison.Ordinal)).ToList();
         var candidate = ModelSnapshot.CreateAfter(before, before.Documents, settings, newHash, before.Extensions, before.RuleScripts, before.Version,
-            loadDiagnostics, _options.EffectiveParallelism, ct);
+            loadDiagnostics, _options.EffectiveParallelism, ct, calculationScripts: before.CalculationScripts);
         var baseline = await _services.Validator.ValidateAsync(before, ValidationScope.All, null, ct).ConfigureAwait(false);
         var report = await _services.Validator.ValidateAsync(candidate, ValidationScope.All, null, ct).ConfigureAwait(false);
         var known = baseline.Diagnostics.GroupBy(SettingsKey, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);

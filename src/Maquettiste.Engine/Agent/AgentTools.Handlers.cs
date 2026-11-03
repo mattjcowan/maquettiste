@@ -179,6 +179,24 @@ public sealed partial class AgentTools
         return Ok(await _store.GetReferencesAsync(id, ct).ConfigureAwait(false));
     }
 
+    private async Task<AgentToolResult> GetCalculatedAsync(ToolArguments args, CancellationToken ct)
+    {
+        var ids = args.Strings("ids");
+        if (ids is not { Length: > 0 })
+            return BadRequest("ids is required: 1 to 100 ids.");
+        if (ids.Length > GenerationService.MaxCalculatedIds)
+            return BadRequest($"At most {GenerationService.MaxCalculatedIds} ids can be read at once; {ids.Length} were given.");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return Ok(await _generation.GetCalculatedAsync(new CalculatedValueQuery(ids, args.Strings("names")), ct).ConfigureAwait(false));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
     private async Task<AgentToolResult> GetResolvedModelAsync(ToolArguments args, CancellationToken ct)
     {
         var limit = args.Int("limit");

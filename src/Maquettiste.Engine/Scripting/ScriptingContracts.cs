@@ -69,11 +69,33 @@ public sealed record ScriptRegistration(ScriptRegistrationKind Kind, string Name
     public bool WholeModel { get; init; }
 
     /// <summary>
+    /// A rule registered with scope "resolved" (next-phase-2-design.md section 5.5): <c>check(element, model, report)</c> on each resolved
+    /// object of its kinds, in the checks after resolution only; never on element saves or in previews.
+    /// </summary>
+    public bool Resolved { get; init; }
+
+    /// <summary>
     /// The kinds an element rule checks, or <see langword="null"/> for every kind (and for other registrations), so the validator skips
     /// a document of another kind before it rents a sandbox or reads the result cache. Internal: not part of the contract.
     /// </summary>
     internal IReadOnlySet<string>? Kinds { get; init; }
+
+    /// <summary>What a calculated value declares (next-phase-2-design.md section 5.5); <see langword="null"/> for other registrations.</summary>
+    public CalculatedValueDeclaration? CalculatedValue { get; init; }
+
+    /// <summary>The line of the registering call in its script (calculated values: MQ5011 and MQ5013 point there). Internal.</summary>
+    internal int? Line { get; init; }
+
+    /// <summary>The column of the registering call in its script. Internal.</summary>
+    internal int? Column { get; init; }
 }
+
+/// <summary>What one <c>maquettiste.calculated</c> call of a calculation file declares (next-phase-2-design.md section 5.5).</summary>
+/// <param name="Name">The calculated value's name: <c>^[a-z][A-Za-z0-9]*$</c>, at most 64 characters.</param>
+/// <param name="Kinds">Resolved kind names, ordinal.</param>
+/// <param name="Schema">The JSON Schema every value must fit.</param>
+/// <param name="Description">What the value means, or <see langword="null"/>.</param>
+public sealed record CalculatedValueDeclaration(string Name, IReadOnlyList<string> Kinds, JsonElement Schema, string? Description);
 
 /// <summary>What a script registered.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ScriptRegistrationKind>))]
@@ -99,6 +121,12 @@ public enum ScriptRegistrationKind
     /// path; only a script in <c>extensions/seeds/</c> may register one, exactly once.
     /// </summary>
     [JsonStringEnumMemberName("rows")] Rows,
+
+    /// <summary>
+    /// A calculated value (<c>maquettiste.calculated({ name, kinds, schema, value })</c>, next-phase-2-design.md section 5.5):
+    /// <c>calculated</c>. Only a calculation file in <c>extensions/calculated/</c> may register one, and it registers nothing else.
+    /// </summary>
+    [JsonStringEnumMemberName("calculated")] CalculatedValue,
 }
 
 /// <summary>The context of one top-level script call.</summary>
@@ -190,6 +218,22 @@ public interface IScriptSandbox
     /// </returns>
     IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model, ScriptCallContext ctx);
 
+    /// <summary>
+    /// Runs a resolved rule (<c>scope: "resolved"</c>) on one resolved object; <c>report(message, { pointer, severity })</c>
+    /// (next-phase-2-design.md section 5.5).
+    /// </summary>
+    /// <param name="ruleId">The rule id (without <c>x/</c>).</param>
+    /// <param name="element">The resolved object, of one of the rule's kinds.</param>
+    /// <param name="model">The resolved model.</param>
+    /// <param name="ctx">The call context; reads go to ctx.Reads.</param>
+    /// <returns>
+    /// The rule's raw diagnostics: each <c>x/&lt;id&gt;</c> on the object's id, without a file, its pointer relative to the object's
+    /// entry; a rule that throws ends with its MQ5002 on the rule file, at the failing line.
+    /// </returns>
+    /// <exception cref="ScriptLimitException">The call broke a sandbox limit (MQ5003).</exception>
+    /// <exception cref="CalculatedValueException">The call read a calculated value that failed: the failure is that value's.</exception>
+    IReadOnlyList<Diagnostic> RunResolvedRule(string ruleId, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx);
+
     /// <summary>Runs a rows script; the array it returned, as JSON. Reads go to ctx.Reads.</summary>
     /// <param name="script">The rows script's path, as it registered its rows (<see cref="ScriptRegistrationKind.Rows"/>).</param>
     /// <param name="seed">The seed document; the function gets a frozen copy of its canonical JSON.</param>
@@ -198,6 +242,20 @@ public interface IScriptSandbox
     /// <returns>The returned array: plain objects whose values are JSON values.</returns>
     /// <exception cref="ScriptLimitException">The call broke a sandbox limit.</exception>
     JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx);
+
+    /// <summary>
+    /// Evaluates a calculated value on one resolved object: null, bool, long, double, string, or a list or map of them
+    /// (next-phase-2-design.md section 5.5). Reads go to ctx.Reads.
+    /// </summary>
+    /// <param name="name">The calculated value's name.</param>
+    /// <param name="element">The object; its kind picks the registration.</param>
+    /// <param name="model">The resolved model.</param>
+    /// <param name="ctx">The call context (its seed seeds <c>Math.random</c>: <c>calculated:&lt;name&gt;:&lt;site&gt;</c>).</param>
+    /// <returns>The value.</returns>
+    /// <exception cref="ScriptErrorException">The function threw or returned a value that is not JSON (MQ5002 at the calculation file).</exception>
+    /// <exception cref="ScriptLimitException">The call broke a sandbox limit (MQ5003).</exception>
+    /// <exception cref="CalculatedValueException">The call read a calculated value that failed: the failure is that value's.</exception>
+    object? RunCalculation(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx);
 }
 
 /// <summary>Thrown when a script or template exceeds a sandbox limit (MQ6007 while rendering, MQ5003 in validation rules).</summary>

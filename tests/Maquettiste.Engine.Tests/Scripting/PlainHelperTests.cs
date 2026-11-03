@@ -29,6 +29,12 @@ public sealed class PlainHelperTests
           const out = {};
           for (const k of Object.keys(v).sort()) {
             const x = v[k];
+            // An object's calculated values (section 5.5): a plain copy holds them at hop 0 only, and an undeclared name throws, so
+            // the walk reads the declared names rather than probing.
+            if (k === 'calculated') {
+              if (resolved && hop === 0) out[k] = Object.fromEntries(Object.keys(x).map(n => [n, walk(x[n], hop + 1)]));
+              continue;
+            }
             if (typeof x !== 'function') out[k] = walk(x, resolved ? hop + 1 : hop);
           }
           return out;
@@ -115,7 +121,7 @@ public sealed class PlainHelperTests
         var f = new ResolvedFixture();
         var fixtureReads = new ListRecorder();
         Call(pool, "nothing", fixtureReads, f.Customer);
-        Assert.Equal(["e:CUSTOMER", "e:PKG", "k:entity", "m:customer-attributes", "r:CUSTOMER"], fixtureReads.Keys.Distinct().Order(StringComparer.Ordinal));
+        Assert.Equal(["cv:entity", "e:CUSTOMER", "e:PKG", "k:entity", "m:customer-attributes", "r:CUSTOMER"], fixtureReads.Keys.Distinct().Order(StringComparer.Ordinal));
         Assert.DoesNotContain("e:INVOICE", fixtureReads.Keys);
     }
 

@@ -208,6 +208,12 @@ public sealed class RTable : RAnnotated
     /// <summary>The attribute a child table stores (a value object stored as a table, or a collection), or <see langword="null"/>.</summary>
     public RAttribute? Attribute { get; internal set; }
 
+    /// <summary>
+    /// The id of the element whose file holds the table: the designed or imported table, or the overlay of a synthesized one; null for a
+    /// synthesized table without an overlay. Where the checks after resolution put a finding (next-phase-2-design.md section 5.5).
+    /// </summary>
+    internal string? FileId { get; set; }
+
     /// <summary>Columns, by position.</summary>
     public RList<RColumn> Columns { get; internal set; } = RList<RColumn>.Empty;
 

@@ -6,6 +6,52 @@ namespace Maquettiste.Cli.Tests;
 public sealed class ModelCommandTests
 {
     [Fact]
+    public async Task Model_calculated_prints_the_values_of_the_elements_given()
+    {
+        // next-phase-2-design.md section 5.5: one line per object and value, ordinal; JSON prints the answer; exit 1 when a value failed.
+        using var repo = CliRepo.Billing();
+        repo.Write(".maquettiste/extensions/calculated/names.js", """
+            function snake(text) { return text.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase(); }
+            maquettiste.calculated({ name: "apiName", kinds: ["entity"], schema: { type: "string" }, value: (e) => snake(e.name) });
+            maquettiste.calculated({ name: "plural", kinds: ["entity"], schema: { type: "string" }, value: (e) => snake(e.pluralName) });
+            maquettiste.calculated({
+              name: "short",
+              kinds: ["entity"],
+              schema: { type: "string", maxLength: 7 },
+              value: (e) => e.name,
+            });
+
+            """);
+        const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
+        const string Customer = "01J92P0V0ETQKXXP951CMMNHH3";
+
+        var text = await repo.RunAsync("model", "calculated", "--element", Invoice, "--element", Customer, "--name", "apiName", "--name", "plural");
+        Assert.True(text.ExitCode == 0, text.Error);
+        Assert.Equal(
+            [
+                $"entity Customer {Customer} apiName = \"customer\"",
+                $"entity Customer {Customer} plural = \"customers\"",
+                $"entity Invoice {Invoice} apiName = \"invoice\"",
+                $"entity Invoice {Invoice} plural = \"invoices\"",
+            ],
+            Text.Lines(text.Out));
+
+        // A value that fails its schema: left out, reported, exit 1.
+        var json = await repo.RunAsync("model", "calculated", "--element", Customer, "--element", "01J00000000000000000000000", "--format", "json");
+        Assert.Equal(1, json.ExitCode);
+        var answer = JsonNode.Parse(json.Out)!;
+        var item = Assert.Single(answer["items"]!.AsArray())!;
+        Assert.Equal(["apiName", "plural"], item["calculated"]!.AsObject().Select(p => p.Key));
+        Assert.Equal("MQ5011", (string)Assert.Single(answer["diagnostics"]!.AsArray())!["rule"]!);
+        Assert.Equal(["01J00000000000000000000000"], answer["missing"]!.AsArray().Select(m => (string)m!));
+        Assert.Equal(["apiName", "plural", "short"], answer["declarations"]!.AsArray().Select(d => (string)d!["name"]!));
+
+        var usage = await repo.RunAsync("model", "calculated");
+        Assert.Equal(4, usage.ExitCode);
+        Assert.Contains("--element", usage.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Export_writes_documents_as_a_json_array_or_one_per_line_with_fields_trimmed()
     {
         using var repo = CliRepo.Billing();

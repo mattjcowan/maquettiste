@@ -28,10 +28,15 @@ namespace Maquettiste.Engine.Validation;
 /// <param name="resolver">The resolver that judges pending migration facts stale (MQ4103, next-phase-1-design.md section 3.2); without
 /// one every pending fact is MQ4101.</param>
 /// <param name="seedRows">The engine's cache of rows script runs (next-phase-2-design.md section 3.4); a cache of its own when absent.</param>
+/// <param name="calculations">The service that loads the calculation files once for validation and resolution, and that the checks after
+/// resolution read the rule registrations from; the resolver's when absent, else one of its own.</param>
 internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry schemas, IScriptSandboxFactory scripts, IModelResolver? resolver = null,
-    SeedRowsCache? seedRows = null)
+    SeedRowsCache? seedRows = null, CalculationService? calculations = null)
     : IModelValidator
 {
+    private readonly CalculationService _calculations = calculations ?? (resolver as ModelResolver)?.Calculations
+        ?? new CalculationService(scripts, Math.Max(1, options.EffectiveParallelism));
+
     private static readonly IReadOnlyDictionary<string, object?> NoParameters = FrozenDictionary<string, object?>.Empty;
 
     /// <summary>
@@ -104,6 +109,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         IReadOnlyList<string> rules = [];
         IReadOnlyList<ScriptRegistration> modelRules = [];
         var libraryPools = new Dictionary<string, RuleLibrary>(StringComparer.Ordinal);
+        var failed = false;
         if (needScripts)
         {
             // The project's library packs (next-phase-2-design.md section 5.2): one pool each, in dependency order, so maquettiste.use
@@ -117,7 +123,6 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             // line and column, and the other rule files still run without it. While one is broken the set of rule ids is unknown, so
             // MQ2007 (an unknown rule) is not reported against the ids it would have registered.
             var loadable = model.RuleScripts.ToList();
-            var failed = false;
             while (loadable.Count > 0)
             {
                 try
@@ -126,7 +131,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                         : scripts.CreatePool(loadable, libraries, model.Settings.Limits, poolSize, ct);
                     var registered = pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Rule).ToList();
                     // Element rules run on each document; whole-model rules (scope "model") once, after them, on whole-model runs only.
-                    rules = [.. registered.Where(r => !r.WholeModel).Select(r => Bare(r.Name)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                    // Resolved rules (scope "resolved") run in the checks after resolution (ResolvedChecks), never here.
+                    rules = [.. registered.Where(r => !r.WholeModel && !r.Resolved).Select(r => Bare(r.Name)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
                     modelRules = [.. registered.Where(r => r.WholeModel).DistinctBy(r => Bare(r.Name), StringComparer.Ordinal)
                         .OrderBy(r => Bare(r.Name), StringComparer.Ordinal)];
                     ruleNames = failed ? null : registered.Select(r => Bare(r.Name)).ToFrozenSet(StringComparer.Ordinal);
@@ -158,6 +164,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 diagnostics.AddRange(pool.Warnings);
         }
 
+        // Calculation files (next-phase-2-design.md section 5.5): a whole-model validation reports a file that does not load (MQ5002,
+        // MQ5003) and top-level let or var (MQ5005) on it, from the service's one load that the resolved model's host then evaluates with.
+        // Without calculation files nothing is loaded.
+        if (wholeModel && scope.IncludeScriptRules && model.CalculationScripts.Count > 0)
+            diagnostics.AddRange(_calculations.Load(model).Diagnostics);
+
         var runtime = targets.Any(d => d.Element is Scenario) ? new ProcessRuntime(model, parallelism, ct) : null;
         var facts = targets.Any(d => d.Element is Migration) ? MigrationRules.Analyze(model) : null;
         if (facts is not null && resolver is not null)
@@ -175,6 +187,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         var ticket = _ruleResults.Begin();
         var runScripts = scope.IncludeScriptRules && pool is not null && rules.Count > 0;
+        var kept = false;
         try
         {
             var context = shared.WithRuleNames(ruleNames);
@@ -213,12 +226,17 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             // validations (element saves) skip them, so they never refuse a save over elements outside the change.
             if (wholeModel && scope.IncludeScriptRules && pool is not null && modelRules.Count > 0)
                 RunModelRules(pool, modelRules, model, diagnostics, calls, ct);
+            kept = PublishRules(model, failed ? null : pool, libraryPools, ct);
         }
         finally
         {
-            pool?.Dispose();
-            foreach (var library in libraryPools.Values)
-                library.Pool?.Dispose();
+            if (!kept)
+            {
+                pool?.Dispose();
+                foreach (var library in libraryPools.Values)
+                    library.Pool?.Dispose();
+            }
+
             runtime?.Dispose();
         }
 
@@ -265,7 +283,24 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         return result;
     }
 
-    private static string Bare(string ruleName) => ruleName.StartsWith("x/", StringComparison.Ordinal) ? ruleName[2..] : ruleName;
+    /// <summary>
+    /// Tells the checks after resolution what the rule files register (<see cref="ResolvedChecks"/>, next-phase-2-design.md section 5.5):
+    /// whether a rule has scope "resolved", so they never build a rule pool to find none, and with one, this pool and its libraries for
+    /// the snapshot, so they run on it rather than load the files again. A pool wired to a token that can be cancelled is not kept (a later
+    /// cancellation would stop its engines), and nothing is said while a rule file does not load (validation then has an error).
+    /// </summary>
+    /// <returns>Whether the pool and its libraries are kept (and so not disposed here).</returns>
+    private bool PublishRules(ModelSnapshot model, IScriptSandboxPool? pool, Dictionary<string, RuleLibrary> libraries, CancellationToken ct)
+    {
+        if (pool is null)
+            return false;
+        var registers = pool.Registrations.Any(r => r is { Kind: ScriptRegistrationKind.Rule, Resolved: true, Kinds: not null });
+        var keep = registers && !ct.CanBeCanceled;
+        _calculations.PublishRules(model, registers, keep ? new ResolvedRulePool(pool, libraries) : null);
+        return keep;
+    }
+
+    internal static string Bare(string ruleName) => ruleName.StartsWith("x/", StringComparison.Ordinal) ? ruleName[2..] : ruleName;
 
     private static Diagnostic PoolFailure(ModelSnapshot model, string rule, string message, string? path) =>
         RuleCatalog.Create(rule, message, null, path ?? (model.RuleScripts.Count == 1 ? model.RuleScripts[0].Path : null));
@@ -1088,14 +1123,14 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     }
 
     /// <summary>A project library of one validation: its pool (none without scripts), its helper names, its parameters as plain values.</summary>
-    private sealed record RuleLibrary(IScriptSandboxPool? Pool, IReadOnlyList<string> Helpers, IReadOnlyDictionary<string, object?> Parameters);
+    internal sealed record RuleLibrary(IScriptSandboxPool? Pool, IReadOnlyList<string> Helpers, IReadOnlyDictionary<string, object?> Parameters);
 
     /// <summary>
     /// The calls of the project's rules into its library packs: each call rents an engine of the library's pool, runs the helper with
     /// the library's parameters and the caller's recorder, and returns it. A library's failure is MQ5002 (a limit MQ5003) at the
     /// library's script, naming the library.
     /// </summary>
-    private sealed class RuleLibraryCalls(IReadOnlyDictionary<string, RuleLibrary> libraries) : IScriptLibraryCalls
+    internal sealed class RuleLibraryCalls(IReadOnlyDictionary<string, RuleLibrary> libraries) : IScriptLibraryCalls
     {
         /// <inheritdoc/>
         public object? Call(string pack, string helper, IReadOnlyList<object?> args, ScriptCallContext caller)
@@ -1129,7 +1164,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// its own closure. A library whose scripts fail to load is MQ5002 (a limit MQ5003) at its script and left out, and so is a library
     /// whose closure holds one.
     /// </summary>
-    private static Dictionary<string, RuleLibrary> LibraryPools(ModelSnapshot model, IScriptSandboxFactory scripts, int size, List<Diagnostic> diagnostics,
+    internal static Dictionary<string, RuleLibrary> LibraryPools(ModelSnapshot model, IScriptSandboxFactory scripts, int size, List<Diagnostic> diagnostics,
         CancellationToken ct)
     {
         var pools = new Dictionary<string, RuleLibrary>(StringComparer.Ordinal);
@@ -1189,7 +1224,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         var kinds = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
         foreach (var registration in pool.Registrations)
         {
-            if (registration is { Kind: ScriptRegistrationKind.Rule, WholeModel: false, Kinds: { } set })
+            if (registration is { Kind: ScriptRegistrationKind.Rule, WholeModel: false, Resolved: false, Kinds: { } set })
                 kinds.TryAdd(Bare(registration.Name), set);
         }
 
@@ -1201,7 +1236,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// whose file has no MQ5005 warning (top-level <c>let</c> or <c>var</c>, state the sandbox cannot freeze). One scope per file and
     /// the globals frozen before the files run make a file's hash, with the shared sandbox setup, its behaviour (section 5.7).
     /// </summary>
-    internal static Dictionary<string, ScriptSource> CachedRuleFiles(ModelSnapshot model, IScriptSandboxPool pool)
+    /// <param name="model">The snapshot.</param>
+    /// <param name="pool">The rule pool.</param>
+    /// <param name="resolved">Whether to give the resolved rules' files (scope "resolved", next-phase-2-design.md section 5.5) rather
+    /// than the element rules'.</param>
+    internal static Dictionary<string, ScriptSource> CachedRuleFiles(ModelSnapshot model, IScriptSandboxPool pool, bool resolved = false)
     {
         var stateful = pool.Warnings.Where(w => w.Rule == "MQ5005" && w.FilePath is not null).Select(w => w.FilePath!).ToHashSet(StringComparer.Ordinal);
         var files = new Dictionary<string, ScriptSource>(StringComparer.Ordinal);
@@ -1214,7 +1253,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         var cached = new Dictionary<string, ScriptSource>(StringComparer.Ordinal);
         foreach (var registration in pool.Registrations)
         {
-            if (registration.Kind == ScriptRegistrationKind.Rule && !registration.WholeModel && !stateful.Contains(registration.DeclaredIn)
+            if (registration.Kind == ScriptRegistrationKind.Rule && !registration.WholeModel && registration.Resolved == resolved && !stateful.Contains(registration.DeclaredIn)
                 && files.TryGetValue(registration.DeclaredIn, out var file))
                 cached.TryAdd(Bare(registration.Name), file);
         }
@@ -1390,7 +1429,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     }
 
     /// <summary>The severity a <c>validation.rules</c> setting sets, or <see langword="null"/> (none, <c>off</c> or unknown).</summary>
-    private static DiagnosticSeverity? SeverityOf(string? setting) => setting switch
+    internal static DiagnosticSeverity? SeverityOf(string? setting) => setting switch
     {
         "error" => DiagnosticSeverity.Error,
         "warning" => DiagnosticSeverity.Warning,

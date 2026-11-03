@@ -218,3 +218,16 @@ worker waits on a pool lease it holds. The table cannot borrow the render stage'
 `GenerationRun` disposes the tables it prepared when its run, plan or apply ends, and a preview or path listing
 disposes its session's table when the request ends. An export evaluation returns the used packs' leases it took, as a
 render does.
+
+## Calculated values (next-phase-2-design.md section 5.5)
+
+`element.calculated` is a `CalculatedView` (`TemplateValues.cs`), not the CLR members of `RCalculated`:
+`TrackingTemplateContext.Wrap` wraps it and `GetMemberAccessorImpl` gives it `CalculatedAccessor`, so a read evaluates
+one value only. `element.calculated.publicName` evaluates the value on first read and records the calculation file's
+`x:calculated/<name>.js` key and the keys the value read. Names are map keys and keep their case. `for e in
+element.calculated` yields every declared name in ordinal order as `e.key` and `e.value`. Listing the names,
+`has_calculated <object> "<name>"` (which evaluates nothing) and an undeclared read record `cv:<kind>`, so a unit that
+tested for a value renders again when a calculation file adds or drops one. `PlanExplainer` words that key "The
+calculated values declared for <kind>". An undeclared name fails the unit with MQ5012 at the template's line. A value
+that failed fails the unit with that value's own diagnostic (`RenderRun.Diagnose`). A pack helper that reads one fails
+as well, even when it caught the error. `json element.calculated` writes every value of the object by name.

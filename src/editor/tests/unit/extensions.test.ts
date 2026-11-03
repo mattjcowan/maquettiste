@@ -35,14 +35,15 @@ const finding = (rule: string, filePath: string | null, extra: Partial<Diagnosti
 });
 
 const files: ExtensionFile[] = [
-  { path: "retention.json", kind: "schema", size: 10, hash: "a".repeat(64), diagnostics: [], rules: [] },
+  { path: "retention.json", kind: "schema", size: 10, hash: "a".repeat(64), diagnostics: [], rules: [], calculations: [] },
   {
     path: "rules/naming.js",
     kind: "rule",
     size: 10,
     hash: "b".repeat(64),
     diagnostics: [finding("MQ5002", ".maquettiste/extensions/rules/naming.js", { line: 2 })],
-    rules: [{ id: "x/entity-names", severity: "warning", wholeModel: false }],
+    rules: [{ id: "x/entity-names", severity: "warning", wholeModel: false, resolved: false }],
+    calculations: [],
   },
 ];
 
@@ -69,7 +70,7 @@ describe("extension files", () => {
     expect(written.body.outcome).toBe("saved");
     expect(written.body.diagnostics).toEqual([]);
     expect(backend.extensions.list().files.find((f) => f.path === "rules/my-rule.js")?.rules).toEqual([
-      { id: "x/my-rule", severity: "warning", wholeModel: false },
+      { id: "x/my-rule", severity: "warning", wholeModel: false, resolved: false },
     ]);
     expect(backend.model.validate().diagnostics.filter((d) => d.rule === "x/my-rule")).toEqual([]);
   });
@@ -96,7 +97,7 @@ describe("extension files", () => {
     expect(extensionPathOf(finding("MQ7127", ".maquettiste/extensions/seeds/audited-records.js"))).toBe("seeds/audited-records.js");
     const withRows: ExtensionFile[] = [
       ...files,
-      { path: "seeds/audited-records.js", kind: "seed-rows", size: 10, hash: "c".repeat(64), diagnostics: [], rules: [] },
+      { path: "seeds/audited-records.js", kind: "seed-rows", size: 10, hash: "c".repeat(64), diagnostics: [], rules: [], calculations: [] },
     ];
     const rows = extensionRows(withRows, new Set([EXTENSIONS_KEY]), 3, 3);
     expect(rows[0].detail).toBe("1 schema · 1 rule · 1 rows script");

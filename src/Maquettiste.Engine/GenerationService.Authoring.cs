@@ -87,7 +87,8 @@ public sealed record TemplateMember(string Name, string Type);
 /// <param name="Unit">The unit id.</param>
 /// <param name="Scope">The unit's <c>for</c>.</param>
 /// <param name="Variables">The globals, ordinal.</param>
-/// <param name="Members">Member lists by variable (<c>model</c>, <c>element</c>), ordinal.</param>
+/// <param name="Members">Member lists by variable (<c>model</c>, <c>element</c>), ordinal. The element's list holds
+/// <c>calculated.&lt;name&gt;</c> for every calculated value the scope's kind declares (next-phase-2-design.md section 5.5).</param>
 /// <param name="Helpers">The built-in helpers, ordinal.</param>
 public sealed record TemplateContextResult(string Pack, string Unit, string Scope, IReadOnlyList<TemplateVariable> Variables,
     IReadOnlyDictionary<string, IReadOnlyList<TemplateMember>> Members, IReadOnlyList<string> Helpers)
@@ -416,8 +417,9 @@ public sealed partial class GenerationService
 
     /// <summary>
     /// Completion data for a unit's templates: variables, the members of the model and of the scope's records, and helpers. Read from the
-    /// pack alone (its <c>pack.json</c>, its parameters and what its scripts register, kept per pack folder and settings) and from the
-    /// record types: no model is resolved and nothing is rendered.
+    /// pack alone (its <c>pack.json</c>, its parameters and what its scripts register, kept per pack folder and settings), from the
+    /// record types and from what the calculation files declare (each loaded alone, no value evaluated): no model is resolved and nothing
+    /// is rendered.
     /// </summary>
     /// <returns><see langword="null"/> when there is no such pack or unit.</returns>
     /// <exception cref="PackPathException">The name is not a pack key.</exception>
@@ -458,7 +460,7 @@ public sealed partial class GenerationService
         variables.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
         var members = new SortedDictionary<string, IReadOnlyList<TemplateMember>>(StringComparer.Ordinal) { ["model"] = MembersOf(typeof(ResolvedModel)) };
         if (elementType is not null)
-            members["element"] = MembersOf(elementType);
+            members["element"] = WithCalculated(MembersOf(elementType), elementType, snapshot, ct);
         if (UnitRules.CustomTypeOf(unit.For) is { } customType)
             members["custom.content"] = ContentMembers(snapshot, customType);
         var registrations = document.Registrations;
@@ -512,6 +514,32 @@ public sealed partial class GenerationService
             namespaces.Add(new TemplateNamespace(PackRuntime.Namespace(pack), pack, mine));
         return [.. namespaces.OrderBy(n => n.Name, StringComparer.Ordinal)];
     }
+
+    /// <summary>
+    /// A scope's members with <c>calculated.&lt;name&gt;</c> for every calculated value its kind declares, typed by the declared schema's
+    /// <c>type</c>; the members as they are when the project declares none.
+    /// </summary>
+    private IReadOnlyList<TemplateMember> WithCalculated(IReadOnlyList<TemplateMember> members, Type type, ModelSnapshot snapshot, CancellationToken ct)
+    {
+        if (snapshot.CalculationScripts.Count == 0 || ResolvedKinds.All.FirstOrDefault(k => ResolvedKinds.TypeOf(k) == type) is not { } kind)
+            return members;
+        var declared = _store.CalculationDeclarations(snapshot, ct).Where(d => d.Kinds.Contains(kind, StringComparer.Ordinal))
+            .DistinctBy(d => d.Name, StringComparer.Ordinal)
+            .Select(d => new TemplateMember("calculated." + d.Name, SchemaMemberType(d.Schema)));
+        return [.. members.Concat(declared).DistinctBy(m => m.Name, StringComparer.Ordinal).OrderBy(m => m.Name, StringComparer.Ordinal)];
+    }
+
+    /// <summary>The member type of a JSON Schema: its single <c>type</c> as a member list names it, else <c>any</c>.</summary>
+    private static string SchemaMemberType(JsonElement schema) =>
+        schema.ValueKind == JsonValueKind.Object && schema.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String
+            ? t.GetString()! switch
+            {
+                "integer" => "number",
+                "array" => "list",
+                "object" => "map",
+                var other => other,
+            }
+            : "any";
 
     /// <summary>The declared content keys of a custom kind (next-phase-2-design.md section 4.2), ordinal, each with its JSON Schema type
     /// (<c>member list</c> for an <c>x-member</c> array; <c>any</c> when the schema names no single type).</summary>

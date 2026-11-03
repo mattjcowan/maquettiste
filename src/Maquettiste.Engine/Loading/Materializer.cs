@@ -188,7 +188,8 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
 
         documents.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));
         return ModelSnapshot.CreateAfter(null, documents, snapshot.Settings, snapshot.SettingsHash, snapshot.Extensions, snapshot.RuleScripts, snapshot.Version,
-            null, parallelism, CancellationToken.None, seedScripts: snapshot.SeedScripts, customKinds: snapshot.CustomKinds);
+            null, parallelism, CancellationToken.None, seedScripts: snapshot.SeedScripts, customKinds: snapshot.CustomKinds,
+            calculationScripts: snapshot.CalculationScripts);
     }
 
     /// <summary>

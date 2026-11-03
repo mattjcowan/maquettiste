@@ -7,14 +7,15 @@ using Maquettiste.Engine;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste model export|stats|delete|materialize|apply</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
+/// <c>maquettiste model export|stats|delete|materialize|apply|calculated</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
 /// canonical documents (or, with <c>--resolved</c>, the resolved model's flat records) as one JSON array or as one JSON value per line;
 /// <c>stats</c> counts the kinds present, per package with <c>--by package</c>. Both take <c>--kind</c>, where <c>custom</c> means every custom
 /// element and <c>custom:&lt;type&gt;</c> one custom kind (next-phase-2-design.md section 4.2). Both read the same pages the editor API and the MCP
 /// server serve (<c>GET /api/model/elements</c>, <c>/api/model/resolved</c>, <c>/api/model/kinds</c>). <c>delete</c> deletes one element
 /// with a resolution, or with <c>--dry-run</c> prints what the delete would do (<c>GET /api/model/elements/{id}/delete-plan</c>).
 /// <c>apply</c> applies a batch file all or nothing, by name or by id, as the MCP tool <c>apply_batch</c> does (next-phase-1-design.md
-/// section 5.1).
+/// section 5.1). <c>calculated</c> prints the calculated values of the elements given, evaluated for them only, as the MCP tool
+/// <c>get_calculated</c> answers (next-phase-2-design.md section 5.5).
 /// </summary>
 internal static class ModelCommand
 {
@@ -28,7 +29,7 @@ internal static class ModelCommand
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
         var line = context.Line;
-        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export, stats, delete, materialize or apply.");
+        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export, stats, delete, materialize, apply or calculated.");
         switch (verb)
         {
             case "export":
@@ -43,6 +44,11 @@ internal static class ModelCommand
                 break;
             case "apply":
                 line.Expect("model apply", 3, "--dry-run", "--format");
+                break;
+            case "calculated":
+                line.Expect("model calculated", 2, "--element", "--name", "--format");
+                if (line.Values("--element").Count == 0)
+                    throw new UsageException("'model calculated' needs at least one --element <id>.");
                 break;
             case "materialize":
                 var what = line.Positionals.Count > 2 ? line.Positionals[2] : throw new UsageException("'model materialize' needs tables, entities, attributes or columns.");
@@ -59,7 +65,7 @@ internal static class ModelCommand
                 });
                 break;
             default:
-                throw new UsageException($"Unknown model verb '{verb}': use export, stats, delete, materialize or apply.");
+                throw new UsageException($"Unknown model verb '{verb}': use export, stats, delete, materialize, apply or calculated.");
         }
 
         if (await ProjectGuard.RepoAsync(context).ConfigureAwait(false) is not { } repo)
@@ -77,6 +83,8 @@ internal static class ModelCommand
                 return await MaterializeAsync(context, store, snapshot, ct).ConfigureAwait(false);
             if (verb == "stats")
                 return await StatsAsync(context, snapshot, ct).ConfigureAwait(false);
+            if (verb == "calculated")
+                return await CalculatedAsync(context, store, options, ct).ConfigureAwait(false);
             var ndjson = line.Choice("--format", "json", "json", "ndjson") == "ndjson";
             if (line.Has("--resolved"))
             {
@@ -142,7 +150,8 @@ internal static class ModelCommand
         do
         {
             var page = await generation.GetResolvedAsync(new ResolvedQuery(scope, database, cursor, ModelPages.MaxLimit), ct).ConfigureAwait(false);
-            if (page.Diagnostics.Count > 0)
+            // A model with errors returns no records and its errors; the failures of calculated values come with records.
+            if (page.Items.Count == 0 && page.Diagnostics.Count > 0)
             {
                 foreach (var d in page.Diagnostics)
                     await context.Error.WriteLineAsync(DiagnosticOutput.Line(d)).ConfigureAwait(false);
@@ -450,6 +459,47 @@ internal static class ModelCommand
         foreach (var r in plan.Refused)
             text.Append(CultureInfo.InvariantCulture, $"  cannot resolve: {(r.Kind is null ? "" : r.Kind + " " + r.Name + ": ")}{r.Why}\n");
         return text.ToString();
+    }
+
+    /// <summary>
+    /// <c>model calculated</c>: the calculated values of the elements given (<c>--element</c>, repeatable; <c>--name</c> keeps only those
+    /// names), one line per object and value in ordinal order, or the answer as JSON. Exit 1 when a value failed or the model has errors.
+    /// </summary>
+    private static async Task<int> CalculatedAsync(GlobalContext context, ModelStore store, EngineOptions options, CancellationToken ct)
+    {
+        var line = context.Line;
+        var json = line.Choice("--format", "text", "text", "json") == "json";
+        var ids = line.Values("--element");
+        if (ids.Count > GenerationService.MaxCalculatedIds)
+            throw new UsageException($"'model calculated' takes at most {GenerationService.MaxCalculatedIds} --element options; {ids.Count} were given.");
+        var names = line.Values("--name");
+        var answer = await new GenerationService(store, options)
+            .GetCalculatedAsync(new CalculatedValueQuery(ids, names.Count == 0 ? null : names), ct).ConfigureAwait(false);
+        var failed = answer.Diagnostics.Any(d => d.Severity == Engine.Diagnostics.DiagnosticSeverity.Error);
+        if (json)
+        {
+            await CliFiles.EmitAsync(context, JsonSerializer.Serialize(answer, Options) + "\n", ct).ConfigureAwait(false);
+            return failed ? Program.ExitCodes.Invalid : Program.ExitCodes.Success;
+        }
+
+        var lines = new List<string>();
+        foreach (var item in answer.Items)
+        {
+            var site = item.Holder is null ? item.Id : item.Holder + "/" + item.Id;
+            var label = item.Name is { Length: > 0 } name ? $"{item.Kind} {name} {site}" : $"{item.Kind} {site}";
+            lines.AddRange(item.Calculated.Select(v => $"{label} {v.Key} = {JsonSerializer.Serialize(v.Value, Options)}"));
+        }
+
+        lines.Sort(StringComparer.Ordinal);
+        var text = new StringBuilder();
+        foreach (var value in lines)
+            text.Append(value).Append('\n');
+        await CliFiles.EmitAsync(context, text.ToString(), ct).ConfigureAwait(false);
+        foreach (var d in answer.Diagnostics)
+            await context.Error.WriteLineAsync(DiagnosticOutput.Line(d)).ConfigureAwait(false);
+        foreach (var id in answer.Missing)
+            await context.Error.WriteLineAsync($"maquettiste: nothing has the id '{id}'.").ConfigureAwait(false);
+        return failed ? Program.ExitCodes.Invalid : Program.ExitCodes.Success;
     }
 
     private static async Task<int> StatsAsync(GlobalContext context, Engine.Model.ModelSnapshot snapshot, CancellationToken ct)

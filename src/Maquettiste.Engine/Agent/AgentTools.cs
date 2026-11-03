@@ -81,6 +81,7 @@ public sealed partial class AgentTools
         {
             ["compare_snapshots"] = CompareSnapshotsAsync,
             ["get_binding_drift"] = GetBindingDriftAsync,
+            ["get_calculated"] = GetCalculatedAsync,
             ["get_database_view"] = GetDatabaseViewAsync,
             ["get_element"] = GetElementAsync,
             ["get_elements"] = GetElementsAsync,

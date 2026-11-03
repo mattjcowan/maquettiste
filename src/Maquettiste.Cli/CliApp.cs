@@ -242,6 +242,10 @@ public sealed class CliApp(CliEnvironment environment)
                                 Add to each bound entity's table a column per attribute its binding leaves unmapped, shaped
                                   as the projection would make it, mapped to it: --attribute <id|name> (repeatable, one
                                   entity: those attributes), --dry-run, --format text|json
+          model calculated --element <id>...
+                                The calculated values of the elements given (repeat --element; an attribute id gives one
+                                  line per holder), evaluated for them only: --name <name> (repeatable), --format text|json;
+                                  exit 1 when a value failed
           binding drift [<entity>...]
                                 What changed in each binding's table since its provenance was recorded (added, renamed,
                                   retyped and removed columns): --database <id|name>, --all (also the bindings in step),

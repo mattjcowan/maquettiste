@@ -241,6 +241,10 @@ what `Run` would give. A partial run publishes no entity's or relation's mapping
 each `RDatabase` also lists its mappings' template-defined collections with their owner table (`TemplateCollections`,
 internal, filled in both runs), which the value-map holders read (next-phase-2-design.md section 3.5).
 
+Neither partial run binds a calculation host, so their objects read `RCalculated.Empty`: nothing on these paths (table
+summaries, migration recording and stale facts, materialize, stereotype fold) renders a template or runs a script over
+resolved objects, and every template and resolved rule that reads `calculated` runs on the whole-model `Run`.
+
 ## Processes (P5a: phase-3-design.md sections 4.3 and 7.1)
 
 - `ResolveRun.Processes.cs` resolves actors, then process shells (an invoke names another process), then each process, then

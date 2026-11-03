@@ -135,6 +135,15 @@ public abstract class RAnnotated : RObject
     /// <summary>Generation hints by pack name or <c>"*"</c>.</summary>
     public IReadOnlyDictionary<string, GenerationHints> Generation { get; internal set; } = FrozenDictionary<string, GenerationHints>.Empty;
 
+    /// <summary>The host of the resolution that built the object (next-phase-2-design.md section 5.5), or none.</summary>
+    private readonly CalculationHost? _calculationHost = CalculationHost.Building;
+
+    private RCalculated? _calculated;
+
+    /// <summary>The named values the project's calculation files compute for this object (section 5.5); empty when
+    /// its kind declares none. Never null.</summary>
+    public RCalculated Calculated => _calculationHost is null ? RCalculated.Empty : _calculated ??= new RCalculated(_calculationHost, this);
+
     /// <summary>Whether the object carries a stereotype.</summary>
     /// <param name="key">The stereotype key.</param>
     /// <returns><see langword="true"/> when present.</returns>
@@ -317,6 +326,9 @@ public sealed class ResolvedModel
 
     /// <summary>Resolution diagnostics.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics { get; internal init; } = [];
+
+    /// <summary>The calculated values of this model's objects (section 5.5), or <see langword="null"/> when the project declares none.</summary>
+    internal CalculationHost? Calculated { get; init; }
 
     /// <summary>Every resolved object by id; filled by the resolver.</summary>
     internal IReadOnlyDictionary<string, IResolvedObject> ById { get; init; } = FrozenDictionary<string, IResolvedObject>.Empty;

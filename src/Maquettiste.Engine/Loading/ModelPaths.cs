@@ -21,6 +21,9 @@ internal enum ModelFileKind
     /// <summary><c>extensions/seeds/*.js</c>: a seed's rows script (next-phase-2-design.md section 3.4).</summary>
     SeedScript,
 
+    /// <summary><c>extensions/calculated/*.js</c>: a calculation file (next-phase-2-design.md section 5.5).</summary>
+    CalculationScript,
+
     /// <summary><c>extensions/kinds/*.json</c>: a custom kind file (next-phase-2-design.md section 4.2).</summary>
     CustomKind,
 
@@ -142,6 +145,8 @@ internal sealed class ModelPaths
             return ModelFileKind.RuleScript;
         if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "seeds" && modelPath.EndsWith(".js", StringComparison.Ordinal))
             return ModelFileKind.SeedScript;
+        if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "calculated" && modelPath.EndsWith(".js", StringComparison.Ordinal))
+            return ModelFileKind.CalculationScript;
         if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "kinds" && modelPath.EndsWith(".json", StringComparison.Ordinal))
             return ModelFileKind.CustomKind;
         return null;

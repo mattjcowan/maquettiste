@@ -2,7 +2,9 @@
 // fixture (extensions/*.json) and one script rule (extensions/rules/naming.js), read and written with hashes. A schema is
 // checked against extension.json and written as formatted JSON; a rule is loaded with the browser's own parser, and its
 // rules run over the model's entries when the model validates, so the mock reports x/<id> findings and MQ5002 for a rule
-// file that does not load. The engine runs rules in a sandbox; this mock trusts its own seeded and test-written scripts.
+// file that does not load. A calculation file (extensions/calculated/<name>.js) is loaded the same way for what it declares;
+// the mock never evaluates a calculated value. The engine runs scripts in a sandbox; this mock trusts its own seeded and
+// test-written scripts.
 import Ajv2020 from "ajv/dist/2020";
 import type { components } from "@/api/schema";
 import type { Diagnostic } from "@/api/types";
@@ -15,7 +17,7 @@ type WriteAnswer = { status: 200 | 201 | 404 | 409 | 422; body: S["ExtensionWrit
 type Json = Record<string, unknown>;
 
 const FOLDER = ".maquettiste/extensions";
-const PATH = /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\.json|rules\/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$/;
+const PATH = /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\.json|(?:rules|calculated)\/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$/;
 const MAX_BYTES = 1024 * 1024;
 const checkSchema = new Ajv2020({ strict: false, allErrors: true }).compile(extensionSchema as object);
 
@@ -35,12 +37,22 @@ export function validExtensionPath(path: string): boolean {
   return PATH.test(path);
 }
 
+type FileKind = "schema" | "rule" | "calculated";
+
+function kindOf(path: string): FileKind {
+  return path.startsWith("rules/") ? "rule" : path.startsWith("calculated/") ? "calculated" : "schema";
+}
+
+const ORDER: Record<FileKind, number> = { schema: 0, rule: 1, calculated: 2 };
+
 interface Registered {
   id: string;
   severity: Diagnostic["severity"];
   kinds: string[] | null;
   /** Registered with scope "model": check(model, report) runs once, each finding naming its element. */
   wholeModel: boolean;
+  /** Registered with scope "resolved": the engine runs it on resolved objects after resolution; the mock never does. */
+  resolved: boolean;
   check: (element: unknown, model: unknown, report: (message: string, options?: { pointer?: string; severity?: string }) => void) => void;
   file: string;
 }
@@ -74,11 +86,7 @@ export class MockExtensions {
   }
 
   private sorted(): string[] {
-    return [...this.files.keys()].sort((a, b) => {
-      const ra = a.startsWith("rules/") ? 1 : 0;
-      const rb = b.startsWith("rules/") ? 1 : 0;
-      return ra - rb || (a < b ? -1 : a > b ? 1 : 0);
-    });
+    return [...this.files.keys()].sort((a, b) => ORDER[kindOf(a)] - ORDER[kindOf(b)] || (a < b ? -1 : a > b ? 1 : 0));
   }
 
   list(): S["ExtensionFileList"] {
@@ -86,15 +94,16 @@ export class MockExtensions {
       folder: FOLDER,
       files: this.sorted().map((path) => {
         const text = this.files.get(path)!;
-        const rule = path.startsWith("rules/");
-        const loaded = rule ? this.load(path, text) : null;
+        const kind = kindOf(path);
+        const loaded = kind === "schema" ? null : this.load(path, text);
         return {
           path,
-          kind: rule ? "rule" : "schema",
+          kind,
           size: new TextEncoder().encode(text).length,
           hash: sha256Hex(text),
-          diagnostics: rule ? loaded!.diagnostics : this.schemaProblems(path, text),
-          rules: loaded?.rules.map((r) => ({ id: `x/${r.id}`, severity: r.severity, wholeModel: r.wholeModel })) ?? [],
+          diagnostics: loaded ? loaded.diagnostics : this.schemaProblems(path, text),
+          rules: loaded?.rules.map((r) => ({ id: `x/${r.id}`, severity: r.severity, wholeModel: r.wholeModel, resolved: r.resolved })) ?? [],
+          calculations: loaded?.calculations ?? [],
         };
       }),
     };
@@ -102,7 +111,7 @@ export class MockExtensions {
 
   read(path: string): S["ExtensionFileContent"] | null {
     const text = this.files.get(path);
-    return text === undefined ? null : { path, kind: path.startsWith("rules/") ? "rule" : "schema", hash: sha256Hex(text), text };
+    return text === undefined ? null : { path, kind: kindOf(path), hash: sha256Hex(text), text };
   }
 
   /** `expected` null creates the file (409 when it exists). */
@@ -113,7 +122,7 @@ export class MockExtensions {
       return { status: 422, body: result("invalid", null, { diagnostics: [diagnostic("MQ5004", "An extension file is at most 1 MB.", path)] }) };
     let written = text;
     let diagnostics: Diagnostic[] = [];
-    if (!path.startsWith("rules/")) {
+    if (kindOf(path) === "schema") {
       const problems = this.schemaProblems(path, text);
       if (problems.length) return { status: 422, body: result("invalid", null, { diagnostics: problems }) };
       written = `${JSON.stringify(JSON.parse(text), null, 2)}\n`;
@@ -138,7 +147,7 @@ export class MockExtensions {
   move(from: string, to: string, expected: string): WriteAnswer {
     const disk = this.files.get(from);
     if (disk === undefined) return { status: 404, body: result("not-found", null) };
-    if (from.startsWith("rules/") !== to.startsWith("rules/"))
+    if (kindOf(from) !== kindOf(to))
       return { status: 422, body: result("invalid", null, { diagnostics: [diagnostic("MQ5004", `'${to}' is not the same kind of file as '${from}'.`, to)] }) };
     if (this.files.has(to)) return { status: 422, body: result("invalid", null, { diagnostics: [diagnostic("MQ5004", `'${to}' already exists.`, to)] }) };
     if (sha256Hex(disk) !== expected) return { status: 409, body: result("conflict", sha256Hex(disk), { current: disk }) };
@@ -152,7 +161,7 @@ export class MockExtensions {
   diagnostics(): Diagnostic[] {
     const out: Diagnostic[] = [];
     const rules: Registered[] = [];
-    for (const path of this.sorted().filter((p) => p.startsWith("rules/"))) {
+    for (const path of this.sorted().filter((p) => kindOf(p) !== "schema")) {
       const loaded = this.load(path, this.files.get(path)!);
       out.push(...loaded.diagnostics);
       rules.push(...loaded.rules);
@@ -187,7 +196,7 @@ export class MockExtensions {
         out.push(diagnostic("MQ5002", `Rule 'x/${rule.id}' threw ${String((error as Error).message ?? error)}`, rule.file, { line: 1, column: 1 }));
       }
     }
-    for (const rule of rules.filter((r) => !r.wholeModel))
+    for (const rule of rules.filter((r) => !r.wholeModel && !r.resolved))
       for (const entry of entries) {
         if (rule.kinds && !rule.kinds.includes(String(entry.json.kind))) continue;
         const report = (message: string, options?: { pointer?: string; severity?: string }) =>
@@ -216,18 +225,38 @@ export class MockExtensions {
     return out;
   }
 
-  /** Loads one rule script: its registrations, or MQ5002 for a syntax error or a registration without an id. */
-  private load(path: string, text: string): { rules: Registered[]; diagnostics: Diagnostic[] } {
+  /** Loads one rule script or calculation file: its registrations, or MQ5002 for a syntax error or a malformed registration. */
+  private load(path: string, text: string): { rules: Registered[]; calculations: S["CalculatedValueDeclaration"][]; diagnostics: Diagnostic[] } {
     const rules: Registered[] = [];
+    const calculations: S["CalculatedValueDeclaration"][] = [];
+    const calculationFile = kindOf(path) === "calculated";
     const api = freeze({
+      calculated(spec: Json) {
+        if (!calculationFile) throw new TypeError(`maquettiste.calculated can only be called by a calculation file in extensions/calculated/, not by ${path}.`);
+        const name = typeof spec?.name === "string" ? spec.name : "";
+        if (!/^[a-z][A-Za-z0-9]*$/.test(name) || name.length > 64) throw new TypeError("maquettiste.calculated: name must match ^[a-z][A-Za-z0-9]*$.");
+        if (!Array.isArray(spec.kinds) || !spec.kinds.length) throw new TypeError(`maquettiste.calculated '${name}': kinds is required.`);
+        if (typeof spec.schema !== "object" || spec.schema === null) throw new TypeError(`maquettiste.calculated '${name}': schema is required.`);
+        if (typeof spec.value !== "function") throw new TypeError(`maquettiste.calculated '${name}': value must be a function.`);
+        calculations.push({
+          name,
+          kinds: [...(spec.kinds as string[])].sort(),
+          schema: spec.schema,
+          description: typeof spec.description === "string" ? spec.description : null,
+        });
+      },
       rule(spec: Json) {
         const id = typeof spec?.id === "string" ? spec.id : "";
         if (!id || /\s/.test(id)) throw new TypeError("maquettiste.rule: id must be a non-empty string without whitespace.");
         if (typeof spec.check !== "function") throw new TypeError(`maquettiste.rule '${id}': check must be a function.`);
+        if (calculationFile) throw new TypeError(`maquettiste.rule cannot be called by a calculation file (${path}).`);
         const severity = (spec.severity as Diagnostic["severity"] | undefined) ?? "error";
         const wholeModel = spec.scope === "model";
-        if (spec.scope !== undefined && !wholeModel && spec.scope !== "element")
-          throw new TypeError(`maquettiste.rule '${id}': scope must be 'element' or 'model'.`);
+        const resolved = spec.scope === "resolved";
+        if (spec.scope !== undefined && !wholeModel && !resolved && spec.scope !== "element")
+          throw new TypeError(`maquettiste.rule '${id}': scope must be 'element', 'model' or 'resolved'.`);
+        if (resolved && !(Array.isArray(spec.kinds) && spec.kinds.length))
+          throw new TypeError(`maquettiste.rule '${id}': a rule with scope 'resolved' needs kinds.`);
         if (wholeModel && spec.kinds !== undefined && spec.kinds !== null)
           throw new TypeError(`maquettiste.rule '${id}': a rule with scope 'model' checks the whole model once and takes no kinds.`);
         rules.push({
@@ -235,6 +264,7 @@ export class MockExtensions {
           severity,
           kinds: Array.isArray(spec.kinds) && spec.kinds.length ? (spec.kinds as string[]) : null,
           wholeModel,
+          resolved,
           check: spec.check as Registered["check"],
           file: path,
         });
@@ -242,13 +272,13 @@ export class MockExtensions {
     });
     try {
       new Function("maquettiste", `"use strict";\n${text}`)(api);
-      return { rules, diagnostics: [] };
+      return { rules, calculations, diagnostics: [] };
     } catch (error) {
       const syntax = error instanceof SyntaxError;
       const message = syntax
         ? `Script ${FOLDER}/${path} has a syntax error: ${error.message}`
         : `Script ${FOLDER}/${path} failed while loading: ${String(error)}`;
-      return { rules: [], diagnostics: [diagnostic("MQ5002", message, path, { line: syntaxLine(text), column: 1 })] };
+      return { rules: [], calculations: [], diagnostics: [diagnostic("MQ5002", message, path, { line: syntaxLine(text), column: 1 })] };
     }
   }
 

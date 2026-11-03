@@ -358,7 +358,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
             );
       const result = page(selected, (r) => [r.kind, r.name, r.id], q.get("cursor"), limit);
       if (!result) return problem(400, "bad-request", "The request is not valid.", BAD_CURSOR);
-      return HttpResponse.json({ items: result.items, next: result.next, diagnostics: [] });
+      return HttpResponse.json({ items: result.items, next: result.next, diagnostics: [], calculated: {} });
     }),
     http.get("/api/localization", () => HttpResponse.json(l10n.status() as never)),
     http.get("/api/localization/{locale}/entries", ({ params, request }) => {

@@ -1253,6 +1253,22 @@ them at its designed table. Constants are SQL literals in the statements, not pa
 `AS` (Oracle refuses it; `QuerySql` writes no `AS` either). A soft delete also filters reads. A column marked `database` or
 `computed` that a field maps is read but never written. Inheritance hierarchies are refused by materialize-tables this round.
 
+**Calculated values** (next-phase-2-design.md section 5.5). Every `RAnnotated` has `Calculated`, an `RCalculated`: the
+values the project's calculation files (`extensions/calculated/*.js`, `ModelSnapshot.CalculationScripts`) declare for
+its kind, evaluated on first read. `ModelResolver` takes the engine's long-lived `CalculationService`; a snapshot with
+calculation files gets one `CalculationHost` per resolved model (`ResolvedModel.Calculated`, internal), one without gets
+none and every object shares `RCalculated.Empty`, so a project that declares no value creates no pool and evaluates
+nothing. Partial runs (`ResolveDatabasesAsync`) carry no values. The host loads the files into one pool on first use,
+answers the declarations of a kind, and memoizes each value by (object, name); a miss asks the service's
+`ResolvedResultCache`, then calls `IScriptSandbox.RunCalculation` with a recorder, checks the result against the
+declared schema (MQ5011) and publishes the first finished result, so no thread waits on another. A value that reads
+another evaluates it on another engine and records its keys and its file's `x:` key; a stack of (site, name) per thread
+finds a cycle (MQ5013, the chain starting at its least kind, site and name). The site of an object is its id, or
+`<holder id>/<attribute id>` for an attribute its holder does not own (`ResolvedKinds.SiteOf`), so an inherited
+attribute gets one value per entity. `ResolvedKinds.ObjectsOf` lists every object of some kinds once, in (kind, site)
+order, for whole-model runs; `ObjectsUnder` lists those at and below one object, for a resolved page. Whole-model runs
+evaluate every value in the checks after resolution (`Validation/README.md`).
+
 ## 8. Template packs (W6 loads and plans; W5 renders)
 
 - **Discovery.** Every `templates/<name>/pack.json` whose `name` equals its folder is a pack; `packs.<name>.enabled: false` turns it off. Packs run in ordinal name order. `types/<target>.json` files are type maps for `type_of` (keyword → language type, plus `"nullable": "{type}?"` and `"collection": "IReadOnlyList<{type}>"` patterns). Built-in dialect targets need no file.
@@ -1360,6 +1376,18 @@ Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
   library failure is MQ5002 (a limit MQ5003) at the library's script, and the libraries' hashes fold into every rule
   file's cache key.
 
+- **Calculation files and resolved rules** (next-phase-2-design.md section 5.5). A calculation file is a project script
+  (`IsCalculationScript`): its own function scope, the early freeze, MQ5002, MQ5003 and MQ5005, no library, and only
+  `maquettiste.calculated({ name, kinds, schema, description, value })`, which any other script may not call. The
+  declaration is checked while the file loads (name, resolved kinds, a schema that compiles, no other key, a (name,
+  kind) pair declared once, the later file by path failing). `RunCalculation(name, element, model, ctx)` calls `value`
+  once with its own statement budget and converts the result out as JSON values. `rule({ scope: "resolved", kinds, check
+  })` registers a rule `RunResolvedRule` runs on one resolved object; its `report(message, { pointer, severity })`
+  findings carry the object's id, and `Validation/ResolvedLocations` places them. In the model view every annotated
+  object's `calculated` is a frozen object whose keys are the declared names: a read evaluates through
+  `RCalculated.Read` with the call's recorder, a key enumeration or `in` test records `cv:<kind>` only, and an
+  undeclared name is MQ5012.
+
 ## 11. Hashing and incremental generation (W6)
 
 `H(...)` is SHA-256 over length-prefixed UTF-8 fields, as lowercase hex (`HashBuilder`). Dependency keys:
@@ -1381,12 +1409,19 @@ Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
 | `c:<type>` | the content hash of the custom kind file `extensions/kinds/<type>.json`, or absent; recorded by every `RCustom` of that type and its `RMember`s, so a changed custom kind renders its elements' units again (next-phase-2-design.md section 4.2); `PlanExplainer` words it "The custom kind <type>", cause kind `custom-kind` |
 | `n:<kind>:<form>` | the sorted ids the kind's name index finds under the canonical form, or absent; `seed_named` records `n:seed:<form>`, `custom_named` `n:custom:<type>.<name>` (the batch form), and `table_named` `n:table:<text>` over resolved table names |
 | `ix:<index>:<value>`, `rt:<id>` | as `RuleKeyHasher` hashes them for the rule cache: `ix:` the sorted ids a `withStereotype`, `withTag`, `withProperty` or `byQualifiedName` lookup returns, `rt:` every reference entry to the id; recorded by a scripted seed's rows through the reads of its script run |
+| `cv:<kind>` | `CalculationHost.DeclarationHash(kind)`: `H` over the kind's declared (name, declaring file, file hash) in ordinal order, or absent when the kind declares none; recorded by `has_calculated`, a key enumeration or `in` test of `calculated`, and an undeclared read (next-phase-2-design.md section 5.5) |
 | any key that no longer resolves | `"absent"` |
 
 A seed's scripted rows carry, as their list's membership keys and each row's keys, the seed's keys, the script's `x:`
 key and the keys its run read (`e:`, `k:`, `ix:`, `rt:`), so a unit that read them renders again exactly when the
 script, the seed or something the script read changes; `PlanExplainer` words an `x:` key as "The extension file <path>",
 with the cause kind `inputs`.
+
+A calculated value's reader records the keys the value's call read and the calculation file's `x:` key
+(`x:calculated/<name>.js`), so a unit, a rule or another value that read it runs again exactly when the file or
+something the value read changes. The keys of a value come from its own call (calculation calls record no `t:` or `d:`
+key), and the cache of values hashes them with a `DependencyHasher` over the snapshot and the resolved model, with no
+packs and no schema diffs.
 
 `StaticHash = H("mq-unit-1", EngineVersion.Value, pack name, canonical PackUnit JSON, ScriptsHash, canonical effective parameters, output base, formatter settings or "none", unit key)`. `InputHash = H(StaticHash, key₁, hash₁, key₂, hash₂, …)` over the unit's recorded read keys in ordinal order. A unit is **skipped** when not forced, not in check mode, its `UnitState` exists, the `InputHash` recomputed from the recorded keys equals the stored one, and every recorded output still has the same manifest hash and the same length and mtime on disk (a stat mismatch re-hashes the file). Owned outputs only need to exist. Skipped units keep their manifest entries and state. Because resolved objects carry `r:` keys (§7), a new file that starts contributing to an existing resolved object (a mapping, a table overlay, a relation) changes the recomputed `InputHash` of every unit that read that object, so incremental runs and `--force` runs agree. Rendered units store their new `UnitState` (read keys, hash, outputs with stat) in `CacheDirectory/units/<pack>.v1.bin` when their pack completes, and only in apply mode. A unit whose render fails keeps its previous outputs and state.
 

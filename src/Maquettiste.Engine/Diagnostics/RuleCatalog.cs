@@ -235,10 +235,14 @@ public static class RuleCatalog
         new("MQ4114", W, "A write changed a kept reference row's code, or a reference type's name or plural name, outside the refactor operations, so no value map was recorded."),
 
         new("MQ5001", E, "Property fails its extension schema."),
-        new("MQ5002", E, "Validation rule script error."),
-        new("MQ5003", E, "Validation rule exceeded a sandbox limit."),
+        new("MQ5002", E, "Validation rule or calculation script error."),
+        new("MQ5003", E, "Validation rule or calculation script exceeded a sandbox limit."),
         new("MQ5004", E, "Invalid extension file."),
-        new("MQ5005", W, "A rule or rows script declares top-level let or var variables; it keeps no state between calls, so its results are never cached."),
+        new("MQ5005", W, "A rule, rows or calculation script declares top-level let or var variables; it keeps no state between calls, so its results are never cached."),
+        new("MQ5010", E, "A calculated value failed on an object: its function threw, broke a sandbox limit or returned a value that is not JSON."),
+        new("MQ5011", E, "A calculated value does not fit its schema."),
+        new("MQ5012", E, "A template, script or rule reads a calculated value that is not declared for the object's kind."),
+        new("MQ5013", E, "Calculated values read each other in a cycle."),
 
         new("MQ6001", E, "Invalid pack.json."),
         new("MQ6002", E, "Engine version range not satisfied."),

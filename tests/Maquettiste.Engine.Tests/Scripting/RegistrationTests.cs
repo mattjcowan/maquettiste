@@ -75,7 +75,7 @@ public sealed class RegistrationTests
     [InlineData("maquettiste.rule({ id: 'r', severity: 'fatal', check() {} });", "severity")]
     [InlineData("maquettiste.rule({ id: 'r', kinds: ['widget'], check() {} });", "unknown kind 'widget'")]
     [InlineData("maquettiste.rule({ id: 'r' });", "check must be a function")]
-    [InlineData("maquettiste.rule({ id: 'r', scope: 'file', check() {} });", "scope must be 'element' or 'model'")]
+    [InlineData("maquettiste.rule({ id: 'r', scope: 'file', check() {} });", "scope must be 'element', 'model' or 'resolved'")]
     [InlineData("maquettiste.rule({ id: 'r', check() {} });\nmaquettiste.rule({ id: 'r', check() {} });", "already registered")]
     public void Invalid_registrations_fail_the_pool_with_file_and_line(string code, string expected)
     {

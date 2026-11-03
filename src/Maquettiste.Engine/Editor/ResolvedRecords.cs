@@ -24,8 +24,18 @@ public sealed record ResolvedQuery(string Scope = "all", string? Database = null
 /// has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
 /// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one.</param>
 /// <param name="Diagnostics">When the model has errors, the errors that prevented resolution (and <paramref name="Items"/> is empty);
-/// otherwise empty (validate reports the warnings).</param>
-public sealed record ResolvedPage(IReadOnlyList<object> Items, string? Next, IReadOnlyList<Diagnostic> Diagnostics);
+/// otherwise the failures of the calculated values the page reads (MQ5010, MQ5011, MQ5013), and nothing else (validate reports the
+/// warnings).</param>
+public sealed record ResolvedPage(IReadOnlyList<object> Items, string? Next, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>
+    /// The calculated values (next-phase-2-design.md section 5.5) of the objects on the page and the sub-objects their records list, by
+    /// site (the object's id, or <c>&lt;holder id&gt;/&lt;attribute id&gt;</c> for an attribute its holder does not own), then by name,
+    /// ordinal. A value that fails is left out and its diagnostic is in <see cref="Diagnostics"/>; an object with no value is left out.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> Calculated { get; init; } =
+        System.Collections.Frozen.FrozenDictionary<string, IReadOnlyDictionary<string, object?>>.Empty;
+}
 
 /// <summary>A resolved package.</summary>
 /// <param name="Id">The package id.</param>
@@ -905,8 +915,8 @@ public static class ResolvedRecords
     /// <summary>Every scope name, <c>all</c> first, then the others in <see cref="Scopes"/> order.</summary>
     public static IReadOnlyList<string> ScopeNames { get; } = ["all", .. Scopes.Keys];
 
-    /// <summary>One object of the resolved model with its sort key, projected on demand.</summary>
-    internal readonly record struct Entry(string Kind, string Name, string Id, Func<object> Project);
+    /// <summary>One object of the resolved model with its sort key, projected on demand, and the resolved object itself.</summary>
+    internal readonly record struct Entry(string Kind, string Name, string Id, Func<object> Project, object Source);
 
     /// <summary>The objects of a scope, unordered, narrowed to a database when one is given.</summary>
     /// <param name="model">The resolved model.</param>
@@ -921,85 +931,85 @@ public static class ResolvedRecords
         if (all || scope == "packages")
         {
             foreach (var p in model.Packages)
-                yield return new Entry("package", p.Name, p.Id, () => context.Package(p));
+                yield return new Entry("package", p.Name, p.Id, () => context.Package(p), p);
         }
 
         if (all || scope == "entities")
         {
             foreach (var e in model.Entities.Where(e => databaseName is null || e.Mappings.ContainsKey(databaseName) || e.Bindings.ContainsKey(databaseName)))
-                yield return new Entry("entity", e.Name, e.Id, () => context.Entity(e));
+                yield return new Entry("entity", e.Name, e.Id, () => context.Entity(e), e);
         }
 
         if (all || scope == "relations")
         {
             foreach (var r in model.Relations.Where(r => databaseName is null || r.Mappings.ContainsKey(databaseName)))
-                yield return new Entry("relation", r.Name, r.Id, () => context.Relation(r));
+                yield return new Entry("relation", r.Name, r.Id, () => context.Relation(r), r);
         }
 
         if (all || scope == "enums")
         {
             foreach (var e in model.Enums)
-                yield return new Entry("enum", e.Name, e.Id, () => context.Enum(e));
+                yield return new Entry("enum", e.Name, e.Id, () => context.Enum(e), e);
         }
 
         if (all || scope == "value-objects")
         {
             foreach (var v in model.ValueObjects)
-                yield return new Entry("value-object", v.Name, v.Id, () => context.ValueObject(v));
+                yield return new Entry("value-object", v.Name, v.Id, () => context.ValueObject(v), v);
         }
 
         if (all || scope == "scalar-types")
         {
             foreach (var s in model.ScalarTypes)
-                yield return new Entry("scalar-type", s.Name, s.Id, () => context.ScalarType(s));
+                yield return new Entry("scalar-type", s.Name, s.Id, () => context.ScalarType(s), s);
         }
 
         if (all || scope == "reference-types")
         {
             foreach (var t in model.ReferenceTypes)
-                yield return new Entry("reference-type", t.Name, t.Id, () => context.ReferenceType(t));
+                yield return new Entry("reference-type", t.Name, t.Id, () => context.ReferenceType(t), t);
         }
 
         if (all || scope == "seeds")
         {
             foreach (var s in model.Seeds)
-                yield return new Entry("seed", s.Name, s.Id, () => context.Seed(s));
+                yield return new Entry("seed", s.Name, s.Id, () => context.Seed(s), s);
         }
 
         if (all || scope == "processes")
         {
             foreach (var p in model.Processes)
-                yield return new Entry("process", p.Name, p.Id, () => context.Process(p));
+                yield return new Entry("process", p.Name, p.Id, () => context.Process(p), p);
         }
 
         if (all || scope == "actors")
         {
             foreach (var a in model.Actors)
-                yield return new Entry("actor", a.Name, a.Id, () => context.Actor(a));
+                yield return new Entry("actor", a.Name, a.Id, () => context.Actor(a), a);
         }
 
         if (all || scope == "scenarios")
         {
             foreach (var s in model.Scenarios)
-                yield return new Entry("scenario", s.Name, s.Id, () => context.Scenario(s));
+                yield return new Entry("scenario", s.Name, s.Id, () => context.Scenario(s), s);
         }
 
         if (all || scope == "operations")
         {
             foreach (var o in model.Operations)
-                yield return new Entry("operation", o.Name, o.Id, () => context.Operation(o));
+                yield return new Entry("operation", o.Name, o.Id, () => context.Operation(o), o);
         }
 
         if (all || scope == "custom-elements")
         {
             foreach (var c in model.CustomElements)
-                yield return new Entry("custom", c.Name, c.Id, () => context.Custom(c));
+                yield return new Entry("custom", c.Name, c.Id, () => context.Custom(c), c);
         }
 
         if (all || scope == "databases")
         {
             foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
-                yield return new Entry("database", d.Name, d.Id, () => Database(d));
+                yield return new Entry("database", d.Name, d.Id, () => Database(d), d);
         }
 
         if (all || scope == "migrations")
@@ -1010,7 +1020,7 @@ public static class ResolvedRecords
                 foreach (var m in d.Migrations)
                 {
                     yield return new Entry("migration", d.Name + "\u0001" + m.Order.ToString("D10", System.Globalization.CultureInfo.InvariantCulture), m.Id,
-                        () => Migration(m));
+                        () => Migration(m), m);
                 }
             }
         }
@@ -1020,7 +1030,7 @@ public static class ResolvedRecords
             foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
             {
                 foreach (var t in d.Tables)
-                    yield return new Entry("table", t.Name, t.Key, () => new TableRecord(t.Key, "table", t.Name, d.Id, DatabaseViews.Table(t)));
+                    yield return new Entry("table", t.Name, t.Key, () => new TableRecord(t.Key, "table", t.Name, d.Id, DatabaseViews.Table(t)), t);
             }
         }
 
@@ -1029,7 +1039,7 @@ public static class ResolvedRecords
             foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
             {
                 foreach (var q in d.Queries)
-                    yield return new Entry("query", q.Name, q.Id, () => new QueryRecord(q.Id, "query", q.Name, d.Id, QueryViews.Project(q)));
+                    yield return new Entry("query", q.Name, q.Id, () => new QueryRecord(q.Id, "query", q.Name, d.Id, QueryViews.Project(q)), q);
             }
         }
 
@@ -1040,17 +1050,17 @@ public static class ResolvedRecords
                 if (scope == "routines")
                 {
                     foreach (var r in d.Routines)
-                        yield return new Entry("routine", r.Name, r.Id, () => new RoutineRecord(r.Id, "routine", r.Name, d.Id, DatabaseViews.ProjectRoutine(r)));
+                        yield return new Entry("routine", r.Name, r.Id, () => new RoutineRecord(r.Id, "routine", r.Name, d.Id, DatabaseViews.ProjectRoutine(r)), r);
                 }
                 else if (scope == "database-types")
                 {
                     foreach (var t in d.Types)
-                        yield return new Entry("database-type", t.Name, t.Id, () => new DatabaseTypeRecord(t.Id, "database-type", t.Name, d.Id, DatabaseViews.ProjectType(t)));
+                        yield return new Entry("database-type", t.Name, t.Id, () => new DatabaseTypeRecord(t.Id, "database-type", t.Name, d.Id, DatabaseViews.ProjectType(t)), t);
                 }
                 else
                 {
                     foreach (var o in d.Objects)
-                        yield return new Entry("sql-object", o.Name, o.Id, () => new SqlObjectRecord(o.Id, "sql-object", o.Name, d.Id, DatabaseViews.ProjectObject(o)));
+                        yield return new Entry("sql-object", o.Name, o.Id, () => new SqlObjectRecord(o.Id, "sql-object", o.Name, d.Id, DatabaseViews.ProjectObject(o)), o);
                 }
             }
         }

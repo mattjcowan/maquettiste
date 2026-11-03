@@ -228,6 +228,15 @@ or `find` (read `stereotypes` and `tags`), everything copied counts as read, and
 An absent value is null in scripts as in templates, never `""`: a database object's `displayName` without one, a view's
 `body` without text for the dialect.
 
+**Calculated values.** A project can define named values once in `extensions/calculated/*.js` (docs/user-guide.md,
+"Calculated values"), such as an entity's `publicName`. Templates read them as `{{ element.calculated.publicName }}`,
+scripts and helpers as `e.calculated.publicName`; a value is evaluated the first time a unit reads it, and a unit that
+read one is planned again when that value changes. Reading a name the object's kind does not declare fails the unit with
+MQ5012, so a pack that works with or without a value tests first: `{{ if has_calculated element "publicName" }}` in a
+template (it evaluates nothing), `"publicName" in e.calculated` in a script. A plain helper's copies carry every value
+of an argument's object (at the first hop only). `get_template_context` lists `calculated.<name>` among the scope's
+members. `has_calculated` is a reserved helper name (MQ6013).
+
 ### 7. Type maps
 
 `types/<target>.json` maps built-in type keywords (and optionally enum, value object and scalar type names) to a language's

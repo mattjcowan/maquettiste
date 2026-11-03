@@ -117,7 +117,7 @@ internal static class BuiltinHelpers
     /// <summary>The helper names this class registers.</summary>
     public static readonly FrozenSet<string> Names = FrozenSet.Create(StringComparer.Ordinal,
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
-        "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_tag", "in_category", "lookup",
+        "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_calculated", "has_tag", "in_category", "lookup",
         "banner", "file", "row", "row_uuid", "stable_id", "seed_named", "custom_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
         "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
         "binding_sql", "binding_sql_parameters", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort", "exported");
@@ -201,6 +201,7 @@ internal static class BuiltinHelpers
         Add(builtins, "column_named", 2, 2, (c, a) => ColumnNamed(c, a[0], a[1]));
         Add(builtins, "toposort", 2, 2, (_, a) => Toposort(a[0], a[1]));
         Add(builtins, "has_stereotype", 2, 2, (c, a) => HasStereotype(c, a[0], AsText(a[1])));
+        Add(builtins, "has_calculated", 2, 2, (c, a) => HasCalculated(c, a[0], AsText(a[1])));
         Add(builtins, "has_tag", 2, 2, (c, a) => HasTag(c, a[0], AsText(a[1])));
         Add(builtins, "in_category", 2, 2, (c, a) => InCategory(c, a[0], AsText(a[1])));
         Add(builtins, "lookup", 1, 1, (c, a) => Lookup(c, AsText(a[0])));
@@ -1076,6 +1077,13 @@ internal static class BuiltinHelpers
             case IResolvedObject r:
                 context.Recorder.RecordObject(r);
                 throw new RenderHelperException("MQ6006", $"`json` cannot serialize a {r.Kind}; pass plain values (for example `element.properties`).");
+            case CalculatedView calculated:
+                // Every declared value of the object, by name (next-phase-2-design.md section 5.5).
+                WriteObject(context, writer, calculated, depth);
+                return;
+            case RCalculated calculated:
+                WriteObject(context, writer, new CalculatedView(calculated, context), depth);
+                return;
             case IScriptCustomFunction:
                 throw new RenderHelperException("MQ6006", "`json` cannot serialize a function.");
         }
@@ -1124,6 +1132,18 @@ internal static class BuiltinHelpers
 
         writer.WriteEndObject();
     }
+
+    /// <summary>
+    /// <c>has_calculated &lt;object&gt; "&lt;name&gt;"</c> (next-phase-2-design.md section 5.5): whether the object's kind declares the
+    /// calculated value. Evaluates nothing; records what the kind declares (<c>cv:&lt;kind&gt;</c>), so the unit renders again when a
+    /// calculation file adds or drops the name.
+    /// </summary>
+    private static bool HasCalculated(TrackingTemplateContext context, object? value, string name) => value switch
+    {
+        RAnnotated element => RCalculated.Of(element).Declares(name, context.Recorder),
+        null or IResolvedObject => false,
+        _ => throw new RenderHelperException("MQ6006", "`has_calculated` takes a model element."),
+    };
 
     private static bool HasStereotype(TrackingTemplateContext context, object? value, string key)
     {

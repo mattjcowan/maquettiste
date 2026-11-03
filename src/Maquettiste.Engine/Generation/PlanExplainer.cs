@@ -266,7 +266,7 @@ internal static class PlanExplainer
         "exports" => ExportsOf(key) is (var pack, { } id)
             ? "The exports of " + (Label(id, nameOf) ?? "element " + id) + " from " + pack
             : "The model exports of " + key[3..],
-        _ => NamedInput(key) ?? ExtensionFile(key) ?? "Input " + key,
+        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? "Input " + key,
     };
 
     /// <summary>
@@ -275,6 +275,13 @@ internal static class PlanExplainer
     /// </summary>
     private static string? ExtensionFile(string key) =>
         key.StartsWith("x:", StringComparison.Ordinal) && key.Length > 2 ? "The extension file " + key[2..] : null;
+
+    /// <summary>
+    /// A <c>cv:&lt;kind&gt;</c> key's words (next-phase-2-design.md section 5.5): "The calculated values declared for entity". Its cause
+    /// kind stays <c>inputs</c>.
+    /// </summary>
+    private static string? CalculatedDeclarations(string key) =>
+        key.StartsWith("cv:", StringComparison.Ordinal) && key.Length > 3 ? "The calculated values declared for " + key[3..] : null;
 
     /// <summary>
     /// An <c>n:&lt;kind&gt;:&lt;form&gt;</c> key's words (next-phase-1-design.md sections 5.3 and 5.5): "The seeds named currencies",

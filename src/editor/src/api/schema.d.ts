@@ -1575,8 +1575,10 @@ export interface paths {
          *     (MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not
          *     call `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level
          *     (MQ5005, a warning). Then the custom kinds (`kinds/<type>.json`, kind `custom-kind`), with MQ1001 or MQ1002 when one does not
-         *     parse or pass `custom-kind.json` and its own findings (MQ1017, MQ1018, MQ2009, MQ7212). No rows script runs. Rule findings
-         *     (`x/<id>`) come from `POST /api/validate`.
+         *     parse or pass `custom-kind.json` and its own findings (MQ1017, MQ1018, MQ2009, MQ7212). Then the calculation files
+         *     (`calculated/<name>.js`, kind `calculated`), each loaded alone: MQ5002 or MQ5003 when one does not load, MQ5005 for a top-level
+         *     `let` or `var`, and `calculations`, what it declares. No rows script runs and no calculated value is evaluated. Rule findings
+         *     (`x/<id>`) come from `POST /api/validate`; `resolved` marks a rule registered with scope "resolved".
          */
         get: operations["listExtensionFiles"];
         put?: never;
@@ -1610,8 +1612,10 @@ export interface paths {
          *     reach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not
          *     load or does not register its rows exactly once comes back as MQ7127. A custom kind (`kinds/<type>.json`) must be JSON that
          *     passes `custom-kind.json`, else 422 (MQ1001, MQ1002); it is written in canonical form, and `diagnostics` carry its own findings
-         *     and the MQ3033 findings of the elements of its type (at most 50, then a line with the count), which never refuse it. A path
-         *     other than `<name>.json`, `rules/<name>.js`, `seeds/<name>.js` or `kinds/<type>.json`, or one through a link, is 400.
+         *     and the MQ3033 findings of the elements of its type (at most 50, then a line with the count), which never refuse it. A
+         *     calculation file (`calculated/<name>.js`) is written as sent and loaded alone, never evaluated: MQ5002, MQ5003 and MQ5005 come
+         *     back at once. A path other than `<name>.json`, `rules/<name>.js`, `seeds/<name>.js`, `kinds/<type>.json` or
+         *     `calculated/<name>.js`, or one through a link, is 400.
          */
         put: operations["putExtensionFile"];
         post?: never;
@@ -1638,7 +1642,8 @@ export interface paths {
         /**
          * Rename one extension file within its kind
          * @description `If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a
-         *     `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`, a custom kind a `kinds/<type>.json`), else 422.
+         *     `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`, a custom kind a `kinds/<type>.json`, a
+         *     calculation file a `calculated/<name>.js`), else 422.
          *     A custom kind that custom elements use is 422, with one MQ1019 per element that would lose its kind, as a delete is. Nothing
          *     else changes: a seed whose `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.
          */
@@ -3353,8 +3358,14 @@ export interface components {
             items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
-            /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty. */
+            /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise the failures of the calculated values the page reads (MQ5010, MQ5011, MQ5013). */
             diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description The calculated values (`extensions/calculated/*.js`) of the records on the page and the sub-objects they list, by site (the object's id, or `<holder id>/<attribute id>` for an attribute its holder does not own), then by name, ordinal. A value that fails is left out and its diagnostic is in `diagnostics`; an object with no value is left out. */
+            calculated: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
         };
         /** @description The annotations every conceptual record carries (`RAnnotated`): the display and plural names fall back to the name and the inflector. */
         ResolvedAnnotations: {
@@ -5402,11 +5413,13 @@ export interface components {
             path: string;
             /** @description For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); empty for a schema. */
             rules: components["schemas"]["ExtensionRuleInfo"][];
+            /** @description For a calculation file that loads, the calculated values it declares, in call order; empty for every other file. */
+            calculations: components["schemas"]["CalculatedValueDeclaration"][];
             /**
-             * @description `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows script, `seeds/<name>.js`) or `custom-kind` (a custom kind, `kinds/<type>.json`).
+             * @description `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows script, `seeds/<name>.js`), `custom-kind` (a custom kind, `kinds/<type>.json`) or `calculated` (a calculation file, `calculated/<name>.js`).
              * @enum {string}
              */
-            kind: "schema" | "rule" | "seed-rows" | "custom-kind";
+            kind: "schema" | "rule" | "seed-rows" | "custom-kind" | "calculated";
             size: number;
             hash: components["schemas"]["Hash"];
             diagnostics: components["schemas"]["Diagnostic"][];
@@ -5416,11 +5429,22 @@ export interface components {
             severity: components["schemas"]["DiagnosticSeverity"];
             /** @description The rule was registered with scope "model": check(model, report) runs once per whole-model validation (validate, generation), not per element, and a validation of some elements (a save) skips it. */
             wholeModel: boolean;
+            /** @description The rule was registered with scope "resolved": check(element, model, report) runs on each resolved object of its kinds in the checks after resolution (validate, generation), never on element saves or in previews. */
+            resolved: boolean;
+        };
+        /** @description What one `maquettiste.calculated` call in a calculation file declares. */
+        CalculatedValueDeclaration: {
+            name: string;
+            /** @description The resolved kinds whose objects get the value, ordinal. */
+            kinds: string[];
+            /** @description The JSON Schema every value must fit. */
+            schema: unknown;
+            description: string | null;
         };
         ExtensionFileContent: {
             path: string;
             /** @enum {string} */
-            kind: "schema" | "rule" | "seed-rows" | "custom-kind";
+            kind: "schema" | "rule" | "seed-rows" | "custom-kind" | "calculated";
             hash: components["schemas"]["Hash"];
             text: string;
         };

@@ -41,9 +41,11 @@ public sealed class ModelSnapshot
         StereotypeDefaults stereotypeDefaults,
         ImmutableArray<ScriptSource> seedScripts,
         ImmutableArray<CustomKindDocument> customKinds,
-        IReadOnlyList<ScriptLibrarySource> scriptLibraries)
+        IReadOnlyList<ScriptLibrarySource> scriptLibraries,
+        ImmutableArray<ScriptSource> calculationScripts)
     {
         ScriptLibraries = scriptLibraries;
+        CalculationScripts = calculationScripts;
         Version = version;
         Settings = settings;
         SettingsHash = settingsHash;
@@ -112,6 +114,7 @@ public sealed class ModelSnapshot
     /// <param name="seedScripts">The rows scripts from <c>extensions/seeds/</c> (next-phase-2-design.md section 3.4).</param>
     /// <param name="customKinds">The custom kind files from <c>extensions/kinds/</c> (next-phase-2-design.md section 4.2).</param>
     /// <param name="scriptLibraries">The closure of <c>maquettiste.json</c>'s uses, in dependency order (library packs).</param>
+    /// <param name="calculationScripts">The calculation files from <c>extensions/calculated/</c> (next-phase-2-design.md section 5.5).</param>
     /// <returns>The snapshot.</returns>
     public static ModelSnapshot Create(
         IEnumerable<ElementDocument> documents,
@@ -124,15 +127,17 @@ public sealed class ModelSnapshot
         IReadOnlyList<LocaleShardDocument>? localeShards = null,
         IReadOnlyList<ScriptSource>? seedScripts = null,
         IReadOnlyList<CustomKindDocument>? customKinds = null,
-        IReadOnlyList<ScriptLibrarySource>? scriptLibraries = null) =>
+        IReadOnlyList<ScriptLibrarySource>? scriptLibraries = null,
+        IReadOnlyList<ScriptSource>? calculationScripts = null) =>
         CreateAfter(null, documents, settings, settingsHash, extensions, ruleScripts, version, loadDiagnostics, ModelIndexer.DefaultParallelism,
-            CancellationToken.None, localeShards, seedScripts, customKinds, scriptLibraries);
+            CancellationToken.None, localeShards, seedScripts, customKinds, scriptLibraries, calculationScripts);
 
     /// <summary>
     /// <see cref="Create"/> after the store's previous snapshot, whose indexes are patched when few documents changed (the result
     /// is the same as without it), walking at most <paramref name="parallelism"/> documents at once and observing
     /// <paramref name="ct"/> (the loader and the store pass <see cref="EngineOptions.EffectiveParallelism"/> and their token). Without
-    /// <paramref name="localeShards"/>, <paramref name="seedScripts"/>, <paramref name="customKinds"/> or <paramref name="scriptLibraries"/> the previous snapshot's are kept.
+    /// <paramref name="localeShards"/>, <paramref name="seedScripts"/>, <paramref name="customKinds"/>, <paramref name="scriptLibraries"/> or
+    /// <paramref name="calculationScripts"/> the previous snapshot's are kept.
     /// </summary>
     internal static ModelSnapshot CreateAfter(
         ModelSnapshot? previous,
@@ -148,7 +153,8 @@ public sealed class ModelSnapshot
         IReadOnlyList<LocaleShardDocument>? localeShards = null,
         IReadOnlyList<ScriptSource>? seedScripts = null,
         IReadOnlyList<CustomKindDocument>? customKinds = null,
-        IReadOnlyList<ScriptLibrarySource>? scriptLibraries = null)
+        IReadOnlyList<ScriptLibrarySource>? scriptLibraries = null,
+        IReadOnlyList<ScriptSource>? calculationScripts = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(settings);
@@ -181,7 +187,8 @@ public sealed class ModelSnapshot
             stereotypeDefaults,
             [.. (seedScripts ?? previous?.SeedScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)],
             kinds,
-            scriptLibraries ?? previous?.ScriptLibraries ?? []);
+            scriptLibraries ?? previous?.ScriptLibraries ?? [],
+            [.. (calculationScripts ?? previous?.CalculationScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)]);
     }
 
     /// <summary>The snapshot version.</summary>
@@ -216,6 +223,12 @@ public sealed class ModelSnapshot
     /// only when something reads the rows of a seed that names one (<c>rowsFrom.script</c>).
     /// </summary>
     public IReadOnlyList<ScriptSource> SeedScripts { get; }
+
+    /// <summary>
+    /// The calculation files of <c>extensions/calculated/*.js</c> (next-phase-2-design.md section 5.5), ordinal by path: read with the
+    /// model, run only when something reads a calculated value. Empty for a project that declares none, which then pays nothing.
+    /// </summary>
+    public IReadOnlyList<ScriptSource> CalculationScripts { get; }
 
     /// <summary>
     /// The custom kind files of <c>extensions/kinds/*.json</c> that read (next-phase-2-design.md section 4.2), ordinal by type, then by

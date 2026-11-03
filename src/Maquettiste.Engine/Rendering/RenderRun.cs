@@ -975,6 +975,12 @@ internal sealed class UnitRun : IScriptLibraryCalls
                     return [Located("MQ6050", read.Message, located), .. read.Record];
                 case RenderHelperException helper:
                     return [Located(helper.Rule, helper.Message, located)];
+                case CalculatedValueException calculated:
+                    // A calculated value the template read (next-phase-2-design.md section 5.5): an undeclared name is MQ5012 at the
+                    // template's line; a value that failed fails the unit with that value's own diagnostic.
+                    return [string.Equals(calculated.Diagnostic.Rule, "MQ5012", StringComparison.Ordinal)
+                        ? Located("MQ5012", calculated.Diagnostic.Message, located)
+                        : calculated.Diagnostic];
                 case System.Text.RegularExpressions.RegexMatchTimeoutException timeout:
                     return [Located("MQ6007", $"A regular expression ran longer than its {timeout.MatchTimeout.TotalMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} ms limit (pattern `{timeout.Pattern}`).", located)];
                 case Scriban.Syntax.ScriptRuntimeException runtime when located is null:

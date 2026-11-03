@@ -28,6 +28,9 @@ Built-in rules (`RuleCatalog` ids), extension schema evaluation, JavaScript rule
 | `MigrationRules.cs` | Migration facts (next-phase-1-design.md section 3.2): MQ4101 (missing intent, one finding per missing field; a held fact is complete until released; the widening table decides when a type change narrows and so needs a data check), MQ4106 (fields that do not fit the fact's type; a value map changes a name or maps codes in a column or collection, with no chain), MQ4113 (a value map that maps away a live code of its reference type, next-phase-2-design.md section 3.5), MQ4108 (a dialect map without the database's dialect or `*`), MQ4056 (a fact outside PostgreSQL), and from `FactGraph`, built once per run over every fact: MQ4104 (after cycles, on each fact of the cycle), MQ4105, MQ4111 and MQ4107 (on the later fact of an unordered pair, by recorded keys). A fact's conflict peers are its database's facts and the facts whose `after` names it; for a deleted fact, the store adds the facts whose `after` named it (their MQ4111). Stale facts (MQ4103) and unexplained changes (MQ4102) need a resolved model or a baseline and are not here. Tested in `Validation/MigrationRulesTests.cs` and the `migrations` fixture |
 | `BrandingRules.cs` | `maquettiste.json` `branding`, whole-model only: MQ8001 (a color that is not `#rrggbb` or `#rgb`), MQ8002 (an icon path outside `branding/<name>.svg|png`, or a missing file), MQ8003 (an icon that is not a safe SVG or a PNG of at most 512 KB; `Branding/BrandingIcons.Inspect` decides, and the editor's upload and read use it too). Reads the icon from the model root. Tested in `Validation/BrandingRulesTests.cs` |
 | `SaveRules.cs` | MQ3020 |
+| `ResolvedChecks.cs` | The checks after resolution (next-phase-2-design.md section 5.5): every calculated value (MQ5010 to MQ5013) and the rules registered with `scope: "resolved"` |
+| `ResolvedLocations.cs` | Where a finding on a resolved object goes (file and pointer), for the checks after resolution |
+| `ResolvedResultCache.cs` | Calculated values and resolved rule results by (name or rule id, kind, site) and the keys they read |
 | `SarifWriter.cs` | SARIF 2.1.0 |
 | `Positions.cs` | Line and column per diagnostic (`PointerLocator`) |
 
@@ -134,3 +137,25 @@ Tests: `tests/Maquettiste.Engine.Tests/Validation/`; fixtures under `tests/fixtu
 - `ReferenceDataRules.CheckSeed` reports a scripted seed's MQ7116, MQ7127, MQ7128 and MQ5005 first, then runs the row
   rules on the scripted rows; their findings point at `/rowsFrom/script` and name the row by its key in seed terms, a
   string in single quotes as written (`Scripted row 'R&D': ...`).
+
+## The checks after resolution (next-phase-2-design.md section 5.5)
+
+- `ResolvedChecks.RunAsync(snapshot, resolved)` runs on a model whose validation has no error, once per snapshot, from
+  the store's resolver findings (`ModelStore.ResolverFindings.cs`), so every validate path reports them, and from
+  `GenerationRun` before planning, which stops on an error they report. Element saves and previews never run them.
+- It evaluates every calculated value (`CalculationHost.EvaluateAll`, in parallel, each failure once on the value and
+  object that failed), then runs each resolved rule once per object of its kinds (`ResolvedKinds.ObjectsOf`, an
+  attribute copy once per holder) in a pool of the rule files with the project's script libraries. Both share one cache
+  ticket, so a whole-model run sweeps what it did not use from `ResolvedResultCache`.
+- `ResolvedCheckResult` keeps the calculation failures and the rule findings apart: `includeScriptRules: false` drops
+  the findings and keeps the failures. A scoped validate keeps what falls on its elements.
+- Results are cached per (rule id or value name, kind, site) with the file's hash (a rule's folded with its libraries'),
+  the limits and the sorted keys the call read with their hashes. Raw findings are cached before location and
+  `validation.rules` apply, so a renamed file never serves a stale path; `off` skips the rule. Failures, a file with
+  MQ5005 and a value that read a failed value are never cached.
+- `ResolvedLocations.Place` locates a raw finding; the first rule that applies wins: (1) an attribute whose site is
+  `<holder id>/<attribute id>` takes its holder's location; (2) an id the index holds takes its owner's file and the
+  entry's pointer; (3) a column takes its table's location, and a table without an index entry its overlay file
+  (`RTable.FileId`), else its entity's, relation's or owning attribute's; (4) another synthesized key takes the location
+  of the id it starts with; (5) otherwise no file. A finding's own pointer joins the entry's, and is dropped on a
+  holder's location.

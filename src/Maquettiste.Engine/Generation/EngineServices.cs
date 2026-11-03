@@ -63,6 +63,15 @@ internal sealed record EngineServices
     /// </summary>
     public SeedRowsCache SeedRows { get; init; } = new();
 
+    /// <summary>The calculated values service (next-phase-2-design.md section 5.5): the resolver's, whose cache outlives every model.</summary>
+    public CalculationService? Calculations { get; init; }
+
+    /// <summary>
+    /// The checks after resolution (next-phase-2-design.md section 5.5): calculated values and resolved rules, on whole-model runs. A
+    /// copy made with other <see cref="Scripts"/> or <see cref="Calculations"/> sets its own.
+    /// </summary>
+    internal Validation.ResolvedChecks? Checks { get; init; }
+
     /// <summary>Part of stage 4: the pack loader.</summary>
     public required IPackLoader Packs { get; init; }
 
@@ -143,7 +152,8 @@ internal sealed record EngineServices
         var scripts = new ScriptSandboxFactory();
         var formatters = new FormatterRunner(options);
         var seedRows = new SeedRowsCache();
-        var resolver = new ModelResolver(options, scripts, seedRows);
+        var calculations = new CalculationService(scripts, options.EffectiveParallelism);
+        var resolver = new ModelResolver(options, scripts, seedRows, calculations);
         var services = new EngineServices
         {
             Options = options,
@@ -151,10 +161,12 @@ internal sealed record EngineServices
             Schemas = schemas,
             Json = json,
             Loader = new ModelLoader(options, schemas, json, enginePaths, documents),
-            Validator = new ModelValidator(options, schemas, scripts, resolver, seedRows),
+            Validator = new ModelValidator(options, schemas, scripts, resolver, seedRows, calculations),
             Resolver = resolver,
             Scripts = scripts,
             SeedRows = seedRows,
+            Calculations = calculations,
+            Checks = new Validation.ResolvedChecks(options, scripts, calculations),
             Packs = new PackLoader(options, schemas),
             Planner = new UnitPlanner(options),
             ChangeDetector = new ChangeDetector(options),

@@ -11,7 +11,7 @@ public sealed class McpSurfaceTests
     private static readonly string[] Tools =
     [
         "apply_batch", "apply_plan", "compare_snapshots", "create_element", "create_seed", "create_snapshot", "delete_element", "delete_extension_file", "delete_pack", "delete_pack_file", "explain_unit",
-        "export_process", "export_seed_csv", "fold_migrations", "format_model", "generate", "get_binding_drift", "get_database_view", "get_element", "get_elements", "get_ledger_ddl", "get_materialize_status", "get_model_index", "get_model_kinds", "get_pack",
+        "export_process", "export_seed_csv", "fold_migrations", "format_model", "generate", "get_binding_drift", "get_calculated", "get_database_view", "get_element", "get_elements", "get_ledger_ddl", "get_materialize_status", "get_model_index", "get_model_kinds", "get_pack",
         "get_pack_exports", "get_pack_outputs", "get_plan", "get_plan_diff", "get_project", "get_references", "get_resolved_model", "get_schema", "get_settings", "get_template_context",
         "get_translations", "import_process", "import_seed_csv", "list_extension_files", "list_migrations", "list_pack_files", "list_packs", "list_snapshots", "list_validation_rules",
         "localization_status", "move_extension_file", "move_pack_file", "new_pack", "patch_element", "plan", "preview_binding_sql", "preview_materialize", "preview_query_sql", "preview_seed_rows", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
@@ -55,7 +55,7 @@ public sealed class McpSurfaceTests
         var ct = TestContext.Current.CancellationToken;
         await using var session = await McpSession.StartAsync(ct: ct);
         var tools = await session.Client.ListToolsAsync(cancellationToken: ct);
-        Assert.Equal(29, Engine.AgentTools.All.Count);
+        Assert.Equal(30, Engine.AgentTools.All.Count);
         foreach (var tool in Engine.AgentTools.All)
         {
             var listed = tools.Single(t => t.Name == tool.Name).ProtocolTool;
@@ -598,6 +598,58 @@ public sealed class McpEndOfInputTests
 /// <summary>The read tools return the editor API's bodies.</summary>
 public sealed class McpReadTests
 {
+    [Fact]
+    public async Task Get_resolved_model_pages_carry_calculated_values()
+    {
+        // next-phase-2-design.md section 5.5: a page carries the calculated values of its records and the sub-objects they list, by
+        // site then name; a value that fails is left out and its diagnostic joins the page's.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        repo.Write(".maquettiste/extensions/calculated/names.js", """
+            maquettiste.calculated({
+              name: "apiName",
+              kinds: ["entity"],
+              schema: { type: "string" },
+              value(entity) { return entity.name.toLowerCase(); },
+            });
+            maquettiste.calculated({
+              name: "broken",
+              kinds: ["entity"],
+              schema: { type: "string" },
+              value(entity) { throw new Error("no value for " + entity.name); },
+            });
+            maquettiste.calculated({
+              name: "label",
+              kinds: ["attribute"],
+              schema: { type: "string" },
+              value(attribute) { return "attribute " + attribute.name; },
+            });
+
+            """);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var page = await session.OkAsync("get_resolved_model", new { scope = "entities", limit = 1 });
+        var entity = Assert.Single(page["items"]!.AsArray())!;
+        var calculated = page["calculated"]!.AsObject();
+        var own = calculated[(string)entity["id"]!]!.AsObject();
+        Assert.Equal([("apiName", ((string)entity["name"]!).ToLowerInvariant())], own.Select(p => (p.Key, (string)p.Value!)));
+        Assert.NotEmpty(entity["attributes"]!.AsArray());
+        foreach (var attribute in entity["attributes"]!.AsArray())
+        {
+            // An attribute the entity does not own (inherited, a stereotype's) is keyed <holder id>/<attribute id>.
+            var id = (string)attribute!["id"]!;
+            Assert.Contains(calculated, p => (p.Key == id || p.Key == (string)entity["id"]! + "/" + id)
+                && (string?)p.Value!["label"] == "attribute " + (string)attribute["name"]!);
+        }
+
+        var failure = Assert.Single(page["diagnostics"]!.AsArray())!;
+        Assert.Equal(("MQ5010", (string)entity["id"]!), ((string)failure["rule"]!, (string)failure["elementId"]!));
+        Assert.Contains("no value for " + (string)entity["name"]!, (string)failure["message"]!, StringComparison.Ordinal);
+
+        // A scope without a declaring kind carries none.
+        Assert.Empty((await session.OkAsync("get_resolved_model", new { scope = "enums", limit = 5 }))["calculated"]!.AsObject());
+    }
+
     [Fact]
     public async Task Get_model_index_lists_an_operation_row()
     {

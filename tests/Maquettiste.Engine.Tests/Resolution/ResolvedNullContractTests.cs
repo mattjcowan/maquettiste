@@ -64,6 +64,8 @@ public sealed class ResolvedNullContractTests
     /// <summary>Resolved view types neither a fixture model nor <see cref="Uncovered"/> reaches, and why.</summary>
     private static readonly IReadOnlyDictionary<string, string> Unreached = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        // What a failed calculated value throws (next-phase-2-design.md section 5.5): an exception, not a view; no object holds one.
+        ["CalculatedValueException"] = "an exception that reads of calculated values throw: CalculationEvaluationTests",
         // Migration facts need a baseline and a recorded change; MigrationResolutionTests resolves them.
         ["RMigration"] = "migration facts: MigrationResolutionTests",
         ["RMigrationObject"] = "migration facts: MigrationResolutionTests",
@@ -329,5 +331,27 @@ public sealed class ResolvedNullContractTests
         {
             Directory.Delete(cache, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Calculated_is_never_null()
+    {
+        var kit = new CalculationKit();
+        var without = kit.Resolve(CalculationKit.Snapshot(CalculationKit.Billing()));
+        var with = kit.Resolve(CalculationKit.Snapshot(CalculationKit.Billing(),
+            CalculationKit.File("a.js", "maquettiste.calculated({ name: 'a', kinds: ['entity'], schema: {}, value() { return 1; } });")));
+
+        foreach (var model in new[] { without, with })
+        {
+            foreach (var value in ResolvedKinds.ObjectsOf(model, ResolvedKinds.All))
+                Assert.NotNull(value.Calculated);
+        }
+
+        Assert.Same(RCalculated.Empty, without.Entities[0].Calculated);
+        Assert.NotSame(RCalculated.Empty, with.Entities[0].Calculated);
+        Assert.Contains("entity", ResolvedKinds.All);
+        Assert.Contains("migration", ResolvedKinds.All);
+        Assert.DoesNotContain("diagram", ResolvedKinds.All);
+        Assert.Equal(typeof(REntity), ResolvedKinds.TypeOf("entity"));
     }
 }
