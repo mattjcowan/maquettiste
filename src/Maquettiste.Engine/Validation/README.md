@@ -159,3 +159,37 @@ Tests: `tests/Maquettiste.Engine.Tests/Validation/`; fixtures under `tests/fixtu
   (`RTable.FileId`), else its entity's, relation's or owning attribute's; (4) another synthesized key takes the location
   of the id it starts with; (5) otherwise no file. A finding's own pointer joins the entry's, and is dropped on a
   holder's location.
+
+## Declared rules (next-phase-2-design.md section 5.6)
+
+- `extensions/rules/*.json` loads into `ModelSnapshot.DeclaredRules` (valid files only, ordinal by path); a file that
+  fails `declared-rules.json` is MQ5014, a load diagnostic, and declares nothing.
+- Static checks (`DeclaredRuleChecks.Check`) run in whole-model validations only, so a broken declaration stops
+  resolution as a broken rule script does: MQ5015 for an id another declaration or a rule script has (the later path;
+  judged against the scripts when they all load), MQ5016 for what does not exist or apply (kind, stereotype key,
+  package id, path, calculated value, `count.of`, link kind, bounds, placeholder). A project without declaration files
+  does none of this. The extension file API checks a written file alone the same way, on a candidate snapshot.
+- Evaluation (`DeclaredRuleEvaluator`) runs inside `ResolvedChecks.RunAsync`, after the calculated values, over
+  `ResolvedKinds.ObjectsOf` for each rule's kinds, rules ordinal by id, objects in parallel; findings are `x/<id>`,
+  placed by `ResolvedLocations.Place` and kept in `ResolvedCheckResult.Findings` (not scripts, so
+  `includeScriptRules: false` keeps them). MQ5017 for a rule that selects nothing.
+
+## Suppressions (next-phase-2-design.md section 5.6)
+
+- `Element.Suppressions` (`rule`, optional `member`, `reason`) sits on top-level files only. `SuppressionRules` judges
+  the entries per document, so saves see them: MQ5018 for a rule that cannot be suppressed (`CanBeSuppressed`: not
+  MQ1xxx, MQ7012 or MQ5018 to MQ5020), MQ5019 for an unknown rule (catalog ids; `x/` ids when every rule script loads,
+  which is why `NamesRules` loads the pool for an `x/` entry, and no declaration file failed), a member the element does
+  not hold (an indexed part it owns, an attribute through a base or a stereotype, a table's inherited keyed id) or a
+  repeated rule and member.
+- `Suppressions.Of(snapshot)` builds once per snapshot (a weak table) a frozen lookup by (file, rule); a snapshot
+  without entries builds an empty one and `Apply` returns its input. A finding matches entry i of element E when its
+  file is E's file and its rule the entry's; with `member`, also its element id is the member, or its pointer is the
+  member's index entry pointer or under it, looked up at match time. The first matching entry wins.
+- Where they apply, each time after severities: `ModelValidator.ValidateAsync` (after `ApplySettings`, before MQ2006
+  collapses, positioned like reported findings), the resolver's run (`ResolvedModel.Suppressed`), `ResolvedChecks`
+  (`ResolvedCheckResult.Suppressed` and `ScriptSuppressed`, so `includeScriptRules: false` drops the latter), and the
+  store's `ValidateCoreAsync` for the stale chains and `ValidateAgainstAsync`'s baseline findings. Each merges every
+  suppressed list into `ValidationReport.Suppressed`, which the counts exclude and `TruncateTo` empties first.
+- MQ5020 is judged once, by the outermost report, after all its findings, on a whole-model report whose model
+  resolved: one warning per entry that matched nothing, except entries MQ5018 or MQ5019 already reports.

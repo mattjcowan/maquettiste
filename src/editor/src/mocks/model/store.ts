@@ -1327,7 +1327,7 @@ export function report(diagnostics: Diagnostic[]): ValidationReport {
   const errors = diagnostics.filter((d) => d.severity === "error").length;
   const warnings = diagnostics.filter((d) => d.severity === "warning").length;
   const infos = diagnostics.filter((d) => d.severity === "info").length;
-  return { diagnostics, errors, warnings, infos, truncated: false, hasErrors: errors > 0 };
+  return { diagnostics, errors, warnings, infos, truncated: false, hasErrors: errors > 0, suppressed: [] };
 }
 
 function removeAt(json: Json, pointer: string, isItem: boolean): void {

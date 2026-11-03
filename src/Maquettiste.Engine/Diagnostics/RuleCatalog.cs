@@ -243,6 +243,13 @@ public static class RuleCatalog
         new("MQ5011", E, "A calculated value does not fit its schema."),
         new("MQ5012", E, "A template, script or rule reads a calculated value that is not declared for the object's kind."),
         new("MQ5013", E, "Calculated values read each other in a cycle."),
+        new("MQ5014", E, "A rule declaration file does not fit declared-rules.json."),
+        new("MQ5015", E, "Two project rules share an id: a declared rule and another declared rule or a rule script."),
+        new("MQ5016", E, "A declared rule names what does not exist or does not apply: a kind, a stereotype key, a package id, a path, a calculated value, a link kind, bounds or a message placeholder."),
+        new("MQ5017", W, "A declared rule selects no object."),
+        new("MQ5018", E, "A suppression names a rule that cannot be suppressed: MQ1xxx, MQ7012 or MQ5018 to MQ5020."),
+        new("MQ5019", W, "A suppression names a rule nothing defines or a member the element does not hold, or repeats another entry."),
+        new("MQ5020", W, "A suppression matched no finding in a whole-model validate."),
 
         new("MQ6001", E, "Invalid pack.json."),
         new("MQ6002", E, "Engine version range not satisfied."),

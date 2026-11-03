@@ -60,6 +60,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// <summary>The rule result cache, for tests.</summary>
     internal RuleResultCache RuleResults => _ruleResults;
 
+    private int _declaredRuleChecks;
+
+    /// <summary>How many validations checked rule declaration files (tests: a project without them checks none).</summary>
+    internal int DeclaredRuleChecksRun => Volatile.Read(ref _declaredRuleChecks);
+
     /// <summary>The schema registry.</summary>
     internal ISchemaRegistry Schemas => schemas;
 
@@ -106,6 +111,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         var needScripts = model.RuleScripts.Count > 0 && (scope.IncludeScriptRules || NamesRules(targets));
         IScriptSandboxPool? pool = null;
         FrozenSet<string>? ruleNames = model.RuleScripts.Count == 0 ? FrozenSet<string>.Empty : null;
+        // The rule ids the rule scripts register, with the first file that registers each: what MQ5015 compares declared rules with.
+        Dictionary<string, string>? scriptRules = model.RuleScripts.Count == 0 ? [] : null;
         IReadOnlyList<string> rules = [];
         IReadOnlyList<ScriptRegistration> modelRules = [];
         var libraryPools = new Dictionary<string, RuleLibrary>(StringComparer.Ordinal);
@@ -136,6 +143,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     modelRules = [.. registered.Where(r => r.WholeModel).DistinctBy(r => Bare(r.Name), StringComparer.Ordinal)
                         .OrderBy(r => Bare(r.Name), StringComparer.Ordinal)];
                     ruleNames = failed ? null : registered.Select(r => Bare(r.Name)).ToFrozenSet(StringComparer.Ordinal);
+                    scriptRules = failed ? null : registered.GroupBy(r => Bare(r.Name), StringComparer.Ordinal)
+                        .ToDictionary(g => g.Key, g => g.Select(r => r.DeclaredIn).Min(StringComparer.Ordinal)!, StringComparer.Ordinal);
                     break;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -167,8 +176,23 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         // Calculation files (next-phase-2-design.md section 5.5): a whole-model validation reports a file that does not load (MQ5002,
         // MQ5003) and top-level let or var (MQ5005) on it, from the service's one load that the resolved model's host then evaluates with.
         // Without calculation files nothing is loaded.
+        Func<string, string, bool>? declaresCalculated = model.CalculationScripts.Count == 0 ? static (_, _) => false : null;
         if (wholeModel && scope.IncludeScriptRules && model.CalculationScripts.Count > 0)
-            diagnostics.AddRange(_calculations.Load(model).Diagnostics);
+        {
+            var loaded = _calculations.Load(model);
+            diagnostics.AddRange(loaded.Diagnostics);
+            if (!loaded.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
+                declaresCalculated = (kind, name) => loaded.ByKind.TryGetValue(kind, out var declared) && declared.ByName.ContainsKey(name);
+        }
+
+        // Rule declaration files (next-phase-2-design.md section 5.6): whole-model validations check every declaration, so a broken one
+        // stops resolution as a broken rule script does. Ids are compared with the rule scripts' only when every rule script loaded, and
+        // calculated values in paths only when the calculation files did. A project without declaration files does none of this.
+        if (wholeModel && model.DeclaredRules.Count > 0)
+        {
+            Interlocked.Increment(ref _declaredRuleChecks);
+            diagnostics.AddRange(DeclaredRuleChecks.Check(model, scriptRules, declaresCalculated));
+        }
 
         var runtime = targets.Any(d => d.Element is Scenario) ? new ProcessRuntime(model, parallelism, ct) : null;
         var facts = targets.Any(d => d.Element is Migration) ? MigrationRules.Analyze(model) : null;
@@ -212,6 +236,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     if (facts is not null)
                         MigrationRules.Validate(context, report, facts);
                     extensions.Check(context, report);
+                    SuppressionRules.Validate(context, report);
                     if (ruleRun is not null)
                         RunScripts(ruleRun, model, report, token);
                     perDocument[i] = report.Items;
@@ -247,10 +272,18 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         ct.ThrowIfCancellationRequested();
         var configured = ApplySettings(model.Settings, diagnostics).Distinct().ToList(); // one diagnostic per distinct finding
+        // Suppressions (next-phase-2-design.md section 5.6), after severities and before tags collapse, so a save sees them removed.
+        var suppressions = Suppressions.Of(model);
+        IReadOnlyList<SuppressedFinding> suppressed = [];
+        if (!suppressions.IsEmpty)
+            configured = [.. suppressions.Apply(configured, out suppressed)];
         if (wholeModel)
             configured = CollapseUndeclaredTags(model, configured);
         var positioned = await AddPositionsAsync(model, configured, ct).ConfigureAwait(false);
-        return ValidationReport.From(positioned);
+        if (suppressed.Count == 0)
+            return ValidationReport.From(positioned);
+        var findings = await AddPositionsAsync(model, [.. suppressed.Select(s => s.Finding)], ct).ConfigureAwait(false);
+        return ValidationReport.From(positioned, suppressed.Select((s, i) => s with { Finding = findings[i] }));
     }
 
     /// <summary>
@@ -1089,6 +1122,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     {
         foreach (var doc in documents)
         {
+            // An x/ id in suppressions is judged against the loaded rules (MQ5019), as validation rule ids are (MQ2007).
+            if (doc.Element.Suppressions.Any(s => s.Rule.StartsWith("x/", StringComparison.Ordinal)))
+                return true;
             IEnumerable<ModelAttribute> attributes = doc.Element switch
             {
                 Entity e => e.Attributes,

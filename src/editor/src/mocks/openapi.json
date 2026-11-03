@@ -3574,7 +3574,8 @@
                       "warnings": 0,
                       "infos": 0,
                       "truncated": false,
-                      "hasErrors": true
+                      "hasErrors": true,
+                      "suppressed": []
                     }
                   },
                   "clean": {
@@ -3585,7 +3586,8 @@
                       "warnings": 0,
                       "infos": 0,
                       "truncated": false,
-                      "hasErrors": false
+                      "hasErrors": false,
+                      "suppressed": []
                     }
                   }
                 }
@@ -13110,7 +13112,8 @@
           "warnings",
           "infos",
           "truncated",
-          "hasErrors"
+          "hasErrors",
+          "suppressed"
         ],
         "properties": {
           "diagnostics": {
@@ -13134,6 +13137,41 @@
           },
           "hasErrors": {
             "type": "boolean"
+          },
+          "suppressed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SuppressedFinding"
+            },
+            "description": "The findings the elements' suppressions accepted, in diagnostic order; the counts exclude them. A truncated report empties this list before it drops diagnostics."
+          }
+        }
+      },
+      "SuppressedFinding": {
+        "x-engine-record": "Maquettiste.Engine.Diagnostics.SuppressedFinding",
+        "description": "A finding an element's suppression accepted (`suppressions[i]` of the element's file).",
+        "type": "object",
+        "required": [
+          "finding",
+          "reason",
+          "elementId",
+          "jsonPointer"
+        ],
+        "properties": {
+          "finding": {
+            "$ref": "#/components/schemas/Diagnostic"
+          },
+          "reason": {
+            "type": "string",
+            "description": "The entry's reason."
+          },
+          "elementId": {
+            "type": "string",
+            "description": "The element whose suppressions hold the entry."
+          },
+          "jsonPointer": {
+            "type": "string",
+            "description": "The entry, `/suppressions/<i>`."
           }
         }
       },
@@ -21669,7 +21707,7 @@
             "type": "string"
           },
           "rules": {
-            "description": "For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); empty for a schema.",
+            "description": "For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); for a valid rule declaration file, the rules it declares, each with `resolved` true; empty for a schema.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ExtensionRuleInfo"
@@ -21683,11 +21721,12 @@
             }
           },
           "kind": {
-            "description": "`schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows script, `seeds/<name>.js`), `custom-kind` (a custom kind, `kinds/<type>.json`) or `calculated` (a calculation file, `calculated/<name>.js`).",
+            "description": "`schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `declared-rules` (a rule declaration file, `rules/<name>.json`), `seed-rows` (a seed's rows script, `seeds/<name>.js`), `custom-kind` (a custom kind, `kinds/<type>.json`) or `calculated` (a calculation file, `calculated/<name>.js`).",
             "type": "string",
             "enum": [
               "schema",
               "rule",
+              "declared-rules",
               "seed-rows",
               "custom-kind",
               "calculated"
@@ -21730,7 +21769,7 @@
           },
           "resolved": {
             "type": "boolean",
-            "description": "The rule was registered with scope \"resolved\": check(element, model, report) runs on each resolved object of its kinds in the checks after resolution (validate, generation), never on element saves or in previews."
+            "description": "The rule runs on the resolved model: a script rule registered with scope \"resolved\" (check(element, model, report) runs on each resolved object of its kinds in the checks after resolution: validate, generation, never element saves or previews), and every declared rule."
           }
         }
       },
@@ -21785,6 +21824,7 @@
             "enum": [
               "schema",
               "rule",
+              "declared-rules",
               "seed-rows",
               "custom-kind",
               "calculated"
@@ -26775,6 +26815,40 @@
           "retired"
         ]
       },
+      "suppressions": {
+        "description": "Findings the element accepts, each with the reason it is the exception (on the element's file only, never inside a part). A finding is suppressed when it is on the element (its file is the element's file), and on the member when member is set, and its rule is the entry's rule; the first matching entry wins. Suppressed findings leave the report's counts and are listed apart with their reason. MQ5018: a rule that cannot be suppressed; MQ5019: an unknown rule or member, or a repeated entry; MQ5020: an entry no finding matched in a whole-model validate.",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "x-order": [
+            "rule",
+            "member",
+            "reason"
+          ],
+          "properties": {
+            "rule": {
+              "description": "The rule whose findings the entry accepts: a built-in rule (MQ followed by four digits), a script rule or a declared rule (x/<id>).",
+              "type": "string",
+              "pattern": "^(MQ[0-9]{4}|x/\\S+)$"
+            },
+            "member": {
+              "description": "Limits the entry to one part of the element: a part in its file (its id), an attribute it holds through a base or a stereotype (the attribute's id), or an inherited member (the keyed id, <table key>.<member id>). Omitted: the whole element.",
+              "type": "string",
+              "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}([.@][0-7][0-9A-HJKMNP-TV-Z]{25})*$"
+            },
+            "reason": {
+              "description": "Why this element is the exception.",
+              "type": "string",
+              "pattern": "\\S"
+            }
+          },
+          "required": [
+            "rule",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
       "tagLabel": {
         "description": "A tag: a free-form label (SPEC section 5) of 1 to 64 characters without whitespace or control characters.",
         "type": "string",
@@ -26881,6 +26955,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -26938,6 +27013,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -27270,6 +27349,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -27332,6 +27412,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -27701,6 +27785,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -27749,6 +27834,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -27809,6 +27898,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -27862,6 +27952,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -27949,6 +28043,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -28001,6 +28096,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -28154,6 +28253,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -28217,6 +28317,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -28371,6 +28475,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -28441,6 +28546,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -29281,6 +29390,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -29368,6 +29478,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -29833,6 +29947,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -29896,6 +30011,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -30018,6 +30137,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -30079,6 +30199,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -30178,6 +30302,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -30243,6 +30368,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -30533,6 +30662,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -30599,6 +30729,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -30762,6 +30896,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -30822,6 +30957,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -31507,6 +31646,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -31570,6 +31710,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -32284,6 +32428,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -32358,6 +32503,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -32531,6 +32680,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -32592,6 +32742,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -32712,6 +32866,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -32762,6 +32917,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -32845,6 +33004,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -32894,6 +33054,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -33039,6 +33203,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -33107,6 +33272,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -33412,6 +33581,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -33465,6 +33635,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -33746,6 +33920,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -33801,6 +33976,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -34480,6 +34659,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -34549,6 +34729,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -35145,6 +35329,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -35199,6 +35384,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -35373,6 +35562,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -35427,6 +35617,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -35884,6 +36078,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "tags",
           "category",
@@ -35976,6 +36171,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -36969,6 +37168,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -37073,6 +37273,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",
@@ -37378,6 +37582,7 @@
           "rationale",
           "decision",
           "status",
+          "suppressions",
           "stereotypes",
           "excludeStereotypes",
           "tags",
@@ -37430,6 +37635,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/status"
+          },
+          "suppressions": {
+            "$ref": "#/components/schemas/suppressions",
+            "default": []
           },
           "stereotypes": {
             "$ref": "#/components/schemas/keyList",

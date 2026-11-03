@@ -83,5 +83,5 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
     /// (<c>custom-kind.json</c>), a pack test case (<c>pack-case.json</c>), plus the shared definitions.
     /// </summary>
     public static IReadOnlyList<string> DocumentSchemaFiles { get; } =
-        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json", "locale.json", "ledger.json", "custom-kind.json", "pack-case.json"];
+        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json", "locale.json", "ledger.json", "custom-kind.json", "pack-case.json", "declared-rules.json"];
 }

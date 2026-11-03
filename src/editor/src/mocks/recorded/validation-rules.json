@@ -1464,6 +1464,62 @@
     "canBeOff": true
   },
   {
+    "id": "MQ5014",
+    "defaultSeverity": "error",
+    "description": "A rule declaration file does not fit declared-rules.json.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5015",
+    "defaultSeverity": "error",
+    "description": "Two project rules share an id: a declared rule and another declared rule or a rule script.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5016",
+    "defaultSeverity": "error",
+    "description": "A declared rule names what does not exist or does not apply: a kind, a stereotype key, a package id, a path, a calculated value, a link kind, bounds or a message placeholder.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5017",
+    "defaultSeverity": "warning",
+    "description": "A declared rule selects no object.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5018",
+    "defaultSeverity": "error",
+    "description": "A suppression names a rule that cannot be suppressed: MQ1xxx, MQ7012 or MQ5018 to MQ5020.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5019",
+    "defaultSeverity": "warning",
+    "description": "A suppression names a rule nothing defines or a member the element does not hold, or repeats another entry.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5020",
+    "defaultSeverity": "warning",
+    "description": "A suppression matched no finding in a whole-model validate.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
     "id": "MQ6001",
     "defaultSeverity": "error",
     "description": "Invalid pack.json.",

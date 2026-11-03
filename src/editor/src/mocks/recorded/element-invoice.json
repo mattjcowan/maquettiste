@@ -212,6 +212,7 @@
     ],
     "bindings": [],
     "$schema": "../../.schema/v1/entity.json",
+    "suppressions": [],
     "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
     "name": "Invoice",
     "displayName": null,

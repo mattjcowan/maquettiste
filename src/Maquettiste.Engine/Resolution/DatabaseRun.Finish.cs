@@ -606,17 +606,17 @@ internal sealed partial class DatabaseRun
         {
             Check("Table", t.Table.Name, t.SourceElementId);
             foreach (var column in t.Columns)
-                Check("Column", column.Name, t.SourceElementId);
+                Check("Column", column.Name, t.SourceElementId, Inherited(column.MemberOrigin, column.Id));
             if (t.Table.PrimaryKey is { } pk)
-                Check("Primary key", pk.Name, t.SourceElementId);
+                Check("Primary key", pk.Name, t.SourceElementId, Inherited(pk.MemberOrigin, pk.Id));
             foreach (var fk in t.Table.ForeignKeys)
-                Check("Foreign key", fk.Name, t.SourceElementId);
+                Check("Foreign key", fk.Name, t.SourceElementId, Inherited(fk.MemberOrigin, fk.Id));
             foreach (var unique in t.Table.Uniques)
-                Check("Unique constraint", unique.Name, t.SourceElementId);
+                Check("Unique constraint", unique.Name, t.SourceElementId, Inherited(unique.MemberOrigin, unique.Id));
             foreach (var index in t.Table.Indexes)
-                Check("Index", index.Name, t.SourceElementId);
+                Check("Index", index.Name, t.SourceElementId, Inherited(index.MemberOrigin, index.Id));
             foreach (var check in t.Table.Checks)
-                Check("Check constraint", check.Name, t.SourceElementId);
+                Check("Check constraint", check.Name, t.SourceElementId, Inherited(check.MemberOrigin, check.Id));
         }
 
         foreach (var (sequence, sourceId, _) in _sequenceOrder)
@@ -624,15 +624,20 @@ internal sealed partial class DatabaseRun
         foreach (var (view, sourceId) in _views)
             Check("View", view.Name, sourceId);
 
-        void Check(string what, string name, string elementId)
+        // An inherited member's finding keeps its keyed id, on its table's file, so a suppression on the table names it.
+        static string? Inherited(RMemberOrigin origin, string? id) => origin.MemberId is null ? null : id;
+
+        void Check(string what, string name, string elementId, string? memberId = null)
         {
             var length = DialectInfo.IdentifierLength(_db.Dialect, name);
             if (length <= limit || !seen.Add((what, name, elementId)))
                 return;
-            _run.AddDiagnostic("MQ4001",
-                string.Create(CultureInfo.InvariantCulture,
-                    $"{what} name '{name}' in database '{_db.Name}' is {length} {DialectInfo.IdentifierUnit(_db.Dialect)} long; the {_dialect} limit is {limit}."),
-                elementId);
+            var message = string.Create(CultureInfo.InvariantCulture,
+                $"{what} name '{name}' in database '{_db.Name}' is {length} {DialectInfo.IdentifierUnit(_db.Dialect)} long; the {_dialect} limit is {limit}.");
+            if (memberId is null)
+                _run.AddDiagnostic("MQ4001", message, elementId);
+            else
+                _run.AddMemberDiagnostic("MQ4001", message, elementId, memberId);
         }
     }
 

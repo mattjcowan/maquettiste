@@ -77,6 +77,33 @@
       "description": "The status of an element or sub-element: proposed, approved, deprecated or retired. It has no default. A reference to a retired element warns (MQ2022).",
       "enum": ["proposed", "approved", "deprecated", "retired"]
     },
+    "suppressions": {
+      "description": "Findings the element accepts, each with the reason it is the exception (on the element's file only, never inside a part). A finding is suppressed when it is on the element (its file is the element's file), and on the member when member is set, and its rule is the entry's rule; the first matching entry wins. Suppressed findings leave the report's counts and are listed apart with their reason. MQ5018: a rule that cannot be suppressed; MQ5019: an unknown rule or member, or a repeated entry; MQ5020: an entry no finding matched in a whole-model validate.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "x-order": ["rule", "member", "reason"],
+        "properties": {
+          "rule": {
+            "description": "The rule whose findings the entry accepts: a built-in rule (MQ followed by four digits), a script rule or a declared rule (x/<id>).",
+            "type": "string",
+            "pattern": "^(MQ[0-9]{4}|x/\\S+)$"
+          },
+          "member": {
+            "description": "Limits the entry to one part of the element: a part in its file (its id), an attribute it holds through a base or a stereotype (the attribute's id), or an inherited member (the keyed id, <table key>.<member id>). Omitted: the whole element.",
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}([.@][0-7][0-9A-HJKMNP-TV-Z]{25})*$"
+          },
+          "reason": {
+            "description": "Why this element is the exception.",
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "required": ["rule", "reason"],
+        "additionalProperties": false
+      }
+    },
     "properties": {
       "description": "Custom property values, validated by extension schemas.",
       "type": "object"

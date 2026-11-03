@@ -3,8 +3,9 @@
 // checked against extension.json and written as formatted JSON; a rule is loaded with the browser's own parser, and its
 // rules run over the model's entries when the model validates, so the mock reports x/<id> findings and MQ5002 for a rule
 // file that does not load. A calculation file (extensions/calculated/<name>.js) is loaded the same way for what it declares;
-// the mock never evaluates a calculated value. The engine runs scripts in a sandbox; this mock trusts its own seeded and
-// test-written scripts.
+// the mock never evaluates a calculated value. A rule declaration file (extensions/rules/<name>.json) lists the rules it
+// declares; the engine evaluates them on the resolved model, the mock never does. The engine runs scripts in a sandbox; this
+// mock trusts its own seeded and test-written scripts.
 import Ajv2020 from "ajv/dist/2020";
 import type { components } from "@/api/schema";
 import type { Diagnostic } from "@/api/types";
@@ -17,7 +18,7 @@ type WriteAnswer = { status: 200 | 201 | 404 | 409 | 422; body: S["ExtensionWrit
 type Json = Record<string, unknown>;
 
 const FOLDER = ".maquettiste/extensions";
-const PATH = /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\.json|(?:rules|calculated)\/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$/;
+const PATH = /^(?:(?:rules\/)?[A-Za-z0-9][A-Za-z0-9._-]*\.json|(?:rules|calculated)\/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$/;
 const MAX_BYTES = 1024 * 1024;
 const checkSchema = new Ajv2020({ strict: false, allErrors: true }).compile(extensionSchema as object);
 
@@ -37,13 +38,31 @@ export function validExtensionPath(path: string): boolean {
   return PATH.test(path);
 }
 
-type FileKind = "schema" | "rule" | "calculated";
+type FileKind = "schema" | "rule" | "declared-rules" | "calculated";
 
 function kindOf(path: string): FileKind {
-  return path.startsWith("rules/") ? "rule" : path.startsWith("calculated/") ? "calculated" : "schema";
+  if (path.startsWith("rules/")) return path.endsWith(".json") ? "declared-rules" : "rule";
+  return path.startsWith("calculated/") ? "calculated" : "schema";
 }
 
-const ORDER: Record<FileKind, number> = { schema: 0, rule: 1, calculated: 2 };
+const ORDER: Record<FileKind, number> = { schema: 0, rule: 1, "declared-rules": 2, calculated: 3 };
+
+/** A declaration file's rules as the engine lists them (each runs on the resolved model), and MQ5014 when it is not JSON. */
+function declared(path: string, text: string): { rules: S["ExtensionRuleInfo"][]; diagnostics: Diagnostic[] } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    return { rules: [], diagnostics: [diagnostic("MQ5014", `The rule declaration file is not JSON: ${(e as Error).message}`, path)] };
+  }
+  const rules = Array.isArray((parsed as Json | null)?.rules) ? ((parsed as Json).rules as Json[]) : [];
+  return {
+    rules: rules
+      .filter((r) => typeof r?.id === "string")
+      .map((r) => ({ id: `x/${r.id as string}`, severity: (r.severity as Diagnostic["severity"]) ?? "error", wholeModel: false, resolved: true })),
+    diagnostics: [],
+  };
+}
 
 interface Registered {
   id: string;
@@ -95,14 +114,16 @@ export class MockExtensions {
       files: this.sorted().map((path) => {
         const text = this.files.get(path)!;
         const kind = kindOf(path);
-        const loaded = kind === "schema" ? null : this.load(path, text);
+        const declaration = kind === "declared-rules" ? declared(path, text) : null;
+        const loaded = kind === "schema" || declaration ? null : this.load(path, text);
         return {
           path,
           kind,
           size: new TextEncoder().encode(text).length,
           hash: sha256Hex(text),
-          diagnostics: loaded ? loaded.diagnostics : this.schemaProblems(path, text),
-          rules: loaded?.rules.map((r) => ({ id: `x/${r.id}`, severity: r.severity, wholeModel: r.wholeModel, resolved: r.resolved })) ?? [],
+          diagnostics: declaration?.diagnostics ?? (loaded ? loaded.diagnostics : this.schemaProblems(path, text)),
+          rules:
+            declaration?.rules ?? loaded?.rules.map((r) => ({ id: `x/${r.id}`, severity: r.severity, wholeModel: r.wholeModel, resolved: r.resolved })) ?? [],
           calculations: loaded?.calculations ?? [],
         };
       }),
@@ -124,6 +145,10 @@ export class MockExtensions {
     let diagnostics: Diagnostic[] = [];
     if (kindOf(path) === "schema") {
       const problems = this.schemaProblems(path, text);
+      if (problems.length) return { status: 422, body: result("invalid", null, { diagnostics: problems }) };
+      written = `${JSON.stringify(JSON.parse(text), null, 2)}\n`;
+    } else if (kindOf(path) === "declared-rules") {
+      const problems = declared(path, text).diagnostics;
       if (problems.length) return { status: 422, body: result("invalid", null, { diagnostics: problems }) };
       written = `${JSON.stringify(JSON.parse(text), null, 2)}\n`;
     } else diagnostics = this.load(path, text).diagnostics;
@@ -161,7 +186,7 @@ export class MockExtensions {
   diagnostics(): Diagnostic[] {
     const out: Diagnostic[] = [];
     const rules: Registered[] = [];
-    for (const path of this.sorted().filter((p) => kindOf(p) !== "schema")) {
+    for (const path of this.sorted().filter((p) => kindOf(p) !== "schema" && kindOf(p) !== "declared-rules")) {
       const loaded = this.load(path, this.files.get(path)!);
       out.push(...loaded.diagnostics);
       rules.push(...loaded.rules);

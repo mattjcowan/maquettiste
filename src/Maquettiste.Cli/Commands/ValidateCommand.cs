@@ -66,7 +66,8 @@ internal static class ValidateCommand
             var packs = await services.Packs.LoadAsync(snapshot, null, null, ct).ConfigureAwait(false);
             // MQ1008: the .schema copies differ from the embedded schemas. Reported only; validate never writes them.
             var schemaFindings = SchemaFolder.Findings(options, snapshot.Settings);
-            var report = ValidationReport.From(model.Diagnostics.Concat(packs.Diagnostics).Concat(schemaFindings).Distinct());
+            // The merge keeps the model's suppressed findings (next-phase-2-design.md section 5.6).
+            var report = ValidationReport.From(model.Diagnostics.Concat(packs.Diagnostics).Concat(schemaFindings).Distinct(), model.Suppressed);
 
             var bytes = format switch
             {
@@ -89,6 +90,8 @@ internal static class ValidateCommand
             }
 
             context.Info((report.HasErrors ? "Validation failed: " : "Validation passed: ") + DiagnosticOutput.Counts(report.Errors, report.Warnings, report.Infos) + ".");
+            if (report.Suppressed.Count > 0)
+                context.Info(DiagnosticOutput.SuppressedCount(report.Suppressed.Count) + ".");
             return report.HasErrors ? Program.ExitCodes.Invalid : Program.ExitCodes.Success;
         }
     }
@@ -103,13 +106,15 @@ internal static class ValidateCommand
         writer.WriteNumber("warnings", report.Warnings);
         writer.WriteNumber("infos", report.Infos);
         DiagnosticOutput.WriteArray(writer, "diagnostics", report.Diagnostics);
+        if (report.Suppressed.Count > 0)
+            DiagnosticOutput.WriteSuppressed(writer, report.Suppressed);
         writer.WriteEndObject();
     });
 
     private static async Task<byte[]> SarifAsync(ValidationReport report, CancellationToken ct)
     {
         using var buffer = new MemoryStream();
-        await SarifWriter.WriteAsync(buffer, report.Diagnostics, EngineVersion.Value, ct).ConfigureAwait(false);
+        await SarifWriter.WriteAsync(buffer, report, EngineVersion.Value, ct).ConfigureAwait(false);
         var bytes = buffer.ToArray();
         return bytes.Length > 0 && bytes[^1] == (byte)'\n' ? bytes : [.. bytes, (byte)'\n'];
     }

@@ -127,6 +127,8 @@ public sealed class ResolvedCoverageTests
         // Import provenance (format, source name, location, fingerprint): read from the file by the importers that reconcile a
         // re-import; templates describe the model, not where an element came from.
         ["source"] = "import provenance",
+        // Findings an element accepts, each with its reason (next-phase-2-design.md section 5.6).
+        ["suppressions"] = "accepted findings: validation reads them, templates describe the model",
     };
 
     /// <summary>Properties of one target that are deliberately not resolved, and why.</summary>

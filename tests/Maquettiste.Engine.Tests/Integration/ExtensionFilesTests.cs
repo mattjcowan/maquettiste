@@ -21,6 +21,17 @@ public sealed class ExtensionFilesTests
         });
         """;
 
+    private const string PluralTables = """
+        maquettiste.rule({
+          id: "table-name-plural",
+          severity: "warning",
+          kinds: ["table"],
+          check(element, model, report) {
+            if (!element.name.endsWith("s")) report("Table names should be plural.", { pointer: "/name" });
+          },
+        });
+        """;
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -260,7 +271,7 @@ public sealed class ExtensionFilesTests
     [Theory]
     [InlineData("../maquettiste.json")]
     [InlineData("rules/nested/a.js")]
-    [InlineData("rules/a.json")]
+    [InlineData("rules/nested/a.json")]
     [InlineData("seeds/a.json")]
     [InlineData("seeds/nested/a.js")]
     [InlineData("calculated/a.json")]
@@ -356,5 +367,60 @@ public sealed class ExtensionFilesTests
         Assert.All(findings, d => Assert.Equal(CustomKinds.CustomFixture.DueDays, d.ElementId));
         Assert.Contains(findings, d => d.JsonPointer == "/content/value");
         Assert.Equal(findings.Count, (await CustomKinds.CustomFixture.ValidateAsync(s)).Count(d => d.Rule == "MQ3033"));
+    }
+    [Fact]
+    public async Task A_declaration_file_is_written_canonically_and_checked_alone()
+    {
+        await using var repo = E2ERepo.Create(demo: false);
+        repo.Repo.WriteFile(".maquettiste/extensions/rules/naming.js", LongNames);
+        const string text = """
+            {"rules":[{"message":"Table {name} fails.","require":{"has":"properties.nothing"},"select":{"kind":"table"},"id":"every-table"},
+            {"id":"short-names","select":{"kind":"nothing"},"require":{"has":"name"},"message":"{name}"}]}
+            """;
+        var written = await repo.Store.WriteExtensionFileAsync("rules/table-checks.json", text, null, Ct);
+        Assert.Equal(SaveOutcome.Saved, written.Outcome);
+        // Canonical: keys in the schema's order, two-space indentation, a final newline.
+        Assert.StartsWith("{\n  \"$schema\": \"../../.schema/v1/declared-rules.json\",\n  \"rules\": [\n    {\n      \"id\": \"every-table\",", written.Text, StringComparison.Ordinal);
+        Assert.EndsWith("}\n", written.Text, StringComparison.Ordinal);
+        // Checked alone: the id an earlier rule script already registers (MQ5015 on this later file), the kind that does not exist (MQ5016), with pointers.
+        Assert.Equal(["MQ5015 /rules/1/id", "MQ5016 /rules/1/select/kind"],
+            written.Diagnostics.Select(d => d.Rule + " " + d.JsonPointer).Order(StringComparer.Ordinal));
+        Assert.All(written.Diagnostics, d => Assert.Equal(".maquettiste/extensions/rules/table-checks.json", d.FilePath));
+
+        var listed = Assert.Single((await repo.Store.ListExtensionFilesAsync(Ct)).Files, f => f.Path == "rules/table-checks.json");
+        Assert.Equal("declared-rules", listed.Kind);
+        Assert.Equal(["x/every-table", "x/short-names"], listed.Rules.Select(r => r.Id));
+        Assert.All(listed.Rules, r => Assert.True(r.Resolved));
+        Assert.Equal(written.Diagnostics.Select(d => d.Rule), listed.Diagnostics.Select(d => d.Rule));
+        Assert.Equal("declared-rules", (await repo.Store.ReadExtensionFileAsync("rules/table-checks.json", Ct))!.Kind);
+
+        // Not JSON: refused. A move keeps a declaration file a declaration file.
+        Assert.Equal(SaveOutcome.Invalid, (await repo.Store.WriteExtensionFileAsync("rules/broken.json", "{ \"rules\": [", null, Ct)).Outcome);
+        Assert.Equal(SaveOutcome.Invalid, (await repo.Store.MoveExtensionFileAsync(new ExtensionFileMove("rules/table-checks.json", "rules/table-checks.js"), written.Hash!, Ct)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.Store.MoveExtensionFileAsync(new ExtensionFileMove("rules/table-checks.json", "rules/tables.json"), written.Hash!, Ct)).Outcome);
+        Assert.Contains((await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ5016"
+            && d.FilePath == ".maquettiste/extensions/rules/tables.json");
+    }
+
+    [Fact]
+    public async Task A_declaration_that_sorts_before_the_rule_script_with_its_id_reports_MQ5015_on_write()
+    {
+        await using var repo = E2ERepo.Create(demo: false);
+        repo.Repo.WriteFile(".maquettiste/extensions/rules/naming.js", PluralTables);
+        const string text = """
+            { "rules": [ { "id": "table-name-plural", "select": { "kind": "table" }, "require": { "has": "name" }, "message": "Table {name} has no name." } ] }
+            """;
+
+        // conventions.json sorts before naming.js, so a validation reports the id on the script; the write still reports it on the file
+        // it writes, at the id, naming the script.
+        var written = await repo.Store.WriteExtensionFileAsync("rules/conventions.json", text, null, Ct);
+        Assert.Equal(SaveOutcome.Saved, written.Outcome);
+        var taken = Assert.Single(written.Diagnostics);
+        Assert.Equal(("MQ5015", ".maquettiste/extensions/rules/conventions.json", "/rules/0/id", DiagnosticSeverity.Error),
+            (taken.Rule, taken.FilePath, taken.JsonPointer, taken.Severity));
+        Assert.Contains("rule script .maquettiste/extensions/rules/naming.js", taken.Message, StringComparison.Ordinal);
+
+        var report = await repo.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.Equal([".maquettiste/extensions/rules/naming.js"], report.Diagnostics.Where(d => d.Rule == "MQ5015").Select(d => d.FilePath));
     }
 }

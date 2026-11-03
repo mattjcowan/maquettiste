@@ -537,6 +537,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                 ModelFileKind.Element => _reader.ReadElement(bytes, repoPath, trusted, trustedCanonical),
                 ModelFileKind.Settings => _reader.ReadSettings(bytes, repoPath, trusted, trustedCanonical),
                 ModelFileKind.Extension => _reader.ReadExtension(bytes, repoPath, trusted),
+                ModelFileKind.DeclaredRules => _reader.ReadDeclaredRules(bytes, repoPath, trusted),
                 ModelFileKind.CustomKind => ReadCustomKind(bytes, repoPath, trusted),
                 ModelFileKind.LocaleShard => _reader.ReadLocaleShard(bytes, repoPath, trusted, trustedCanonical),
                 _ => DocumentReader.ReadText(bytes),
@@ -545,7 +546,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FormatException or System.Text.Json.JsonException)
         {
             // Backstop: content the reader did not anticipate leaves this one file out instead of failing the whole load (design 5).
-            var rule = kind == ModelFileKind.Extension ? "MQ5004" : "MQ1001";
+            var rule = kind switch { ModelFileKind.Extension => "MQ5004", ModelFileKind.DeclaredRules => "MQ5014", _ => "MQ1001" };
             parsed = new ParsedFile { Diagnostics = [RuleCatalog.Create(rule, "The file cannot be read: " + ex.Message, null, repoPath, null)] };
         }
 
@@ -623,6 +624,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var calculationScripts = new List<ScriptSource>();
         var shards = new List<LocaleShardDocument>();
         var customKinds = new List<CustomKindDocument>();
+        var declaredRules = new List<DeclaredRuleDocument>();
         foreach (var entry in entries.Values.OrderBy(e => e.ModelPath, StringComparer.Ordinal))
         {
             switch (entry.Kind)
@@ -647,6 +649,12 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                     if (entry.Parsed.Valid)
                         shards.Add(ShardDocument(entry, entries));
                     break;
+                case ModelFileKind.DeclaredRules:
+                    // Declared rules are read here and run in the checks after resolution (section 5.6).
+                    diagnostics.AddRange(entry.Parsed.Diagnostics);
+                    if (entry.Parsed.DeclaredRules is { } declared)
+                        declaredRules.Add(new DeclaredRuleDocument(declared, _paths.ToRepoPath(entry.ModelPath), entry.Hash));
+                    break;
                 case ModelFileKind.RuleScript:
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
                     if (entry.Parsed.Text is { } code)
@@ -670,7 +678,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var libraries = Libraries(settings, settingsEntry, entries, diagnostics);
         diagnostics.Sort(Diagnostic.Order);
         var snapshot = ModelSnapshot.CreateAfter(previousSnapshot, documents, settings, settingsHash, extensions, scripts, version, diagnostics,
-            options.EffectiveParallelism, ct, shards, seedScripts, customKinds, libraries, calculationScripts);
+            options.EffectiveParallelism, ct, shards, seedScripts, customKinds, libraries, calculationScripts, declaredRules);
         return (snapshot, byPath);
     }
 
@@ -900,6 +908,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         result.UnionWith(EnumerateUnder("model"));
         result.UnionWith(EnumerateFiles("extensions", ".json", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/rules", ".js", recursive: false));
+        result.UnionWith(EnumerateFiles("extensions/rules", ".json", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/seeds", ".js", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/calculated", ".js", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/kinds", ".json", recursive: false));

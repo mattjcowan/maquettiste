@@ -77,6 +77,32 @@ internal static class DiagnosticOutput
         writer.WriteEndArray();
     }
 
+    /// <summary>Writes the <c>suppressed</c> array of <c>diagnostics.json</c> (next-phase-2-design.md section 5.6).</summary>
+    /// <param name="writer">The writer.</param>
+    /// <param name="suppressed">The suppressed findings.</param>
+    public static void WriteSuppressed(Utf8JsonWriter writer, IEnumerable<SuppressedFinding> suppressed)
+    {
+        writer.WriteStartArray("suppressed");
+        foreach (var s in suppressed)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("finding");
+            Write(writer, s.Finding);
+            writer.WriteString("reason", s.Reason);
+            writer.WriteString("elementId", s.ElementId);
+            writer.WriteString("jsonPointer", s.JsonPointer);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+    }
+
+    /// <summary>The line after a summary when suppressions accepted findings: <c>&lt;n&gt; findings suppressed</c>.</summary>
+    /// <param name="count">The number of suppressed findings.</param>
+    /// <returns>The text, without a period.</returns>
+    public static string SuppressedCount(int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"{count} finding{(count == 1 ? "" : "s")} suppressed");
+
     /// <summary>Serializes JSON through a callback into a string (LF, no trailing newline).</summary>
     /// <param name="write">Writes the document.</param>
     /// <returns>The JSON text.</returns>

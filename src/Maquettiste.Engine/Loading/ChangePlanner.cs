@@ -1023,7 +1023,7 @@ internal sealed partial class ChangePlanner
         // Patched from the current snapshot's indexes when the change is small (the result equals a full build).
         return ModelSnapshot.CreateAfter(_snapshot, documents, _candidateSettings ?? _snapshot.Settings, _candidateSettingsHash ?? _snapshot.SettingsHash,
             _snapshot.Extensions, _snapshot.RuleScripts,
-            _snapshot.Version, null, _parallelism, _ct, calculationScripts: _snapshot.CalculationScripts);
+            _snapshot.Version, null, _parallelism, _ct, calculationScripts: _snapshot.CalculationScripts, declaredRules: _snapshot.DeclaredRules);
     }
 
     private void CheckCandidate(ModelSnapshot candidate, List<ChangeOutcome> outcomes)
@@ -1039,7 +1039,7 @@ internal sealed partial class ChangePlanner
             ? candidate
             : ModelSnapshot.CreateAfter(null, candidate.Documents.Concat(deletedStereotypes), candidate.Settings, candidate.SettingsHash, candidate.Extensions,
                 candidate.RuleScripts, candidate.Version, null, _parallelism, _ct, seedScripts: candidate.SeedScripts, customKinds: candidate.CustomKinds,
-                calculationScripts: candidate.CalculationScripts);
+                calculationScripts: candidate.CalculationScripts, declaredRules: candidate.DeclaredRules);
         foreach (var (index, id, subIds) in _deleteChecks)
         {
             // A sub-element that moved to another element of the plan (a reference row a merge moves into a seed of the target type,

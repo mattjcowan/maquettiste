@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rule declarations",
+  "description": "extensions/rules/<name>.json: declared rules, which judge the resolved model without a script. Each rule selects objects, requires a condition of each of them and reports x/<id> with its message where the condition does not hold.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "rules"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "rules": {
+      "description": "The rules this file declares.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "required": [
+    "rules"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "rule": {
+      "description": "One declared rule.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "severity",
+        "description",
+        "select",
+        "require",
+        "message"
+      ],
+      "properties": {
+        "id": {
+          "description": "The rule's id: its findings are x/<id>, and validation.rules sets their severity by that name. Unique across declarations and rule scripts (MQ5015).",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "severity": {
+          "description": "The findings' severity, unless validation.rules sets another.",
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "default": "error"
+        },
+        "description": {
+          "description": "What the rule checks, in a sentence.",
+          "type": "string",
+          "minLength": 1
+        },
+        "select": {
+          "$ref": "#/$defs/selector"
+        },
+        "require": {
+          "description": "What must hold for each selected object; a finding where it does not.",
+          "$ref": "#/$defs/condition"
+        },
+        "message": {
+          "description": "The finding's text. {<path>} inserts the value at a path of the object, {$count} the number the top-level count, references or referencedBy found, and {{ and }} write braces.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "select",
+        "require",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "values": {
+      "description": "One value or a list; a list means any of its values.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "selector": {
+      "description": "Which resolved objects the rule judges. The keys combine with AND.",
+      "type": "object",
+      "x-order": [
+        "kind",
+        "stereotype",
+        "tag",
+        "property",
+        "package"
+      ],
+      "properties": {
+        "kind": {
+          "description": "Resolved kinds, such as entity, attribute, table or column.",
+          "$ref": "#/$defs/values"
+        },
+        "stereotype": {
+          "description": "Stereotype keys: objects whose effective stereotypes hold one of them.",
+          "$ref": "#/$defs/values"
+        },
+        "tag": {
+          "description": "Tag keys: objects whose tags hold one of them.",
+          "$ref": "#/$defs/values"
+        },
+        "property": {
+          "description": "Custom property names: objects that hold a non-null value for one of them.",
+          "$ref": "#/$defs/values"
+        },
+        "package": {
+          "description": "Package ids: objects in one of the packages or a package nested in it (a table falls back to its entity's or relation's package).",
+          "$ref": "#/$defs/values"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "path": {
+      "description": "Members as scripts see them, in camel case, joined by dots: a map key after a map (properties.retentionDays, calculated.publicName) and a member of an object after an object (table.name).",
+      "type": "string",
+      "pattern": "^[^.]+(\\.[^.]+)*$"
+    },
+    "bound": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "condition": {
+      "description": "Exactly one operator: all, any and not combine; has, equals, count, references and referencedBy test.",
+      "type": "object",
+      "x-order": [
+        "all",
+        "any",
+        "not",
+        "has",
+        "equals",
+        "count",
+        "references",
+        "referencedBy"
+      ],
+      "properties": {
+        "all": {
+          "description": "Holds when every condition holds.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        },
+        "any": {
+          "description": "Holds when at least one condition holds.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        },
+        "not": {
+          "description": "Holds when the condition does not.",
+          "$ref": "#/$defs/condition"
+        },
+        "has": {
+          "description": "Holds when the value at the path is present: not null, an empty string, an empty list or an empty map.",
+          "$ref": "#/$defs/path"
+        },
+        "equals": {
+          "description": "Holds when the value at the path equals value; null matches a null or missing value.",
+          "type": "object",
+          "x-order": [
+            "path",
+            "value"
+          ],
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/path"
+            },
+            "value": {
+              "description": "Strings compare ordinally, numbers by value; an enum member by its JSON name, a resolved object by its id."
+            }
+          },
+          "required": [
+            "path",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "count": {
+          "description": "Holds when the number of objects in the list at of for which where holds (all when absent) is at least min and at most max; min is 1 when both are absent.",
+          "type": "object",
+          "x-order": [
+            "of",
+            "where",
+            "min",
+            "max"
+          ],
+          "properties": {
+            "of": {
+              "description": "A path that ends at a list of objects, such as columns, attributes, members or indexes.",
+              "$ref": "#/$defs/path"
+            },
+            "where": {
+              "description": "A condition relative to each item.",
+              "$ref": "#/$defs/condition"
+            },
+            "min": {
+              "$ref": "#/$defs/bound"
+            },
+            "max": {
+              "$ref": "#/$defs/bound"
+            }
+          },
+          "required": [
+            "of"
+          ],
+          "additionalProperties": false
+        },
+        "references": {
+          "description": "Holds when the object links to at least min (default 1) and at most max objects of kind, through field when given.",
+          "$ref": "#/$defs/links"
+        },
+        "referencedBy": {
+          "description": "Holds when at least min (default 1) and at most max objects of kind link to the object, through field when given.",
+          "$ref": "#/$defs/links"
+        }
+      },
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false
+    },
+    "links": {
+      "type": "object",
+      "x-order": [
+        "kind",
+        "field",
+        "min",
+        "max"
+      ],
+      "properties": {
+        "kind": {
+          "description": "Element kinds or part kinds as the index names them (attribute, enum-member, column, row...).",
+          "$ref": "#/$defs/values"
+        },
+        "field": {
+          "description": "The reference's field (type, subject, package...).",
+          "type": "string",
+          "minLength": 1
+        },
+        "min": {
+          "$ref": "#/$defs/bound"
+        },
+        "max": {
+          "$ref": "#/$defs/bound"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

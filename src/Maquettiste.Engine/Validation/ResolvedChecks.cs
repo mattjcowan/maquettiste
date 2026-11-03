@@ -9,7 +9,7 @@ using Maquettiste.Engine.Scripting;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>What the checks after resolution found.</summary>
-/// <param name="Findings">Failures of calculated values (and, later, the findings of declared rules).</param>
+/// <param name="Findings">Failures of calculated values and the findings of declared rules (section 5.6).</param>
 /// <param name="ScriptFindings">The findings of rules registered with scope "resolved", which a validation without script rules leaves
 /// out.</param>
 internal sealed record ResolvedCheckResult(IReadOnlyList<Diagnostic> Findings, IReadOnlyList<Diagnostic> ScriptFindings)
@@ -17,13 +17,34 @@ internal sealed record ResolvedCheckResult(IReadOnlyList<Diagnostic> Findings, I
     /// <summary>Nothing found.</summary>
     public static ResolvedCheckResult Empty { get; } = new([], []);
 
+    /// <summary>The findings the elements' suppressions moved out of <see cref="Findings"/> (section 5.6), in diagnostic order.</summary>
+    public IReadOnlyList<SuppressedFinding> Suppressed { get; init; } = [];
+
+    /// <summary>The findings the elements' suppressions moved out of <see cref="ScriptFindings"/>, in diagnostic order.</summary>
+    public IReadOnlyList<SuppressedFinding> ScriptSuppressed { get; init; } = [];
+
+    /// <summary>The result with the snapshot's suppressions applied to both lists (after severities, which the lists already carry).</summary>
+    /// <param name="snapshot">The snapshot whose elements hold the suppressions.</param>
+    /// <returns>This result when nothing is suppressed, else a copy.</returns>
+    public ResolvedCheckResult Suppress(ModelSnapshot snapshot)
+    {
+        var suppressions = Suppressions.Of(snapshot);
+        if (suppressions.IsEmpty)
+            return this;
+        var findings = suppressions.Apply(Findings, out var moved);
+        var scripts = suppressions.Apply(ScriptFindings, out var scriptMoved);
+        return moved.Count == 0 && scriptMoved.Count == 0 ? this
+            : new ResolvedCheckResult(findings, scripts) { Suppressed = moved, ScriptSuppressed = scriptMoved };
+    }
+
     /// <summary>Both lists, findings first.</summary>
     public IEnumerable<Diagnostic> All => Findings.Concat(ScriptFindings);
 }
 
 /// <summary>
 /// The checks after resolution (next-phase-2-design.md section 5.5): on a resolved model whose validation has no error but MQ4101, they
-/// evaluate every calculated value and run the resolved rules (<c>scope: "resolved"</c>) once per object of their kinds. Whole-model
+/// evaluate every calculated value, run the resolved rules (<c>scope: "resolved"</c>) once per object of their kinds and run the declared
+/// rules (section 5.6, <see cref="DeclaredRuleEvaluator"/>), whose findings a validation without script rules keeps. Whole-model
 /// runs call them (every validate path, through the model store, once per snapshot; and a generation run before it plans); no preview
 /// and no element save does. A later stage adds its own findings to <see cref="ResolvedCheckResult.Findings"/>.
 /// </summary>
@@ -32,6 +53,14 @@ internal sealed class ResolvedChecks(EngineOptions options, IScriptSandboxFactor
     private static readonly IReadOnlyDictionary<string, object?> NoParameters = FrozenDictionary<string, object?>.Empty;
 
     private int _poolsCreated;
+    private int _declaredRuns;
+    private long _declaredJudged;
+
+    /// <summary>How many runs evaluated declared rules (tests: a project without rule declaration files evaluates none).</summary>
+    internal int DeclaredRuleRuns => Volatile.Read(ref _declaredRuns);
+
+    /// <summary>How many objects declared rules judged, over every run.</summary>
+    internal long DeclaredRuleObjectsJudged => Interlocked.Read(ref _declaredJudged);
 
     /// <summary>The rule pools the checks built themselves, each with its library pools (tests: a validation that loaded the rule files
     /// leaves none to build).</summary>
@@ -55,27 +84,46 @@ internal sealed class ResolvedChecks(EngineOptions options, IScriptSandboxFactor
         // or what an earlier check found; unknown, the rule files are loaded here once to learn it.
         var rulesKey = snapshot.RuleScripts.Count == 0 ? null : CalculationService.RulesKey(snapshot);
         var mayHaveRules = rulesKey is not null && calculations.RegistersResolved(rulesKey) != false;
+        var declared = snapshot.DeclaredRules.Count > 0;
         if (host is null && !mayHaveRules)
-            return ResolvedCheckResult.Empty;
+        {
+            return declared
+                ? new ResolvedCheckResult(await FinishAsync(snapshot, await Task.Run(() => RunDeclared(snapshot, resolved, ct), ct).ConfigureAwait(false), ct)
+                    .ConfigureAwait(false), []).Suppress(snapshot)
+                : ResolvedCheckResult.Empty;
+        }
 
         var cache = host?.Cache ?? calculations.Cache;
         var ticket = cache.Begin();
         IReadOnlyList<Diagnostic> failures = [];
         List<Diagnostic> found = [];
+        List<Diagnostic> declaredFound = [];
         try
         {
             if (host is not null)
                 failures = await Task.Run(() => host.EvaluateAll(ticket, ct), ct).ConfigureAwait(false);
             if (mayHaveRules)
                 found = await Task.Run(() => RunRules(snapshot, resolved, rulesKey!, cache, ticket, ct), ct).ConfigureAwait(false);
+            // Declared rules read calculated values through the objects (RCalculated), which the run above already evaluated.
+            if (declared)
+                declaredFound = await Task.Run(() => RunDeclared(snapshot, resolved, ct), ct).ConfigureAwait(false);
         }
         finally
         {
             cache.Sweep(ticket);
         }
 
-        return new ResolvedCheckResult(await FinishAsync(snapshot, [.. failures], ct).ConfigureAwait(false),
-            await FinishAsync(snapshot, found, ct).ConfigureAwait(false));
+        return new ResolvedCheckResult(await FinishAsync(snapshot, [.. failures, .. declaredFound], ct).ConfigureAwait(false),
+            await FinishAsync(snapshot, found, ct).ConfigureAwait(false)).Suppress(snapshot);
+    }
+
+    /// <summary>Runs the declared rules (<see cref="DeclaredRuleEvaluator"/>), counting the run and the objects judged.</summary>
+    private List<Diagnostic> RunDeclared(ModelSnapshot snapshot, ResolvedModel resolved, CancellationToken ct)
+    {
+        Interlocked.Increment(ref _declaredRuns);
+        var found = DeclaredRuleEvaluator.Evaluate(snapshot, resolved, Math.Max(1, options.EffectiveParallelism), ct, out var judged);
+        Interlocked.Add(ref _declaredJudged, judged);
+        return found;
     }
 
     /// <summary><c>validation.rules</c> applied, line and column found from the pointer, distinct, in diagnostic order.</summary>

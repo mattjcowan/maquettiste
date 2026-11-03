@@ -18,6 +18,35 @@ public sealed class McpExtensionToolTests
         """;
 
     [Fact]
+    public async Task Declaration_files_list_their_rules()
+    {
+        // next-phase-2-design.md section 5.6: rules/<name>.json is kind declared-rules, written in canonical form, checked alone and
+        // listed with the rules it declares, each running on the resolved model; validate reports their findings.
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+        const string Declarations = """
+            { "rules": [ { "id": "notes-described", "severity": "warning", "select": { "kind": "table" },
+              "require": { "has": "properties.nothing" }, "message": "Table {name} has no note." } ] }
+            """;
+
+        var written = await session.OkAsync("write_extension_file", new { path = "rules/tables.json", text = Declarations, expectedHash = "new" });
+        Assert.Empty(written["diagnostics"]!.AsArray());
+        Assert.StartsWith("{\n  \"$schema\"", (string)written["text"]!, StringComparison.Ordinal);
+
+        var files = (await session.OkAsync("list_extension_files"))["files"]!.AsArray();
+        var file = Assert.Single(files, f => (string)f!["path"]! == "rules/tables.json")!;
+        Assert.Equal("declared-rules", (string)file["kind"]!);
+        var rule = Assert.Single(file["rules"]!.AsArray())!;
+        Assert.Equal(("x/notes-described", "warning", true, false),
+            ((string)rule["id"]!, (string)rule["severity"]!, (bool)rule["resolved"]!, (bool)rule["wholeModel"]!));
+        Assert.Equal("declared-rules", (string)(await session.OkAsync("read_extension_file", new { path = "rules/tables.json" }))["kind"]!);
+
+        var report = await session.OkAsync("validate");
+        Assert.Contains(report["diagnostics"]!.AsArray(), d => (string)d!["rule"]! == "x/notes-described");
+        Assert.Empty(report["suppressed"]!.AsArray());
+    }
+
+    [Fact]
     public async Task Calculation_files_list_their_calculated_values()
     {
         // next-phase-2-design.md section 5.5: calculated/<name>.js is kind calculated, checked alone on write and listed with what it
