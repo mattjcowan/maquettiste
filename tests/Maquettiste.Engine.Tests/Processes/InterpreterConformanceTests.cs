@@ -398,6 +398,19 @@ public sealed class InterpreterConformanceTests : IDisposable
         Assert.Equal(parses, ProcessExpressions.Parse(expression) is null);
 
     [Fact]
+    public void A_model_with_more_processes_than_the_content_cache_compiles_each_process_once()
+    {
+        // Replaying a model compiles each process's expressions; a model with more processes than the content cache holds
+        // used to clear it on every replay and compile everything again.
+        var processes = Enumerable.Range(0, 600)
+            .Select(i => P([S("A")], [], guards: [G("g", "context.n > " + i.ToString(System.Globalization.CultureInfo.InvariantCulture))], actions: [A("stub")]))
+            .ToList();
+        var first = processes.Select(ProcessExpressions.Get).ToList();
+
+        Assert.All(processes.Select((p, i) => (p, i)), x => Assert.Same(first[x.i], ProcessExpressions.Get(x.p)));
+    }
+
+    [Fact]
     public void MQ9501_problems_are_listed_and_the_rest_still_compiles()
     {
         var process = P([S("A")], [], guards: [G("bad", "context.n >"), G("good", "context.n > 1")], actions: [A("stub")]);

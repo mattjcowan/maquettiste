@@ -164,9 +164,9 @@ The gate 3 bench line "MQ90xx-MQ92xx, whole model, added to validate" (400 ms bu
 errors, so with 1,000 processes the cache cleared itself on every run and its locks serialized the validation threads.
 Validation now parses without compiling; the line measures 0 to 63 ms.
 
-Left: scenario replay still compiles through that cache, which thrashes the same way above 512 processes. A cache sized
-to the model, or one that does not clear itself whole, would fix it. Also check the editor's validation on the
-5,000-entity scale dataset (`explorer-redesign.md` §4.5).
+Scenario replay compiled through the same cache; the compiled expressions now travel with the process object, so a
+model of any size compiles each process once (replay on the bench: 2,377 ms to 2,105 ms, 3,000 ms budget). Left: check
+the editor's validation on the 5,000-entity scale dataset (`explorer-redesign.md` §4.5).
 
 ### Bindings, the rest (`binding` phases B and C)
 
