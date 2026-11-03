@@ -2049,7 +2049,7 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9406 | info | Export wrote model data with no equivalent in the format into `meta.maquettiste`, so an import restores it | |
 | MQ9501 | error | A guard or action expression does not parse | |
 | MQ9502 | error | An expression threw during a replay or a simulation | |
-| MQ9503 | error | An expression exceeded the sandbox's deadline (50 ms) or statement limit (100,000) | |
+| MQ9503 | error | An expression exceeded the sandbox's deadline (50 ms, none when `limits.scriptTimeoutMs` is 0) or statement limit (100,000) | |
 | MQ9504 | warning | A guard returned something other than true or false (counted as false) | |
 | MQ9505 | warning | An action returned an attribute the context does not declare, or a value of the wrong type (ignored) | |
 | MQ9506 | warning | Two guarded transitions of one source and trigger were enabled at once; the first in priority order was taken | |
@@ -4084,12 +4084,12 @@ order of the calls or keep state between them.
 pass on a quiet machine and fail with MQ5003 on a busy one. `scriptTimeoutMs: 0` turns the clock off: the statement
 limit and the memory limit then bound each call, and the findings no longer depend on the machine's load. Use 0 in CI.
 `scriptMemoryBytes` counts every byte a call allocates, not what it keeps, so a long loop can reach 64 MB before the
-statement limit: raise `scriptMemoryBytes` along with `scriptStatements`. Pack scripts share the setting; previews and
-path listings keep their deadline of 8 seconds when it is 0. One bound stays on the clock: a regular expression match
-stops after 250 ms, because a match cannot be interrupted. A match that times out is tried once more when it cannot have
-run script code, so a busy machine fails it only when the thread waits that long twice in a row. For rules that CI runs,
-match regular expression literals against strings and give them strings (`/^[A-Z]/.test(element.name)`), not objects or
-a replacer function.
+statement limit: raise `scriptMemoryBytes` along with `scriptStatements`. Pack scripts share the setting, and so do the
+guard and action expressions of processes, which lose their 50 ms deadline at 0; previews and path listings keep their
+deadline of 8 seconds when it is 0. One bound stays on the clock: a regular expression match stops after 250 ms, because
+a match cannot be interrupted. A match that times out is tried once more when it cannot have run script code, so a busy
+machine fails it only when the thread waits that long twice in a row. For rules that CI runs, match regular expression
+literals against strings and give them strings (`/^[A-Z]/.test(element.name)`), not objects or a replacer function.
 
 **State between calls.** A rule keeps nothing between calls. The editor, the MCP server and
 `maquettiste generate --watch` keep each rule's findings per element in memory, and run the rule on an element again

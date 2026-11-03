@@ -265,6 +265,10 @@ one.
     keyed id only when the table inherits the member.
   - Changing an enum or reference type re-checks tables that get its typed column through an implied stereotype, and
     changing a schema's defaults re-checks the relations whose overlay puts their table in that schema.
+- **Process expressions follow `scriptTimeoutMs: 0`.** With the scripts' wall clock off, the guard and action
+  expressions of processes lose their 50 ms deadline too, and the 100,000-statement limit alone bounds each one. Before,
+  a busy machine could still fail a scenario step with MQ9503, so validation, `process verify` and generation depended on
+  its load.
 
 - Packs read each other's names. A unit's `exports` states names per element, such as a class name, a namespace or a
   name per attribute; another pack that lists it in `uses` reads them with `exported`, and the unit's own templates read

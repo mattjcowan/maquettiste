@@ -231,12 +231,15 @@ public sealed class JsModelProxyTests
         using (pool)
         {
             using var lease = pool.Rent();
-            var clock = System.Diagnostics.Stopwatch.StartNew();
+            // What the host allocated, not how long it took: copying the arrays would take at least 800 MB and 16 GB, and the calls
+            // run on this thread.
+            var allocated = GC.GetAllocatedBytesForCurrentThread();
 
             var helper = Assert.Throws<ScriptLimitException>(() => lease.Sandbox.CallHelper("sparse", [100_000_000L], Scripts.Ctx()));
             var selector = Assert.Throws<ScriptLimitException>(() => lease.Sandbox.Select("sparse", f.Model, Scripts.Ctx()));
 
-            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"took {clock.ElapsedMilliseconds} ms");
+            allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+            Assert.True(allocated < 64_000_000, $"allocated {allocated} bytes");
             Assert.Equal("MQ6007", helper.Diagnostic.Rule);
             Assert.Contains("memory limit", helper.Diagnostic.Message, StringComparison.Ordinal);
             Assert.Equal("MQ6007", selector.Diagnostic.Rule);

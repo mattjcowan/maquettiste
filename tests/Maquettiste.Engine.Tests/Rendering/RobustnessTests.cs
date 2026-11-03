@@ -79,7 +79,10 @@ public sealed class RobustnessTests
         var error = (await Adhoc.RenderAsync("{{ s = ('a' * 30) + '!' }}{{ for i in 1..50 }}{{ s | regex.match '^(a+)+$' }}{{ end }}")).Error();
         Assert.Equal("MQ6007", error.Rule);
         Assert.Equal(".maquettiste/templates/adhoc/main.scriban", error.FilePath);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), "The regex ran " + watch.Elapsed);
+        // The first match stops at the 250 ms bound, which the message names: that is the proof. The clock only shows the render
+        // does not run away (50 matches of 2^30 steps unbounded); it allows 10 s, as a loaded runner stretches the quarter second.
+        Assert.Contains("its 250 ms limit", error.Message, StringComparison.Ordinal);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), "The regex ran " + watch.Elapsed);
     }
 
     [Fact]

@@ -240,12 +240,6 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 - **Lock files.** The project-reference ranges in `packages.lock.json` still read `1.0.0-alpha.1` (harmless metadata
   from the first restore). Refreshing them would mean a release script that re-evaluates the locks at every version
   bump.
-- **Tests that hit sandbox time limits on busy runners.** CI fails now and then when a runner is loaded: a template
-  preview over the sandbox limit (MQ6007, `SnapshotEndpointTests`) or a scenario action over its 50 ms limit (MQ9503,
-  `ProcessDocsTests`). The limits guard real use; the test hosts should run with limits that do not depend on the
-  runner's load (the statement limit still bounds a script), so that a failure always means a defect.
-- **Regex limit tests.** Since the retry in 0.7.1, the catastrophic-pattern tests take about 0.5 s against a 1 s bound;
-  watch them on slow runners.
 
 ### Editor approachability (waits on a walkthrough with the owner)
 

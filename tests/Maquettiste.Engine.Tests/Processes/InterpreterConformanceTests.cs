@@ -473,6 +473,16 @@ public sealed class InterpreterConformanceTests : IDisposable
     }
 
     [Fact]
+    public void A_project_that_turns_the_clock_off_runs_expressions_without_their_deadline()
+    {
+        // The limits a run's expression sessions get (ProcessRuntime): the 50 ms deadline, or none under scriptTimeoutMs 0; the
+        // statement limit stays.
+        Assert.Equal(ProcessExpressions.Limits, ProcessExpressions.LimitsIn(new SandboxLimits()));
+        Assert.Equal(ProcessExpressions.Limits with { ScriptTimeoutMs = 0 }, ProcessExpressions.LimitsIn(new SandboxLimits { ScriptTimeoutMs = 0 }));
+        Assert.Equal(ProcessExpressions.StatementLimit, ProcessExpressions.LimitsIn(new SandboxLimits { ScriptTimeoutMs = 0 }).ScriptStatements);
+    }
+
+    [Fact]
     public void MQ9505_unknown_attributes_and_ill_typed_values_are_ignored()
     {
         var process = P([S("A"), S("B")], [On("t1", "A", "e", "B") with { Actions = ["set"] }], [E("e")],

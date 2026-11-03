@@ -12,6 +12,10 @@ Every file is canonical and loads without any diagnostic (`BillingFixtureTests`)
 
 - `schemas/`: database schemas (erratum E26). PostgreSQL database `main` with schemas `sales` (the default), `ops` and `audit`; `byConvention: packages` with package `Sales` as a plain id and `Ops` as `{ "package", "schema": ops }`; entities `Order` (Sales), `Log` and `Audit` (Ops), and a mapping that places `Audit` in `audit`. The sql-ddl pack test (`SchemaPlacementTests`) shows each table in its schema and each schema created.
 
+- `processes/` (the gate 3 fixture, its own README) and `process-basics/`: processes, actors and scenarios. Both set
+  `limits.scriptTimeoutMs` to 0, which turns the wall clock off for scripts and for guard and action expressions (the statement
+  limits still bound them), so every test that replays, verifies or generates over them gives the same result on a busy runner.
+
 - `showcase/`: Spoke & Chain, an invented bicycle-sharing and repair cooperative, for the documentation's screenshots
   (`npm run docs:screenshots` in src/editor, tests/docs/take.sh) and the guides' story. Four domains, 17 entities, 20 relations,
   two enums, three reference types with seeds, a table seed, PostgreSQL database `main` with 19 bound tables, a view and a query,

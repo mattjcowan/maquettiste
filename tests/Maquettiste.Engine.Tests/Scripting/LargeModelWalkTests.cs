@@ -39,9 +39,13 @@ public sealed class LargeModelWalkTests
         using (var lease = pool.Rent())
             Assert.True(lease.Sandbox.Filter("walk", entities[0], model, Scripts.Ctx(reads)) is true);
 
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(2), "walking took " + clock.Elapsed);
+        // What keeps the walk fast is counted below, not timed: each key list is recorded once per call (the list's membership once,
+        // each item's keys once), not the 20,000 membership keys at every read. The clock only catches a walk gone quadratic; it
+        // allows 10 s, which a loaded runner cannot reach (the walk takes a fraction of a second).
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), "walking took " + clock.Elapsed);
         var expected = membership.Concat(entities.SelectMany(e => e.Dependencies)).ToHashSet(StringComparer.Ordinal);
         Assert.True(expected.SetEquals(reads.Keys), "the recorded keys differ from the keys read");
+        Assert.Equal(membership.Length + entities.Sum(e => e.Dependencies.Count), reads.Keys.Count);
 
         // A second call records its reads again (the once-per-list rule is per call).
         var again = new ListRecorder();

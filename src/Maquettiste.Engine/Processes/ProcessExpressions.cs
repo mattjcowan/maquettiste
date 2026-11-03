@@ -53,6 +53,15 @@ public sealed class ProcessExpressions
     /// <summary>The sandbox limits of an expression: 50 ms and 100,000 statements; the other limits are the sandbox defaults.</summary>
     public static SandboxLimits Limits { get; } = new() { ScriptTimeoutMs = DeadlineMs, ScriptStatements = StatementLimit };
 
+    /// <summary>
+    /// The limits of an expression in a project: <see cref="Limits"/>, without the 50 ms deadline when the project turns the scripts'
+    /// wall clock off (<c>limits.scriptTimeoutMs: 0</c>, next-phase-1-design.md section 5.7), so that validation, verification and
+    /// generation do not depend on the machine's load there either. The statement limit then bounds every expression alone.
+    /// </summary>
+    /// <param name="project">The project's limits.</param>
+    /// <returns>The expression limits.</returns>
+    internal static SandboxLimits LimitsIn(SandboxLimits project) => project.ScriptTimeoutMs <= 0 ? Limits with { ScriptTimeoutMs = 0 } : Limits;
+
     /// <summary>The expressions that do not parse, in guard then action order.</summary>
     public IReadOnlyList<ExpressionProblem> Problems { get; }
 
@@ -145,7 +154,10 @@ public sealed class ProcessExpressions
     /// <returns>The session; dispose it when done.</returns>
     public ProcessExpressionSession Open(int size, CancellationToken ct) => Open(size, ct, Limits);
 
-    /// <summary>Opens a session with other sandbox limits (tests use it to reach one limit before the other).</summary>
+    /// <summary>
+    /// Opens a session with other sandbox limits: a project's (<see cref="LimitsIn"/>), or a test's that reaches one limit before the
+    /// other.
+    /// </summary>
     /// <param name="size">The most sandboxes kept idle.</param>
     /// <param name="ct">The run's cancellation.</param>
     /// <param name="limits">The limits of every expression run in the session.</param>

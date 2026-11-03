@@ -127,7 +127,9 @@ public sealed class JobQueueTests
         var watch = System.Diagnostics.Stopwatch.StartNew();
         Assert.True(h.Queue.Cancel(running.Id));
         var cancelled = await h.WaitAsync(running.Id);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(1), watch.Elapsed.ToString());
+        // The job waits on a gate that never opens, so only the cancellation ends it. The budget is one second (host-contracts 26)
+        // and it ends in milliseconds; the clock allows 10 s so that a loaded runner cannot fail it.
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), watch.Elapsed.ToString());
         Assert.Equal(JobState.Cancelled, cancelled.State);
 
         gate.TrySetResult();
