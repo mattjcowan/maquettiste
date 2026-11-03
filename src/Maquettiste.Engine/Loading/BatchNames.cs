@@ -252,12 +252,67 @@ internal sealed class BatchNames
 
         var layout = _schemas.GetLayout(info.SchemaFile);
         var found = new List<MintedId>();
-        IdMinter.Fill(node, layout, _ids, found);
+        IdMinter.Fill(node, layout, _ids, found, _snapshot.PropertySchemas);
         _minted.AddRange(found.Select(m => m with { Operation = i }));
         if (o.As is { } placeholder)
             Declare(i, placeholder, root, root, pointer + "/as");
         DeclareSubElements(i, root, node, layout, "", elementPointer, true);
+        DeclareMembers(i, root, node, elementPointer);
         return (root, found.Count == 0 ? null : [.. found.Select(m => m.Pointer)]);
+    }
+
+    /// <summary>
+    /// Records the placeholders the <c>as</c> keys of a custom element's members declare (next-phase-2-design.md section 4.2) and removes
+    /// the keys. The kind's layout leaves <c>content</c> free-form, so it is walked through the custom kind's member tree, as
+    /// <see cref="IdMinter.Fill"/> mints the members' ids.
+    /// </summary>
+    private void DeclareMembers(int i, string elementId, JsonNode node, string elementPointer)
+    {
+        if (node is not JsonObject root || root["kind"] is not JsonValue kind || !kind.TryGetValue<string>(out var kindName) || kindName != "custom"
+            || root["type"] is not JsonValue type || !type.TryGetValue<string>(out var typeName)
+            || _snapshot.PropertySchemas.ContentOf(typeName) is not { Members.Count: > 0 } source || root["content"] is not JsonObject content)
+            return;
+        foreach (var key in content.Select(p => p.Key).Order(StringComparer.Ordinal).ToList())
+        {
+            if (source.Members.TryGetValue(key, out var member))
+                DeclareMembers(i, elementId, content[key], member, "/content/" + JsonPointer.Escape(key), elementPointer);
+        }
+    }
+
+    private void DeclareMembers(int i, string elementId, JsonNode? value, XMemberNode node, string pointer, string elementPointer)
+    {
+        switch (value)
+        {
+            case JsonArray array when node.Items is { } items:
+                for (var k = 0; k < array.Count; k++)
+                {
+                    var itemPointer = pointer + "/" + k.ToString(CultureInfo.InvariantCulture);
+                    if (items.IsMember && array[k] is JsonObject item && item.ContainsKey("as"))
+                    {
+                        _named = true;
+                        var at = elementPointer + itemPointer + "/as";
+                        if (item["id"] is not JsonValue idValue || !idValue.TryGetValue<string>(out var memberId))
+                            Report(i, "MQ1014", "'as' names a member that has an id; this one has none.", elementId, at);
+                        else if (item["as"] is not JsonValue asValue || !asValue.TryGetValue<string>(out var text))
+                            Report(i, "MQ1015", "'as' takes a placeholder: $ then a letter or _, then letters, digits, _ or -.", elementId, at);
+                        else
+                            Declare(i, text, memberId, elementId, at);
+                        item.Remove("as");
+                    }
+
+                    DeclareMembers(i, elementId, array[k], items, itemPointer, elementPointer);
+                }
+
+                break;
+            case JsonObject obj when node.Properties is not null:
+                foreach (var key in obj.Select(p => p.Key).Order(StringComparer.Ordinal).ToList())
+                {
+                    if (node.Properties.TryGetValue(key, out var child))
+                        DeclareMembers(i, elementId, obj[key], child, pointer + "/" + JsonPointer.Escape(key), elementPointer);
+                }
+
+                break;
+        }
     }
 
     /// <summary>Records the placeholders the <c>as</c> keys of an element's sub-elements declare and removes the keys.</summary>
@@ -456,7 +511,7 @@ internal sealed class BatchNames
     {
         _overlay.Replace(root, final);
         var entries = new Dictionary<string, NameEntry>(StringComparer.Ordinal);
-        foreach (var entry in NameIndex.Of(final, _overlay.Lookup))
+        foreach (var entry in NameIndex.Of(final, _overlay.Lookup, null, _snapshot.PropertySchemas))
             entries.TryAdd(entry.Id, entry);
         for (var k = 0; k < _minted.Count; k++)
         {
@@ -639,7 +694,7 @@ internal sealed class BatchNames
             _elements[elementId] = element;
             if (element is null)
                 return;
-            var entries = NameIndex.Of(element, Lookup).ToList();
+            var entries = NameIndex.Of(element, Lookup, null, snapshot.PropertySchemas).ToList();
             _byElement[elementId] = entries;
             foreach (var entry in entries)
             {

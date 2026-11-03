@@ -96,7 +96,7 @@ public static class ModelPages
 
         IEnumerable<ElementSummary> result = index;
         if (!string.IsNullOrEmpty(filter.Kind))
-            result = result.Where(s => string.Equals(s.Kind, filter.Kind, StringComparison.Ordinal));
+            result = result.Where(s => MatchesKind(s, filter.Kind));
         if (packages is not null)
             result = result.Where(s => s.Package is not null && packages.Contains(s.Package));
         if (!string.IsNullOrEmpty(filter.Tag))
@@ -281,8 +281,28 @@ public static class ModelPages
         return c != 0 ? c : string.CompareOrdinal(a.Id, b.Id);
     }
 
+    /// <summary>The prefix of a custom kind in a kind filter and in kind counts (next-phase-2-design.md section 4.2).</summary>
+    public const string CustomKindPrefix = "custom:";
+
+    /// <summary>Whether a row matches a kind filter: its kind, or for a custom element <c>custom</c> (every custom kind) or
+    /// <c>custom:&lt;type&gt;</c> (its own).</summary>
+    /// <param name="row">The row.</param>
+    /// <param name="kind">The filter.</param>
+    /// <returns><see langword="true"/> on a match.</returns>
+    public static bool MatchesKind(ElementSummary row, string kind)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        ArgumentNullException.ThrowIfNull(kind);
+        return string.Equals(row.Kind, kind, StringComparison.Ordinal)
+            || (row.Kind == "custom" && kind.StartsWith(CustomKindPrefix, StringComparison.Ordinal)
+                && string.Equals(row.Type, kind[CustomKindPrefix.Length..], StringComparison.Ordinal));
+    }
+
+    /// <summary>A row's kind as kind counts list it: <c>custom:&lt;type&gt;</c> for a custom element, else its kind.</summary>
+    private static string CountedKind(ElementSummary row) => row.Kind == "custom" && row.Type is { } type ? CustomKindPrefix + type : row.Kind;
+
     private static KindCount[] Count(IReadOnlyList<ElementSummary> rows) =>
-        [.. rows.GroupBy(s => s.Kind, StringComparer.Ordinal).Select(g => new KindCount(g.Key, g.Count())).OrderBy(k => k.Kind, StringComparer.Ordinal)];
+        [.. rows.GroupBy(CountedKind, StringComparer.Ordinal).Select(g => new KindCount(g.Key, g.Count())).OrderBy(k => k.Kind, StringComparer.Ordinal)];
 
     private static JsonElement Trim(JsonElement json, HashSet<string> keep)
     {

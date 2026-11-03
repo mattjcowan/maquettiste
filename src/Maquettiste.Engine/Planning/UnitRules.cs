@@ -15,7 +15,8 @@ namespace Maquettiste.Engine.Planning;
 /// </summary>
 internal static class UnitRules
 {
-    /// <summary>The fixed scopes a unit's <c>for</c> may name; <c>select &lt;name&gt;</c> is the open one.</summary>
+    /// <summary>The fixed scopes a unit's <c>for</c> may name; <c>each custom:&lt;type&gt;</c> (next-phase-2-design.md section 4.2) and
+    /// <c>select &lt;name&gt;</c> are the open ones.</summary>
     public static readonly IReadOnlyList<string> Scopes =
     [
         "model", "each package", "each entity", "each attribute", "each relation", "each enum", "each value object", "each database", "each table",
@@ -31,8 +32,19 @@ internal static class UnitRules
     {
         var nearest = Scopes.OrderBy(s => Distance(s, scope)).ThenBy(s => s, StringComparer.Ordinal).First();
         var unit = unitId is null ? "A unit" : $"Unit '{unitId}'";
-        return $"{unit} has the unknown scope '{scope}'; did you mean '{nearest}'? Valid scopes: {string.Join(", ", Scopes)}, or 'select <name>' for a selector the pack's scripts register.";
+        return $"{unit} has the unknown scope '{scope}'; did you mean '{nearest}'? Valid scopes: {string.Join(", ", Scopes)}, '{CustomScopePrefix}<type>' for the elements of a custom kind the project declares, or 'select <name>' for a selector the pack's scripts register.";
     }
+
+    /// <summary>The prefix of a custom kind's scope: <c>each custom:&lt;type&gt;</c>.</summary>
+    public const string CustomScopePrefix = "each custom:";
+
+    /// <summary>The custom kind type of an <c>each custom:&lt;type&gt;</c> scope, or <see langword="null"/> for any other scope.</summary>
+    /// <param name="scope">The scope.</param>
+    /// <returns>The type.</returns>
+    public static string? CustomTypeOf(string scope) =>
+        scope is not null && scope.StartsWith(CustomScopePrefix, StringComparison.Ordinal) && scope.Length > CustomScopePrefix.Length
+            ? scope[CustomScopePrefix.Length..]
+            : null;
 
     /// <summary>
     /// MQ6019: whether the unit's output base plus the pattern's literal prefix (up to the last <c>/</c> before the first code span)

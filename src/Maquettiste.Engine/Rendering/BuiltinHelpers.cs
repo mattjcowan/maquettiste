@@ -118,14 +118,14 @@ internal static class BuiltinHelpers
     public static readonly FrozenSet<string> Names = FrozenSet.Create(StringComparer.Ordinal,
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_tag", "in_category", "lookup",
-        "banner", "file", "row", "row_uuid", "stable_id", "seed_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
+        "banner", "file", "row", "row_uuid", "stable_id", "seed_named", "custom_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
         "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
         "binding_sql", "binding_sql_parameters", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort");
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
     public static readonly FrozenSet<string> Variables = FrozenSet.Create(StringComparer.Ordinal,
         "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "view", "sequence", "routine", "database_type", "sql_object", "query", "reference_type",
-        "seed", "locale", "process", "actor", "scenario", "operation", "database", "attribute", "pack", "project", "mapping", "mappings", "schema_diff", "hints", "data", "unit");
+        "seed", "locale", "process", "actor", "scenario", "operation", "custom", "database", "attribute", "pack", "project", "mapping", "mappings", "schema_diff", "hints", "data", "unit");
 
     private static readonly JavaScriptEncoder JsonEncoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
 
@@ -208,6 +208,7 @@ internal static class BuiltinHelpers
         Add(builtins, "row_uuid", 1, 1, (c, a) => RowUuid(c, a[0]));
         Add(builtins, "stable_id", 2, 2, (c, a) => StableId(c, a[0], a[1]));
         Add(builtins, "seed_named", 1, 1, (c, a) => SeedNamed(c, a[0]));
+        Add(builtins, "custom_named", 2, 2, (c, a) => CustomNamed(c, a[0], a[1]));
         Add(builtins, "seed_row", 2, 2, (c, a) => SeedRow(c, a[0], a[1]));
         Add(builtins, "state_path", 1, 1, (c, a) => StatePath(c, a[0]));
         Add(builtins, "iso_duration_ms", 1, 1, (_, a) => IsoDurationMs(a[0]));
@@ -1550,6 +1551,36 @@ internal static class BuiltinHelpers
         if (row is not null)
             context.Recorder.RecordObject(row);
         return row;
+    }
+
+    /// <summary>
+    /// <c>custom_named "&lt;type&gt;" "&lt;name&gt;"</c> (next-phase-2-design.md section 4.2): the custom element of that type and name,
+    /// which may carry a package path (<c>"Billing.due_days"</c>), found in the snapshot's <c>custom</c> name index, or null. Records
+    /// <c>n:custom:&lt;type&gt;.&lt;name&gt;</c>, the batch form, and on a hit the element. A name two elements share fails the unit
+    /// (MQ6006).
+    /// </summary>
+    private static RCustom? CustomNamed(TrackingTemplateContext context, object? typeValue, object? nameValue)
+    {
+        var type = AsText(TrackingTemplateContext.Unwrap(typeValue));
+        var text = AsText(TrackingTemplateContext.Unwrap(nameValue));
+        if (type.Length == 0 || text.Length == 0)
+            throw new RenderHelperException("MQ6006", "`custom_named` needs a custom kind's type and an element's name, such as \"setting\" \"due_days\" or \"setting\" \"Billing.due_days\".");
+        if (!QualifiedName.TryParse("@custom:" + type + "." + text, out var name, out var error))
+            throw new RenderHelperException("MQ6006", $"`custom_named`: '{type}' '{text}' is not a custom element's name: {error}.");
+        context.Recorder.Record("n:custom:" + name.Path);
+        var model = context.Unit.Run.Context.Model;
+        var found = model.Source?.Names("custom").Find(name.Path) ?? [];
+        if (found.Count > 1)
+        {
+            throw new RenderHelperException("MQ6006",
+                $"`custom_named`: '{type}' '{text}' names {found.Count.ToString(CultureInfo.InvariantCulture)} custom elements: "
+                + string.Join(", ", found.Select(e => e.Longest + " (" + e.Id + ")")) + ". Use a longer name, or rename one.");
+        }
+
+        if (found.Count == 0 || model.Find(found[0].Id) is not RCustom custom)
+            return null;
+        context.Recorder.RecordObject(custom);
+        return custom;
     }
 
     /// <summary>

@@ -107,6 +107,24 @@ public sealed partial class AgentToolsTests
         Assert.Equal("bad-request", await CodeAsync(new { }));
     }
 
+    /// <summary><c>customKinds</c> (next-phase-2-design.md section 4.2): the declared type keys, ordinal; a file whose type differs from
+    /// its name declares none.</summary>
+    [Fact]
+    public async Task Get_project_lists_custom_kinds()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        var catalog = Catalog(r);
+        Assert.Empty(JsonNode.Parse((await catalog.CallAsync("get_project", null, Ct)).Text)!["customKinds"]!.AsArray());
+        r.Repo.WriteFile(".maquettiste/extensions/kinds/setting.json", CustomKinds.CustomFixture.SettingKind);
+        r.Repo.WriteFile(".maquettiste/extensions/kinds/flag.json", CustomKinds.CustomFixture.FlagKind);
+        r.Repo.WriteFile(".maquettiste/extensions/kinds/toggle.json", """{ "type": "switch", "properties": {} }""");
+        await r.Store.RefreshAsync([".maquettiste/extensions/kinds/setting.json", ".maquettiste/extensions/kinds/flag.json", ".maquettiste/extensions/kinds/toggle.json"], Ct);
+
+        var summary = JsonNode.Parse((await catalog.CallAsync("get_project", null, Ct)).Text)!;
+
+        Assert.Equal(["flag", "setting"], summary["customKinds"]!.AsArray().Select(n => (string?)n));
+    }
+
     [Fact]
     public async Task Get_project_answers_a_summary_and_sections_on_request()
     {
@@ -163,7 +181,7 @@ public sealed partial class AgentToolsTests
         Assert.Equal(Diagnostics.RuleCatalog.All.Count, families.Sum(f => (int)f!["rules"]!));
         var models = families[0]!;
         Assert.Equal(("MQ10xx", "Model files", "MQ1001"), ((string)models["family"]!, (string)models["familyLabel"]!, (string)models["first"]!));
-        Assert.Equal("MQ1016", (string)models["last"]!);
+        Assert.Equal("MQ1019", (string)models["last"]!);
         Assert.Contains(families, f => (string)f!["family"]! == "MQ41xx" && (string)f["familyLabel"]! == "Migrations");
         Assert.DoesNotContain("description", summary.ToJsonString(), StringComparison.Ordinal);
 

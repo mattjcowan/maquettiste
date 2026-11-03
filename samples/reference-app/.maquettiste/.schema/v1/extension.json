@@ -56,7 +56,8 @@
               "operation",
               "operation-member",
               "outcome",
-              "error"
+              "error",
+              "custom"
             ]
           },
           "uniqueItems": true,

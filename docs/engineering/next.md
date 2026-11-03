@@ -47,7 +47,8 @@ Designed in `next-phase-1-design.md`. 0.11.0 is a preview and not released yet.
 ## Phase 2: built in 0.12.0
 
 Milestone D is designed in section 3 of `next-phase-2-design.md` and was merged in pull request #1. The first cut of
-operations is designed in section 4.1. 0.12.0 is not released yet.
+operations (section 4.1) was merged in pull request #3; project-defined kinds are section 4.2. 0.12.0 is not released
+yet.
 
 | # | Item | Requested | Status | Design |
 | --- | --- | --- | --- | --- |
@@ -57,6 +58,7 @@ operations is designed in section 4.1. 0.12.0 is not released yet.
 | 6.6 | Seed foreign keys by natural key, stable derived ids, rows computed by a script | yes | Built, 0.12.0 | [3.4](next-phase-2-design.md#34-seeds-by-natural-key-stable-ids-and-scripted-rows) |
 | 6.7 | Rename, retire and merge reference-type codes and types, each recording a value map | yes | Built, 0.12.0 | [3.5](next-phase-2-design.md#35-reference-type-refactors) |
 | 3.6 | Operations, first cut: the kind with `subject`, `level` and `effect`; input members by type or key; outcomes with `completes` and `returns`; errors with `code` and `input`; `fires` and `requires`; `each operation`; csharp-dapper's `operation-contracts` unit | yes | Built, 0.12.0 | [4.1](next-phase-2-design.md#41-operations) |
+| 3.7 | Project-defined kinds: the `custom` kind with project-declared types in kind files, members that have ids, content validation, translations, `each custom:<type>` and the tools for kind files and rows | yes | Built, 0.12.0 | [4.2](next-phase-2-design.md#42-project-defined-kinds) |
 
 ## Left over from built items
 
@@ -68,11 +70,10 @@ operations is designed in section 4.1. 0.12.0 is not released yet.
 
 ## Phase 2: not built yet
 
-Designed in sections 4 to 6 of `next-phase-2-design.md`. The *build next* items hold 54 tasks as designed.
+Designed in sections 4 to 6 of `next-phase-2-design.md`. The *build next* items left hold 44 tasks as designed.
 
 | # | Item | Requested | Status | Tasks | Design | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 3.7 | Project-defined kinds (`custom`), with members that have ids | yes | Build next | 10 | [4.2](next-phase-2-design.md#42-project-defined-kinds) | |
 | 8.2 | Tests for packs (`maquettiste pack test`) | yes | Build next | 7 | [5.4](next-phase-2-design.md#54-tests-for-packs) | No longer waits for DDL steps (5.8). Its cases on the shipped packs pin their output, which 5.8 needs later. |
 | 5.1 | Library packs: shared partials and helpers | yes | Build next | 8 | [5.2](next-phase-2-design.md#52-library-packs) | A project typically runs several packs (database, API, data access, docs, agents) that share partials and helpers. |
 | 5.3 | Packs that read each other's exports | yes | Build next | 5 | [5.3](next-phase-2-design.md#53-packs-that-read-each-others-exports) | Built with 5.1. The API pack reads the class names the data access pack generated; only the pack that generates a name knows it. |

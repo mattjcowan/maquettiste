@@ -30,8 +30,10 @@ public sealed record IndexEntry(string Id, string OwnerId, string Kind, string J
 /// the JSON when false.</param>
 /// <param name="Optional">For a value an <c>x-ref</c> types (next-phase-1-design.md section 4.1): whether every schema that types it
 /// says <c>optional</c>, so <c>remove-references</c> may clear it. Left out of the JSON when false.</param>
-/// <param name="Schema">For a value an <c>x-ref</c> types: the schema that types it, <c>extension:&lt;name&gt;</c> or
-/// <c>stereotype:&lt;key&gt;</c>; <see langword="null"/> (and left out of the JSON) for every other reference.</param>
+/// <param name="Schema">For a value an <c>x-ref</c> types: the schema that types it, <c>extension:&lt;name&gt;</c>,
+/// <c>stereotype:&lt;key&gt;</c> or, for a custom element's content, <c>custom-kind:&lt;type&gt;</c> (next-phase-2-design.md section 4.2,
+/// with the top-level content key as <paramref name="Field"/> and the innermost member that holds the value, else the custom element,
+/// as <paramref name="FromId"/>); <see langword="null"/> (and left out of the JSON) for every other reference.</param>
 public sealed record ReferenceInfo(string FromElementId, string FromId, string JsonPointer, string Field, string ToId,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Owning = false,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Optional = false,
@@ -50,7 +52,7 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="DisplayName">The element's display name, when it has one (E5: search and the explorer's label).</param>
 /// <param name="Database">The owning database's id, on table, view, sequence and mapping rows (E5), and on the rows of the other database objects and migration facts.</param>
 /// <param name="Entity">The entity a mapping maps or a table overlay applies to, when it has one (E5).</param>
-/// <param name="MemberCount">The number of members, on diagram rows (E5).</param>
+/// <param name="MemberCount">The number of members, on diagram rows (E5) and on custom element rows (next-phase-2-design.md section 4.2).</param>
 /// <param name="Ends">The relation's ends in document order, on relation rows (E5).</param>
 /// <param name="Target">The id of the entity, relation or reference type a seed holds rows for, on seed rows.</param>
 /// <param name="RowCount">The number of rows, on seed rows.</param>
@@ -64,6 +66,7 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Process">The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows.</param>
 /// <param name="StepCount">The number of steps, on scenario rows.</param>
 /// <param name="Effect">The operation's effect, <c>read</c> or <c>change</c>, on operation rows (next-phase-2-design.md section 4.1).</param>
+/// <param name="Type">The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2).</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -85,7 +88,8 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ActorType = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Process = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? StepCount = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Effect = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Effect = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type = null)
 {
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
@@ -114,6 +118,7 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && string.Equals(Process, other.Process, StringComparison.Ordinal)
         && StepCount == other.StepCount
         && string.Equals(Effect, other.Effect, StringComparison.Ordinal)
+        && string.Equals(Type, other.Type, StringComparison.Ordinal)
         && (ReferenceEquals(Ends, other.Ends) || (Ends is not null && other.Ends is not null && Ends.SequenceEqual(other.Ends)));
 
     /// <inheritdoc/>

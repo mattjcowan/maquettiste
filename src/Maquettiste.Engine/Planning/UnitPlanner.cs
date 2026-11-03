@@ -378,6 +378,10 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             case "each operation": return model.Operations;
         }
 
+        // A custom kind's elements, in (name, id) order (next-phase-2-design.md section 4.2); an undeclared kind has none.
+        if (UnitRules.CustomTypeOf(unit.For) is { } type)
+            return model.CustomElements.Where(c => string.Equals(c.Type, type, StringComparison.Ordinal));
+
         if (!unit.For.StartsWith("select ", StringComparison.Ordinal))
             return [];
         var selector = unit.For["select ".Length..].Trim();

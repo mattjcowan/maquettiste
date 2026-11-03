@@ -1341,6 +1341,8 @@ Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
 | `t:<pack>/<path>` | file hash of a template or partial |
 | `d:<databaseId>` | `SchemaDiffResult.Hash` |
 | `x:<path under extensions>` | the content hash of a file under `extensions/` (`seeds/audited-records.js`), or absent; recorded by a seed's scripted rows (next-phase-2-design.md section 3.4) |
+| `c:<type>` | the content hash of the custom kind file `extensions/kinds/<type>.json`, or absent; recorded by every `RCustom` of that type and its `RMember`s, so a changed custom kind renders its elements' units again (next-phase-2-design.md section 4.2); `PlanExplainer` words it "The custom kind <type>", cause kind `custom-kind` |
+| `n:<kind>:<form>` | the sorted ids the kind's name index finds under the canonical form, or absent; `seed_named` records `n:seed:<form>`, `custom_named` `n:custom:<type>.<name>` (the batch form), and `table_named` `n:table:<text>` over resolved table names |
 | `ix:<index>:<value>`, `rt:<id>` | as `RuleKeyHasher` hashes them for the rule cache: `ix:` the sorted ids a `withStereotype`, `withTag`, `withProperty` or `byQualifiedName` lookup returns, `rt:` every reference entry to the id; recorded by a scripted seed's rows through the reads of its script run |
 | any key that no longer resolves | `"absent"` |
 

@@ -111,4 +111,29 @@ public sealed class ResolvedRecordsTests
         // all holds it too; the database narrowing leaves operations alone.
         Assert.Equal([Send], ResolvedRecords.Entries(resolved, "all", null).Where(e => e.Kind == "operation").Select(e => e.Id));
     }
+
+    /// <summary>The <c>custom-elements</c> scope (next-phase-2-design.md section 4.2): one record per custom element with its type,
+    /// package, content as written and members.</summary>
+    [Fact]
+    public async Task Custom_elements_scope_returns_one_record_per_element()
+    {
+        await using var s = await CustomKinds.CustomFixture.OpenAsync(true, ("setting", CustomKinds.CustomFixture.SettingKind), ("message", CustomKinds.CustomFixture.MessageKind));
+        await CustomKinds.CustomFixture.CreateAsync(s, $$"""
+            { "kind": "custom", "id": "01JRCE00000000000000000031", "name": "invoice_sent", "type": "message",
+              "content": { "parts": [ { "id": "01JRCM00000000000000000031", "name": "subject", "text": "Your invoice" } ] } }
+            """);
+        var resolved = ResolutionKit.Resolve(s.Model);
+
+        Assert.Equal("custom", ResolvedRecords.Scopes["custom-elements"]);
+        Assert.Contains("custom-elements", ResolvedRecords.ScopeNames);
+        var records = ResolvedRecords.Entries(resolved, "custom-elements", null).Select(e => Assert.IsType<CustomRecord>(e.Project())).ToList();
+        Assert.Equal(["invoice_sent", "due_days"], records.Select(r => r.Name)); // model order: by type, then name
+        var due = records[1];
+        Assert.Equal(("custom", "setting", CustomKinds.CustomFixture.Billing), (due.Kind, due.Type, due.Package));
+        Assert.Equal(30, due.Content["value"].GetInt32());
+        Assert.Empty(due.Members);
+        var member = Assert.Single(records[0].Members);
+        Assert.Equal(new MemberRecord("01JRCM00000000000000000031", "subject", "parts", null, "/content/parts/0"), member);
+        Assert.Contains(ResolvedRecords.Entries(resolved, "all", null), e => e.Kind == "custom");
+    }
 }

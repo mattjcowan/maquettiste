@@ -43,6 +43,7 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
         new(ElementKind.Scenario, "scenario", typeof(Scenario), "scenario.json", ScenariosFolder, null),
         new(ElementKind.Migration, "migration", typeof(Migration), "migration.json", "model/databases/{db}/migrations/open", null),
         new(ElementKind.Operation, "operation", typeof(Operation), "operation.json", OperationsFolder, null),
+        new(ElementKind.Custom, "custom", typeof(Custom), "custom.json", CustomFolder, null),
     ];
 
     /// <summary>The folder of seeds; each target's seeds share a sub-folder named after the target.</summary>
@@ -53,6 +54,9 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
 
     /// <summary>The folder of operations; an operation with a subject lives in a sub-folder named after the subject's file stem.</summary>
     public const string OperationsFolder = "model/operations";
+
+    /// <summary>The folder of custom elements; each custom kind's elements share a sub-folder named after its type (<c>model/custom/&lt;type&gt;/</c>).</summary>
+    public const string CustomFolder = "model/custom";
 
     /// <summary>The folder of locale shards, one sub-folder per locale (<c>model/locales/&lt;locale&gt;/</c>).</summary>
     public const string LocalesFolder = "model/locales";
@@ -75,9 +79,9 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
 
     /// <summary>
     /// The non-element document schemas: project settings, pack manifests, extension schemas, manifests, snapshots, batches
-    /// the <c>validate --format json</c> output, locale shards and a migration ledger's rows (<c>ledger.json</c>), plus the shared
-    /// definitions.
+    /// the <c>validate --format json</c> output, locale shards, a migration ledger's rows (<c>ledger.json</c>) and custom kind files
+    /// (<c>custom-kind.json</c>), plus the shared definitions.
     /// </summary>
     public static IReadOnlyList<string> DocumentSchemaFiles { get; } =
-        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json", "locale.json", "ledger.json"];
+        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json", "locale.json", "ledger.json", "custom-kind.json"];
 }

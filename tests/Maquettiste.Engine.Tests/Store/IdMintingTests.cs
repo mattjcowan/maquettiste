@@ -191,4 +191,29 @@ public sealed class IdMintingTests
         Assert.Contains($"'1' ({Row})", refusal.Message, StringComparison.Ordinal);
         Assert.Equal(files, s.Files());
     }
+
+    [Fact]
+    public async Task Members_get_ids_in_walk_order_and_a_deterministic_generator_gives_identical_files()
+    {
+        // next-phase-2-design.md section 4.2: content keys in ordinal order, items by index, a member before its nested members.
+        const string layout = """
+            { "kind": "custom", "name": "invoice_layout", "type": "layout",
+              "content": { "sections": [ { "name": "header", "lines": [ { "name": "number" }, { "name": "date" } ] }, { "name": "footer" } ] } }
+            """;
+        var texts = new List<string>();
+        var orders = new List<List<string>>();
+        for (var run = 0; run < 2; run++)
+        {
+            await using var s = await CustomKinds.CustomFixture.OpenAsync(false, ("layout", CustomKinds.CustomFixture.LayoutKind));
+            var created = await CustomKinds.CustomFixture.CreateAsync(s, layout);
+            var members = ModelIndexer.MembersOf(s.Model.Get<Custom>(created.Id!)!, s.Model.PropertySchemas);
+            orders.Add([.. members.Select(m => m.Id!)]);
+            texts.Add(s.Harness.Read("model/custom/layout/invoice-layout.json"));
+        }
+
+        Assert.Equal(texts[0], texts[1]);
+        Assert.Equal(orders[0], orders[1]);
+        Assert.Equal(orders[0].Order(StringComparer.Ordinal), orders[0]); // a sequential generator: walk order is minting order
+        Assert.Equal(4, orders[0].Distinct(StringComparer.Ordinal).Count());
+    }
 }

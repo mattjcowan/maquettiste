@@ -160,6 +160,7 @@ public sealed partial class AgentTools
                 packs.Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Info)),
             [.. snapshot.Extensions.Select(e => e.Schema.Name)], ProjectSections)
         {
+            CustomKinds = [.. snapshot.PropertySchemas.ContentSources.Select(c => c.CustomType!)],
             Settings = Wants("settings") ? snapshot.Settings : null,
             PackManifests = Wants("packs") ? packs.Packs : null,
             PackDiagnostics = Wants("packs") ? packs.Diagnostics : null,
@@ -213,7 +214,22 @@ public sealed partial class AgentTools
         var kind = args.String("kind");
         if (string.IsNullOrEmpty(kind))
             return BadRequest("kind is required.");
-        var elementKind = KindInfo.TryGet(kind, out var info) ? info : null;
+        PropertySchemaSource? content = null;
+        if (kind.StartsWith(ModelPages.CustomKindPrefix, StringComparison.Ordinal))
+        {
+            // A custom kind (next-phase-2-design.md section 4.2): custom.json, plus the declaration and its compiled content schema.
+            var type = kind[ModelPages.CustomKindPrefix.Length..];
+            var declared = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+            content = declared.PropertySchemas.ContentOf(type);
+            if (content is null)
+            {
+                var types = declared.PropertySchemas.ContentSources.Select(c => ModelPages.CustomKindPrefix + c.CustomType);
+                return Problem("not-found", 404, $"The project declares no custom kind '{type}'.",
+                    "Declared custom kinds: " + (types.Any() ? string.Join(", ", types) : "none") + ".");
+            }
+        }
+
+        var elementKind = content is not null ? KindInfo.Get(ElementKind.Custom) : KindInfo.TryGet(kind, out var info) ? info : null;
         var file = elementKind is not null ? elementKind.SchemaFile
             : kind.EndsWith(".json", StringComparison.Ordinal) ? kind
             : kind + ".json";
@@ -256,6 +272,13 @@ public sealed partial class AgentTools
                 .OrderBy(s => s.Key, StringComparer.Ordinal)
                 .Select(s => new JsonObject { ["stereotype"] = s.Key, ["parameters"] = JsonSerializer.SerializeToNode(s.Parameters, JsonOptions) });
             result["stereotypeParameters"] = new JsonArray([.. parameters]);
+            if (content is not null && snapshot.CustomKinds.FirstOrDefault(k => string.Equals(k.Path, content.Path, StringComparison.Ordinal)) is { } declaration)
+            {
+                var customKind = JsonSerializer.SerializeToNode(declaration.Kind, JsonOptions)!.AsObject();
+                customKind["path"] = declaration.Path;
+                result["customKind"] = customKind;
+                result["contentSchema"] = content.SchemaJson();
+            }
         }
 
         return Text(result.ToJsonString(JsonOptions), isError: false);
@@ -543,6 +566,9 @@ public sealed record AgentProjectInfo(string Name, int FormatVersion, string Eng
     string? Branch, string? Worktree, string? Repository, string Mode, string SettingsHash, IReadOnlyList<ElementSummary> Databases,
     IReadOnlyList<AgentPackSummary> Packs, AgentDiagnosticCounts PackDiagnosticCounts, IReadOnlyList<string> Extensions, IReadOnlyList<string> Sections)
 {
+    /// <summary>The type keys of the custom kinds the project declares (next-phase-2-design.md section 4.2), ordinal.</summary>
+    public IReadOnlyList<string> CustomKinds { get; init; } = [];
+
     /// <summary>With the <c>settings</c> section: the typed settings.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProjectSettings? Settings { get; init; }

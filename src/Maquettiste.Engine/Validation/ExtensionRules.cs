@@ -89,20 +89,22 @@ internal sealed class ExtensionSet
     public int Count => _extensions.Count;
 
     /// <summary>
-    /// MQ2009 for the extension files: each malformed or misplaced <c>x-ref</c> the schema set found, and each <c>of</c> that names
-    /// no element of the model (the keyword is then ignored by no walk: its values are judged by validation).
+    /// MQ2009 for the extension files and the custom kind files (next-phase-2-design.md section 4.2): each malformed or misplaced
+    /// <c>x-ref</c> the schema set found, and each <c>of</c> that names no element of the model, or under kind <c>member</c> no custom
+    /// element (the keyword is then ignored by no walk: its values are judged by validation); with them the custom kind files' own
+    /// findings (MQ1017, MQ1018, MQ7212), which the schema set holds.
     /// </summary>
     private static void ReportKeywords(ModelSnapshot model, PropertySchemaSet schemas, List<Diagnostic> fileDiagnostics)
     {
         fileDiagnostics.AddRange(schemas.Diagnostics);
-        foreach (var source in schemas.Sources)
+        foreach (var source in schemas.Sources.Concat(schemas.ContentSources))
         {
             if (source.StereotypeKey is not null)
                 continue; // a stereotype's keywords are judged with the stereotype (BuiltinRules.CheckStereotype)
             foreach (var (pointer, xref) in source.Keywords)
             {
-                if (xref.Of is { } of && of != XRef.ElementScope && !(model.TryGetEntry(of, out var entry) && entry.OwnerId == of))
-                    fileDiagnostics.Add(RuleCatalog.Create("MQ2009", $"x-ref of names {of}, which is no element of the model.", null, source.Path, pointer + "/of"));
+                if (BuiltinRules.OfProblem(model, xref) is { } problem)
+                    fileDiagnostics.Add(RuleCatalog.Create("MQ2009", problem, null, source.Path, pointer + "/of"));
             }
         }
     }

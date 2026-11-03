@@ -272,6 +272,7 @@ export const KIND_LABELS: Record<ElementKind, string> = {
   scenario: "Scenario",
   migration: "Migration fact",
   operation: "Operation",
+  custom: "Custom element",
 };
 
 /** A domain inside another domain. */

@@ -2981,6 +2981,14 @@ an element's or sub-element's own text is translated: a stereotype's `defaultPro
 carries the stereotype and stays in the default locale. When a property is no longer marked, its translations become
 orphans (MQ7203), and `l10n prune` removes them.
 
+The content of a custom element (see [Custom kinds](#custom-kinds-extensionskindsjson)) is translated the same way. A
+top-level string of the custom kind's `properties`, or of a member array's items, marked `x-translatable` is the field
+`content/<name>`: on the element for its own content, and on the member for a member's text, so each part of a message
+has its own translation. A member's translations sit under the member's id in the shard of its owner's package. The
+completeness matrix, MQ7204 to MQ7206, MCP `localization_status`, `get_translations` and `set_translations`, the `l10n`
+verbs and the exports count and carry these fields, and templates read them with `translate <element or member>
+"content/<name>"`.
+
 ## The assistant
 
 The **Assistant** panel (the top bar's assistant button, tooltip "Assistant (Ctrl+I)", or **Ctrl+I**, which also closes it) is a chat about the model
@@ -3618,6 +3626,102 @@ without `required`, so a stereotype may leave a required parameter to the elemen
 `/defaultProperties/<name>`). `parameters` that is not a valid schema, or a `required` that names an undeclared
 parameter, is MQ2019; a malformed `x-ref` in it is MQ2009 on the stereotype. MCP `get_schema` lists the parameters of
 the stereotypes that may apply to a kind under `stereotypeParameters`.
+
+### Custom kinds (`extensions/kinds/*.json`)
+
+A project can declare kinds of its own for facts no built-in kind holds, such as settings, messages or feature flags.
+Each kind is one file, `.maquettiste/extensions/kinds/<type>.json`, and its elements are files of `kind: "custom"` under
+`model/custom/<type>/`. An element of a custom kind has what every element has (an id, a name, a package, a description,
+tags, stereotypes) and a `content` object that the kind's schema checks. The engine gives the content no meaning; it
+indexes it, checks it, translates it and hands it to templates.
+
+| Key | Meaning |
+| --- | --- |
+| `type` | The kind's key, kebab-case, equal to the file name (`feature-flag` in `kinds/feature-flag.json`). Elements name it in their `type`. |
+| `displayName`, `pluralName` | How tools and templates call the kind; absent, the type and its plural. |
+| `description` | Text for people. |
+| `properties` | One JSON Schema per content key, as in an extension file, with `x-ref`, `x-translatable` and `x-member`. |
+| `required` | The content keys every element of the kind must set. |
+
+For example, a `feature-flag` kind and one flag in the Billing domain:
+
+```json
+{
+  "type": "feature-flag",
+  "displayName": "Feature flag",
+  "pluralName": "Feature flags",
+  "properties": {
+    "enabled": { "type": "boolean" },
+    "rollout": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "owner": { "type": "string", "x-ref": { "kind": "actor", "optional": true } }
+  },
+  "required": ["enabled"]
+}
+```
+
+```json
+{
+  "kind": "custom",
+  "name": "early_invoicing",
+  "package": "<id of Billing>",
+  "type": "feature-flag",
+  "content": { "enabled": false, "rollout": 10 }
+}
+```
+
+A custom element's name is unique per type and package. An `x-ref` in its content is a reference like any other: the
+element it names cannot be deleted plainly, and `get_references` lists the link. An `x-ref` anywhere in the project,
+in a custom property schema too, can name a custom kind as `{ "kind": "custom:feature-flag" }`.
+
+**Members.** An array marked `"x-member": true`, whose items are objects, makes each item a member: a sub-element with
+an id the engine mints on save, so the item schema declares no `id`. Members nest, and a member whose item schema
+declares a string `name` is named by it; two members of one array may not share a name (MQ3001). A content value with
+`"x-ref": { "kind": "member" }` names a member of any custom element; with `"of": "$element"`, a member of the same
+element (MQ2011 otherwise). Removing a member that a required value names is refused, and a delete with
+`remove-references` clears the optional ones.
+
+**Rules.** A custom kind file that is invalid (its `type` differs from its file name, its `properties` do not compile,
+its `required` names an undeclared key) is MQ1017, a misplaced `x-member` MQ1018 and a misplaced `x-translatable`
+MQ7212. An element whose `type` names no custom kind file is MQ1019, and its content is not checked; content that fails
+the schema (a required key missing, an undeclared key, a value of the wrong shape, a member without an id) is MQ3033.
+Deleting or moving a custom kind file that elements use is refused, with one MQ1019 per element.
+
+**Names.** Every name of a custom element carries its type, because names are unique per type:
+`@custom:feature-flag.early_invoicing` or `@custom:feature-flag.Billing.early_invoicing` in a batch; the plain name is
+not a form. A member adds its name, and a nested one its parents' names: `@member:message.invoice_sent.subject`. The
+ids a batch mints for a custom element and its members come back under `ids.minted` with their longest form.
+
+**Templates.** A unit `"for": "each custom:<type>"` renders once per element of that kind, with the variable `custom`:
+the element's common fields, `type`, `type_display_name`, `type_plural_name`, `content` (the keys as written, a member
+array as a list of members) and `members` (every member at any depth, a member before its nested ones). A member has
+`name`, `array`, `owner`, `parent` and `content`. From any unit, `custom_named "<type>" "<name>"` finds an element by
+name (`"Billing.early_invoicing"` qualifies it; `null` when none matches), and `lookup` takes the id of a custom
+element or a member. A unit renders again when an element it read changes, and when the custom kind file of a
+`custom` record it read changes. MCP `get_template_context` lists the kind's content keys under `custom.content`.
+
+For example, a pack unit that writes one line per flag:
+
+```json
+{ "id": "flag", "template": "flag.scriban", "for": "each custom:feature-flag", "output": "src/Generated/flags/{{ custom.name }}.txt" }
+```
+
+```scriban
+{{ custom.name }}={{ custom.content.enabled }} ({{ custom.content.rollout }} %)
+```
+
+**Translations.** A top-level string of the content, or of a member's items, marked `x-translatable` is translated
+as the field `content/<name>` (see [Translating the model in the editor](#translating-the-model-in-the-editor)).
+
+**Tools.** MCP `get_schema` takes `custom:<type>` and returns the element schema with the kind's content. The `kind`
+filter of `get_model_index` and `get_elements`, and `--kind` of the CLI's `model export` and `model stats`, take
+`custom` for every custom element and `custom:<type>` for one kind. `get_model_kinds` counts one `custom:<type>` row per
+kind, and `get_resolved_model` has the scope `custom-elements`. The extension file tools list, read, write, move and
+delete `kinds/<type>.json`, and `format_model` writes them in canonical form. An operation's `requires` can name a
+custom element, a flag the operation needs for instance, and deleting the element is then refused while the operation
+names it.
+
+In the editor a custom element shows as "Custom element" and is edited as JSON. A form driven by the kind's schema, an
+explorer section per custom kind, a member list editor and a custom kind editor on the Extensions screen come later.
 
 ### Stereotypes that contribute structure
 

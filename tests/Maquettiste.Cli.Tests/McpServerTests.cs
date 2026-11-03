@@ -1113,6 +1113,61 @@ public sealed class McpReadTests
     }
 
     private static List<string> Ids(JsonNode index) => [.. index.AsArray().Select(s => (string)s!["id"]!)];
+
+    /// <summary>get_schema custom:&lt;type&gt; (next-phase-2-design.md section 4.2): custom.json with the declaration and the compiled content
+    /// schema, member ids injected.</summary>
+    [Fact]
+    public async Task Get_schema_for_a_custom_kind_returns_the_declaration_and_content_schema()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        repo.Write(".maquettiste/extensions/kinds/message.json", """
+            { "type": "message", "properties": { "parts": { "type": "array", "x-member": true,
+              "items": { "type": "object", "properties": { "name": { "type": "string" }, "text": { "type": "string" } } } } }, "required": ["parts"] }
+            """);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var schema = await session.OkAsync("get_schema", new { kind = "custom:message" });
+
+        Assert.Equal(("custom:message", "custom.json"), ((string)schema["name"]!, (string)schema["file"]!));
+        Assert.Equal(("message", ".maquettiste/extensions/kinds/message.json"), ((string)schema["customKind"]!["type"]!, (string)schema["customKind"]!["path"]!));
+        var content = schema["contentSchema"]!;
+        Assert.False((bool)content["additionalProperties"]!);
+        Assert.Equal(["parts"], content["required"]!.AsArray().Select(n => (string?)n));
+        var item = content["properties"]!["parts"]!["items"]!;
+        Assert.Contains("id", item["required"]!.AsArray().Select(n => (string?)n));
+        Assert.NotNull(item["properties"]!["id"]);
+        var missing = await session.ErrorAsync("get_schema", new { kind = "custom:flag" });
+        Assert.Equal("not-found", missing.Code);
+        Assert.Contains("custom:message", missing.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>Custom element rows carry type and memberCount; a kind filter takes custom and custom:&lt;type&gt;, and kind counts list one
+    /// custom:&lt;type&gt; row per custom kind (next-phase-2-design.md section 4.2).</summary>
+    [Fact]
+    public async Task Model_index_and_kinds_present_custom_kinds()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        repo.Write(".maquettiste/extensions/kinds/setting.json", """{ "type": "setting", "displayName": "Setting", "properties": { "unit": { "type": "string" }, "value": { "type": "integer" } } }""");
+        repo.Write(".maquettiste/extensions/kinds/flag.json", """{ "type": "flag", "properties": { "on": { "type": "boolean" } } }""");
+        repo.Write(".maquettiste/model/custom/setting/due-days.json", """
+            { "kind": "custom", "id": "01JR6CK000000000000000000A", "name": "due_days", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "type": "setting",
+              "content": { "unit": "days", "value": 30 } }
+            """);
+        repo.Write(".maquettiste/model/custom/flag/strict.json", """{ "kind": "custom", "id": "01JR6CK000000000000000000B", "name": "strict", "type": "flag", "content": { "on": true } }""");
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var row = Assert.Single((await session.OkAsync("get_model_index", new { kind = "custom:setting" })).AsArray())!;
+        Assert.Equal(("due_days", "custom", "setting", 0), ((string)row["name"]!, (string)row["kind"]!, (string)row["type"]!, (int)row["memberCount"]!));
+        Assert.Equal(2, (await session.OkAsync("get_model_index", new { kind = "custom" })).AsArray().Count);
+        var page = await session.OkAsync("get_elements", new { kind = "custom:flag" });
+        Assert.Equal("01JR6CK000000000000000000B", (string)Assert.Single(page["items"]!.AsArray())!["id"]!);
+        var kinds = (await session.OkAsync("get_model_kinds"))["kinds"]!.AsArray().Select(k => ((string)k!["kind"]!, (int)k["count"]!)).ToList();
+        Assert.Contains(("custom:flag", 1), kinds);
+        Assert.Contains(("custom:setting", 1), kinds);
+        Assert.DoesNotContain(kinds, k => k.Item1 == "custom");
+    }
 }
 
 /// <summary>Saves, conflicts, creates, deletes and batches.</summary>

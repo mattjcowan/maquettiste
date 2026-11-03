@@ -200,7 +200,10 @@ public sealed class ResolvedNullContractTests
             ],
             Errors = [new OperationError { Id = b.NewId(), Name = "missing_recipient", Input = recipient }],
         });
-        return b.Build();
+
+        // A custom element with a member (next-phase-2-design.md section 4.2).
+        b.Add(CustomKinds.CustomFixture.Element(b.NewId(), "invoice_sent", "message", $$"""{ "parts": [ { "id": "{{b.NewId()}}", "name": "subject" } ] }"""));
+        return CustomKinds.CustomFixture.Snapshot(b, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.MessageKind)]);
     }
 
     /// <summary>Whether a member is a single value (a scalar or an object), as opposed to a list or a map, which is empty when absent.</summary>

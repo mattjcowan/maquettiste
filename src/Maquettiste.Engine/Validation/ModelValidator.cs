@@ -184,6 +184,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     PackageRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
                     OperationRules.Validate(context, report);
+                    CustomRules.Validate(context, report);
                     ScenarioRules.Validate(context, report, runtime);
                     if (facts is not null)
                         MigrationRules.Validate(context, report, facts);
@@ -302,7 +303,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         {
             if (scope.IncludeReferrers)
             {
-                foreach (var id in SubElementIds(owner.Element).Prepend(owner.Element.Id))
+                foreach (var id in SubElementIds(owner.Element, model).Prepend(owner.Element.Id))
                 {
                     foreach (var reference in model.ReferencesTo(id))
                         selected.Add(reference.FromElementId);
@@ -847,7 +848,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         foreach (var member in members)
         {
             yield return member;
-            foreach (var id in SubElementIds(member.Element).Prepend(member.Element.Id))
+            foreach (var id in SubElementIds(member.Element, model).Prepend(member.Element.Id))
             {
                 foreach (var reference in model.ReferencesTo(id))
                 {
@@ -868,8 +869,23 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         }
     }
 
+    /// <summary>
+    /// Every sub-element id an element holds, a custom element's members included (next-phase-2-design.md section 4.2): those of its
+    /// members the index registers as owned by it, through its custom kind's member tree, so a save that changes a member widens to its
+    /// referrers.
+    /// </summary>
+    /// <param name="element">The element.</param>
+    /// <param name="model">The snapshot whose index and custom kinds are read.</param>
+    /// <returns>The ids.</returns>
+    internal static IEnumerable<string> SubElementIds(Element element, ModelSnapshot model) =>
+        element is Custom custom
+            ? ModelIndexer.MembersOf(custom, model.PropertySchemas)
+                .Where(m => m.Id is { } id && model.TryGetEntry(id, out var entry) && entry.OwnerId == custom.Id && entry.Kind == "member")
+                .Select(m => m.Id!)
+            : SubElementIds(element);
+
     /// <summary>Every sub-element id an element holds (attributes, members, ends, columns, keys, categories, schemas, an operation's
-    /// members, outcomes and errors).</summary>
+    /// members, outcomes and errors); a custom element's members need the snapshot (<see cref="SubElementIds(Element, ModelSnapshot)"/>).</summary>
     internal static IEnumerable<string> SubElementIds(Element element)
     {
         switch (element)

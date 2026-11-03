@@ -210,7 +210,7 @@ public sealed class CliApp(CliEnvironment environment)
                                   --format json|ndjson (default json: one array), --out <file>, --fields <a,b,...>,
                                   --kind, --package <id|name>, --tag, --category, --stereotype, --query, --ids <a,b,...>;
                                   --resolved --scope all|entities|relations|processes|databases|tables|... --database <id|name>
-          model stats           The kinds present with their counts: --by kind|package, --format text|json
+          model stats           The kinds present with their counts: --by kind|package, --kind <kind>, --format text|json
           model delete <id|name>
                                 Delete an element: --resolution refuse|remove-references|delete-dependents (default refuse;
                                   delete-dependents also deletes what cannot exist without it), --dry-run (print what the

@@ -21,6 +21,9 @@ internal enum ModelFileKind
     /// <summary><c>extensions/seeds/*.js</c>: a seed's rows script (next-phase-2-design.md section 3.4).</summary>
     SeedScript,
 
+    /// <summary><c>extensions/kinds/*.json</c>: a custom kind file (next-phase-2-design.md section 4.2).</summary>
+    CustomKind,
+
     /// <summary><c>model/locales/**/*.json</c>: a locale shard, which is not an element.</summary>
     LocaleShard,
 
@@ -133,6 +136,8 @@ internal sealed class ModelPaths
             return ModelFileKind.RuleScript;
         if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "seeds" && modelPath.EndsWith(".js", StringComparison.Ordinal))
             return ModelFileKind.SeedScript;
+        if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "kinds" && modelPath.EndsWith(".json", StringComparison.Ordinal))
+            return ModelFileKind.CustomKind;
         return null;
     }
 
@@ -149,6 +154,16 @@ internal sealed class ModelPaths
     /// <param name="modelPath">The path.</param>
     /// <returns>The file name.</returns>
     public static string FileNameOf(string modelPath) => modelPath[(modelPath.LastIndexOf('/') + 1)..];
+
+    /// <summary>The file name of a path without its extension (<c>extensions/kinds/setting.json</c> → <c>setting</c>).</summary>
+    /// <param name="path">A model- or repo-relative path.</param>
+    /// <returns>The stem.</returns>
+    public static string StemOfPath(string path)
+    {
+        var name = FileNameOf(path);
+        var dot = name.LastIndexOf('.');
+        return dot < 0 ? name : name[..dot];
+    }
 
     /// <summary>Joins a folder and a name.</summary>
     /// <param name="folder">The folder, possibly empty.</param>
@@ -226,7 +241,7 @@ internal sealed class ModelPaths
     /// <summary>
     /// The conventional folder of an element (engine-design.md section 2.2). A database's folder is <c>model/databases/&lt;stem&gt;</c>
     /// (a collision adds the id suffix, see <see cref="DatabaseFolder"/>); tables, views, sequences, routines, database types, SQL objects and queries live in their database's
-    /// actual folder, found through <paramref name="databaseFolder"/>, and migration facts in its <c>migrations/open</c> folder; a seed lives in <c>model/seeds/&lt;target stem&gt;</c>, a scenario in <c>model/scenarios/&lt;process stem&gt;</c> and an operation with a subject in <c>model/operations/&lt;subject stem&gt;</c>.
+    /// actual folder, found through <paramref name="databaseFolder"/>, and migration facts in its <c>migrations/open</c> folder; a seed lives in <c>model/seeds/&lt;target stem&gt;</c>, a scenario in <c>model/scenarios/&lt;process stem&gt;</c>, an operation with a subject in <c>model/operations/&lt;subject stem&gt;</c> and a custom element in <c>model/custom/&lt;type&gt;</c>.
     /// </summary>
     /// <param name="element">The element.</param>
     /// <param name="databaseFolder">Returns the model-relative folder of a database id, or <see langword="null"/> when unknown.</param>
@@ -251,6 +266,7 @@ internal sealed class ModelPaths
             Seed seed => KindInfo.SeedsFolder + "/" + (targetStem?.Invoke(seed.Target) ?? seed.Target.ToLowerInvariant()),
             Scenario scenario => KindInfo.ScenariosFolder + "/" + (targetStem?.Invoke(scenario.Process) ?? scenario.Process.ToLowerInvariant()),
             Operation { Subject: { } subject } => KindInfo.OperationsFolder + "/" + (targetStem?.Invoke(subject) ?? subject.ToLowerInvariant()),
+            Custom custom => KindInfo.CustomFolder + "/" + custom.Type,
             _ => KindInfo.Get(element.Kind).Folder,
         };
     }

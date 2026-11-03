@@ -71,6 +71,9 @@ public static class RuleCatalog
         new("MQ1014", E, "A write misuses an identity: a placeholder declared twice; as on a delete, a schema, materialize, process or tag operation, or on an object that is not a sub-element; two expectedHashes keys for one element; or an update that drops a sub-element and adds one without an id under the same parent and property with the same name (send the existing id to keep it)."),
         new("MQ1015", E, "A name in a batch is malformed or misplaced: not @kind:path or $name, an unknown kind or one without names, an empty or unclosed quoted segment, a name as a create's id (declare a placeholder with as), or a placeholder where the element must exist before the batch (an update's or delete's id, an expectedHashes key)."),
         new("MQ1016", E, "A JSON Patch cannot be applied: an unknown op, a path or from that does not resolve, an index out of range, a failed test, or a change to id or kind; nothing is written."),
+        new("MQ1017", E, "A custom kind file is invalid: its type differs from its file name, its properties do not compile as a JSON Schema, or its required names a property it does not declare."),
+        new("MQ1018", E, "An x-member keyword is misplaced: not true, not on an array whose items is an object schema, on an item schema that declares id, or under an applicator the walk does not follow."),
+        new("MQ1019", E, "A custom element's type names no custom kind file (extensions/kinds/<type>.json); its content is not checked."),
 
         new("MQ2001", E, "Dangling reference."),
         new("MQ2002", E, "Reference to an element of the wrong kind."),
@@ -80,9 +83,9 @@ public static class RuleCatalog
         new("MQ2006", I, "Undeclared tag (an error when the tag vocabulary is strict)."),
         new("MQ2007", E, "Attribute validation names an unknown rule."),
         new("MQ2008", E, "A tag or category is declared only in a domain vocabulary outside the element's domain chain."),
-        new("MQ2009", E, "An x-ref keyword is malformed: an unknown kind or key, a custom:<type> whose type is not a key, of or sameDatabase where they do not fit, an of naming no element, not on a string, under an applicator the link walk does not follow, or beside a patternProperties pattern that needs backtracking (a lookaround, backreference, atomic group or conditional)."),
+        new("MQ2009", E, "An x-ref keyword is malformed: an unknown kind or key, a custom:<type> whose type is not a key, of or sameDatabase where they do not fit, an of naming no element (or, under kind member, no custom element), not on a string, under an applicator the link walk does not follow, or beside a patternProperties pattern that needs backtracking (a lookaround, backreference, atomic group or conditional)."),
         new("MQ2010", E, "A value an x-ref types is a name or other text, not an id."),
-        new("MQ2011", E, "An x-ref value is out of scope: a member of another element, a row of another list, another database, a holder with no single database, or a stereotype default under of \"$element\" or sameDatabase."),
+        new("MQ2011", E, "An x-ref value is out of scope: a member of another element, a member of a custom element other than the one of names, a row of another list, another database, a holder with no single database, or a stereotype default under of \"$element\" or sameDatabase."),
         new("MQ2013", E, "An element carries two stereotypes of one group, own, implied or from a schema or package default."),
         new("MQ2014", E, "An element carries a stereotype that requires another it does not carry."),
         new("MQ2015", E, "An element carries two stereotypes that conflict."),
@@ -132,6 +135,7 @@ public static class RuleCatalog
         new("MQ3028", E, "defaultOutcome names an outcome of another operation."),
         new("MQ3030", W, "A read operation fires a process event; an event changes state."),
         new("MQ3031", E, "requires names the operation itself, one of its own sub-elements, a diagram or a migration fact."),
+        new("MQ3033", E, "A custom element's content fails its custom kind's schema: a required key missing, an undeclared key, a value of the wrong shape, or a member without an id."),
 
         new("MQ4001", E, "Identifier longer than the dialect's limit."),
         new("MQ4002", E, "Duplicate table name in a schema."),
@@ -324,7 +328,7 @@ public static class RuleCatalog
         new("MQ7209", E, "One id in two shards of one locale; the ordinally first path applies."),
         new("MQ7210", W, "A shard whose locale differs from its folder, or whose scope differs from its path; it applies to its declared locale and scope."),
         new("MQ7211", W, "A plural name on a to-one relation end, or its translation; it is never read."),
-        new("MQ7212", E, "x-translatable is not on a top-level string property of an extension file or stereotype parameters: nested, on another type, or not a boolean."),
+        new("MQ7212", E, "x-translatable is not on a top-level string property of an extension file or stereotype parameters, or of a custom kind's content or member items whose name is an identifier: nested, on another type, or not a boolean."),
         new("MQ7213", W, "x-translatable is on a property whose schema applies only to kinds without translations (physical objects, mappings, diagrams, vocabulary containers)."),
 
         new("MQ8001", E, "A branding color that is not a hex color (#rrggbb or #rgb)."),

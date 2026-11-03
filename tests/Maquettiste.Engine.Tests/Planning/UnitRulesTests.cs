@@ -48,4 +48,27 @@ public sealed class UnitRulesTests
             ],
             found.Select(d => (d.Rule, d.JsonPointer!, d.Message.Split('\'')[5])));
     }
+
+    /// <summary><c>each custom:&lt;type&gt;</c> (next-phase-2-design.md section 4.2): the pack schema takes a custom kind's type key,
+    /// <see cref="UnitRules.CustomTypeOf"/> reads it, and MQ6021's message names the pattern.</summary>
+    [Fact]
+    public void Each_custom_scope_is_known()
+    {
+        var schemas = new Engine.Json.SchemaRegistry();
+        bool Valid(string scope)
+        {
+            using var document = JsonDocument.Parse($$"""{ "name": "p", "version": "1.0.0", "engine": ">=1.0", "units": [ { "id": "a", "template": "t.tpl", "for": "{{scope}}" } ] }""");
+            return schemas.Evaluate("pack.json", document.RootElement, "pack.json").Count == 0;
+        }
+
+        Assert.True(Valid("each custom:setting"));
+        Assert.True(Valid("each custom:payment-term"));
+        Assert.False(Valid("each custom:"));
+        Assert.False(Valid("each custom:Setting"));
+        Assert.False(Valid("each custom"));
+        Assert.Equal("setting", UnitRules.CustomTypeOf("each custom:setting"));
+        Assert.Null(UnitRules.CustomTypeOf("each custom:"));
+        Assert.Null(UnitRules.CustomTypeOf("each entity"));
+        Assert.Contains("'each custom:<type>'", UnitRules.UnknownScope("u", "each customs"), StringComparison.Ordinal);
+    }
 }

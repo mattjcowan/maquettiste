@@ -217,4 +217,86 @@ public sealed class ExtensionFilesTests
         await Assert.ThrowsAsync<ExtensionPathException>(() => repo.Store.WriteExtensionFileAsync(path, "{}", null, Ct));
         await Assert.ThrowsAsync<ExtensionPathException>(() => repo.Store.ReadExtensionFileAsync(path, Ct));
     }
+
+    /// <summary>Custom kind files (next-phase-2-design.md section 4.2) through the extension file API: kind custom-kind, checked against
+    /// custom-kind.json, written in canonical form, with their own findings listed.</summary>
+    [Fact]
+    public async Task Custom_kind_files_are_listed_read_and_written_in_canonical_form()
+    {
+        await using var s = await CustomKinds.CustomFixture.OpenAsync(withDueDays: false);
+
+        var listed = Assert.Single((await s.Store.ListExtensionFilesAsync(Ct)).Files, f => f.Path == "kinds/setting.json");
+        Assert.Equal("custom-kind", listed.Kind);
+        Assert.Empty(listed.Diagnostics);
+        var read = await s.Store.ReadExtensionFileAsync("kinds/setting.json", Ct);
+        Assert.Equal(("custom-kind", listed.Hash), (read!.Kind, read.Hash));
+
+        // A new kind is written in canonical form ($schema, then x-order); a text that fails custom-kind.json writes nothing.
+        var written = await s.Store.WriteExtensionFileAsync("kinds/flag.json",
+            """{"properties":{"on":{"type":"boolean"}},"displayName":"Flag","type":"flag"}""", null, Ct);
+        Assert.True(written.Outcome == SaveOutcome.Saved, string.Join("; ", written.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.Empty(written.Diagnostics);
+        var text = written.Text!;
+        Assert.True(text.IndexOf("\"type\"", StringComparison.Ordinal) < text.IndexOf("\"displayName\"", StringComparison.Ordinal)
+            && text.IndexOf("\"displayName\"", StringComparison.Ordinal) < text.IndexOf("\"properties\"", StringComparison.Ordinal), text);
+        Assert.Contains("flag", s.Model.PropertySchemas.ContentSources.Select(c => c.CustomType));
+        var invalid = await s.Store.WriteExtensionFileAsync("kinds/broken.json", """{ "type": "broken" }""", null, Ct);
+        Assert.Equal((SaveOutcome.Invalid, "MQ1002"), (invalid.Outcome, invalid.Diagnostics[0].Rule));
+        var notJson = await s.Store.WriteExtensionFileAsync("kinds/broken.json", "{", null, Ct);
+        Assert.Equal((SaveOutcome.Invalid, "MQ1001"), (notJson.Outcome, Assert.Single(notJson.Diagnostics).Rule));
+        Assert.False(File.Exists(s.Harness.Model("extensions/kinds/broken.json")));
+
+        // A type that differs from the file name is written, and its MQ1017 comes back with the write and the list.
+        var mismatch = await s.Store.WriteExtensionFileAsync("kinds/toggle.json", """{ "type": "switch", "properties": {} }""", null, Ct);
+        Assert.Equal(SaveOutcome.Saved, mismatch.Outcome);
+        Assert.Contains(mismatch.Diagnostics, d => d.Rule == "MQ1017");
+        Assert.Contains(Assert.Single((await s.Store.ListExtensionFilesAsync(Ct)).Files, f => f.Path == "kinds/toggle.json").Diagnostics, d => d.Rule == "MQ1017");
+
+        // A custom kind moves only to another custom kind path.
+        var crossKind = await s.Store.MoveExtensionFileAsync(new ExtensionFileMove("kinds/flag.json", "flag.json"), written.Hash!, Ct);
+        Assert.Equal((SaveOutcome.Invalid, "MQ5004"), (crossKind.Outcome, Assert.Single(crossKind.Diagnostics).Rule));
+    }
+
+    [Fact]
+    public async Task Deleting_or_moving_a_used_custom_kind_is_refused()
+    {
+        await using var s = await CustomKinds.CustomFixture.OpenAsync();
+        var hash = (await s.Store.ReadExtensionFileAsync("kinds/setting.json", Ct))!.Hash;
+
+        var deleted = await s.Store.DeleteExtensionFileAsync("kinds/setting.json", hash, Ct);
+        var moved = await s.Store.MoveExtensionFileAsync(new ExtensionFileMove("kinds/setting.json", "kinds/option.json"), hash, Ct);
+
+        foreach (var refused in new[] { deleted, moved })
+        {
+            Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+            var finding = Assert.Single(refused.Diagnostics);
+            Assert.Equal(("MQ1019", CustomKinds.CustomFixture.DueDays, "/type"), (finding.Rule, finding.ElementId, finding.JsonPointer));
+            Assert.Contains("'due_days'", finding.Message, StringComparison.Ordinal);
+        }
+
+        Assert.True(File.Exists(s.Harness.Model("extensions/kinds/setting.json")));
+
+        // Once no element uses it, the kind goes.
+        var element = s.Model.GetDocument(CustomKinds.CustomFixture.DueDays)!;
+        Assert.Equal(SaveOutcome.Saved, (await s.Store.DeleteAsync(CustomKinds.CustomFixture.DueDays, element.Hash, DeleteResolution.Refuse, ChangeSource.Cli, Ct)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await s.Store.DeleteExtensionFileAsync("kinds/setting.json", hash, Ct)).Outcome);
+    }
+
+    [Fact]
+    public async Task A_custom_kind_write_reports_MQ3033_for_its_elements()
+    {
+        await using var s = await CustomKinds.CustomFixture.OpenAsync();
+        var hash = (await s.Store.ReadExtensionFileAsync("kinds/setting.json", Ct))!.Hash;
+
+        // due_days holds a unit of "days": a kind that makes value a string and drops unit leaves it two findings, and still writes.
+        var written = await s.Store.WriteExtensionFileAsync("kinds/setting.json",
+            """{ "type": "setting", "properties": { "value": { "type": "string" } } }""", hash, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, written.Outcome);
+        var findings = written.Diagnostics.Where(d => d.Rule == "MQ3033").ToList();
+        Assert.NotEmpty(findings);
+        Assert.All(findings, d => Assert.Equal(CustomKinds.CustomFixture.DueDays, d.ElementId));
+        Assert.Contains(findings, d => d.JsonPointer == "/content/value");
+        Assert.Equal(findings.Count, (await CustomKinds.CustomFixture.ValidateAsync(s)).Count(d => d.Rule == "MQ3033"));
+    }
 }

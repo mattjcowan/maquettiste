@@ -341,4 +341,32 @@ public sealed class ModelIndexerPatchTests
         foreach (var (key, group) in expected)
             Assert.True(actual.TryGetValue(key, out var other) && group.SequenceEqual(other), $"{label}: group {key}");
     }
+
+    [Fact]
+    public void Changing_a_custom_kind_file_rebuilds_the_index()
+    {
+        // next-phase-2-design.md section 4.2: the set's hash covers the custom kind files, so a changed one is a full build.
+        var b = new ModelBuilder(62);
+        var customer = b.Entity("Customer").Key("id", "uuid");
+        var setting = b.NewId();
+        b.Add(CustomKinds.CustomFixture.Element(setting, "default_customer", "pointer", $$"""{ "target": "{{customer.Id}}" }"""));
+        var documents = b.BuildDocuments();
+        var settings = new ProjectSettings { FormatVersion = EngineVersion.FormatVersion };
+        var plain = CustomKinds.CustomFixture.KindDocument("""{ "type": "pointer", "properties": { "target": { "type": "string" } } }""");
+        var linked = CustomKinds.CustomFixture.KindDocument("""{ "type": "pointer", "properties": { "target": { "type": "string", "x-ref": { "kind": "entity" } } } }""");
+        var before = ModelSnapshot.Create(documents, settings, "", [], [], 1, customKinds: [plain]);
+        Assert.DoesNotContain(before.ReferencesTo(customer.Id), r => r.FromElementId == setting);
+
+        var after = ModelSnapshot.CreateAfter(before, documents, settings, "", [], [], 2, null, 1, TestContext.Current.CancellationToken, customKinds: [linked]);
+        var full = ModelSnapshot.Create(documents, settings, "", [], [], 2, customKinds: [linked]);
+
+        Assert.NotEqual(before.PropertySchemas.Hash, after.PropertySchemas.Hash);
+        var reference = Assert.Single(after.ReferencesTo(customer.Id), r => r.FromElementId == setting);
+        Assert.Equal(("/content/target", "custom-kind:pointer"), (reference.JsonPointer, reference.Schema));
+        Assert.Equal(full.ReferencesTo(customer.Id), after.ReferencesTo(customer.Id));
+        Assert.Same(linked, after.CustomKindOf("pointer"));
+
+        // Without custom kinds the previous snapshot's are kept.
+        Assert.Same(linked, ModelSnapshot.CreateAfter(after, documents, settings, "", [], [], 3, null, 1, TestContext.Current.CancellationToken).CustomKindOf("pointer"));
+    }
 }

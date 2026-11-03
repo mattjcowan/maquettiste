@@ -210,12 +210,17 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "d" => resolved.Find(rest) is RDatabase database && schemaDiffs.TryGetValue(database.Name, out var diff) ? DiffHash(diff) : Absent,
             "n" => NameHash(rest),
             "x" => ExtensionFileHash(rest),
+            "c" => CustomKindHash(rest),
             // The rule view's index and reference reads (rows scripts, next-phase-2-design.md section 3.4) hash as the rule cache hashes
             // them, so a unit that read scripted rows renders again exactly when one of those reads changes.
             "ix" or "rt" => Validation.RuleKeyHasher.Of(model).CurrentHash(key),
             _ => Absent,
         };
     }
+
+    /// <summary><c>c:&lt;type&gt;</c> (next-phase-2-design.md section 4.2): the content hash of the custom kind file of that type, or
+    /// absent when the project declares none (a file whose stem is not its type declares nothing, MQ1017).</summary>
+    private string CustomKindHash(string type) => model.CustomKindOf(type)?.Hash ?? Absent;
 
     /// <summary>
     /// <c>x:&lt;path under extensions&gt;</c> (next-phase-2-design.md section 3.4): the content hash of a file under <c>extensions/</c> (a

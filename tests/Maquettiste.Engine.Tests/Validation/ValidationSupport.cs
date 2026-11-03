@@ -74,7 +74,21 @@ internal static class ValidationFixture
             }
         }
 
-        return ModelSnapshot.Create(documents, settings, ContentHash.Of(settingsBytes), extensions, scripts, 1);
+        // Custom kind files (next-phase-2-design.md section 4.2).
+        var kinds = new List<CustomKindDocument>();
+        var kindFolder = Path.Combine(modelRoot, "extensions", "kinds");
+        if (Directory.Exists(kindFolder))
+        {
+            foreach (var file in Directory.EnumerateFiles(kindFolder, "*.json").Order(StringComparer.Ordinal))
+            {
+                var bytes = File.ReadAllBytes(file);
+                using var json = JsonDocument.Parse(bytes);
+                AssertSchemaValid("custom-kind.json", json.RootElement, RepoPath(repo, file));
+                kinds.Add(new CustomKindDocument(JsonSerializer.Deserialize<CustomKind>(bytes, EngineJson.Options)!, RepoPath(repo, file), ContentHash.Of(bytes)));
+            }
+        }
+
+        return ModelSnapshot.Create(documents, settings, ContentHash.Of(settingsBytes), extensions, scripts, 1, customKinds: kinds);
     }
 
     private static string RepoPath(string repo, string file) => Path.GetRelativePath(repo, file).Replace(Path.DirectorySeparatorChar, '/');

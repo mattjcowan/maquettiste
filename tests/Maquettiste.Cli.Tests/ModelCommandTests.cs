@@ -313,4 +313,28 @@ public sealed class ModelCommandTests
         Assert.Equal(4, (await repo.RunAsync("model", "delete", "Invoice", "--resolution", "cascade")).ExitCode);
         Assert.Equal(4, (await repo.RunAsync("model", "delete")).ExitCode);
     }
+
+    /// <summary>model export and model stats take --kind custom:&lt;type&gt; (next-phase-2-design.md section 4.2).</summary>
+    [Fact]
+    public async Task Kind_filter_takes_a_custom_kind()
+    {
+        using var repo = CliRepo.Billing();
+        repo.Write(".maquettiste/extensions/kinds/setting.json", """{ "type": "setting", "displayName": "Setting", "properties": { "unit": { "type": "string" }, "value": { "type": "integer" } } }""");
+        repo.Write(".maquettiste/model/custom/setting/due-days.json", """
+            { "kind": "custom", "id": "01JR6CK000000000000000000A", "name": "due_days", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "type": "setting",
+              "content": { "unit": "days", "value": 30 } }
+            """);
+
+        var export = await repo.RunAsync("model", "export", "--kind", "custom:setting", "--fields", "name,content");
+        Assert.True(export.ExitCode == 0, export.Error);
+        var item = Assert.Single(JsonNode.Parse(export.Out)!.AsArray())!;
+        Assert.Equal(("due_days", 30), ((string)item["name"]!, (int)item["content"]!["value"]!));
+        Assert.Empty(JsonNode.Parse((await repo.RunAsync("model", "export", "--kind", "custom:flag")).Out)!.AsArray());
+
+        var stats = await repo.RunAsync("model", "stats", "--kind", "custom:setting", "--format", "json");
+        Assert.True(stats.ExitCode == 0, stats.Error);
+        var result = JsonNode.Parse(stats.Out)!;
+        Assert.Equal(1, (int)result["total"]!);
+        Assert.Equal("custom:setting", (string)Assert.Single(result["kinds"]!.AsArray())!["kind"]!);
+    }
 }

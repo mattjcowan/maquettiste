@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Custom kind",
+  "description": "extensions/kinds/<type>.json: a kind the project declares; its elements live in model/custom/<type>/ and hold the declared fields under content.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "type",
+    "displayName",
+    "pluralName",
+    "description",
+    "properties",
+    "required"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "type": {
+      "description": "The custom kind's type key; equals the file name without .json (MQ1017).",
+      "$ref": "common.json#/$defs/key"
+    },
+    "displayName": {
+      "description": "The custom kind's display name; editors and templates fall back to the type.",
+      "type": "string",
+      "minLength": 1
+    },
+    "pluralName": {
+      "description": "The custom kind's plural; falls back to the inflected display name.",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "Markdown text.",
+      "type": "string",
+      "minLength": 1
+    },
+    "properties": {
+      "description": "A JSON Schema properties object: the keys of an element's content, one schema per key. On a string, or an array's items, x-ref types the value as the id of an element or sub-element (MQ2009). On a top-level string property of the content or of a member item, \"x-translatable\": true translates its text per locale (MQ7212). On an array whose items are an object schema, \"x-member\": true makes each item a member with an id the engine owns (MQ1018).",
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "object",
+          "boolean"
+        ]
+      }
+    },
+    "required": {
+      "description": "The keys an element's content must hold; each is a key of properties (MQ1017).",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "type",
+    "properties"
+  ],
+  "additionalProperties": false
+}

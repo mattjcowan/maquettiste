@@ -65,4 +65,27 @@ public sealed class ElementSummaryTests
         Assert.Null(package["category"]);
         Assert.Empty(package["stereotypes"]!.AsArray());
     }
+
+    [Fact]
+    public async Task A_custom_row_carries_type_and_member_count()
+    {
+        // next-phase-2-design.md section 4.2: ElementSummary.Type, and MemberCount counts the members.
+        await using var s = await CustomKinds.CustomFixture.OpenAsync(true, ("setting", CustomKinds.CustomFixture.SettingKind), ("message", CustomKinds.CustomFixture.MessageKind));
+        var created = await CustomKinds.CustomFixture.CreateAsync(s, """
+            { "kind": "custom", "name": "invoice_sent", "type": "message", "content": { "parts": [ { "name": "subject" }, { "name": "body" } ] } }
+            """);
+
+        var message = s.Model.Summaries().Single(r => r.Id == created.Id);
+        var setting = s.Model.Summaries().Single(r => r.Id == CustomKinds.CustomFixture.DueDays);
+
+        Assert.Equal(("custom", "message", 2), (message.Kind, message.Type, message.MemberCount));
+        Assert.Equal(("setting", 0, CustomKinds.CustomFixture.Billing), (setting.Type, setting.MemberCount, setting.Package));
+        var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var json = JsonSerializer.SerializeToNode(message, web)!.AsObject();
+        Assert.Equal("message", json["type"]!.GetValue<string>());
+        Assert.Equal(2, json["memberCount"]!.GetValue<int>());
+        Assert.False(JsonSerializer.SerializeToNode(s.Model.Summaries().First(r => r.Kind == "entity"), web)!.AsObject().ContainsKey("type"));
+        Assert.NotEqual(message, message with { Type = "notice" });
+        Assert.Equal("maquettiste-index/e11", Maquettiste.Engine.ModelReads.IndexFormat);
+    }
 }

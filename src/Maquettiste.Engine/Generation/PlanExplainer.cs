@@ -213,6 +213,7 @@ internal static class PlanExplainer
         't' => "template",
         'd' => "schema-diff",
         'l' => "translation",
+        'c' => "custom-kind",
         _ => "inputs",
     };
 
@@ -248,6 +249,7 @@ internal static class PlanExplainer
         "template" => "Template " + key[2..],
         "schema-diff" => "The schema diff of " + key[2..],
         "translation" => "Texts " + key[2..],
+        "custom-kind" => "The custom kind " + key[2..],
         _ => NamedInput(key) ?? ExtensionFile(key) ?? "Input " + key,
     };
 

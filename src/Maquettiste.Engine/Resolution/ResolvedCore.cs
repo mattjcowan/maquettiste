@@ -282,6 +282,9 @@ public sealed class ResolvedModel
     /// <summary>Operations, by (package qualified name, subject name with none first, name, id) (next-phase-2-design.md section 4.1).</summary>
     public RList<ROperation> Operations { get; internal init; } = RList<ROperation>.Empty;
 
+    /// <summary>Custom elements, by (type, name, id) (next-phase-2-design.md section 4.2). <see cref="Find"/> reaches their members.</summary>
+    public RList<RCustom> CustomElements { get; internal init; } = RList<RCustom>.Empty;
+
     /// <summary>Databases, by name.</summary>
     public RList<RDatabase> Databases { get; internal init; } = RList<RDatabase>.Empty;
 

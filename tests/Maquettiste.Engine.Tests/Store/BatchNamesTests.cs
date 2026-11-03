@@ -460,4 +460,31 @@ public sealed class BatchNamesTests
         Assert.Equal(["$pm", "@entity:Invoice"], seed.Rows.Select(r => r.Values[1].GetString()));
         Assert.Equal(["$type"], result.Ids.Names.Keys);
     }
+
+    [Fact]
+    public async Task Custom_and_member_forms_resolve()
+    {
+        // next-phase-2-design.md section 4.2: @custom:<type>.<name> and @member:<custom form>.<member name>, and minted member names.
+        await using var s = await CustomKinds.CustomFixture.OpenAsync(true, ("setting", CustomKinds.CustomFixture.SettingKind), ("message", CustomKinds.CustomFixture.MessageKind),
+            ("reply", CustomKinds.CustomFixture.ReplyKind));
+
+        var result = await CustomKinds.CustomFixture.ApplyAsync(s, """
+            { "operations": [
+              { "op": "create", "element": { "kind": "custom", "name": "invoice_sent", "type": "message",
+                  "content": { "parts": [ { "name": "subject", "text": "Invoice sent" }, { "name": "body" } ] } } },
+              { "op": "create", "element": { "kind": "custom", "name": "on_subject", "type": "reply",
+                  "content": { "part": "@member:message.invoice_sent.subject" } } }
+            ] }
+            """);
+
+        Assert.True(result.Outcome == SaveOutcome.Saved, CustomKinds.CustomFixture.Explain(result));
+        var message = s.Model.Get<Custom>(result.Items[0].Id!)!;
+        var subject = message.Content["parts"][0].GetProperty("id").GetString()!;
+        Assert.Equal(subject, s.Model.Get<Custom>(result.Items[1].Id!)!.Content["part"].GetString());
+        Assert.Equal(
+            [("member", "/content/parts/0", "@member:message.invoice_sent.subject"), ("member", "/content/parts/1", "@member:message.invoice_sent.body")],
+            result.Ids.Minted.Where(m => m.Kind == "member").Select(m => (m.Kind, m.Pointer, m.Name!)));
+        Assert.Equal("01JR6CK000000000000000000A", Assert.Single(s.Model.Names("custom").Find("setting.Billing.due_days")).Id);
+        Assert.Single(s.Model.Names("custom").Find("setting.due_days"));
+    }
 }

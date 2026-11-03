@@ -412,24 +412,53 @@ public sealed partial class GenerationService
         if (unit.For != "model")
         {
             variables.Add(new("element", "The element this unit renders for."));
-            if (unit.For.StartsWith("each ", StringComparison.Ordinal))
+            if (UnitRules.CustomTypeOf(unit.For) is not null)
+                variables.Add(new("custom", "The custom element, by its kind."));
+            else if (unit.For.StartsWith("each ", StringComparison.Ordinal))
                 variables.Add(new(unit.For["each ".Length..].Replace(' ', '_'), "The element, by its kind."));
         }
 
         variables.AddRange(document.Parameters.Select(p => new TemplateVariable("pack.params." + p.Name, "Parameter " + p.Name + ".")));
-        var settings = (await _store.GetSnapshotAsync(ct).ConfigureAwait(false)).Settings;
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var settings = snapshot.Settings;
         variables.AddRange(settings.Properties.Keys.Select(k => new TemplateVariable("project.properties." + k, "Project property " + k + ".")));
         variables.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
         var members = new SortedDictionary<string, IReadOnlyList<TemplateMember>>(StringComparer.Ordinal) { ["model"] = MembersOf(typeof(ResolvedModel)) };
         if (elementType is not null)
             members["element"] = MembersOf(elementType);
+        if (UnitRules.CustomTypeOf(unit.For) is { } customType)
+            members["custom.content"] = ContentMembers(snapshot, customType);
         var registrations = document.Registrations;
         var helpers = BuiltinHelpers.Names.Concat(registrations.Where(r => r.Kind == ScriptRegistrationKind.Helper).Select(r => r.Name))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
         return new TemplateContextResult(pack, unitId, unit.For, variables, members, [.. helpers]) { Registrations = registrations };
     }
 
-    private static Type? ScopeType(string scope) => scope switch
+    /// <summary>The declared content keys of a custom kind (next-phase-2-design.md section 4.2), ordinal, each with its JSON Schema type
+    /// (<c>member list</c> for an <c>x-member</c> array; <c>any</c> when the schema names no single type).</summary>
+    private static IReadOnlyList<TemplateMember> ContentMembers(ModelSnapshot snapshot, string type)
+    {
+        var kind = snapshot.CustomKindOf(type)?.Kind;
+        if (kind is null || kind.Properties.ValueKind != JsonValueKind.Object)
+            return [];
+        return
+        [
+            .. kind.Properties.EnumerateObject()
+                .Select(p => new TemplateMember(p.Name, p.Value.ValueKind != JsonValueKind.Object ? "any"
+                    : p.Value.TryGetProperty("x-member", out var member) && member.ValueKind == JsonValueKind.True ? "member list"
+                    : p.Value.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString()! switch
+                    {
+                        "integer" => "number",
+                        "array" => "list",
+                        "object" => "map",
+                        var other => other,
+                    }
+                    : "any"))
+                .OrderBy(m => m.Name, StringComparer.Ordinal),
+        ];
+    }
+
+    private static Type? ScopeType(string scope) => UnitRules.CustomTypeOf(scope) is not null ? typeof(RCustom) : scope switch
     {
         "each package" => typeof(RPackage),
         "each entity" => typeof(REntity),

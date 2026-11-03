@@ -256,4 +256,29 @@ public sealed class ModelStoreBatchTests
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.Equal("Client", s.Store.Current!.Get<Entity>(customer.Element.Id)!.DisplayName);
     }
+
+    [Fact]
+    public async Task Dropping_a_named_member_and_adding_one_without_an_id_is_MQ1014()
+    {
+        // next-phase-2-design.md section 4.2: the "keep its id" check covers named members.
+        await using var s = await CustomKinds.CustomFixture.OpenAsync(false, ("message", CustomKinds.CustomFixture.MessageKind));
+        var created = await CustomKinds.CustomFixture.CreateAsync(s, """
+            { "kind": "custom", "name": "invoice_sent", "type": "message", "content": { "parts": [ { "name": "subject" }, { "name": "body" } ] } }
+            """);
+        var document = s.Model.GetDocument(created.Id!)!;
+        var subject = s.Model.Get<Custom>(created.Id!)!.Content["parts"][0].GetProperty("id").GetString()!;
+
+        var replaced = await s.Store.SaveAsync(created.Id!, BillingStore.Edit(document, o => o["content"]!["parts"]![0] = JsonNode.Parse("""{ "name": "subject" }""")),
+            document.Hash, ChangeSource.Cli, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SaveOutcome.Invalid, replaced.Outcome);
+        var refusal = Assert.Single(replaced.Diagnostics, d => d.Rule == "MQ1014");
+        Assert.Equal("/content/parts/0", refusal.JsonPointer);
+        Assert.Contains(subject, refusal.Message, StringComparison.Ordinal);
+
+        // A new member with a new name is fine.
+        var added = await s.Store.SaveAsync(created.Id!, BillingStore.Edit(document, o => o["content"]!["parts"]!.AsArray().Add(JsonNode.Parse("""{ "name": "footer" }"""))),
+            document.Hash, ChangeSource.Cli, TestContext.Current.CancellationToken);
+        Assert.Equal(SaveOutcome.Saved, added.Outcome);
+    }
 }

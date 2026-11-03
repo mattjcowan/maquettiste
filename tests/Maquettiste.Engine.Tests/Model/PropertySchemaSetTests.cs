@@ -211,4 +211,130 @@ public sealed class PropertySchemaSetTests
         return new ExtensionDocument(schema, path ?? Path, ContentHash.Of(string.Join("\n", name, string.Join(",", schema.AppliesTo.Kinds),
             string.Join(",", schema.AppliesTo.Stereotypes), properties)));
     }
+
+    // ---- custom kinds (next-phase-2-design.md section 4.2) ----
+
+    private static bool Valid(global::Json.Schema.JsonSchema schema, string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return schema.Evaluate(document.RootElement).IsValid;
+    }
+
+    [Fact]
+    public void Custom_kind_sources_type_content_and_join_the_hash()
+    {
+        var setting = CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.SettingKind);
+        var without = PropertySchemaSet.Create([], null);
+        var set = PropertySchemaSet.Create([], null, null, [setting]);
+
+        var source = Assert.Single(set.ContentSources);
+        Assert.Same(source, set.ContentOf("setting"));
+        Assert.Null(set.ContentOf("flag"));
+        Assert.Equal(("custom-kind:setting", "setting", ".maquettiste/extensions/kinds/setting.json"), (source.Schema, source.CustomType, source.Path));
+        Assert.Empty(set.Sources);
+        Assert.True(set.HasRefs);
+        Assert.Empty(set.Diagnostics);
+        Assert.NotEqual(without.Hash, set.Hash);
+        Assert.Same(set, PropertySchemaSet.Create([], set, null, [setting]));
+        var changed = CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.SettingKind.Replace("\"unit\"", "\"units\"", StringComparison.Ordinal));
+        Assert.NotEqual(set.Hash, PropertySchemaSet.Create([], set, null, [changed]).Hash);
+
+        // The content's x-ref sites: field is the top-level key, the holder the element.
+        var ids = new ModelBuilder(41);
+        var row = ids.NewId();
+        var custom = CustomKinds.CustomFixture.Element(ids.NewId(), "due_days", "setting", $$"""{ "code": "{{row}}", "value": 30 }""");
+        var site = Assert.Single(set.Sites(custom, null));
+        Assert.Equal(("/content/code", "code", row, custom.Id, "custom-kind:setting"), (site.Pointer, site.Field, site.Value, site.Host.Id, site.Source.Schema));
+
+        // The compiled schema is closed and gives each member item a required id.
+        var message = PropertySchemaSet.Create([], null, null, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.MessageKind)]).ContentOf("message")!;
+        var compiled = message.Compiled.Schema!;
+        Assert.True(Valid(compiled, """{ "parts": [ { "id": "01JR6CK00000000000000000P1", "name": "subject" } ] }"""));
+        Assert.False(Valid(compiled, """{ "parts": [ { "name": "subject" } ] }"""));
+        Assert.False(Valid(compiled, """{ "parts": [ { "id": "not-an-id", "name": "subject" } ] }"""));
+        Assert.False(Valid(compiled, """{ "other": 1 }"""));
+        Assert.True(message.Members["parts"].Items is { IsMember: true, Named: true });
+        Assert.Equal(["text"], message.Members["parts"].Items!.Translatable);
+    }
+
+    [Fact]
+    public void Custom_kind_sources_never_type_properties()
+    {
+        var set = PropertySchemaSet.Create([], null, null, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.SettingKind)]);
+        var ids = new ModelBuilder(42);
+        var row = ids.NewId();
+        var custom = CustomKinds.CustomFixture.Element(ids.NewId(), "due_days", "setting") with
+        {
+            Properties = new Dictionary<string, JsonElement> { ["code"] = JsonSerializer.SerializeToElement(row) },
+        };
+
+        Assert.Empty(set.For("custom", []));
+        Assert.Empty(set.For("entity", []));
+        Assert.Empty(set.ForDefaults("audited"));
+        Assert.Empty(set.Sites(custom, null));
+    }
+
+    public static TheoryData<string, string?> XMemberRows() => new()
+    {
+        { """{ "type": "array", "x-member": true, "items": { "type": "object", "properties": { "name": { "type": "string" } } } }""", null },
+        { """{ "type": "array", "x-member": "yes", "items": { "type": "object" } }""", "/properties/parts/x-member" },
+        { """{ "type": "string", "x-member": true }""", "/properties/parts/x-member" },
+        { """{ "type": "array", "x-member": true, "items": { "type": "string" } }""", "/properties/parts/x-member" },
+        { """{ "type": "array", "x-member": true, "items": { "type": "object", "properties": { "id": { "type": "string" } } } }""", "/properties/parts/items/properties/id" },
+        { """{ "allOf": [ { "type": "array", "x-member": true, "items": { "type": "object" } } ] }""", "/properties/parts/allOf/0/x-member" },
+        { """{ "type": "object", "additionalProperties": { "type": "array", "x-member": true, "items": { "type": "object" } } }""", "/properties/parts/additionalProperties/x-member" },
+    };
+
+    [Theory]
+    [MemberData(nameof(XMemberRows))]
+    public void X_member_marks_parse_and_misplaced_ones_are_MQ1018(string schema, string? pointer)
+    {
+        var kind = CustomKinds.CustomFixture.KindDocument($$"""{ "type": "thing", "properties": { "parts": {{schema}} } }""");
+
+        var set = PropertySchemaSet.Create([], null, null, [kind]);
+
+        var findings = set.Diagnostics.Where(d => d.Rule == "MQ1018").ToList();
+        if (pointer is null)
+        {
+            Assert.Empty(findings);
+            Assert.True(set.ContentOf("thing")!.Members["parts"].Items is { IsMember: true, Named: true });
+            return;
+        }
+
+        var finding = Assert.Single(findings);
+        Assert.Equal((pointer, ".maquettiste/extensions/kinds/thing.json"), (finding.JsonPointer, finding.FilePath));
+        Assert.Empty(set.ContentOf("thing")!.Members);
+    }
+
+    [Fact]
+    public void Nested_x_member_arrays_form_one_tree()
+    {
+        var set = PropertySchemaSet.Create([], null, null, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.LayoutKind)]);
+
+        var sections = set.ContentOf("layout")!.Members["sections"].Items!;
+        Assert.True(sections.IsMember);
+        Assert.True(sections.Properties!["lines"].Items is { IsMember: true, Named: true });
+        Assert.Empty(set.Diagnostics);
+    }
+
+    [Fact]
+    public void A_type_differing_from_its_file_or_requiring_an_undeclared_key_is_MQ1017()
+    {
+        var renamed = CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.SettingKind, stem: "settings");
+        var missing = CustomKinds.CustomFixture.KindDocument("""{ "type": "flag", "properties": { "on": { "type": "boolean" } }, "required": ["on", "off"] }""");
+        var broken = CustomKinds.CustomFixture.KindDocument("""{ "type": "broken", "properties": { "v": { "type": "nonsense" } } }""");
+
+        var set = PropertySchemaSet.Create([], null, null, [renamed, missing, broken]);
+
+        Assert.Null(set.ContentOf("setting"));
+        Assert.NotNull(set.ContentOf("flag"));
+        Assert.Equal(
+            [
+                (".maquettiste/extensions/kinds/broken.json", "/properties"),
+                (".maquettiste/extensions/kinds/flag.json", "/required/1"),
+                (".maquettiste/extensions/kinds/settings.json", "/type"),
+            ],
+            set.Diagnostics.Where(d => d.Rule == "MQ1017").Select(d => (d.FilePath!, d.JsonPointer!)).Order());
+        Assert.Contains("differs from its file name 'settings'", set.Diagnostics.Single(d => d.JsonPointer == "/type").Message, StringComparison.Ordinal);
+    }
 }

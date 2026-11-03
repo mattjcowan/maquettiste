@@ -349,6 +349,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                 ModelFileKind.Element => _reader.ReadElement(bytes, repoPath, trusted, trustedCanonical),
                 ModelFileKind.Settings => _reader.ReadSettings(bytes, repoPath, trusted, trustedCanonical),
                 ModelFileKind.Extension => _reader.ReadExtension(bytes, repoPath, trusted),
+                ModelFileKind.CustomKind => ReadCustomKind(bytes, repoPath, trusted),
                 ModelFileKind.LocaleShard => _reader.ReadLocaleShard(bytes, repoPath, trusted, trustedCanonical),
                 _ => DocumentReader.ReadText(bytes),
             };
@@ -432,10 +433,16 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var scripts = new List<ScriptSource>();
         var seedScripts = new List<ScriptSource>();
         var shards = new List<LocaleShardDocument>();
+        var customKinds = new List<CustomKindDocument>();
         foreach (var entry in entries.Values.OrderBy(e => e.ModelPath, StringComparer.Ordinal))
         {
             switch (entry.Kind)
             {
+                case ModelFileKind.CustomKind:
+                    diagnostics.AddRange(entry.Parsed.Diagnostics);
+                    if (entry.Parsed.Valid)
+                        customKinds.Add(new CustomKindDocument(ElementReader.Read<CustomKind>(entry.Parsed.Json), _paths.ToRepoPath(entry.ModelPath), entry.Hash));
+                    break;
                 case ModelFileKind.Extension:
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
                     if (entry.Parsed.Extension is { } extension)
@@ -467,8 +474,48 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         diagnostics.Sort(Diagnostic.Order);
         var snapshot = ModelSnapshot.CreateAfter(previousSnapshot, documents, settings, settingsHash, extensions, scripts, version, diagnostics,
-            options.EffectiveParallelism, ct, shards, seedScripts);
+            options.EffectiveParallelism, ct, shards, seedScripts, customKinds);
         return (snapshot, byPath);
+    }
+
+    /// <summary>
+    /// Reads a custom kind file (<c>extensions/kinds/&lt;type&gt;.json</c>, next-phase-2-design.md section 4.2): parse (MQ1001), then
+    /// <c>custom-kind.json</c> (MQ1002). A file that fails either declares no custom kind. Its own rules (MQ1017, MQ1018) are the
+    /// property schema set's.
+    /// </summary>
+    private ParsedFile ReadCustomKind(byte[] bytes, string repoPath, bool trusted)
+    {
+        if (!_reader.TryParse(bytes, repoPath, "MQ1001", out var document, out var parseError))
+            return new ParsedFile { Diagnostics = [parseError] };
+
+        using (document)
+        {
+            var root = document.RootElement;
+            if (!trusted)
+            {
+                var failures = schemas.Evaluate("custom-kind.json", root, repoPath)
+                    .Select(d => _reader.Locate(d with { Rule = "MQ1002", Severity = DiagnosticSeverity.Error }, bytes))
+                    .Order(Diagnostic.Order)
+                    .ToImmutableArray();
+                if (!failures.IsEmpty)
+                    return new ParsedFile { Json = root.Clone(), Diagnostics = failures, SchemaEvaluated = true };
+            }
+
+            try
+            {
+                _ = ElementReader.Read<CustomKind>(root);
+                return new ParsedFile { Json = root.Clone(), Valid = true, Canonical = true, SchemaEvaluated = !trusted };
+            }
+            catch (Exception ex) when (DocumentReader.IsDeserializationFailure(ex))
+            {
+                return new ParsedFile
+                {
+                    Json = root.Clone(),
+                    Diagnostics = [RuleCatalog.Create("MQ1002", $"The custom kind does not deserialize: {ex.Message}", null, repoPath, "")],
+                    SchemaEvaluated = !trusted,
+                };
+            }
+        }
     }
 
     private static ParsedFile MisplacedShard(ParsedFile parsed, string repoPath) => parsed with
@@ -658,6 +705,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         result.UnionWith(EnumerateFiles("extensions", ".json", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/rules", ".js", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/seeds", ".js", recursive: false));
+        result.UnionWith(EnumerateFiles("extensions/kinds", ".json", recursive: false));
         return result;
     }
 

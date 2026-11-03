@@ -307,4 +307,30 @@ public sealed class UnitPlannerTests
         Assert.Empty(plan.Diagnostics);
         return string.Join(",", plan.Units.Select(u => ((REntity)u.Element!).Name).Order(StringComparer.Ordinal));
     }
+
+    /// <summary><c>each custom:&lt;type&gt;</c> (next-phase-2-design.md section 4.2): one unit per element of the type, filters apply,
+    /// and a kind the project does not declare plans nothing.</summary>
+    [Fact]
+    public async Task Each_custom_kind_plans_one_unit_per_element_and_none_for_an_undeclared_kind()
+    {
+        var b = new ModelBuilder();
+        var billing = b.Package("Billing");
+        b.Add(CustomKinds.CustomFixture.Element("01JRCE00000000000000000011", "due_days", "setting", """{ "value": 30 }""", billing.Id));
+        b.Add(CustomKinds.CustomFixture.Element("01JRCE00000000000000000012", "grace_days", "setting", """{ "value": 5 }"""));
+        b.Add(CustomKinds.CustomFixture.Element("01JRCE00000000000000000013", "invoice_sent", "message"));
+        var model = Resolve(CustomKinds.CustomFixture.Snapshot(b, [CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.SettingKind),
+            CustomKinds.CustomFixture.KindDocument(CustomKinds.CustomFixture.MessageKind)]));
+        Task<UnitPlan> PlanFor(string scope, UnitWhere? where = null) =>
+            new UnitPlanner(Options).PlanAsync(model, new PackSet([Pack("p", [Unit("c", scope, where)])], []), new ScriptSandboxFactory(), null, Ct);
+
+        var settings = await PlanFor("each custom:setting");
+
+        Assert.Empty(settings.Diagnostics);
+        Assert.Equal(["p/c:01JRCE00000000000000000011", "p/c:01JRCE00000000000000000012"], settings.Units.Select(u => u.Key));
+        Assert.All(settings.Units, u => Assert.Equal("setting", Assert.IsType<RCustom>(u.Element).Type));
+        Assert.Equal(["due_days"], (await PlanFor("each custom:setting", new UnitWhere { Packages = ["Billing"] })).Units.Select(u => ((RCustom)u.Element!).Name));
+        var undeclared = await PlanFor("each custom:flag");
+        Assert.Empty(undeclared.Units);
+        Assert.Empty(undeclared.Diagnostics);
+    }
 }

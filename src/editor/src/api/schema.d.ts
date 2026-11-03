@@ -258,6 +258,8 @@ export interface paths {
          *       actions, gates and invokes, actors by id.
          *     - `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,
          *       `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.
+         *     - `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and
+         *       its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.
          *     - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
          *       indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
          *       for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
@@ -1572,7 +1574,9 @@ export interface paths {
          *     and what is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load alone in the sandbox
          *     (MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not
          *     call `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level
-         *     (MQ5005, a warning). No rows script runs. Rule findings (`x/<id>`) come from `POST /api/validate`.
+         *     (MQ5005, a warning). Then the custom kinds (`kinds/<type>.json`, kind `custom-kind`), with MQ1001 or MQ1002 when one does not
+         *     parse or pass `custom-kind.json` and its own findings (MQ1017, MQ1018, MQ2009, MQ7212). No rows script runs. Rule findings
+         *     (`x/<id>`) come from `POST /api/validate`.
          */
         get: operations["listExtensionFiles"];
         put?: never;
@@ -1604,12 +1608,18 @@ export interface paths {
          *     `diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is
          *     refreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings
          *     reach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not
-         *     load or does not register its rows exactly once comes back as MQ7127. A path other than `<name>.json`, `rules/<name>.js` or
-         *     `seeds/<name>.js`, or one through a link, is 400.
+         *     load or does not register its rows exactly once comes back as MQ7127. A custom kind (`kinds/<type>.json`) must be JSON that
+         *     passes `custom-kind.json`, else 422 (MQ1001, MQ1002); it is written in canonical form, and `diagnostics` carry its own findings
+         *     and the MQ3033 findings of the elements of its type (at most 50, then a line with the count), which never refuse it. A path
+         *     other than `<name>.json`, `rules/<name>.js`, `seeds/<name>.js` or `kinds/<type>.json`, or one through a link, is 400.
          */
         put: operations["putExtensionFile"];
         post?: never;
-        /** Delete one extension file */
+        /**
+         * Delete one extension file
+         * @description `If-Match` carries the file's hash. A custom kind that custom elements use is 422, with one MQ1019 per element that would
+         *     lose its kind (at most 50, then a line with the count), and nothing is deleted.
+         */
         delete: operations["deleteExtensionFile"];
         options?: never;
         head?: never;
@@ -1628,8 +1638,9 @@ export interface paths {
         /**
          * Rename one extension file within its kind
          * @description `If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a
-         *     `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`), else 422. Nothing else changes: a seed whose
-         *     `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.
+         *     `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`, a custom kind a `kinds/<type>.json`), else 422.
+         *     A custom kind that custom elements use is 422, with one MQ1019 per element that would lose its kind, as a delete is. Nothing
+         *     else changes: a seed whose `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.
          */
         post: operations["moveExtensionFile"];
         delete?: never;
@@ -2674,7 +2685,7 @@ export interface components {
                 owner?: components["schemas"]["Ulid"];
                 /** @description The text the fallback chain gives. */
                 effective?: string | null;
-                /** @description A standard field, or `properties/<name>` for the text of an `x-translatable` custom property. */
+                /** @description A standard field, `properties/<name>` for the text of an `x-translatable` custom property, or `content/<name>` for an `x-translatable` content key of a custom element or a member. */
                 field: string;
                 source: string | null;
                 translation: string | null;
@@ -2688,7 +2699,7 @@ export interface components {
         TranslationWrite: {
             entries: {
                 id: components["schemas"]["Ulid"];
-                /** @description A standard field, or `properties/<name>` for the text of an `x-translatable` custom property. */
+                /** @description A standard field, `properties/<name>` for the text of an `x-translatable` custom property, or `content/<name>` for an `x-translatable` content key of a custom element or a member. */
                 field: string;
                 /** @description The text, `{ "file": "<sidecar>" }`, or `null` to remove. */
                 value: unknown;
@@ -2789,7 +2800,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration" | "operation";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration" | "operation" | "custom";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -2816,7 +2827,7 @@ export interface components {
             database?: components["schemas"]["Ulid"];
             /** @description The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5). */
             entity?: components["schemas"]["Ulid"];
-            /** @description The number of members, on diagram rows (E5). */
+            /** @description The number of members, on diagram rows (E5) and on custom element rows (next-phase-2-design.md section 4.2). */
             memberCount?: number;
             /** @description The relation's ends in document order, on relation rows (E5). */
             ends?: components["schemas"]["RelationEndSummary"][];
@@ -2851,6 +2862,8 @@ export interface components {
              * @enum {string}
              */
             effect?: "read" | "change";
+            /** @description The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2). */
+            type?: string;
         };
         RelationEndSummary: {
             entity: components["schemas"]["Ulid"];
@@ -2867,7 +2880,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"] | components["schemas"]["operation"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"] | components["schemas"]["operation"] | components["schemas"]["custom"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -3320,7 +3333,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty. */
@@ -3903,6 +3916,34 @@ export interface components {
             errors: components["schemas"]["OperationErrorRecord"][];
             fires: string[];
             requires: string[];
+        };
+        /** @description A resolved custom element (next-phase-2-design.md section 4.2): its custom kind's type, its content as written and every member. */
+        CustomRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "custom";
+            name: string;
+            /** @description The custom kind's type key. */
+            type: string;
+            package: string | null;
+            /** @description The content as written, keys in ordinal order. */
+            content: {
+                [key: string]: unknown;
+            };
+            /** @description Every member at any depth, in walk order (content keys ordinal, items by index, a member before its nested ones). */
+            members: components["schemas"]["MemberRecord"][];
+        };
+        /** @description A member of a custom element, an item of an x-member array. */
+        MemberRecord: {
+            id: string;
+            /** @description The item's name, when its item schema declares a string name. */
+            name: string | null;
+            /** @description The key of the array that holds it. */
+            array: string;
+            /** @description The id of the member that holds it. */
+            parent: string | null;
+            /** @description Its JSON pointer in the element's file. */
+            pointer: string;
         };
         /** @description A member of an operation's input or of an outcome's returns, a typed value or a record key. */
         OperationMemberRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -5319,10 +5360,10 @@ export interface components {
             /** @description For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); empty for a schema. */
             rules: components["schemas"]["ExtensionRuleInfo"][];
             /**
-             * @description `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`) or `seed-rows` (a seed's rows script, `seeds/<name>.js`).
+             * @description `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows script, `seeds/<name>.js`) or `custom-kind` (a custom kind, `kinds/<type>.json`).
              * @enum {string}
              */
-            kind: "schema" | "rule" | "seed-rows";
+            kind: "schema" | "rule" | "seed-rows" | "custom-kind";
             size: number;
             hash: components["schemas"]["Hash"];
             diagnostics: components["schemas"]["Diagnostic"][];
@@ -5336,7 +5377,7 @@ export interface components {
         ExtensionFileContent: {
             path: string;
             /** @enum {string} */
-            kind: "schema" | "rule" | "seed-rows";
+            kind: "schema" | "rule" | "seed-rows" | "custom-kind";
             hash: components["schemas"]["Hash"];
             text: string;
         };
@@ -5426,7 +5467,7 @@ export interface components {
         };
         PlanCause: {
             /** @enum {string} */
-            kind: "element" | "kind-set" | "referrers" | "setting" | "template" | "schema-diff" | "translation" | "localization" | "absent" | "inputs" | "output-missing" | "output-edited" | "state-reset" | "pack-version" | "unit" | "parameter" | "scripts" | "output-base" | "formatter" | "target-missing";
+            kind: "element" | "kind-set" | "referrers" | "setting" | "template" | "schema-diff" | "translation" | "localization" | "custom-kind" | "absent" | "inputs" | "output-missing" | "output-edited" | "state-reset" | "pack-version" | "unit" | "parameter" | "scripts" | "output-base" | "formatter" | "target-missing";
             key: string;
             detail: string;
             elementId: string | null;
@@ -8618,7 +8659,7 @@ export interface components {
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @default [] */
-            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event" | "operation" | "operation-member" | "outcome" | "error")[];
+            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event" | "operation" | "operation-member" | "outcome" | "error" | "custom")[];
             /** @description A label, not a link: an element carries at most one stereotype of a group, its own and implied ones together (MQ2013). */
             group?: components["schemas"]["key"];
             /**
@@ -10176,6 +10217,46 @@ export interface components {
                 };
             };
         };
+        /**
+         * Custom element
+         * @description An instance of a custom kind the project declares in extensions/kinds/<type>.json (model/custom/<type>/).
+         */
+        custom: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "custom";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            package?: components["schemas"]["id"];
+            /** @description The custom kind of the element: the type key of a file under extensions/kinds/ (MQ1019). */
+            type: components["schemas"]["key"];
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /**
+             * @description The values of the fields the custom kind declares, checked against its properties and required (MQ3033). Free-form for the canonical writer: keys in ordinal order at every level.
+             * @default {}
+             */
+            content?: Record<string, never>;
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
         /** @description A name a batch declares with as and uses anywhere in the batch. */
         placeholder: string;
         /** @description An element or sub-element by kind and stored name: @kind:path, its segments separated by dots, a segment with a dot, quote or white space written in double quotes. */
@@ -10297,6 +10378,7 @@ export interface components {
                 id: string;
                 /** @description The pack-relative template path. Required unless mode is copy; a copy unit takes none. */
                 template?: string;
+                /** @description The unit's scope: model, each <kind>, each custom:<type> for the elements of a custom kind the project declares, or select <name> for a selector the pack's scripts register. */
                 for: string;
                 /** Unit filters */
                 where?: {
@@ -11110,7 +11192,7 @@ export interface operations {
                  */
                 snapshot?: components["parameters"]["SnapshotQuery"];
                 /** @description What to read. */
-                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "operations" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries" | "migrations";
+                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "operations" | "custom-elements" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries" | "migrations";
                 /** @description A database id; only what is mapped to it. */
                 database?: components["schemas"]["Ulid"];
                 /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
@@ -14032,7 +14114,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExtensionWriteResult"];
                 };
             };
-            /** @description Not text, larger than 1 MB, or a schema that is not valid; nothing was written. */
+            /** @description Not text, larger than 1 MB, or a schema or custom kind that is not valid; nothing was written. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -14084,6 +14166,15 @@ export interface operations {
             };
             /** @description The file changed since it was read. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            /** @description A custom kind that custom elements use; nothing was deleted. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14143,7 +14234,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExtensionWriteResult"];
                 };
             };
-            /** @description The target exists or is of another kind. */
+            /** @description The target exists or is of another kind, or the source is a custom kind that custom elements use. */
             422: {
                 headers: {
                     [name: string]: unknown;

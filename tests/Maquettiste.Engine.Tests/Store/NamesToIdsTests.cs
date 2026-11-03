@@ -293,4 +293,40 @@ public sealed class NamesToIdsTests
         Assert.Equal(AuditedId, Text(r, EditorRepo.CustomerId, "marker"));
         Assert.Equal("Audited", Text(r, EditorRepo.InvoiceId, "marker"));
     }
+
+    [Fact]
+    public async Task Content_names_become_ids()
+    {
+        // next-phase-2-design.md section 4.2: a content value an x-ref types is a site like a property, so names-to-ids converts it.
+        await using var s = await CustomKinds.CustomFixture.OpenAsync(false,
+            ("pointer", """{ "type": "pointer", "properties": { "target": { "type": "string", "x-ref": { "kind": "entity" } } } }"""));
+        s.Harness.Write("model/custom/pointer/default-customer.json", """
+            { "kind": "custom", "id": "01JR6CK00000000000000000N1", "name": "default_customer", "type": "pointer", "content": { "target": "Customer" } }
+            """);
+        await s.Store.RescanAsync(false, TestContext.Current.CancellationToken);
+        Assert.Contains(await CustomKinds.CustomFixture.ValidateAsync(s), d => d.Rule == "MQ2010" && d.JsonPointer == "/content/target");
+
+        var result = await CustomKinds.CustomFixture.ApplyAsync(s, """{ "operations": [ { "op": "names-to-ids" } ] }""");
+
+        Assert.True(result.Outcome == SaveOutcome.Saved, CustomKinds.CustomFixture.Explain(result));
+        Assert.Equal(s.Id("entity", "Customer"), s.Model.Get<Custom>("01JR6CK00000000000000000N1")!.Content["target"].GetString());
+    }
+
+    [Fact]
+    public async Task A_custom_kind_name_becomes_the_id_of_an_element_of_that_kind()
+    {
+        // An x-ref to custom:<type> finds the custom elements of that type by name or package path, never one of another type.
+        await using var s = await CustomKinds.CustomFixture.OpenAsync(true, ("setting", CustomKinds.CustomFixture.SettingKind), ("flag", CustomKinds.CustomFixture.FlagKind),
+            ("rule", """{ "type": "rule", "properties": { "setting": { "type": "string", "x-ref": { "kind": "custom:setting" } } } }"""));
+        await CustomKinds.CustomFixture.CreateAsync(s, """{ "kind": "custom", "id": "01JR6CK00000000000000000F1", "name": "due_days", "type": "flag", "content": { "on": true } }""");
+        s.Harness.Write("model/custom/rule/late.json", """
+            { "kind": "custom", "id": "01JR6CK00000000000000000R1", "name": "late", "type": "rule", "content": { "setting": "Billing.due_days" } }
+            """);
+        await s.Store.RescanAsync(false, TestContext.Current.CancellationToken);
+
+        var result = await CustomKinds.CustomFixture.ApplyAsync(s, """{ "operations": [ { "op": "names-to-ids" } ] }""");
+
+        Assert.True(result.Outcome == SaveOutcome.Saved, CustomKinds.CustomFixture.Explain(result));
+        Assert.Equal(CustomKinds.CustomFixture.DueDays, s.Model.Get<Custom>("01JR6CK00000000000000000R1")!.Content["setting"].GetString());
+    }
 }

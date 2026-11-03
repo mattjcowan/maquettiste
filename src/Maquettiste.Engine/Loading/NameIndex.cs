@@ -81,7 +81,7 @@ internal sealed class NameIndex
         if (!NamedKinds.Contains(kind))
             throw new ArgumentOutOfRangeException(nameof(kind), kind, "The kind has no names.");
         Element? Lookup(string id) => snapshot.Get<Element>(id);
-        return new NameIndex(kind, Holders(kind).SelectMany(snapshot.ElementsOf).SelectMany(e => Of(e, Lookup, kind)));
+        return new NameIndex(kind, Holders(kind).SelectMany(snapshot.ElementsOf).SelectMany(e => Of(e, Lookup, kind, snapshot.PropertySchemas)));
     }
 
     /// <summary>
@@ -92,8 +92,10 @@ internal sealed class NameIndex
     /// <param name="element">The element as it is (or will be) written.</param>
     /// <param name="lookup">Any element by id, or <see langword="null"/>.</param>
     /// <param name="kind">Only entries of this kind, or <see langword="null"/> for all.</param>
+    /// <param name="schemas">The property schema set whose custom kinds give a custom element's members, or <see langword="null"/> for no
+    /// member entries.</param>
     /// <returns>The entries, in document order.</returns>
-    public static IEnumerable<NameEntry> Of(Element element, Func<string, Element?> lookup, string? kind = null)
+    public static IEnumerable<NameEntry> Of(Element element, Func<string, Element?> lookup, string? kind = null, PropertySchemaSet? schemas = null)
     {
         ArgumentNullException.ThrowIfNull(element);
         ArgumentNullException.ThrowIfNull(lookup);
@@ -186,6 +188,9 @@ internal sealed class NameIndex
             case Operation operation when forms is not null:
                 AddOperation(operation, forms, Add);
                 break;
+            case Custom custom when forms is not null && schemas is not null && Wants("member"):
+                AddMembers(custom, schemas, forms, Add);
+                break;
         }
 
         return entries;
@@ -206,6 +211,7 @@ internal sealed class NameIndex
         "binding" => [ElementKind.Entity, ElementKind.ReferenceType],
         "category" => [ElementKind.CategoryTree],
         "operation-member" or "outcome" or "error" => [ElementKind.Operation],
+        "member" => [ElementKind.Custom],
         _ => KindInfo.TryGet(kind, out var info) ? [info.Kind] : [],
     };
 
@@ -256,8 +262,37 @@ internal sealed class NameIndex
                     : own;
             }
 
+            case Custom custom:
+            {
+                // Names are unique per type, so every form carries it (next-phase-2-design.md section 4.2): <type>.<name> and
+                // <type>.<package path>.<name>, a trailing part of the path qualifying it too. The plain name is no form.
+                var own = Forms.Of([custom.Type, custom.Name]);
+                if (custom.Package is not { } packageId || own is null)
+                    return own;
+                var path = PackagePath(packageId, lookup);
+                return Forms.Union(own, Forms.Of([.. Enumerable.Range(1, path.Count).Select(k => path.Skip(path.Count - k).Prepend(custom.Type).Append(custom.Name).ToArray())]));
+            }
+
             default:
                 return Packaged(element, lookup);
+        }
+    }
+
+    /// <summary>
+    /// A custom element's members (next-phase-2-design.md section 4.2): <c>&lt;custom form&gt;.&lt;member name&gt;</c>, parent members first.
+    /// A member without a name, or under one without a name, has no form.
+    /// </summary>
+    private static void AddMembers(Custom custom, PropertySchemaSet schemas, Forms forms, Action<string, string, Forms?> add)
+    {
+        var members = ModelIndexer.MembersOf(custom, schemas);
+        for (var i = 0; i < members.Count; i++)
+        {
+            if (members[i].Id is not { } id)
+                continue;
+            var names = new List<string?>();
+            for (var at = i; at >= 0; at = members[at].Parent)
+                names.Insert(0, members[at].Name);
+            add("member", id, forms.Then([.. names]));
         }
     }
 

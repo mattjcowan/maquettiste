@@ -1,0 +1,21 @@
+{
+  "$schema": "../../.schema/v1/custom-kind.json",
+  "type": "setting",
+  "displayName": "Setting",
+  "pluralName": "Settings",
+  "properties": {
+    "unit": {
+      "type": "string"
+    },
+    "value": {
+      "type": [
+        "integer",
+        "string",
+        "boolean"
+      ]
+    }
+  },
+  "required": [
+    "value"
+  ]
+}
