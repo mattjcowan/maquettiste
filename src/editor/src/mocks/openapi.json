@@ -1227,7 +1227,7 @@
         ],
         "operationId": "getResolvedModel",
         "summary": "The resolved model as flat records, in pages",
-        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
+        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
         "parameters": [
@@ -1253,6 +1253,7 @@
                 "processes",
                 "actors",
                 "scenarios",
+                "operations",
                 "databases",
                 "tables",
                 "routines",
@@ -11313,7 +11314,8 @@
           "process",
           "actor",
           "scenario",
-          "migration"
+          "migration",
+          "operation"
         ]
       },
       "ChangeSource": {
@@ -11443,7 +11445,7 @@
             ]
           },
           "subject": {
-            "description": "The entity whose lifecycle the process is, on process rows that have one.",
+            "description": "The entity whose lifecycle the process is, on process rows that have one; the entity an operation acts on, on operation rows that have one.",
             "$ref": "#/components/schemas/Ulid"
           },
           "stateCount": {
@@ -11468,6 +11470,14 @@
             "type": "integer",
             "minimum": 0,
             "description": "The number of steps, on scenario rows."
+          },
+          "effect": {
+            "description": "The operation's effect, on operation rows (next-phase-2-design.md section 4.1).",
+            "type": "string",
+            "enum": [
+              "read",
+              "change"
+            ]
           }
         }
       },
@@ -11608,6 +11618,9 @@
           },
           {
             "$ref": "#/components/schemas/migration"
+          },
+          {
+            "$ref": "#/components/schemas/operation"
           }
         ]
       },
@@ -13245,6 +13258,9 @@
                   "$ref": "#/components/schemas/ScenarioRecord"
                 },
                 {
+                  "$ref": "#/components/schemas/OperationRecord"
+                },
+                {
                   "$ref": "#/components/schemas/DatabaseRecord"
                 },
                 {
@@ -13346,7 +13362,7 @@
         }
       },
       "ProcessNodeAnnotations": {
-        "description": "The annotations of a state, transition, event, guard, action, gate or invoke.",
+        "description": "The annotations of a state, transition, event, guard, action, gate or invoke, and of an operation's member, outcome or error.",
         "type": "object",
         "required": [
           "displayName",
@@ -15788,6 +15804,328 @@
             "additionalProperties": true
           }
         }
+      },
+      "OperationRecord": {
+        "x-engine-record": "Maquettiste.Engine.OperationRecord",
+        "description": "A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors; the events it fires and what it requires by id.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "subject",
+              "level",
+              "effect",
+              "input",
+              "outcomes",
+              "defaultOutcome",
+              "errors",
+              "fires",
+              "requires"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "operation"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Its own package, else its subject's."
+              },
+              "subject": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The id of the entity it acts on."
+              },
+              "level": {
+                "description": "Null without a subject.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "record",
+                  "collection",
+                  null
+                ]
+              },
+              "effect": {
+                "type": "string",
+                "enum": [
+                  "read",
+                  "change"
+                ]
+              },
+              "input": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OperationMemberRecord"
+                }
+              },
+              "outcomes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OperationOutcomeRecord"
+                }
+              },
+              "defaultOutcome": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The default outcome's id, the one named, else the first."
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OperationErrorRecord"
+                }
+              },
+              "fires": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "requires": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "OperationMemberRecord": {
+        "x-engine-record": "Maquettiste.Engine.OperationMemberRecord",
+        "description": "A member of an operation's input or of an outcome's returns, a typed value or a record key.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "type",
+              "keyOf",
+              "required",
+              "default",
+              "length",
+              "precision",
+              "scale",
+              "collection",
+              "sensitive",
+              "validation",
+              "order"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "description": "A typed value's type, or a record key's single key attribute's type; null for a key of several attributes.",
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TypeRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "keyOf": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The id of the entity whose key the member holds."
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "default": {
+                "description": "The default, a plain value."
+              },
+              "length": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "precision": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "scale": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "collection": {
+                "type": "boolean"
+              },
+              "sensitive": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "validation": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ValidationRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "order": {
+                "type": "integer",
+                "description": "The 0-based position in its list."
+              }
+            }
+          }
+        ]
+      },
+      "OperationOutcomeRecord": {
+        "x-engine-record": "Maquettiste.Engine.OperationOutcomeRecord",
+        "description": "An outcome of an operation.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "isDefault",
+              "completes",
+              "returns"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "isDefault": {
+                "type": "boolean"
+              },
+              "completes": {
+                "type": "string",
+                "enum": [
+                  "now",
+                  "later"
+                ]
+              },
+              "returns": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/OperationReturnsRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "OperationReturnsRecord": {
+        "x-engine-record": "Maquettiste.Engine.OperationReturnsRecord",
+        "description": "What an outcome returns, an inline shape (`members`) or records of an entity (`entity`).",
+        "type": "object",
+        "required": [
+          "members",
+          "entity",
+          "list"
+        ],
+        "properties": {
+          "members": {
+            "type": "array",
+            "description": "The inline shape's members; empty unless the returns is of that form.",
+            "items": {
+              "$ref": "#/components/schemas/OperationMemberRecord"
+            }
+          },
+          "entity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the entity whose records are returned."
+          },
+          "list": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OperationErrorRecord": {
+        "x-engine-record": "Maquettiste.Engine.OperationErrorRecord",
+        "description": "An error of an operation.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "code",
+              "input"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "description": "The stable text clients see, the code, else the name."
+              },
+              "input": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The id of the input member it points at."
+              }
+            }
+          }
+        ]
       },
       "DatabaseRecord": {
         "x-engine-record": "Maquettiste.Engine.DatabaseRecord",
@@ -32376,7 +32714,11 @@
                 "scenario",
                 "state",
                 "transition",
-                "event"
+                "event",
+                "operation",
+                "operation-member",
+                "outcome",
+                "error"
               ]
             },
             "uniqueItems": true,
@@ -35817,6 +36159,764 @@
           }
         }
       },
+      "member": {
+        "title": "Operation member",
+        "description": "An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "type",
+          "keyOf",
+          "length",
+          "precision",
+          "scale",
+          "required",
+          "default",
+          "collection",
+          "sensitive",
+          "validation",
+          "description",
+          "rationale",
+          "decision",
+          "status",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "type": {
+            "description": "A typed value's type, as an attribute takes it: a built-in keyword or a reference to an enum, value object, custom scalar type or reference type.",
+            "$ref": "#/components/schemas/typeRef"
+          },
+          "keyOf": {
+            "description": "A record key: the id of the entity whose record's key the member holds (with collection, a list of keys).",
+            "$ref": "#/components/schemas/id"
+          },
+          "length": {
+            "$ref": "#/components/schemas/length"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/precision"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/scale"
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          },
+          "default": {
+            "description": "The value a typed input member takes when none is given; never on a record key or a member of a returns (MQ3024)."
+          },
+          "collection": {
+            "type": "boolean",
+            "default": false
+          },
+          "sensitive": {
+            "$ref": "#/components/schemas/sensitivity"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/validation"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "returns": {
+        "title": "Returns",
+        "description": "What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.",
+        "type": "object",
+        "x-order": [
+          "members",
+          "entity",
+          "list"
+        ],
+        "properties": {
+          "members": {
+            "description": "An inline shape: at least one member.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/member"
+            },
+            "minItems": 1
+          },
+          "entity": {
+            "description": "Records of an entity, its attributes as the shape.",
+            "$ref": "#/components/schemas/id"
+          },
+          "list": {
+            "description": "Whether a list is returned.",
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "outcome": {
+        "title": "Outcome",
+        "description": "One way the operation ends.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "completes",
+          "returns",
+          "description",
+          "rationale",
+          "decision",
+          "status",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "completes": {
+            "description": "now: the work is done when the outcome is reported; later: accepted and waiting.",
+            "enum": [
+              "now",
+              "later"
+            ],
+            "default": "now"
+          },
+          "returns": {
+            "description": "What the outcome returns; absent, it returns nothing.",
+            "$ref": "#/components/schemas/returns"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "operationError": {
+        "title": "Operation error",
+        "description": "An error an operation can report. Its display name and description are the texts a client shows.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "code",
+          "input",
+          "description",
+          "rationale",
+          "decision",
+          "status",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "code": {
+            "description": "The stable text clients see; absent, the name.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+          },
+          "input": {
+            "description": "The input member the error points at, one of the operation's own (MQ3027).",
+            "$ref": "#/components/schemas/id"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "operation": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Operation",
+        "description": "A command over the model: its subject, effect, input, outcomes, errors and the process events it fires (model/operations/, in a sub-folder named after the subject's file stem when it has one).",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "package",
+          "subject",
+          "level",
+          "effect",
+          "input",
+          "outcomes",
+          "defaultOutcome",
+          "errors",
+          "fires",
+          "requires",
+          "description",
+          "rationale",
+          "decision",
+          "status",
+          "stereotypes",
+          "excludeStereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "operation"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "package": {
+            "$ref": "#/components/schemas/id"
+          },
+          "subject": {
+            "description": "The entity the operation acts on; not owning. The file lives in model/operations/<subject file stem>/.",
+            "$ref": "#/components/schemas/id"
+          },
+          "level": {
+            "description": "record: one record of the subject, whose key the operation takes implicitly; collection: the whole set. Means something only with a subject (MQ3023).",
+            "enum": [
+              "record",
+              "collection"
+            ],
+            "default": "record"
+          },
+          "effect": {
+            "description": "Whether the operation only reads data or changes it.",
+            "enum": [
+              "read",
+              "change"
+            ]
+          },
+          "input": {
+            "description": "The input members, in file order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/member"
+            },
+            "default": []
+          },
+          "outcomes": {
+            "description": "The ways the operation ends, in file order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/outcome"
+            },
+            "minItems": 1
+          },
+          "defaultOutcome": {
+            "description": "One of the operation's own outcomes (MQ3028); absent, the first.",
+            "$ref": "#/components/schemas/id"
+          },
+          "errors": {
+            "description": "The operation's own errors, in file order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/operationError"
+            },
+            "default": []
+          },
+          "fires": {
+            "description": "Process event ids, of any process, that the operation fires.",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "requires": {
+            "description": "Ids of any element or sub-element that stand for what the operation requires; the engine gives the list no meaning (MQ3031).",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "excludeStereotypes": {
+            "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+            "$ref": "#/components/schemas/keyList"
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "effect",
+          "outcomes"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "member": {
+            "title": "Operation member",
+            "description": "An input member, or a member of an outcome's inline returns: exactly one of a typed value (type) or a record key (keyOf) (MQ3024).",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "pluralName",
+              "type",
+              "keyOf",
+              "length",
+              "precision",
+              "scale",
+              "required",
+              "default",
+              "collection",
+              "sensitive",
+              "validation",
+              "description",
+              "rationale",
+              "decision",
+              "status",
+              "stereotypes",
+              "tags",
+              "category",
+              "properties",
+              "generation",
+              "source"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier",
+                "default": ""
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "pluralName": {
+                "type": "string"
+              },
+              "type": {
+                "description": "A typed value's type, as an attribute takes it: a built-in keyword or a reference to an enum, value object, custom scalar type or reference type.",
+                "$ref": "#/components/schemas/typeRef"
+              },
+              "keyOf": {
+                "description": "A record key: the id of the entity whose record's key the member holds (with collection, a list of keys).",
+                "$ref": "#/components/schemas/id"
+              },
+              "length": {
+                "$ref": "#/components/schemas/length"
+              },
+              "precision": {
+                "$ref": "#/components/schemas/precision"
+              },
+              "scale": {
+                "$ref": "#/components/schemas/scale"
+              },
+              "required": {
+                "type": "boolean",
+                "default": false
+              },
+              "default": {
+                "description": "The value a typed input member takes when none is given; never on a record key or a member of a returns (MQ3024)."
+              },
+              "collection": {
+                "type": "boolean",
+                "default": false
+              },
+              "sensitive": {
+                "$ref": "#/components/schemas/sensitivity"
+              },
+              "validation": {
+                "$ref": "#/components/schemas/validation"
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              },
+              "rationale": {
+                "description": "Markdown text: why the element is shaped this way.",
+                "type": "string",
+                "minLength": 1
+              },
+              "decision": {
+                "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "status": {
+                "$ref": "#/components/schemas/status"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "tags": {
+                "$ref": "#/components/schemas/tagList",
+                "default": []
+              },
+              "category": {
+                "$ref": "#/components/schemas/id"
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
+              },
+              "generation": {
+                "$ref": "#/components/schemas/generation",
+                "default": {}
+              },
+              "source": {
+                "$ref": "#/components/schemas/source"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "outcome": {
+            "title": "Outcome",
+            "description": "One way the operation ends.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "pluralName",
+              "completes",
+              "returns",
+              "description",
+              "rationale",
+              "decision",
+              "status",
+              "stereotypes",
+              "tags",
+              "category",
+              "properties",
+              "generation",
+              "source"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier",
+                "default": ""
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "pluralName": {
+                "type": "string"
+              },
+              "completes": {
+                "description": "now: the work is done when the outcome is reported; later: accepted and waiting.",
+                "enum": [
+                  "now",
+                  "later"
+                ],
+                "default": "now"
+              },
+              "returns": {
+                "description": "What the outcome returns; absent, it returns nothing.",
+                "$ref": "#/components/schemas/returns"
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              },
+              "rationale": {
+                "description": "Markdown text: why the element is shaped this way.",
+                "type": "string",
+                "minLength": 1
+              },
+              "decision": {
+                "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "status": {
+                "$ref": "#/components/schemas/status"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "tags": {
+                "$ref": "#/components/schemas/tagList",
+                "default": []
+              },
+              "category": {
+                "$ref": "#/components/schemas/id"
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
+              },
+              "generation": {
+                "$ref": "#/components/schemas/generation",
+                "default": {}
+              },
+              "source": {
+                "$ref": "#/components/schemas/source"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "returns": {
+            "title": "Returns",
+            "description": "What an outcome returns: exactly one of members or entity (MQ3025). It has no id; it is part of its outcome.",
+            "type": "object",
+            "x-order": [
+              "members",
+              "entity",
+              "list"
+            ],
+            "properties": {
+              "members": {
+                "description": "An inline shape: at least one member.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/member"
+                },
+                "minItems": 1
+              },
+              "entity": {
+                "description": "Records of an entity, its attributes as the shape.",
+                "$ref": "#/components/schemas/id"
+              },
+              "list": {
+                "description": "Whether a list is returned.",
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
       "placeholder": {
         "description": "A name a batch declares with as and uses anywhere in the batch.",
         "type": "string",
@@ -36542,7 +37642,7 @@
                 },
                 "for": {
                   "type": "string",
-                  "pattern": "^(model|each (package|entity|attribute|relation|enum|value object|database|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
+                  "pattern": "^(model|each (package|entity|attribute|relation|enum|value object|database|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario|operation)|select [A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "where": {
                   "title": "Unit filters",

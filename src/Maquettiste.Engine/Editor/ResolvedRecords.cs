@@ -18,7 +18,7 @@ public sealed record ResolvedQuery(string Scope = "all", string? Database = null
 /// <summary>One page of the resolved model as flat records (resolved objects reference each other, so other objects appear by id).</summary>
 /// <param name="Items">The records, by (kind, name, id): <see cref="PackageRecord"/>, <see cref="EntityRecord"/>, <see cref="RelationRecord"/>,
 /// <see cref="EnumRecord"/>, <see cref="ValueObjectRecord"/>, <see cref="ScalarTypeRecord"/>, <see cref="ReferenceTypeRecord"/>,
-/// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>,
+/// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>, <see cref="OperationRecord"/>,
 /// <see cref="DatabaseRecord"/>, <see cref="TableRecord"/>, <see cref="RoutineRecord"/>, <see cref="DatabaseTypeRecord"/> or
 /// <see cref="SqlObjectRecord"/>, <see cref="QueryRecord"/> or <see cref="MigrationRecord"/> (by database name, then applied order); each
 /// has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
@@ -669,6 +669,88 @@ public sealed record StepRecord(string Id, int Index, string Input, string? Even
 /// <param name="Context">The expected context values.</param>
 public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> States, IReadOnlyList<string> StatePaths, IReadOnlyDictionary<string, object?> Context);
 
+/// <summary>A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors, with the events it fires and
+/// what it requires by id.</summary>
+/// <param name="Id">The operation id.</param>
+/// <param name="Kind"><c>operation</c>.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Package">The package's id: its own, else its subject's.</param>
+/// <param name="Subject">The id of the entity it acts on.</param>
+/// <param name="Level"><c>record</c> or <c>collection</c>; <see langword="null"/> without a subject.</param>
+/// <param name="Effect"><c>read</c> or <c>change</c>.</param>
+/// <param name="Input">The input members, in file order.</param>
+/// <param name="Outcomes">The outcomes, in file order.</param>
+/// <param name="DefaultOutcome">The default outcome's id: the one named, else the first.</param>
+/// <param name="Errors">The errors, in file order.</param>
+/// <param name="Fires">The ids of the process events it fires.</param>
+/// <param name="Requires">The ids of what it requires, of any kind, in file order.</param>
+/// <param name="DisplayName">As <see cref="PackageRecord.DisplayName"/>.</param>
+/// <param name="PluralName">As <see cref="PackageRecord.PluralName"/>.</param>
+/// <param name="Description">As <see cref="PackageRecord.Description"/>.</param>
+/// <param name="Tags">As <see cref="PackageRecord.Tags"/>.</param>
+/// <param name="Category">As <see cref="PackageRecord.Category"/>.</param>
+/// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
+/// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
+/// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+public sealed record OperationRecord(string Id, string Kind, string Name, string? Package, string? Subject, string? Level, string Effect,
+    IReadOnlyList<OperationMemberRecord> Input, IReadOnlyList<OperationOutcomeRecord> Outcomes, string? DefaultOutcome, IReadOnlyList<OperationErrorRecord> Errors,
+    IReadOnlyList<string> Fires, IReadOnlyList<string> Requires, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags,
+    string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+
+/// <summary>A member of an operation's input or of an outcome's returns: a typed value or a record key.</summary>
+/// <param name="Id">The member id.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Type">The type: a typed value's, or a record key's single key attribute's; <see langword="null"/> for a key of several
+/// attributes.</param>
+/// <param name="KeyOf">The id of the entity whose key the member holds, or <see langword="null"/>.</param>
+/// <param name="Required">Whether a value must be given.</param>
+/// <param name="Default">The default value, or <see langword="null"/>.</param>
+/// <param name="Length">The length, or <see langword="null"/>.</param>
+/// <param name="Precision">The precision, or <see langword="null"/>.</param>
+/// <param name="Scale">The scale, or <see langword="null"/>.</param>
+/// <param name="Collection">Whether the member holds a list.</param>
+/// <param name="Sensitive">The sensitivity class, or <see langword="null"/>.</param>
+/// <param name="Validation">The validation, or <see langword="null"/>.</param>
+/// <param name="Order">The 0-based position in its list.</param>
+/// <param name="DisplayName">The display name.</param>
+/// <param name="Description">The description.</param>
+/// <param name="Stereotypes">The stereotype keys.</param>
+/// <param name="Properties">The custom properties.</param>
+public sealed record OperationMemberRecord(string Id, string Name, TypeRecord? Type, string? KeyOf, bool Required, object? Default, int? Length, int? Precision,
+    int? Scale, bool Collection, string? Sensitive, ValidationRecord? Validation, int Order, string DisplayName, string? Description,
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
+
+/// <summary>An outcome of an operation.</summary>
+/// <param name="Id">The outcome id.</param>
+/// <param name="Name">The name.</param>
+/// <param name="IsDefault">Whether it is the operation's default outcome.</param>
+/// <param name="Completes"><c>now</c> or <c>later</c>.</param>
+/// <param name="Returns">What it returns, or <see langword="null"/>.</param>
+/// <param name="DisplayName">The display name.</param>
+/// <param name="Description">The description.</param>
+/// <param name="Stereotypes">The stereotype keys.</param>
+/// <param name="Properties">The custom properties.</param>
+public sealed record OperationOutcomeRecord(string Id, string Name, bool IsDefault, string Completes, OperationReturnsRecord? Returns, string DisplayName,
+    string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
+
+/// <summary>What an outcome returns: an inline shape (<paramref name="Members"/>) or records of an entity (<paramref name="Entity"/>).</summary>
+/// <param name="Members">The inline shape's members, in file order; empty unless the returns is of that form.</param>
+/// <param name="Entity">The id of the entity whose records are returned, or <see langword="null"/>.</param>
+/// <param name="List">Whether a list is returned.</param>
+public sealed record OperationReturnsRecord(IReadOnlyList<OperationMemberRecord> Members, string? Entity, bool List);
+
+/// <summary>An error of an operation.</summary>
+/// <param name="Id">The error id.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Code">The stable text clients see: the code, else the name.</param>
+/// <param name="Input">The id of the input member it points at, or <see langword="null"/>.</param>
+/// <param name="DisplayName">The display name.</param>
+/// <param name="Description">The description.</param>
+/// <param name="Stereotypes">The stereotype keys.</param>
+/// <param name="Properties">The custom properties.</param>
+public sealed record OperationErrorRecord(string Id, string Name, string Code, string? Input, string DisplayName, string? Description,
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
+
 /// <summary>A resolved database: the database view (<see cref="DatabaseView"/>) with its kind.</summary>
 /// <param name="Id">The database id.</param>
 /// <param name="Kind"><c>database</c>.</param>
@@ -781,6 +863,7 @@ public static class ResolvedRecords
         ["processes"] = "process",
         ["actors"] = "actor",
         ["scenarios"] = "scenario",
+        ["operations"] = "operation",
         ["databases"] = "database",
         ["tables"] = "table",
         ["routines"] = "routine",
@@ -870,6 +953,12 @@ public static class ResolvedRecords
         {
             foreach (var s in model.Scenarios)
                 yield return new Entry("scenario", s.Name, s.Id, () => context.Scenario(s));
+        }
+
+        if (all || scope == "operations")
+        {
+            foreach (var o in model.Operations)
+                yield return new Entry("operation", o.Name, o.Id, () => context.Operation(o));
         }
 
         if (all || scope == "databases")
@@ -1087,6 +1176,21 @@ public static class ResolvedRecords
                 t.Reason, Plain(t.Payload), Plain(t.Assume),
                 t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context)) : null, t.Description))],
             s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
+
+        public OperationRecord Operation(ROperation o) => new(o.Id, "operation", o.Name, o.Package?.Id, o.Subject?.Id, o.Level, o.Effect,
+            [.. o.Input.Select(OperationMember)],
+            [.. o.Outcomes.Select(c => new OperationOutcomeRecord(c.Id, c.Name, c.IsDefault, c.Completes,
+                c.Returns is { } r ? new OperationReturnsRecord([.. r.Members.Select(OperationMember)], r.Entity?.Id, r.IsList) : null,
+                c.DisplayName!, c.Description, Keys(c.Stereotypes), Plain(c.Properties)))],
+            o.DefaultOutcome?.Id,
+            [.. o.Errors.Select(e => new OperationErrorRecord(e.Id, e.Name, e.Code, e.Input?.Id, e.DisplayName!, e.Description, Keys(e.Stereotypes), Plain(e.Properties)))],
+            Ids(o.Fires), Ids(o.Requires),
+            o.DisplayName!, o.PluralName!, o.Description, o.Tags, o.Category?.Id, Keys(o.Stereotypes), Plain(o.Properties), o.Generation);
+
+        private static OperationMemberRecord OperationMember(ROperationMember m) => new(m.Id, m.Name,
+            m.Type is { } t ? new TypeRecord(t.Kind, t.Name, t.Builtin, t.Enum?.Id, t.ValueObject?.Id, t.Scalar?.Id, t.ReferenceType?.Id) : null,
+            m.KeyOf?.Id, m.Required, Plain(m.Default), m.Length, m.Precision, m.Scale, m.Collection, m.Sensitive, Validation(m.Validation), m.Order,
+            m.DisplayName!, m.Description, Keys(m.Stereotypes), Plain(m.Properties));
 
         private List<StorageChoiceRecord> Storage(IReadOnlyDictionary<string, RStorageChoice> storage) =>
             [.. storage.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => new StorageChoiceRecord(DatabaseId(s.Key), s.Value.Strategy, Plain(s.Value.Options), s.Value.Source,

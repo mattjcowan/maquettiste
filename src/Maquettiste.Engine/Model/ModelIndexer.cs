@@ -98,6 +98,9 @@ internal static class ModelIndexer
         _ when type == typeof(ProcessGate) => "gate",
         _ when type == typeof(GateMeaning) => "meaning",
         _ when type == typeof(ScenarioStep) => "step",
+        _ when type == typeof(OperationMember) => "operation-member",
+        _ when type == typeof(OperationOutcome) => "outcome",
+        _ when type == typeof(OperationError) => "error",
         _ when type == typeof(EntityBinding) || type == typeof(ReferenceTypeBinding) => "binding",
         _ when type == typeof(AlternateKey) || type == typeof(PrimaryKey) || type == typeof(UniqueConstraint) || type == typeof(ForeignKey)
             || type == typeof(MemberForeignKey) || type == typeof(CheckConstraint) || type == typeof(TableIndex) => "key",
@@ -108,7 +111,7 @@ internal static class ModelIndexer
     internal static readonly FrozenSet<string> SubElementKinds = new[]
     {
         "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
-        "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key",
+        "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
@@ -583,7 +586,12 @@ internal static class ModelIndexer
             FieldCount: element is ReferenceType referenceType ? referenceType.Attributes.Count : null,
             Base: element is Entity entity ? entity.Base : null,
             Use: element is Process use ? (use.Use == ProcessUse.Lifecycle ? "lifecycle" : "orchestration") : null,
-            Subject: element is Process subject ? subject.Subject : null,
+            Subject: element switch
+            {
+                Process subject => subject.Subject,
+                Operation operation => operation.Subject,
+                _ => null,
+            },
             StateCount: element is Process states ? CountStates(states.States) : null,
             ActorType: element is Actor actor ? actor.Type switch
             {
@@ -597,7 +605,8 @@ internal static class ModelIndexer
                 Diagram statechart => statechart.Process,
                 _ => null,
             },
-            StepCount: element is Scenario steps ? steps.Steps.Count : null);
+            StepCount: element is Scenario steps ? steps.Steps.Count : null,
+            Effect: element is Operation effect ? (effect.Effect == OperationEffect.Change ? "change" : "read") : null);
 
     private static int CountStates(IReadOnlyList<ProcessState> states)
     {

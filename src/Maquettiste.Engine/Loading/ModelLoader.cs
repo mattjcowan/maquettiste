@@ -563,7 +563,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             .Where(d => d.Element is Database)
             .GroupBy(d => d.Element.Id, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => ModelPaths.FolderOf(_paths.FromRepoPath(g.First().Path)), StringComparer.Ordinal);
-        var stems = documents.Any(d => d.Element is Seed or Scenario)
+        var stems = documents.Any(d => d.Element is Seed or Scenario or Operation { Subject: not null })
             ? documents.GroupBy(d => d.Element.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => ModelPaths.Stem(g.First().Element), StringComparer.Ordinal)
             : [];
         foreach (var document in documents)

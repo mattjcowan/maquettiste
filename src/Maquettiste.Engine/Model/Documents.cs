@@ -57,11 +57,13 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="FieldCount">The number of user fields, on reference type rows.</param>
 /// <param name="Base">The base entity's id, on entity rows that have one (E5h: base and derived entities in related-element highlighting).</param>
 /// <param name="Use">The process's use, <c>lifecycle</c> or <c>orchestration</c>, on process rows (phase-3-design.md section 2.1).</param>
-/// <param name="Subject">The entity whose lifecycle the process is, on process rows that have one.</param>
+/// <param name="Subject">The entity whose lifecycle the process is, on process rows that have one; the entity an operation acts on, on
+/// operation rows that have one.</param>
 /// <param name="StateCount">The number of states at every depth, on process rows.</param>
 /// <param name="ActorType">The actor's type, <c>person</c>, <c>role</c> or <c>external-system</c>, on actor rows.</param>
 /// <param name="Process">The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows.</param>
 /// <param name="StepCount">The number of steps, on scenario rows.</param>
+/// <param name="Effect">The operation's effect, <c>read</c> or <c>change</c>, on operation rows (next-phase-2-design.md section 4.1).</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -82,7 +84,8 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? StateCount = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ActorType = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Process = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? StepCount = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? StepCount = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Effect = null)
 {
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
@@ -110,6 +113,7 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && string.Equals(ActorType, other.ActorType, StringComparison.Ordinal)
         && string.Equals(Process, other.Process, StringComparison.Ordinal)
         && StepCount == other.StepCount
+        && string.Equals(Effect, other.Effect, StringComparison.Ordinal)
         && (ReferenceEquals(Ends, other.Ends) || (Ends is not null && other.Ends is not null && Ends.SequenceEqual(other.Ends)));
 
     /// <inheritdoc/>

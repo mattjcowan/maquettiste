@@ -23,6 +23,7 @@ export const EDITOR_KINDS = [
   "database-type",
   "sql-object",
   "query",
+  "operation",
 ] as const;
 export type EditorKind = (typeof EDITOR_KINDS)[number];
 

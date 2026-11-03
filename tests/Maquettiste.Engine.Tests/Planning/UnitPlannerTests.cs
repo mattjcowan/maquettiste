@@ -267,6 +267,40 @@ public sealed class UnitPlannerTests
 
     private static Task<UnitPlan> Plan(PackSet packs) => new UnitPlanner(Options).PlanAsync(Model, packs, new ScriptSandboxFactory(), null, Ct);
 
+    [Fact]
+    public async Task Each_operation_renders_once_per_operation_and_filters_by_package_and_stereotype()
+    {
+        // Shop's ids are seeded, so a second Shop() names Customer and Product with the ids Model has.
+        var b = Shop();
+        b.Add(Operation("01JR5NDP000000000000000001", "archive", Entity("Customer").Id, "audited"));
+        b.Add(Operation("01JR5NDP000000000000000003", "archive", Entity("Product").Id));
+        b.Add(Operation("01JR5NDP000000000000000005", "ping", null));
+        var model = Resolve(b.Build());
+        Task<UnitPlan> PlanOps(UnitWhere? where) =>
+            new UnitPlanner(Options).PlanAsync(model, new PackSet([Pack("p", [Unit("op", "each operation", where)])], []), new ScriptSandboxFactory(), null, Ct);
+
+        var all = await PlanOps(null);
+
+        Assert.Empty(all.Diagnostics);
+        Assert.Equal(3, model.Operations.Count);
+        Assert.Equal(model.Operations.Select(o => "p/op:" + o.Id).Order(StringComparer.Ordinal), all.Units.Select(u => u.Key));
+        Assert.All(all.Units, u => Assert.Contains(Assert.IsType<ROperation>(u.Element), model.Operations));
+        string Subjects(UnitPlan plan) => string.Join(",", plan.Units.Select(u => ((ROperation)u.Element!).Subject?.Name ?? "-").Order(StringComparer.Ordinal));
+        Assert.Equal("Customer", Subjects(await PlanOps(new UnitWhere { Packages = ["Sales"] }))); // the subject's package
+        Assert.Equal("Customer", Subjects(await PlanOps(new UnitWhere { Stereotypes = ["audited"] })));
+        Assert.Equal("-,Product", Subjects(await PlanOps(new UnitWhere { NotStereotypes = ["audited"] })));
+    }
+
+    private static Operation Operation(string id, string name, string? subject, params string[] stereotypes) => new()
+    {
+        Id = id,
+        Name = name,
+        Subject = subject,
+        Effect = OperationEffect.Change,
+        Stereotypes = stereotypes,
+        Outcomes = [new OperationOutcome { Id = id[..^1] + "2", Name = "done" }],
+    };
+
     private static async Task<string> Names(UnitWhere where)
     {
         var plan = await Plan(new PackSet([Pack("p", [Unit("u", "each entity", where)])], []));

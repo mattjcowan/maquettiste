@@ -3673,6 +3673,7 @@ outcomes and its errors by id, so a rename breaks no link.
   caps the size in bytes). The attribute record does not fit: its type cannot name an entity, a file is not a value
   type, and `unique`, `indexed`, `readOnly`, `immutable`, `derived` and `defaultExpression` mean nothing in a request.
   The facet and default checks reuse `AttributeRules` (MQ3013, MQ3019, MQ3017, MQ2007).
+  *The file form (`file`, `mediaTypes`, `length` as a byte cap).* Second cut; not built in the first cut.
 - **Outcomes.** One or more (`minItems: 1`), each with `completes` (`now`, the default, or `later` for "accepted and
   waiting") and an optional `returns`. `defaultOutcome` names one by id; absent, the first is the default, the way a
   process's `initial` names a state (`Model/Processes.cs:58-60`).
@@ -3682,6 +3683,7 @@ outcomes and its errors by id, so a rename breaks no link.
   `projection`) or `file` (a download; streaming is a file). `list: true` makes it a list; a list may set `paging`
   (`page` or `cursor`) with `maxPageSize`, always together (MQ3025). An outcome without `returns` returns nothing. The
   paging inputs (a page or a cursor, and a page size) are implied by `paging`, never declared as members.
+  *The `file` form, `mediaTypes`, `paging` and `maxPageSize`.* Second cut; not built in the first cut.
 - **Errors.** Each has a `name` (an identifier), an optional `code` (the stable text clients see; absent, the name) and
   an optional `input`, the input member it points at (MQ3027). Its display name and description are the translatable
   texts a client shows. The key is `input`, not `member`, because a redefinition entry (section 3.1) names the member it
@@ -3695,17 +3697,18 @@ outcomes and its errors by id, so a rename breaks no link.
   is an own error beside an exclusion. Resolved order: own errors in file order, then inherited ones in effective-set
   order, each stereotype's in its file order. Every resolved error carries section 3.1's `RMemberOrigin` (`own`,
   `stereotype` or `package-default`; a schema default never reaches an operation).
+  *Shared errors, their redefinition and their exclusion (task E5).* Second cut; not built in the first cut.
 - **Package defaults reach operations.** Section 3.1's package defaults reach every kind with a package. An operation's
   `StereotypeHolder.Package` is its file's package, else its subject's (`Model/StereotypeDefaults.cs`), the same
   fallback as its resolved package. `operation.json` takes `excludeStereotypes` like every kind schema with
   `stereotypes`.
 - **Stereotype errors resolve on the definition too.** Unlike table members, which resolve only on a carrying table
   (section 3.1), an error needs no carrier to be complete, so `RStereotypeDefinition.Errors` lists them and a pack can
-  write one set of constants per stereotype.
+  write one set of constants per stereotype. Second cut; not built in the first cut.
 - **Removing a contributed error** from a stereotype (a save) removes the `redefines` and `excludes` entries that name
   it, as section 3.1 does for table members; an `x-ref` value naming the keyed id reports MQ2001. Deleting the
   stereotype refuses while operations carry it, and `remove-references` clears those entries with the `stereotypes`
-  entry.
+  entry. Second cut; not built in the first cut.
 - **`fires`** lists process event ids (`[ElementRef(IndexKinds = ["event"])]`) of any process, and every one stays an id
   when events become a kind. A `read` operation that fires an event is warning MQ3030: an event changes state.
   `REvent.FiredBy` comes from the index's references to the event, never from a scan of every operation.
@@ -3733,6 +3736,7 @@ outcomes and its errors by id, so a rename breaks no link.
   localizable. The shard is the operation file's own package, else the root. The subject's package is not consulted:
   moving the entity would otherwise strand the operation's entries, since a write moves entries only for the elements
   it changes. An inherited error's texts come from the stereotype error's entries unless its redefinition states them.
+  *An inherited error's texts.* Second cut; not built in the first cut.
 - **Templates.** Scope `each operation`, unit variable `operation`. `where` takes packages, tags, stereotypes,
   categories and a script; `database` and `abstract` are refused at pack load, as for processes. `type_of` accepts an
   operation member.
@@ -3763,12 +3767,16 @@ outcomes and its errors by id, so a rename breaks no link.
 | `requires` | `common.json#/$defs/idList` | `[]` | Any element or sub-element id |
 | `excludeStereotypes` | `common.json#/$defs/keyList` | `[]` | Section 3.1's exclusion of default stereotypes |
 
+*`redefines` and `excludes`.* Second cut; not built in the first cut.
+
 `#/$defs/member` requires `id` and `name`. `x-order`: `id`, `name`, `displayName`, `type`, `keyOf`, `file`,
 `mediaTypes`, `length`, `precision`, `scale`, `required`, `default`, `collection`, `sensitive`, `validation`,
 `description`, `rationale`, `decision`, `status`, `stereotypes`, `tags`, `category`, `properties`, `generation`,
 `source`. `type` is `common.json#/$defs/typeRef`; `keyOf` an id; `file` a boolean (default `false`); `mediaTypes` a
 unique array of non-empty strings (default `[]`); the other keys take their `common.json` definitions as the attribute
-does.
+does. *A member's `file` and `mediaTypes`.* Second cut; not built in the first cut.
+Every `ElementBase` sub-element schema lists `pluralName` after `displayName`, so the member, outcome and error
+definitions do too.
 
 `#/$defs/outcome` requires `id` and `name`. `x-order`: `id`, `name`, `displayName`, `completes`, `returns`,
 `description`, `rationale`, `decision`, `status`, `stereotypes`, `tags`, `category`, `properties`, `generation`,
@@ -3777,7 +3785,8 @@ does.
 `#/$defs/returns` has no id; it is part of its outcome. `x-order`: `members`, `entity`, `file`, `mediaTypes`, `list`,
 `paging`, `maxPageSize`. `members` is an array of `#/$defs/member` with `minItems: 1` and no default; `entity` an id;
 `file` and `list` booleans (default `false`); `mediaTypes` as on a member; `paging` is `page` or `cursor`;
-`maxPageSize` an integer of at least 1.
+`maxPageSize` an integer of at least 1. *A returns' `file`, `mediaTypes`, `paging` and `maxPageSize`.*
+Second cut; not built in the first cut.
 
 `common.json#/$defs/operationError` (shared with `stereotype.json`) requires `id` and `name`. `x-order`: `id`, `name`,
 `displayName`, `code`, `input`, `description`, `rationale`, `decision`, `status`, `stereotypes`, `tags`, `category`,
@@ -3786,6 +3795,7 @@ does.
 
 `#/$defs/errorRedefinition` requires `member`, has `minProperties: 2` and `additionalProperties: false`. `x-order`:
 `member`, `input`, `displayName`, `description`. It has no id of its own (section 3.1).
+Second cut; not built in the first cut.
 
 Section 4.3 adds `satisfies` to `ElementBase`, so operations, members, outcomes and errors carry it. 4.3's E40 runs
 after E5 and writes the key into `operation.json`, its `member` and `outcome` definitions and
@@ -3796,7 +3806,7 @@ member keys (`attributes` and the keys section 3.1 adds) and before `parameters`
 `appliesTo` and `extension.json` `appliesTo.kinds` gain `operation`, `operation-member`, `outcome` and `error`.
 `pack.json`'s `for` pattern gains `operation`. Every changed file gets its copy, and `editor` regenerates the editor's
 types and mocks (`src/editor/src/api/schema.d.ts`, `src/editor/src/mocks/openapi.json`,
-`src/editor/src/code/extensionSchema.json`).
+`src/editor/src/code/extensionSchema.json`). *`stereotype.json`'s `errors`.* Second cut; not built in the first cut.
 
 `send` on Invoice in the billing fixture, as the acceptance test writes it
 (`model/operations/invoice/send.json`; the event id is the invented lifecycle's):
@@ -3886,6 +3896,9 @@ public sealed record Stereotype { /* existing */ public IReadOnlyList<OperationE
 public sealed record ElementSummary(/* existing, then */ string? Effect = null);  // JsonIgnore when null, as the others
 ```
 
+*`OperationMember.File` and `MediaTypes`, `OperationReturns.File`, `MediaTypes`, `Paging` and `MaxPageSize`, and
+`OperationPaging`.* Second cut; not built in the first cut.
+
 All new members carry XML documentation. `ElementSummary.Equals` compares `Effect` (`Model/Documents.cs:88`).
 `ModelIndexer.SubElementKind` maps `OperationMember` to `operation-member`, `OperationOutcome` to `outcome` and
 `OperationError` to `error`, wherever the type appears, so a stereotype's errors are indexed under the stereotype.
@@ -3948,6 +3961,9 @@ public sealed class REvent { public RList<ROperation> FiredBy { get; internal se
 public sealed class RStereotypeDefinition { public RList<ROperationError> Errors { get; internal set; } }  // E5
 ```
 
+*`ROperationMember.IsFile` and `MediaTypes`, `ROperationReturns.IsFile`, `MediaTypes`, `Paging` and `MaxPageSize`,
+inherited errors and `RStereotypeDefinition.Errors`.* Second cut; not built in the first cut.
+
 Engine behaviour:
 
 1. **Pass.** `ResolveRun.Operations.cs` (new) runs after `ResolveProcesses` (`Resolution/ResolveRun.cs:148`), since
@@ -3975,7 +3991,7 @@ Engine behaviour:
 9. **Coverage.** `ResolvedCoverageTests` gains the targets operation, operation member, outcome, outcome returns and
    error (E3; `file` and `list` are renamed to `IsFile` and `IsList`), and stereotype error (E5). E5 adds `redefines`
    and `excludes` to the schema and excuses both as `NotResolved`, with the reason "applied to `Errors`
-   (`MemberOrigin`)".
+   (`MemberOrigin`)". *`IsFile` and the stereotype error target.* Second cut; not built in the first cut.
 
 #### Rules
 
@@ -4007,6 +4023,10 @@ entries through `ContributedMembers.CheckLinks`. MQ3026 on an inherited error is
 about an inherited member: at its `redefines` entry when it has one, else at the contributing stereotype's entry in
 `stereotypes`, else at `/stereotypes` (a package default).
 
+*MQ3029, the file and paging parts of MQ3024 and MQ3025, MQ3026 and MQ3027 over inherited errors and redefinitions,
+and MQ2027 and MQ2028 on `redefines` and `excludes`.* Second cut; not built in the first cut.
+MQ3029 stays unassigned until then.
+
 #### CLI and MCP
 
 No verb and no tool is added; the pinned tool counts stay. Element tools (`create_element`, `save_element`,
@@ -4019,6 +4039,8 @@ verbs take the kind through `KindInfo` and need no change. Changed:
   `memberOrigin` as section 3.1's `MemberOriginView`, null for own errors), `fires` and `requires` by id, and the
   annotations. `all` includes it. `Editor/ResolvedRecords.cs` builds it; `tools.json`, `openapi.yaml` (the scope enum
   and the records) and `docs/mcp.md` say so.
+  *`memberOrigin` on `OperationErrorRecord`, and the file and paging parts of the member and returns records.* Second
+  cut; not built in the first cut.
 - `get_model_index` rows of operations carry `subject` and `effect` (`tools.json` text, `ElementSummary` in
   `openapi.yaml`).
 - `get_template_context` answers for an `each operation` unit with the `ROperation` members
@@ -4035,9 +4057,11 @@ verbs take the kind through `KindInfo` and need no change. Changed:
   the `collection` pattern, or by `nullable` when not required; a `keyOf` member maps through its single key
   attribute's type, and a composite key is MQ6006 naming `member.key_of.key`; a file member takes the pack map's `file`
   entry, and MQ6006 when the map has none or the target is a SQL dialect.
+  *The file member.* Second cut; not built in the first cut.
 - The localization helpers (`Rendering/LocalizationHelpers.cs:84-132`) read an inherited error's display name and
   description through the stereotype error's id (`MemberOrigin.MemberId`), so its translations apply; a facet the
   redefinition states shows its own text in every locale.
+  Second cut; not built in the first cut.
 
 #### The example pack
 
@@ -4067,6 +4091,7 @@ every project that models operations without serving HTTP.
   with problem details (RFC 9457) carrying `code` and `input`, status 422 when it points at an input and 409 otherwise,
   unless the error has an integer property `httpStatus`. A file input is a multipart part; a file result is streamed
   with its first media type.
+  Second cut; not built in the first cut.
 - `types/csharp.json` gains `"file": "System.IO.Stream"`. The README describes both units and the mapping, and the
   manifest's `description` names them.
 - The reference app's copy of the pack (`samples/reference-app/.maquettiste/templates/csharp-dapper/`) takes the same
@@ -4161,7 +4186,8 @@ E1 keeps the editor compiling: the kind's icon and label, and an "Operations" gr
 - `ResolvedCoverageTests`: the new targets.
 - `UnitPlannerTests.Each_operation_renders_once_per_operation_and_filters_by_package_and_stereotype`;
   `PackLoaderTests.An_each_operation_unit_refuses_database_and_abstract_filters`;
-  `TemplateCacheAndHelperTests.Type_of_maps_typed_key_and_file_members`;
+  `TemplateCacheAndHelperTests.Type_of_maps_typed_key_and_file_members` (file members: second cut; not built in the
+  first cut);
   `PackAuthoringMoreTests.Template_context_of_an_each_operation_unit_lists_the_operation_members`;
   `ReadTrackingTests.Adding_an_operation_that_fires_an_event_re_renders_units_that_read_fired_by`.
 - `Operations/OperationInheritanceTests` (new): `A_stereotype_contributes_errors_with_keyed_ids`,
@@ -4172,12 +4198,14 @@ E1 keeps the editor compiling: the kind's icon and label, and an "Operations" gr
   `A_contributed_errors_code_change_edits_no_operation_file`,
   `Removing_a_contributed_error_drops_the_entries_that_name_it`,
   `A_property_xref_to_an_inherited_error_takes_the_keyed_id_and_one_not_inherited_is_MQ2001`.
+  Second cut; not built in the first cut.
 - `FactRecordingTests.An_operation_edit_is_never_classified_even_when_requires_names_a_table`.
 - `DeleteCascadeTests`:
   `Deleting_the_lifecycle_whose_event_an_operation_fires_is_refused_and_remove_references_clears_the_entry`,
   `Deleting_a_subject_entity_is_refused_and_both_resolutions_clear_subject`.
 - `LocalizationTests.Operation_members_outcomes_and_errors_are_localizable_in_the_operations_package_shard`;
-  `LocalizationHelperTests.An_inherited_error_takes_its_stereotype_errors_translation_unless_redefined`.
+  `LocalizationHelperTests.An_inherited_error_takes_its_stereotype_errors_translation_unless_redefined` (inherited
+  errors: second cut; not built in the first cut).
 - `ResolvedRecordsTests.Operations_scope_lists_send_with_members_outcomes_errors_and_fires`;
   `McpReadTests.Get_resolved_model_scope_operations_pages_operation_records`.
 - **Acceptance (3.6, first line):**
@@ -4200,6 +4228,13 @@ E1 keeps the editor compiling: the kind's icon and label, and an "Operations" gr
   four errors, the inherited ones with ids `<send>.<not_found>` and `<send>.<stale_version>`; `void` has one,
   `<void>.<not_found>`, whose `MemberOrigin.Redefined` is `[description]`. Changing `not_found`'s code to `missing`
   writes only the stereotype file and changes both resolved codes. An own error `not_found` on `send` is MQ3026.
+  Second cut; not built in the first cut.
+- **Acceptance (first cut, the rest):**
+  `Integration/OperationTests.Search_takes_keys_returns_a_list_requires_an_actor_and_each_operation_renders_both`.
+  Same setup plus an actor `Clerk` raising `sent`, and `search` on Invoice (level `collection`, effect `read`, input
+  `customers` as `keyOf` Customer with `collection`, outcome `found` returning a list of Invoice, error `too_broad` with
+  code `search.too_broad`, `requires` naming `Clerk`). Expected: validation reports nothing, the resolved fields match,
+  and an `each operation` unit writes one file for `search` and one for `send`.
 - **Acceptance (3.6, second line):** Packs
   `OperationPackTests.Csharp_dapper_generates_the_send_endpoint_request_and_response_types_from_the_operation_alone`
   (new). Setup: `PackRepo.Billing()` with `PackRepo.AddSendOperation` (the lifecycle, Invoice's `lifecycle` and `send`
@@ -4279,13 +4314,19 @@ member link rules, after D6 and D7) and D10 (removing a contributed member's ent
   `Rendering/LocalizationHelpers.cs` (inherited errors read their stereotype error's entries). Tests:
   `LocalizationTests`, `LocalizationHelperTests`. Verify: `E "~Localization."`;
   `C "~L10nAndSeedCommandTests|~McpLocalizationToolTests"`.
+  *The run after E5, a stereotype's errors as sub-nodes and inherited errors in `LocalizationHelpers.cs`.* Second cut;
+  not built in the first cut: the first cut runs after E2 and E4, and the helpers read own parts as they read
+  attributes.
 - **E8. Agent and API surfaces.** Runs after E5. Owns: `Editor/ResolvedRecords.cs` (`OperationRecord` and its parts,
   scope `operations`), `Agent/tools.json` (`get_resolved_model`, `get_model_index`), `openapi.yaml` (the scope enum, the
   records), the regenerated editor types and mocks, `docs/mcp.md` (both rows). Tests: `ResolvedRecordsTests`,
   `McpReadTests`, `ModelCommandTests` (scope `operations`). Verify: `E "~Editor.|~AgentToolsTests"`;
   `C "~McpSurfaceTests|~McpReadTests|~ModelCommandTests"`; `F "~ContractTests"`; `editor`.
+  *The run after E5 and `memberOrigin`.* Second cut; not built in the first cut: the first cut runs after E2 and E4.
 - **E9. Engine acceptance.** Runs after E2, E3 and E5. Owns: `Integration/OperationTests.cs` (new). Tests: the three
   engine acceptance tests. Verify: `E "~OperationTests|~ValidationFixtureTests"`.
+  *The run after E5 and the shared-errors test.* Second cut; not built in the first cut: the first cut runs after E2 and
+  E3, and its third test is "first cut, the rest" above.
 - **E10. The example pack.** Runs after E4 and E5. Owns: `packs/csharp-dapper/pack.json`,
   `packs/csharp-dapper/operation-contracts.scriban` (new), `packs/csharp-dapper/operation-endpoints.scriban` (new),
   `packs/csharp-dapper/_operation.scriban` (new; shared names and the HTTP mapping),

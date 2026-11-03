@@ -72,21 +72,38 @@ internal static partial class AttributeRules
         CheckFacets(type, attribute.Length, attribute.Precision, attribute.Scale, attribute.Validation, "Attribute '" + attribute.Name + "'", pointer, id, report);
 
         if (attribute.Default is { } literal)
-        {
-            var reason = DefaultMismatch(type, attribute, literal);
-            if (reason is not null)
-            {
-                var hint = literal.ValueKind == JsonValueKind.String && KnownExpressions.Contains(literal.GetString(), StringComparer.Ordinal)
-                    ? $" '{literal.GetString()}' is a named expression: use defaultExpression instead of default."
-                    : "";
-                report.Add("MQ3019", $"The default of attribute '{attribute.Name}' does not fit {type.Describe()}{(attribute.Collection ? " (collection)" : "")}: {reason}.{hint}", pointer + "/default", id);
-            }
-
-            if (Credentials.LooksLikeCredential(attribute.Name, literal, attribute.Sensitive) is { } why)
-                report.Add("MQ3017", $"The default of attribute '{attribute.Name}' looks like a credential ({why}); secrets never belong in the model.", pointer + "/default", id);
-        }
+            CheckDefault(type, attribute, literal, "attribute", pointer, report, suggestExpression: true);
 
         CheckRuleIds(context, attribute.Validation, pointer + "/validation/rules", id, report);
+    }
+
+    /// <summary>
+    /// Checks a literal default against the type and facets that hold it (MQ3019) and for a credential (MQ3017): an attribute's, or an
+    /// operation member's, whose facets <paramref name="facets"/> carries (next-phase-2-design.md section 4.1).
+    /// </summary>
+    /// <param name="type">The effective type.</param>
+    /// <param name="facets">The holder's name, id, type, length, precision, scale, required, collection, sensitivity and validation.</param>
+    /// <param name="literal">The default.</param>
+    /// <param name="noun">What holds it, for messages: <c>attribute</c> or <c>member</c>.</param>
+    /// <param name="pointer">The holder's pointer.</param>
+    /// <param name="report">The report.</param>
+    /// <param name="suggestExpression">Whether a named expression written as a literal suggests <c>defaultExpression</c>.</param>
+    public static void CheckDefault(EffectiveType type, ModelAttribute facets, JsonElement literal, string noun, string pointer, Report report, bool suggestExpression)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        ArgumentNullException.ThrowIfNull(facets);
+        ArgumentNullException.ThrowIfNull(report);
+        var reason = DefaultMismatch(type, facets, literal);
+        if (reason is not null)
+        {
+            var hint = suggestExpression && literal.ValueKind == JsonValueKind.String && KnownExpressions.Contains(literal.GetString(), StringComparer.Ordinal)
+                ? $" '{literal.GetString()}' is a named expression: use defaultExpression instead of default."
+                : "";
+            report.Add("MQ3019", $"The default of {noun} '{facets.Name}' does not fit {type.Describe()}{(facets.Collection ? " (collection)" : "")}: {reason}.{hint}", pointer + "/default", facets.Id);
+        }
+
+        if (Credentials.LooksLikeCredential(facets.Name, literal, facets.Sensitive) is { } why)
+            report.Add("MQ3017", $"The default of {noun} '{facets.Name}' looks like a credential ({why}); secrets never belong in the model.", pointer + "/default", facets.Id);
     }
 
     /// <summary>Checks that validation rule ids name registered JavaScript rules (MQ2007).</summary>

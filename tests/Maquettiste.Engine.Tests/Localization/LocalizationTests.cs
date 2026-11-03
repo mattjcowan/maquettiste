@@ -472,6 +472,63 @@ public sealed class LocalizationTests
         Assert.Equal(TranslationState.Translated, store.Current.Localization.StateOf("en", store.Current.Localization.Nodes[Recipe], "properties/footer"));
     }
 
+    [Fact]
+    public async Task Operation_members_outcomes_and_errors_are_localizable_in_the_operations_package_shard()
+    {
+        const string prepare = "01JRDQ00000000000000000001";
+        const string servings = "01JRDQ00000000000000000002";
+        const string done = "01JRDQ00000000000000000003";
+        const string portion = "01JRDQ00000000000000000004";
+        const string tooMany = "01JRDQ00000000000000000005";
+        const string taste = "01JRDQ00000000000000000006";
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        await Create(store, $$"""{ "kind": "package", "id": "{{Package}}", "name": "Kitchen" }""");
+        // prepare sits in Kitchen; taste has no package, and its subject's package is never consulted.
+        await Create(store, $$"""
+            { "kind": "operation", "id": "{{prepare}}", "name": "prepare", "package": "{{Package}}", "subject": "{{Recipe}}", "effect": "change",
+              "input": [ { "id": "{{servings}}", "name": "servings", "type": "int32", "description": "How many plates." } ],
+              "outcomes": [ { "id": "{{done}}", "name": "done", "returns": { "members": [ { "id": "{{portion}}", "name": "portion", "type": "string" } ] } } ],
+              "errors": [ { "id": "{{tooMany}}", "name": "too_many", "displayName": "Too many", "input": "{{servings}}" } ] }
+            """);
+        await Edit(store, Recipe, n => n["package"] = Package);
+        await Create(store, $$"""
+            { "kind": "operation", "id": "{{taste}}", "name": "taste", "subject": "{{Recipe}}", "effect": "read",
+              "outcomes": [ { "id": "01JRDQ00000000000000000007", "name": "tasted" } ] }
+            """);
+
+        var l10n = store.Current!.Localization;
+        Assert.Equal([("operation", Package), ("operation-member", Package), ("outcome", Package), ("operation-member", Package), ("error", Package)],
+            new[] { prepare, servings, done, portion, tooMany }.Select(id => (l10n.Nodes[id].Kind, l10n.Nodes[id].Scope)));
+        Assert.Equal("root", l10n.Nodes[taste].Scope);
+        Assert.Equal(("Too many", (string?)null), (l10n.Nodes[tooMany].Source("displayName"), l10n.Nodes[tooMany].Source("pluralName")));
+        Assert.Equal("How many plates.", l10n.Nodes[servings].Source("description"));
+
+        await Translate(store, "fr", new TranslationEdit(prepare, "displayName", "Préparer"), new TranslationEdit(servings, "description", "Combien d'assiettes."),
+            new TranslationEdit(done, "displayName", "Prêt"), new TranslationEdit(portion, "displayName", "Portion servie"),
+            new TranslationEdit(tooMany, "displayName", "Trop"));
+        var kitchen = File.ReadAllText(h.Model("model/locales/fr/kitchen.json"));
+        foreach (var id in new[] { prepare, servings, done, portion, tooMany })
+            Assert.Contains("\"" + id + "\"", kitchen, StringComparison.Ordinal);
+        Assert.Equal("Trop", store.Current!.Localization.Text("fr", tooMany, "displayName"));
+        Assert.Equal("Combien d'assiettes.", store.Current.Localization.Text("fr", servings, "description"));
+        var report = await store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.DoesNotContain(report.Diagnostics, d => d.Rule is "MQ7203" or "MQ7207" or "MQ7209" or "MQ7210");
+
+        // Leaving the package moves the operation's entries, its parts' included, to the root shard.
+        await Edit(store, prepare, n => n.Remove("package"));
+        Assert.False(File.Exists(h.Model("model/locales/fr/kitchen.json")));
+        Assert.Equal("Prêt", store.Current!.Localization.Text("fr", done, "displayName"));
+        Assert.Contains("\"" + portion + "\"", File.ReadAllText(h.Model("model/locales/fr/_root.json")), StringComparison.Ordinal);
+    }
+
+    private static async Task Create(ModelStore store, string json)
+    {
+        var result = await store.CreateAsync(System.Text.Encoding.UTF8.GetBytes(json), ChangeSource.Editor, Ct);
+        Assert.True(result.Outcome == SaveOutcome.Saved, result.Outcome + ": " + string.Join("; ", result.Diagnostics.Select(d => d.Rule + " " + d.JsonPointer + " " + d.Message)));
+    }
+
     private static async Task<ShardStatus> RootStatus(ModelStore store, string locale) =>
         Assert.Single(Assert.Single((await store.GetLocalizationStatusAsync(Ct)).Locales, l => l.Locale == locale).Shards,
             s => s.Shard.EndsWith("/_root.json", StringComparison.Ordinal));

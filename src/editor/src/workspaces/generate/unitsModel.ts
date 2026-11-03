@@ -49,6 +49,7 @@ export const EACH_KINDS = [
   "process",
   "actor",
   "scenario",
+  "operation",
 ];
 
 export const SCOPE_OPTIONS: string[] = ["model", ...EACH_KINDS.map((k) => `each ${k}`)];
@@ -84,6 +85,7 @@ export function scopeHelp(scope: string): string {
   if (s === "each query") return "Runs once per query of every database (a query over its tables and views); one file each.";
   if (s === "each locale") return "Runs once per declared language; no element, no filter.";
   if (s === "each process" || s === "each actor" || s === "each scenario") return PROCESS_SCOPE_HELP;
+  if (s === "each operation") return "Runs once per operation (a command over the model, with its input, outcomes and errors); one file each.";
   if (s.startsWith("select ")) return `Runs once per element that the selector ${s.slice(7)}, registered by the pack's scripts, returns.`;
   if (s.startsWith("each ")) return "Runs once per element of that kind; one file each.";
   return "Not a scope this editor knows; the pack loader reports it when it is invalid.";

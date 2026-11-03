@@ -460,6 +460,13 @@ internal sealed class ValidationContext
             case Scenario scenario when scenario.Name.Length > 0:
                 yield return ("scenario|" + scenario.Process + "|" + scenario.Name, "scenarios of the same process");
                 break;
+            // An operation's name is unique among the operations of its subject, or without one among the subject-less operations
+            // of its file's package (next-phase-2-design.md section 4.1).
+            case Operation operation when operation.Name.Length > 0:
+                yield return operation.Subject is { } subject
+                    ? ("operation|s:" + subject + "|" + operation.Name, "operations of the same subject")
+                    : ("operation|p:" + operation.Package + "|" + operation.Name, "operations without a subject in the same package");
+                break;
             // Routines, database types and SQL objects: one name per kind and schema of a database (a routine is not overloaded,
             // and each becomes one script); names compare case-insensitively, as the dialects compare unquoted identifiers.
             case Routine routine when routine.Name.Length > 0:

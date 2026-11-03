@@ -183,6 +183,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     StatusRules.Validate(context, report);
                     PackageRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
+                    OperationRules.Validate(context, report);
                     ScenarioRules.Validate(context, report, runtime);
                     if (facts is not null)
                         MigrationRules.Validate(context, report, facts);
@@ -867,7 +868,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         }
     }
 
-    /// <summary>Every sub-element id an element holds (attributes, members, ends, columns, keys, categories, schemas).</summary>
+    /// <summary>Every sub-element id an element holds (attributes, members, ends, columns, keys, categories, schemas, an operation's
+    /// members, outcomes and errors).</summary>
     internal static IEnumerable<string> SubElementIds(Element element)
     {
         switch (element)
@@ -900,6 +902,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 break;
             case Scenario sc:
                 foreach (var step in sc.Steps) yield return step.Id;
+                break;
+            case Operation o:
+                foreach (var m in o.Input) yield return m.Id;
+                foreach (var outcome in o.Outcomes)
+                {
+                    yield return outcome.Id;
+                    foreach (var m in outcome.Returns?.Members ?? []) yield return m.Id;
+                }
+
+                foreach (var e in o.Errors) yield return e.Id;
                 break;
             case Table t:
                 foreach (var c in t.Columns) yield return c.Id;

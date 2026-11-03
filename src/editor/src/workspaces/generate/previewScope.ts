@@ -37,6 +37,7 @@ const EACH: Record<string, { label: string; indexKind: ElementKind | null; varia
   process: { label: "process", indexKind: "process", variable: "process" },
   actor: { label: "actor", indexKind: "actor", variable: "actor" },
   scenario: { label: "scenario", indexKind: "scenario", variable: "scenario" },
+  operation: { label: "operation", indexKind: "operation", variable: "operation" },
 };
 
 /** Plural kind words a selector may name, to call its elements by kind in messages ("select databases" → database). */
@@ -60,6 +61,7 @@ const SELECT_WORDS: [RegExp, string][] = [
   [/\bprocess(?:es)?\b/, "process"],
   [/\bactors?\b/, "actor"],
   [/\bscenarios?\b/, "scenario"],
+  [/\boperations?\b/, "operation"],
 ];
 
 export function unitScope(forExpr: string): UnitScope {

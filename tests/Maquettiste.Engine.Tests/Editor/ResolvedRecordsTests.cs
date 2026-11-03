@@ -2,10 +2,12 @@ using System.Collections.Immutable;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Tests.Resolution;
 using Maquettiste.Testing;
+using static Maquettiste.Engine.Tests.Operations.OperationFixture;
 
 namespace Maquettiste.Engine.Tests.Editor;
 
-/// <summary>The flat records of <c>get_resolved_model</c> (<see cref="ResolvedRecords"/>): the <c>migrations</c> scope.</summary>
+/// <summary>The flat records of <c>get_resolved_model</c> (<see cref="ResolvedRecords"/>): the <c>migrations</c> and <c>operations</c>
+/// scopes.</summary>
 public sealed class ResolvedRecordsTests
 {
     private const string F1 = "01JFCT00000000000000000001";
@@ -75,5 +77,38 @@ public sealed class ResolvedRecordsTests
         // A database narrows the scope; all holds the facts too.
         Assert.Equal([F1, F2], ResolvedRecords.Entries(resolved, "migrations", main.Id).Select(e => e.Id).Order(StringComparer.Ordinal));
         Assert.Equal(3, ResolvedRecords.Entries(resolved, "all", null).Count(e => e.Kind == "migration"));
+    }
+
+    [Fact]
+    public async Task Operations_scope_lists_send_with_members_outcomes_errors_and_fires()
+    {
+        await using var s = await OpenAsync();
+        var resolved = ResolutionKit.Resolve(s.Model);
+
+        Assert.Equal("operation", ResolvedRecords.Scopes["operations"]);
+        Assert.Equal(ResolvedRecords.ScopeNames.ToList().IndexOf("scenarios") + 1, ResolvedRecords.ScopeNames.ToList().IndexOf("operations"));
+        var send = Assert.IsType<OperationRecord>(Assert.Single(ResolvedRecords.Entries(resolved, "operations", null)).Project());
+        Assert.Equal((Send, "operation", "send", Billing, Invoice, "record", "change"), (send.Id, send.Kind, send.Name, send.Package, send.Subject, send.Level, send.Effect));
+
+        var recipient = Assert.Single(send.Input);
+        Assert.Equal((Recipient, "recipient", "string", 254, true, 0), (recipient.Id, recipient.Name, recipient.Type!.Builtin, recipient.Length, recipient.Required, recipient.Order));
+        Assert.Null(recipient.KeyOf);
+        Assert.Equal("recipient", recipient.DisplayName);
+
+        Assert.Equal([Applied, Waiting], send.Outcomes.Select(o => o.Id));
+        Assert.Equal(Applied, send.DefaultOutcome);
+        var (applied, waiting) = (send.Outcomes[0], send.Outcomes[1]);
+        Assert.Equal((true, "now", Invoice, false), (applied.IsDefault, applied.Completes, applied.Returns!.Entity, applied.Returns.List));
+        Assert.Empty(applied.Returns.Members);
+        Assert.Equal((false, "later", (string?)null), (waiting.IsDefault, waiting.Completes, waiting.Returns!.Entity));
+        Assert.Equal([(TrackingId, "ulid")], waiting.Returns.Members.Select(m => (m.Id, m.Type!.Builtin!)));
+
+        Assert.Equal([(AlreadySent, "already_sent", (string?)null), (MissingRecipient, "missing_recipient", Recipient)],
+            send.Errors.Select(e => (e.Id, e.Code, e.Input)));
+        Assert.Equal([Sent], send.Fires);
+        Assert.Empty(send.Requires);
+
+        // all holds it too; the database narrowing leaves operations alone.
+        Assert.Equal([Send], ResolvedRecords.Entries(resolved, "all", null).Where(e => e.Kind == "operation").Select(e => e.Id));
     }
 }

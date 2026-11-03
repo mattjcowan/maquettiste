@@ -107,6 +107,13 @@ public sealed class ResolvedCoverageTests
         new("migration collection", "migration.json", "collections/[]", typeof(RMigrationCollection)),
         new("migration conversion", "migration.json", "conversion", typeof(RConversion)),
         new("migration data check", "migration.json", "dataCheck", typeof(RMigrationDataCheck)),
+
+        // Operations (next-phase-2-design.md section 4.1).
+        new("operation", "operation.json", "", typeof(ROperation)),
+        new("operation member", "operation.json", "$defs/member", typeof(ROperationMember)),
+        new("outcome", "operation.json", "$defs/outcome", typeof(ROperationOutcome)),
+        new("outcome returns", "operation.json", "$defs/returns", typeof(ROperationReturns)),
+        new("error", "common.json", "$defs/operationError", typeof(ROperationError)),
     ];
 
     /// <summary>Properties no resolved object carries, anywhere, and why.</summary>
@@ -170,6 +177,8 @@ public sealed class ResolvedCoverageTests
         [("entity", "abstract")] = "IsAbstract",
         // A state's nested states are its children (the tree).
         [("state", "states")] = "Children",
+        // A returns' list flag is IsList (next-phase-2-design.md section 4.1).
+        [("outcome returns", "list")] = "IsList",
     };
 
     /// <summary>

@@ -137,6 +137,80 @@ public sealed class ModelCommandTests
     }
 
     [Fact]
+    public async Task Stats_and_export_list_operations_by_package()
+    {
+        // next-phase-2-design.md section 4.1: an operation is a kind like any other; it joins the package its file states, and lives in
+        // its subject's folder.
+        using var repo = CliRepo.Billing();
+        const string catalog = "01J92P0V025DRFTXKMS240G2NG";
+        const string invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
+        repo.Write(".maquettiste/model/operations/invoice/send.json", $$"""
+            {
+              "$schema": "../../../.schema/v1/operation.json",
+              "kind": "operation",
+              "id": "01K9QPR0000000000000000001",
+              "name": "send",
+              "package": "{{catalog}}",
+              "subject": "{{invoice}}",
+              "effect": "change",
+              "outcomes": [
+                {
+                  "id": "01K9QPR0000000000000000002",
+                  "name": "applied"
+                }
+              ]
+            }
+
+            """);
+        repo.Write(".maquettiste/model/operations/ping.json", """
+            {
+              "$schema": "../../.schema/v1/operation.json",
+              "kind": "operation",
+              "id": "01K9QPR0000000000000000003",
+              "name": "ping",
+              "effect": "read",
+              "outcomes": [
+                {
+                  "id": "01K9QPR0000000000000000004",
+                  "name": "pong"
+                }
+              ]
+            }
+
+            """);
+
+        var text = await repo.RunAsync("model", "stats");
+        Assert.True(text.ExitCode == 0, text.Error);
+        Assert.Contains(Text.Lines(text.Out), l => l.StartsWith("operation ", StringComparison.Ordinal) && l.EndsWith(" 2", StringComparison.Ordinal));
+
+        var stats = await repo.RunAsync("model", "stats", "--by", "package", "--format", "json");
+        Assert.True(stats.ExitCode == 0, stats.Error);
+        var row = JsonNode.Parse(stats.Out)!["packages"]!.AsArray().Single(p => (string?)p!["name"] == "Catalog")!;
+        var kinds = row["kinds"]!.AsArray().ToDictionary(k => (string)k!["kind"]!, k => (int)k!["count"]!, StringComparer.Ordinal);
+        Assert.Equal(1, kinds["operation"]);
+
+        var export = await repo.RunAsync("model", "export", "--package", "Catalog", "--kind", "operation", "--format", "ndjson");
+        Assert.True(export.ExitCode == 0, export.Error);
+        var exported = Assert.Single(Text.Lines(export.Out));
+        Assert.Equal(("send", invoice), ((string)JsonNode.Parse(exported)!["name"]!, (string)JsonNode.Parse(exported)!["subject"]!));
+
+        var all = await repo.RunAsync("model", "export", "--kind", "operation", "--fields", "name,effect");
+        Assert.True(all.ExitCode == 0, all.Error);
+        Assert.Equal([("ping", "read"), ("send", "change")],
+            JsonNode.Parse(all.Out)!.AsArray().Select(d => ((string)d!["name"]!, (string)d["effect"]!)).Order());
+
+        // The resolved scope operations gives one record per operation, ordered by name; all holds them too.
+        var resolved = await repo.RunAsync("model", "export", "--resolved", "--scope", "operations", "--format", "ndjson");
+        Assert.True(resolved.ExitCode == 0, resolved.Error);
+        var records = Text.Lines(resolved.Out).Select(l => JsonNode.Parse(l)!).ToList();
+        Assert.Equal([("ping", null, "pong"), ("send", invoice, "applied")],
+            records.Select(r => ((string)r["name"]!, (string?)r["subject"], (string)r["outcomes"]![0]!["name"]!)));
+        var everything = await repo.RunAsync("model", "export", "--resolved", "--format", "ndjson");
+        Assert.True(everything.ExitCode == 0, everything.Error);
+        Assert.Equal(2, Text.Lines(everything.Out).Count(l => (string?)JsonNode.Parse(l)!["kind"] == "operation"));
+    }
+
+    [Fact]
     public async Task Catalog_holds_tables_seeds_and_reference_types_and_stats_list_them()
     {
         // next-phase-1-design.md section 4.3: every kind may join a package, and the package listings follow the file's package.

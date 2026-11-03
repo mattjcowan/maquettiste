@@ -36,6 +36,123 @@ public sealed class DeleteCascadeTests
 
     private static CancellationToken Ct => EditorRepo.Ct;
 
+    private const string VoucherId = "01JR5ND00000000000000000V1";
+    private const string VoucherKeyId = "01JR5ND00000000000000000V2";
+    private const string VoucherLifecycleId = "01JR5ND00000000000000000P1";
+    private const string VoucherSentId = "01JR5ND00000000000000000E1";
+    private const string VoucherDraftId = "01JR5ND00000000000000000S1";
+    private const string IssueVoucherId = "01JR5ND00000000000000000Q1";
+    private const string CouponId = "01JR5ND00000000000000000C1";
+    private const string CouponKeyId = "01JR5ND00000000000000000C2";
+    private const string RedeemCouponId = "01JR5ND00000000000000000R1";
+
+    /// <summary>
+    /// Billing with an entity Voucher, its lifecycle with the event sent, the operation issue on Voucher that fires it, and the
+    /// operation redeem on an entity Coupon (next-phase-2-design.md section 4.1).
+    /// </summary>
+    private static async Task<EditorRepo> WithOperationAsync()
+    {
+        var r = EditorRepo.Create(packs: false);
+        var parsed = r.Store.ParseBatch(Encoding.UTF8.GetBytes($$"""
+            { "operations": [
+              { "op": "create", "element": { "kind": "entity", "id": "{{VoucherId}}", "name": "Voucher", "lifecycle": "{{VoucherLifecycleId}}",
+                  "key": { "attributes": [ "{{VoucherKeyId}}" ] }, "attributes": [ { "id": "{{VoucherKeyId}}", "name": "id", "type": "uuid" } ] } },
+              { "op": "create", "element": { "kind": "process", "id": "{{VoucherLifecycleId}}", "name": "VoucherLifecycle", "use": "lifecycle",
+                  "subject": "{{VoucherId}}", "events": [ { "id": "{{VoucherSentId}}", "name": "sent" } ],
+                  "states": [ { "id": "{{VoucherDraftId}}", "name": "draft" } ] } },
+              { "op": "create", "element": { "kind": "operation", "id": "{{IssueVoucherId}}", "name": "issue", "subject": "{{VoucherId}}", "effect": "change",
+                  "outcomes": [ { "id": "01JR5ND00000000000000000Q2", "name": "applied" } ], "fires": [ "{{VoucherSentId}}" ] } },
+              { "op": "create", "element": { "kind": "entity", "id": "{{CouponId}}", "name": "Coupon",
+                  "key": { "attributes": [ "{{CouponKeyId}}" ] }, "attributes": [ { "id": "{{CouponKeyId}}", "name": "id", "type": "uuid" } ] } },
+              { "op": "create", "element": { "kind": "operation", "id": "{{RedeemCouponId}}", "name": "redeem", "subject": "{{CouponId}}", "effect": "change",
+                  "outcomes": [ { "id": "01JR5ND00000000000000000R2", "name": "applied" } ] } }
+            ] }
+            """));
+        Assert.True(parsed.Batch is not null, string.Join("; ", parsed.Diagnostics.Select(d => d.Message)));
+        var applied = await r.Store.ApplyBatchAsync(parsed.Batch, ChangeSource.Editor, Ct);
+        Assert.True(applied.Outcome == SaveOutcome.Saved, string.Join("; ", applied.Items.SelectMany(i => i.Diagnostics).Select(d => $"{d.Rule} {d.Message}")));
+        return r;
+    }
+
+    [Fact]
+    public async Task Deleting_the_lifecycle_whose_event_an_operation_fires_is_refused_and_remove_references_clears_the_entry()
+    {
+        await using var r = await WithOperationAsync();
+        var process = (await r.Store.GetElementAsync(VoucherLifecycleId, Ct))!;
+
+        var refused = await r.Store.DeleteAsync(VoucherLifecycleId, process.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Referenced, refused.Outcome);
+        Assert.Contains(refused.Referrers, x => x is { FromElementId: IssueVoucherId, JsonPointer: "/fires/0", ToId: VoucherSentId });
+
+        var plan = await r.Store.GetDeletePlanAsync([VoucherLifecycleId], DeleteResolution.RemoveReferences, Ct);
+        Assert.Equal(SaveOutcome.Saved, plan.Outcome);
+        Assert.Contains(plan.Clears, c => (c.Id, c.Pointer) == (IssueVoucherId, "/fires/0"));
+        Assert.DoesNotContain(plan.Deletes, d => d.Id == IssueVoucherId);
+
+        var cleared = await r.Store.DeleteAsync(VoucherLifecycleId, process.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+        Assert.True(cleared.Outcome == SaveOutcome.Saved, string.Join("; ", cleared.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.Null(await r.Store.GetElementAsync(VoucherLifecycleId, Ct));
+        var operation = (await r.Store.GetElementAsync(IssueVoucherId, Ct))!;
+        Assert.False(operation.Json.TryGetProperty("fires", out _));
+        Assert.Equal(VoucherId, operation.Json.GetProperty("subject").GetString());
+    }
+
+    [Fact]
+    public async Task Deleting_a_subject_entity_is_refused_and_both_resolutions_clear_subject()
+    {
+        await using var r = await WithOperationAsync();
+        var coupon = (await r.Store.GetElementAsync(CouponId, Ct))!;
+
+        var refused = await r.Store.DeleteAsync(CouponId, coupon.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Referenced, refused.Outcome);
+        Assert.Contains(refused.Referrers, x => x is { FromElementId: RedeemCouponId, JsonPointer: "/subject" });
+
+        foreach (var resolution in new[] { DeleteResolution.RemoveReferences, DeleteResolution.DeleteDependents })
+        {
+            var plan = await r.Store.GetDeletePlanAsync([CouponId], resolution, Ct);
+            Assert.True(plan.Outcome == SaveOutcome.Saved, resolution + ": " + string.Join("; ", plan.Refused.Select(x => x.Why)));
+            Assert.DoesNotContain(plan.Deletes, d => d.Id == RedeemCouponId);
+            Assert.Contains(plan.Clears.Select(c => (c.Id, c.Pointer)).Concat(plan.Removes.Select(m => (m.Id, m.Pointer))), c => c == (RedeemCouponId, "/subject"));
+        }
+
+        var cleared = await r.Store.DeleteAsync(CouponId, coupon.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
+        Assert.True(cleared.Outcome == SaveOutcome.Saved, string.Join("; ", cleared.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        var operation = (await r.Store.GetElementAsync(RedeemCouponId, Ct))!;
+        Assert.False(operation.Json.TryGetProperty("subject", out _));
+        Assert.Null(await r.Store.GetElementAsync(CouponId, Ct));
+    }
+
+    [Fact]
+    public async Task Deleting_the_entity_a_member_keys_or_an_outcome_returns_removes_that_part_and_remove_references_refuses()
+    {
+        const string FindId = "01JR5ND00000000000000000F1";
+        await using var r = await WithOperationAsync();
+        var parsed = r.Store.ParseBatch(Encoding.UTF8.GetBytes($$"""
+            { "operations": [
+              { "op": "create", "element": { "kind": "operation", "id": "{{FindId}}", "name": "find", "effect": "read",
+                  "input": [ { "id": "01JR5ND00000000000000000F2", "name": "coupon", "keyOf": "{{CouponId}}" },
+                             { "id": "01JR5ND00000000000000000F3", "name": "note", "type": "string" } ],
+                  "outcomes": [ { "id": "01JR5ND00000000000000000F4", "name": "found", "returns": { "entity": "{{CouponId}}" } } ] } }
+            ] }
+            """));
+        Assert.True(parsed.Batch is not null, string.Join("; ", parsed.Diagnostics.Select(d => d.Message)));
+        var applied = await r.Store.ApplyBatchAsync(parsed.Batch, ChangeSource.Editor, Ct);
+        Assert.True(applied.Outcome == SaveOutcome.Saved, string.Join("; ", applied.Items.SelectMany(i => i.Diagnostics).Select(d => $"{d.Rule} {d.Message}")));
+        var coupon = (await r.Store.GetElementAsync(CouponId, Ct))!;
+
+        // Clearing `keyOf` or `entity` would leave a member with no form (MQ3024) or a returns with none (MQ3025).
+        var refused = await r.Store.GetDeletePlanAsync([CouponId], DeleteResolution.RemoveReferences, Ct);
+        Assert.NotEqual(SaveOutcome.Saved, refused.Outcome);
+        Assert.Contains(refused.Refused, x => x.Why.Contains("operation member", StringComparison.Ordinal));
+
+        var deleted = await r.Store.DeleteAsync(CouponId, coupon.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
+        Assert.True(deleted.Outcome == SaveOutcome.Saved, string.Join("; ", deleted.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        var find = (await r.Store.GetElementAsync(FindId, Ct))!;
+        Assert.Equal("note", Assert.Single(find.Json.GetProperty("input").EnumerateArray()).GetProperty("name").GetString());
+        Assert.False(find.Json.GetProperty("outcomes")[0].TryGetProperty("returns", out _));
+        Assert.DoesNotContain((await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule is "MQ3024" or "MQ3025");
+    }
+
     [Fact]
     public async Task The_plan_names_what_each_resolution_does_and_writes_nothing()
     {

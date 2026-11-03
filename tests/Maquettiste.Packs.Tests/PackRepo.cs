@@ -394,6 +394,66 @@ internal sealed class PackRepo : IDisposable
             """);
     }
 
+    /// <summary>
+    /// Adds the operation <c>send</c> on Invoice (record level, effect change): input <c>recipient</c> (a required string of 254),
+    /// outcomes <c>applied</c> (returns the Invoice) and <c>waiting</c> (completes later, returns an optional <c>trackingId</c>), and
+    /// errors <c>already_sent</c> and <c>missing_recipient</c> (pointing at <c>recipient</c>). With <paramref name="lifecycle"/>, the
+    /// lifecycle <c>InvoiceLifecycle</c> (states <c>Draft</c> and <c>Sent</c>, event <c>sent</c>) comes too, Invoice's
+    /// <c>lifecycle</c> names it and <c>send</c> fires <c>sent</c>.
+    /// </summary>
+    /// <param name="lifecycle">Whether to add the lifecycle and the fired event.</param>
+    public void AddSendOperation(bool lifecycle = true)
+    {
+        if (lifecycle)
+        {
+            Repo.WriteFile(".maquettiste/model/processes/invoice-lifecycle.json", """
+                {
+                  "$schema": "../../.schema/v1/process.json",
+                  "kind": "process",
+                  "id": "01JR5NE0000000000000000001",
+                  "name": "InvoiceLifecycle",
+                  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+                  "use": "lifecycle",
+                  "subject": "01J92P0V0FJ23CGSNKM7P1W5V7",
+                  "events": [ { "id": "01JR5NE0000000000000000004", "name": "sent" } ],
+                  "states": [
+                    { "id": "01JR5NE0000000000000000002", "name": "Draft" },
+                    { "id": "01JR5NE0000000000000000003", "name": "Sent", "type": "final" }
+                  ],
+                  "transitions": [
+                    { "id": "01JR5NE0000000000000000005", "source": "01JR5NE0000000000000000002", "event": "01JR5NE0000000000000000004", "targets": [ "01JR5NE0000000000000000003" ] }
+                  ]
+                }
+
+                """);
+            EditJson(".maquettiste/model/entities/invoice.json", invoice => invoice["lifecycle"] = "01JR5NE0000000000000000001");
+        }
+
+        var fires = lifecycle ? ",\n  \"fires\": [ \"01JR5NE0000000000000000004\" ]" : "";
+        Repo.WriteFile(".maquettiste/model/operations/invoice/send.json", $$"""
+            {
+              "$schema": "../../../.schema/v1/operation.json",
+              "kind": "operation",
+              "id": "01JR5NE0000000000000000010",
+              "name": "send",
+              "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+              "subject": "01J92P0V0FJ23CGSNKM7P1W5V7",
+              "effect": "change",
+              "input": [ { "id": "01JR5NE0000000000000000011", "name": "recipient", "type": "string", "length": 254, "required": true } ],
+              "outcomes": [
+                { "id": "01JR5NE0000000000000000012", "name": "applied", "returns": { "entity": "01J92P0V0FJ23CGSNKM7P1W5V7" } },
+                { "id": "01JR5NE0000000000000000013", "name": "waiting", "completes": "later",
+                  "returns": { "members": [ { "id": "01JR5NE0000000000000000014", "name": "trackingId", "type": "ulid" } ] } }
+              ],
+              "errors": [
+                { "id": "01JR5NE0000000000000000015", "name": "already_sent" },
+                { "id": "01JR5NE0000000000000000016", "name": "missing_recipient", "input": "01JR5NE0000000000000000011" }
+              ]{{fires}}
+            }
+
+            """);
+    }
+
     private PackRepo(string strategy)
     {
         Repo = new TempRepo();

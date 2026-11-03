@@ -18,6 +18,7 @@ import {
   SearchCode,
   Shapes,
   SquareFunction,
+  SquareTerminal,
   Stamp,
   Table2,
   Tags,
@@ -54,6 +55,7 @@ export const KIND_ICONS: Record<ElementKind, LucideIcon> = {
   actor: UserRound,
   scenario: ListChecks,
   migration: History,
+  operation: SquareTerminal,
 };
 
 export function KindIcon({ kind, className }: { kind: ElementKind; className?: string }) {

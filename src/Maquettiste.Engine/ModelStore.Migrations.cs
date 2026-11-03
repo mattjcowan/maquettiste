@@ -450,14 +450,17 @@ public sealed partial class ModelStore
 
     /// <summary>
     /// Whether a change of one element can reshape a database: a create or a delete, or an update that changes more than annotations.
-    /// Migration facts never do (facts never change a capture). A membership package counts only while either model declares a
-    /// default stereotype (<paramref name="defaults"/>): then it decides which package defaults the element takes.
+    /// Migration facts never do (facts never change a capture), nor do operations (no database resolves one, even when its
+    /// <c>requires</c> names a table, next-phase-2-design.md section 4.1). A membership package counts only while either model declares
+    /// a default stereotype (<paramref name="defaults"/>): then it decides which package defaults the element takes.
     /// </summary>
     private static bool Shapes(ElementDocument? before, ElementDocument? after, bool defaults)
     {
         if (before is null && after is null)
             return false;
         if ((after ?? before)!.Element is Migration && (before?.Element ?? after!.Element) is Migration)
+            return false;
+        if ((after ?? before)!.Element is Operation && (before?.Element ?? after!.Element) is Operation)
             return false;
         if (before is null || after is null)
             return true;

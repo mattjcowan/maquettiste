@@ -168,6 +168,11 @@ function indexMembers(json: Record<string, unknown>): Partial<ElementSummary> {
     if (typeof json.process === "string") out.process = json.process;
     out.stepCount = Array.isArray(json.steps) ? json.steps.length : 0;
   }
+  // Section 4.1 of next-phase-2-design.md: an operation's subject and effect.
+  if (kind === "operation") {
+    if (typeof json.subject === "string") out.subject = json.subject;
+    out.effect = json.effect === "change" ? "change" : "read";
+  }
   if (kind === "reference-type") out.fieldCount = Array.isArray(json.attributes) ? json.attributes.length : 0;
   if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;
   // A process diagram names its process (phase-3-design.md 2.7), so the explorer and the canvas find it by its row.

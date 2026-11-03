@@ -80,4 +80,7 @@ public enum ElementKind
 
     /// <summary>One migration fact of a database (<c>migration</c>).</summary>
     [JsonStringEnumMemberName("migration")] Migration,
+
+    /// <summary>A command over the model: its subject, effect, input, outcomes, errors and fired events (<c>operation</c>).</summary>
+    [JsonStringEnumMemberName("operation")] Operation,
 }

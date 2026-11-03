@@ -36,6 +36,7 @@ public sealed class PropertySchemaSetTests
     [InlineData("""{ "type": "string", "x-ref": { "kind": ["entity", "entity"] } }""", "/properties/p/x-ref/kind")]
     [InlineData("""{ "type": "string", "x-ref": { "kind": ["entity", "custom:Billing_Run"] } }""", "/properties/p/x-ref/kind/1")]
     [InlineData("""{ "type": "string", "x-ref": { "kind": "entity", "of": "$element" } }""", "/properties/p/x-ref/of")]
+    [InlineData("""{ "type": "string", "x-ref": { "kind": "operation", "of": "$element" } }""", "/properties/p/x-ref/of")]
     [InlineData("""{ "type": "string", "x-ref": { "kind": "attribute", "of": "Customer" } }""", "/properties/p/x-ref/of")]
     [InlineData("""{ "type": "string", "x-ref": { "kind": "row", "of": "01J92P0V0000000000000000ZZ" } }""", "/properties/p/x-ref/of")]
     [InlineData("""{ "type": "string", "x-ref": { "kind": "entity", "sameDatabase": true } }""", "/properties/p/x-ref/sameDatabase")]
@@ -154,6 +155,47 @@ public sealed class PropertySchemaSetTests
         var report = await Validation.ValidationFixture.Validator().ValidateAsync(model, ValidationScope.All, null, TestContext.Current.CancellationToken);
         var missing = Assert.Single(report.Diagnostics, d => d.Rule == "MQ2018");
         Assert.Equal((payment.Id, ""), (missing.ElementId, missing.JsonPointer ?? ""));
+    }
+
+    [Fact]
+    public void Operation_hosts_take_their_kind_names()
+    {
+        // next-phase-2-design.md section 4.1: an operation's input members, outcomes, the members of each returns and its errors hold
+        // properties under their own kind names, so extension files and stereotypes apply to them by those names.
+        var b = new ModelBuilder(24);
+        var invoice = b.Entity("Invoice").Key("id", "uuid");
+        string send = b.NewId(), recipient = b.NewId(), applied = b.NewId(), waiting = b.NewId(), trackingId = b.NewId(), alreadySent = b.NewId();
+        b.Add(new Operation
+        {
+            Id = send, Name = "send", Subject = invoice.Id, Effect = OperationEffect.Change,
+            Input = [new OperationMember { Id = recipient, Name = "recipient", Type = new TypeRef { Builtin = "string" } }],
+            Outcomes =
+            [
+                new OperationOutcome { Id = applied, Name = "applied", Returns = new OperationReturns { Entity = invoice.Id } },
+                new OperationOutcome
+                {
+                    Id = waiting, Name = "waiting", Completes = OperationCompletion.Later,
+                    Returns = new OperationReturns { Members = [new OperationMember { Id = trackingId, Name = "trackingId", Type = new TypeRef { Builtin = "ulid" } }] },
+                },
+            ],
+            Errors = [new OperationError { Id = alreadySent, Name = "already_sent" }],
+        });
+        var model = ModelSnapshot.Create(b.BuildDocuments(), new ProjectSettings { FormatVersion = EngineVersion.FormatVersion }, "",
+            [Extension("""{ "audience": { "type": "string" } }""", "api", ["operation-member", "error"])], [], 1);
+
+        var hosts = PropertyHost.Of(model.Get<Operation>(send)!, null).ToList();
+
+        Assert.Equal(
+            [
+                ("", send, "operation"),
+                ("/input/0", recipient, "operation-member"),
+                ("/outcomes/0", applied, "outcome"),
+                ("/outcomes/1", waiting, "outcome"),
+                ("/outcomes/1/returns/members/0", trackingId, "operation-member"),
+                ("/errors/0", alreadySent, "error"),
+            ],
+            hosts.Select(h => (h.Pointer, h.Id, h.KindName)));
+        Assert.Equal([false, true, false, false, true, true], hosts.Select(h => model.PropertySchemas.For(h).Any(s => s.Schema == "extension:api")));
     }
 
     internal static ExtensionDocument Extension(string properties, string name = "links", IReadOnlyList<string>? kinds = null,

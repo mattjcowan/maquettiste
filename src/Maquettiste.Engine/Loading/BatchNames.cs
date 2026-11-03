@@ -551,12 +551,12 @@ internal sealed class BatchNames
 
     /// <summary>
     /// Whether a site is one an element's own forms read, so it resolves before the element's entries replace its old ones: its
-    /// package (a package's parent), database and schema, a scenario's process, a seed's target, a binding's database and a
-    /// category's parent. All of them name other elements.
+    /// package (a package's parent), database and schema, a scenario's process, a seed's target, an operation's subject (a process's
+    /// subject too, harmlessly), a binding's database and a category's parent. All of them name other elements.
     /// </summary>
     private static bool IsFormSite(string pointer)
     {
-        if (pointer is "/package" or "/parent" or "/database" or "/schema" or "/process" or "/target")
+        if (pointer is "/package" or "/parent" or "/database" or "/schema" or "/process" or "/target" or "/subject")
             return true;
         if (!JsonPointer.TryParse(pointer, out var segments) || segments.Length != 3 || !JsonPointer.TryIndex(segments[1], out _))
             return false;

@@ -183,6 +183,9 @@ internal sealed class NameIndex
             case CategoryTree tree when Wants("category"):
                 AddCategories(tree, lookup, Add);
                 break;
+            case Operation operation when forms is not null:
+                AddOperation(operation, forms, Add);
+                break;
         }
 
         return entries;
@@ -202,6 +205,7 @@ internal sealed class NameIndex
         "row" => [ElementKind.Seed],
         "binding" => [ElementKind.Entity, ElementKind.ReferenceType],
         "category" => [ElementKind.CategoryTree],
+        "operation-member" or "outcome" or "error" => [ElementKind.Operation],
         _ => KindInfo.TryGet(kind, out var info) ? [info.Kind] : [],
     };
 
@@ -243,16 +247,28 @@ internal sealed class NameIndex
                     : own;
             }
 
-            default:
+            case Operation operation:
             {
-                // The name, plus <package path>.name when the file states a package (a trailing part of the path qualifies it too).
-                var own = Forms.Of([element.Name]);
-                if (element is not IPackaged { Package: { } packageId } || own is null)
-                    return own;
-                var path = PackagePath(packageId, lookup);
-                return Forms.Union(own, Forms.Of([.. Enumerable.Range(1, path.Count).Select(k => path.Skip(path.Count - k).Append(element.Name).ToArray())]));
+                // As any packaged element, plus <subject form>.name (Invoice.send, Billing.Invoice.send), as a scenario adds its process's.
+                var own = Packaged(operation, lookup);
+                return operation.Subject is { } subject && lookup(subject) is Entity entity && FormsOf(entity, lookup) is { } subjectForms
+                    ? Forms.Union(own, subjectForms.Then(operation.Name))
+                    : own;
             }
+
+            default:
+                return Packaged(element, lookup);
         }
+    }
+
+    /// <summary>The name, plus <c>&lt;package path&gt;.name</c> when the file states a package (a trailing part of the path qualifies it too).</summary>
+    private static Forms? Packaged(Element element, Func<string, Element?> lookup)
+    {
+        var own = Forms.Of([element.Name]);
+        if (element is not IPackaged { Package: { } packageId } || own is null)
+            return own;
+        var path = PackagePath(packageId, lookup);
+        return Forms.Union(own, Forms.Of([.. Enumerable.Range(1, path.Count).Select(k => path.Skip(path.Count - k).Append(element.Name).ToArray())]));
     }
 
     /// <summary><c>name</c>, <c>schema.name</c>, <c>database.schema.name</c>: the schema, else the database's default schema.</summary>
@@ -280,6 +296,22 @@ internal sealed class NameIndex
     {
         foreach (var attribute in attributes)
             add("attribute", attribute.Id, owner.Then(attribute.Name));
+    }
+
+    /// <summary>An operation's input members, outcomes (each followed by its returns' members, under the outcome) and errors.</summary>
+    private static void AddOperation(Operation operation, Forms forms, Action<string, string, Forms?> add)
+    {
+        foreach (var member in operation.Input)
+            add("operation-member", member.Id, forms.Then(member.Name));
+        foreach (var outcome in operation.Outcomes)
+        {
+            add("outcome", outcome.Id, forms.Then(outcome.Name));
+            foreach (var member in outcome.Returns?.Members ?? [])
+                add("operation-member", member.Id, forms.Then(outcome.Name, member.Name));
+        }
+
+        foreach (var error in operation.Errors)
+            add("error", error.Id, forms.Then(error.Name));
     }
 
     private static void AddProcess(Process process, Forms forms, Action<string, string, Forms?> add)

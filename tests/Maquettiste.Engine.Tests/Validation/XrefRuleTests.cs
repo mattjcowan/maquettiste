@@ -200,29 +200,49 @@ public sealed class XrefRuleTests
     }
 
     [Fact]
-    public async Task Reserved_kinds_are_valid_and_dangle()
+    public async Task Operation_kinds_resolve_and_only_member_stays_reserved()
     {
+        // Phase 2 (next-phase-2-design.md section 4.1): operation is an element kind, operation-member, outcome and error are
+        // sub-element kinds; only member (the members of custom elements) still dangles until its kind arrives.
         var b = new ModelBuilder(36);
-        var operation = b.NewId();
-        var rule = b.NewId();
-        var run = b.NewId();
-        var order = b.Entity("Order").Key("id", "uuid").Property("handler", operation).Property("policy", rule).Property("run", run);
+        string send = b.NewId(), recipient = b.NewId(), applied = b.NewId(), alreadySent = b.NewId(), part = b.NewId();
+        var invoice = b.Entity("Invoice").Key("id", "uuid");
+        b.Add(new Operation
+        {
+            Id = send, Name = "send", Subject = invoice.Id, Effect = OperationEffect.Change,
+            Input = [new OperationMember { Id = recipient, Name = "recipient", Type = new TypeRef { Builtin = "string" } }],
+            Outcomes = [new OperationOutcome { Id = applied, Name = "applied" }],
+            Errors = [new OperationError { Id = alreadySent, Name = "already_sent" }],
+        });
+        var order = b.Entity("Order").Key("id", "uuid")
+            .Property("handler", send).Property("result", applied).Property("failure", alreadySent).Property("field", recipient)
+            .Property("part", part).Property("wrong", alreadySent);
         var extension = PropertySchemaSetTests.Extension("""
-            { "handler": { "type": "string", "x-ref": { "kind": ["operation", "outcome", "error", "member"] } },
-              "policy": { "type": "string", "x-ref": { "kind": ["custom", "custom:billing-rule"] } },
-              "run": { "type": "string", "x-ref": { "kind": ["entity", "custom:billing-run"] } } }
+            { "handler": { "type": "string", "x-ref": { "kind": "operation" } },
+              "result": { "type": "string", "x-ref": { "kind": "outcome" } },
+              "failure": { "type": "string", "x-ref": { "kind": "error" } },
+              "field": { "type": "string", "x-ref": { "kind": "operation-member" } },
+              "part": { "type": "string", "x-ref": { "kind": ["operation-member", "member"] } },
+              "wrong": { "type": "string", "x-ref": { "kind": "outcome" } } }
             """);
 
         var found = await Findings(b, extension);
 
-        Assert.Equal([("MQ2001", "/properties/handler"), ("MQ2001", "/properties/policy"), ("MQ2001", "/properties/run")],
-            found.Select(d => (d.Rule, d.JsonPointer!)));
+        Assert.Equal([("MQ2001", "/properties/part"), ("MQ2002", "/properties/wrong")], found.Select(d => (d.Rule, d.JsonPointer!)));
         Assert.All(found, d => Assert.Equal(order.Id, d.ElementId));
-        Assert.Contains("(operation, outcome, error, member arrive in a later phase, so no value of those kinds exists yet.)", found[0].Message,
-            StringComparison.Ordinal);
-        Assert.Contains("(custom, custom:billing-rule arrive in a later phase, so no value of those kinds exists yet.)", found[1].Message,
-            StringComparison.Ordinal);
-        Assert.Contains("(custom:billing-run arrives in a later phase, so no value of that kind exists yet.)", found[2].Message, StringComparison.Ordinal);
+        Assert.Contains("(member arrives in a later phase, so no value of that kind exists yet.)", found[0].Message, StringComparison.Ordinal);
+        Assert.False(XRef.IsReserved("operation"));
+        Assert.False(XRef.IsReserved("outcome"));
+        Assert.False(XRef.IsReserved("error"));
+        Assert.True(XRef.IsReserved("member"));
+        Assert.True(XRef.IsSubElementKind("operation-member"));
+        Assert.False(XRef.IsSubElementKind("operation"));
+
+        // An of beside the element kind operation is MQ2009, as for every element kind.
+        var problems = new List<string>();
+        using var scoped = JsonDocument.Parse("""{ "kind": "operation", "of": "$element" }""");
+        Assert.Null(XRef.Parse(scoped.RootElement, "/x-ref", true, (_, message) => problems.Add(message)));
+        Assert.Equal(["x-ref of fits sub-element kinds only, and 'operation' is not one."], problems);
     }
 
     [Fact]

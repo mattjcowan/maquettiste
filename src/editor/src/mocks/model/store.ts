@@ -510,6 +510,10 @@ export class MockModel {
     } else if (kind === "seed") {
       const target = typeof json.target === "string" ? this.entries.get(json.target) : undefined;
       folder = `model/seeds/${applyCase(String(target?.json.name ?? json.target ?? "seed"), "kebab")}`;
+    } else if (kind === "operation") {
+      // KindInfo.OperationsFolder: an operation with a subject lives in a folder named after the subject (section 4.1).
+      const subject = typeof json.subject === "string" ? this.entries.get(json.subject) : undefined;
+      folder = typeof json.subject === "string" ? `model/operations/${applyCase(String(subject?.json.name ?? json.subject), "kebab")}` : "model/operations";
     }
     let path = `${PREFIX}${folder ?? "model"}/${file}`;
     if (keepFrom && keepFrom.path === path) return path;
@@ -1277,7 +1281,7 @@ export function summary(e: Entry): ElementSummary {
 }
 
 /** The index format hashed into the index tag; the engine's ModelReads.IndexFormat. */
-export const INDEX_FORMAT = "maquettiste-index/e9";
+export const INDEX_FORMAT = "maquettiste-index/e10";
 
 /** The E5 members of an index row, present only for the kinds that carry them (as the engine writes them). */
 function e5(json: Json): Partial<ElementSummary> {
@@ -1306,6 +1310,11 @@ function e5(json: Json): Partial<ElementSummary> {
   if (kind === "scenario") {
     if (typeof json.process === "string") out.process = json.process;
     out.stepCount = Array.isArray(json.steps) ? json.steps.length : 0;
+  }
+  // Section 4.1 (maquettiste-index/e10): an operation's subject and effect.
+  if (kind === "operation") {
+    if (typeof json.subject === "string") out.subject = json.subject;
+    out.effect = json.effect === "change" ? "change" : "read";
   }
   if (kind === "relation" && Array.isArray(json.ends))
     out.ends = (json.ends as Json[]).map((end) => ({ entity: String(end.entity ?? ""), role: String(end.role ?? "") }));

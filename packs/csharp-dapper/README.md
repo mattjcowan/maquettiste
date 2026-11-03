@@ -1,9 +1,10 @@
 # csharp-dapper
 
-A C# model and [Dapper](https://github.com/DapperLib/Dapper) data access layer from the resolved model: entity classes as
-generated and hand-written halves of one partial class, enums, value objects, a repository per mapped entity, one registration
-file per package and Dapper type handlers; for processes, their states, definitions and contracts, the handlers, services,
-machine and store as generated and hand-written pairs, HTTP endpoints with user-code regions, a typed in-process dispatcher with
+A C# model and [Dapper](https://github.com/DapperLib/Dapper) data access layer from the resolved model: entity classes
+as generated and hand-written halves of one partial class, enums, value objects, a repository per mapped entity, one
+registration file per package and Dapper type handlers; for operations, the request, result, error codes and handler
+interface (see Operations); for processes, their states, definitions and contracts, the handlers, services, machine and
+store as generated and hand-written pairs, HTTP endpoints with user-code regions, a typed in-process dispatcher with
 pipeline behaviours, a generated statechart interpreter and one xunit test per scenario (see Processes).
 
 The pack writes to one output root. `maquettiste init --pack csharp-dapper` sets `packs.csharp-dapper.output` to
@@ -24,6 +25,7 @@ For entity `Invoice` in package `Billing`:
 | `resources` | `overwrite` | `each locale` | `ReferenceData/ReferenceData.resx`, `ReferenceData.fr.resx`, …: display names and row labels per declared locale |
 | `repository` | file blocks | `each entity` | `Billing/InvoiceRepository.g.cs`: `IInvoiceRepository` and `InvoiceRepository` |
 | `query` | `overwrite` | `each query` | `Queries/InvoicesByCustomerQuery.g.cs`: `IInvoicesByCustomerQuery` and `InvoicesByCustomerQuery` (see Queries) |
+| `operation-contracts` | `overwrite` | `each operation` | `Operations/Billing/SendInvoice.g.cs`: the request, result, error codes and handler interface of operation `send` on Invoice (see Operations) |
 | `registrations` | file blocks | `model` | `Billing/BillingRepositories.g.cs`: one per package with repositories; `Queries/QueryRegistrations.g.cs` when the model has queries |
 | `type-handlers` | `overwrite` | `model` | `DapperTypeHandlers.g.cs`: the Dapper type handlers and `UlidGenerator` |
 | `seed-loader` | `overwrite` (file block) | `model` | With `seedLoader`: `SeedDataLoader.g.cs`, `SeedDataLoader` and `SeedDialect`. `new SeedDataLoader(connection, SeedDialect.PostgreSql, "data/main").LoadAsync("dev")` applies the seed-data pack's files for a database (`manifest.json` and its CSVs, or `seed-data.json`) in their order: a seed's rows when it belongs to every environment or to the one given, inserted when their key is missing (`once`), or also updated (`converge`, deleting the rows the seed does not hold with `delete`), with parameterized statements found by the table's key. `SeedHash` lets an application skip a load it has done. Nothing calls it. |
@@ -221,6 +223,48 @@ and `All` know the live codes only. With locales declared in
 (the row label) through the locale's fallback chain; the default locale's file is the neutral `ReferenceData.resx` and the others
 are satellites the SDK compiles into `fr/…resources.dll`.
 
+## Operations
+
+An operation is one command over the model (see the user guide's Operations section). For each operation, the
+`operation-contracts` unit writes `Operations/<package folder>/<Op>.g.cs`, where `<Op>` is the operation's Pascal name
+followed by its subject's (`SendInvoice` for `send` on Invoice), or the Pascal name alone without a subject. The file
+holds plain types in the package's namespace, with no dependency on a web framework:
+
+- `<Op>Request`, a positional record of the input members (absent without input). A member's C# type comes from the type
+  map, nullable when not required and `IReadOnlyList<T>` for a collection; a member that holds a record key takes its
+  key attribute's type.
+- `<Op><Outcome>`, a record of the members an outcome returns inline. An outcome that returns records of an entity uses
+  the entity's class instead; a list is `IReadOnlyList<T>`.
+- `<Op>Errors`, one constant per error: the Pascal name of the error, holding its code (the name when it has none).
+  Absent without errors.
+- `<Op>Result`, an abstract record with one nested record per outcome (`Value` holds what the outcome returns; an
+  outcome that returns nothing has no `Value`) and `Failed(string Code, string? Input)`, where `Input` names the input
+  member the error points at.
+- `I<Op>Handler`, whose `HandleAsync` takes the subject's key at record level (one parameter per key attribute), the
+  request, and a cancellation token. Its summary names the process events the operation fires.
+
+For `send` on Invoice:
+
+```csharp
+public sealed record SendInvoiceRequest(string Recipient);
+public sealed record SendInvoiceWaiting(string? TrackingId);
+public static class SendInvoiceErrors { public const string AlreadySent = "already_sent"; /* ... */ }
+public abstract record SendInvoiceResult
+{
+    public sealed record Applied(Invoice Value) : SendInvoiceResult;
+    public sealed record Waiting(SendInvoiceWaiting Value) : SendInvoiceResult;
+    public sealed record Failed(string Code, string? Input) : SendInvoiceResult;
+}
+/// <summary>send on Invoice; fires InvoiceLifecycle.sent.</summary>
+public interface ISendInvoiceHandler
+{
+    Task<SendInvoiceResult> HandleAsync(Guid id, SendInvoiceRequest request, CancellationToken cancellationToken);
+}
+```
+
+The pack writes no implementation and no HTTP endpoint for an operation: you implement the handler and expose it as your
+application does.
+
 ## Processes
 
 Every process of the model gets the units below (phase-3-design.md section 7.2), under `Processes/<Process>/` in the
@@ -385,6 +429,8 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 | `entity.scriban`, `entity.partial.scriban` | The generated and hand-written halves of an entity. |
 | `enum.scriban`, `value-object.scriban`, `repository.scriban`, `registrations.scriban`, `type-handlers.scriban` | The other units. |
 | `_binding.scriban` | The repository of a bound entity, from its binding's statements (included by `repository.scriban`). |
+| `_operation.scriban` | Shared functions of the operation unit: the type name, member and return types, key parameters, fired events. |
+| `operation-contracts.scriban` | The contracts of an operation. |
 | `_process.scriban` | Shared functions of the process units: names, folders, attribute types, C# literals, the translator's input. |
 | `process-*.scriban`, `*.partial.scriban` | The process units and their companions. |
 | `dispatch*.scriban`, `interpreter*.scriban`, `actors.scriban`, `scenario-tests.scriban` | The model-level process units and the scenario tests. |

@@ -38,4 +38,38 @@ public sealed class LocalizationHelperTests
         Assert.Equal("MQ6006", error.Rule);
         Assert.Contains("properties/<name>", error.Message, StringComparison.Ordinal);
     }
+
+    /// <summary>Own errors only: an inherited error's translation is the second cut (next-phase-2-design.md section 4.1).</summary>
+    [Fact]
+    public async Task An_operations_members_outcomes_and_errors_take_their_translations()
+    {
+        const string prepare = "01JRDQ00000000000000000011", servings = "01JRDQ00000000000000000012", done = "01JRDQ00000000000000000013";
+        const string tooMany = "01JRDQ00000000000000000014";
+        var (h, store) = await Kit.OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        var json = $$"""
+            { "kind": "operation", "id": "{{prepare}}", "name": "prepare", "subject": "{{Kit.Recipe}}", "effect": "change",
+              "input": [ { "id": "{{servings}}", "name": "servings", "type": "int32", "description": "How many plates." } ],
+              "outcomes": [ { "id": "{{done}}", "name": "done" } ],
+              "errors": [ { "id": "{{tooMany}}", "name": "too_many", "displayName": "Too many" } ] }
+            """;
+        var created = await store.CreateAsync(System.Text.Encoding.UTF8.GetBytes(json), ChangeSource.Editor, Kit.Ct);
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        await Kit.Translate(store, "fr", new TranslationEdit(prepare, "displayName", "Préparer"), new TranslationEdit(servings, "displayName", "Portions"),
+            new TranslationEdit(servings, "description", "Combien d'assiettes."), new TranslationEdit(done, "displayName", "Prêt"),
+            new TranslationEdit(tooMany, "displayName", "Trop"));
+        var model = ResolutionKit.Resolve(store.Current!);
+        var operation = model.Operations.Single();
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ display_name operation 'fr' }}|{{ display_name operation.input[0] 'fr-CA' }}|{{ description_of operation.input[0] 'fr' }}|"
+            + "{{ display_name operation.outcomes[0] 'fr' }}|{{ display_name operation.errors[0] 'fr' }}|{{ display_name operation.errors[0] }}|"
+            + "{{ has_translation operation.errors[0] 'displayName' 'fr-CA' }}",
+            operation, u => u with { For = "each operation" }, model: model);
+
+        Assert.Equal("Préparer|Portions|Combien d'assiettes.|Prêt|Trop|Too many|false", unit.Text());
+        Assert.Contains("l:fr:" + prepare, unit.ReadKeys);
+        Assert.Contains("e:" + prepare, unit.ReadKeys);
+    }
 }

@@ -279,6 +279,9 @@ public sealed class ResolvedModel
     /// <summary>Scenarios, by (process in <see cref="Processes"/> order, name, id).</summary>
     public RList<RScenario> Scenarios { get; internal init; } = RList<RScenario>.Empty;
 
+    /// <summary>Operations, by (package qualified name, subject name with none first, name, id) (next-phase-2-design.md section 4.1).</summary>
+    public RList<ROperation> Operations { get; internal init; } = RList<ROperation>.Empty;
+
     /// <summary>Databases, by name.</summary>
     public RList<RDatabase> Databases { get; internal init; } = RList<RDatabase>.Empty;
 

@@ -52,7 +52,11 @@
               "scenario",
               "state",
               "transition",
-              "event"
+              "event",
+              "operation",
+              "operation-member",
+              "outcome",
+              "error"
             ]
           },
           "uniqueItems": true,
