@@ -50,7 +50,7 @@ public sealed class ProcessRuntime : IDisposable
         return _sessions.GetOrAdd(chart, c => new Lazy<ProcessExpressionSession?>(() =>
         {
             var compiled = ProcessExpressions.Get(c.Process);
-            return compiled.Compiled.Count == 0 ? null : compiled.Open(_poolSize, CancellationToken);
+            return compiled.Compiled.Count == 0 ? null : compiled.Open(_poolSize, CancellationToken, ProcessExpressions.LimitsIn(Model.Settings.Limits));
         })).Value;
     }
 

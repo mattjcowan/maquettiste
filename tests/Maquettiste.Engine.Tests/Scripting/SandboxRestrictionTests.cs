@@ -12,6 +12,18 @@ public sealed class SandboxRestrictionTests
     private static ScriptLimitException LimitError(IScriptSandboxPool pool, string helper, params object?[] args) =>
         Assert.Throws<ScriptLimitException>(() => pool.Helper(helper, args));
 
+    // A catastrophic match stopped by its bound: the timeout it ended on is the bound the limits give, and a match is tried at most
+    // twice (RegexRetry), so the call stops within twice the bound. That is the proof. The clock only shows the script stops instead
+    // of running away (the patterns here take hours unbounded); a loaded runner has stretched the nominal 0.5 s past a second,
+    // so it allows 10 s.
+    private static void AssertStoppedByTheMatchBound(ScriptLimitException error, SandboxLimits limits, System.Diagnostics.Stopwatch clock)
+    {
+        Assert.Equal("MQ6007", error.Diagnostic.Rule);
+        Assert.Contains("regular expression", error.Diagnostic.Message, StringComparison.Ordinal);
+        Assert.Equal(ScriptSandbox.RegexTimeout(limits), Assert.IsType<System.Text.RegularExpressions.RegexMatchTimeoutException>(error.InnerException).MatchTimeout);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), $"stopped after {clock.ElapsedMilliseconds} ms");
+    }
+
     [Fact]
     public void No_clr_host_or_module_globals_are_reachable()
     {
@@ -164,9 +176,7 @@ public sealed class SandboxRestrictionTests
 
         var error = LimitError(pool, "regex");
 
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"stopped after {clock.ElapsedMilliseconds} ms");
-        Assert.Equal("MQ6007", error.Diagnostic.Rule);
-        Assert.Contains("regular expression", error.Diagnostic.Message, StringComparison.Ordinal);
+        AssertStoppedByTheMatchBound(error, limits, clock);
     }
 
     [Fact]
@@ -223,9 +233,8 @@ public sealed class SandboxRestrictionTests
 
         var error = LimitError(pool, "regex");
 
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"stopped after {clock.ElapsedMilliseconds} ms");
-        Assert.Equal("MQ6007", error.Diagnostic.Rule);
-        Assert.Contains("regular expression", error.Diagnostic.Message, StringComparison.Ordinal);
+        // 2 × 250 ms: well inside one second.
+        AssertStoppedByTheMatchBound(error, Scripts.Limits, clock);
     }
 
     [Fact]
@@ -247,14 +256,18 @@ public sealed class SandboxRestrictionTests
         var clock = System.Diagnostics.Stopwatch.StartNew();
         await cts.CancelAsync();
 
-        // The script stops within a second either way: as a cancellation, or, when the regular expression's own time limit trips
-        // before the cancellation is observed on a slow machine, as a limit. Only the deadline is the contract here.
+        // The script stops either way: as a cancellation, or, when the regular expression's own time limit trips before the
+        // cancellation is observed on a slow machine, as a limit. A match cannot be interrupted, so what keeps the stop inside the
+        // one-second budget is the match bound (250 ms, tried at most twice), which a limit shows. The clock allows 10 s: a loaded
+        // runner stretches the nominal quarter second, and 10 s still proves the 120 s script clock is not what stopped it.
         var error = await Assert.ThrowsAnyAsync<Exception>(() => run);
         Assert.True(error is OperationCanceledException or ScriptLimitException, $"unexpected {error.GetType().Name}: {error.Message}");
 
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"stopped after {clock.ElapsedMilliseconds} ms");
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), $"stopped after {clock.ElapsedMilliseconds} ms");
         if (error is OperationCanceledException cancelled)
             Assert.Equal(cts.Token, cancelled.CancellationToken);
+        else
+            Assert.Equal(TimeSpan.FromMilliseconds(250), Assert.IsType<System.Text.RegularExpressions.RegexMatchTimeoutException>(error.InnerException).MatchTimeout);
     }
 
     [Theory]

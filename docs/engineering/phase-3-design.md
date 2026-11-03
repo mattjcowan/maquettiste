@@ -384,7 +384,8 @@ Expressions run in the existing sandbox (engine-design.md §10) with its options
 process's expressions once into prepared scripts of the form `(context, event) => (<expression>)` registered under the
 guard or action id; `context` and `event` cross as frozen JSON-like data (`event` has `name`, `actor`, `payload`). A
 guard returns a boolean (MQ9504 otherwise); an action returns an object whose members are context attribute names (MQ9505
-for others). Limits: a per-expression deadline of 50 ms and 100,000 statements (MQ9503), under the pool's cancellation
+for others). Limits: a per-expression deadline of 50 ms (none when the project sets `limits.scriptTimeoutMs: 0`, as for
+every sandbox call, next-phase-1-design.md section 5.7) and 100,000 statements (MQ9503), under the pool's cancellation
 token so a stuck expression stops within the host's one-second cancellation budget (host-contracts.md item 26). MQ9501
 parses every expression at validation without running it. The same compiled form is what the later query predicates will
 share (decision 6).

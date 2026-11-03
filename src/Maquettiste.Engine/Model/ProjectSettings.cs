@@ -293,7 +293,8 @@ public sealed record SandboxLimits
 {
     /// <summary>
     /// The wall-clock limit of one top-level script call, in milliseconds; 0 turns the wall clock off, and the statement limit then
-    /// bounds every call alone (a regular expression match keeps a 250 ms bound, previews a deadline of 8000 ms).
+    /// bounds every call alone, process guard and action expressions included (a regular expression match keeps a 250 ms bound,
+    /// previews a deadline of 8000 ms).
     /// </summary>
     public int ScriptTimeoutMs { get; init; } = 2000;
 

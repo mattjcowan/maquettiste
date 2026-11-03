@@ -45,6 +45,7 @@ internal sealed class EditorRepo : IAsyncDisposable
         {
             foreach (var name in new[] { "sql-ddl", "csharp-dapper" })
                 CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", name), Path.Combine(repo.ModelRoot, "templates", name));
+            TestLimits.ForPreviews(repo.ModelRoot);
         }
 
         return new EditorRepo(repo);

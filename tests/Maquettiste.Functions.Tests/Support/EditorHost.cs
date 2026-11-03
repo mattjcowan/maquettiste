@@ -50,6 +50,9 @@ internal sealed class EditorHost : IAsyncDisposable
         {
             foreach (var name in new[] { "sql-ddl", "csharp-dapper" })
                 CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", name), Path.Combine(ModelRoot, "templates", name));
+            // A site with packs previews. Recordings keep the fixture's own settings: the editor's mocks replay them.
+            if (!Recorder.Enabled)
+                TestLimits.ForPreviews(ModelRoot);
         }
 
         Variables = new FakeSiteVariables()
