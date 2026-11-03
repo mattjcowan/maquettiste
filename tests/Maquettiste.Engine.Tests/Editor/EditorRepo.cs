@@ -50,6 +50,33 @@ internal sealed class EditorRepo : IAsyncDisposable
         return new EditorRepo(repo);
     }
 
+    /// <summary>
+    /// Writes two packs beside the copied ones: <c>naming</c>, a library (no units, a <c>class_name</c> helper with the parameter
+    /// <c>suffix</c>, and <c>partials/header.scriban</c>), and <c>records</c>, one <c>each entity</c> unit <c>record</c> that uses
+    /// <c>naming</c> <c>^1.2.0</c>, includes its header and names its file with <c>naming.class_name</c>.
+    /// </summary>
+    public void WriteLibraryPacks()
+    {
+        void Write(string pack, string path, string text)
+        {
+            var full = Repo.PathOf(".maquettiste/templates/" + pack + "/" + path);
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            File.WriteAllText(full, text);
+        }
+
+        Write("naming", "pack.json", """{ "name": "naming", "version": "1.4.0", "engine": ">=1.0", "parameters": { "suffix": "Record" } }""");
+        Write("naming", "helpers.js", """
+            function pascal(s) { return String(s).replace(/(^|[-_ ])([a-z])/g, (_, __, c) => c.toUpperCase()); }
+            maquettiste.helper('class_name', e => pascal(e.name) + maquettiste.params.suffix);
+            """);
+        Write("naming", "partials/header.scriban", "// {{ element.name }} ({{ naming.class_name element }})\n");
+        Write("records", "pack.json", """
+            { "name": "records", "version": "1.0.0", "engine": ">=1.0", "uses": [ { "pack": "naming", "version": "^1.2.0" } ],
+              "units": [ { "id": "record", "template": "record.scriban", "for": "each entity", "output": "src/Generated/records/{{ naming.class_name entity }}.cs" } ] }
+            """);
+        Write("records", "record.scriban", "{{ include \"naming:partials/header.scriban\" }}class {{ entity | naming.class_name }}\n");
+    }
+
     /// <summary>Rewrites <c>maquettiste.json</c> on disk (canonically), behind the store's back.</summary>
     public void EditSettingsOnDisk(Action<JsonObject> change)
     {

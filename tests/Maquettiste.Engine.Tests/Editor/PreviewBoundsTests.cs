@@ -120,6 +120,27 @@ public sealed class PreviewBoundsTests
     }
 
     [Fact]
+    public async Task A_preview_session_sees_an_edit_of_a_used_partial()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        repo.WriteLibraryPacks();
+        var service = repo.Service;
+
+        var first = await service.PreviewAsync("records", "record", EditorRepo.CustomerId, null, Ct);
+        Assert.DoesNotContain(first.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        var file = Assert.Single(first.Files);
+        Assert.Equal("src/Generated/records/CustomerRecord.cs", file.Path);
+        Assert.StartsWith("// Customer (CustomerRecord)\n", file.Text, StringComparison.Ordinal);
+
+        // The session's stamp covers the used pack's folder: an edit there opens a new session, and the preview renders it.
+        var key = await service.PreviewSessionKeyAsync("records", Ct);
+        File.WriteAllText(repo.Repo.PathOf(".maquettiste/templates/naming/partials/header.scriban"), "// edited header for {{ element.name }}\n");
+        Assert.NotEqual(key, await service.PreviewSessionKeyAsync("records", Ct));
+        var second = await service.PreviewAsync("records", "record", EditorRepo.CustomerId, null, Ct);
+        Assert.StartsWith("// edited header for Customer\n", Assert.Single(second.Files).Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_preview_converts_no_seed_row_and_diffs_no_database_unless_its_template_reads_them()
     {
         await using var repo = EditorRepo.Create();
@@ -214,5 +235,39 @@ public sealed class PreviewBoundsTests
             Interlocked.Increment(ref Calls);
             return inner.ResolveAsync(model, progress, ct);
         }
+    }
+
+    [Fact]
+    public async Task A_preview_evaluates_the_records_of_its_element_only()
+    {
+        await using var repo = EditorRepo.Create();
+        WriteExportPacks(repo);
+
+        var preview = await repo.Service.PreviewAsync("services", "service", EditorRepo.CustomerId, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal("uses CustomerRecord", preview.Files[0].Text);
+        Assert.Equal(["px:records/" + EditorRepo.CustomerId], preview.ReadKeys.Where(k => k.StartsWith("px:", StringComparison.Ordinal)));
+    }
+
+    private static void WriteExportPacks(EditorRepo repo)
+    {
+        void Write(string pack, string path, string text)
+        {
+            var full = repo.Repo.PathOf(".maquettiste/templates/" + pack + "/" + path);
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            File.WriteAllText(full, text);
+        }
+
+        Write("records", "pack.json", """
+            { "name": "records", "version": "1.0.0", "engine": ">=1.0",
+              "units": [ { "id": "record", "template": "record.scriban", "for": "each entity", "output": "src/Generated/records/{{ exports.class_name }}.cs",
+                "exports": { "class_name": "{{ pascal entity.name }}Record", "members": { "each": "attributes", "value": "{{ pascal item.name }}" } } } ] }
+            """);
+        Write("records", "record.scriban", "class {{ exports.class_name }}");
+        Write("services", "pack.json", """
+            { "name": "services", "version": "1.0.0", "engine": ">=1.0", "uses": [ { "pack": "records", "version": "^1.0.0" } ],
+              "units": [ { "id": "service", "template": "service.scriban", "for": "each entity", "output": "src/Generated/services/{{ entity.name }}Service.cs" } ] }
+            """);
+        Write("services", "service.scriban", "{{ r = entity | exported \"records\" }}uses {{ r.class_name }}");
     }
 }

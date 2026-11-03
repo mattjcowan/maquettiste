@@ -87,6 +87,13 @@ diagnostic can land on a file other than the one being saved, a scoped run also 
   settings save (so a settings change that raises a model rule's finding to an error is refused); element saves skip it.
   Its findings carry the file of the element they name; a throw is MQ5002 and a limit MQ5003 on the rule file, with the
   rule's severity setting applied as for element rules. Its results are not cached.
+- **Library packs** (next-phase-2-design.md section 5.2). With `ModelSnapshot.ScriptLibraries`, a validation creates one
+  pool per library first, in dependency order, each reaching its own closure, then the rule pool with the libraries
+  overload of `CreatePool`, so `maquettiste.use("naming")` works at the top of a rule file. A rule's call goes through
+  `RuleRun` (`IScriptLibraryCalls`): it rents an engine of the library's pool, runs the helper with the library's
+  parameters and the rule's recorder, and returns it. A library that fails to load, or fails in a call, is MQ5002 (a
+  limit MQ5003) at the library's script, naming the library. The libraries' hashes fold into every rule file's cache key
+  (`CachedRuleFiles`), so a cached result is never served after a library changed; without `uses` the keys are unchanged.
 - **Rule result cache** (section 5.7). `RuleResultCache`, one per validator (so per store: the MCP server, the editor
   host and watch mode keep it), holds each element rule's raw diagnostics per (rule id, element id), before
   `ApplySettings`, so `validation.rules` applies after the cache and an `off` rule never runs. An entry is reused only

@@ -1473,6 +1473,7 @@ export function packRecord(json: Json): PackManifest {
     parameters: (json.parameters as Json | undefined) ?? {},
     scripts: (json.scripts as string[] | undefined) ?? [],
     usesSchemaDiff: json.usesSchemaDiff === true,
+    uses: ((json.uses as Json[] | undefined) ?? []).map((u) => ({ pack: String(u.pack), version: String(u.version) })),
     units: ((json.units as Json[] | undefined) ?? []).map((u) => ({
       id: String(u.id),
       template: typeof u.template === "string" ? u.template : null,
@@ -1489,6 +1490,7 @@ export function packRecord(json: Json): PackManifest {
       delimiters: (u.delimiters as { open: string; close: string } | undefined) ?? null,
       companion: (u.companion as { template: string; output: string } | undefined) ?? null,
       transforms: (u.transforms as string[] | undefined) ?? [],
+      exports: (u.exports as Record<string, string | { each: string; value: string }> | undefined) ?? {},
     })),
   };
 }

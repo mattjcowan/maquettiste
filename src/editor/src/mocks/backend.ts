@@ -217,6 +217,8 @@ export class MockBackend {
       tracked: [],
       hints: [],
       hintsUpdated: [],
+      usesUpdated: [],
+      textReferences: [],
       diagnostics: [],
       ...extra,
     });

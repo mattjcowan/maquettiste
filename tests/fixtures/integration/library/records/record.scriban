@@ -1,0 +1,4 @@
+{{ include "naming:partials/header.scriban" }}
+public sealed class {{ naming.class_name entity }}
+{
+}

@@ -1,0 +1,9 @@
+{
+  "name": "naming",
+  "version": "1.4.0",
+  "engine": ">=1.0 <2.0",
+  "description": "Library: class names and a file header shared by the records and services packs.",
+  "parameters": {
+    "suffix": "Record"
+  }
+}

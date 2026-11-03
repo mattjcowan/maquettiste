@@ -23,6 +23,7 @@ internal sealed class RenderRun : IDisposable
     private readonly Renderer _renderer;
     private readonly int _poolSize;
     private readonly ConcurrentDictionary<string, Lazy<PackRuntime>> _packs = new(StringComparer.Ordinal);
+    private readonly Lazy<ExportTable> _ownTable;
 
     /// <summary>Creates the run state.</summary>
     /// <param name="renderer">The renderer.</param>
@@ -37,6 +38,7 @@ internal sealed class RenderRun : IDisposable
         Token = ct;
         Limits = context.Model.Settings?.Limits ?? new SandboxLimits();
         Inflector = new Inflector(context.Model.Settings?.Inflection);
+        _ownTable = new Lazy<ExportTable>(() => ExportTable.Own(this), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     /// <summary>The render context.</summary>
@@ -59,6 +61,21 @@ internal sealed class RenderRun : IDisposable
 
     /// <summary>The shared builtin object.</summary>
     public ScriptObject Builtins => _renderer.Builtins;
+
+    /// <summary>The export table the run's units read: the context's, or one that evaluates each unit's own exports here.</summary>
+    public ExportTable Exports => Context.Exports ?? _ownTable.Value;
+
+    /// <summary>Evaluates a unit's export templates on the calling thread (<see cref="ExportTable.Evaluate"/>).</summary>
+    /// <param name="unit">The unit.</param>
+    /// <returns>The values, or the errors that stopped them.</returns>
+    public UnitExportsResult EvaluateExports(PlannedUnit unit)
+    {
+        Token.ThrowIfCancellationRequested();
+        var runtime = Pack(unit.Pack);
+        using var lease = runtime.Errors.Count == 0 ? runtime.Pool?.Rent() : null;
+        var work = new UnitRun(this, runtime, unit, lease, Token) { EvaluatingExports = true };
+        return work.EvaluateExports();
+    }
 
     /// <summary>The runtime of a pack (created once per run).</summary>
     /// <param name="pack">The pack.</param>
@@ -97,14 +114,36 @@ internal sealed class RenderRun : IDisposable
 internal sealed class PackRuntime
 {
     private PackRuntime(LoadedPack pack, IScriptSandboxPool? pool, ScriptObject helpers, IReadOnlyList<Diagnostic> errors,
-        IReadOnlyDictionary<string, object?> parameters)
+        IReadOnlyDictionary<string, object?> parameters, ScriptObject namespaces, IReadOnlyList<Diagnostic> scriptErrors,
+        IReadOnlyList<string> helperNames)
     {
         Pack = pack;
         Pool = pool;
         Helpers = helpers;
         Errors = errors;
         Parameters = parameters;
+        Namespaces = namespaces;
+        ScriptErrors = scriptErrors;
+        HelperNames = helperNames;
     }
+
+    /// <summary>
+    /// The helper namespaces the pack's units see (library packs, next-phase-2-design.md section 5.2): one read-only object per
+    /// pack of its uses closure that has scripts, and its own when it is used and has scripts, keyed by the pack name with
+    /// <c>-</c> replaced by <c>_</c>.
+    /// </summary>
+    public ScriptObject Namespaces { get; }
+
+    /// <summary>The errors of loading the pack's own scripts (MQ6016, MQ6007), which fail every unit that sees the pack too.</summary>
+    public IReadOnlyList<Diagnostic> ScriptErrors { get; }
+
+    /// <summary>The helpers the pack's scripts registered, ordinal.</summary>
+    public IReadOnlyList<string> HelperNames { get; }
+
+    /// <summary>The helper namespace of a pack: its name with <c>-</c> replaced by <c>_</c> (pack names hold no <c>_</c>).</summary>
+    /// <param name="pack">The pack name.</param>
+    /// <returns>The namespace.</returns>
+    public static string Namespace(string pack) => pack.Replace('-', '_');
 
     /// <summary>The pack.</summary>
     public LoadedPack Pack { get; }
@@ -136,27 +175,52 @@ internal sealed class PackRuntime
             parameters[name] = TemplateValues.Plain(value);
         var helpers = new ScriptObject(0, false);
         var errors = new List<Diagnostic>();
+        var packJson = (pack.RelativePath.TrimEnd('/').Length == 0 ? "" : pack.RelativePath.TrimEnd('/') + "/") + "pack.json";
+
+        // The used packs' runtimes first (uses is acyclic, so this recursion ends); a used pack whose scripts fail to load fails
+        // every unit that sees it with that pack's own diagnostics.
+        var used = new List<PackRuntime>();
+        foreach (var name in pack.Sees)
+        {
+            if (run.Context.Packs.Find(name) is not { } usedPack)
+            {
+                errors.Add(new Diagnostic("MQ6042", DiagnosticSeverity.Error,
+                    $"Pack '{pack.Name}' uses '{name}', which this run did not load.", null, packJson, null, null, null));
+                continue;
+            }
+
+            var runtime = run.Pack(usedPack);
+            errors.AddRange(runtime.ScriptErrors);
+            used.Add(runtime);
+        }
+
+        var scriptErrors = new List<Diagnostic>();
         IScriptSandboxPool? pool = null;
         if (pack.Scripts.Count > 0)
         {
+            IReadOnlyList<ScriptLibrary> libraries = [.. used.Where(u => u.Pool is not null).Select(u => new ScriptLibrary(u.Pack.Name, u.HelperNames))];
             try
             {
-                pool = run.Context.Scripts.CreatePool(pack.Scripts, run.Limits, poolSize, run.Token);
+                pool = libraries.Count == 0 ? run.Context.Scripts.CreatePool(pack.Scripts, run.Limits, poolSize, run.Token)
+                    : run.Context.Scripts.CreatePool(pack.Scripts, libraries, run.Limits, poolSize, run.Token);
             }
             catch (ScriptErrorException ex)
             {
-                errors.Add(ex.Diagnostic);
+                scriptErrors.Add(ex.Diagnostic);
             }
             catch (ScriptLimitException ex)
             {
-                errors.Add(ex.Diagnostic);
+                scriptErrors.Add(ex.Diagnostic);
             }
         }
 
+        errors.AddRange(scriptErrors);
+        var registered = pool is null ? [] : pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Helper).OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
+
+        var reserved = run.Builtins.GetMembers().ToHashSet(StringComparer.Ordinal);
         if (pool is not null)
         {
-            var reserved = run.Builtins.GetMembers().ToHashSet(StringComparer.Ordinal);
-            foreach (var registration in pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Helper).OrderBy(r => r.Name, StringComparer.Ordinal))
+            foreach (var registration in registered)
             {
                 if (reserved.Contains(registration.Name) || BuiltinHelpers.Variables.Contains(registration.Name))
                 {
@@ -172,15 +236,58 @@ internal sealed class PackRuntime
         }
 
         helpers.IsReadOnly = true;
-        return new PackRuntime(pack, pool, helpers, errors, parameters);
+
+        // Helper namespaces: each used pack with scripts, and the pack itself when another pack uses it, so its partials render in
+        // its own units too. A namespace equal to a root helper of this pack, a builtin, a keyword or a variable is MQ6045.
+        var namespaces = new ScriptObject(0, false);
+        var sources = used.Where(u => u.Pool is not null).Select(u => (Runtime: u, Own: false)).ToList();
+        if (pool is not null && pack.UsedBy.Any(u => !string.Equals(u, "maquettiste.json", StringComparison.Ordinal)))
+            sources.Add((null!, true));
+        foreach (var (runtime, own) in sources)
+        {
+            var target = own ? pack.Name : runtime.Pack.Name;
+            var names = own ? (IReadOnlyList<string>)[.. registered.Select(r => r.Name)] : runtime.HelperNames;
+            var space = Namespace(target);
+            if (registered.FirstOrDefault(r => string.Equals(r.Name, space, StringComparison.Ordinal)) is { } clash)
+            {
+                errors.Add(new Diagnostic("MQ6045", DiagnosticSeverity.Error,
+                    $"The helper namespace '{space}' of pack '{target}' collides with the helper '{space}' of pack '{pack.Name}'; rename the helper or the pack.",
+                    null, clash.DeclaredIn, null, null, null));
+                continue;
+            }
+
+            if (reserved.Contains(space) || BuiltinHelpers.Variables.Contains(space) || Planning.PackUses.Keywords.Contains(space))
+            {
+                errors.Add(new Diagnostic("MQ6045", DiagnosticSeverity.Error,
+                    $"The helper namespace '{space}' of pack '{target}' collides with a builtin, a template keyword or a variable; rename the pack.",
+                    null, packJson, null, null, null));
+                continue;
+            }
+
+            var members = new ScriptObject(0, false);
+            foreach (var helper in names)
+            {
+                var name = helper;
+                members.SetValue(name, own
+                    ? new HelperFunction(name, 0, 63, (c, args) => c.Unit.CallHelper(c, name, args))
+                    : new HelperFunction(name, 0, 63, (c, args) => c.Unit.CallLibraryHelper(c, target, name, args)), true);
+            }
+
+            members.IsReadOnly = true;
+            namespaces.SetValue(space, members, true);
+        }
+
+        namespaces.IsReadOnly = true;
+        return new PackRuntime(pack, pool, helpers, errors, parameters, namespaces, scriptErrors, [.. registered.Select(r => r.Name)]);
     }
 }
 
 /// <summary>One unit being rendered: its recorder, lease, variables, templates used and outputs.</summary>
-internal sealed class UnitRun
+internal sealed class UnitRun : IScriptLibraryCalls
 {
     private readonly PackRuntime _pack;
     private readonly IScriptSandboxLease? _lease;
+    private Dictionary<string, IScriptSandboxLease>? _usedLeases;
     private readonly Dictionary<string, Template> _templatesUsed = new(StringComparer.Ordinal);
     private string? _mainTemplatePath;
 
@@ -197,7 +304,7 @@ internal sealed class UnitRun
         Planned = planned;
         _lease = lease;
         CancellationToken = ct;
-        ScriptContext = new ScriptCallContext(Recorder, planned.Key, pack.Parameters, ct);
+        ScriptContext = new ScriptCallContext(Recorder, planned.Key, pack.Parameters, ct) { Libraries = this };
     }
 
     /// <summary>The run.</summary>
@@ -208,6 +315,12 @@ internal sealed class UnitRun
 
     /// <summary>The unit's read recorder.</summary>
     public UnitRecorder Recorder { get; } = new();
+
+    /// <summary>Whether this run evaluates the unit's export templates rather than rendering it: <c>data</c>, <c>schema_diff</c> and
+    /// <c>exports</c> are not set, and <c>exported</c> reads only the packs the unit's pack sees.</summary>
+    public bool EvaluatingExports { get; init; }
+
+    private UnitExports? _ownExports;
 
     /// <summary>The run token.</summary>
     public CancellationToken CancellationToken { get; }
@@ -234,6 +347,74 @@ internal sealed class UnitRun
     /// <returns>The key.</returns>
     public string TemplateKey(string path) => "t:" + Planned.Pack.Name + "/" + path;
 
+    /// <summary>The dependency key of a template or partial of a pack (its own, or a used pack's).</summary>
+    /// <param name="pack">The pack name.</param>
+    /// <param name="path">The normalized pack-relative path.</param>
+    /// <returns>The key.</returns>
+    public string TemplateKey(string pack, string path) => "t:" + pack + "/" + path;
+
+    /// <summary>The unit's pack or a pack of its uses closure by name; <see langword="null"/> for any other name.</summary>
+    /// <param name="name">The pack name.</param>
+    /// <returns>The pack, or <see langword="null"/>.</returns>
+    public LoadedPack? Seen(string name) =>
+        string.Equals(name, Planned.Pack.Name, StringComparison.Ordinal) ? Planned.Pack
+            : Planned.Pack.Sees.Contains(name, StringComparer.Ordinal) ? Run.Context.Packs.Find(name) : null;
+
+    /// <summary>
+    /// The pack whose folder holds a template source (the repo-relative path the template cache gives a file, the part before
+    /// <c>#</c> for an inline expression): the unit's pack, or a pack of its closure; the unit's pack when none matches.
+    /// </summary>
+    /// <param name="source">The caller's source path.</param>
+    /// <returns>The pack.</returns>
+    public LoadedPack PackOfSource(string? source)
+    {
+        var path = source ?? "";
+        var hash = path.IndexOf('#', StringComparison.Ordinal);
+        if (hash >= 0)
+            path = path[..hash];
+        foreach (var name in Planned.Pack.Sees)
+        {
+            if (Run.Context.Packs.Find(name) is { } pack && path.StartsWith(pack.RelativePath.TrimEnd('/') + "/", StringComparison.Ordinal))
+                return pack;
+        }
+
+        return Planned.Pack;
+    }
+
+    /// <summary>Calls a used pack's helper from a template (a namespace member) with the unit's recorder and seed.</summary>
+    /// <param name="context">The unit's context.</param>
+    /// <param name="pack">The used pack.</param>
+    /// <param name="helper">The helper name.</param>
+    /// <param name="args">The template arguments.</param>
+    /// <returns>The result, wrapped for templates.</returns>
+    public object? CallLibraryHelper(TrackingTemplateContext context, string pack, string helper, IReadOnlyList<object?> args)
+    {
+        var plain = args.Select(TrackingTemplateContext.Unwrap).ToArray();
+        return context.Wrap(Call(pack, helper, plain, ScriptContext));
+    }
+
+    /// <summary>
+    /// Calls a used pack's helper (a namespace member, or <c>maquettiste.use</c> in a script): leases a sandbox of that pack's own
+    /// pool on first use in the unit, held to the end of the unit, and calls it with the caller's recorder and seed and the used
+    /// pack's parameters.
+    /// </summary>
+    /// <inheritdoc/>
+    public object? Call(string pack, string helper, IReadOnlyList<object?> args, ScriptCallContext caller)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        if (Seen(pack) is not { } used || string.Equals(pack, Planned.Pack.Name, StringComparison.Ordinal))
+            throw new RenderHelperException("MQ6016", $"Pack '{pack}' is not in the uses of pack '{Planned.Pack.Name}'.");
+        var runtime = Run.Pack(used);
+        _usedLeases ??= new Dictionary<string, IScriptSandboxLease>(StringComparer.Ordinal);
+        if (!_usedLeases.TryGetValue(pack, out var lease))
+        {
+            lease = (runtime.Pool ?? throw new RenderHelperException("MQ6016", $"The pack '{pack}' has no helper '{helper}'.")).Rent();
+            _usedLeases[pack] = lease;
+        }
+
+        return lease.Sandbox.CallHelper(helper, args, caller with { Parameters = runtime.Parameters });
+    }
+
     /// <summary>A repo-relative output path: the pack's <c>output</c> folder, then the rendered path.</summary>
     /// <param name="relative">The rendered path.</param>
     /// <returns>The output path.</returns>
@@ -257,7 +438,28 @@ internal sealed class UnitRun
 
     /// <summary>Renders the unit.</summary>
     /// <returns>The rendered unit.</returns>
-    public RenderedUnit Render()
+    public RenderedUnit Render() => ReleasingUsedLeases(RenderCore);
+
+    /// <summary>Runs a unit's render or export evaluation; the used packs' leases it took end with it (library packs).</summary>
+    private T ReleasingUsedLeases<T>(Func<T> body)
+    {
+        try
+        {
+            return body();
+        }
+        finally
+        {
+            if (_usedLeases is not null)
+            {
+                foreach (var lease in _usedLeases.Values)
+                    lease.Dispose();
+            }
+
+            _usedLeases = null;
+        }
+    }
+
+    private RenderedUnit RenderCore()
     {
         var diagnostics = new List<Diagnostic>();
         var files = new List<RenderedFile>();
@@ -303,7 +505,158 @@ internal sealed class UnitRun
         {
             KeyHashes = Planning.KeyHashes.Of(keys, Run.Context.Hasher.CurrentHash),
             Names = Generation.PlanExplainer.NamesOf(keys, Run.Context.Model.Find),
+            Exports = failed ? null : _ownExports,
         };
+    }
+
+    /// <summary>
+    /// Evaluates the unit's export templates (next-phase-2-design.md section 5.3): each value is rendered with the unit's variables,
+    /// or once per item of an <c>each</c> member with the item as <c>item</c>, keyed by its id; values are trimmed, with LF line
+    /// endings. The keys read go to this run's recorder only, so they are the export keys.
+    /// </summary>
+    /// <returns>The values, or the errors that stopped them.</returns>
+    public UnitExportsResult EvaluateExports() => ReleasingUsedLeases(EvaluateExportsCore);
+
+    private UnitExportsResult EvaluateExportsCore()
+    {
+        var diagnostics = new List<Diagnostic>();
+        JsonElement? values = null;
+        if (_pack.Errors.Count > 0)
+        {
+            diagnostics.AddRange(_pack.Errors.Select(WithElement));
+        }
+        else
+        {
+            try
+            {
+                values = ExportValues(diagnostics);
+            }
+            catch (Exception ex) when (CancellationToken.IsCancellationRequested || IsCancellation(ex))
+            {
+                throw new OperationCanceledException("Rendering was cancelled.", ex, CancellationToken);
+            }
+            catch (Exception ex)
+            {
+                diagnostics.AddRange(Diagnose(ex));
+            }
+        }
+
+        diagnostics.Sort(Diagnostic.Order);
+        if (values is null || diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
+            return new UnitExportsResult(null, diagnostics);
+        var keys = Recorder.SortedKeys();
+        return new UnitExportsResult(new UnitExports(values.Value, keys, Run.Context.Hasher.InputHash(Planned.StaticHash, keys)), diagnostics);
+    }
+
+    private JsonElement? ExportValues(List<Diagnostic> diagnostics)
+    {
+        var context = new TrackingTemplateContext(Run.Builtins, this);
+        if (_pack.Helpers.Count > 0)
+            context.PushGlobal(_pack.Helpers);
+        if (_pack.Namespaces.Count > 0)
+            context.PushGlobal(_pack.Namespaces);
+        context.PushGlobal(CreateGlobals(context));
+        var index = UnitIndex().ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var results = new SortedDictionary<string, object>(StringComparer.Ordinal);
+        foreach (var (name, export) in Planned.Unit.Exports.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            var pointer = "/units/" + index + "/exports/" + name + (export.Each is null ? "" : "/value");
+            var template = Run.Templates.GetInline(export.Value, _pack.PackJsonPath, pointer);
+            _templatesUsed[_pack.PackJsonPath + "#" + pointer] = template;
+            if (export.Each is null)
+            {
+                results[name] = Renderer.NormalizeLineEndings(template.Render(context)).Trim();
+                continue;
+            }
+
+            var items = EachItems(context, export.Each, "/units/" + index + "/exports/" + name + "/each", diagnostics);
+            if (items is null)
+                return null;
+            var byId = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (id, item) in items)
+            {
+                var scope = new Scriban.Runtime.ScriptObject { ["item"] = item };
+                context.PushGlobal(scope);
+                try
+                {
+                    byId[id] = Renderer.NormalizeLineEndings(template.Render(context)).Trim();
+                }
+                finally
+                {
+                    context.PopGlobal();
+                }
+            }
+
+            results[name] = byId;
+        }
+
+        return ExportTable.Write(w =>
+        {
+            foreach (var (name, value) in results)
+            {
+                if (value is string text)
+                {
+                    w.WriteString(name, text);
+                    continue;
+                }
+
+                w.WriteStartObject(name);
+                foreach (var (id, text2) in (SortedDictionary<string, string>)value)
+                    w.WriteString(id, text2);
+                w.WriteEndObject();
+            }
+        });
+    }
+
+    /// <summary>The items of an <c>each</c> member with their ids, or <see langword="null"/> after MQ6049.</summary>
+    private List<(string Id, object? Item)>? EachItems(TrackingTemplateContext context, string member, string pointer, List<Diagnostic> diagnostics)
+    {
+        var element = Planned.Element;
+        object? value = null;
+        var found = false;
+        if (element is not null)
+        {
+            Recorder.RecordObject(element);
+            var accessor = context.GetMemberAccessor(element);
+            found = accessor.TryGetValue(context, default, element, member, out value);
+        }
+
+        var wrapped = context.Wrap(value);
+        var items = new List<(string, object?)>();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        string? problem = !found || wrapped is string || wrapped is not System.Collections.IEnumerable
+            ? $"The export each '{member}' of unit '{Planned.Unit.Id}' names no list member of {(element is null ? "the model scope" : element.Kind)}."
+            : null;
+        if (problem is null)
+        {
+            foreach (var item in (System.Collections.IEnumerable)wrapped!)
+            {
+                var id = item switch
+                {
+                    IResolvedObject resolved => resolved.Id,
+                    IReadOnlyDictionary<string, object?> map when map.TryGetValue("id", out var v) && v is string s => s,
+                    _ => TrackingTemplateContext.Unwrap(item) is IResolvedObject inner ? inner.Id : null,
+                };
+                if (id is null)
+                {
+                    problem = $"The export each '{member}' of unit '{Planned.Unit.Id}' lists an item without a string id.";
+                    break;
+                }
+
+                if (!ids.Add(id))
+                {
+                    problem = $"The export each '{member}' of unit '{Planned.Unit.Id}' lists two items with the id '{id}'.";
+                    break;
+                }
+
+                items.Add((id, item));
+            }
+        }
+
+        if (problem is null)
+            return items;
+        diagnostics.Add(new Diagnostic("MQ6049", DiagnosticSeverity.Error, problem, element?.Id, _pack.PackJsonPath, pointer, null, null));
+        return null;
     }
 
     private void RenderFiles(List<RenderedFile> files, List<Diagnostic> diagnostics)
@@ -312,6 +665,8 @@ internal sealed class UnitRun
         var context = new TrackingTemplateContext(Run.Builtins, this);
         if (_pack.Helpers.Count > 0)
             context.PushGlobal(_pack.Helpers);
+        if (_pack.Namespaces.Count > 0)
+            context.PushGlobal(_pack.Namespaces);
         context.PushGlobal(CreateGlobals(context));
 
         if (unit.Mode == OutputMode.Copy)
@@ -483,7 +838,10 @@ internal sealed class UnitRun
         globals.SetValue("mapping", mapping, true);
         globals.SetValue("mappings", mappings, true);
         globals.SetValue("hints", Hints(context, element), true);
+        if (EvaluatingExports)
+            return globals; // export templates see neither data, schema_diff nor exports (next-phase-2-design.md section 5.3)
 
+        globals.SetValue("exports", OwnExports(context), true);
         var diffs = Run.Context.SchemaDiffs;
         // A preview's diffs are computed per database on first read (Generation.LazySchemaDiffs); a run's are all computed already.
         var diffEntries = diffs is Generation.LazySchemaDiffs lazy ? lazy.LazyEntries()
@@ -508,6 +866,21 @@ internal sealed class UnitRun
 
         globals.SetValue("data", Transforms(context), true);
         return globals;
+    }
+
+    /// <summary>The unit's own export values for the variable <c>exports</c> (null when it declares none); their keys join its reads.</summary>
+    private object? OwnExports(TrackingTemplateContext context)
+    {
+        if (Planned.Unit.Exports.Count == 0)
+            return null;
+        var own = Run.Exports.Evaluate(Planned);
+        if (own.Exports is null)
+            throw new TemplateException(own.Diagnostics.Count > 0 ? own.Diagnostics
+                : [RuleCatalog.Create("MQ6006", $"The exports of unit '{Planned.Unit.Id}' failed to evaluate.", Planned.Element?.Id, _pack.PackJsonPath)]);
+        foreach (var key in own.Exports.ReadKeys)
+            Recorder.Record(key);
+        _ownExports = own.Exports;
+        return context.Wrap(own.Exports.Values);
     }
 
     private (object? Mapping, MapView Mappings) Mappings(TrackingTemplateContext context, IResolvedObject? element)
@@ -598,6 +971,8 @@ internal sealed class UnitRun
                     return [WithElement(script.Diagnostic)];
                 case TemplateException template:
                     return [.. template.Diagnostics.Select(WithElement)];
+                case ExportReadException read:
+                    return [Located("MQ6050", read.Message, located), .. read.Record];
                 case RenderHelperException helper:
                     return [Located(helper.Rule, helper.Message, located)];
                 case System.Text.RegularExpressions.RegexMatchTimeoutException timeout:

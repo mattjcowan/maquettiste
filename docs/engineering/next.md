@@ -19,8 +19,9 @@ Every roadmap item not built yet was requested, except projections (3.12), views
 (6.9). The older open work at the end came from the owner's reviews.
 
 The build-next order, one pull request each: operations, first cut (3.6); project-defined kinds (3.7); the small fixes
-marked below, validation speed first; tests for packs (8.2); library packs with exports (5.1, 5.3); calculated values
-(5.2); declarative rules and suppressions (8.3); the model diff with impact before apply (7.3, 7.2).
+marked below, validation speed first; library packs with exports (5.1, 5.3); tests for packs (8.2), whose design builds
+on libraries; calculated values (5.2); declarative rules and suppressions (8.3); the model diff with impact before apply
+(7.3, 7.2).
 
 ## Phase 1: built in 0.11.0
 

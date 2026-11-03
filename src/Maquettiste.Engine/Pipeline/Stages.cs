@@ -139,6 +139,10 @@ public sealed record RenderContext(
     /// (a <c>d:</c> key) then fails with MQ6033 and keeps its outputs, since a scoped run never advances schema snapshots.
     /// </summary>
     internal bool Scoped { get; init; }
+
+    /// <summary>The run's export table (next-phase-2-design.md section 5.3), which <c>exported</c> and <c>exports</c> read; none
+    /// when <see langword="null"/>, so every record reads <see langword="null"/>.</summary>
+    internal Rendering.ExportTable? Exports { get; init; }
 }
 
 /// <summary>Stage 7: normalizes, formats and merges regions (W8).</summary>

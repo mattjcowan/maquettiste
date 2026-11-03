@@ -10,14 +10,22 @@ internal sealed class ScriptSandboxFactory : IScriptSandboxFactory
     /// <inheritdoc/>
     /// <exception cref="ScriptErrorException">A script has a syntax error or throws while it loads (MQ6016, or MQ5002 for scripts under <c>extensions/rules/</c>).</exception>
     /// <exception cref="ScriptLimitException">A script exceeds a sandbox limit while it loads (MQ6007, or MQ5003 for rule scripts).</exception>
-    public IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct)
+    public IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct) =>
+        CreatePool(scripts, [], limits, size, ct);
+
+    /// <inheritdoc/>
+    /// <exception cref="ScriptErrorException">A script has a syntax error or throws while it loads (MQ6016, or MQ5002 for scripts under <c>extensions/rules/</c>).</exception>
+    /// <exception cref="ScriptLimitException">A script exceeds a sandbox limit while it loads (MQ6007, or MQ5003 for rule scripts).</exception>
+    public IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, IReadOnlyList<ScriptLibrary> libraries, SandboxLimits limits, int size,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scripts);
+        ArgumentNullException.ThrowIfNull(libraries);
         ArgumentNullException.ThrowIfNull(limits);
         ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
         ct.ThrowIfCancellationRequested();
         var prepared = PreparedScript.PrepareAll(scripts, limits);
         IReadOnlyList<Diagnostic> warnings = [.. prepared.Select(p => p.Warning).OfType<Diagnostic>().OrderBy(d => d.FilePath, StringComparer.Ordinal)];
-        return new ScriptSandboxPool(prepared, limits, size, ct, warnings);
+        return new ScriptSandboxPool(prepared, limits, size, ct, warnings, libraries);
     }
 }

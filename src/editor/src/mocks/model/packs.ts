@@ -165,6 +165,11 @@ export class MockPacks {
     }));
   }
 
+  /** The packs whose uses name a pack (library packs), ordinal; the mock has no project uses. */
+  usedBy(pack: string): string[] {
+    return this.names().filter((n) => (this.manifest(n)?.uses ?? []).some((u) => u.pack === pack));
+  }
+
   list(): S["PackListResponse"] {
     return {
       packs: this.names().map((name) => {
@@ -179,6 +184,8 @@ export class MockPacks {
           units: manifest?.units ?? [],
           fileCount: this.files.get(name)!.size,
           diagnostics: this.diagnostics(name),
+          uses: manifest?.uses ?? [],
+          usedBy: this.usedBy(name),
         };
       }),
     };
@@ -215,6 +222,7 @@ export class MockPacks {
       files: this.fileInfos(pack),
       diagnostics: this.diagnostics(pack),
       registrations: this.registrations(pack),
+      usedBy: this.usedBy(pack),
     };
   }
 

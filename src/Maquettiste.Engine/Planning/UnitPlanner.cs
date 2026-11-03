@@ -49,7 +49,21 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
     /// removing a source renders it again.
     /// </remarks>
     public static string StaticHash(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters, string key) =>
-        new UnitHashPrefix(pack, unit, formatters).For(key);
+        new UnitHashPrefix(pack, unit, formatters, null).For(key);
+
+    /// <summary>
+    /// The static hash of a unit whose pack may use other packs: as <see cref="StaticHash(LoadedPack, PackUnit, IReadOnlyList{FormatterSettings}, string)"/>,
+    /// with the scripts field folding, for each pack of the uses closure in dependency order, its name, version, scripts hash and
+    /// canonical parameters (library packs, next-phase-2-design.md section 5.2). A pack without uses hashes the same bytes.
+    /// </summary>
+    /// <param name="pack">The pack.</param>
+    /// <param name="unit">The unit.</param>
+    /// <param name="formatters">The formatter settings.</param>
+    /// <param name="key">The unit key.</param>
+    /// <param name="packs">The pack set that holds the closure (<see cref="PackSet.Find"/>).</param>
+    /// <returns>The static hash.</returns>
+    public static string StaticHash(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters, string key, PackSet packs) =>
+        new UnitHashPrefix(pack, unit, formatters, packs).For(key);
 
     /// <summary>The static parts of a pack unit (<see cref="PlannedUnit.StaticParts"/>).</summary>
     /// <param name="pack">The pack.</param>
@@ -57,7 +71,70 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
     /// <param name="formatters">The formatter settings.</param>
     /// <returns>The parts.</returns>
     public static string StaticParts(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters) =>
-        new UnitHashPrefix(pack, unit, formatters).Parts;
+        new UnitHashPrefix(pack, unit, formatters, null).Parts;
+
+    /// <summary>The static parts of a pack unit whose pack may use other packs: they also list <c>uses:&lt;pack&gt;=&lt;version&gt;</c>.</summary>
+    /// <param name="pack">The pack.</param>
+    /// <param name="unit">The unit.</param>
+    /// <param name="formatters">The formatter settings.</param>
+    /// <param name="packs">The pack set that holds the closure.</param>
+    /// <returns>The parts.</returns>
+    public static string StaticParts(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters, PackSet packs) =>
+        new UnitHashPrefix(pack, unit, formatters, packs).Parts;
+
+    /// <summary>
+    /// The one-engine pool selectors and script filters run in. A pack with uses gets the libraries of its closure, so a script that
+    /// calls <c>maquettiste.use</c> at its top level loads; calling a library helper while planning stays a <c>TypeError</c>
+    /// (MQ6016), since the call context carries no <see cref="ScriptCallContext.Libraries"/>. A library's helper names come from
+    /// loading its scripts once per plan; a library whose scripts fail is left out, and the render reports its errors.
+    /// </summary>
+    /// <param name="pack">The pack.</param>
+    /// <param name="packs">The pack set holding its closure, or <see langword="null"/> for none.</param>
+    /// <param name="scripts">The sandbox factory.</param>
+    /// <param name="limits">The sandbox limits.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The pool; the caller disposes it.</returns>
+    internal static IScriptSandboxPool PlanningPool(LoadedPack pack, PackSet? packs, IScriptSandboxFactory scripts, SandboxLimits limits, CancellationToken ct) =>
+        PlanningPool(pack, packs, scripts, limits, new(StringComparer.Ordinal), ct);
+
+    private static IScriptSandboxPool PlanningPool(LoadedPack pack, PackSet? packs, IScriptSandboxFactory scripts, SandboxLimits limits,
+        Dictionary<string, IReadOnlyList<string>?> helpers, CancellationToken ct)
+    {
+        var libraries = Libraries(pack, packs, scripts, limits, helpers, ct);
+        return libraries.Count == 0 ? scripts.CreatePool(pack.Scripts, limits, 1, ct) : scripts.CreatePool(pack.Scripts, libraries, limits, 1, ct);
+    }
+
+    private static List<ScriptLibrary> Libraries(LoadedPack pack, PackSet? packs, IScriptSandboxFactory scripts, SandboxLimits limits,
+        Dictionary<string, IReadOnlyList<string>?> helpers, CancellationToken ct)
+    {
+        var libraries = new List<ScriptLibrary>();
+        if (packs is null)
+            return libraries;
+        foreach (var name in pack.Sees)
+        {
+            if (packs.Find(name) is not { Scripts.Count: > 0 } used)
+                continue;
+            if (!helpers.TryGetValue(name, out var names))
+            {
+                try
+                {
+                    using var pool = PlanningPool(used, packs, scripts, limits, helpers, ct);
+                    names = [.. pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Helper).Select(r => r.Name).Order(StringComparer.Ordinal)];
+                }
+                catch (Exception ex) when (ScriptDiagnostic(ex) is not null)
+                {
+                    names = null;
+                }
+
+                helpers[name] = names;
+            }
+
+            if (names is not null)
+                libraries.Add(new ScriptLibrary(name, names));
+        }
+
+        return libraries;
+    }
 
     /// <summary>The unit key: <c>&lt;pack&gt;/&lt;unitId&gt;</c> for model scope, else <c>&lt;pack&gt;/&lt;unitId&gt;:&lt;elementId&gt;</c>.</summary>
     /// <param name="pack">The pack name.</param>
@@ -70,12 +147,15 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
     private UnitPlan Plan(ResolvedModel model, PackSet packs, IScriptSandboxFactory scripts, IProgress<ProgressUpdate>? progress, CancellationToken ct)
     {
         var diagnostics = new List<Diagnostic>();
-        var planned = new List<(string Key, LoadedPack Pack, PackUnit Unit, IResolvedObject? Element, UnitHashPrefix Hash)>();
+        var planned = new List<(string Key, LoadedPack Pack, PackUnit Unit, IResolvedObject? Element, UnitHashPrefix Hash, bool ExportOnly)>();
         var filter = new UnitFilter(model);
         var formatters = model.Settings.Formatters;
         var totalUnits = packs.Packs.Sum(p => p.Manifest.Units.Count);
         var doneUnits = 0;
-        foreach (var pack in packs.Packs.OrderBy(p => p.Order))
+        var libraryHelpers = new Dictionary<string, IReadOnlyList<string>?>(StringComparer.Ordinal);
+        // After the run packs, the exporting units of the used packs, planned for their exports only (next-phase-2-design.md 5.3).
+        var exportOnlyPacks = packs.Used.Where(p => p.Manifest.Units.Any(u => u.Exports.Count > 0)).OrderBy(p => p.Order).Select(p => (Pack: p, ExportOnly: true));
+        foreach (var (pack, exportOnly) in packs.Packs.OrderBy(p => p.Order).Select(p => (Pack: p, ExportOnly: false)).Concat(exportOnlyPacks))
         {
             ct.ThrowIfCancellationRequested();
             var parameters = pack.Parameters.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal);
@@ -87,7 +167,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                     return pool;
                 try
                 {
-                    pool = scripts.CreatePool(pack.Scripts, model.Settings.Limits, 1, ct);
+                    pool = PlanningPool(pack, packs, scripts, model.Settings.Limits, libraryHelpers, ct);
                 }
                 catch (Exception ex) when (ScriptDiagnostic(ex) is { } diagnostic)
                 {
@@ -105,13 +185,17 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                 {
                     ct.ThrowIfCancellationRequested();
                     var unit = pack.Manifest.Units[index];
+                    if (exportOnly && unit.Exports.Count == 0)
+                        continue;
                     var pointer = "/units/" + index.ToString(CultureInfo.InvariantCulture);
-                    var hash = new UnitHashPrefix(pack, unit, formatters);
+                    var hash = new UnitHashPrefix(pack, unit, formatters, packs);
 
                     // MQ6019 (generation-ui.md section 5.3): an output pattern that cannot stay under an allowed root is a unit-level
                     // error found before any element is planned; that unit is skipped and the pack's other units run.
-                    // Without any allowed root every write is refused as MQ6004 already, so the check needs at least one.
-                    var rootProblems = !packs.CheckOutputRoots || model.Settings.Outputs.Allow.Count == 0 ? [] : UnitRules.OutputRoots(pack.Manifest with { Units = [unit] }, pack.Settings, model.Settings.Outputs.Allow, packFile);
+                    // Without any allowed root every write is refused as MQ6004 already, so the check needs at least one. An export-only
+                    // unit writes nothing, so neither this check nor the copy check below applies to it (next-phase-2-design.md 5.3).
+                    var rootProblems = exportOnly || !packs.CheckOutputRoots || model.Settings.Outputs.Allow.Count == 0 ? []
+                        : UnitRules.OutputRoots(pack.Manifest with { Units = [unit] }, pack.Settings, model.Settings.Outputs.Allow, packFile);
                     if (rootProblems.Count > 0)
                     {
                         diagnostics.AddRange(rootProblems.Select(d => d with { JsonPointer = pointer + d.JsonPointer!["/units/0".Length..] }));
@@ -121,7 +205,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
 
                     // MQ6030 and MQ6031 (next-phase-1-design.md section 5.4): a copy unit whose pattern matches no pack file, or whose
                     // token names a parameter that is undeclared or not a string, is skipped like an MQ6019 unit.
-                    if (unit.Mode == OutputMode.Copy && CopySources.Of(pack, unit).Diagnostics is { Count: > 0 } copyProblems)
+                    if (!exportOnly && unit.Mode == OutputMode.Copy && CopySources.Of(pack, unit).Diagnostics is { Count: > 0 } copyProblems)
                     {
                         diagnostics.AddRange(copyProblems);
                         progress?.Report(new ProgressUpdate(PipelineStage.Plan, ++doneUnits, totalUnits, packFile, pack.Name));
@@ -138,10 +222,11 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                         var key = KeyOf(pack.Name, unit.Id, element?.Id);
                         if (!filter.Matches(unit.Where, element, key, pack, parameters, Pool, diagnostics, ct))
                             continue;
-                        planned.Add((key, pack, unit, element, hash));
+                        planned.Add((key, pack, unit, element, hash, exportOnly));
                     }
 
-                    progress?.Report(new ProgressUpdate(PipelineStage.Plan, ++doneUnits, totalUnits, packFile, pack.Name));
+                    if (!exportOnly)
+                        progress?.Report(new ProgressUpdate(PipelineStage.Plan, ++doneUnits, totalUnits, packFile, pack.Name));
                 }
             }
             finally
@@ -173,10 +258,16 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
         var units = new PlannedUnit[kept.Count];
         Parallel.For(0, kept.Count, new ParallelOptions { MaxDegreeOfParallelism = options.EffectiveParallelism, CancellationToken = ct }, i =>
         {
-            var (key, pack, unit, element, hash) = planned[kept[i]];
+            var (key, pack, unit, element, hash, _) = planned[kept[i]];
             units[i] = new PlannedUnit(key, pack, unit, element, hash.For(key)) { StaticParts = hash.Parts };
         });
-        return new UnitPlan(units, PackLoader.Sort(diagnostics));
+        if (!kept.Any(i => planned[i].ExportOnly))
+            return new UnitPlan(units, PackLoader.Sort(diagnostics));
+        var run = new List<PlannedUnit>(units.Length);
+        var exports = new List<PlannedUnit>();
+        for (var i = 0; i < units.Length; i++)
+            (planned[kept[i]].ExportOnly ? exports : run).Add(units[i]);
+        return new UnitPlan(run, PackLoader.Sort(diagnostics)) { ExportOnly = exports };
     }
 
     /// <summary>Whether an element's generation hints drop its units for a pack: <c>generation["*"].skip</c> or <c>generation[pack].skip</c>.</summary>
@@ -196,9 +287,10 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
     /// <param name="element">The element, or <see langword="null"/> for a model-scope question.</param>
     /// <param name="scripts">The sandbox factory, for selectors and script filters.</param>
     /// <param name="ct">Cancellation.</param>
+    /// <param name="packs">The pack set holding the pack's uses closure, so its scripts load with their libraries; none by default.</param>
     /// <returns>The reason kind and sentence, or <see langword="null"/> when the unit plans the element.</returns>
     internal static (string Kind, string Detail)? WhyNot(ResolvedModel model, LoadedPack pack, PackUnit unit, IResolvedObject? element,
-        IScriptSandboxFactory scripts, CancellationToken ct)
+        IScriptSandboxFactory scripts, CancellationToken ct, PackSet? packs = null)
     {
         var parameters = pack.Parameters.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal);
         IScriptSandboxPool? pool = null;
@@ -207,7 +299,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
         {
             try
             {
-                return pool ??= scripts.CreatePool(pack.Scripts, model.Settings.Limits, 1, ct);
+                return pool ??= PlanningPool(pack, packs, scripts, model.Settings.Limits, ct);
             }
             catch (Exception ex) when (ScriptDiagnostic(ex) is { } diagnostic)
             {
@@ -261,9 +353,10 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
     /// <param name="element">The element, or <see langword="null"/> for a model-scope preview.</param>
     /// <param name="scripts">The sandbox factory, for selectors.</param>
     /// <param name="ct">Cancellation.</param>
+    /// <param name="packs">The pack set holding the pack's uses closure, so its scripts load with their libraries; none by default.</param>
     /// <returns>The sentence, or <see langword="null"/> when the element is in scope (or the selector fails, which the render reports).</returns>
     internal static string? OutOfScope(ResolvedModel model, LoadedPack pack, PackUnit unit, IResolvedObject? element,
-        IScriptSandboxFactory scripts, CancellationToken ct)
+        IScriptSandboxFactory scripts, CancellationToken ct, PackSet? packs = null)
     {
         if (string.Equals(unit.For, "model", StringComparison.Ordinal))
         {
@@ -285,7 +378,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
         {
             try
             {
-                return pool ??= scripts.CreatePool(pack.Scripts, model.Settings.Limits, 1, ct);
+                return pool ??= PlanningPool(pack, packs, scripts, model.Settings.Limits, ct);
             }
             catch (Exception ex) when (ScriptDiagnostic(ex) is { } diagnostic)
             {
@@ -464,17 +557,19 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
         private readonly string _templates;
         private readonly PackUnit _unit;
         private readonly LoadedPack _loaded;
+        private readonly IReadOnlyList<LoadedPack> _sees;
         private byte[]? _prefix;
         private string? _parts;
 
-        public UnitHashPrefix(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters)
+        public UnitHashPrefix(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters, PackSet? packs)
         {
             _pack = pack.Name;
             _unit = unit;
             _loaded = pack;
             _version = pack.Manifest.Version;
             _unitJson = UnitJson(unit);
-            _scriptsHash = pack.ScriptsHash;
+            _sees = packs is null ? [] : [.. pack.Sees.Select(packs.Find).OfType<LoadedPack>()];
+            _scriptsHash = ScriptsField(pack, _sees);
             _parameters = CanonicalForm.Json(pack.Parameters);
             _output = pack.Settings.Output;
             _formatter = unit.Formatter switch
@@ -492,18 +587,34 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
         }
 
         /// <summary>
-        /// The unit's canonical JSON for the hash, without <c>sources</c> and <c>tokens</c> when they are empty, as they are on every
-        /// unit outside mode copy: units written before copy units keep their static hash, so an upgrade renders nothing again.
+        /// The scripts field: the pack's scripts hash alone without uses, so the hashed bytes stay those of earlier versions; with uses,
+        /// <c>H("uses-1", scripts hash, name, version, scripts hash, canonical parameters, ...)</c> over the closure in dependency order.
+        /// </summary>
+        private static string ScriptsField(LoadedPack pack, IReadOnlyList<LoadedPack> sees)
+        {
+            if (sees.Count == 0)
+                return pack.ScriptsHash;
+            var fields = new List<string?>(2 + (4 * sees.Count)) { "uses-1", pack.ScriptsHash };
+            foreach (var used in sees)
+                fields.AddRange([used.Name, used.Manifest.Version, used.ScriptsHash, CanonicalForm.Json(used.Parameters)]);
+            return HashBuilder.Of([.. fields]);
+        }
+
+        /// <summary>
+        /// The unit's canonical JSON for the hash, without <c>sources</c>, <c>tokens</c> and <c>exports</c> when they are empty, as they
+        /// are on most units: units written before copy units or exports keep their static hash, so an upgrade renders nothing again.
         /// </summary>
         private static string UnitJson(PackUnit unit)
         {
-            if (unit.Sources.Count > 0 && unit.Tokens.Count > 0)
+            if (unit.Sources.Count > 0 && unit.Tokens.Count > 0 && unit.Exports.Count > 0)
                 return CanonicalForm.Json(unit);
             var node = JsonSerializer.SerializeToNode(unit, EngineJson.Options)!.AsObject();
             if (unit.Sources.Count == 0)
                 node.Remove("sources");
             if (unit.Tokens.Count == 0)
                 node.Remove("tokens");
+            if (unit.Exports.Count == 0)
+                node.Remove("exports");
             return CanonicalForm.Json(JsonSerializer.SerializeToElement(node, EngineJson.Options));
         }
 
@@ -572,6 +683,8 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                 parts["template:" + companion.Template] = Template(companion.Template);
             foreach (var (name, value) in _loaded.Parameters)
                 parts["parameter:" + name] = Short(CanonicalForm.Json(value));
+            foreach (var used in _sees)
+                parts["uses:" + used.Name] = used.Manifest.Version.Replace('\n', ' ');
             return string.Join('\n', parts.Select(p => p.Key.Replace('\n', ' ') + "=" + p.Value));
         }
 

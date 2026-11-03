@@ -92,9 +92,30 @@ public sealed record TemplateMember(string Name, string Type);
 public sealed record TemplateContextResult(string Pack, string Unit, string Scope, IReadOnlyList<TemplateVariable> Variables,
     IReadOnlyDictionary<string, IReadOnlyList<TemplateMember>> Members, IReadOnlyList<string> Helpers)
 {
+    /// <summary>The packs whose exports the unit may read with <c>exported</c> (its own and its uses closure, next-phase-2-design.md
+    /// section 5.3), each with the names its units declare; packs that declare none are left out. Ordinal by pack.</summary>
+    public IReadOnlyList<TemplateExportSource> ExportsFrom { get; init; } = [];
+
     /// <summary>What the pack's own scripts register, by kind then name; its helpers are also in <see cref="Helpers"/>.</summary>
     public IReadOnlyList<ScriptRegistration> Registrations { get; init; } = [];
+
+    /// <summary>
+    /// The helper namespaces the unit sees (library packs, next-phase-2-design.md section 5.2), by name: one per pack of its uses
+    /// closure that registers helpers, and the pack's own when another pack uses it.
+    /// </summary>
+    public IReadOnlyList<TemplateNamespace> Namespaces { get; init; } = [];
 }
+
+/// <summary>A pack whose exports a unit may read, with the names its units declare, ordinal.</summary>
+/// <param name="Pack">The pack.</param>
+/// <param name="Names">The export names.</param>
+public sealed record TemplateExportSource(string Pack, IReadOnlyList<string> Names);
+
+/// <summary>A helper namespace a unit sees: its name, its pack and the pack's helper names, ordinal.</summary>
+/// <param name="Name">The namespace: the pack name with <c>-</c> replaced by <c>_</c>.</param>
+/// <param name="Pack">The pack whose helpers it holds.</param>
+/// <param name="Helpers">The helper names, ordinal.</param>
+public sealed record TemplateNamespace(string Name, string Pack, IReadOnlyList<string> Helpers);
 
 public sealed partial class GenerationService
 {
@@ -147,6 +168,7 @@ public sealed partial class GenerationService
         using var held = slot;
         if (session is null)
             return new UnitPathsResult(0, 0, [], failure, clock.ElapsedMilliseconds);
+        using var opened = session;
         var (prepared, loaded, unit, _, _, changed, _, renderer, context) = session;
         var diagnostics = new List<Diagnostic>(UnitRules.OutputRoots(loaded.Manifest with { Units = [unit] }, loaded.Settings, prepared.Snapshot.Settings.Outputs.Allow,
             loaded.RelativePath + "/pack.json"));
@@ -247,7 +269,7 @@ public sealed partial class GenerationService
     {
         var single = session.Loaded with { Manifest = session.Loaded.Manifest with { Units = [session.Unit] } };
         Task<UnitPlan> Plan(CancellationToken token) =>
-            _services.Planner.PlanAsync(session.Resolved, new PackSet([single], []) { CheckOutputRoots = false }, _services.Scripts, null, token);
+            _services.Planner.PlanAsync(session.Resolved, new PackSet([single], []) { CheckOutputRoots = false, Used = session.Packs.Used }, _services.Scripts, null, token);
         if (changed)
             return Plan(ct);
         var scopes = session.Session.Scopes;
@@ -338,7 +360,7 @@ public sealed partial class GenerationService
         var element = elementId is null ? null : resolved.Find(elementId);
         if (elementId is not null && element is null)
             return Answer("unknown-element", $"'{elementId}' is not in the resolved model (deleted, renamed or never defined).");
-        if (UnitPlanner.WhyNot(resolved, loaded, unit, element, _services.Scripts, ct) is { } why)
+        if (UnitPlanner.WhyNot(resolved, loaded, unit, element, _services.Scripts, ct, new PackSet([loaded], []) { Used = session.Used }) is { } why)
             return Answer(why.Kind, why.Detail);
 
         var plan = planId is null ? null : await GetPlanAsync(planId, ct).ConfigureAwait(false);
@@ -417,6 +439,7 @@ public sealed partial class GenerationService
             new("hints", "The element's generation hints for this pack."),
             new("schema_diff", "The schema diffs by database name."),
             new("data", "The pack's transforms' results."),
+            new("exports", "The names this unit exports for its element (null when it exports none)."),
         };
         var elementType = ScopeType(unit.For);
         if (unit.For != "model")
@@ -439,9 +462,55 @@ public sealed partial class GenerationService
         if (UnitRules.CustomTypeOf(unit.For) is { } customType)
             members["custom.content"] = ContentMembers(snapshot, customType);
         var registrations = document.Registrations;
+        var set = await new PackLoader(_options, _services.Schemas).LoadClosureAsync(snapshot, pack, ct).ConfigureAwait(false);
         var helpers = BuiltinHelpers.Names.Concat(registrations.Where(r => r.Kind == ScriptRegistrationKind.Helper).Select(r => r.Name))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
-        return new TemplateContextResult(pack, unitId, unit.For, variables, members, [.. helpers]) { Registrations = registrations };
+        return new TemplateContextResult(pack, unitId, unit.For, variables, members, [.. helpers])
+        {
+            Registrations = registrations,
+            Namespaces = await NamespacesAsync(snapshot, pack, registrations, set, ct).ConfigureAwait(false),
+            ExportsFrom = ExportsFrom(set),
+        };
+    }
+
+    /// <summary>The packs a unit of the closure's first pack may read exports from, with the names their units declare.</summary>
+    private static IReadOnlyList<TemplateExportSource> ExportsFrom(PackSet set)
+    {
+        if (set.Packs.FirstOrDefault() is not { } loaded)
+            return [];
+        var sources = new List<TemplateExportSource>();
+        foreach (var name in loaded.Sees.Prepend(loaded.Name).Order(StringComparer.Ordinal))
+        {
+            var names = set.Find(name)?.Manifest.Units.SelectMany(u => u.Exports.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList() ?? [];
+            if (names.Count > 0)
+                sources.Add(new TemplateExportSource(name, names));
+        }
+
+        return sources;
+    }
+
+    /// <summary>
+    /// The helper namespaces a unit of the pack sees, as the renderer builds them: each pack of the uses closure whose scripts register
+    /// helpers, and the pack itself when another pack uses it. Reads the pack's closure only; empty when the pack does not load.
+    /// </summary>
+    private async Task<IReadOnlyList<TemplateNamespace>> NamespacesAsync(ModelSnapshot snapshot, string pack, IReadOnlyList<ScriptRegistration> own,
+        PackSet set, CancellationToken ct)
+    {
+        if (set.Packs.FirstOrDefault() is not { } loaded)
+            return [];
+        static IReadOnlyList<string> HelperNames(IEnumerable<ScriptRegistration> registrations) =>
+            [.. registrations.Where(r => r.Kind == ScriptRegistrationKind.Helper).Select(r => r.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        var namespaces = new List<TemplateNamespace>();
+        foreach (var name in loaded.Sees)
+        {
+            var helpers = HelperNames(await RegistrationsAsync(snapshot, name, ct).ConfigureAwait(false));
+            if (helpers.Count > 0)
+                namespaces.Add(new TemplateNamespace(PackRuntime.Namespace(name), name, helpers));
+        }
+
+        if (loaded.UsedBy.Any(u => !string.Equals(u, "maquettiste.json", StringComparison.Ordinal)) && HelperNames(own) is { Count: > 0 } mine)
+            namespaces.Add(new TemplateNamespace(PackRuntime.Namespace(pack), pack, mine));
+        return [.. namespaces.OrderBy(n => n.Name, StringComparer.Ordinal)];
     }
 
     /// <summary>The declared content keys of a custom kind (next-phase-2-design.md section 4.2), ordinal, each with its JSON Schema type

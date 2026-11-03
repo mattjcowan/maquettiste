@@ -325,3 +325,11 @@ and before the path reaches the store, so a manifest write under the real prefix
   hashes nothing (`PreviewHasher`). The session is single-flight and lives until its key changes (model version, settings hash,
   write epoch, the pack folder's stamps and the committed schema snapshots' stamps); the former 2 s limit is gone.
 - `PathsAsync` plans the one unit (kept with the session for a saved unit) and renders only `elementIds` (at most 20).
+
+## Exports (next-phase-2-design.md section 5.3)
+
+`GenerationRun.PrepareAsync` builds the export table from the unfiltered plan, with stored states of the packs that
+export (used packs read only); forced and check runs reuse none. `PlanUnit.Exports` and `GenerationPlan.Exports`
+record the values a plan used; apply seeds a table from them, never evaluates, and is stale when an export-only unit's
+export input hash changed or a record needs a unit the plan did not seed. `PlanExplainer.KindOf` reads the prefix up to
+the colon, so `px:` keys are causes of kind `exports`.

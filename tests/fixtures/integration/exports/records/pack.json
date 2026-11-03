@@ -1,0 +1,18 @@
+{
+  "name": "records",
+  "version": "1.0.0",
+  "engine": ">=1.0",
+  "units": [
+    {
+      "id": "record",
+      "template": "record.scriban",
+      "for": "each entity",
+      "output": "records/{{ entity.package.name }}/{{ exports.class_name }}.cs",
+      "exports": {
+        "class_name": "{{ pascal entity.name }}Record",
+        "members": { "each": "attributes", "value": "{{ pascal item.name }}" },
+        "namespace": "{{ project.properties.baseNamespace }}.{{ entity.package.name }}"
+      }
+    }
+  ]
+}

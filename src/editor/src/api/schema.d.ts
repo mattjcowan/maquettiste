@@ -2412,6 +2412,8 @@ export interface components {
             packs: {
                 [key: string]: components["schemas"]["PackSettings"];
             };
+            /** @description The packs whose helpers the project's own scripts may call through `maquettiste.use`. */
+            uses?: components["schemas"]["PackUse"][];
             validation: {
                 rules: {
                     [key: string]: string;
@@ -2496,6 +2498,11 @@ export interface components {
                 tag: string | null;
                 category: string | null;
             };
+        };
+        /** @description A pack that a pack, or the project's scripts, use; the version is a range in the engine-range syntax. */
+        PackUse: {
+            pack: string;
+            version: string;
         };
         PackSettings: {
             enabled: boolean;
@@ -2608,6 +2615,9 @@ export interface components {
             } | null;
             scripts: string[];
             usesSchemaDiff: boolean;
+            /** @description The packs this pack uses, in `pack.json` order (library packs). */
+            uses: components["schemas"]["PackUse"][];
+            /** @description The render units; empty for a library. */
             units: components["schemas"]["PackUnit"][];
         };
         PackUnit: {
@@ -2644,6 +2654,13 @@ export interface components {
                 output: string;
             } | null;
             transforms: string[];
+            /** @description Names the unit exports per element (`PackExport`): a template string, or `{each, value}` rendered per item of a list member and keyed by the item's id. Other packs read them with `exported`; empty when the unit exports none. */
+            exports: {
+                [key: string]: string | {
+                    each: string;
+                    value: string;
+                };
+            };
         };
         ExtensionSchema: {
             $schema: string | null;
@@ -5181,6 +5198,22 @@ export interface components {
             readKeys: string[];
             skipped: boolean;
             outputs: components["schemas"]["PlanFile"][];
+            /** @description The unit's export values (next-phase-2-design.md section 5.3): a rendered unit's from its render, a skipped one's from the export table; null when the unit declares no exports. */
+            exports: components["schemas"]["UnitExports"] | null;
+        };
+        UnitExports: {
+            /** @description Export name to text, or (an `each` export) to an object of item id to text; keys ordinal. */
+            values: {
+                [key: string]: unknown;
+            };
+            /** @description The dependency keys the export templates read, ordinal. */
+            readKeys: string[];
+            /** @description The hash of the unit's static hash and the export keys; stored values serve readers while it is unchanged. */
+            inputHash: string;
+        };
+        PlanExport: {
+            key: string;
+            exports: components["schemas"]["UnitExports"];
         };
         GenerationPlan: {
             id: components["schemas"]["Ulid"];
@@ -5195,6 +5228,8 @@ export interface components {
             counts: components["schemas"]["PlanCounts"];
             unitsRendered: components["schemas"]["UnitReasonCounts"];
             unitsSkipped: components["schemas"]["UnitReasonCounts"];
+            /** @description The exporting units the plan used without planning them (units of used packs, units a scoped run left out), by key; apply checks their export inputs again. */
+            exports: components["schemas"]["PlanExport"][];
         };
         PlanResult: {
             outcome: components["schemas"]["RunOutcome"];
@@ -5295,11 +5330,17 @@ export interface components {
             units: components["schemas"]["PackUnit"][];
             fileCount: number;
             diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description The packs this pack uses, in `pack.json` order; a pack without units is a library. */
+            uses: components["schemas"]["PackUse"][];
+            /** @description The packs whose `uses` name it, ordinal, then `maquettiste.json` when the project's `uses` does. */
+            usedBy: string[];
         };
         NewPackRequest: {
             name: string;
             /** @description `empty` (the default) or the name of a pack of this project. */
             from?: string | null;
+            /** @description A library pack: no units, `partials/header.scriban` and a `helpers.js` with one helper; `from` must be `empty`. */
+            library?: boolean;
         };
         PackFileInfo: {
             /** @description Pack-relative, `/` separators. */
@@ -5311,7 +5352,7 @@ export interface components {
              * @enum {string}
              */
             role: "manifest" | "template" | "partial" | "script" | "type-map" | "copy-source" | "other";
-            /** @description `unit:<id>`, `companion:<id>` and `include:<path>`, ordinal. */
+            /** @description `unit:<id>`, `companion:<id>`, `include:<path>` and `include:<pack>:<path>` (a file of another pack, whose `uses` names this one, includes it by its prefixed name), ordinal. */
             usedBy: string[];
         };
         PackParameterInfo: {
@@ -5340,6 +5381,8 @@ export interface components {
             diagnostics: components["schemas"]["Diagnostic"][];
             /** @description What the pack's own scripts register, by kind then name; empty when the pack does not load or a script fails. */
             registrations: components["schemas"]["ScriptRegistration"][];
+            /** @description The packs whose `uses` name it, ordinal, then `maquettiste.json` when the project's `uses` does. */
+            usedBy: string[];
         };
         ScriptRegistration: {
             /** @enum {string} */
@@ -5462,6 +5505,10 @@ export interface components {
             hints: string[];
             /** @description The ids of the elements whose hints the rename moved itself (the MCP tool and the command line ask for it); always empty here. */
             hintsUpdated: string[];
+            /** @description The `pack.json` files and `maquettiste.json` whose `uses` entries were rewritten to the new name (or would be, on a preview), ordinal. */
+            usesUpdated: string[];
+            /** @description Repo-relative template and script files whose text names the old pack; not edited. */
+            textReferences: string[];
             /** @description Why nothing was renamed. */
             diagnostics: components["schemas"]["Diagnostic"][];
         };
@@ -5560,6 +5607,22 @@ export interface components {
             helpers: string[];
             /** @description What the pack's own scripts register, by kind then name; its helpers are also in helpers. */
             registrations: components["schemas"]["ScriptRegistration"][];
+            /** @description The helper namespaces the unit sees, by name: one per pack of its uses closure that registers helpers, and the pack's own when another pack uses it. */
+            namespaces: components["schemas"]["TemplateNamespace"][];
+            /** @description The packs whose exports the unit may read with `exported` (its own and its uses closure), each with the names its units declare; packs that declare none are left out. Ordinal by pack. */
+            exportsFrom: components["schemas"]["TemplateExportSource"][];
+        };
+        TemplateExportSource: {
+            pack: string;
+            names: string[];
+        };
+        /** @description A helper namespace a unit sees. */
+        TemplateNamespace: {
+            /** @description The namespace, the pack name with `-` replaced by `_`. */
+            name: string;
+            pack: string;
+            /** @description The pack's helper names, ordinal. */
+            helpers: string[];
         };
         PackFileMove: {
             from: string;
@@ -6415,6 +6478,8 @@ export interface components {
             /** @default [] */
             required?: string[];
         };
+        /** @description A kebab-case key (stereotype keys). */
+        key: string;
         /**
          * Project settings
          * @description maquettiste.json: output roots, formatters, conventions, packs and limits.
@@ -6541,6 +6606,14 @@ export interface components {
                     handEdits?: "fail" | "overwrite" | "skip";
                 };
             };
+            /**
+             * @description The packs whose helpers the project's own scripts may call through maquettiste.use: each entry names a pack folder and a version range in the engine-range syntax.
+             * @default []
+             */
+            uses?: {
+                pack: components["schemas"]["key"];
+                version: string;
+            }[];
             /** @default {} */
             validation?: {
                 /** @default {} */
@@ -6733,8 +6806,6 @@ export interface components {
         /** @description A conceptual name: letters, digits and underscores, not starting with a digit. */
         identifier: string;
         idList: components["schemas"]["id"][];
-        /** @description A kebab-case key (stereotype keys). */
-        key: string;
         keyList: components["schemas"]["key"][];
         /** @description Markdown text, or a sidecar Markdown file beside the element's file. */
         description: string | {
@@ -10361,6 +10432,14 @@ export interface components {
             version: string;
             engine: string;
             description?: string;
+            /**
+             * @description The packs this pack uses: their partials and helpers render in its units. Each entry names a pack folder and a version range in the engine-range syntax.
+             * @default []
+             */
+            uses?: {
+                pack: components["schemas"]["key"];
+                version: string;
+            }[];
             /** @default {} */
             parameters?: Record<string, never>;
             /** @description The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters. On a string, or an array's items, x-ref types the value as the id of an element or sub-element (MQ2009). */
@@ -10374,7 +10453,8 @@ export interface components {
             scripts?: string[];
             /** @default false */
             usesSchemaDiff?: boolean;
-            units: ({
+            /** @default [] */
+            units?: ({
                 id: string;
                 /** @description The pack-relative template path. Required unless mode is copy; a copy unit takes none. */
                 template?: string;
@@ -10442,6 +10522,16 @@ export interface components {
                 };
                 /** @default [] */
                 transforms?: components["schemas"]["identifier"][];
+                /**
+                 * @description Names this unit exports per element, which other packs read with the exported helper and the unit's own templates read as exports: a template, or a template rendered per item of a list member and keyed by the item's id.
+                 * @default {}
+                 */
+                exports?: {
+                    [key: string]: string | {
+                        each: string;
+                        value: string;
+                    };
+                };
             } & (unknown & unknown))[];
         };
     };
@@ -13759,6 +13849,8 @@ export interface operations {
                      *       ],
                      *       "hints": [],
                      *       "hintsUpdated": [],
+                     *       "usesUpdated": [],
+                     *       "textReferences": [],
                      *       "diagnostics": []
                      *     }
                      */

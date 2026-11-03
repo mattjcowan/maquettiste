@@ -12,11 +12,13 @@ namespace Maquettiste.Engine.Planning;
 
 /// <summary>
 /// Discovers and loads local template packs (W6; engine-design.md section 8): every <c>&lt;ModelRoot&gt;/templates/&lt;name&gt;/pack.json</c>
-/// whose <c>name</c> equals its folder, in ordinal name order, minus those <c>packs.&lt;name&gt;.enabled: false</c> turns off. Each
+/// whose <c>name</c> equals its folder, in dependency order (ordinal name order when no pack has <c>uses</c>), minus those <c>packs.&lt;name&gt;.enabled: false</c> turns off. Each
 /// <c>pack.json</c> is validated against <c>pack.json</c> (MQ6001), its engine range checked (MQ6002), its unit ids, template and
 /// companion paths, script list and <c>types/*.json</c> type maps checked (MQ6001). A pack with any error is left out of
 /// <see cref="PackSet.Packs"/> and its diagnostics are returned; the orchestrator stops the run on them, so a broken pack never has
-/// its outputs orphaned. Shared packs by git reference are phase 4.
+/// its outputs orphaned. A pack's <c>uses</c> closure loads with it, enabled or not, into <see cref="PackSet.Used"/> when the run does not
+/// select it, and packs order after the packs they use (library packs, next-phase-2-design.md section 5.2; <see cref="PackUses"/>).
+/// Packs come only from this folder: there is no registry and no reference into version control.
 /// </summary>
 /// <param name="options">The engine options.</param>
 /// <param name="schemas">The schema registry (pack.json validation).</param>
@@ -35,11 +37,7 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
         var paths = new ModelPaths(options);
         var templates = Path.Combine(paths.ModelRoot, "templates");
         var diagnostics = new List<Diagnostic>();
-        var folders = Directory.Exists(templates)
-            ? Directory.EnumerateDirectories(templates).Select(Path.GetFileName).OfType<string>()
-                .Where(n => !n.StartsWith('.') && File.Exists(Path.Combine(templates, n, "pack.json")))
-                .Order(StringComparer.Ordinal).ToList()
-            : [];
+        var folders = Folders(templates);
 
         HashSet<string>? requested = null;
         if (packNames is not null)
@@ -50,28 +48,115 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
                     filePath: paths.ToRepoPath("templates/" + name + "/pack.json")));
         }
 
-        var candidates = folders.Where(n => requested is null || requested.Contains(n)).ToList();
-        var loaded = new List<LoadedPack>();
-        for (var i = 0; i < candidates.Count; i++)
+        var run = folders.Where(n => (requested is null || requested.Contains(n)) && Settings(model, n).Enabled).ToList();
+        return await LoadSetAsync(model, paths, templates, folders, run, packNames is null, diagnostics, progress, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Loads one pack whether or not it is enabled, as <see cref="LoadNamedAsync"/> does, with its uses closure (library packs): the
+    /// set's <see cref="PackSet.Packs"/> is that pack (empty when it does not load) and its <see cref="PackSet.Used"/> the rest.
+    /// </summary>
+    /// <param name="model">The snapshot, for the pack settings.</param>
+    /// <param name="name">The pack name (its folder).</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The pack set.</returns>
+    internal async Task<PackSet> LoadClosureAsync(ModelSnapshot model, string name, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var paths = new ModelPaths(options);
+        var templates = Path.Combine(paths.ModelRoot, "templates");
+        var folders = Folders(templates);
+        if (!folders.Contains(name, StringComparer.Ordinal))
+        {
+            return new PackSet([], [RuleCatalog.Create(InvalidPack, $"Pack '{name}' does not exist: there is no templates/{name}/pack.json.",
+                filePath: paths.ToRepoPath("templates/" + name + "/pack.json"))]);
+        }
+
+        return await LoadSetAsync(model, paths, templates, folders, [name], false, [], null, ct).ConfigureAwait(false);
+    }
+
+    private static List<string> Folders(string templates) =>
+        Directory.Exists(templates)
+            ? Directory.EnumerateDirectories(templates).Select(Path.GetFileName).OfType<string>()
+                .Where(n => !n.StartsWith('.') && File.Exists(Path.Combine(templates, n, "pack.json")))
+                .Order(StringComparer.Ordinal).ToList()
+            : [];
+
+    private static PackSettings Settings(ModelSnapshot model, string name) =>
+        model.Settings.Packs.TryGetValue(name, out var s) ? s : new PackSettings();
+
+    /// <summary>
+    /// Loads the run packs and the closure of their uses, each pack once (next-phase-2-design.md section 5.2): a used pack loads
+    /// whatever its <c>enabled</c>, the uses entries are checked, a pack whose closure holds a failed pack fails, and the packs that
+    /// load are ordered after the packs they use. MQ6046 is reported only for a whole-project load.
+    /// </summary>
+    private async Task<PackSet> LoadSetAsync(ModelSnapshot model, ModelPaths paths, string templates, IReadOnlyList<string> folders,
+        IReadOnlyList<string> run, bool wholeProject, List<Diagnostic> diagnostics, IProgress<ProgressUpdate>? progress, CancellationToken ct)
+    {
+        var graph = await PackUses.ReadAsync(paths, templates, folders, ct).ConfigureAwait(false);
+        var load = graph.Closure(run);
+        var loaded = new Dictionary<string, LoadedPack>(StringComparer.Ordinal);
+        for (var i = 0; i < load.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
-            var name = candidates[i];
-            var settings = model.Settings.Packs.TryGetValue(name, out var s) ? s : new PackSettings();
+            var name = load[i];
+            var settings = Settings(model, name);
             var relative = paths.ToRepoPath("templates/" + name);
-            progress?.Report(new ProgressUpdate(PipelineStage.Plan, i, candidates.Count, relative + "/pack.json", name));
-            if (!settings.Enabled)
-                continue;
-            var pack = await LoadOneAsync(name, loaded.Count, Path.Combine(templates, name), relative, settings, diagnostics, ct).ConfigureAwait(false);
+            progress?.Report(new ProgressUpdate(PipelineStage.Plan, i, load.Count, relative + "/pack.json", name));
+            var pack = await LoadOneAsync(name, 0, Path.Combine(templates, name), relative, settings, diagnostics, ct).ConfigureAwait(false);
             if (pack is not null)
             {
-                loaded.Add(pack);
+                loaded[name] = pack;
                 diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json"), model, relative + "/pack.json"));
                 diagnostics.AddRange(await ParsePassAsync(pack, ct).ConfigureAwait(false));
             }
         }
 
-        progress?.Report(new ProgressUpdate(PipelineStage.Plan, candidates.Count, candidates.Count, null, null));
-        return new PackSet(loaded, Sort(diagnostics));
+        var failed = new HashSet<string>(load.Where(n => !loaded.ContainsKey(n)), StringComparer.Ordinal);
+        foreach (var name in load.Where(loaded.ContainsKey))
+        {
+            var errors = graph.Check(loaded[name], loaded);
+            if (errors.Count > 0)
+            {
+                diagnostics.AddRange(errors);
+                failed.Add(name);
+            }
+        }
+
+        var closureFailed = new List<string>();
+        foreach (var name in load.Where(n => loaded.ContainsKey(n) && !failed.Contains(n)))
+        {
+            if (graph.ClosureFailed(loaded[name], failed) is { } error)
+            {
+                diagnostics.Add(error);
+                closureFailed.Add(name);
+            }
+        }
+
+        failed.UnionWith(closureFailed);
+        var order = graph.Order(load.Where(n => !failed.Contains(n)));
+        var position = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < order.Count; i++)
+            position[order[i]] = i;
+        var runSet = new HashSet<string>(run, StringComparer.Ordinal);
+        var packs = new List<LoadedPack>();
+        var used = new List<LoadedPack>();
+        foreach (var name in order)
+        {
+            var pack = loaded[name] with
+            {
+                Order = position[name],
+                Uses = [.. loaded[name].Manifest.Uses.Select(u => u.Pack)],
+                Sees = [.. graph.Reach(name).OrderBy(n => position[n])],
+                UsedBy = graph.UsedBy(name, model.Settings.Uses),
+            };
+            (runSet.Contains(name) ? packs : used).Add(pack);
+            if (wholeProject && pack.Manifest.Units.Count == 0 && pack.UsedBy.Count == 0)
+                diagnostics.Add(graph.Unused(name));
+        }
+
+        progress?.Report(new ProgressUpdate(PipelineStage.Plan, load.Count, load.Count, null, null));
+        return new PackSet(packs, Sort(diagnostics)) { Used = used };
     }
 
     /// <summary>

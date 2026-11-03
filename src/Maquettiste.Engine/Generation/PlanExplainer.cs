@@ -204,20 +204,33 @@ internal static class PlanExplainer
     }
 
     /// <summary>The cause kind of a read key (engine-design.md section 11's key prefixes).</summary>
-    public static string KindOf(string key) => key.Length < 2 || key[1] != ':' ? "inputs" : key[0] switch
+    /// <remarks>The prefix is read up to the colon, so a two-letter prefix such as <c>px</c> (exports) has its own kind.</remarks>
+    public static string KindOf(string key) => key.IndexOf(':', StringComparison.Ordinal) is var colon && colon <= 0 ? "inputs" : key[..colon] switch
     {
-        'e' => "element",
-        'k' => "kind-set",
-        'r' => "referrers",
-        's' => key.StartsWith("s:localization", StringComparison.Ordinal) ? "localization" : "setting",
-        't' => "template",
-        'd' => "schema-diff",
-        'l' => "translation",
-        'c' => "custom-kind",
+        "e" => "element",
+        "k" => "kind-set",
+        "r" => "referrers",
+        "s" => key.StartsWith("s:localization", StringComparison.Ordinal) ? "localization" : "setting",
+        "t" => "template",
+        "d" => "schema-diff",
+        "l" => "translation",
+        "c" => "custom-kind",
+        "px" => "exports",
         _ => "inputs",
     };
 
-    private static string? ElementOf(string key) => key.StartsWith("e:", StringComparison.Ordinal) || key.StartsWith("r:", StringComparison.Ordinal) ? key[2..] : null;
+    private static string? ElementOf(string key) =>
+        key.StartsWith("e:", StringComparison.Ordinal) || key.StartsWith("r:", StringComparison.Ordinal) ? key[2..]
+        : ExportsOf(key) is (_, { } id) ? id : null;
+
+    /// <summary>The pack and element id of a <c>px:&lt;pack&gt;/&lt;id&gt;</c> key (the id null for <c>px:&lt;pack&gt;</c>), or null.</summary>
+    private static (string Pack, string? Id)? ExportsOf(string key)
+    {
+        if (!key.StartsWith("px:", StringComparison.Ordinal))
+            return null;
+        var slash = key.IndexOf('/', 3);
+        return slash < 0 ? (key[3..], null) : (key[3..slash], key[(slash + 1)..]);
+    }
 
     private static string? Label(string id, Func<string, string?>? nameOf) => nameOf?.Invoke(id);
 
@@ -250,6 +263,9 @@ internal static class PlanExplainer
         "schema-diff" => "The schema diff of " + key[2..],
         "translation" => "Texts " + key[2..],
         "custom-kind" => "The custom kind " + key[2..],
+        "exports" => ExportsOf(key) is (var pack, { } id)
+            ? "The exports of " + (Label(id, nameOf) ?? "element " + id) + " from " + pack
+            : "The model exports of " + key[3..],
         _ => NamedInput(key) ?? ExtensionFile(key) ?? "Input " + key,
     };
 

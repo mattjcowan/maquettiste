@@ -29,6 +29,12 @@ internal enum ModelFileKind
 
     /// <summary>A description sidecar referenced by an element (<c>"description": { "file": … }</c>).</summary>
     Sidecar,
+
+    /// <summary>
+    /// A <c>templates/&lt;pack&gt;/pack.json</c> or script of a pack in the closure of <c>maquettiste.json</c>'s uses (library packs,
+    /// next-phase-2-design.md section 5.2): classified by that closure, not by path, as sidecars are by reference.
+    /// </summary>
+    LibraryFile,
 }
 
 /// <summary>
@@ -140,6 +146,14 @@ internal sealed class ModelPaths
             return ModelFileKind.CustomKind;
         return null;
     }
+
+    /// <summary>The model-relative folder of a pack (<c>templates/&lt;pack&gt;</c>), or <see langword="null"/> for a name that is not one folder.</summary>
+    /// <param name="pack">The pack name.</param>
+    /// <returns>The folder.</returns>
+    public static string? LibraryFolder(string pack) =>
+        pack.Length == 0 || pack[0] == '.' || pack.Contains('/', StringComparison.Ordinal) || pack.Contains('\\', StringComparison.Ordinal)
+            ? null
+            : "templates/" + pack;
 
     /// <summary>The folder part of a model-relative path (<c>""</c> for a top-level file).</summary>
     /// <param name="modelPath">The path.</param>

@@ -146,7 +146,7 @@ public sealed class HashingAndStateTests
     {
         using var repo = new TempRepo();
         var store = new UnitStateStore(repo.Options, new OutputPathPolicy(repo.Options, null));
-        Assert.EndsWith("p.v4.bin", store.FileOf("p"), StringComparison.Ordinal);
+        Assert.EndsWith("p.v5.bin", store.FileOf("p"), StringComparison.Ordinal);
         Assert.Empty(await store.LoadAsync("p", Ct));
         Assert.False(store.WasReset("p")); // no state at all: new, not reset
 
@@ -301,5 +301,89 @@ public sealed class HashingAndStateTests
         var again = UnitStateStore.Decode(UnitStateStore.Encode([renamed, decoded["p/b"]]))!;
         Assert.Equal("Bill (entity)", Assert.Single(again["p/a"].Names!).Value);
         Assert.Equal(["e:1", "k:entity", "e:2"], again["p/a"].ReadKeys);
+    }
+
+    [Fact]
+    public async Task A_template_key_of_a_used_pack_outside_the_run_hashes_its_file()
+    {
+        // Library packs (next-phase-2-design.md section 5.2): a run of records alone loads naming into PackSet.Used, and the t: key
+        // of naming's partial hashes its file through PackSet.Find, so editing the partial renders records' units again.
+        await using var f = await Maquettiste.Engine.Tests.Rendering.LibraryPacks.CreateAsync();
+        Assert.Equal(2, (await f.RunAsync(packs: ["records"])).UnitsRendered);
+        Assert.Equal(0, (await f.RunAsync(packs: ["records"])).UnitsRendered);
+
+        f.WritePackFile("naming", "partials/header.scriban", "// {{ element.name }}\n");
+        var again = await f.RunAsync(packs: ["records"]);
+
+        Assert.Equal(2, again.UnitsRendered);
+        Assert.Equal("// Customer\nclass CustomerRecord", f.Outputs()["out/records/CustomerRecord.cs"]);
+    }
+
+    [Fact]
+    public void An_exports_key_hashes_the_canonical_record()
+    {
+        var unit = Unit("record", "model") with
+        {
+            Exports = new SortedDictionary<string, PackExport>(StringComparer.Ordinal) { ["context"] = new() { Value = "{{ project.name }}" } },
+        };
+        var planned = new PlannedUnit("records/record", Pack("records", [unit]), unit, null, "s");
+        using var values = System.Text.Json.JsonDocument.Parse("""{ "context": "AppContext", "base": "App" }""");
+        var table = global::Maquettiste.Engine.Rendering.ExportTable.ForApply([planned],
+            new Dictionary<string, UnitExports>(StringComparer.Ordinal) { ["records/record"] = new(values.RootElement.Clone(), [], "i") });
+
+        Assert.Equal(HashBuilder.Of("mq-exports-1", """{"base":"App","context":"AppContext"}"""), table.Hash("records"));
+        Assert.Equal(["records/record"], table.Record("records", null).Units);
+        Assert.Empty(table.Unseeded);
+    }
+
+    [Fact]
+    public void An_exports_key_with_no_record_is_absent()
+    {
+        var table = global::Maquettiste.Engine.Rendering.ExportTable.ForApply([], new Dictionary<string, UnitExports>(StringComparer.Ordinal));
+        Assert.Equal(DependencyHasher.Absent, table.Hash("records/E1"));
+        Assert.Equal(DependencyHasher.Absent, table.Hash("records"));
+        Assert.Empty(table.Unseeded);
+    }
+
+    [Fact]
+    public void Unit_states_round_trip_exports()
+    {
+        using var values = System.Text.Json.JsonDocument.Parse("""{"class_name":"InvoiceRecord","members":{"a1":"Number"}}""");
+        var exports = new UnitExports(values.RootElement.Clone(), ["e:1", "s:project"], "x1");
+        var states = new[]
+        {
+            new UnitState("p/a:1", "h1", ["e:1", "k:entity", "s:project"], []) { Exports = exports },
+            new UnitState("p/b:2", "h2", ["e:2"], []) { Exports = exports with { ReadKeys = ["e:9"] } }, // keys outside the read keys: not stored
+            new UnitState("p/c:3", "h3", ["e:3"], []),
+        };
+
+        var bytes = UnitStateStore.Encode(states);
+        var decoded = UnitStateStore.Decode(bytes)!;
+        var a = decoded["p/a:1"].Exports!;
+        Assert.Equal(["e:1", "s:project"], a.ReadKeys);
+        Assert.Equal("x1", a.InputHash);
+        Assert.Equal("""{"class_name":"InvoiceRecord","members":{"a1":"Number"}}""", CanonicalForm.Json(a.Values));
+        Assert.Null(decoded["p/b:2"].Exports);
+        Assert.Null(decoded["p/c:3"].Exports);
+        // A decoded state is written back as the same bytes.
+        Assert.Equal(bytes, UnitStateStore.Encode([.. decoded.Values]));
+    }
+
+    [Fact]
+    public async Task A_format_4_state_file_loads_empty()
+    {
+        using var repo = new TempRepo();
+        var store = new UnitStateStore(repo.Options, new OutputPathPolicy(repo.Options, null));
+        var v4 = Path.Combine(store.Folder, "p.v4.bin");
+        Directory.CreateDirectory(store.Folder);
+        var format4 = UnitStateStore.Encode([new UnitState("p/a", "h1", [], [])]);
+        format4[4] = 4; // the format field, little-endian
+        await File.WriteAllBytesAsync(v4, format4, Ct);
+        Assert.Null(UnitStateStore.Decode(format4));
+        Assert.Empty(await store.LoadAsync("p", Ct));
+
+        await store.SaveAsync("p", [new UnitState("p/a", "h1", [], [])], Ct);
+        Assert.False(File.Exists(v4));
+        Assert.True(File.Exists(store.FileOf("p")));
     }
 }

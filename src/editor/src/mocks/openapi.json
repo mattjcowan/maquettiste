@@ -437,6 +437,7 @@
                           "scripts": [],
                           "parameterSchema": null,
                           "usesSchemaDiff": true,
+                          "uses": [],
                           "units": [
                             {
                               "id": "table",
@@ -453,7 +454,8 @@
                               "formatter": null,
                               "delimiters": null,
                               "companion": null,
-                              "transforms": []
+                              "transforms": [],
+                              "exports": {}
                             },
                             {
                               "id": "schema",
@@ -470,7 +472,8 @@
                               "formatter": null,
                               "delimiters": null,
                               "companion": null,
-                              "transforms": []
+                              "transforms": [],
+                              "exports": {}
                             }
                           ]
                         }
@@ -5858,6 +5861,7 @@
                           "reason": "new",
                           "causes": [],
                           "causeCount": 0,
+                          "exports": null,
                           "outputs": [
                             {
                               "path": "src/Generated/Billing/Customer.g.cs",
@@ -5928,7 +5932,8 @@
                       "unitsRendered": {
                         "new": 43
                       },
-                      "unitsSkipped": {}
+                      "unitsSkipped": {},
+                      "exports": []
                     }
                   }
                 }
@@ -6196,7 +6201,8 @@
                           "unitsRendered": {
                             "new": 43
                           },
-                          "unitsSkipped": {}
+                          "unitsSkipped": {},
+                          "exports": []
                         }
                       },
                       "applyResult": null,
@@ -6933,6 +6939,8 @@
                   ],
                   "hints": [],
                   "hintsUpdated": [],
+                  "usesUpdated": [],
+                  "textReferences": [],
                   "diagnostics": []
                 }
               }
@@ -9797,6 +9805,13 @@
               "$ref": "#/components/schemas/PackSettings"
             }
           },
+          "uses": {
+            "description": "The packs whose helpers the project's own scripts may call through `maquettiste.use`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackUse"
+            }
+          },
           "validation": {
             "type": "object",
             "required": [
@@ -10125,6 +10140,23 @@
                 ]
               }
             }
+          }
+        }
+      },
+      "PackUse": {
+        "x-engine-record": "Maquettiste.Engine.Model.PackUse",
+        "description": "A pack that a pack, or the project's scripts, use; the version is a range in the engine-range syntax.",
+        "type": "object",
+        "required": [
+          "pack",
+          "version"
+        ],
+        "properties": {
+          "pack": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
           }
         }
       },
@@ -10546,6 +10578,7 @@
           "parameterSchema",
           "scripts",
           "usesSchemaDiff",
+          "uses",
           "units"
         ],
         "properties": {
@@ -10592,7 +10625,15 @@
           "usesSchemaDiff": {
             "type": "boolean"
           },
+          "uses": {
+            "description": "The packs this pack uses, in `pack.json` order (library packs).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackUse"
+            }
+          },
           "units": {
+            "description": "The render units; empty for a library.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PackUnit"
@@ -10618,7 +10659,8 @@
           "formatter",
           "delimiters",
           "companion",
-          "transforms"
+          "transforms",
+          "exports"
         ],
         "properties": {
           "id": {
@@ -10735,6 +10777,32 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "exports": {
+            "type": "object",
+            "description": "Names the unit exports per element (`PackExport`): a template string, or `{each, value}` rendered per item of a list member and keyed by the item's id. Other packs read them with `exported`; empty when the unit exports none.",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "each",
+                    "value"
+                  ],
+                  "properties": {
+                    "each": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
             }
           }
         }
@@ -20708,7 +20776,8 @@
           "elementId",
           "reason",
           "causes",
-          "causeCount"
+          "causeCount",
+          "exports"
         ],
         "properties": {
           "pack": {
@@ -20783,6 +20852,60 @@
             "items": {
               "$ref": "#/components/schemas/PlanFile"
             }
+          },
+          "exports": {
+            "description": "The unit's export values (next-phase-2-design.md section 5.3): a rendered unit's from its render, a skipped one's from the export table; null when the unit declares no exports.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UnitExports"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "UnitExports": {
+        "x-engine-record": "Maquettiste.Engine.Pipeline.UnitExports",
+        "type": "object",
+        "required": [
+          "values",
+          "readKeys",
+          "inputHash"
+        ],
+        "properties": {
+          "values": {
+            "description": "Export name to text, or (an `each` export) to an object of item id to text; keys ordinal.",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "readKeys": {
+            "description": "The dependency keys the export templates read, ordinal.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "inputHash": {
+            "description": "The hash of the unit's static hash and the export keys; stored values serve readers while it is unchanged.",
+            "type": "string"
+          }
+        }
+      },
+      "PlanExport": {
+        "x-engine-record": "Maquettiste.Engine.PlanExport",
+        "type": "object",
+        "required": [
+          "key",
+          "exports"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "exports": {
+            "$ref": "#/components/schemas/UnitExports"
           }
         }
       },
@@ -20799,7 +20922,8 @@
           "diagnostics",
           "counts",
           "unitsRendered",
-          "unitsSkipped"
+          "unitsSkipped",
+          "exports"
         ],
         "properties": {
           "id": {
@@ -20845,6 +20969,13 @@
           },
           "unitsSkipped": {
             "$ref": "#/components/schemas/UnitReasonCounts"
+          },
+          "exports": {
+            "description": "The exporting units the plan used without planning them (units of used packs, units a scoped run left out), by key; apply checks their export inputs again.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanExport"
+            }
           }
         }
       },
@@ -21234,7 +21365,9 @@
           "output",
           "units",
           "fileCount",
-          "diagnostics"
+          "diagnostics",
+          "uses",
+          "usedBy"
         ],
         "properties": {
           "name": {
@@ -21273,6 +21406,20 @@
             "items": {
               "$ref": "#/components/schemas/Diagnostic"
             }
+          },
+          "uses": {
+            "description": "The packs this pack uses, in `pack.json` order; a pack without units is a library.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackUse"
+            }
+          },
+          "usedBy": {
+            "description": "The packs whose `uses` name it, ordinal, then `maquettiste.json` when the project's `uses` does.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -21292,6 +21439,10 @@
               "null"
             ],
             "description": "`empty` (the default) or the name of a pack of this project."
+          },
+          "library": {
+            "type": "boolean",
+            "description": "A library pack: no units, `partials/header.scriban` and a `helpers.js` with one helper; `from` must be `empty`."
           }
         }
       },
@@ -21331,7 +21482,7 @@
           },
           "usedBy": {
             "type": "array",
-            "description": "`unit:<id>`, `companion:<id>` and `include:<path>`, ordinal.",
+            "description": "`unit:<id>`, `companion:<id>`, `include:<path>` and `include:<pack>:<path>` (a file of another pack, whose `uses` names this one, includes it by its prefixed name), ordinal.",
             "items": {
               "type": "string"
             }
@@ -21383,7 +21534,8 @@
           "parameters",
           "files",
           "diagnostics",
-          "registrations"
+          "registrations",
+          "usedBy"
         ],
         "properties": {
           "name": {
@@ -21429,6 +21581,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ScriptRegistration"
+            }
+          },
+          "usedBy": {
+            "description": "The packs whose `uses` name it, ordinal, then `maquettiste.json` when the project's `uses` does.",
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -21840,6 +21999,8 @@
           "tracked",
           "hints",
           "hintsUpdated",
+          "usesUpdated",
+          "textReferences",
           "diagnostics"
         ],
         "properties": {
@@ -21907,6 +22068,20 @@
           "hintsUpdated": {
             "type": "array",
             "description": "The ids of the elements whose hints the rename moved itself (the MCP tool and the command line ask for it); always empty here.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "usesUpdated": {
+            "type": "array",
+            "description": "The `pack.json` files and `maquettiste.json` whose `uses` entries were rewritten to the new name (or would be, on a preview), ordinal.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "textReferences": {
+            "type": "array",
+            "description": "Repo-relative template and script files whose text names the old pack; not edited.",
             "items": {
               "type": "string"
             }
@@ -22244,7 +22419,9 @@
           "variables",
           "members",
           "helpers",
-          "registrations"
+          "registrations",
+          "namespaces",
+          "exportsFrom"
         ],
         "properties": {
           "pack": {
@@ -22283,6 +22460,65 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ScriptRegistration"
+            }
+          },
+          "namespaces": {
+            "description": "The helper namespaces the unit sees, by name: one per pack of its uses closure that registers helpers, and the pack's own when another pack uses it.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateNamespace"
+            }
+          },
+          "exportsFrom": {
+            "description": "The packs whose exports the unit may read with `exported` (its own and its uses closure), each with the names its units declare; packs that declare none are left out. Ordinal by pack.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateExportSource"
+            }
+          }
+        }
+      },
+      "TemplateExportSource": {
+        "x-engine-record": "Maquettiste.Engine.TemplateExportSource",
+        "type": "object",
+        "required": [
+          "pack",
+          "names"
+        ],
+        "properties": {
+          "pack": {
+            "type": "string"
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TemplateNamespace": {
+        "x-engine-record": "Maquettiste.Engine.TemplateNamespace",
+        "description": "A helper namespace a unit sees.",
+        "type": "object",
+        "required": [
+          "name",
+          "pack",
+          "helpers"
+        ],
+        "properties": {
+          "name": {
+            "description": "The namespace, the pack name with `-` replaced by `_`.",
+            "type": "string"
+          },
+          "pack": {
+            "type": "string"
+          },
+          "helpers": {
+            "description": "The pack's helper names, ordinal.",
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -25484,6 +25720,11 @@
         },
         "additionalProperties": false
       },
+      "key": {
+        "description": "A kebab-case key (stereotype keys).",
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+      },
       "maquettiste": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Project settings",
@@ -25505,6 +25746,7 @@
           "localization",
           "referenceData",
           "packs",
+          "uses",
           "validation",
           "limits",
           "explorer",
@@ -25852,6 +26094,33 @@
               "additionalProperties": false
             },
             "default": {}
+          },
+          "uses": {
+            "description": "The packs whose helpers the project's own scripts may call through maquettiste.use: each entry names a pack folder and a version range in the engine-range syntax.",
+            "type": "array",
+            "items": {
+              "title": "Pack use",
+              "type": "object",
+              "x-order": [
+                "pack",
+                "version"
+              ],
+              "properties": {
+                "pack": {
+                  "$ref": "#/components/schemas/key"
+                },
+                "version": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "pack",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
           },
           "validation": {
             "type": "object",
@@ -26407,11 +26676,6 @@
         "items": {
           "$ref": "#/components/schemas/id"
         }
-      },
-      "key": {
-        "description": "A kebab-case key (stereotype keys).",
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
       },
       "keyList": {
         "type": "array",
@@ -37777,6 +38041,7 @@
           "version",
           "engine",
           "description",
+          "uses",
           "parameters",
           "parameterSchema",
           "scripts",
@@ -37800,6 +38065,33 @@
           },
           "description": {
             "type": "string"
+          },
+          "uses": {
+            "description": "The packs this pack uses: their partials and helpers render in its units. Each entry names a pack folder and a version range in the engine-range syntax.",
+            "type": "array",
+            "items": {
+              "title": "Pack use",
+              "type": "object",
+              "x-order": [
+                "pack",
+                "version"
+              ],
+              "properties": {
+                "pack": {
+                  "$ref": "#/components/schemas/key"
+                },
+                "version": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "pack",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
           },
           "parameters": {
             "type": "object",
@@ -37860,7 +38152,8 @@
                 "formatter",
                 "delimiters",
                 "companion",
-                "transforms"
+                "transforms",
+                "exports"
               ],
               "properties": {
                 "id": {
@@ -38054,6 +38347,44 @@
                     "$ref": "#/components/schemas/identifier"
                   },
                   "default": []
+                },
+                "exports": {
+                  "description": "Names this unit exports per element, which other packs read with the exported helper and the unit's own templates read as exports: a template, or a template rendered per item of a list member and keyed by the item's id.",
+                  "type": "object",
+                  "propertyNames": {
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "additionalProperties": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "object",
+                        "x-order": [
+                          "each",
+                          "value"
+                        ],
+                        "properties": {
+                          "each": {
+                            "type": "string",
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "value": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "each",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "default": {}
                 }
               },
               "required": [
@@ -38122,14 +38453,13 @@
                 }
               ]
             },
-            "minItems": 1
+            "default": []
           }
         },
         "required": [
           "name",
           "version",
-          "engine",
-          "units"
+          "engine"
         ],
         "additionalProperties": false
       }

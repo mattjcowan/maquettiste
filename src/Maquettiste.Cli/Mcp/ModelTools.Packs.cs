@@ -16,7 +16,7 @@ internal sealed partial class ModelTools
 {
     /// <summary>One pack (getPack).</summary>
     [McpServerTool(Name = "get_pack", Title = "Get pack", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("One template pack: pack.json as a document with its hash (for save_pack), the parameters (default, project value, schema), every file with its hash, role (template, partial, script, type-map, manifest, other) and users, and the diagnostics (load errors, MQ6019 output paths outside every root, MQ6003 templates that do not parse).")]
+    [Description("One template pack: pack.json as a document with its hash (for save_pack), the parameters (default, project value, schema), every file with its hash, role (template, partial, script, type-map, manifest, other) and users (include:<pack>:<path> for a partial another pack includes by its prefixed name), usedBy (the packs whose uses name it, then maquettiste.json when the project's uses does), and the diagnostics (load errors of the pack and of the packs its uses reach, MQ6042 to MQ6045 uses problems, MQ6019 output paths outside every root, MQ6003 templates that do not parse).")]
     public Task<CallToolResult> GetPack([Description("The pack name (its folder under .maquettiste/templates/); required.")] string? pack = null,
         CancellationToken ct = default) => GuardAsync(() => PackAsync(async () =>
     {
@@ -56,22 +56,23 @@ internal sealed partial class ModelTools
 
     /// <summary>Creates a pack (createPack).</summary>
     [McpServerTool(Name = "new_pack", Title = "New pack", Destructive = false, OpenWorld = false)]
-    [Description("Creates .maquettiste/templates/<name>/ from 'empty' (one each-entity unit and its template), a built-in starter (sql-ddl, csharp-dapper) or a pack of this project (copied). Set packs.<name>.output in the settings to generate it.")]
+    [Description("Creates .maquettiste/templates/<name>/ from 'empty' (one each-entity unit and its template), a built-in starter (sql-ddl, csharp-dapper) or a pack of this project (copied). With library, a library pack instead: no units, partials/header.scriban and a helpers.js with one helper, which other packs list in their uses (from must be 'empty'). Set packs.<name>.output in the settings to generate a pack with units.")]
     public Task<CallToolResult> NewPack(
         [Description("The new pack's name (lowercase letters, digits, single hyphens); required.")] string? name = null,
         [Description("'empty' (the default), a built-in starter, or a pack of this project.")] string? from = null,
+        [Description("Create a library pack: no units, a partial and a helpers file that other packs use (default false; from must be 'empty').")] bool library = false,
         CancellationToken ct = default) => GuardAsync(() => PackAsync(async () =>
     {
         if (string.IsNullOrEmpty(name))
             return BadRequest("name is required.");
         var starters = StarterPacks.Names.ToDictionary(n => n, n => StarterPacks.Files(n, out _), StringComparer.Ordinal);
-        var result = await _generation.CreatePackAsync(name, from ?? "empty", starters, ct).ConfigureAwait(false);
+        var result = await _generation.CreatePackAsync(name, from ?? "empty", starters, library, ct).ConfigureAwait(false);
         return FromOutcome(result.Outcome, result, null);
     }), ct);
 
     /// <summary>Removes a pack (deletePack).</summary>
     [McpServerTool(Name = "delete_pack", Title = "Delete pack", Destructive = true, OpenWorld = false)]
-    [Description("Removes a template pack if pack.json still has expectedHash (the hash from get_pack): its packs.<pack> entry in maquettiste.json, the folder .maquettiste/templates/<pack>/, and its manifests and unit states. The files it generated stay on disk and are no longer tracked; untracked lists them. Waits for a generation run in progress. A refused settings save is invalid and removes nothing.")]
+    [Description("Removes a template pack if pack.json still has expectedHash (the hash from get_pack): its packs.<pack> entry in maquettiste.json, the folder .maquettiste/templates/<pack>/, and its manifests and unit states. The files it generated stay on disk and are no longer tracked; untracked lists them. Waits for a generation run in progress. A refused settings save is invalid and removes nothing. Refused (referenced) while another pack's uses or maquettiste.json's uses names the pack; the diagnostics name them.")]
     public Task<CallToolResult> DeletePack(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The pack.json hash returned by get_pack; required.")] string? expectedHash = null,
@@ -87,7 +88,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Renames a pack (renamePack).</summary>
     [McpServerTool(Name = "rename_pack", Title = "Rename pack", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Renames a template pack if pack.json still has expectedHash (the hash from get_pack): its packs.<pack> entry in maquettiste.json becomes packs.<name> with its values, the folder .maquettiste/templates/<pack>/ is renamed and pack.json names it, and its manifests and unit states move, so the files it generated stay tracked (tracked lists them). The name follows the pack-name rule (lowercase letters and digits separated by single hyphens) and must not be taken by another pack, settings entry or former pack's manifests; otherwise invalid and nothing changes. hints lists the elements whose generation hints name the old pack; with updateHints (the default) they move to the new name in one model batch after the rename, and hintsUpdated lists them (a refused batch leaves the rename in place and adds a warning). Waits for a generation run in progress.")]
+    [Description("Renames a template pack if pack.json still has expectedHash (the hash from get_pack): its packs.<pack> entry in maquettiste.json becomes packs.<name> with its values, the folder .maquettiste/templates/<pack>/ is renamed and pack.json names it, and its manifests and unit states move, so the files it generated stay tracked (tracked lists them). The name follows the pack-name rule (lowercase letters and digits separated by single hyphens) and must not be taken by another pack, settings entry or former pack's manifests; otherwise invalid and nothing changes. Every uses entry that names the pack, in other packs' pack.json files and in maquettiste.json, is rewritten to the new name before the folder moves (usesUpdated lists those files); textReferences lists the template and script files whose text names the old pack (prefixed includes, helper namespaces, maquettiste.use), which are not edited. hints lists the elements whose generation hints name the old pack; with updateHints (the default) they move to the new name in one model batch after the rename, and hintsUpdated lists them (a refused batch leaves the rename in place and adds a warning). Waits for a generation run in progress.")]
     public Task<CallToolResult> RenamePack(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The new name; required.")] string? name = null,
@@ -136,7 +137,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Deletes one pack file (deletePackFile).</summary>
     [McpServerTool(Name = "delete_pack_file", Title = "Delete pack file", Destructive = true, OpenWorld = false)]
-    [Description("Deletes one pack file if it still has expectedHash; refused (referenced) while a unit names it or a template includes it.")]
+    [Description("Deletes one pack file if it still has expectedHash; refused (referenced) while a unit names it or a template includes it, in this pack or in another pack that uses it (include:<pack>:<path>).")]
     public Task<CallToolResult> DeletePackFile(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The pack-relative path; required.")] string? path = null,
@@ -214,9 +215,25 @@ internal sealed partial class ModelTools
             return await _generation.GetPackOutputsAsync(pack, ct).ConfigureAwait(false) is { } outputs ? Ok(outputs) : NotFound("pack", pack);
         }), ct);
 
+    /// <summary>A pack's export records (getPackExports).</summary>
+    [McpServerTool(Name = "get_pack_exports", Title = "Pack exports", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The names a pack exports per element (its units' exports, merged per element), evaluated now from the model and the pack's uses closure: for each element asked (at most 20) its values, an each export as a map by item id, and the units it merges; without elementIds, the pack's model-scope record. A record that fails to evaluate has null values and its diagnostics. Nothing is written.")]
+    public Task<CallToolResult> GetPackExports(
+        [Description("The pack name; required.")] string? pack = null,
+        [Description("The element ids, at most 20; none for the model-scope record.")] string[]? elementIds = null,
+        CancellationToken ct = default) =>
+        GuardAsync(() => PackAsync(async () =>
+        {
+            if (string.IsNullOrEmpty(pack))
+                return BadRequest("pack is required.");
+            if (elementIds is { Length: > GenerationService.MaxRenderedPaths })
+                return BadRequest($"elementIds takes at most {GenerationService.MaxRenderedPaths} ids.");
+            return Ok(await _generation.GetPackExportsAsync(pack, elementIds, ct).ConfigureAwait(false));
+        }), ct);
+
     /// <summary>Moves a pack file (movePackFile).</summary>
     [McpServerTool(Name = "move_pack_file", Title = "Move pack file", Destructive = true, OpenWorld = false)]
-    [Description("Moves one pack file if it still has expectedHash; the target must not exist. updateUnits rewrites the units and scripts of pack.json that name it (canonical) and then needs expectedPackHash (the hash from get_pack). Refused while a template includes the file, or while a unit names it without updateUnits.")]
+    [Description("Moves one pack file if it still has expectedHash; the target must not exist. updateUnits rewrites the units and scripts of pack.json that name it (canonical) and then needs expectedPackHash (the hash from get_pack). Refused while a template includes the file (in this pack, or in another pack that uses it: include:<pack>:<path>), or while a unit names it without updateUnits.")]
     public Task<CallToolResult> MovePackFile(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The pack-relative source path; required.")] string? from = null,

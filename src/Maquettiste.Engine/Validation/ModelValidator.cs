@@ -103,8 +103,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         FrozenSet<string>? ruleNames = model.RuleScripts.Count == 0 ? FrozenSet<string>.Empty : null;
         IReadOnlyList<string> rules = [];
         IReadOnlyList<ScriptRegistration> modelRules = [];
+        var libraryPools = new Dictionary<string, RuleLibrary>(StringComparer.Ordinal);
         if (needScripts)
         {
+            // The project's library packs (next-phase-2-design.md section 5.2): one pool each, in dependency order, so maquettiste.use
+            // in a rule reaches their helpers. A library that does not load is reported on its script and left out.
+            var poolSize = Math.Max(1, Math.Min(parallelism, targets.Count));
+            libraryPools = LibraryPools(model, scripts, poolSize, diagnostics, ct);
+            IReadOnlyList<ScriptLibrary> libraries = [.. model.ScriptLibraries.Where(l => libraryPools.ContainsKey(l.Pack))
+                .Select(l => new ScriptLibrary(l.Pack, libraryPools[l.Pack].Helpers))];
+
             // A rule file that does not load (a syntax error, a registration without an id, a limit) is reported on that file with its
             // line and column, and the other rule files still run without it. While one is broken the set of rule ids is unknown, so
             // MQ2007 (an unknown rule) is not reported against the ids it would have registered.
@@ -114,7 +122,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             {
                 try
                 {
-                    pool = scripts.CreatePool(loadable, model.Settings.Limits, Math.Max(1, Math.Min(parallelism, targets.Count)), ct);
+                    pool = libraries.Count == 0 ? scripts.CreatePool(loadable, model.Settings.Limits, poolSize, ct)
+                        : scripts.CreatePool(loadable, libraries, model.Settings.Limits, poolSize, ct);
                     var registered = pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Rule).ToList();
                     // Element rules run on each document; whole-model rules (scope "model") once, after them, on whole-model runs only.
                     rules = [.. registered.Where(r => !r.WholeModel).Select(r => Bare(r.Name)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
@@ -169,7 +178,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         try
         {
             var context = shared.WithRuleNames(ruleNames);
-            var ruleRun = runScripts ? new RuleRun(pool!, rules, RuleKinds(pool!), CachedRuleFiles(model, pool!), _ruleResults, ticket) : null;
+            var calls = new RuleLibraryCalls(libraryPools);
+            var ruleRun = runScripts ? new RuleRun(pool!, rules, RuleKinds(pool!), CachedRuleFiles(model, pool!), _ruleResults, ticket, calls) : null;
             var perDocument = new IReadOnlyList<Diagnostic>[targets.Count];
             var done = 0;
             await Parallel.ForEachAsync(
@@ -202,11 +212,13 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             // Whole-model rules run once per whole-model validation, on one lease, after the per-document loop (section 5.7); scoped
             // validations (element saves) skip them, so they never refuse a save over elements outside the change.
             if (wholeModel && scope.IncludeScriptRules && pool is not null && modelRules.Count > 0)
-                RunModelRules(pool, modelRules, model, diagnostics, ct);
+                RunModelRules(pool, modelRules, model, diagnostics, calls, ct);
         }
         finally
         {
             pool?.Dispose();
+            foreach (var library in libraryPools.Values)
+                library.Pool?.Dispose();
             runtime?.Dispose();
         }
 
@@ -1067,8 +1079,109 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// <param name="Cached">Rule id → its rule file, for the rules whose results are cached (<see cref="CachedRuleFiles"/>).</param>
     /// <param name="Cache">The validator's result cache.</param>
     /// <param name="Ticket">The validation's cache ticket.</param>
+    /// <param name="Libraries">Where the rules' <c>maquettiste.use</c> calls go (library packs).</param>
     private sealed record RuleRun(IScriptSandboxPool Pool, IReadOnlyList<string> Rules, IReadOnlyDictionary<string, IReadOnlySet<string>> Kinds,
-        IReadOnlyDictionary<string, ScriptSource> Cached, RuleResultCache Cache, long Ticket);
+        IReadOnlyDictionary<string, ScriptSource> Cached, RuleResultCache Cache, long Ticket, RuleLibraryCalls Libraries) : IScriptLibraryCalls
+    {
+        /// <inheritdoc/>
+        public object? Call(string pack, string helper, IReadOnlyList<object?> args, ScriptCallContext caller) => Libraries.Call(pack, helper, args, caller);
+    }
+
+    /// <summary>A project library of one validation: its pool (none without scripts), its helper names, its parameters as plain values.</summary>
+    private sealed record RuleLibrary(IScriptSandboxPool? Pool, IReadOnlyList<string> Helpers, IReadOnlyDictionary<string, object?> Parameters);
+
+    /// <summary>
+    /// The calls of the project's rules into its library packs: each call rents an engine of the library's pool, runs the helper with
+    /// the library's parameters and the caller's recorder, and returns it. A library's failure is MQ5002 (a limit MQ5003) at the
+    /// library's script, naming the library.
+    /// </summary>
+    private sealed class RuleLibraryCalls(IReadOnlyDictionary<string, RuleLibrary> libraries) : IScriptLibraryCalls
+    {
+        /// <inheritdoc/>
+        public object? Call(string pack, string helper, IReadOnlyList<object?> args, ScriptCallContext caller)
+        {
+            ArgumentNullException.ThrowIfNull(caller);
+            var label = $"maquettiste.use('{pack}').{helper}";
+            if (!libraries.TryGetValue(pack, out var library) || library.Pool is null)
+            {
+                throw new ScriptErrorException(new Diagnostic("MQ5002", DiagnosticSeverity.Error,
+                    $"{label}: the library pack '{pack}' has no helper '{helper}'.", null, null, null, null, null));
+            }
+
+            using var lease = library.Pool.Rent();
+            try
+            {
+                return lease.Sandbox.CallHelper(helper, args, caller with { Parameters = library.Parameters });
+            }
+            catch (ScriptErrorException e)
+            {
+                throw new ScriptErrorException(e.Diagnostic with { Rule = "MQ5002", Message = $"The library pack '{pack}' failed in {label}: {e.Diagnostic.Message}" }, e);
+            }
+            catch (ScriptLimitException e)
+            {
+                throw new ScriptLimitException(e.Diagnostic with { Rule = "MQ5003", Message = $"The library pack '{pack}' exceeded a limit in {label}: {e.Diagnostic.Message}" }, e);
+            }
+        }
+    }
+
+    /// <summary>
+    /// One pool per project library (<see cref="ModelSnapshot.ScriptLibraries"/>), in dependency order, each reaching the libraries of
+    /// its own closure. A library whose scripts fail to load is MQ5002 (a limit MQ5003) at its script and left out, and so is a library
+    /// whose closure holds one.
+    /// </summary>
+    private static Dictionary<string, RuleLibrary> LibraryPools(ModelSnapshot model, IScriptSandboxFactory scripts, int size, List<Diagnostic> diagnostics,
+        CancellationToken ct)
+    {
+        var pools = new Dictionary<string, RuleLibrary>(StringComparer.Ordinal);
+        var byName = model.ScriptLibraries.ToDictionary(l => l.Pack, StringComparer.Ordinal);
+        foreach (var library in model.ScriptLibraries)
+        {
+            var reach = new HashSet<string>(StringComparer.Ordinal);
+            var stack = new Stack<string>(library.Uses);
+            while (stack.Count > 0)
+            {
+                var next = stack.Pop();
+                if (reach.Add(next) && byName.TryGetValue(next, out var used))
+                {
+                    foreach (var name in used.Uses)
+                        stack.Push(name);
+                }
+            }
+
+            if (!reach.All(pools.ContainsKey))
+                continue;
+            var parameters = new SortedDictionary<string, object?>(StringComparer.Ordinal);
+            foreach (var (name, value) in library.Parameters)
+                parameters[name] = Rendering.TemplateValues.Plain(value);
+            if (library.Scripts.Count == 0)
+            {
+                pools[library.Pack] = new RuleLibrary(null, [], parameters);
+                continue;
+            }
+
+            IReadOnlyList<ScriptLibrary> reached = [.. model.ScriptLibraries.Where(l => reach.Contains(l.Pack)).Select(l => new ScriptLibrary(l.Pack, pools[l.Pack].Helpers))];
+            try
+            {
+                var pool = reached.Count == 0 ? scripts.CreatePool(library.Scripts, model.Settings.Limits, size, ct)
+                    : scripts.CreatePool(library.Scripts, reached, model.Settings.Limits, size, ct);
+                IReadOnlyList<string> helpers = [.. pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Helper).Select(r => r.Name)
+                    .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                pools[library.Pack] = new RuleLibrary(pool, helpers, parameters);
+            }
+            catch (Exception e) when (e is ScriptErrorException or ScriptLimitException)
+            {
+                var (rule, located) = e is ScriptLimitException limit ? ("MQ5003", limit.Diagnostic) : ("MQ5002", ((ScriptErrorException)e).Diagnostic);
+                diagnostics.Add(located with
+                {
+                    Rule = rule,
+                    Message = $"The library pack '{library.Pack}' that maquettiste.json uses failed to load, so rules cannot call it: {located.Message}",
+                    FilePath = located.FilePath ?? library.Scripts[0].Path,
+                });
+            }
+        }
+
+        return pools;
+    }
 
     /// <summary>The kinds of each element rule that names kinds; a rule missing here checks every kind.</summary>
     private static Dictionary<string, IReadOnlySet<string>> RuleKinds(IScriptSandboxPool pool)
@@ -1088,12 +1201,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// whose file has no MQ5005 warning (top-level <c>let</c> or <c>var</c>, state the sandbox cannot freeze). One scope per file and
     /// the globals frozen before the files run make a file's hash, with the shared sandbox setup, its behaviour (section 5.7).
     /// </summary>
-    private static Dictionary<string, ScriptSource> CachedRuleFiles(ModelSnapshot model, IScriptSandboxPool pool)
+    internal static Dictionary<string, ScriptSource> CachedRuleFiles(ModelSnapshot model, IScriptSandboxPool pool)
     {
         var stateful = pool.Warnings.Where(w => w.Rule == "MQ5005" && w.FilePath is not null).Select(w => w.FilePath!).ToHashSet(StringComparer.Ordinal);
         var files = new Dictionary<string, ScriptSource>(StringComparer.Ordinal);
+        // The project's libraries fold into every rule file's key (library packs): a cached result is never served after one changed.
+        // Without uses the keys are the file hashes, as before.
+        var libraries = model.ScriptLibraries.Count == 0 ? null
+            : Hashing.HashBuilder.Of(["mq-rule-libraries-1", .. model.ScriptLibraries.Select(l => l.Hash)]);
         foreach (var script in model.RuleScripts)
-            files.TryAdd(script.Path, script);
+            files.TryAdd(script.Path, libraries is null ? script : script with { Hash = Hashing.HashBuilder.Of(script.Hash, libraries) });
         var cached = new Dictionary<string, ScriptSource>(StringComparer.Ordinal);
         foreach (var registration in pool.Registrations)
         {
@@ -1150,7 +1267,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 try
                 {
                     var reads = ruleFile is null ? null : new RuleReads();
-                    var context = new ScriptCallContext(reads, document.Element.Id, NoParameters, ct);
+                    var context = new ScriptCallContext(reads, document.Element.Id, NoParameters, ct) { Libraries = run };
                     lease ??= run.Pool.Rent();
                     var diagnostics = lease.Sandbox.RunRule(rule, document, model, context);
                     // Only a clean run is kept: a rule that threw ends with its MQ5002 (a catalog id) after its reports.
@@ -1223,7 +1340,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// element rules. Their results are never cached.
     /// </summary>
     private static void RunModelRules(IScriptSandboxPool pool, IReadOnlyList<ScriptRegistration> modelRules, ModelSnapshot model, List<Diagnostic> diagnostics,
-        CancellationToken ct)
+        IScriptLibraryCalls libraries, CancellationToken ct)
     {
         var settings = model.Settings.Validation.Rules;
         using var lease = pool.Rent();
@@ -1238,7 +1355,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             var failureSeverity = SeverityOf(setting);
             try
             {
-                var context = new ScriptCallContext(null, ruleId, NoParameters, ct);
+                var context = new ScriptCallContext(null, ruleId, NoParameters, ct) { Libraries = libraries };
                 foreach (var d in lease.Sandbox.RunModelRule(rule, model, context))
                 {
                     if (RuleCatalog.TryGet(d.Rule, out _))

@@ -151,4 +151,29 @@ public sealed class McpPackToolTests
         Assert.Null(after["settings"]!["packs"]!["docs"]);
         Assert.False((bool)after["settings"]!["packs"]!["notes"]!["enabled"]!);
     }
+
+    [Fact]
+    public async Task Get_pack_exports_returns_the_records_of_the_elements_asked()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+        await session.OkAsync("new_pack", new { name = "docs", from = "empty" });
+        var pack = await session.OkAsync("get_pack", new { pack = "docs" });
+        var document = pack["document"]!.DeepClone().AsObject();
+        document["units"] = new JsonArray(new JsonObject
+        {
+            ["id"] = "index", ["template"] = "index.scriban", ["for"] = "model", ["output"] = "index.md",
+            ["exports"] = new JsonObject { ["context"] = "{{ pascal project.name }}Context" },
+        });
+        await session.OkAsync("save_pack", new { pack = "docs", document, expectedHash = (string)pack["hash"]! });
+        await session.OkAsync("write_pack_file", new { pack = "docs", path = "index.scriban", text = "# {{ exports.context }}\n", expectedHash = "new" });
+
+        var exports = await session.OkAsync("get_pack_exports", new { pack = "docs" });
+
+        var record = Assert.Single(exports["elements"]!.AsArray())!;
+        Assert.Null(record["elementId"]);
+        Assert.EndsWith("Context", (string)record["values"]!["context"]!, StringComparison.Ordinal);
+        Assert.Equal(["docs/index"], record["units"]!.AsArray().Select(u => (string)u!));
+        Assert.Equal("bad-request", (await session.ErrorAsync("get_pack_exports", new { pack = "docs", elementIds = Enumerable.Range(0, 21).Select(i => "e" + i).ToArray() })).Code);
+    }
 }

@@ -45,6 +45,9 @@ internal sealed partial class ScriptSandbox
     [GeneratedRegex(@"at (?:[^()\r\n]*\()?(?<file>[^()\r\n]+?):(?<line>\d+):(?<col>\d+)\)?\s*$", RegexOptions.Multiline | RegexOptions.CultureInvariant)]
     private static partial Regex StackFrame();
 
+    /// <summary>The running call's context (for <c>maquettiste.use</c> calls); <see langword="null"/> between calls and while loading.</summary>
+    private ScriptCallContext? _callContext;
+
     private T Run<T>(CallSite site, ScriptCallContext ctx, Func<T> body)
     {
         ArgumentNullException.ThrowIfNull(ctx);
@@ -54,6 +57,7 @@ internal sealed partial class ScriptSandbox
         if (_inCall)
             throw new InvalidOperationException("A script sandbox runs one call at a time.");
         _inCall = true;
+        _callContext = ctx;
         _state.Begin(ctx);
         _random.Seed(ctx.Seed ?? "");
         try
@@ -74,6 +78,12 @@ internal sealed partial class ScriptSandbox
         {
             throw Translate(ex, site, ctx.CancellationToken);
         }
+        catch (Exception ex) when (ex is ScriptErrorException or ScriptLimitException && _callContext?.Libraries is not null)
+        {
+            // A used pack's failure (library packs) keeps its own script and position; this engine only unwinds its stack.
+            _engine.Advanced.ResetCallStack();
+            throw;
+        }
         catch (OperationCanceledException)
         {
             Faulted = true;
@@ -82,6 +92,7 @@ internal sealed partial class ScriptSandbox
         finally
         {
             _state.End();
+            _callContext = null;
             _inCall = false;
         }
     }

@@ -176,16 +176,25 @@ internal sealed class TrackingTemplateContext : TemplateContext
     /// <inheritdoc/>
     protected override Template CreateTemplate(string templatePath, ScriptNode? callerContext)
     {
-        Recorder.Record(_unit.TemplateKey(templatePath));
-        var template = _unit.Run.Templates.Get(_unit.Planned.Pack, templatePath, _unit.Planned.Unit.Delimiters);
+        // The loader returns <pack>:<path> (library packs): a partial of another pack records its own t: key and parses with the
+        // default delimiters, since a library has no unit to declare other ones.
+        PackPaths.SplitPack(templatePath, out var name, out var path);
+        var pack = name is null ? _unit.Planned.Pack : _unit.Seen(name)
+            ?? throw new ScriptRuntimeException(callerContext?.Span ?? default, $"Pack '{name}' is not in the uses of pack '{_unit.Planned.Pack.Name}'.");
+        Recorder.Record(_unit.TemplateKey(pack.Name, path));
+        var own = string.Equals(pack.Name, _unit.Planned.Pack.Name, StringComparison.Ordinal);
+        var template = _unit.Run.Templates.Get(pack, path, own ? _unit.Planned.Unit.Delimiters : null);
         _unit.Used(template);
         return template;
     }
 }
 
 /// <summary>
-/// Resolves <c>include</c> names against the pack folder: a pack-relative path with <c>/</c> separators, no <c>..</c>, no rooted
+/// Resolves <c>include</c> names against a pack folder: a pack-relative path with <c>/</c> separators, no <c>..</c>, no rooted
 /// path. The template cache reads the file and refuses anything that resolves outside the pack folder (symbolic links included).
+/// A <c>&lt;pack&gt;:</c> prefix names the unit's pack or a pack in its uses closure (library packs, next-phase-2-design.md section
+/// 5.2; MQ6006 otherwise); without one, the name resolves in the pack whose folder holds the including file. The path returned is
+/// <c>&lt;pack&gt;:&lt;path&gt;</c>, so two packs' partials of the same path never share a cached template.
 /// </summary>
 /// <param name="unit">The unit.</param>
 internal sealed class PackTemplateLoader(UnitRun unit) : ITemplateLoader
@@ -193,14 +202,22 @@ internal sealed class PackTemplateLoader(UnitRun unit) : ITemplateLoader
     /// <inheritdoc/>
     public string? GetPath(TemplateContext context, SourceSpan callerSpan, string templateName)
     {
-        if (!PackPaths.TryNormalize(templateName, out var path, out var error))
+        PackPaths.SplitPack(templateName ?? "", out var name, out var rest);
+        if (!PackPaths.TryNormalize(rest, out var path, out var error))
             throw new ScriptRuntimeException(callerSpan, $"Cannot include '{templateName}': {error}");
-        return path;
+        var pack = name is null ? unit.PackOfSource(callerSpan.FileName) : unit.Seen(name)
+            ?? throw new ScriptRuntimeException(callerSpan, $"Cannot include '{templateName}': pack '{name}' is not in the uses of pack '{unit.Planned.Pack.Name}'.");
+        return pack.Name + ":" + path;
     }
 
     /// <inheritdoc/>
-    public string? Load(TemplateContext context, SourceSpan callerSpan, string templatePath) =>
-        unit.Run.Templates.ReadText(unit.Planned.Pack, templatePath);
+    public string? Load(TemplateContext context, SourceSpan callerSpan, string templatePath)
+    {
+        PackPaths.SplitPack(templatePath, out var name, out var path);
+        var pack = name is null ? unit.Planned.Pack : unit.Seen(name)
+            ?? throw new ScriptRuntimeException(callerSpan, $"Pack '{name}' is not in the uses of pack '{unit.Planned.Pack.Name}'.");
+        return unit.Run.Templates.ReadText(pack, path);
+    }
 
     /// <inheritdoc/>
     public ValueTask<string?> LoadAsync(TemplateContext context, SourceSpan callerSpan, string templatePath) =>

@@ -9,7 +9,7 @@ using Maquettiste.Engine.Writing;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste pack new &lt;name&gt; [--from empty|sql-ddl|csharp-dapper]</c>: scaffolds <c>.maquettiste/templates/&lt;name&gt;/</c>
+/// <c>maquettiste pack new &lt;name&gt; [--from empty|sql-ddl|csharp-dapper] [--library]</c>: scaffolds <c>.maquettiste/templates/&lt;name&gt;/</c>
 /// (engine-design.md section 16). <c>empty</c> writes a <c>pack.json</c> with one <c>each entity</c> unit, its template and a
 /// <c>helpers.js</c>; the other choices copy that starter pack under the new name. An existing folder is refused (exit 4).
 /// </summary>
@@ -25,13 +25,18 @@ internal static partial class PackNewCommand
             return await PackRemoveCommand.RunAsync(context, ct).ConfigureAwait(false);
         if (context.Line.Positionals.Count >= 2 && context.Line.Positionals[1] == "rename")
             return await PackRenameCommand.RunAsync(context, ct).ConfigureAwait(false);
+        if (context.Line.Positionals.Count >= 2 && context.Line.Positionals[1] == "exports")
+            return await PackExportsCommand.RunAsync(context, ct).ConfigureAwait(false);
         if (context.Line.Positionals.Count < 2 || context.Line.Positionals[1] != "new")
-            throw new UsageException("Usage: maquettiste pack new <name> [--from empty|sql-ddl|csharp-dapper], maquettiste pack remove <name> [--apply] [--format text|json], or maquettiste pack rename <name> <new-name> [--apply] [--keep-hints] [--format text|json].");
-        context.Line.Expect("pack new", 3, "--from");
+            throw new UsageException("Usage: maquettiste pack new <name> [--from empty|sql-ddl|csharp-dapper] [--library], maquettiste pack remove <name> [--apply] [--format text|json], maquettiste pack rename <name> <new-name> [--apply] [--keep-hints] [--format text|json], or maquettiste pack exports <pack> [--element <id>]... [--format text|json].");
+        context.Line.Expect("pack new", 3, "--from", "--library");
         var name = context.Line.Positionals[2];
         if (!KeyPattern().IsMatch(name))
             throw new UsageException($"The pack name '{name}' must be kebab-case: lowercase letters and digits separated by single hyphens, starting with a letter.");
         var from = context.Line.Choice("--from", "empty", ["empty", .. StarterPacks.Names]);
+        var library = context.Line.Has("--library");
+        if (library && from != "empty")
+            throw new UsageException($"--library starts a pack from empty; it cannot be combined with --from {from}.");
         if (await ProjectGuard.RepoAsync(context).ConfigureAwait(false) is not { } repo)
             return Program.ExitCodes.Invalid;
 
@@ -47,7 +52,20 @@ internal static partial class PackNewCommand
         var json = new CanonicalJson(new SchemaRegistry());
         var packJsonPath = "templates/" + name + "/pack.json";
         var output = new List<KeyValuePair<string, byte[]>>();
-        if (from == "empty")
+        if (library)
+        {
+            // A library pack (next-phase-2-design.md section 5.2): no units; other packs list it in their uses.
+            var manifest = new JsonObject
+            {
+                ["name"] = name,
+                ["version"] = "0.1.0",
+                ["engine"] = ">=1.0 <2.0",
+                ["description"] = "A new library pack: partials and helpers that other packs use.",
+            };
+            output.Add(new("pack.json", json.Write(manifest, "pack.json", packJsonPath)));
+            output.AddRange(StarterPacks.Library(name).Select(f => new KeyValuePair<string, byte[]>(f.Key, Encoding.UTF8.GetBytes(f.Value))));
+        }
+        else if (from == "empty")
         {
             var manifest = new JsonObject
             {
@@ -88,7 +106,9 @@ internal static partial class PackNewCommand
 
         foreach (var (relative, _) in output.OrderBy(f => f.Key, StringComparer.Ordinal))
             await context.Out.WriteLineAsync($".maquettiste/templates/{name}/{relative}").ConfigureAwait(false);
-        context.Info($"Created pack '{name}' from {from}. To generate it, set packs.{name}.output in .maquettiste/maquettiste.json to a folder under an outputs.allow root.");
+        context.Info(library
+            ? $"Created library pack '{name}'. List it in another pack's uses ({{ \"pack\": \"{name}\", \"version\": \"^0.1.0\" }}) to include its partials and call its helpers."
+            : $"Created pack '{name}' from {from}. To generate it, set packs.{name}.output in .maquettiste/maquettiste.json to a folder under an outputs.allow root.");
         return Program.ExitCodes.Success;
     }
 

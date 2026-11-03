@@ -92,10 +92,11 @@ public sealed partial class GenerationService
         using var held = slot;
         if (session is null)
             return new PreviewResult([], failure) { ElapsedMs = clock.ElapsedMilliseconds };
+        using var opened = session;
         var (prepared, loaded, unit, element, _, _, _, renderer, context) = session;
         // One unit for one element: nothing else of the pack is planned or rendered.
         var key = UnitPlanner.KeyOf(loaded.Name, unit.Id, element?.Id);
-        var planned = new PlannedUnit(key, loaded, unit, element, UnitPlanner.StaticHash(loaded, unit, prepared.Snapshot.Settings.Formatters, key));
+        var planned = new PlannedUnit(key, loaded, unit, element, UnitPlanner.StaticHash(loaded, unit, prepared.Snapshot.Settings.Formatters, key, session.Packs));
         try
         {
             var rendered = await renderer.RenderOneAsync(planned, context, timeout.Token).ConfigureAwait(false);
@@ -239,15 +240,30 @@ public sealed partial class GenerationService
     internal async Task<string> PreviewSessionKeyAsync(string pack, CancellationToken ct) =>
         SessionKey(await _store.GetSnapshotAsync(ct).ConfigureAwait(false), PackStamp(pack));
 
+    /// <summary>
+    /// The files of the pack and of its uses closure (library packs): names, sizes and write times, so an edit of a used pack's
+    /// partial, script or <c>pack.json</c> opens a new session. Only the closure's folders are read, never every pack.
+    /// </summary>
     private string PackStamp(string pack)
     {
         var root = PackAuthoring.PackRoot(_options, pack);
         using var hash = new HashBuilder();
         hash.Add("mq-preview-session-1");
-        foreach (var path in PackFileRoles.EnumerateFiles(root))
+        void Files(string folder)
         {
-            var info = new FileInfo(Path.Combine(root, path.Replace('/', Path.DirectorySeparatorChar)));
-            hash.Add(path).Add(info.Length).Add(info.LastWriteTimeUtc.Ticks);
+            foreach (var path in PackFileRoles.EnumerateFiles(folder))
+            {
+                var info = new FileInfo(Path.Combine(folder, path.Replace('/', Path.DirectorySeparatorChar)));
+                hash.Add(path).Add(info.Length).Add(info.LastWriteTimeUtc.Ticks);
+            }
+        }
+
+        Files(root);
+        var templates = Path.GetDirectoryName(root)!;
+        foreach (var used in PackUses.ReachFromFiles(templates, pack))
+        {
+            hash.Add("uses").Add(used);
+            Files(Path.Combine(templates, used));
         }
 
         return hash.Finish();
@@ -277,8 +293,9 @@ public sealed partial class GenerationService
     /// <param name="Failure">Why nothing can be previewed: the model's or the pack's errors.</param>
     /// <param name="SchemaDiffs">The schema diffs, computed per database on first read; empty when the pack does not use them.</param>
     /// <param name="Paths">The output path policy.</param>
+    /// <param name="Used">The packs of the pack's uses closure (library packs), in dependency order.</param>
     private sealed record PreviewSession(ModelSnapshot Snapshot, ResolvedModel? Resolved, LoadedPack? Pack, IReadOnlyList<Diagnostic> Failure,
-        IReadOnlyDictionary<string, SchemaDiffResult> SchemaDiffs, IOutputPathPolicy? Paths)
+        IReadOnlyDictionary<string, SchemaDiffResult> SchemaDiffs, IOutputPathPolicy? Paths, IReadOnlyList<LoadedPack> Used)
     {
         /// <summary>The saved units' scope listings, by unit id (a listing of an unsaved unit is not kept).</summary>
         public ConcurrentDictionary<string, Task<UnitPlan>> Scopes { get; } = new(StringComparer.Ordinal);
@@ -329,13 +346,15 @@ public sealed partial class GenerationService
     {
         Interlocked.Increment(ref _sessionsPrepared);
         PreviewSession Failed(IEnumerable<Diagnostic> diagnostics) => new(snapshot, null, null, Outcomes.Sort(diagnostics.Where(Outcomes.IsInvalid)),
-            new Dictionary<string, SchemaDiffResult>(StringComparer.Ordinal), null);
+            new Dictionary<string, SchemaDiffResult>(StringComparer.Ordinal), null, []);
 
         var shared = await _store.ResolvedAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
         if (shared.Model is null)
             return Failed(shared.Report.Diagnostics.Where(Outcomes.BlocksResolution)); // a pending migration fact (MQ4101) does not stop a preview
-        var (loaded, packDiagnostics) = await new PackLoader(_options, _services.Schemas).LoadNamedAsync(snapshot, pack, CancellationToken.None).ConfigureAwait(false);
-        if (loaded is null)
+        // The pack with its uses closure (library packs): never every pack of the project.
+        var set = await new PackLoader(_options, _services.Schemas).LoadClosureAsync(snapshot, pack, CancellationToken.None).ConfigureAwait(false);
+        var packDiagnostics = set.Diagnostics;
+        if (set.Packs.FirstOrDefault() is not { } loaded)
             return Failed(packDiagnostics);
         var settings = snapshot.Settings.Packs.TryGetValue(pack, out var s) ? s : new PackSettings();
         var packErrors = packDiagnostics.Where(d => d.Rule != "MQ6003" && Outcomes.IsInvalid(d)).ToList();
@@ -347,14 +366,17 @@ public sealed partial class GenerationService
         IReadOnlyDictionary<string, SchemaDiffResult> diffs = loaded.Manifest.UsesSchemaDiff
             ? new LazySchemaDiffs(resolved, _services)
             : new Dictionary<string, SchemaDiffResult>(StringComparer.Ordinal);
-        return new PreviewSession(snapshot, resolved, loaded, [], diffs, _services.CreatePathPolicy(snapshot.Settings));
+        return new PreviewSession(snapshot, resolved, loaded, [], diffs, _services.CreatePathPolicy(snapshot.Settings), set.Used);
     }
 
-    /// <summary>The prepared state a preview or a path listing renders one unit with.</summary>
+    /// <summary>The prepared state a preview or a path listing renders one unit with; disposing it releases its export table's
+    /// evaluator (script pools), so the request that opened it disposes it when it ends.</summary>
     private sealed record UnitSession(PreviewSession Session, LoadedPack Loaded, PackUnit Unit, IResolvedObject? Element,
-        IReadOnlyDictionary<string, string> Overlay, bool Changed, PackSet Packs, IRenderer Renderer, RenderContext Context)
+        IReadOnlyDictionary<string, string> Overlay, bool Changed, PackSet Packs, IRenderer Renderer, RenderContext Context) : IDisposable
     {
         public ResolvedModel Resolved => Session.Resolved!;
+
+        public void Dispose() => Context.Exports?.Dispose();
     }
 
     /// <summary>Prepares a unit for rendering with any unsaved text; the diagnostics say why it cannot be.</summary>
@@ -377,7 +399,7 @@ public sealed partial class GenerationService
         if (elementId is not null && element is null)
             return (null, [RuleCatalog.Create("MQ6017", $"Element '{elementId}' is not in the resolved model.", elementId)]);
 
-        if (checkScope && UnitPlanner.OutOfScope(resolved, loaded, unit, element, _services.Scripts, ct) is { } outOfScope)
+        if (checkScope && UnitPlanner.OutOfScope(resolved, loaded, unit, element, _services.Scripts, ct, new PackSet([loaded], []) { Used = session.Used }) is { } outOfScope)
         {
             var index = loaded.Manifest.Units.ToList().FindIndex(u => string.Equals(u.Id, unit.Id, StringComparison.Ordinal));
             return (null, [RuleCatalog.Create("MQ6026", outOfScope, elementId, loaded.RelativePath + "/pack.json", index < 0 ? null : $"/units/{index}/for")]);
@@ -411,11 +433,15 @@ public sealed partial class GenerationService
             };
         }
 
-        // The pack alone: a preview renders one unit of it, and nothing in a render reads another pack.
-        var packs = new PackSet([loaded], []);
+        // The pack and its uses closure: a preview renders one unit of it, and a render reads no pack outside the closure.
+        var packs = new PackSet([loaded], []) { Used = session.Used };
         var renderer = overlay.Count == 0 ? _services.CreateRenderer()
             : new Renderer(_options, new TemplateCache(overlay.ToDictionary(p => (loaded.Name, p.Key), p => p.Value)));
-        var context = new RenderContext(resolved, packs, session.SchemaDiffs, _services.Scripts, PreviewHasher.Instance, 1);
+        // The session's own export table (next-phase-2-design.md section 5.3): no stored states, and only the records the unit reads
+        // are evaluated, typically one element of each used pack.
+        var exports = ExportTable.ForPreview(resolved, packs, _services.Scripts, renderer as Renderer, ct);
+        var context = new RenderContext(resolved, packs, session.SchemaDiffs, _services.Scripts, PreviewHasher.Instance, 1) { Exports = exports };
+        exports.Bind(context);
         return (new UnitSession(session, loaded, unit, element, overlay, changed, packs, renderer, context), []);
     }
 
@@ -447,13 +473,14 @@ public sealed partial class GenerationService
         var key = snapshot.SettingsHash + "|" + PackStamp(pack);
         if (_registrations.TryGetValue(pack, out var cached) && string.Equals(cached.Key, key, StringComparison.Ordinal))
             return cached.Registrations;
-        var (loaded, _) = await new PackLoader(_options, _services.Schemas).LoadNamedAsync(snapshot, pack, ct).ConfigureAwait(false);
+        // With its uses closure, so a script that calls maquettiste.use at its top level loads.
+        var set = await new PackLoader(_options, _services.Schemas).LoadClosureAsync(snapshot, pack, ct).ConfigureAwait(false);
         IReadOnlyList<ScriptRegistration> registrations = [];
-        if (loaded is { Scripts.Count: > 0 })
+        if (set.Packs.FirstOrDefault() is { Scripts.Count: > 0 } loaded)
         {
             try
             {
-                using var pool = _services.Scripts.CreatePool(loaded.Scripts, snapshot.Settings.Limits, 1, ct);
+                using var pool = UnitPlanner.PlanningPool(loaded, set, _services.Scripts, snapshot.Settings.Limits, ct);
                 registrations = [.. pool.Registrations.OrderBy(r => r.Kind).ThenBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.DeclaredIn, StringComparer.Ordinal)];
             }
             catch (ScriptErrorException)
@@ -479,7 +506,14 @@ public sealed partial class GenerationService
 
     /// <summary>Creates a pack from <c>empty</c>, a pack of this project, or one of <paramref name="starters"/>.</summary>
     public Task<PackWriteResult> CreatePackAsync(string pack, string from, IReadOnlyDictionary<string, IReadOnlyList<KeyValuePair<string, byte[]>>>? starters,
-        CancellationToken ct) => PackAuthoring.CreateAsync(_services, pack, from, starters, ct);
+        CancellationToken ct) => CreatePackAsync(pack, from, starters, false, ct);
+
+    /// <summary>
+    /// Creates a pack; with <paramref name="library"/>, one without units, a partial and a helpers file (<paramref name="from"/> must be
+    /// <c>empty</c>; anything else is invalid).
+    /// </summary>
+    public Task<PackWriteResult> CreatePackAsync(string pack, string from, IReadOnlyDictionary<string, IReadOnlyList<KeyValuePair<string, byte[]>>>? starters,
+        bool library, CancellationToken ct) => PackAuthoring.CreateAsync(_services, pack, from, starters, ct, library);
 
     /// <summary>One pack file's text and hash; <see langword="null"/> when it does not exist.</summary>
     /// <exception cref="PackPathException">The path is refused.</exception>

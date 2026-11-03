@@ -7,7 +7,9 @@ namespace Maquettiste.Engine.Planning;
 /// comparators separated by spaces that must all hold. A comparator is <c>&gt;=</c>, <c>&gt;</c>, <c>&lt;=</c>, <c>&lt;</c> or
 /// <c>=</c> followed by a version (an operator may be separated from its version by spaces), a bare version (<c>1.2</c> means
 /// <c>&gt;=1.2.0 &lt;1.3.0</c>, <c>1</c> means <c>&gt;=1.0.0 &lt;2.0.0</c>, <c>1.2.3</c> exactly), <c>^v</c>, <c>~v</c>, <c>x</c>
-/// wildcards (<c>1.x</c>) or <c>*</c>. Versions have up to three numeric parts; a pre-release or build suffix is ignored.
+/// wildcards (<c>1.x</c>) or <c>*</c>. Versions have up to three numeric parts; a pre-release or build suffix is ignored. The
+/// <c>version</c> of a <c>uses</c> entry (pack.json and maquettiste.json, library packs) has the same syntax and is checked against the
+/// used pack's <c>version</c> (MQ6043).
 /// </summary>
 internal static class EngineRange
 {

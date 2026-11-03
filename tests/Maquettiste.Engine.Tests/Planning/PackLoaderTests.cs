@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Planning;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
@@ -313,5 +315,297 @@ public sealed class PackLoaderTests
     {
         Assert.False(EngineRange.Satisfies(range, "1.0.0", out var valid));
         Assert.False(valid);
+    }
+
+    // Library packs (scope 5.1, next-phase-2-design.md section 5.2): uses, the closure, ranges, cycles and dependency order.
+
+    private static void Pack(GenerationFixture f, string name, string version = "1.0.0", bool units = true, params (string Pack, string Range)[] uses)
+    {
+        var entries = string.Join(", ", uses.Select(u => $"{{ \"pack\": \"{u.Pack}\", \"version\": \"{u.Range}\" }}"));
+        var unitList = units ? ", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ]" : "";
+        f.WritePackFile(name, "pack.json", $"{{ \"name\": \"{name}\", \"version\": \"{version}\", \"engine\": \">=1.0\", \"uses\": [{entries}]{unitList} }}");
+        if (units)
+            f.WritePackFile(name, "index.tpl", "x");
+    }
+
+    private static async Task<PackSet> LoadAsync(GenerationFixture f, IReadOnlyCollection<string>? names = null)
+    {
+        var snapshot = await f.Store.GetSnapshotAsync(Ct);
+        return await new PackLoader(f.Repo.Options, TestServices.Schemas).LoadAsync(snapshot, names, null, Ct);
+    }
+
+    private static Diagnostic Only(PackSet set, string rule) => Assert.Single(set.Diagnostics, d => d.Rule == rule);
+
+    [Fact]
+    public async Task Uses_naming_a_missing_pack_is_MQ6042()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "records", uses: [("naming", "^1.0.0")]);
+
+        var set = await LoadAsync(f);
+
+        Assert.Empty(set.Packs);
+        var d = Only(set, "MQ6042");
+        Assert.Equal((".maquettiste/templates/records/pack.json", "/uses/0/pack"), (d.FilePath, d.JsonPointer));
+        Assert.NotNull(d.Line);
+        Assert.Contains("'naming'", d.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_pack_listed_twice_in_uses_is_MQ6042()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "naming", units: false);
+        Pack(f, "records", uses: [("naming", "^1.0.0"), ("naming", "1.x")]);
+
+        var set = await LoadAsync(f);
+
+        Assert.Equal(["naming"], set.Packs.Select(p => p.Name));
+        Assert.Equal("/uses/1/pack", Only(set, "MQ6042").JsonPointer);
+    }
+
+    [Fact]
+    public async Task A_version_outside_the_range_is_MQ6043()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "naming", "1.4.0", units: false);
+        Pack(f, "records", uses: [("naming", "^2.0.0")]);
+
+        var set = await LoadAsync(f);
+
+        Assert.Equal(["naming"], set.Packs.Select(p => p.Name));
+        var d = Only(set, "MQ6043");
+        Assert.Equal((".maquettiste/templates/records/pack.json", "/uses/0/version"), (d.FilePath, d.JsonPointer));
+        Assert.Contains("1.4.0", d.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_unparseable_range_is_MQ6043()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "naming", units: false);
+        Pack(f, "records", uses: [("naming", "banana")]);
+
+        var set = await LoadAsync(f);
+
+        Assert.Equal("/uses/0/version", Only(set, "MQ6043").JsonPointer);
+        Assert.DoesNotContain(set.Packs, p => p.Name == "records");
+    }
+
+    [Fact]
+    public async Task A_pack_using_itself_is_MQ6044()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "records", uses: [("records", "^1.0.0")]);
+
+        var set = await LoadAsync(f);
+
+        Assert.Empty(set.Packs);
+        Assert.Equal("/uses/0/pack", Only(set, "MQ6044").JsonPointer);
+    }
+
+    [Fact]
+    public async Task A_cycle_is_MQ6044_on_every_pack_in_it()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "naming", units: false, uses: [("headers", "^1.0.0")]);
+        Pack(f, "headers", units: false, uses: [("audit", "^1.0.0")]);
+        Pack(f, "audit", units: false, uses: [("currency", "^1.0.0"), ("naming", "^1.0.0")]);
+        Pack(f, "currency", units: false);
+        Pack(f, "records", uses: [("naming", "^1.0.0")]);
+
+        var set = await LoadAsync(f);
+
+        Assert.Equal(["currency"], set.Packs.Select(p => p.Name));
+        var cycles = set.Diagnostics.Where(d => d.Rule == "MQ6044").Select(d => (d.FilePath, d.JsonPointer)).ToList();
+        Assert.Equal([(".maquettiste/templates/audit/pack.json", "/uses/1/pack"), (".maquettiste/templates/headers/pack.json", "/uses/0/pack"),
+            (".maquettiste/templates/naming/pack.json", "/uses/0/pack")], cycles);
+        Assert.Contains("audit -> naming -> headers -> audit", set.Diagnostics.First(d => d.Rule == "MQ6044").Message, StringComparison.Ordinal);
+        Assert.Equal((".maquettiste/templates/records/pack.json", "/uses/0/pack"), (Only(set, "MQ6042").FilePath, Only(set, "MQ6042").JsonPointer));
+    }
+
+    [Fact]
+    public async Task A_requested_pack_loads_its_closure_as_used_packs()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "currency", units: false);
+        Pack(f, "naming", "1.4.0", units: false, uses: [("currency", "1.x")]);
+        Pack(f, "records", uses: [("naming", "^1.2.0")]);
+        Pack(f, "services");
+
+        var set = await LoadAsync(f, ["records"]);
+
+        Assert.Empty(set.Diagnostics);
+        var records = Assert.Single(set.Packs);
+        Assert.Equal("records", records.Name);
+        Assert.Equal(["currency", "naming"], set.Used.Select(p => p.Name));
+        Assert.Equal(["naming"], records.Uses);
+        Assert.Equal(["currency", "naming"], records.Sees);
+        Assert.Equal(["naming"], set.Find("currency")!.UsedBy);
+        Assert.Same(set.Used[1], set.Find("naming"));
+        Assert.Null(set.Find("services"));
+    }
+
+    [Fact]
+    public async Task A_disabled_pack_loads_when_an_enabled_pack_uses_it()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "naming");
+        Pack(f, "records", uses: [("naming", "^1.0.0")]);
+        await f.WriteModelAsync(b => Models.Shop(b), s => s with
+        {
+            Packs = new Dictionary<string, PackSettings> { ["naming"] = new() { Enabled = false } },
+            Uses = [new PackUse { Pack = "naming", Version = "^1.0.0" }],
+        });
+
+        var set = await LoadAsync(f);
+
+        Assert.Empty(set.Diagnostics);
+        Assert.Equal(["records"], set.Packs.Select(p => p.Name));
+        var naming = Assert.Single(set.Used);
+        Assert.Equal(("naming", 0, 1), (naming.Name, naming.Order, set.Packs[0].Order));
+        Assert.Equal(["records", "maquettiste.json"], naming.UsedBy);
+    }
+
+    [Fact]
+    public async Task Packs_order_after_the_packs_they_use_then_by_name()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "zeta", units: false);
+        Pack(f, "alpha", uses: [("zeta", "^1.0.0")]);
+        Pack(f, "beta");
+        Pack(f, "mid", units: false, uses: [("zeta", "^1.0.0")]);
+        Pack(f, "able", uses: [("mid", "^1.0.0")]);
+
+        var set = await LoadAsync(f);
+
+        Assert.Equal(["beta", "zeta", "alpha", "mid", "able"], set.Packs.Select(p => p.Name));
+        Assert.Equal([0, 1, 2, 3, 4], set.Packs.Select(p => p.Order));
+        Assert.Equal(["zeta", "mid"], set.Packs[4].Sees);
+        var model = await new ModelResolver(f.Repo.Options).ResolveAsync(await f.Store.GetSnapshotAsync(Ct), null, Ct);
+        var plan = await new UnitPlanner(f.Repo.Options).PlanAsync(model, set, new ScriptSandboxFactory(), null, Ct);
+        Assert.Equal(["beta", "alpha", "able"], plan.Units.Select(u => u.Pack.Name));
+    }
+
+    [Fact]
+    public async Task A_project_without_uses_keeps_ordinal_order()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "scripted", "basic");
+        Pack(f, "audit");
+
+        var set = await LoadAsync(f);
+
+        Assert.Equal(["audit", "basic", "scripted"], set.Packs.Select(p => p.Name));
+        Assert.Equal([0, 1, 2], set.Packs.Select(p => p.Order));
+        Assert.Empty(set.Used);
+        Assert.All(set.Packs, p => Assert.True(p.Uses.Count + p.Sees.Count + p.UsedBy.Count == 0));
+    }
+
+    [Fact]
+    public async Task A_pack_without_units_loads()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "naming", units: false);
+        f.WritePackFile("naming", "helpers.js", "maquettiste.helper('class_name', e => e.name);");
+        Pack(f, "records", uses: [("naming", "^1.0.0")]);
+
+        var set = await LoadAsync(f);
+
+        Assert.Empty(set.Diagnostics);
+        var naming = set.Find("naming")!;
+        Assert.Empty(naming.Manifest.Units);
+        Assert.Single(naming.Scripts);
+    }
+
+    [Fact]
+    public async Task A_pack_without_units_that_nothing_uses_is_MQ6046()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "naming", units: false);
+        Pack(f, "records");
+
+        var set = await LoadAsync(f);
+
+        var d = Only(set, "MQ6046");
+        Assert.Equal((DiagnosticSeverity.Warning, ".maquettiste/templates/naming/pack.json", "/name"), (d.Severity, d.FilePath, d.JsonPointer));
+        Assert.Equal(["naming", "records"], set.Packs.Select(p => p.Name));
+        Assert.DoesNotContain((await LoadAsync(f, ["naming"])).Diagnostics, x => x.Rule == "MQ6046");
+    }
+
+    [Fact]
+    public async Task A_pack_whose_closure_failed_is_MQ6042()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        f.WritePackFile("currency", "pack.json", "{ \"name\": \"currency\", \"version\": \"1.0.0\", \"engine\": \">=9.0\" }");
+        Pack(f, "naming", units: false, uses: [("currency", "^1.0.0")]);
+        Pack(f, "records", uses: [("naming", "^1.0.0")]);
+
+        var set = await LoadAsync(f, ["records"]);
+
+        Assert.Empty(set.Packs);
+        Assert.Empty(set.Used);
+        Assert.Equal("MQ6002", Assert.Single(set.Diagnostics, d => d.FilePath!.EndsWith("currency/pack.json", StringComparison.Ordinal)).Rule);
+        var naming = Assert.Single(set.Diagnostics, d => d.FilePath!.EndsWith("naming/pack.json", StringComparison.Ordinal));
+        Assert.Equal(("MQ6042", "/uses/0/pack"), (naming.Rule, naming.JsonPointer));
+        var records = Assert.Single(set.Diagnostics, d => d.FilePath!.EndsWith("records/pack.json", StringComparison.Ordinal));
+        Assert.Equal("MQ6042", records.Rule);
+        Assert.Contains("reach 'currency'", records.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Load_closure_returns_the_pack_and_its_used_packs()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, "naming", units: false);
+        Pack(f, "records", uses: [("naming", "^1.0.0")]);
+        Pack(f, "services", uses: [("naming", "^1.0.0")]);
+        await f.WriteModelAsync(b => Models.Shop(b), s => s with { Packs = new Dictionary<string, PackSettings> { ["records"] = new() { Enabled = false } } });
+        var snapshot = await f.Store.GetSnapshotAsync(Ct);
+        var loader = new PackLoader(f.Repo.Options, TestServices.Schemas);
+
+        var set = await loader.LoadClosureAsync(snapshot, "records", Ct);
+
+        Assert.Empty(set.Diagnostics);
+        Assert.Equal(["records"], set.Packs.Select(p => p.Name));
+        Assert.Equal(["naming"], set.Used.Select(p => p.Name));
+        Assert.Equal(["records", "services"], set.Used[0].UsedBy);
+        var ghost = await loader.LoadClosureAsync(snapshot, "ghost", Ct);
+        Assert.Equal(("MQ6001", 0), (Assert.Single(ghost.Diagnostics).Rule, ghost.Packs.Count));
+    }
+
+    [Theory]
+    [InlineData("entity")]
+    [InlineData("value-object")]
+    public async Task A_used_pack_named_like_a_variable_is_MQ6045(string name)
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, name, units: false);
+        f.WritePackFile(name, "helpers.js", "maquettiste.helper('code', v => v);");
+        Pack(f, "records", uses: [(name, "^1.0.0")]);
+
+        var set = await LoadAsync(f);
+
+        var d = Only(set, "MQ6045");
+        Assert.Equal((".maquettiste/templates/records/pack.json", "/uses/0/pack"), (d.FilePath, d.JsonPointer));
+        Assert.Equal([name], set.Packs.Select(p => p.Name));
+    }
+
+    [Theory]
+    [InlineData("include", true)]
+    [InlineData("string", true)]
+    [InlineData("include", false)]
+    public async Task A_used_pack_named_like_a_keyword_is_MQ6045(string name, bool scripts)
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b));
+        Pack(f, name, units: false);
+        if (scripts)
+            f.WritePackFile(name, "helpers.js", "maquettiste.helper('code', v => v);");
+        Pack(f, "records", uses: [(name, "^1.0.0")]);
+
+        var set = await LoadAsync(f);
+
+        // Only a used pack with scripts gets a namespace; partials alone take no name.
+        Assert.Equal(scripts ? 1 : 0, set.Diagnostics.Count(d => d.Rule == "MQ6045"));
+        Assert.Equal(!scripts, set.Packs.Any(p => p.Name == "records"));
     }
 }

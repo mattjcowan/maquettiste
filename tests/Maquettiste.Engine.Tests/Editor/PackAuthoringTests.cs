@@ -409,4 +409,70 @@ public sealed class PackAuthoringTests
         Assert.Contains("Customer (entity) changed", details);
         Assert.All(details, d => Assert.DoesNotContain(EditorRepo.CustomerId, d, StringComparison.Ordinal));
     }
+
+    [Fact]
+    public async Task Deleting_a_used_pack_is_referenced()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        repo.WriteLibraryPacks();
+        repo.EditSettingsOnDisk(node => node["uses"] = new JsonArray(new JsonObject { ["pack"] = "naming", ["version"] = "^1.0.0" }));
+        var pack = (await repo.Service.GetPackAsync("naming", Ct))!;
+
+        var removed = await repo.Service.DeletePackAsync("naming", pack.Hash, Ct);
+
+        Assert.Equal(SaveOutcome.Referenced, removed.Outcome);
+        Assert.Equal([".maquettiste/templates/records/pack.json", EditorRepo.SettingsPath], removed.Diagnostics.Select(d => d.FilePath));
+        Assert.True(File.Exists(repo.Repo.PathOf(".maquettiste/templates/naming/pack.json")));
+    }
+
+    [Fact]
+    public async Task Deleting_a_partial_another_pack_includes_is_referenced()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        repo.WriteLibraryPacks();
+        var pack = (await repo.Service.GetPackAsync("naming", Ct))!;
+        var header = Assert.Single(pack.Files, f => f.Path == "partials/header.scriban");
+        Assert.Equal("partial", header.Role);
+        Assert.Equal(["include:records:record.scriban"], header.UsedBy);
+
+        var deleted = await repo.Service.DeletePackFileAsync("naming", "partials/header.scriban", header.Hash, Ct);
+
+        Assert.Equal(SaveOutcome.Referenced, deleted.Outcome);
+        Assert.Contains("include:records:record.scriban", Assert.Single(deleted.Diagnostics).Message, StringComparison.Ordinal);
+        Assert.True(File.Exists(repo.Repo.PathOf(".maquettiste/templates/naming/partials/header.scriban")));
+    }
+
+    [Fact]
+    public async Task Moving_a_partial_another_pack_includes_is_referenced()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        repo.WriteLibraryPacks();
+        var header = (await repo.Service.GetPackAsync("naming", Ct))!.Files.Single(f => f.Path == "partials/header.scriban");
+
+        var moved = await repo.Service.MovePackFileAsync("naming", new PackFileMove("partials/header.scriban", "partials/top.scriban", false, null), header.Hash, Ct);
+
+        Assert.Equal(SaveOutcome.Referenced, moved.Outcome);
+        Assert.Contains("include:records:record.scriban", Assert.Single(moved.Diagnostics).Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(repo.Repo.PathOf(".maquettiste/templates/naming/partials/top.scriban")));
+    }
+
+    [Fact]
+    public async Task Create_pack_library_writes_a_pack_without_units()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+
+        var created = await repo.Service.CreatePackAsync("shared-names", "empty", null, library: true, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        Assert.Equal(["helpers.js", "pack.json", "partials/header.scriban"], created.Files);
+        var manifest = JsonNode.Parse(File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/shared-names/pack.json")))!.AsObject();
+        Assert.False(manifest.ContainsKey("units"));
+        Assert.Contains("shared_names.<helper>", File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/shared-names/helpers.js")), StringComparison.Ordinal);
+
+        // It loads as a library (MQ6046 until something uses it), and library starts from empty only.
+        var listed = await repo.Service.GetPacksAsync(Ct);
+        Assert.Contains(listed.Diagnostics, d => d.Rule == "MQ6046" && d.FilePath == ".maquettiste/templates/shared-names/pack.json");
+        Assert.DoesNotContain(listed.Diagnostics, d => d.Severity == Maquettiste.Engine.Diagnostics.DiagnosticSeverity.Error && d.FilePath!.Contains("shared-names", StringComparison.Ordinal));
+        Assert.Equal(SaveOutcome.Invalid, (await repo.Service.CreatePackAsync("other", "sql-ddl", null, library: true, Ct)).Outcome);
+    }
 }

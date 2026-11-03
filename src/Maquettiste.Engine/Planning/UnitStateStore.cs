@@ -1,21 +1,24 @@
 using System.Collections.Frozen;
 using System.Text;
+using System.Text.Json;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Pipeline;
 
 namespace Maquettiste.Engine.Planning;
 
 /// <summary>
-/// Stores unit states in <c>CacheDirectory/units/&lt;pack&gt;.v4.bin</c> (W6; engine-design.md section 11; the file is named after
+/// Stores unit states in <c>CacheDirectory/units/&lt;pack&gt;.v5.bin</c> (W6; engine-design.md section 11; the file is named after
 /// the format). The file is a cache: a missing, truncated or foreign file (other magic, format or engine version) loads as empty, which
 /// only means every unit of the pack renders again (and the explanation says <c>state-reset</c>, <see cref="WasReset"/>). Layout
-/// (format 4): <c>MQUS</c>, format, engine version, then the string table (count, then each distinct read key and static-parts text
+/// (format 5): <c>MQUS</c>, format, engine version, then the string table (count, then each distinct read key and static-parts text
 /// once, length-prefixed UTF-8, in first-use order), then the state count and per state its key, input hash, read keys (7-bit encoded
 /// indexes into the table), outputs (path, manifest hash, length, last-write ticks), the per-key hashes (a 7-bit count, zero or the
 /// read key count, then 16 bytes each, generation-ui.md section 4.2), the static parts (a 7-bit table index plus one, zero for
 /// none) and the element names (a 7-bit count, then per named element key its position among the read keys and the table index of
-/// its label, <c>Name (kind)</c>, positions ascending; format 4, so a cause can name a deleted element); strings are length-prefixed
-/// UTF-8. Saving deletes the files of formats 2 and 3 (<c>.v1.bin</c>, <c>.v3.bin</c>).
+/// its label, <c>Name (kind)</c>, positions ascending; format 4, so a cause can name a deleted element), then the exports (format 5,
+/// next-phase-2-design.md section 5.3: a 7-bit zero for none, or one, the values as canonical JSON, the export input hash and the
+/// export keys as a 7-bit count and their positions among the read keys, ascending); strings are length-prefixed UTF-8. Saving
+/// deletes the files of formats 2, 3 and 4 (<c>.v1.bin</c>, <c>.v3.bin</c>, <c>.v4.bin</c>).
 /// States are written sorted by key. Read keys repeat across units (every unit of an entity reads that entity's keys), so the table
 /// keeps the file small and the decoded states share one string per distinct key.
 /// </summary>
@@ -28,7 +31,7 @@ namespace Maquettiste.Engine.Planning;
 /// <param name="paths">The engine-write guard (<see cref="WriteTarget.Cache"/>).</param>
 internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy paths) : IUnitStateStore
 {
-    private const int Format = 4;
+    private const int Format = 5;
     private static ReadOnlySpan<byte> Magic => "MQUS"u8;
 
     private readonly EngineFiles _files = new(paths, WriteTarget.Cache, options);
@@ -146,7 +149,8 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     /// <summary>The state files of earlier formats (2, named <c>.v1.bin</c>, and 3); deleted when the pack's states are next saved.</summary>
     /// <param name="pack">The pack name.</param>
     /// <returns>The absolute paths.</returns>
-    internal IEnumerable<string> LegacyFilesOf(string pack) => [LegacyFileOf(pack), Path.Combine(Folder, SafeName(pack) + ".v3.bin")];
+    internal IEnumerable<string> LegacyFilesOf(string pack) =>
+        [LegacyFileOf(pack), Path.Combine(Folder, SafeName(pack) + ".v3.bin"), Path.Combine(Folder, SafeName(pack) + ".v4.bin")];
 
     /// <summary>A file-name-safe form of a pack name.</summary>
     /// <param name="pack">The pack name.</param>
@@ -339,6 +343,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             body.WriteVarInt(parts + 1);
             var labelIndexes = WriteNames(body, state);
             nameIndexes?[s] = labelIndexes;
+            WriteExports(body, state);
 
             if (ranges is not null)
                 ranges[s] = (start, body.Length - start);
@@ -365,6 +370,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
                 var copy = new UnitState(state.Key, state.InputHash, keys, state.Outputs)
                 {
                     Names = state.Names,
+                    Exports = state.Exports,
                     KeyHashes = hashStarts![s] < 0 ? default : new ReadOnlyMemory<byte>(bytes, head.Length + hashStarts[s], keys.Count * KeyHashes.Size),
                     StaticParts = partIndexes[s] < 0 ? null : keyTable[partIndexes[s]],
                 };
@@ -424,9 +430,11 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
                         throw new FormatException("Invalid name position.");
                 }
 
+                var exports = ReadExports(reader, strings, indexes, bytes.Length);
                 var keys = new TableKeys(strings, indexes, bytes, start, (int)stream.Position - start, partsIndex) { NameIndexes = labels };
                 var state = new UnitState(key, inputHash, keys, outputs)
                 {
+                    Exports = exports,
                     Names = positions.Length == 0 ? null : new TableNames(strings, indexes, positions, labels),
                     KeyHashes = hashLength == 0 ? default : new ReadOnlyMemory<byte>(bytes, hashStart, hashLength),
                     StaticParts = partsIndex < 0 ? null : strings[partsIndex],
@@ -441,6 +449,68 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Writes a state's exports (format 5): zero, or one, the values' canonical JSON, the export input hash and the export keys as
+    /// positions among the read keys. Positions, not table indexes, so a record copied as its bytes stays valid; exports whose keys
+    /// are not all read keys are not stored (the unit's values are then evaluated again).
+    /// </summary>
+    private static void WriteExports(ByteWriter writer, UnitState state)
+    {
+        var positions = state.Exports is { } exports ? Positions(state.ReadKeys, exports.ReadKeys) : null;
+        if (positions is null)
+        {
+            writer.WriteVarInt(0);
+            return;
+        }
+
+        writer.WriteVarInt(1);
+        writer.WriteString(CanonicalForm.Json(state.Exports!.Values));
+        writer.WriteString(state.Exports.InputHash);
+        writer.WriteVarInt(positions.Count);
+        foreach (var position in positions)
+            writer.WriteVarInt(position);
+    }
+
+    private static List<int>? Positions(IReadOnlyList<string> readKeys, IReadOnlyList<string> exportKeys)
+    {
+        var positions = new List<int>(exportKeys.Count);
+        var r = 0;
+        foreach (var key in exportKeys)
+        {
+            while (r < readKeys.Count && string.CompareOrdinal(readKeys[r], key) < 0)
+                r++;
+            if (r == readKeys.Count || !string.Equals(readKeys[r], key, StringComparison.Ordinal))
+                return null;
+            positions.Add(r++);
+        }
+
+        return positions;
+    }
+
+    private static UnitExports? ReadExports(BinaryReader reader, string[] strings, int[] indexes, int limit)
+    {
+        var flag = Index(reader, 2);
+        if (flag == 0)
+            return null;
+        var json = reader.ReadString();
+        var inputHash = reader.ReadString();
+        var keys = new string[Index(reader, indexes.Length + 1)];
+        var previous = -1;
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var position = Index(reader, indexes.Length);
+            if (position <= previous)
+                throw new FormatException("Invalid export key position.");
+            keys[i] = strings[indexes[position]];
+            previous = position;
+        }
+
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.ValueKind == JsonValueKind.Object && limit > 0
+            ? new UnitExports(document.RootElement.Clone(), keys, inputHash)
+            : throw new FormatException("Invalid exports.");
     }
 
     /// <summary>The states ordered by key (ordinal); the input itself when it already is.</summary>

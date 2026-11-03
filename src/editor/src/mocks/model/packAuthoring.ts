@@ -322,6 +322,7 @@ export class MockPackAuthoring {
     const manifest = this.model.packs.find((p) => p.name === pack)!;
     const variables: S["TemplateVariable"][] = [
       { name: "data", detail: "The pack's transforms' results." },
+      { name: "exports", detail: "The names this unit exports for its element (null when it exports none)." },
       { name: "hints", detail: "The element's generation hints for this pack." },
       { name: "mapping", detail: "The element's mapping to a database, when it has one." },
       { name: "mappings", detail: "Every mapping of the element." },
@@ -348,7 +349,7 @@ export class MockPackAuthoring {
     if (unit.for.startsWith("each ")) members.element = SCOPE_MEMBERS[unit.for] ?? ELEMENT_MEMBERS;
     const registrations = this.registrations(pack);
     const helpers = [...new Set([...HELPERS, ...registrations.filter((r) => r.kind === "helper").map((r) => r.name)])].sort();
-    return { pack, unit: unitId, scope: unit.for, variables, members, helpers, registrations };
+    return { pack, unit: unitId, scope: unit.for, variables, members, helpers, registrations, namespaces: [], exportsFrom: [] };
   }
 
   explain(request: S["ExplainRequest"]): S["ExplainResult"] | null {

@@ -71,6 +71,66 @@ internal static partial class PackFileRoles
     public static IReadOnlyList<string> TypeMaps(IReadOnlyList<string> paths, IReadOnlySet<string> copied) =>
         [.. paths.Where(p => IsTypeMap(p) && !copied.Contains(p))];
 
+    /// <summary>
+    /// Adds the cross-pack users of a pack's files (library packs, next-phase-2-design.md section 5.2): every literal
+    /// <c>include "&lt;pack&gt;:&lt;path&gt;"</c> in the files of a pack whose <c>uses</c> names this pack is
+    /// <c>include:&lt;user pack&gt;:&lt;including file&gt;</c> among the included file's users, which makes an unclaimed file a partial.
+    /// Only the packs that use this pack are read.
+    /// </summary>
+    /// <param name="root">The pack folder (<c>templates/&lt;pack&gt;</c>).</param>
+    /// <param name="files">The pack's files as <see cref="DescribeAsync"/> describes them.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The files with the cross-pack users merged in, ordinal.</returns>
+    public static async Task<IReadOnlyList<PackFileInfo>> WithCrossPackUsersAsync(string root, IReadOnlyList<PackFileInfo> files, CancellationToken ct)
+    {
+        var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(root));
+        var templates = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(root));
+        if (templates is null || !Directory.Exists(templates))
+            return files;
+        var prefix = name + ":";
+        var added = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        foreach (var folder in Directory.EnumerateDirectories(templates).Order(StringComparer.Ordinal))
+        {
+            var user = Path.GetFileName(folder);
+            var manifest = Path.Combine(folder, "pack.json");
+            if (user.StartsWith('.') || string.Equals(user, name, StringComparison.Ordinal) || !File.Exists(manifest)
+                || !PackUses.LightUses(await File.ReadAllBytesAsync(manifest, ct).ConfigureAwait(false)).Contains(name, StringComparer.Ordinal))
+                continue;
+            foreach (var path in EnumerateFiles(folder))
+            {
+                string text;
+                try
+                {
+                    text = StrictUtf8.GetString(await File.ReadAllBytesAsync(Path.Combine(folder, path.Replace('/', Path.DirectorySeparatorChar)), ct).ConfigureAwait(false));
+                }
+                catch (DecoderFallbackException)
+                {
+                    continue;
+                }
+
+                foreach (Match match in IncludePattern().Matches(text))
+                {
+                    var target = match.Groups[1].Value;
+                    if (!target.StartsWith(prefix, StringComparison.Ordinal))
+                        continue;
+                    if (!added.TryGetValue(target[prefix.Length..], out var users))
+                        added[target[prefix.Length..]] = users = new SortedSet<string>(StringComparer.Ordinal);
+                    users.Add("include:" + user + ":" + path);
+                }
+            }
+        }
+
+        if (added.Count == 0)
+            return files;
+        return [.. files.Select(f => added.TryGetValue(f.Path, out var users)
+            ? f with
+            {
+                Role = f.Role == "other" ? "partial" : f.Role,
+                UsedBy = [.. f.UsedBy.Concat(users).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+            }
+            : f)];
+    }
+
     /// <summary>Roles and users of every file of a pack (GU2: the loader's rules for scripts and type maps, the units' templates,
     /// literal <c>include</c>s).</summary>
     public static async Task<IReadOnlyList<PackFileInfo>> DescribeAsync(string root, PackManifest? manifest, CancellationToken ct)

@@ -19,6 +19,7 @@
     "localization",
     "referenceData",
     "packs",
+    "uses",
     "validation",
     "limits",
     "explorer",
@@ -297,6 +298,27 @@
         "additionalProperties": false
       },
       "default": {}
+    },
+    "uses": {
+      "description": "The packs whose helpers the project's own scripts may call through maquettiste.use: each entry names a pack folder and a version range in the engine-range syntax.",
+      "type": "array",
+      "items": {
+        "title": "Pack use",
+        "type": "object",
+        "x-order": ["pack", "version"],
+        "properties": {
+          "pack": {
+            "$ref": "common.json#/$defs/key"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["pack", "version"],
+        "additionalProperties": false
+      },
+      "default": []
     },
     "validation": {
       "type": "object",

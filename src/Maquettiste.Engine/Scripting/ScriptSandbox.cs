@@ -220,9 +220,13 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     private long _paramsCall = -1;
     private ModelSnapshot? _ruleSnapshot;
     private JsValue? _ruleModel;
+    private readonly Dictionary<string, ScriptLibrary> _libraries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, JsValue> _libraryObjects = new(StringComparer.Ordinal);
 
-    private ScriptSandbox(SandboxLimits limits, MemberCatalog catalog, CancellationToken runToken)
+    private ScriptSandbox(SandboxLimits limits, MemberCatalog catalog, CancellationToken runToken, IReadOnlyList<ScriptLibrary> libraries)
     {
+        foreach (var library in libraries)
+            _libraries.TryAdd(library.Pack, library);
         _limits = limits;
         _runToken = runToken;
         var state = _state;
@@ -271,11 +275,13 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     /// <param name="limits">The limits.</param>
     /// <param name="catalog">The pool's reflection catalog.</param>
     /// <param name="runToken">The run's cancellation.</param>
+    /// <param name="libraries">The packs <c>maquettiste.use</c> reaches (library packs); none by default.</param>
     /// <returns>The sandbox.</returns>
-    public static ScriptSandbox Create(IReadOnlyList<PreparedScript> scripts, SandboxLimits limits, MemberCatalog catalog, CancellationToken runToken)
+    public static ScriptSandbox Create(IReadOnlyList<PreparedScript> scripts, SandboxLimits limits, MemberCatalog catalog, CancellationToken runToken,
+        IReadOnlyList<ScriptLibrary>? libraries = null)
     {
         runToken.ThrowIfCancellationRequested();
-        var sandbox = new ScriptSandbox(limits, catalog, runToken);
+        var sandbox = new ScriptSandbox(limits, catalog, runToken, libraries ?? []);
         try
         {
             sandbox.Initialize(scripts);
@@ -599,7 +605,60 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
             new ClrFunction(_engine, "rows", (_, args) => RegisterRows(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
         var paramsGetter = new ClrFunction(_engine, "get params", (_, _) => CurrentParameters(), 0, PropertyFlag.Configurable);
         api.DefineOwnProperty("params", new GetSetPropertyDescriptor(paramsGetter, JsValue.Undefined, enumerable: true, configurable: false));
+        api.FastSetProperty("use", new PropertyDescriptor(
+            new ClrFunction(_engine, "use", (_, args) => Use(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
         return api;
+    }
+
+    /// <summary>
+    /// <c>maquettiste.use(name)</c> (library packs, next-phase-2-design.md section 5.2): the frozen object of a used pack's helpers,
+    /// the same object on every call in this engine. It may run while scripts load; a name outside the libraries is a <c>TypeError</c>.
+    /// </summary>
+    private JsValue Use(JsValue[] args)
+    {
+        var name = args.Length > 0 && args[0].IsString() ? args[0].AsString() : null;
+        if (string.IsNullOrEmpty(name))
+            throw TypeError("maquettiste.use(name): name must be the name of a pack in this script's uses.");
+        if (_libraryObjects.TryGetValue(name, out var known))
+            return known;
+        if (!_libraries.TryGetValue(name, out var library))
+        {
+            if (_loadingPath is null && _callContext is { Libraries: null })
+                throw TypeError($"maquettiste.use('{name}') cannot reach a used pack here: selectors and script filters run while planning, where no used pack's helpers can run; call a helper of this pack instead.");
+            throw TypeError(_libraries.Count == 0
+                ? $"maquettiste.use('{name}'): this script's uses reach no pack; add {{ \"pack\": \"{name}\", \"version\": ... }} to uses."
+                : $"maquettiste.use('{name}'): pack '{name}' is not in this script's uses; it reaches {string.Join(", ", _libraries.Keys.Order(StringComparer.Ordinal).Select(k => "'" + k + "'"))}.");
+        }
+
+        var members = new List<KeyValuePair<string, JsValue>>(library.Helpers.Count);
+        foreach (var helper in library.Helpers.Order(StringComparer.Ordinal))
+        {
+            var pack = library.Pack;
+            var fn = new ClrFunction(_engine, helper, (_, callArgs) => CallLibrary(pack, helper, callArgs), 0, PropertyFlag.Configurable);
+            members.Add(new(helper, _values.Freeze(fn)));
+        }
+
+        var value = _values.FrozenObject(members);
+        _libraryObjects[name] = value;
+        return value;
+    }
+
+    /// <summary>
+    /// A call of a used pack's helper through <c>maquettiste.use</c>: the arguments leave this engine as a script's results do, the
+    /// call goes to <see cref="ScriptCallContext.Libraries"/>, and the result enters as a helper's arguments do. Without a call context
+    /// (while scripts load) or without libraries (selectors and filters, which run while planning) it is a <c>TypeError</c>.
+    /// </summary>
+    private JsValue CallLibrary(string pack, string helper, JsValue[] args)
+    {
+        var label = $"maquettiste.use('{pack}').{helper}";
+        if (_callContext is not { } ctx)
+            throw TypeError($"{label} cannot be called while scripts load: no call context exists yet. Call it inside a helper or rule.");
+        if (ctx.Libraries is not { } libraries)
+            throw TypeError($"{label} cannot be called here: selectors and script filters run while planning, where no used pack's helpers can run; call a helper of this pack instead.");
+        var values = new object?[args.Length];
+        for (var i = 0; i < args.Length; i++)
+            values[i] = _values.FromJs(args[i], $"argument {i + 1} of {label}");
+        return _values.ToJs(libraries.Call(pack, helper, values, ctx));
     }
 
     /// <summary>

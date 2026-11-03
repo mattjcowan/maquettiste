@@ -23,6 +23,9 @@ public sealed record PackManifest
     /// <summary>What the pack generates.</summary>
     public string? Description { get; init; }
 
+    /// <summary>The packs this pack uses, in pack.json order (scope 5.1, library packs).</summary>
+    public IReadOnlyList<PackUse> Uses { get; init; } = [];
+
     /// <summary>Parameter names with their default values.</summary>
     public IReadOnlyDictionary<string, JsonElement> Parameters { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 
@@ -38,8 +41,18 @@ public sealed record PackManifest
     /// <summary>Whether templates read <c>schema_diff</c>, so the engine keeps schema snapshots.</summary>
     public bool UsesSchemaDiff { get; init; }
 
-    /// <summary>The render units.</summary>
-    public required IReadOnlyList<PackUnit> Units { get; init; }
+    /// <summary>The render units; empty for a library.</summary>
+    public IReadOnlyList<PackUnit> Units { get; init; } = [];
+}
+
+/// <summary>A pack that a pack, or the project's scripts, use.</summary>
+public sealed record PackUse
+{
+    /// <summary>The used pack's name (its folder).</summary>
+    public required string Pack { get; init; }
+
+    /// <summary>A range in the engine-range syntax that the used pack's version must satisfy.</summary>
+    public required string Version { get; init; }
 }
 
 /// <summary>One render unit of a pack: a template applied to a scope, or (mode <c>copy</c>) pack files copied as they are.</summary>
@@ -95,6 +108,23 @@ public sealed record PackUnit
 
     /// <summary>Names of JavaScript pre-render transforms; results merge into <c>data</c>.</summary>
     public IReadOnlyList<string> Transforms { get; init; } = [];
+
+    /// <summary>
+    /// Names this unit exports per element: a template, or a template per item of a list member. Other packs read them with the
+    /// <c>exported</c> helper; the unit's own templates read them as the variable <c>exports</c>.
+    /// </summary>
+    public IReadOnlyDictionary<string, PackExport> Exports { get; init; } = ImmutableSortedDictionary<string, PackExport>.Empty;
+}
+
+/// <summary>One unit export: a template string in JSON, or <c>{ "each": "&lt;list member&gt;", "value": "&lt;template&gt;" }</c>.</summary>
+[JsonConverter(typeof(PackExportJsonConverter))]
+public sealed record PackExport
+{
+    /// <summary>The template, rendered with the unit's variables (per item, with <c>item</c>, when <see cref="Each"/> is set).</summary>
+    public required string Value { get; init; }
+
+    /// <summary>A list member of the element; each item renders <see cref="Value"/> with <c>item</c>, keyed by its id.</summary>
+    public string? Each { get; init; }
 }
 
 /// <summary>Unit filters. List filters match any value; every filter that is set must match.</summary>

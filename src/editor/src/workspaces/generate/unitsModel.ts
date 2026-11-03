@@ -127,6 +127,10 @@ export function toPackUnit(raw: RawUnit): S["PackUnit"] {
     delimiters: (raw.delimiters as S["PackUnit"]["delimiters"]) ?? null,
     companion: (raw.companion as S["PackUnit"]["companion"]) ?? null,
     transforms: Array.isArray(raw.transforms) ? (raw.transforms as string[]) : [],
+    exports:
+      raw.exports && typeof raw.exports === "object" && !Array.isArray(raw.exports)
+        ? (raw.exports as Record<string, string | { each: string; value: string }>)
+        : {},
   };
 }
 

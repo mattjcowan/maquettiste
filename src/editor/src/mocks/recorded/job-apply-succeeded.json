@@ -1,5 +1,5 @@
 {
-  "id": "01M40H3DPS9JK8TSPW2KDBTCMR",
+  "id": "01M6G7D59SESYNWQTKJ5Z823V8",
   "kind": "apply",
   "state": "succeeded",
   "queuePosition": null,
@@ -7,7 +7,7 @@
     "stage": "write",
     "done": 43,
     "total": 43,
-    "currentPath": "db/main/billing/tables/notes.sql",
+    "currentPath": "db/main/billing/tables/payments.sql",
     "pack": "sql-ddl"
   },
   "planResult": null,
@@ -16,11 +16,11 @@
     "staleUnits": [],
     "stalePaths": [],
     "result": {
-      "runId": "01M40H3DPWV4GT5991R5888AJC",
+      "runId": "01M6G7D59VHAYF85M39ZPPN2Y8",
       "mode": "apply",
       "outcome": "succeeded",
       "changes": [],
-      "unitsRendered": 43,
+      "unitsRendered": 46,
       "unitsSkipped": 0,
       "filesWritten": 43,
       "filesDeleted": 0,
@@ -28,39 +28,39 @@
       "timings": [
         {
           "stage": "load",
-          "wall": "00:00:00.0043518",
-          "busy": "00:00:00.0043518",
+          "wall": "00:00:00.0012116",
+          "busy": "00:00:00.0012116",
           "items": 33
         },
         {
           "stage": "validate",
-          "wall": "00:00:00.0010587",
-          "busy": "00:00:00.0010587",
+          "wall": "00:00:00.0006668",
+          "busy": "00:00:00.0006668",
           "items": 33
         },
         {
           "stage": "resolve",
-          "wall": "00:00:00.0021776",
-          "busy": "00:00:00.0021776",
+          "wall": "00:00:00.0031750",
+          "busy": "00:00:00.0031750",
           "items": 33
         },
         {
           "stage": "plan",
-          "wall": "00:00:00.1821024",
-          "busy": "00:00:00.1741795",
-          "items": 45
+          "wall": "00:00:00.0892058",
+          "busy": "00:00:00.0848249",
+          "items": 48
         },
         {
           "stage": "write",
-          "wall": "00:00:00.1088881",
-          "busy": "00:00:00.1088881",
+          "wall": "00:00:00.0292689",
+          "busy": "00:00:00.0292689",
           "items": 43
         }
       ]
     }
   },
   "error": null,
-  "queuedUtc": "2026-10-03T09:21:40.5696568+00:00",
-  "startedUtc": "2026-10-03T09:21:40.5703763+00:00",
-  "finishedUtc": "2026-10-03T09:21:41.0374262+00:00"
+  "queuedUtc": "2026-11-03T08:11:28.4413692+00:00",
+  "startedUtc": "2026-11-03T08:11:28.4415208+00:00",
+  "finishedUtc": "2026-11-03T08:11:28.5953421+00:00"
 }

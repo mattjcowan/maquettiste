@@ -41,7 +41,26 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
   ignored); the target is the file name without `.json`. A non-string value or bad JSON is MQ6001.
 - A pack with any error is left out of `PackSet.Packs`; the orchestrator stops the run on any pack error, so a broken pack is never
   treated as removed (which would orphan its whole manifest).
-- Shared packs by git reference are phase 4.
+- Library packs (next-phase-2-design.md section 5.2, `PackUses`). `units` is optional: a pack without units is a library of
+  partials and helpers. `uses` lists `{ pack, version }` entries; the version is a range in the `engine` syntax
+  (`EngineRange`). The loader first reads the `uses` of every `pack.json` under `templates/` with a light parse (a broken
+  file reads as no uses and is reported only when its pack loads), then loads the run packs (requested and enabled) and the
+  closure of their uses, each once; a used pack loads whatever its `enabled`, which says only whether its own units run.
+  Entry checks, each failing the pack: a name with no folder or listed twice is MQ6042 at `/uses/<i>/pack`; a range the
+  used pack's version misses or that does not parse is MQ6043 at `/uses/<i>/version`; a pack that names itself or is in a
+  cycle is MQ6044 at the first entry that leads back into it (the message names the cycle); a used pack with scripts whose
+  namespace (its name with `-` replaced by `_`) is a builtin member, a template keyword or a template variable is MQ6045 at
+  the entry. A pack whose closure holds a pack that failed is MQ6042 at the first entry that leads there. The packs that
+  load are ordered by Kahn's order, the earliest ordinal name first among the ready ones, so a project without `uses` keeps
+  ordinal order; `LoadedPack.Order` is that position (the planner orders by it). `PackSet.Packs` holds the run packs,
+  `PackSet.Used` the rest of the closure (never rendered or written), and `PackSet.Find` either. `LoadedPack.Uses` lists
+  the entries' names, `Sees` the closure in dependency order (itself left out), `UsedBy` the packs whose uses name it
+  (ordinal, from the light read of every pack) then `maquettiste.json` when the project's `uses` does. MQ6046 (warning, at
+  `/name`): a loaded pack without units that nothing uses, reported only by a whole-project load. `LoadClosureAsync`
+  loads one pack, enabled or not, with its closure (`Packs` is that pack, `Used` the rest); `LoadNamedAsync` still loads
+  one pack alone. Packs are local folders only: no registry, no download, no lock file, no reference into version control.
+- `DependencyHasher` hashes a `t:<pack>/<path>` key through `PackSet.Find`, so a partial of a used pack outside the run's
+  selection hashes its file.
 
 ## Unit planner
 
@@ -149,3 +168,8 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
 - `UnitStateStore.Remembered(pack)`: the states the store last read or wrote for a pack, without reading the file (the last-run
   record reads the states the writer just saved).
 
+## Exports (next-phase-2-design.md section 5.3)
+
+`UnitPlanner` plans the exporting units of used packs into `UnitPlan.ExportOnly`, never rendered or written.
+`DependencyHasher` hashes `px:` keys through the bound `ExportTable`. Unit state format 5 stores `UnitExports` with the
+export keys as positions among the read keys, so a record copied as its bytes stays valid; a format 4 file loads empty.

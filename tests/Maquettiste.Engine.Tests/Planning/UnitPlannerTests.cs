@@ -121,6 +121,56 @@ public sealed class UnitPlannerTests
     }
 
     [Fact]
+    public async Task A_selector_script_that_uses_a_library_at_its_top_level_plans()
+    {
+        const string helpers = "maquettiste.helper('upper', s => String(s).toUpperCase());";
+        var lib = Pack("lib", [], [new ScriptSource(".maquettiste/templates/lib/helpers.js", helpers, ContentHash.Of(helpers))]);
+        var pack = Pack("p", [Unit("sel", "select picked")], [Script("""
+            const lib = maquettiste.use('lib');
+            maquettiste.selector('picked', model => model.entities.filter(e => typeof lib.upper === 'function'));
+            """)]) with { Uses = ["lib"], Sees = ["lib"] };
+
+        var plan = await Plan(new PackSet([pack], []) { Used = [lib] });
+
+        Assert.Empty(plan.Diagnostics);
+        Assert.NotEmpty(plan.Units);
+    }
+
+    [Fact]
+    public void The_static_hash_of_a_pack_without_uses_is_unchanged()
+    {
+        var unit = Unit("u", "each entity");
+        var pack = Pack("p", [unit]);
+        var other = Pack("lib", []) with { Manifest = Pack("lib", []).Manifest with { Version = "2.0.0" } };
+        var set = new PackSet([pack], []) { Used = [other] };
+
+        // A pack that uses nothing hashes the bytes it hashed before library packs, whatever else the set holds.
+        Assert.Equal(UnitPlanner.StaticHash(pack, unit, [], "p/u:1"), UnitPlanner.StaticHash(pack, unit, [], "p/u:1", set));
+        Assert.Equal(UnitPlanner.StaticParts(pack, unit, []), UnitPlanner.StaticParts(pack, unit, [], set));
+        Assert.DoesNotContain("uses:", UnitPlanner.StaticParts(pack, unit, [], set), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_used_packs_version_script_or_parameter_changes_the_static_hash()
+    {
+        var unit = Unit("u", "each entity");
+        var pack = Pack("p", [unit]) with { Uses = ["lib"], Sees = ["lib"] };
+        var lib = Pack("lib", []);
+        string Hash(LoadedPack used) => UnitPlanner.StaticHash(pack, unit, [], "p/u:1", new PackSet([pack], []) { Used = [used] });
+        var a = Hash(lib);
+
+        Assert.Equal(a, Hash(lib));
+        Assert.NotEqual(UnitPlanner.StaticHash(pack, unit, [], "p/u:1"), a);
+        Assert.NotEqual(a, Hash(lib with { Manifest = lib.Manifest with { Version = "1.1.0" } }));
+        Assert.NotEqual(a, Hash(lib with { ScriptsHash = "other" }));
+        Assert.NotEqual(a, Hash(lib with
+        {
+            Parameters = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal) { ["suffix"] = JsonSerializer.SerializeToElement("Entry") },
+        }));
+        Assert.Contains("uses:lib=1.0.0", UnitPlanner.StaticParts(pack, unit, [], new PackSet([pack], []) { Used = [lib] }).Split('\n'));
+    }
+
+    [Fact]
     public async Task Static_hash_depends_on_the_unit_parameters_formatters_and_key()
     {
         var unit = Unit("u", "each entity");
@@ -136,6 +186,82 @@ public sealed class UnitPlannerTests
         Assert.Equal(UnitPlanner.StaticHash(pack, unit with { Formatter = "none" }, [], "p/u:1"),
             UnitPlanner.StaticHash(pack, unit with { Formatter = "none" }, [formatter], "p/u:1"));
     }
+
+    [Fact]
+    public void A_unit_without_exports_keeps_its_static_hash()
+    {
+        // The hashed unit JSON holds the members it held before exports existed, so an upgrade renders nothing again.
+        var unit = Unit("u", "each entity");
+        using var json = JsonDocument.Parse(HashedUnitJson(unit));
+        Assert.Equal(["blockComment", "createFile", "for", "id", "mode", "output", "template", "transforms"],
+            json.RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        var pack = Pack("p", [unit]);
+        Assert.Equal(UnitPlanner.StaticHash(pack, unit, [], "p/u:1"),
+            UnitPlanner.StaticHash(pack, unit with { Exports = new Dictionary<string, PackExport>() }, [], "p/u:1"));
+    }
+
+    [Fact]
+    public void A_copy_unit_with_sources_and_tokens_keeps_its_static_hash()
+    {
+        // Such a unit hashed its whole canonical JSON; it still does, without the empty exports.
+        var unit = Unit("u", "model") with
+        {
+            Mode = OutputMode.Copy, Template = null, Sources = ["files/**"],
+            Tokens = new SortedDictionary<string, string>(StringComparer.Ordinal) { ["Acme"] = "company" },
+        };
+        var node = JsonSerializer.SerializeToNode(unit, EngineJson.Options)!.AsObject();
+        Assert.True(node.Remove("exports"));
+        Assert.Equal(CanonicalForm.Json(JsonSerializer.SerializeToElement(node, EngineJson.Options)), HashedUnitJson(unit));
+        Assert.Contains("\"tokens\"", HashedUnitJson(unit), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Changing_an_export_changes_the_static_hash()
+    {
+        var unit = Unit("u", "each entity") with
+        {
+            Exports = new SortedDictionary<string, PackExport>(StringComparer.Ordinal) { ["class_name"] = new() { Value = "{{ entity.name }}" } },
+        };
+        var pack = Pack("p", [unit]);
+        var a = UnitPlanner.StaticHash(pack, unit, [], "p/u:1");
+        Assert.NotEqual(UnitPlanner.StaticHash(pack, Unit("u", "each entity"), [], "p/u:1"), a);
+        Assert.NotEqual(a, UnitPlanner.StaticHash(pack, unit with
+        {
+            Exports = new SortedDictionary<string, PackExport>(StringComparer.Ordinal) { ["class_name"] = new() { Value = "{{ entity.name }}Row" } },
+        }, [], "p/u:1"));
+        Assert.NotEqual(a, UnitPlanner.StaticHash(pack, unit with
+        {
+            Exports = new SortedDictionary<string, PackExport>(StringComparer.Ordinal)
+            {
+                ["class_name"] = new() { Value = "{{ entity.name }}", Each = "attributes" },
+            },
+        }, [], "p/u:1"));
+        Assert.Contains("\"exports\"", HashedUnitJson(unit), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Exporting_units_of_used_packs_are_planned_export_only()
+    {
+        var exporting = Unit("record", "each entity") with
+        {
+            Exports = new SortedDictionary<string, PackExport>(StringComparer.Ordinal) { ["class_name"] = new() { Value = "{{ entity.name }}" } },
+        };
+        var records = Pack("records", [exporting, Unit("plain", "each entity")], order: 0);
+        var services = Pack("services", [Unit("service", "each entity")], order: 1) with { Uses = ["records"], Sees = ["records"] };
+
+        var plan = await Plan(new PackSet([services], []) { Used = [records] });
+
+        Assert.All(plan.Units, u => Assert.Equal("services", u.Pack.Name));
+        Assert.NotEmpty(plan.Units);
+        Assert.Equal(plan.Units.Select(u => "records/record:" + u.Element!.Id).Order(StringComparer.Ordinal), plan.ExportOnly.Select(u => u.Key));
+        Assert.All(plan.ExportOnly, u => Assert.Equal(UnitPlanner.StaticHash(records, exporting, [], u.Key, new PackSet([services], []) { Used = [records] }), u.StaticHash));
+        Assert.Empty((await Plan(new PackSet([services], []))).ExportOnly);
+    }
+
+    private static string HashedUnitJson(PackUnit unit) => (string)typeof(UnitPlanner)
+        .GetNestedType("UnitHashPrefix", System.Reflection.BindingFlags.NonPublic)!
+        .GetMethod("UnitJson", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+        .Invoke(null, [unit])!;
 
     [Fact]
     public void Static_hash_is_the_section_11_fields_hashed_with_the_hash_builder()
@@ -156,7 +282,7 @@ public sealed class UnitPlannerTests
             var templates = HashBuilder.Of(u.Template, PackFiles.Hash(pack.RootPath, u.Template!) ?? DependencyHasher.Absent, null, null);
             // A unit outside mode copy hashes as it did before copy units: its empty 'sources' and 'tokens' are left out.
             var unitJson = JsonSerializer.SerializeToNode(u, EngineJson.Options)!.AsObject();
-            Assert.True(unitJson.Remove("sources") && unitJson.Remove("tokens"));
+            Assert.True(unitJson.Remove("sources") && unitJson.Remove("tokens") && unitJson.Remove("exports"));
             var expected = HashBuilder.Of("mq-unit-1", EngineVersion.Value, pack.Name, pack.Manifest.Version,
                 CanonicalForm.Json(JsonSerializer.SerializeToElement(unitJson, EngineJson.Options)), pack.ScriptsHash,
                 CanonicalForm.Json(pack.Parameters), pack.Settings.Output, formatterField, templates, "p/u:é" + new string('x', 2000));

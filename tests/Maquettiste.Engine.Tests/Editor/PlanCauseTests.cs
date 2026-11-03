@@ -58,7 +58,7 @@ public sealed class PlanCauseTests
 
         // A state file of the previous format: every unit is new with the single cause state-reset.
         var units = Path.Combine(repo.Repo.CacheDirectory, "units");
-        File.Move(Path.Combine(units, "sql-ddl.v4.bin"), Path.Combine(units, "sql-ddl.v1.bin"));
+        File.Move(Path.Combine(units, "sql-ddl.v5.bin"), Path.Combine(units, "sql-ddl.v1.bin"));
         var reset = (await repo.Service.PlanAsync(SqlDdl, null, Ct)).Plan!;
         Assert.All(reset.Units, u => Assert.Equal(("new", "state-reset", 1), (u.Reason, u.Causes.Single().Kind, u.CauseCount)));
     }
@@ -203,5 +203,23 @@ public sealed class ExplainSelectionTests
         var filter = await repo.Service.ExplainAsync("sql-ddl", "table", table.ElementId, null, Ct);
         Assert.Equal("filter", filter!.Reason);
         Assert.Contains("(where.tags: no-such-tag)", filter.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_exports_key_reads_as_the_exports_of_the_element()
+    {
+        await using var f = await Rendering.ExportPacks.CreateAsync();
+        await f.RunAsync();
+        Rendering.LibraryPacks.Pack(f, "records", Rendering.ExportPacks.RecordUnit.Replace("}}Record\"", "}}Row\"", StringComparison.Ordinal));
+
+        var plan = (await f.Service.PlanAsync(new GenerationRequest { Mode = GenerationMode.DryRun }, null, TestContext.Current.CancellationToken)).Plan!;
+
+        var service = plan.Units.First(u => u.Key.StartsWith("services/service:", StringComparison.Ordinal) && u.Causes.Any(c => c.Kind == "exports"));
+        var cause = service.Causes.Single(c => c.Kind == "exports");
+        Assert.Equal("px:records/" + service.ElementId, cause.Key);
+        Assert.Equal(service.ElementId, cause.ElementId);
+        Assert.Matches("^The exports of (Customer|Product) \\(entity\\) from records changed$", cause.Detail);
+        Assert.Equal("exports", Engine.Generation.PlanExplainer.KindOf("px:records"));
+        Assert.Equal("inputs", Engine.Generation.PlanExplainer.KindOf("ix:x"));
     }
 }

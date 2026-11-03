@@ -130,7 +130,8 @@ public sealed class GenerationRunTests
     {
         await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
         await f.RunAsync();
-        f.WritePackFile("basic", "pack.json", "{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [] }");
+        // Empty units are a library pack now (next-phase-2-design.md section 5.2); an engine range that does not parse still fails it.
+        f.WritePackFile("basic", "pack.json", "{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \"banana\", \"units\": [] }");
         var result = await f.RunAsync();
         Assert.Equal(RunOutcome.Invalid, result.Outcome);
         Assert.Contains(result.Diagnostics, d => d.Rule == "MQ6001");

@@ -2706,6 +2706,74 @@ name (`generation.<name>` on elements, tables, columns and other parts) move to 
 update the generation hints that name this pack** is ticked by default and saves them as one change you can undo, and
 the command does the same unless you add `--keep-hints`.
 
+### Library packs: share partials and helpers
+
+Two packs that render the same header or compute the same class names can share one **library pack** instead of
+copies. A library has no units; other packs list it in `uses` with a version range:
+
+```json
+"uses": [ { "pack": "naming", "version": "^1.2.0" } ]
+```
+
+`maquettiste pack new naming --library` (or `new_pack` with `library`) writes a library with
+`partials/header.scriban` and a `helpers.js`. A pack that uses it includes the partial by a prefixed name,
+`{{ include "naming:partials/header.scriban" }}`, and calls its helpers through a namespace named after the pack:
+`{{ naming.class_name entity }}`. The partial renders with the including unit's variables; the helpers run with the
+library's own parameters (`packs.naming.parameters` in `maquettiste.json`). A pack's scripts reach a used pack with
+`maquettiste.use("naming")`. The project's own rule scripts can too: list the library in `uses` at the top of
+`maquettiste.json`, and a rule calls `maquettiste.use("naming").class_name(element)`.
+
+A used pack loads with every pack that uses it, enabled or not, and is never rendered for it. Changing a library's
+version, scripts or parameters renders again every unit that uses it, and nothing else; validation runs its cached
+rules again. Renaming a library rewrites the `uses` entries that name it and lists the templates and scripts whose text
+still does (edit those yourself); deleting it, or a partial another pack includes, is refused while something uses it.
+
+| Rule | Severity | When |
+| --- | --- | --- |
+| MQ6042 | error | A `uses` entry names a pack that does not exist or did not load, or a list names a pack twice. |
+| MQ6043 | error | The used pack's version does not satisfy the range, or the range does not parse. |
+| MQ6044 | error | A pack uses itself, or packs use each other in a cycle. |
+| MQ6045 | error | A used pack's namespace collides with a builtin, a template keyword or variable, or a root helper. |
+| MQ6046 | warning | A pack has no units, and no pack and no project `uses` lists it. |
+| MQ6047 | error | A template reads the exports of a pack its pack does not use, or an export template reads its own pack's exports. |
+| MQ6048 | error | Two units of one pack export one name for one element with different values. |
+| MQ6049 | error | An export's `each` names a member that is not a list of items with ids, or two items share an id. |
+| MQ6050 | error | A unit reads exports that failed to evaluate; it is not rendered. |
+
+[Share and test packs](guides/share-and-test-packs.md) walks an example.
+
+### Packs that read each other's exports
+
+A unit can state names per element that other packs read, so a name has one definition. `exports` in a unit maps a
+snake_case name to a template, rendered with the unit's variables as `output` is, or to `{ "each": "<list member>",
+"value": "<template>" }`, rendered once per item of that member of the element (`attributes`, `columns`, an enum's
+`members`) with the item as `item` and keyed by the item's id. Values are text: line endings LF, leading and trailing
+whitespace trimmed.
+
+```json
+{ "id": "record", "template": "record.scriban", "for": "each entity",
+  "output": "{{ entity.package.name }}/{{ exports.class_name }}.cs",
+  "exports": {
+    "class_name": "{{ pascal entity.name }}Record",
+    "namespace": "{{ project.properties.baseNamespace }}.{{ entity.package.name }}",
+    "members": { "each": "attributes", "value": "{{ pascal item.name }}" } } }
+```
+
+- The unit's own template, `output` and companion read its values as the variable `exports`, so a file's name and the
+  name other packs read are one definition.
+- `exported <element | id | model> "<pack>"` returns a pack's record for an element as a read-only map, or `null` when
+  no unit of the pack plans the element. The record merges the exports of every unit of the pack that plans the
+  element, with its scope, `where` filter and skip hints applied. `exported model "<pack>"` reads the `for: model` units.
+- A template reads the exports of its own pack and of the packs in its `uses` closure. An export template reads only
+  the packs its pack uses, never its own, and sees neither `data`, `schema_diff` nor `exports`.
+- Exports are computed from the model, never read back from rendered files, so render order cannot change a byte.
+  A unit that read a record renders again when that record changes, and only then: editing the exporting template's
+  body renders only the exporting units.
+- `maquettiste pack exports <pack> [--element <id>]...` and the MCP tool `get_pack_exports` show the records.
+- Rules: MQ6047 (a template reads a pack its pack does not use, or an export template reads its own pack), MQ6048 (two
+  units of one pack give one name different values for one element), MQ6049 (`each` names no list of items with
+  ids, or two items share an id) and MQ6050 (a unit reads exports that failed to evaluate; it is not rendered).
+
 ### outputs.allow: what generation may touch
 
 Generation writes only under the paths listed in `outputs.allow` of `maquettiste.json`, never elsewhere, whatever a

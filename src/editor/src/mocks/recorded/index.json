@@ -66,7 +66,7 @@
     "tags": [
       "billing"
     ],
-    "hash": "68aae99890ec3db72c322bc927754bb41cbfd8da546353a54abc774fe4313422",
+    "hash": "f5378ea4f0d5a6bfd5906472bf641edd096d8a11f100390380fac5058547d77e",
     "path": ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json",
     "category": "01J92P0V06TYE8P8990AV35A8K",
     "stereotypes": [
@@ -94,7 +94,7 @@
     "name": "outstanding_invoices",
     "package": null,
     "tags": [],
-    "hash": "35aba475e981a066643711a0eb737a20437d3cc1ad186128c2d2e18a17745ae3",
+    "hash": "9219cef04a904a77bc9a80109d809cbb0c903a39b396d835f00dfbf90304cc2e",
     "path": ".maquettiste/model/databases/main/views/outstanding-invoices.json",
     "category": null,
     "stereotypes": [],
