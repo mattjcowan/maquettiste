@@ -146,6 +146,59 @@ public sealed class ValidateTests
         Assert.Contains("templates/ddl/pack.json", result.Out, StringComparison.Ordinal);
     }
 
+    private const string NotesFile = ".maquettiste/model/databases/main/tables/notes.json";
+
+    /// <summary>A declared rule every table fails (an info), and notes accepts its finding (next-phase-2-design.md section 5.6).</summary>
+    private static void SuppressOnNotes(CliRepo repo)
+    {
+        repo.Write(".maquettiste/extensions/rules/rules.json", """
+            { "rules": [ { "id": "every-table", "severity": "info", "select": { "kind": "table" }, "require": { "has": "properties.nothing" },
+              "message": "Table {name} fails." } ] }
+            """);
+        repo.Replace(NotesFile, "\"name\": \"notes\",",
+            "\"name\": \"notes\",\n  \"suppressions\": [{ \"rule\": \"x/every-table\", \"reason\": \"Notes are free text.\" }],");
+    }
+
+    [Fact]
+    public async Task Text_output_counts_suppressed_findings()
+    {
+        using var repo = CliRepo.Billing();
+        SuppressOnNotes(repo);
+        var result = await repo.RunAsync("validate");
+        Assert.True(result.ExitCode == 0, result.ToString());
+        Assert.Contains("1 finding suppressed.", result.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("Table notes fails.", result.Out, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Json_output_lists_them()
+    {
+        using var repo = CliRepo.Billing();
+        SuppressOnNotes(repo);
+        var result = await repo.RunAsync("validate", "--format", "json");
+        Assert.True(result.ExitCode == 0, result.ToString());
+        using var doc = JsonDocument.Parse(result.Out);
+        var entry = Assert.Single(doc.RootElement.GetProperty("suppressed").EnumerateArray());
+        Assert.Equal("Notes are free text.", entry.GetProperty("reason").GetString());
+        Assert.Equal("/suppressions/0", entry.GetProperty("jsonPointer").GetString());
+        Assert.Equal("x/every-table", entry.GetProperty("finding").GetProperty("rule").GetString());
+        Assert.Equal(NotesFile, entry.GetProperty("finding").GetProperty("filePath").GetString());
+    }
+
+    [Fact]
+    public async Task The_report_merged_with_pack_findings_keeps_suppressed()
+    {
+        using var repo = CliRepo.Billing();
+        SuppressOnNotes(repo);
+        repo.Write(".maquettiste/templates/ddl/pack.json", "{ \"name\": \"ddl\" }\n");
+        var result = await repo.RunAsync("validate", "--format", "json");
+        Assert.Equal(1, result.ExitCode);
+        using var doc = JsonDocument.Parse(result.Out);
+        Assert.Contains(doc.RootElement.GetProperty("diagnostics").EnumerateArray(),
+            d => d.GetProperty("filePath").GetString()?.Contains("templates/ddl/pack.json", StringComparison.Ordinal) == true);
+        Assert.Single(doc.RootElement.GetProperty("suppressed").EnumerateArray());
+    }
+
     private const string SchemaFolder = ".maquettiste/.schema/v1";
 
     private static void WriteCurrentSchemas(CliRepo repo)

@@ -4,6 +4,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Text;
+using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Resolution;
 
@@ -209,7 +210,8 @@ internal sealed partial class ResolveRun
             Stereotypes = new RList<RStereotypeDefinition>(stereotypes, ["k:stereotype"]),
             TagVocabularies = new RList<RTagVocabulary>(vocabularies, ["k:tag-vocabulary"]),
             CategoryTrees = new RList<RCategoryTree>(trees, ["k:category-tree"]),
-            Diagnostics = [.. Diagnostics.Order(Diagnostic.Order)],
+            Diagnostics = [.. Suppressions.Of(Model).Apply(Diagnostics, out var suppressed).Order(Diagnostic.Order)],
+            Suppressed = suppressed,
             ById = _byId, // lookups only, never enumerated; freezing a few hundred thousand ids costs more than it saves
             Calculated = Calculations,
         };
@@ -414,6 +416,24 @@ internal sealed partial class ResolveRun
     /// <summary>Adds a diagnostic at a JSON pointer in the element's file; its severity follows <c>validation.rules</c>; nothing when the rule is off.</summary>
     public void AddDiagnostic(string rule, string message, string? elementId, string? pointer)
     {
+        var path = elementId is null ? null : Model.GetDocument(elementId)?.Path;
+        Add(rule, message, elementId, path, path is null ? null : pointer);
+    }
+
+    /// <summary>
+    /// Adds a diagnostic about a member a table inherits (next-phase-2-design.md section 3.1), which no file holds: on the file of
+    /// <paramref name="fileElementId"/> without a pointer, with the member's keyed id (<c>&lt;tableKey&gt;.&lt;memberId&gt;</c>) as its element
+    /// id, so a suppression on the table names it (section 5.6). Without that file it is on <paramref name="fileElementId"/>, as
+    /// <see cref="AddDiagnostic(string, string, string?)"/> reports.
+    /// </summary>
+    public void AddMemberDiagnostic(string rule, string message, string fileElementId, string memberId)
+    {
+        var path = Model.GetDocument(fileElementId)?.Path;
+        Add(rule, message, path is null ? fileElementId : memberId, path, null);
+    }
+
+    private void Add(string rule, string message, string? elementId, string? path, string? pointer)
+    {
         var severity = RuleCatalog.TryGet(rule, out var info) ? info.DefaultSeverity : DiagnosticSeverity.Error;
         if (Settings.Validation.Rules.TryGetValue(rule, out var configured))
         {
@@ -426,8 +446,7 @@ internal sealed partial class ResolveRun
             }
         }
 
-        var path = elementId is null ? null : Model.GetDocument(elementId)?.Path;
-        Diagnostics.Add(new Diagnostic(rule, severity, message, elementId, path, path is null ? null : pointer, null, null));
+        Diagnostics.Add(new Diagnostic(rule, severity, message, elementId, path, pointer, null, null));
     }
 
     private void FreezeDependencies()

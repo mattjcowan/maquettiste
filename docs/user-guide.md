@@ -4062,9 +4062,10 @@ by default everywhere: the editor's validation, `maquettiste validate`, `generat
 **Severities in Settings › Validation.** The family **Extensions and script rules** holds the built-in rules about these
 files: MQ5001 (a custom property value that fails its schema), MQ5002 (a rule or calculation script error), MQ5003 (a
 rule or calculation script that broke a sandbox limit), MQ5004 (an invalid extension file), MQ5005 (a rule, rows or
-calculation script that keeps state at its top level) and MQ5010 to MQ5013 (calculated values, below). Below the
-built-in families, **Script rules** lists every `x/<id>` the project's rule files register, with the severity the rule
-declares as its Default. Each row's picker sets `error`, `warning`, `info` or `off` in `validation.rules` of
+calculation script that keeps state at its top level), MQ5010 to MQ5013 (calculated values, below), MQ5014 to MQ5017
+(rule declaration files, below) and MQ5018 to MQ5020 (suppressions, below). Below the built-in families, **Script
+rules** lists every `x/<id>` the project's rule files register, with the severity the rule declares as its Default;
+set a declared rule's severity with its `x/<id>` in `validation.rules`. Each row's picker sets `error`, `warning`, `info` or `off` in `validation.rules` of
 `maquettiste.json`, as for the built-in rules; `off` stops the rule from running, and the severity you set also applies
 to the rule's own failures (MQ5002 and MQ5003 on that rule).
 
@@ -4108,6 +4109,102 @@ that).
 - A rule id registered twice is MQ5002 on the second file.
 
 Clicking such a finding in the Problems panel opens the rule file on the Extensions tab.
+
+### Declared rules (`extensions/rules/*.json`)
+
+A simple convention needs no script. A declaration file in `extensions/rules/` states rules as data: which resolved
+objects a rule judges (`select`), what must hold for each (`require`) and the message of a finding. Prefer a
+declaration when the convention fits; keep scripts for what it cannot say.
+
+```json
+{
+  "$schema": "../../.schema/v1/declared-rules.json",
+  "rules": [
+    {
+      "id": "audited-tables-have-updated-at",
+      "severity": "error",
+      "description": "Audited tables record when a row last changed.",
+      "select": { "kind": "table", "stereotype": "audited" },
+      "require": {
+        "count": { "of": "columns", "where": { "equals": { "path": "name", "value": "updated_at" } }, "min": 1 }
+      },
+      "message": "Table {name} carries audited but has no updated_at column."
+    }
+  ]
+}
+```
+
+- **A rule.** `id` (letters, digits, `.`, `_` and `-`; findings are `x/<id>`, unique across declarations and rule
+  scripts), `severity` (`error` by default; `validation.rules` overrides it by `x/<id>`, and `off` skips the rule),
+  `description`, `select`, `require` and `message`.
+- **Selectors.** `kind` is required; `stereotype` (the effective set, defaults and implied keys included), `tag`,
+  `property` (a custom property with a value) and `package` (the package or one nested in it) narrow it. Each key takes
+  one value or a list, a list means any of its values, and the keys combine with AND.
+- **Conditions.** Exactly one key each: `all`, `any`, `not`, `has` (a path holds a value), `equals` (`{ path, value }`),
+  `count` (`{ of, where, min, max }` over a list of objects such as `columns`, `attributes` or a table's `indexes`;
+  `min` 1 when no bound is given), `references` and `referencedBy` (`{ kind, field, min, max }`: links through the
+  index; a diagram that shows an element does not count). A path is the names of resolved members joined by `.`, and
+  may read a calculated value (`calculated.<name>`).
+- **Messages.** `{<path>}` inserts the value at a path of the object (a resolved object by its name), `{$count}` the
+  number a top-level `count`, `references` or `referencedBy` found, and `{{` and `}}` write braces.
+
+Declared rules run on the resolved model, after resolution, wherever script rules with `scope: "resolved"` run:
+`maquettiste validate`, the editor's validation, the MCP `validate` tool and generation, where an error stops the run.
+They never run on element saves. A finding lands on the object's file as resolved-rule findings do. Whole-model
+validations check the declarations first: a file that does not fit `declared-rules.json` is MQ5014 and declares nothing,
+an id another declaration or a rule script already has is MQ5015 on the later file, and MQ5016 marks what does not exist
+or apply (a kind, a stereotype key, a package id, a path, a calculated value, a link kind, bounds or a placeholder). A
+broken declaration stops resolution as a broken rule script does. A rule that selects no object warns MQ5017 at its
+`select`. The Extensions tab and `list_extension_files` list a declaration file as kind `declared-rules` with its rules.
+
+**How a rule sees inherited members.** A declared rule reads the resolved object, never its file. A table's `columns`
+lists every column generation sees: its own, the ones its stereotypes contribute (keyed `<table key>.<member id>`, with
+the table's redefinitions applied) and, for a table a binding or mapping shapes, the ones resolution adds; a column the
+table `excludes` is absent. The same holds for `indexes`, `checks`, `foreignKeys` and `primaryKey`. An entity's
+`attributes` lists inherited, own and stereotype attributes, and `ownAttributes` its own. So when `audited` contributes
+an `updated_at` column, every table that carries `audited` satisfies the rule above, a table that excludes the column
+fails it again, and a redefinition that makes it nullable keeps it counted. A finding about an inherited column, from a
+rule that selects `column`, lands on the table's file with the column's keyed id as its element id, so a suppression on
+the table with that `member` matches it.
+
+### Suppressions
+
+Every team meets the one element a rule is wrong for. Instead of turning the rule off for everyone, the element accepts
+the finding, with a reason, in its own file:
+
+```json
+"suppressions": [
+  {
+    "rule": "x/audited-tables-have-updated-at",
+    "reason": "Notes are append-only; a row never changes after it is written."
+  }
+]
+```
+
+- **An entry.** `rule` is a built-in rule (`MQ` and four digits), a script rule or a declared rule (`x/<id>`); `reason`
+  is required and says why this element is the exception; `member` (optional) limits the entry to one part of the
+  element: a part in its file (its id), an attribute it holds through a base or a stereotype, or a member a table
+  inherits (its keyed id, `<table key>.<member id>`). The key sits on the element's file only, never inside a part.
+- **What it matches.** A finding on the element's file whose rule is the entry's rule; with `member`, only a finding on
+  that part (its element id, or a pointer at or under the part, so moving the part in its array changes nothing). The
+  first matching entry wins.
+- **Where they apply.** Everywhere findings are reported, after `validation.rules` sets their severity: element saves
+  (a suppressed error does not refuse a save), `maquettiste validate`, the editor, the MCP `validate` tool, the
+  resolver's and the declared and resolved rules' findings, validation against a baseline, and generation, which runs
+  when the only errors are suppressed. A project without suppressions pays nothing.
+- **What you see.** Suppressed findings leave the counts and the diagnostics list. `maquettiste validate` prints
+  `<n> findings suppressed` after its summary; `--format json` lists them under `suppressed` (the finding, the reason,
+  the element and the entry's pointer, `/suppressions/<i>`); `--format sarif` writes each as a result with an in-source
+  suppression whose justification is the reason. The MCP `validate` answer and `POST /api/validate` carry `suppressed`.
+- **Rules on the entries.** MQ5018 (an error) for a rule that cannot be suppressed: MQ1xxx (a file that does not load),
+  MQ7012 and MQ5018 to MQ5020. MQ5019 (a warning) for a rule nothing defines, a `member` the element does not hold,
+  or an entry that repeats another's rule and member; `x/` ids are judged when every rule script loads and the
+  declarations are valid. MQ5020 (a warning) for an entry that matched no finding in a whole-model validate whose model
+  resolved, so an exception that is no longer needed shows up.
+
+There is no expiry date (validation never depends on the clock), no wildcard and no suppression by selector: a rule
+that is wrong for a group of elements needs a narrower `select`, and `validation.rules` still sets a rule's severity for
+the whole project.
 
 ### Calculated values (`extensions/calculated/*.js`)
 

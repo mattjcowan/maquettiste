@@ -327,6 +327,9 @@ public sealed class ResolvedModel
     /// <summary>Resolution diagnostics.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics { get; internal init; } = [];
 
+    /// <summary>The resolution findings the elements' suppressions moved out of <see cref="Diagnostics"/> (section 5.6), in input order.</summary>
+    internal IReadOnlyList<SuppressedFinding> Suppressed { get; init; } = [];
+
     /// <summary>The calculated values of this model's objects (section 5.5), or <see langword="null"/> when the project declares none.</summary>
     internal CalculationHost? Calculated { get; init; }
 

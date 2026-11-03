@@ -24,14 +24,35 @@ public static class SarifWriter
     /// <param name="toolVersion">The tool version.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task that completes when the log is written and flushed.</returns>
-    public static async Task WriteAsync(Stream output, IReadOnlyList<Diagnostic> diagnostics, string toolVersion, CancellationToken ct)
+    public static Task WriteAsync(Stream output, IReadOnlyList<Diagnostic> diagnostics, string toolVersion, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(diagnostics);
+        return WriteAsync(output, diagnostics, [], toolVersion, ct);
+    }
+
+    /// <summary>
+    /// Writes a report's diagnostics, then its suppressed findings as results with in-source suppressions (SARIF 2.1.0
+    /// <c>suppressions</c>, kind <c>inSource</c>, status <c>accepted</c>, the reason as the justification; section 5.6).
+    /// </summary>
+    /// <param name="output">The stream to write UTF-8 JSON to.</param>
+    /// <param name="report">The report.</param>
+    /// <param name="toolVersion">The tool version.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>A task that completes when the log is written and flushed.</returns>
+    public static Task WriteAsync(Stream output, ValidationReport report, string toolVersion, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        return WriteAsync(output, report.Diagnostics, report.Suppressed, toolVersion, ct);
+    }
+
+    private static async Task WriteAsync(Stream output, IReadOnlyList<Diagnostic> diagnostics, IReadOnlyList<SuppressedFinding> suppressed, string toolVersion,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(output);
-        ArgumentNullException.ThrowIfNull(diagnostics);
         ArgumentNullException.ThrowIfNull(toolVersion);
         ct.ThrowIfCancellationRequested();
 
-        var rules = RuleTable(diagnostics);
+        var rules = RuleTable([.. diagnostics, .. suppressed.Select(s => s.Finding)]);
         var ruleIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var i = 0; i < rules.Count; i++)
             ruleIndex[rules[i].Id] = i;
@@ -80,7 +101,14 @@ public static class SarifWriter
             foreach (var d in diagnostics)
             {
                 ct.ThrowIfCancellationRequested();
-                WriteResult(writer, d, ruleIndex);
+                WriteResult(writer, d, ruleIndex, null);
+                await FlushIfNeededAsync(writer, ct).ConfigureAwait(false);
+            }
+
+            foreach (var s in suppressed)
+            {
+                ct.ThrowIfCancellationRequested();
+                WriteResult(writer, s.Finding, ruleIndex, s.Reason);
                 await FlushIfNeededAsync(writer, ct).ConfigureAwait(false);
             }
 
@@ -112,11 +140,11 @@ public static class SarifWriter
         }
 
         foreach (var (id, severity) in custom)
-            rules.Add(new RuleInfo(id, severity, id.StartsWith("x/", StringComparison.Ordinal) ? "JavaScript validation rule " + id[2..] + "." : "Rule " + id + "."));
+            rules.Add(new RuleInfo(id, severity, id.StartsWith("x/", StringComparison.Ordinal) ? "Project validation rule " + id[2..] + "." : "Rule " + id + "."));
         return rules;
     }
 
-    private static void WriteResult(Utf8JsonWriter writer, Diagnostic d, Dictionary<string, int> ruleIndex)
+    private static void WriteResult(Utf8JsonWriter writer, Diagnostic d, Dictionary<string, int> ruleIndex, string? justification)
     {
         writer.WriteStartObject();
         writer.WriteString("ruleId", d.Rule);
@@ -145,6 +173,17 @@ public static class SarifWriter
             }
 
             writer.WriteEndObject(); // physicalLocation
+            writer.WriteEndObject();
+            writer.WriteEndArray();
+        }
+
+        if (justification is not null)
+        {
+            writer.WriteStartArray("suppressions");
+            writer.WriteStartObject();
+            writer.WriteString("kind", "inSource");
+            writer.WriteString("status", "accepted");
+            writer.WriteString("justification", justification);
             writer.WriteEndObject();
             writer.WriteEndArray();
         }

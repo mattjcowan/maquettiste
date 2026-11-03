@@ -29,6 +29,31 @@ public sealed class SarifWriterTests
     }
 
     [Fact]
+    public async Task Suppressed_findings_are_results_with_in_source_suppressions()
+    {
+        var accepted = new Diagnostic("x/audited", DiagnosticSeverity.Error, "Table notes fails.", "01JTBL00000000000000000001",
+            ".maquettiste/model/databases/main/tables/notes.json", "", 1, 1);
+        var report = ValidationReport.From(Sample, [new SuppressedFinding(accepted, "Notes are append-only.", "01JTBL00000000000000000001", "/suppressions/0")]);
+        var buffer = new MemoryStream();
+        await SarifWriter.WriteAsync(buffer, report, "1.2.3", Ct);
+        using var doc = JsonDocument.Parse(buffer.ToArray());
+        var run = doc.RootElement.GetProperty("runs")[0];
+
+        var results = run.GetProperty("results").EnumerateArray().ToList();
+        Assert.Equal(Sample.Length + 1, results.Count);
+        Assert.All(results.Take(Sample.Length), r => Assert.False(r.TryGetProperty("suppressions", out _)));
+        var last = results[^1];
+        Assert.Equal("x/audited", last.GetProperty("ruleId").GetString());
+        var suppression = Assert.Single(last.GetProperty("suppressions").EnumerateArray());
+        Assert.Equal(("inSource", "accepted", "Notes are append-only."), (suppression.GetProperty("kind").GetString(),
+            suppression.GetProperty("status").GetString(), suppression.GetProperty("justification").GetString()));
+
+        // The rules list covers the suppressed finding's rule; a project rule is not called JavaScript.
+        var rule = run.GetProperty("tool").GetProperty("driver").GetProperty("rules").EnumerateArray().Single(r => r.GetProperty("id").GetString() == "x/audited");
+        Assert.Equal("Project validation rule audited.", rule.GetProperty("shortDescription").GetProperty("text").GetString());
+    }
+
+    [Fact]
     public async Task Writes_sarif_2_1_0_with_tool_rules_and_results()
     {
         var log = await WriteAsync(Sample);

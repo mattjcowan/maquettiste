@@ -18,6 +18,9 @@ internal enum ModelFileKind
     /// <summary><c>extensions/rules/*.js</c>.</summary>
     RuleScript,
 
+    /// <summary><c>extensions/rules/*.json</c>: a rule declaration file (next-phase-2-design.md section 5.6).</summary>
+    DeclaredRules,
+
     /// <summary><c>extensions/seeds/*.js</c>: a seed's rows script (next-phase-2-design.md section 3.4).</summary>
     SeedScript,
 
@@ -143,6 +146,8 @@ internal sealed class ModelPaths
             return ModelFileKind.Extension;
         if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "rules" && modelPath.EndsWith(".js", StringComparison.Ordinal))
             return ModelFileKind.RuleScript;
+        if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "rules" && modelPath.EndsWith(".json", StringComparison.Ordinal))
+            return ModelFileKind.DeclaredRules;
         if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "seeds" && modelPath.EndsWith(".js", StringComparison.Ordinal))
             return ModelFileKind.SeedScript;
         if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "calculated" && modelPath.EndsWith(".js", StringComparison.Ordinal))

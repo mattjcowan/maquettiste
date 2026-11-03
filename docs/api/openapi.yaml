@@ -2593,6 +2593,7 @@ paths:
                     infos: 0
                     truncated: false
                     hasErrors: true
+                    suppressed: []
                 clean:
                   summary: The billing fixture
                   value:
@@ -2602,6 +2603,7 @@ paths:
                     infos: 0
                     truncated: false
                     hasErrors: false
+                    suppressed: []
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8634,7 +8636,7 @@ components:
     ValidationReport:
       x-engine-record: Maquettiste.Engine.Diagnostics.ValidationReport
       type: object
-      required: [diagnostics, errors, warnings, infos, truncated, hasErrors]
+      required: [diagnostics, errors, warnings, infos, truncated, hasErrors, suppressed]
       properties:
         diagnostics:
           type: array
@@ -8651,6 +8653,31 @@ components:
           description: Diagnostics were dropped to fit a size limit; the counts are still the full counts.
         hasErrors:
           type: boolean
+        suppressed:
+          type: array
+          items:
+            $ref: '#/components/schemas/SuppressedFinding'
+          description: >-
+            The findings the elements' suppressions accepted, in diagnostic order; the counts exclude them. A truncated report
+            empties this list before it drops diagnostics.
+
+    SuppressedFinding:
+      x-engine-record: Maquettiste.Engine.Diagnostics.SuppressedFinding
+      description: A finding an element's suppression accepted (`suppressions[i]` of the element's file).
+      type: object
+      required: [finding, reason, elementId, jsonPointer]
+      properties:
+        finding:
+          $ref: '#/components/schemas/Diagnostic'
+        reason:
+          type: string
+          description: The entry's reason.
+        elementId:
+          type: string
+          description: The element whose suppressions hold the entry.
+        jsonPointer:
+          type: string
+          description: The entry, `/suppressions/<i>`.
 
     # ---------------------------------------------------------------- bulk reads (getElements, getModelKinds, getResolvedModel)
     ElementPage:
@@ -12871,7 +12898,9 @@ components:
           description: The path under `extensions/`.
           type: string
         rules:
-          description: For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); empty for a schema.
+          description: >-
+            For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); for a valid rule
+            declaration file, the rules it declares, each with `resolved` true; empty for a schema.
           type: array
           items:
             $ref: '#/components/schemas/ExtensionRuleInfo'
@@ -12882,11 +12911,11 @@ components:
             $ref: '#/components/schemas/CalculatedValueDeclaration'
         kind:
           description: >-
-            `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows
-            script, `seeds/<name>.js`), `custom-kind` (a custom kind, `kinds/<type>.json`) or `calculated` (a calculation file,
-            `calculated/<name>.js`).
+            `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `declared-rules` (a rule
+            declaration file, `rules/<name>.json`), `seed-rows` (a seed's rows script, `seeds/<name>.js`), `custom-kind` (a custom
+            kind, `kinds/<type>.json`) or `calculated` (a calculation file, `calculated/<name>.js`).
           type: string
-          enum: [schema, rule, seed-rows, custom-kind, calculated]
+          enum: [schema, rule, declared-rules, seed-rows, custom-kind, calculated]
         size:
           type: integer
         hash:
@@ -12913,8 +12942,9 @@ components:
         resolved:
           type: boolean
           description: >-
-            The rule was registered with scope "resolved": check(element, model, report) runs on each resolved object of its kinds in
-            the checks after resolution (validate, generation), never on element saves or in previews.
+            The rule runs on the resolved model: a script rule registered with scope "resolved" (check(element, model, report) runs
+            on each resolved object of its kinds in the checks after resolution: validate, generation, never element saves or
+            previews), and every declared rule.
     CalculatedValueDeclaration:
       x-engine-record: Maquettiste.Engine.Scripting.CalculatedValueDeclaration
       description: What one `maquettiste.calculated` call in a calculation file declares.
@@ -12942,7 +12972,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [schema, rule, seed-rows, custom-kind, calculated]
+          enum: [schema, rule, declared-rules, seed-rows, custom-kind, calculated]
         hash:
           $ref: '#/components/schemas/Hash'
         text:

@@ -1087,9 +1087,9 @@ public sealed partial class ModelStore
     {
         ArgumentNullException.ThrowIfNull(baseline);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
-        var report = await ValidateCoreAsync(snapshot, ValidationScope.All, committedStale: false, ct).ConfigureAwait(false);
+        // The baseline's findings are suppressed as the report's are, and MQ5020 is judged after them (section 5.6).
         var findings = await BaselineFindingsAsync(snapshot, baseline, ct).ConfigureAwait(false);
-        return findings.Count == 0 ? report : ValidationReport.From(report.Diagnostics.Concat(findings).Distinct());
+        return await ValidateCoreAsync(snapshot, ValidationScope.All, committedStale: false, ct, findings).ConfigureAwait(false);
     }
 
     /// <summary>

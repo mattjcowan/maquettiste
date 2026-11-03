@@ -111,6 +111,23 @@ public abstract record Element : ElementBase
     /// </summary>
     [StereotypeKeys]
     public virtual IReadOnlyList<string>? ExcludeStereotypes { get; init; }
+
+    /// <summary>Findings this element accepts, each with its reason (next-phase-2-design.md section 5.6).</summary>
+    public IReadOnlyList<Suppression> Suppressions { get; init; } = [];
+}
+
+/// <summary>One accepted finding on an element (<c>suppressions[i]</c>): a rule, optionally one part of the element, and why.</summary>
+public sealed record Suppression
+{
+    /// <summary>The rule: a built-in id (<c>MQ</c> and four digits) or a project rule (<c>x/&lt;id&gt;</c>).</summary>
+    public required string Rule { get; init; }
+
+    /// <summary>Why this element is the exception.</summary>
+    public required string Reason { get; init; }
+
+    /// <summary>The id of one part of the element the entry is limited to (an inherited member's keyed id included),
+    /// or null for the whole element.</summary>
+    public string? Member { get; init; }
 }
 
 /// <summary>Per-pack generation hints on an element (<c>generation.&lt;pack&gt;</c>).</summary>

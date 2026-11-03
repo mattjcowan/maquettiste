@@ -3,7 +3,7 @@
   "title": "Validation output",
   "description": "The output of maquettiste validate --format json.",
   "type": "object",
-  "x-order": ["errors", "warnings", "infos", "diagnostics"],
+  "x-order": ["errors", "warnings", "infos", "diagnostics", "suppressed"],
   "properties": {
     "errors": {
       "type": "integer",
@@ -20,43 +20,76 @@
     "diagnostics": {
       "type": "array",
       "items": {
-        "title": "Diagnostic",
+        "$ref": "#/$defs/diagnostic"
+      }
+    },
+    "suppressed": {
+      "description": "The findings the elements' suppressions accepted, in diagnostic order; the counts exclude them. Omitted when there are none.",
+      "type": "array",
+      "items": {
+        "title": "Suppressed finding",
         "type": "object",
-        "x-order": ["rule", "severity", "message", "elementId", "filePath", "jsonPointer", "line", "column"],
+        "x-order": ["finding", "reason", "elementId", "jsonPointer"],
         "properties": {
-          "rule": {
-            "type": "string",
-            "pattern": "^(MQ[1-7][0-9]{3}|x/.+)$"
+          "finding": {
+            "$ref": "#/$defs/diagnostic"
           },
-          "severity": {
-            "enum": ["error", "warning", "info"]
-          },
-          "message": {
+          "reason": {
+            "description": "The entry's reason.",
             "type": "string"
           },
           "elementId": {
-            "type": "string"
-          },
-          "filePath": {
+            "description": "The element whose suppressions hold the entry.",
             "type": "string"
           },
           "jsonPointer": {
+            "description": "The entry: /suppressions/<i>.",
             "type": "string"
-          },
-          "line": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "column": {
-            "type": "integer",
-            "minimum": 1
           }
         },
-        "required": ["rule", "severity", "message"],
+        "required": ["finding", "reason", "elementId", "jsonPointer"],
         "additionalProperties": false
       }
     }
   },
   "required": ["errors", "warnings", "infos", "diagnostics"],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "diagnostic": {
+      "title": "Diagnostic",
+      "type": "object",
+      "x-order": ["rule", "severity", "message", "elementId", "filePath", "jsonPointer", "line", "column"],
+      "properties": {
+        "rule": {
+          "type": "string",
+          "pattern": "^(MQ[1-7][0-9]{3}|x/.+)$"
+        },
+        "severity": {
+          "enum": ["error", "warning", "info"]
+        },
+        "message": {
+          "type": "string"
+        },
+        "elementId": {
+          "type": "string"
+        },
+        "filePath": {
+          "type": "string"
+        },
+        "jsonPointer": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["rule", "severity", "message"],
+      "additionalProperties": false
+    }
+  }
 }

@@ -42,10 +42,12 @@ public sealed class ModelSnapshot
         ImmutableArray<ScriptSource> seedScripts,
         ImmutableArray<CustomKindDocument> customKinds,
         IReadOnlyList<ScriptLibrarySource> scriptLibraries,
-        ImmutableArray<ScriptSource> calculationScripts)
+        ImmutableArray<ScriptSource> calculationScripts,
+        ImmutableArray<DeclaredRuleDocument> declaredRules)
     {
         ScriptLibraries = scriptLibraries;
         CalculationScripts = calculationScripts;
+        DeclaredRules = declaredRules;
         Version = version;
         Settings = settings;
         SettingsHash = settingsHash;
@@ -91,6 +93,9 @@ public sealed class ModelSnapshot
     /// <summary>The indexes, kept so the next snapshot of a store can patch them (<see cref="ModelIndexer.Build"/>).</summary>
     internal ModelIndexer.Result Index { get; }
 
+    /// <summary>The number of suppression entries the documents hold (next-phase-2-design.md section 5.6), counted by the index walk.</summary>
+    internal int SuppressionCount => Index.SuppressionCount;
+
     /// <summary>
     /// The holders and layered effective sets of default stereotypes (next-phase-2-design.md section 3.1), built from the documents
     /// before the index.
@@ -115,6 +120,7 @@ public sealed class ModelSnapshot
     /// <param name="customKinds">The custom kind files from <c>extensions/kinds/</c> (next-phase-2-design.md section 4.2).</param>
     /// <param name="scriptLibraries">The closure of <c>maquettiste.json</c>'s uses, in dependency order (library packs).</param>
     /// <param name="calculationScripts">The calculation files from <c>extensions/calculated/</c> (next-phase-2-design.md section 5.5).</param>
+    /// <param name="declaredRules">The valid rule declaration files from <c>extensions/rules/*.json</c> (next-phase-2-design.md section 5.6).</param>
     /// <returns>The snapshot.</returns>
     public static ModelSnapshot Create(
         IEnumerable<ElementDocument> documents,
@@ -128,16 +134,17 @@ public sealed class ModelSnapshot
         IReadOnlyList<ScriptSource>? seedScripts = null,
         IReadOnlyList<CustomKindDocument>? customKinds = null,
         IReadOnlyList<ScriptLibrarySource>? scriptLibraries = null,
-        IReadOnlyList<ScriptSource>? calculationScripts = null) =>
+        IReadOnlyList<ScriptSource>? calculationScripts = null,
+        IReadOnlyList<DeclaredRuleDocument>? declaredRules = null) =>
         CreateAfter(null, documents, settings, settingsHash, extensions, ruleScripts, version, loadDiagnostics, ModelIndexer.DefaultParallelism,
-            CancellationToken.None, localeShards, seedScripts, customKinds, scriptLibraries, calculationScripts);
+            CancellationToken.None, localeShards, seedScripts, customKinds, scriptLibraries, calculationScripts, declaredRules);
 
     /// <summary>
     /// <see cref="Create"/> after the store's previous snapshot, whose indexes are patched when few documents changed (the result
     /// is the same as without it), walking at most <paramref name="parallelism"/> documents at once and observing
     /// <paramref name="ct"/> (the loader and the store pass <see cref="EngineOptions.EffectiveParallelism"/> and their token). Without
     /// <paramref name="localeShards"/>, <paramref name="seedScripts"/>, <paramref name="customKinds"/>, <paramref name="scriptLibraries"/> or
-    /// <paramref name="calculationScripts"/> the previous snapshot's are kept.
+    /// <paramref name="calculationScripts"/> or <paramref name="declaredRules"/> the previous snapshot's are kept.
     /// </summary>
     internal static ModelSnapshot CreateAfter(
         ModelSnapshot? previous,
@@ -154,7 +161,8 @@ public sealed class ModelSnapshot
         IReadOnlyList<ScriptSource>? seedScripts = null,
         IReadOnlyList<CustomKindDocument>? customKinds = null,
         IReadOnlyList<ScriptLibrarySource>? scriptLibraries = null,
-        IReadOnlyList<ScriptSource>? calculationScripts = null)
+        IReadOnlyList<ScriptSource>? calculationScripts = null,
+        IReadOnlyList<DeclaredRuleDocument>? declaredRules = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(settings);
@@ -188,7 +196,8 @@ public sealed class ModelSnapshot
             [.. (seedScripts ?? previous?.SeedScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)],
             kinds,
             scriptLibraries ?? previous?.ScriptLibraries ?? [],
-            [.. (calculationScripts ?? previous?.CalculationScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)]);
+            [.. (calculationScripts ?? previous?.CalculationScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)],
+            [.. (declaredRules ?? previous?.DeclaredRules ?? []).OrderBy(d => d.Path, StringComparer.Ordinal)]);
     }
 
     /// <summary>The snapshot version.</summary>
@@ -229,6 +238,12 @@ public sealed class ModelSnapshot
     /// model, run only when something reads a calculated value. Empty for a project that declares none, which then pays nothing.
     /// </summary>
     public IReadOnlyList<ScriptSource> CalculationScripts { get; }
+
+    /// <summary>
+    /// The valid rule declaration files of <c>extensions/rules/*.json</c> (next-phase-2-design.md section 5.6), ordinal by path. Empty for a
+    /// project that declares none, which then pays nothing.
+    /// </summary>
+    public IReadOnlyList<DeclaredRuleDocument> DeclaredRules { get; }
 
     /// <summary>
     /// The custom kind files of <c>extensions/kinds/*.json</c> that read (next-phase-2-design.md section 4.2), ordinal by type, then by

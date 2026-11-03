@@ -30,6 +30,9 @@ internal sealed record ParsedFile
     /// <summary>The text of a rule script or sidecar.</summary>
     public string? Text { get; init; }
 
+    /// <summary>The rule declaration file, when the file is one and it read (next-phase-2-design.md section 5.6).</summary>
+    public DeclaredRuleFile? DeclaredRules { get; init; }
+
     /// <summary>The file's own diagnostics (positioned where possible).</summary>
     public ImmutableArray<Diagnostic> Diagnostics { get; init; } = [];
 
@@ -337,6 +340,48 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
                 {
                     Json = root.Clone(),
                     Diagnostics = [RuleCatalog.Create("MQ5004", $"The extension does not deserialize: {ex.Message}", null, repoPath, "")],
+                    SchemaEvaluated = !trusted,
+                };
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads a rule declaration file (<c>extensions/rules/*.json</c>, next-phase-2-design.md section 5.6); every failure is MQ5014, and a
+    /// file that fails declares no rule. Declaration files are not checked for canonical form here.
+    /// </summary>
+    /// <param name="bytes">The file bytes.</param>
+    /// <param name="repoPath">The repo-relative path.</param>
+    /// <param name="trusted">Whether the bytes passed before.</param>
+    /// <returns>The result.</returns>
+    public ParsedFile ReadDeclaredRules(byte[] bytes, string repoPath, bool trusted)
+    {
+        if (!TryParse(bytes, repoPath, "MQ5014", out var document, out var parseError))
+            return new ParsedFile { Diagnostics = [parseError] };
+
+        using (document)
+        {
+            var root = document.RootElement;
+            var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
+            if (!trusted)
+            {
+                foreach (var d in schemas.Evaluate("declared-rules.json", root, repoPath))
+                    diagnostics.Add(Locate(d with { Rule = "MQ5014", Severity = RuleCatalog.Get("MQ5014").DefaultSeverity }, bytes));
+                if (diagnostics.Count > 0)
+                    return new ParsedFile { Json = root.Clone(), Diagnostics = Sorted(diagnostics), SchemaEvaluated = true };
+            }
+
+            try
+            {
+                var rules = ElementReader.Read<DeclaredRuleFile>(root);
+                return new ParsedFile { DeclaredRules = rules, Json = root.Clone(), Valid = true, Canonical = true, SchemaEvaluated = !trusted };
+            }
+            catch (Exception ex) when (IsDeserializationFailure(ex))
+            {
+                return new ParsedFile
+                {
+                    Json = root.Clone(),
+                    Diagnostics = [RuleCatalog.Create("MQ5014", $"The rule declaration file does not deserialize: {ex.Message}", null, repoPath, "")],
                     SchemaEvaluated = !trusted,
                 };
             }

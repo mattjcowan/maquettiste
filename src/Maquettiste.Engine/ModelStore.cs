@@ -479,7 +479,14 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// <see cref="ValidateAsync(ValidationScope, CancellationToken)"/> over a snapshot; <paramref name="committedStale"/> adds the stale chains judged against the
     /// committed physical snapshots, which <see cref="ValidateAgainstAsync"/> judges against its baseline instead.
     /// </summary>
-    private async Task<ValidationReport> ValidateCoreAsync(ModelSnapshot snapshot, ValidationScope scope, bool committedStale, CancellationToken ct)
+    /// <param name="snapshot">The snapshot.</param>
+    /// <param name="scope">What to validate.</param>
+    /// <param name="committedStale">Whether to add the stale chains judged against the committed physical snapshots.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <param name="more">Findings the caller adds (<see cref="ValidateAgainstAsync"/>'s baseline findings), after severities: the report
+    /// suppresses them too, and MQ5020 is judged after them.</param>
+    private async Task<ValidationReport> ValidateCoreAsync(ModelSnapshot snapshot, ValidationScope scope, bool committedStale, CancellationToken ct,
+        IReadOnlyList<Diagnostic>? more = null)
     {
         // The whole model's report is the one the snapshot's shared resolution validated with, or with seeds that have a rows script
         // its own (once per snapshot either way). When that one has an error the shared one lacks, generation would stop before
@@ -491,9 +498,11 @@ public sealed partial class ModelStore : IAsyncDisposable
             : await ResolverFindingsAsync(snapshot, ct).ConfigureAwait(false);
         // The resolved rules' findings are script rules' (next-phase-2-design.md section 5.5): left out as the validator leaves its own.
         IReadOnlyList<Diagnostic> found = scope.IncludeScriptRules ? [.. findings.Findings, .. findings.ScriptFindings] : findings.Findings;
+        IEnumerable<SuppressedFinding> moved = scope.IncludeScriptRules ? [.. findings.Suppressed, .. findings.ScriptSuppressed] : findings.Suppressed;
         if (committedStale && await CommittedStaleFindingsAsync(snapshot, ct).ConfigureAwait(false) is { Count: > 0 } stale)
             found = [.. found, .. stale];
-        var seen = report.Diagnostics.Select(LoadKey).ToHashSet(StringComparer.Ordinal);
+        // A load diagnostic the validator suppressed is not added back.
+        var seen = report.Diagnostics.Concat(report.Suppressed.Select(s => s.Finding)).Select(LoadKey).ToHashSet(StringComparer.Ordinal);
         IEnumerable<Diagnostic> load = snapshot.LoadDiagnostics;
         IEnumerable<Diagnostic> resolved = found;
         if (scope.ElementIds is { } ids)
@@ -503,10 +512,36 @@ public sealed partial class ModelStore : IAsyncDisposable
             bool InScope(Diagnostic d) => (d.ElementId is { } e && (owners.Contains(e) || ids.Contains(e))) || (d.FilePath is { } f && files.Contains(f));
             load = load.Where(InScope);
             resolved = resolved.Where(InScope);
+            moved = moved.Where(s => InScope(s.Finding));
         }
 
+        // Suppressions (section 5.6) on what this layer adds: the resolver's and the checks' findings are already suppressed, the stale
+        // chains and the caller's findings are not. Every suppressed list is merged into the report.
+        var suppressions = Validation.Suppressions.Of(snapshot);
         var extra = load.Where(d => !seen.Contains(LoadKey(d))).Concat(NewFindings(report.Diagnostics, [.. resolved])).ToList();
-        return extra.Count == 0 ? report : ValidationReport.From(report.Diagnostics.Concat(extra));
+        IReadOnlyList<Diagnostic> kept = suppressions.Apply(extra, out var keptMoved);
+        IReadOnlyList<SuppressedFinding> moreMoved = [];
+        var added = more is null ? [] : suppressions.Apply(more, out moreMoved);
+        var suppressed = report.Suppressed.Concat(moved).Concat(keptMoved).Concat(moreMoved).ToList();
+        if (kept.Count == 0 && added.Count == 0 && suppressed.Count == report.Suppressed.Count && !(whole && findings.Resolved && !suppressions.IsEmpty))
+            return report;
+        var merged = ValidationReport.From(report.Diagnostics.Concat(kept).Concat(added).Distinct(), suppressed);
+
+        // MQ5020, judged once, by the outermost report, after every finding: an entry nothing matched in a whole-model validate whose
+        // model resolved.
+        if (whole && findings.Resolved && Validation.Suppressions.Unused(snapshot, merged) is { Count: > 0 } unused)
+        {
+            var positions = new Validation.Positions(_options, snapshot);
+            for (var i = 0; i < unused.Count; i++)
+            {
+                if (await positions.LocateAsync(unused[i].FilePath!, unused[i].JsonPointer!, ct).ConfigureAwait(false) is { } at)
+                    unused[i] = unused[i] with { Line = at.Line, Column = at.Column };
+            }
+
+            merged = ValidationReport.From(merged.Diagnostics.Concat(Validation.ModelValidator.ApplySettings(snapshot.Settings, unused)), merged.Suppressed);
+        }
+
+        return merged;
     }
 
     /// <summary>Reads <c>maquettiste.json</c> with its hash (E3, phase2-design.md section 3.8).</summary>
@@ -658,7 +693,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     {
         var loadDiagnostics = before.LoadDiagnostics.Where(d => !string.Equals(d.FilePath, repoPath, StringComparison.Ordinal)).ToList();
         var candidate = ModelSnapshot.CreateAfter(before, before.Documents, settings, newHash, before.Extensions, before.RuleScripts, before.Version,
-            loadDiagnostics, _options.EffectiveParallelism, ct, calculationScripts: before.CalculationScripts);
+            loadDiagnostics, _options.EffectiveParallelism, ct, calculationScripts: before.CalculationScripts, declaredRules: before.DeclaredRules);
         var baseline = await _services.Validator.ValidateAsync(before, ValidationScope.All, null, ct).ConfigureAwait(false);
         var report = await _services.Validator.ValidateAsync(candidate, ValidationScope.All, null, ct).ConfigureAwait(false);
         var known = baseline.Diagnostics.GroupBy(SettingsKey, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);

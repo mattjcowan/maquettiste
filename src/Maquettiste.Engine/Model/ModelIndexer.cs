@@ -70,6 +70,12 @@ internal static class ModelIndexer
         /// change can move the holder of a document it would keep.
         /// </summary>
         internal bool HasDefaults { get; init; }
+
+        /// <summary>
+        /// The number of suppression entries the indexed documents hold (next-phase-2-design.md section 5.6), counted by the walk and kept
+        /// by a patch, so a model without any never builds the suppression lookup.
+        /// </summary>
+        internal int SuppressionCount { get; init; }
     }
 
     internal enum PropertyRole { Reference, KeyedReference, StereotypeKeys, TypeRef, Record, RecordList }
@@ -183,11 +189,13 @@ internal static class ModelIndexer
         var categoryScopes = new Dictionary<string, (CategoryTree Tree, string Path)>(StringComparer.Ordinal);
         var retired = new HashSet<string>(StringComparer.Ordinal);
         var clean = true;
+        var suppressionCount = 0;
 
         for (var d = 0; d < documents.Length; d++)
         {
             var doc = documents[d];
             var element = doc.Element;
+            suppressionCount += element.Suppressions.Count; // every document, as the lookup reads them, a duplicate id included
             if (!entries.TryAdd(element.Id, new IndexEntry(element.Id, element.Id, element.KindName, "")))
             {
                 clean = false;
@@ -258,6 +266,7 @@ internal static class ModelIndexer
             Retired = retired,
             PropertySchemasHash = schemas.Hash,
             HasDefaults = defaults.HasDefaults,
+            SuppressionCount = suppressionCount,
         };
     }
 
@@ -370,6 +379,13 @@ internal static class ModelIndexer
             foreach (var a in added)
                 retired.UnionWith(walks[a].Retired);
         }
+
+        // Suppression entries: the previous count without the removed documents', with the added documents'.
+        var suppressionCount = previous.SuppressionCount;
+        foreach (var r in removed)
+            suppressionCount -= old[r].Element.Suppressions.Count;
+        foreach (var a in added)
+            suppressionCount += documents[a].Element.Suppressions.Count;
 
         // References from a file: one group per document.
         var referencesFrom = new Dictionary<string, ReferenceInfo[]>(previous.ReferencesFrom, StringComparer.Ordinal);
@@ -493,6 +509,7 @@ internal static class ModelIndexer
             HasDefaults = defaults.HasDefaults,
             Patched = true,
             Retired = retired,
+            SuppressionCount = suppressionCount,
         };
     }
 

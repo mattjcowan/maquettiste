@@ -177,7 +177,19 @@ public sealed partial class ModelStore
         }
 
         found.AddRange(checks.Findings);
-        return new ResolverFindings(found, checks.ScriptFindings);
+
+        // The findings the elements' suppressions moved (section 5.6), positioned as the reported ones are.
+        var suppressed = new List<SuppressedFinding>(resolved.Suppressed.Count + checks.Suppressed.Count);
+        foreach (var s in resolved.Suppressed)
+        {
+            var d = s.Finding;
+            suppressed.Add(d.Line is null && d.FilePath is not null && d.JsonPointer is not null
+                && await positions.LocateAsync(d.FilePath, d.JsonPointer, CancellationToken.None).ConfigureAwait(false) is { } at
+                ? s with { Finding = d with { Line = at.Line, Column = at.Column } } : s);
+        }
+
+        suppressed.AddRange(checks.Suppressed);
+        return new ResolverFindings(found, checks.ScriptFindings) { Suppressed = suppressed, ScriptSuppressed = checks.ScriptSuppressed };
     }
 
     /// <summary>The resolver's findings with the checks' (<see cref="ResolverFindingsAsync"/>).</summary>
@@ -185,7 +197,16 @@ public sealed partial class ModelStore
     /// <param name="ScriptFindings">The resolved rules' findings, which a validation without script rules leaves out.</param>
     private sealed record ResolverFindings(IReadOnlyList<Diagnostic> Findings, IReadOnlyList<Diagnostic> ScriptFindings)
     {
-        public static ResolverFindings Empty { get; } = new([], []);
+        public static ResolverFindings Empty { get; } = new([], []) { Resolved = false };
+
+        /// <summary>Whether the model resolved (MQ5020 is judged only then).</summary>
+        public bool Resolved { get; init; } = true;
+
+        /// <summary>The resolver's and the checks' suppressed findings, other than script rules'.</summary>
+        public IReadOnlyList<SuppressedFinding> Suppressed { get; init; } = [];
+
+        /// <summary>The resolved rules' suppressed findings.</summary>
+        public IReadOnlyList<SuppressedFinding> ScriptSuppressed { get; init; } = [];
     }
 
     /// <summary>

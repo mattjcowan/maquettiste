@@ -202,6 +202,24 @@ one.
   computed once per object of its kinds, in parallel: on the 5,000-entity benchmark, two values on entities add about 36
   ms to `validate`. The editor, the MCP server and `generate --watch` cache values by what they read. The [user
   guide](user-guide.md#calculated-values-extensionscalculatedjs) has the details.
+- **Declared rules.** A simple convention no longer needs a script: a file in `extensions/rules/<name>.json` declares
+  rules as data, each a selector over resolved objects (`kind`, with `stereotype`, `tag`, `property` or `package`), one
+  condition (`all`, `any`, `not`, `has`, `equals`, `count`, `references`, `referencedBy`) and a message with
+  placeholders, such as "every audited table has an updated_at column". Declared rules see what generation sees,
+  inherited and contributed members included, and run wherever resolved rules run: validate, the editor, the MCP
+  `validate` tool and generation; their findings are `x/<id>` and `validation.rules` sets their severity. The extension
+  file tools write declaration files in canonical form, check them at once and list their rules; `get_schema` returns
+  `declared-rules`. New rules MQ5014 to MQ5017. A project without declaration files pays nothing. The [user
+  guide](user-guide.md#declared-rules-extensionsrulesjson) has the details.
+- **Suppressions.** An element can accept a finding, with a required reason, in its own file: `suppressions` entries
+  name a rule (built-in, script or declared), optionally one part of the element (`member`, an inherited member's keyed
+  id included) and the reason. Suppressed findings leave the counts and the report: a suppressed error no longer
+  refuses a save or stops generation. `maquettiste validate` prints how many were suppressed, `--format json` lists them
+  under `suppressed`, SARIF writes them as results with in-source suppressions and the reason as justification, and
+  the MCP `validate` answer and `POST /api/validate` carry them. New rules MQ5018 (a rule that cannot be suppressed),
+  MQ5019 (an unknown rule or member, or a repeated entry) and MQ5020 (an entry that matched nothing in a whole-model
+  validate). Every kind schema gains `suppressions`. A project without suppressions pays nothing. The [user
+  guide](user-guide.md#suppressions) has the details.
 - **Fixes from the milestone D review.** The 37 notes of [issue #2](https://github.com/mattjcowan/maquettiste/issues/2)
   are fixed before release. Those a user can see:
   - On PostgreSQL, a value map that retypes an enum column first drops the views the model knows about, and those the

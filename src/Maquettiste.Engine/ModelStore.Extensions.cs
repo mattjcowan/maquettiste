@@ -14,9 +14,10 @@ using Maquettiste.Engine.Writing;
 namespace Maquettiste.Engine;
 
 /// <summary>One file of the model's <c>extensions/</c> folder (<c>GET /api/extensions/files</c>).</summary>
-/// <param name="Path">The path under <c>extensions/</c>: <c>&lt;name&gt;.json</c>, <c>rules/&lt;name&gt;.js</c>, <c>seeds/&lt;name&gt;.js</c>,
-/// <c>kinds/&lt;type&gt;.json</c> or <c>calculated/&lt;name&gt;.js</c>.</param>
+/// <param name="Path">The path under <c>extensions/</c>: <c>&lt;name&gt;.json</c>, <c>rules/&lt;name&gt;.js</c>, <c>rules/&lt;name&gt;.json</c>,
+/// <c>seeds/&lt;name&gt;.js</c>, <c>kinds/&lt;type&gt;.json</c> or <c>calculated/&lt;name&gt;.js</c>.</param>
 /// <param name="Kind"><c>schema</c> (custom properties, <c>extensions/*.json</c>), <c>rule</c> (a script rule, <c>extensions/rules/*.js</c>),
+/// <c>declared-rules</c> (a rule declaration file, <c>extensions/rules/*.json</c>; section 5.6),
 /// <c>seed-rows</c> (a seed's rows script, <c>extensions/seeds/*.js</c>; next-phase-2-design.md section 3.4), <c>custom-kind</c> (a custom
 /// kind, <c>extensions/kinds/*.json</c>; section 4.2) or <c>calculated</c> (a calculation file, <c>extensions/calculated/*.js</c>; section
 /// 5.5).</param>
@@ -25,9 +26,11 @@ namespace Maquettiste.Engine;
 /// <param name="Diagnostics">What is wrong with the file on its own: an invalid schema (MQ5004), a rule script or calculation file that does not
 /// load (MQ5002, MQ5003),
 /// a rows script that does not load or does not register its rows exactly once (MQ7127), a script that keeps state at its top level
-/// (MQ5005, a warning), or a custom kind file that does not parse or pass <c>custom-kind.json</c> (MQ1001, MQ1002) and its own findings
-/// (MQ1017, MQ1018, MQ2009, MQ7212).</param>
-/// <param name="Rules">For a rule script that loads, the rules it registers (whole-model and resolved rules marked); empty for a schema.</param>
+/// (MQ5005, a warning), a custom kind file that does not parse or pass <c>custom-kind.json</c> (MQ1001, MQ1002) and its own findings
+/// (MQ1017, MQ1018, MQ2009, MQ7212), or a rule declaration file that does not fit <c>declared-rules.json</c> (MQ5014) or whose rules
+/// repeat an id or name what does not exist (MQ5015, MQ5016).</param>
+/// <param name="Rules">For a rule script that loads, the rules it registers (whole-model and resolved rules marked); for a valid rule
+/// declaration file, the rules it declares (each marked resolved); empty for a schema.</param>
 public sealed record ExtensionFileInfo(string Path, string Kind, long Size, string Hash, IReadOnlyList<Diagnostic> Diagnostics,
     IReadOnlyList<ExtensionRuleInfo> Rules)
 {
@@ -43,8 +46,8 @@ public sealed record ExtensionRuleInfo(string Id, DiagnosticSeverity Severity)
     /// <summary>Whether the rule was registered with <c>scope: "model"</c>: it checks the whole model once per whole-model validation.</summary>
     public bool WholeModel { get; init; }
 
-    /// <summary>Whether the rule was registered with <c>scope: "resolved"</c>: it checks each resolved object of its kinds after resolution
-    /// (next-phase-2-design.md section 5.5).</summary>
+    /// <summary>Whether the rule runs on the resolved model: a script rule registered with <c>scope: "resolved"</c> checks each resolved
+    /// object of its kinds after resolution (next-phase-2-design.md section 5.5), and so does every declared rule (section 5.6).</summary>
     public bool Resolved { get; init; }
 }
 
@@ -56,7 +59,7 @@ public sealed record ExtensionFileList(string Folder, IReadOnlyList<ExtensionFil
 
 /// <summary>One extension file's text with its hash.</summary>
 /// <param name="Path">The path under <c>extensions/</c>.</param>
-/// <param name="Kind"><c>schema</c>, <c>rule</c>, <c>seed-rows</c>, <c>custom-kind</c> or <c>calculated</c>.</param>
+/// <param name="Kind"><c>schema</c>, <c>rule</c>, <c>declared-rules</c>, <c>seed-rows</c>, <c>custom-kind</c> or <c>calculated</c>.</param>
 /// <param name="Hash">The content hash.</param>
 /// <param name="Text">The UTF-8 text.</param>
 public sealed record ExtensionFileContent(string Path, string Kind, string Hash, string Text);
@@ -91,7 +94,7 @@ public sealed partial class ModelStore
 
     private static readonly UTF8Encoding ExtensionUtf8 = new(false, throwOnInvalidBytes: true);
 
-    [GeneratedRegex(@"^(?:(?:kinds/)?[A-Za-z0-9][A-Za-z0-9._-]*\.json|(?:rules|seeds|calculated)/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?:(?:kinds/|rules/)?[A-Za-z0-9][A-Za-z0-9._-]*\.json|(?:rules|seeds|calculated)/[A-Za-z0-9][A-Za-z0-9._-]*\.js)$", RegexOptions.CultureInvariant)]
     private static partial Regex ExtensionPathPattern();
 
     /// <summary>
@@ -115,14 +118,21 @@ public sealed partial class ModelStore
                 ? Directory.EnumerateFiles(Path.Combine(folder, sub), "*.js", SearchOption.TopDirectoryOnly).Select(f => sub + "/" + Path.GetFileName(f))
                 : [];
             var kinds = Path.Combine(folder, "kinds");
+            var declarations = Path.Combine(folder, "rules");
             var found = Directory.EnumerateFiles(folder, "*.json", SearchOption.TopDirectoryOnly).Select(f => Path.GetFileName(f))
                 .Concat(Scripts("rules"))
+                .Concat(Directory.Exists(declarations)
+                    ? Directory.EnumerateFiles(declarations, "*.json", SearchOption.TopDirectoryOnly).Select(f => "rules/" + Path.GetFileName(f)) : [])
                 .Concat(Scripts("seeds"))
                 .Concat(Directory.Exists(kinds) ? Directory.EnumerateFiles(kinds, "*.json", SearchOption.TopDirectoryOnly).Select(f => "kinds/" + Path.GetFileName(f)) : [])
                 .Concat(Scripts("calculated"))
                 .Where(p => ExtensionPathPattern().IsMatch(p))
-                .OrderBy(p => KindOfExtension(p) switch { "schema" => 0, "rule" => 1, SeedRowsKind => 2, CustomKindFileKind => 3, _ => 4 })
+                .OrderBy(p => KindOfExtension(p) switch
+                {
+                    "schema" => 0, "rule" => 1, DeclaredRulesKind => 2, SeedRowsKind => 3, CustomKindFileKind => 4, _ => 5,
+                })
                 .ThenBy(p => p, StringComparer.Ordinal);
+            List<Diagnostic>? declared = null; // the declarations' static checks, once per list
             foreach (var path in found)
             {
                 var full = paths.FullPath("extensions/" + path);
@@ -141,8 +151,13 @@ public sealed partial class ModelStore
                     SeedRowsKind => CheckRowsScript(snapshot, repoPath, DecodeExtension(bytes) ?? "", ct),
                     CustomKindFileKind => CustomKindFindings(snapshot, repoPath),
                     CalculationFileKind => CheckCalculationScript(snapshot, repoPath, DecodeExtension(bytes) ?? "", ct, calculations),
+                    DeclaredRulesKind => [.. snapshot.LoadDiagnostics.Where(d => string.Equals(d.FilePath, repoPath, StringComparison.Ordinal))
+                        .Concat((declared ??= CheckDeclaredRules(snapshot, ct)).Where(d => string.Equals(d.FilePath, repoPath, StringComparison.Ordinal)))
+                        .Order(Diagnostic.Order)],
                     _ => [.. snapshot.LoadDiagnostics.Where(d => string.Equals(d.FilePath, repoPath, StringComparison.Ordinal))],
                 };
+                if (kind == DeclaredRulesKind)
+                    rules.AddRange(DeclaredRuleInfos(snapshot.DeclaredRules.FirstOrDefault(d => string.Equals(d.Path, repoPath, StringComparison.Ordinal))));
                 files.Add(new ExtensionFileInfo(path, kind, bytes.LongLength, ContentHash.Of(bytes), diagnostics, rules) { Calculations = calculations });
             }
         }
@@ -173,7 +188,8 @@ public sealed partial class ModelStore
     /// (or MQ5003) with line and column. A rows script (<c>seeds/&lt;name&gt;.js</c>) is written as sent and loaded alone, never run: a
     /// script that does not load or does not register its rows exactly once comes back as MQ7127. A calculation file
     /// (<c>calculated/&lt;name&gt;.js</c>, section 5.5) is written as sent and loaded alone, never called: MQ5002, MQ5003 and MQ5005 come back
-    /// at once. A custom kind file
+    /// at once. A rule declaration file (<c>rules/&lt;name&gt;.json</c>, section 5.6) must be JSON; it is written in canonical form and
+    /// checked alone: MQ5014, or MQ5015 against the other declarations and the rule scripts and MQ5016, with pointers. A custom kind file
     /// (<c>kinds/&lt;type&gt;.json</c>, next-phase-2-design.md section 4.2) must parse and pass <c>custom-kind.json</c>, else nothing is
     /// written (MQ1001, MQ1002); it is written in canonical form, and the answer carries its own findings and the MQ3033 findings of the
     /// elements of its type (decision 20: at most 50, then the count; they never refuse the write). The snapshot is refreshed before the
@@ -218,6 +234,19 @@ public sealed partial class ModelStore
             if (CheckCustomKindText(bytes, repoPath) is { Count: > 0 } refused)
                 return new ExtensionWriteResult(SaveOutcome.Invalid, null, null, null, refused, []);
             bytes = _services.Json.Write(JsonNode.Parse(bytes)!, "custom-kind.json", modelPath);
+        }
+        else if (kind == DeclaredRulesKind)
+        {
+            // A declaration file (section 5.6) must be JSON; it is written in canonical form, then checked alone: its MQ5014 findings, or
+            // MQ5015 and MQ5016 against the other declarations and the rule scripts. They never refuse the write.
+            var parsed = new DocumentReader(_services.Schemas, _services.Json).ReadDeclaredRules(bytes, repoPath, trusted: false);
+            if (parsed.Json.ValueKind == JsonValueKind.Undefined)
+                return new ExtensionWriteResult(SaveOutcome.Invalid, null, null, null, parsed.Diagnostics, []);
+            bytes = _services.Json.Write(JsonNode.Parse(parsed.Json.GetRawText())!, "declared-rules.json", modelPath);
+            diagnostics = parsed.DeclaredRules is { } file
+                ? CheckDeclaredRules(snapshot, ct, new DeclaredRuleDocument(file, repoPath, ContentHash.Of(bytes)))
+                    .Where(d => string.Equals(d.FilePath, repoPath, StringComparison.Ordinal)).Order(Diagnostic.Order).ToList()
+                : parsed.Diagnostics;
         }
         else
         {
@@ -295,7 +324,7 @@ public sealed partial class ModelStore
         if (!string.Equals(KindOfExtension(from), KindOfExtension(to), StringComparison.Ordinal))
         {
             return InvalidExtension(RuleCatalog.Create("MQ5004",
-                $"'{to}' is not the same kind of file as '{from}': a schema is <name>.json, a script rule rules/<name>.js, a rows script seeds/<name>.js, a custom kind kinds/<type>.json, a calculation file calculated/<name>.js.",
+                $"'{to}' is not the same kind of file as '{from}': a schema is <name>.json, a script rule rules/<name>.js, a rule declaration file rules/<name>.json, a rows script seeds/<name>.js, a custom kind kinds/<type>.json, a calculation file calculated/<name>.js.",
                 null, targetRepo));
         }
 
@@ -507,6 +536,9 @@ public sealed partial class ModelStore
         return paths.FullPath("extensions/" + path);
     }
 
+    /// <summary>The kind of a rule declaration file (<c>extensions/rules/*.json</c>, next-phase-2-design.md section 5.6).</summary>
+    private const string DeclaredRulesKind = "declared-rules";
+
     /// <summary>The kind of a seed's rows script (<c>extensions/seeds/*.js</c>).</summary>
     private const string SeedRowsKind = "seed-rows";
 
@@ -520,7 +552,7 @@ public sealed partial class ModelStore
     private const int MaxListedElements = 50;
 
     private static string KindOfExtension(string path) =>
-        path.StartsWith("rules/", StringComparison.Ordinal) ? "rule"
+        path.StartsWith("rules/", StringComparison.Ordinal) ? (path.EndsWith(".json", StringComparison.Ordinal) ? DeclaredRulesKind : "rule")
         : path.StartsWith("seeds/", StringComparison.Ordinal) ? SeedRowsKind
         : path.StartsWith("kinds/", StringComparison.Ordinal) ? CustomKindFileKind
         : path.StartsWith("calculated/", StringComparison.Ordinal) ? CalculationFileKind
@@ -611,6 +643,60 @@ public sealed partial class ModelStore
 
         return refused;
     }
+
+    /// <summary>
+    /// The static checks of the rule declarations (MQ5015, MQ5016; next-phase-2-design.md section 5.6), with <paramref name="written"/> in
+    /// place of the file of its path when given: the ids are compared with the rule scripts' when they all load, and calculated values in
+    /// paths are checked when the calculation files load, as a whole-model validation does.
+    /// </summary>
+    private List<Diagnostic> CheckDeclaredRules(ModelSnapshot snapshot, CancellationToken ct, DeclaredRuleDocument? written = null)
+    {
+        var candidate = snapshot;
+        if (written is not null)
+        {
+            IReadOnlyList<DeclaredRuleDocument> declared =
+                [.. snapshot.DeclaredRules.Where(d => !string.Equals(d.Path, written.Path, StringComparison.Ordinal)), written];
+            candidate = ModelSnapshot.CreateAfter(snapshot, snapshot.Documents, snapshot.Settings, snapshot.SettingsHash, snapshot.Extensions,
+                snapshot.RuleScripts, snapshot.Version, [.. snapshot.LoadDiagnostics.Where(d => !string.Equals(d.FilePath, written.Path, StringComparison.Ordinal))],
+                _options.EffectiveParallelism, ct, calculationScripts: snapshot.CalculationScripts, declaredRules: declared);
+        }
+
+        if (candidate.DeclaredRules.Count == 0)
+            return [];
+        Dictionary<string, string>? scriptRules = candidate.RuleScripts.Count == 0 ? [] : null;
+        if (scriptRules is null)
+        {
+            try
+            {
+                using var pool = _services.Scripts.CreatePool(candidate.RuleScripts, candidate.Settings.Limits, 1, ct);
+                scriptRules = pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Rule)
+                    .GroupBy(r => Validation.ModelValidator.Bare(r.Name), StringComparer.Ordinal)
+                    .ToDictionary(g => g.Key, g => g.Select(r => r.DeclaredIn).Min(StringComparer.Ordinal)!, StringComparer.Ordinal);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                scriptRules = null; // a rule script that does not load (or needs a library): ids are compared among declarations only
+            }
+        }
+
+        Func<string, string, bool>? declares = candidate.CalculationScripts.Count == 0 ? static (_, _) => false : null;
+        if (declares is null && _services.Calculations is { } calculations)
+        {
+            var loaded = calculations.Load(candidate);
+            if (!loaded.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
+                declares = (kind, name) => loaded.ByKind.TryGetValue(kind, out var byKind) && byKind.ByName.ContainsKey(name);
+        }
+
+        return Validation.ModelValidator.ApplySettings(candidate.Settings, Validation.DeclaredRuleChecks.Check(candidate, scriptRules, declares, written?.Path));
+    }
+
+    /// <summary>The rules a valid declaration file declares, as <c>list_extension_files</c> lists them: each runs on the resolved model.</summary>
+    private static IEnumerable<ExtensionRuleInfo> DeclaredRuleInfos(DeclaredRuleDocument? file) =>
+        file?.Rules.Rules.Select(r => new ExtensionRuleInfo("x/" + r.Id, r.Severity) { Resolved = true }) ?? [];
 
     private static ExtensionWriteResult InvalidExtension(Diagnostic diagnostic) => new(SaveOutcome.Invalid, null, null, null, [diagnostic], []);
 

@@ -24,6 +24,7 @@
     "rationale",
     "decision",
     "status",
+    "suppressions",
     "stereotypes",
     "excludeStereotypes",
     "tags",
@@ -128,6 +129,10 @@
     },
     "status": {
       "$ref": "common.json#/$defs/status"
+    },
+    "suppressions": {
+      "$ref": "common.json#/$defs/suppressions",
+      "default": []
     },
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",

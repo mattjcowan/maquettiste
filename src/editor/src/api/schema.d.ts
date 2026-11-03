@@ -3307,6 +3307,18 @@ export interface components {
             /** @description Diagnostics were dropped to fit a size limit; the counts are still the full counts. */
             truncated: boolean;
             hasErrors: boolean;
+            /** @description The findings the elements' suppressions accepted, in diagnostic order; the counts exclude them. A truncated report empties this list before it drops diagnostics. */
+            suppressed: components["schemas"]["SuppressedFinding"][];
+        };
+        /** @description A finding an element's suppression accepted (`suppressions[i]` of the element's file). */
+        SuppressedFinding: {
+            finding: components["schemas"]["Diagnostic"];
+            /** @description The entry's reason. */
+            reason: string;
+            /** @description The element whose suppressions hold the entry. */
+            elementId: string;
+            /** @description The entry, `/suppressions/<i>`. */
+            jsonPointer: string;
         };
         /** @description One page of a bulk document read (`getElements`). */
         ElementPage: {
@@ -5411,15 +5423,15 @@ export interface components {
         ExtensionFileInfo: {
             /** @description The path under `extensions/`. */
             path: string;
-            /** @description For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); empty for a schema. */
+            /** @description For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); for a valid rule declaration file, the rules it declares, each with `resolved` true; empty for a schema. */
             rules: components["schemas"]["ExtensionRuleInfo"][];
             /** @description For a calculation file that loads, the calculated values it declares, in call order; empty for every other file. */
             calculations: components["schemas"]["CalculatedValueDeclaration"][];
             /**
-             * @description `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows script, `seeds/<name>.js`), `custom-kind` (a custom kind, `kinds/<type>.json`) or `calculated` (a calculation file, `calculated/<name>.js`).
+             * @description `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `declared-rules` (a rule declaration file, `rules/<name>.json`), `seed-rows` (a seed's rows script, `seeds/<name>.js`), `custom-kind` (a custom kind, `kinds/<type>.json`) or `calculated` (a calculation file, `calculated/<name>.js`).
              * @enum {string}
              */
-            kind: "schema" | "rule" | "seed-rows" | "custom-kind" | "calculated";
+            kind: "schema" | "rule" | "declared-rules" | "seed-rows" | "custom-kind" | "calculated";
             size: number;
             hash: components["schemas"]["Hash"];
             diagnostics: components["schemas"]["Diagnostic"][];
@@ -5429,7 +5441,7 @@ export interface components {
             severity: components["schemas"]["DiagnosticSeverity"];
             /** @description The rule was registered with scope "model": check(model, report) runs once per whole-model validation (validate, generation), not per element, and a validation of some elements (a save) skips it. */
             wholeModel: boolean;
-            /** @description The rule was registered with scope "resolved": check(element, model, report) runs on each resolved object of its kinds in the checks after resolution (validate, generation), never on element saves or in previews. */
+            /** @description The rule runs on the resolved model: a script rule registered with scope "resolved" (check(element, model, report) runs on each resolved object of its kinds in the checks after resolution: validate, generation, never element saves or previews), and every declared rule. */
             resolved: boolean;
         };
         /** @description What one `maquettiste.calculated` call in a calculation file declares. */
@@ -5444,7 +5456,7 @@ export interface components {
         ExtensionFileContent: {
             path: string;
             /** @enum {string} */
-            kind: "schema" | "rule" | "seed-rows" | "custom-kind" | "calculated";
+            kind: "schema" | "rule" | "declared-rules" | "seed-rows" | "custom-kind" | "calculated";
             hash: components["schemas"]["Hash"];
             text: string;
         };
@@ -6840,6 +6852,15 @@ export interface components {
          * @enum {unknown}
          */
         status: "proposed" | "approved" | "deprecated" | "retired";
+        /** @description Findings the element accepts, each with the reason it is the exception (on the element's file only, never inside a part). A finding is suppressed when it is on the element (its file is the element's file), and on the member when member is set, and its rule is the entry's rule; the first matching entry wins. Suppressed findings leave the report's counts and are listed apart with their reason. MQ5018: a rule that cannot be suppressed; MQ5019: an unknown rule or member, or a repeated entry; MQ5020: an entry no finding matched in a whole-model validate. */
+        suppressions: {
+            /** @description The rule whose findings the entry accepts: a built-in rule (MQ followed by four digits), a script rule or a declared rule (x/<id>). */
+            rule: string;
+            /** @description Limits the entry to one part of the element: a part in its file (its id), an attribute it holds through a base or a stereotype (the attribute's id), or an inherited member (the keyed id, <table key>.<member id>). Omitted: the whole element. */
+            member?: string;
+            /** @description Why this element is the exception. */
+            reason: string;
+        }[];
         /** @description A tag: a free-form label (SPEC section 5) of 1 to 64 characters without whitespace or control characters. */
         tagLabel: string;
         tagList: components["schemas"]["tagLabel"][];
@@ -6898,6 +6919,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -7014,6 +7037,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -7134,6 +7159,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -7168,6 +7195,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -7215,6 +7244,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -7282,6 +7313,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -7355,6 +7388,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -7655,6 +7690,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -7795,6 +7832,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -7870,6 +7909,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -7921,6 +7962,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -8034,6 +8077,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -8108,6 +8153,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -8310,6 +8357,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -8519,6 +8568,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -8590,6 +8641,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -8644,6 +8697,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -8685,6 +8740,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -8746,6 +8803,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -8879,6 +8938,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -8988,6 +9049,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -9283,6 +9346,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -9554,6 +9619,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -9644,6 +9711,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
@@ -9842,6 +9911,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -10206,6 +10277,8 @@ export interface components {
             decision?: string;
             status?: components["schemas"]["status"];
             /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
             excludeStereotypes?: components["schemas"]["keyList"];
@@ -10334,6 +10407,8 @@ export interface components {
             /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
             decision?: string;
             status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */

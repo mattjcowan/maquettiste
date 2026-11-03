@@ -49,8 +49,8 @@ Designed in `next-phase-1-design.md`. 0.11.0 is a preview and not released yet.
 
 Milestone D is designed in section 3 of `next-phase-2-design.md` and was merged in pull request #1. The first cut of
 operations (section 4.1) was merged in pull request #3, project-defined kinds (4.2) in #4, the small fixes in #5, and
-library packs with exports (5.2, 5.3) in #6, tests for packs (5.4) in #7; calculated values (5.5) follow. 0.12.0 is not
-released yet.
+library packs with exports (5.2, 5.3) in #6, tests for packs (5.4) in #7, calculated values (5.5) in #8; declarative
+rules (5.6) follow. 0.12.0 is not released yet.
 
 | # | Item | Requested | Status | Design |
 | --- | --- | --- | --- | --- |
@@ -65,6 +65,7 @@ released yet.
 | 5.3 | Packs that read each other's exports: unit `exports`, `exported`, incremental keys that follow them, `pack exports` | yes | Built, 0.12.0 | [5.3](next-phase-2-design.md#53-packs-that-read-each-others-exports) |
 | 8.2 | Tests for packs: cases compared byte for byte, helper tests in the sandbox, `pack test` and `test_pack`, a case for each shipped pack | yes | Built, 0.12.0 | [5.4](next-phase-2-design.md#54-tests-for-packs) |
 | 5.2 | Values calculated once by project scripts: calculation files per kind, `calculated` in templates, rules and agents, checks after resolution; nothing when a project declares none | yes | Built, 0.12.0 | [5.5](next-phase-2-design.md#55-values-calculated-by-project-scripts) |
+| 8.3 | Declarative rules (selector, condition, severity, message) on the resolved model, and per-element suppressions with a required reason, for built-in rules too | yes | Built, 0.12.0 | [5.6](next-phase-2-design.md#56-declarative-rules) |
 
 ## Left over from built items
 
@@ -76,11 +77,10 @@ released yet.
 
 ## Phase 2: not built yet
 
-Designed in sections 4 to 6 of `next-phase-2-design.md`. The *build next* items left hold 18 tasks as designed.
+Designed in sections 4 to 6 of `next-phase-2-design.md`. The *build next* items left hold 11 tasks as designed.
 
 | # | Item | Requested | Status | Tasks | Design | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 8.3 | Declarative rules and per-element suppressions | yes | Build next | 7 | [5.6](next-phase-2-design.md#56-declarative-rules) | Takes the resolved-checks stage designed in 5.5. Conditions written in the expression language come with 3.8. |
 | 7.2 | Impact before apply | yes | Build next | 5 | [6.1](next-phase-2-design.md#61-impact-before-apply) | Leaves out the export keys of 5.3. Migration steps and their grade come with 6.1. |
 | 7.3 | A model diff between two models | yes | Build next | 6 | [6.2](next-phase-2-design.md#62-a-model-diff-between-two-models) | Compares snapshots, folders and the working model. |
 | 3.6 | Operations, second cut: shared errors contributed by stereotypes, file members and returns, paging, csharp-dapper's `operation-endpoints` unit | yes | Later | E5, and parts of E7, E8 and E10 | [4.1](next-phase-2-design.md#41-operations) | Each part is marked "Second cut" in the design. Projection returns come with 3.12. |

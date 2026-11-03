@@ -1166,6 +1166,20 @@ public sealed class McpReadTests
 
     private static List<string> Ids(JsonNode index) => [.. index.AsArray().Select(s => (string)s!["id"]!)];
 
+    /// <summary>get_schema declared-rules (next-phase-2-design.md section 5.6): the rule declaration file's schema, as schemas/v1 holds it.</summary>
+    [Fact]
+    public async Task Get_schema_for_declared_rules_returns_the_schema_file()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+
+        var schema = await session.OkAsync("get_schema", new { kind = "declared-rules" });
+
+        Assert.Equal(("declared-rules", "declared-rules.json"), ((string)schema["name"]!, (string)schema["file"]!));
+        var file = JsonNode.Parse(File.ReadAllText(Path.Combine(Fixtures.RepoRoot, "schemas", "v1", "declared-rules.json")));
+        Assert.True(JsonNode.DeepEquals(file, schema["schema"]), "get_schema declared-rules differs from schemas/v1/declared-rules.json");
+    }
+
     /// <summary>get_schema custom:&lt;type&gt; (next-phase-2-design.md section 4.2): custom.json with the declaration and the compiled content
     /// schema, member ids injected.</summary>
     [Fact]

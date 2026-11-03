@@ -115,6 +115,15 @@ clobber a concurrent edit or leave a dangling id.
    with `has_calculated element "<name>"`), scripts `e.calculated.<name>`. `get_calculated` with `ids` evaluates the
    values of those objects only, `get_resolved_model` pages carry `calculated`; `validate` reports a value that throws
    (MQ5010), misses its schema (MQ5011), is not declared (MQ5012) or loops (MQ5013). Add one only when asked.
+   Prefer a declaration to a script for a simple convention ("every audited table has an updated_at column"): a file
+   `extensions/rules/<name>.json` (`get_schema` `declared-rules`) whose rules each hold `id`, `severity`, `select`
+   (`kind`, with `stereotype`, `tag`, `property`, `package`), one `require` condition (`all`, `any`, `not`, `has`,
+   `equals`, `count`, `references`, `referencedBy`) and a `message` with `{path}` placeholders. It sees resolved objects,
+   inherited members included; `write_extension_file` reports MQ5014 to MQ5016 at once, `validate` its `x/<id>` findings.
+   When one element is a real exception to a rule, add a `suppressions` entry to that element (`rule`, optional `member`,
+   and a `reason`, which is required: say why this element is the exception) instead of turning the rule off; never
+   suppress to make `validate` pass without a reason the user gave. `validate` lists suppressed findings apart and warns
+   MQ5020 for an entry that matches nothing.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
    per database, and in `columns` the table columns whose `typeRef` names it;
    `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as

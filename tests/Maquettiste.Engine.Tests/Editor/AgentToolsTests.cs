@@ -372,6 +372,17 @@ public sealed partial class AgentToolsTests
     }
 
     [Fact]
+    public async Task Get_schema_returns_the_declared_rules_document()
+    {
+        // next-phase-2-design.md section 5.6: a rule declaration file's schema, by its document name.
+        await using var r = EditorRepo.Create(packs: false);
+        var answer = JsonNode.Parse((await Catalog(r).CallAsync("get_schema", JsonSerializer.SerializeToElement(new { kind = "declared-rules" }), Ct)).Text)!;
+        Assert.Equal("declared-rules.json", (string?)answer["file"]);
+        Assert.Equal(["$schema", "rules"], answer["schema"]!["x-order"]!.AsArray().Select(n => (string?)n));
+        Assert.Null(answer["stereotypeParameters"]);
+    }
+
+    [Fact]
     public async Task Get_schema_lists_stereotype_parameters()
     {
         await using var r = EditorRepo.Create(packs: false);

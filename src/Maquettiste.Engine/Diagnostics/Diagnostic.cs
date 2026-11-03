@@ -93,6 +93,11 @@ public sealed record ValidationReport(IReadOnlyList<Diagnostic> Diagnostics, int
     public bool HasErrors => Errors > 0;
 
     /// <summary>
+    /// The findings suppressions moved out of the report, in diagnostic order; not counted (next-phase-2-design.md section 5.6).
+    /// </summary>
+    public IReadOnlyList<SuppressedFinding> Suppressed { get; init; } = [];
+
+    /// <summary>
     /// Returns a report whose <see cref="JsonSerializerDefaults.Web"/> JSON fits in <paramref name="maxJsonBytes"/>, keeping the counts,
     /// dropping trailing diagnostics and setting <see cref="Truncated"/> when it had to (for the 256 KB realtime payload limit).
     /// </summary>
@@ -102,6 +107,15 @@ public sealed record ValidationReport(IReadOnlyList<Diagnostic> Diagnostics, int
     {
         if (Size(this) <= maxJsonBytes)
             return this;
+
+        // The suppressed findings go first: they are not counted, and the diagnostics matter more.
+        if (Suppressed.Count > 0)
+        {
+            var bare = this with { Suppressed = [], Truncated = true };
+            if (Size(bare) <= maxJsonBytes)
+                return bare;
+            return bare.TruncateTo(maxJsonBytes);
+        }
 
         int lo = 0, hi = Diagnostics.Count;
         while (lo < hi)
@@ -125,6 +139,21 @@ public sealed record ValidationReport(IReadOnlyList<Diagnostic> Diagnostics, int
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         options.MakeReadOnly(populateMissingResolver: true);
         return options;
+    }
+
+    /// <summary>Builds a report from diagnostics and suppressed findings: sorts both and counts the diagnostics by severity.</summary>
+    /// <param name="diagnostics">The diagnostics, in any order.</param>
+    /// <param name="suppressed">The suppressed findings, in any order; repeats of one finding are dropped.</param>
+    /// <returns>The report.</returns>
+    public static ValidationReport From(IEnumerable<Diagnostic> diagnostics, IEnumerable<SuppressedFinding> suppressed)
+    {
+        var report = From(diagnostics);
+        var moved = suppressed.Distinct().ToList();
+        if (moved.Count == 0)
+            return report;
+        moved.Sort(static (a, b) => Diagnostic.Order.Compare(a.Finding, b.Finding) is var c and not 0 ? c
+            : string.CompareOrdinal(a.ElementId, b.ElementId) is var e and not 0 ? e : string.CompareOrdinal(a.JsonPointer, b.JsonPointer));
+        return report with { Suppressed = moved };
     }
 
     /// <summary>Builds a report from diagnostics: sorts them and counts by severity.</summary>
@@ -164,3 +193,10 @@ public sealed record ValidationReport(IReadOnlyList<Diagnostic> Diagnostics, int
         return groups.ToDictionary(g => g.Key, g => (IReadOnlyList<Diagnostic>)g.Value, StringComparer.Ordinal);
     }
 }
+
+/// <summary>A finding an element's suppression accepted (next-phase-2-design.md section 5.6).</summary>
+/// <param name="Finding">The finding as it would have been reported.</param>
+/// <param name="Reason">The entry's reason.</param>
+/// <param name="ElementId">The element whose suppressions hold the entry.</param>
+/// <param name="JsonPointer">The entry: <c>/suppressions/&lt;i&gt;</c>.</param>
+public sealed record SuppressedFinding(Diagnostic Finding, string Reason, string ElementId, string JsonPointer);
