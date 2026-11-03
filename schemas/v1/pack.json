@@ -9,6 +9,7 @@
     "version",
     "engine",
     "description",
+    "uses",
     "parameters",
     "parameterSchema",
     "scripts",
@@ -32,6 +33,33 @@
     },
     "description": {
       "type": "string"
+    },
+    "uses": {
+      "description": "The packs this pack uses: their partials and helpers render in its units. Each entry names a pack folder and a version range in the engine-range syntax.",
+      "type": "array",
+      "items": {
+        "title": "Pack use",
+        "type": "object",
+        "x-order": [
+          "pack",
+          "version"
+        ],
+        "properties": {
+          "pack": {
+            "$ref": "common.json#/$defs/key"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "pack",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
     },
     "parameters": {
       "type": "object",
@@ -92,7 +120,8 @@
           "formatter",
           "delimiters",
           "companion",
-          "transforms"
+          "transforms",
+          "exports"
         ],
         "properties": {
           "id": {
@@ -286,6 +315,44 @@
               "$ref": "common.json#/$defs/identifier"
             },
             "default": []
+          },
+          "exports": {
+            "description": "Names this unit exports per element, which other packs read with the exported helper and the unit's own templates read as exports: a template, or a template rendered per item of a list member and keyed by the item's id.",
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "object",
+                  "x-order": [
+                    "each",
+                    "value"
+                  ],
+                  "properties": {
+                    "each": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "value": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "each",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "default": {}
           }
         },
         "required": [
@@ -354,14 +421,13 @@
           }
         ]
       },
-      "minItems": 1
+      "default": []
     }
   },
   "required": [
     "name",
     "version",
-    "engine",
-    "units"
+    "engine"
   ],
   "additionalProperties": false
 }

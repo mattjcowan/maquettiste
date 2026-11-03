@@ -497,6 +497,7 @@ export class MockGeneration {
         id,
         request: { ...request, packs: request.packs },
         modelVersion: this.model.version,
+        exports: [],
         packs,
         units: [],
         changes: [],
@@ -600,6 +601,7 @@ export class MockGeneration {
         reason,
         causes: causes.slice(0, 20),
         causeCount: causes.length,
+        exports: null,
         outputs: u.files.map((f) => ({
           path: f.path,
           contentHash: sha256Hex(f.text),
@@ -618,6 +620,7 @@ export class MockGeneration {
       id,
       request: { ...request, packs: request.packs },
       modelVersion: this.model.version,
+      exports: [],
       packs,
       units: planUnits,
       changes,

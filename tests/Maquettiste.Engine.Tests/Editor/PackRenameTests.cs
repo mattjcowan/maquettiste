@@ -158,4 +158,43 @@ public sealed class PackRenameTests
         Assert.False(Directory.Exists(repo.Repo.PathOf(".maquettiste/templates/docs")));
         Assert.Contains("\"name\": \"notes\"", File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/notes/pack.json")), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Renaming_a_used_pack_rewrites_uses_in_packs_and_settings()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        repo.WriteLibraryPacks();
+        repo.EditSettingsOnDisk(node => node["uses"] = new JsonArray(new JsonObject { ["pack"] = "naming", ["version"] = "^1.0.0" }));
+        var pack = (await repo.Service.GetPackAsync("naming", Ct))!;
+        Assert.Equal(["records", "maquettiste.json"], pack.UsedBy);
+
+        var renamed = await repo.Service.RenamePackAsync("naming", "names", pack.Hash, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, renamed.Outcome);
+        Assert.Equal([EditorRepo.SettingsPath, ".maquettiste/templates/records/pack.json"], renamed.UsesUpdated);
+        var records = JsonNode.Parse(File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/records/pack.json")))!;
+        Assert.Equal("names", records["uses"]![0]!["pack"]!.GetValue<string>());
+        Assert.Equal("^1.2.0", records["uses"]![0]!["version"]!.GetValue<string>());
+        var settings = JsonNode.Parse(File.ReadAllText(repo.Repo.PathOf(EditorRepo.SettingsPath)))!;
+        Assert.Equal("names", settings["uses"]![0]!["pack"]!.GetValue<string>());
+        Assert.Equal(["records", "maquettiste.json"], (await repo.Service.GetPackAsync("names", Ct))!.UsedBy);
+    }
+
+    [Fact]
+    public async Task Renaming_lists_files_whose_text_names_the_old_pack()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        repo.WriteLibraryPacks();
+        var pack = (await repo.Service.GetPackAsync("naming", Ct))!;
+
+        // A preview lists what a rename would leave naming the old pack; the rename lists the same and edits none of it.
+        var preview = await repo.Service.RenamePackAsync("naming", "names", pack.Hash, Ct, dryRun: true);
+        Assert.Equal([".maquettiste/templates/naming/partials/header.scriban", ".maquettiste/templates/records/record.scriban"], preview.TextReferences);
+        var before = File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/records/record.scriban"));
+
+        var renamed = await repo.Service.RenamePackAsync("naming", "names", pack.Hash, Ct);
+
+        Assert.Equal([".maquettiste/templates/names/partials/header.scriban", ".maquettiste/templates/records/record.scriban"], renamed.TextReferences);
+        Assert.Equal(before, File.ReadAllText(repo.Repo.PathOf(".maquettiste/templates/records/record.scriban")));
+    }
 }

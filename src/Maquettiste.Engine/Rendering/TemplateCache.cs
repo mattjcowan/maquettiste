@@ -240,8 +240,35 @@ internal sealed class TemplateCache : ITemplateCache
 }
 
 /// <summary>Pack-relative template paths: normalization and confinement to the pack folder.</summary>
-internal static class PackPaths
+internal static partial class PackPaths
 {
+    [System.Text.RegularExpressions.GeneratedRegex("^[a-z][a-z0-9]*(-[a-z0-9]+)*$", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex PackName();
+
+    /// <summary>
+    /// Splits the optional <c>&lt;pack&gt;:</c> prefix of an include name (library packs, next-phase-2-design.md section 5.2): the
+    /// text before the first <c>:</c> when it is a pack name (<c>common.json#/$defs/key</c>). A <c>:</c> is refused in pack paths, so
+    /// the prefixed form changes the meaning of no earlier include; a name whose prefix is not a pack name keeps its <c>:</c> and is
+    /// refused by <see cref="TryNormalize"/>.
+    /// </summary>
+    /// <param name="name">The include name as written.</param>
+    /// <param name="pack">The named pack, or <see langword="null"/> without a prefix.</param>
+    /// <param name="path">The rest of the name.</param>
+    public static void SplitPack(string name, out string? pack, out string path)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var colon = name.IndexOf(':', StringComparison.Ordinal);
+        if (colon > 0 && PackName().IsMatch(name.AsSpan(0, colon)))
+        {
+            pack = name[..colon];
+            path = name[(colon + 1)..];
+            return;
+        }
+
+        pack = null;
+        path = name;
+    }
+
     /// <summary>
     /// Normalizes a pack-relative path: <c>\</c> becomes <c>/</c>, a leading <c>./</c> is dropped; empty, rooted, drive-qualified
     /// paths and <c>.</c>, <c>..</c> or empty segments are refused.

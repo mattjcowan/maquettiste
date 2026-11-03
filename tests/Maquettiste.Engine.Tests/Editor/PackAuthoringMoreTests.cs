@@ -188,6 +188,35 @@ public sealed class PackAuthoringMoreTests
         Assert.Contains(new Maquettiste.Engine.TemplateMember("start", "number"), (await repo.Service.GetTemplateContextAsync("sql-ddl", "sequence", Ct))!.Members["element"]);
     }
 
+    [Fact]
+    public async Task Template_context_lists_the_namespaces_a_unit_sees()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        repo.WriteLibraryPacks();
+
+        var context = (await repo.Service.GetTemplateContextAsync("records", "record", Ct))!;
+        Assert.Equal([new TemplateNamespace("naming", "naming", ["class_name"])], context.Namespaces, new NamespaceComparer());
+        // Namespaces are not helpers: the builtins and the pack's own stay in helpers.
+        Assert.DoesNotContain("naming", context.Helpers);
+
+        // A pack another pack uses sees its own namespace too, so its partials render in its own units.
+        File.WriteAllText(repo.Repo.PathOf(".maquettiste/templates/naming/pack.json"), """
+            { "name": "naming", "version": "1.4.0", "engine": ">=1.0", "parameters": { "suffix": "Record" },
+              "units": [ { "id": "names", "template": "names.scriban", "for": "model", "output": "src/Generated/names.txt" } ] }
+            """);
+        File.WriteAllText(repo.Repo.PathOf(".maquettiste/templates/naming/names.scriban"), "names");
+        var own = (await repo.Service.GetTemplateContextAsync("naming", "names", Ct))!;
+        Assert.Equal(["naming"], own.Namespaces.Select(n => n.Name));
+    }
+
+    private sealed class NamespaceComparer : IEqualityComparer<TemplateNamespace>
+    {
+        public bool Equals(TemplateNamespace? x, TemplateNamespace? y) =>
+            x is not null && y is not null && x.Name == y.Name && x.Pack == y.Pack && x.Helpers.SequenceEqual(y.Helpers);
+
+        public int GetHashCode(TemplateNamespace obj) => obj.Name.GetHashCode(StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("each process", "process", "all_states")]
     [InlineData("each actor", "actor", "gates")]
@@ -252,5 +281,44 @@ public sealed class PackAuthoringMoreTests
         // A script that fails lists nothing (the pack's diagnostics say why) rather than failing the read.
         File.AppendAllText(helpers, "\nthrow new Error(\"broken\");\n");
         Assert.Empty((await repo.Service.GetPackAsync("sql-ddl", Ct))!.Registrations);
+    }
+
+    [Fact]
+    public async Task Template_context_lists_the_exports_a_unit_may_read()
+    {
+        await using var repo = EditorRepo.Create();
+        WriteExportPacks(repo);
+
+        var services = await repo.Service.GetTemplateContextAsync("services", "service", TestContext.Current.CancellationToken);
+        var records = await repo.Service.GetTemplateContextAsync("records", "record", TestContext.Current.CancellationToken);
+
+        var source = Assert.Single(services!.ExportsFrom);
+        Assert.Equal("records", source.Pack);
+        Assert.Equal(["class_name", "members"], source.Names);
+        Assert.Equal(["records"], records!.ExportsFrom.Select(s => s.Pack));
+        Assert.Contains(services.Variables, v => v.Name == "exports");
+        Assert.Contains("exported", services.Helpers);
+    }
+
+    private static void WriteExportPacks(EditorRepo repo)
+    {
+        void Write(string pack, string path, string text)
+        {
+            var full = repo.Repo.PathOf(".maquettiste/templates/" + pack + "/" + path);
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            File.WriteAllText(full, text);
+        }
+
+        Write("records", "pack.json", """
+            { "name": "records", "version": "1.0.0", "engine": ">=1.0",
+              "units": [ { "id": "record", "template": "record.scriban", "for": "each entity", "output": "src/Generated/records/{{ exports.class_name }}.cs",
+                "exports": { "class_name": "{{ pascal entity.name }}Record", "members": { "each": "attributes", "value": "{{ pascal item.name }}" } } } ] }
+            """);
+        Write("records", "record.scriban", "class {{ exports.class_name }}");
+        Write("services", "pack.json", """
+            { "name": "services", "version": "1.0.0", "engine": ">=1.0", "uses": [ { "pack": "records", "version": "^1.0.0" } ],
+              "units": [ { "id": "service", "template": "service.scriban", "for": "each entity", "output": "src/Generated/services/{{ entity.name }}Service.cs" } ] }
+            """);
+        Write("services", "service.scriban", "{{ r = entity | exported \"records\" }}uses {{ r.class_name }}");
     }
 }

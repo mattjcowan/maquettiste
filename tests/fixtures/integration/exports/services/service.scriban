@@ -1,0 +1,6 @@
+{{ r = entity | exported "records" }}
+public sealed class {{ pascal entity.name }}Service
+{
+    public {{ r.namespace }}.{{ r.class_name }} Load(Guid id) => throw new NotImplementedException();
+{{ for a in entity.attributes }}    // {{ r.members[a.id] }}
+{{ end }}}

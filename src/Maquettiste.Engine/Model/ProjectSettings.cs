@@ -57,6 +57,9 @@ public sealed record ProjectSettings
     /// <summary>Per-pack settings; the key is a pack name.</summary>
     public IReadOnlyDictionary<string, PackSettings> Packs { get; init; } = ImmutableDictionary<string, PackSettings>.Empty;
 
+    /// <summary>The packs whose helpers the project's own scripts may call through <c>maquettiste.use</c>, in file order.</summary>
+    public IReadOnlyList<PackUse> Uses { get; init; } = [];
+
     /// <summary>Rule severity overrides.</summary>
     public ValidationSettings Validation { get; init; } = new();
 

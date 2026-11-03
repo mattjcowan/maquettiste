@@ -188,9 +188,10 @@ internal sealed record EngineServices
     /// <param name="baselineHash">The model hash of the baseline the diffs run from, or <see langword="null"/> for the committed
     /// physical snapshots.</param>
     /// <returns>The hasher.</returns>
+    /// <param name="exports">The run's export table, which hashes <c>px:</c> keys; none by default.</param>
     public IDependencyHasher CreateHasher(ModelSnapshot model, ResolvedModel resolved, PackSet packs, IReadOnlyDictionary<string, SchemaDiffResult> schemaDiffs,
-        string? baselineHash = null) =>
-        new DependencyHasher(model, resolved, packs, schemaDiffs, baselineHash);
+        string? baselineHash = null, Rendering.ExportTable? exports = null) =>
+        new DependencyHasher(model, resolved, packs, schemaDiffs, baselineHash) { Exports = exports };
 
     /// <summary>Builds the path policy of one run.</summary>
     /// <param name="settings">The project settings.</param>

@@ -54,6 +54,10 @@ internal sealed record PreparedRun(
     /// </summary>
     public bool FromBaseline { get; init; }
 
+    /// <summary>The run's export table over the unfiltered plan (next-phase-2-design.md section 5.3), or <see langword="null"/> when
+    /// no planned unit declares exports.</summary>
+    public Rendering.ExportTable? Exports { get; init; }
+
     /// <summary>
     /// The resolved filters of a scoped run (<see cref="GenerationRequest.Units"/>, <see cref="GenerationRequest.Elements"/>;
     /// next-phase-1-design.md section 5.6), which <see cref="Plan"/> already holds only the selected units of; <see langword="null"/>
@@ -76,9 +80,12 @@ internal sealed record StreamResult(WriteSummary Summary, int Rendered);
 /// <param name="services">The services.</param>
 /// <param name="store">The model store.</param>
 /// <param name="progress">Progress.</param>
-internal sealed class GenerationRun(EngineServices services, ModelStore store, IProgress<ProgressUpdate>? progress)
+internal sealed class GenerationRun(EngineServices services, ModelStore store, IProgress<ProgressUpdate>? progress) : IDisposable
 {
     private readonly ConcurrentQueue<Diagnostic> _diagnostics = new();
+
+    /// <summary>The export tables this run prepared: each may hold an evaluator with its own script pools, released with the run.</summary>
+    private readonly ConcurrentQueue<Rendering.ExportTable> _exportTables = new();
 
     /// <summary>Whether <see cref="VerifyFormattersAsync"/> checked every formatter the units to render could use.</summary>
     private bool _formattersVerified;
@@ -149,8 +156,9 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     /// the run invalid), and the plan keeps the selected units only, so skip, render, write, plan capture and plan apply see nothing
     /// else. A selection that matches no planned unit and no manifest entry is MQ6034 (a warning; the plan is empty).</param>
     /// <returns>The prepared run, or <see langword="null"/>.</returns>
+    /// <param name="seededExports">An apply's export values by unit key, from the stored plan: the export table then never evaluates.</param>
     public async Task<PreparedRun?> PrepareAsync(IReadOnlyList<string>? packNames, GenerationMode mode, CancellationToken ct, bool locked = true,
-        bool barriers = true, ModelBaseline? baseline = null, UnitSelection? selection = null)
+        bool barriers = true, ModelBaseline? baseline = null, UnitSelection? selection = null, IReadOnlyDictionary<string, UnitExports>? seededExports = null)
     {
         if (selection is not null)
             packNames = selection.PackNames(packNames, Path.Combine(new ModelPaths(services.Options).ModelRoot, "templates"));
@@ -256,6 +264,15 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             if (journal is not null)
                 manifests = manifests.WithJournalOverlay(journal);
 
+            // The export table (next-phase-2-design.md section 5.3) takes the unfiltered plan: a scoped run's units still read the
+            // records of the units its selection leaves out. Stored states of the packs with exporting units, used packs included
+            // (read only), serve records whose export inputs are unchanged; a check run or a preview reads none.
+            var exports = seededExports is null
+                ? await ExportTableAsync(plan, mode, locked, ct).ConfigureAwait(false)
+                : Rendering.ExportTable.ForApply(plan.Units.Concat(plan.ExportOnly), seededExports);
+            if (exports is not null)
+                _exportTables.Enqueue(exports);
+
             // The plan filter of a scoped run, applied once here: everything downstream sees the selected units only.
             if (selection is not null)
             {
@@ -265,10 +282,12 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
                 plan = plan with { Units = units };
             }
 
-            var hasher = services.CreateHasher(snapshot, resolved, packs, diffs, baseline?.ModelHash);
+            var hasher = services.CreateHasher(snapshot, resolved, packs, diffs, baseline?.ModelHash, exports);
+            exports?.Bind(new RenderContext(resolved, packs, diffs, services.Scripts, hasher, services.Options.EffectiveParallelism) { Exports = exports });
             return new PreparedRun(snapshot, resolved, packs, diffs, plan, manifests, journal, hasher, services.CreatePathPolicy(snapshot.Settings),
                 statesLoaded)
             {
+                Exports = exports,
                 OutputStats = outputStats,
                 PendingSnapshots = pendingSnapshots,
                 FromBaseline = baseline is not null,
@@ -297,6 +316,31 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
         }
     }
 
+    /// <summary>The run's export table over the unfiltered plan, or <see langword="null"/> when no planned unit declares exports.</summary>
+    private async Task<Rendering.ExportTable?> ExportTableAsync(UnitPlan plan, GenerationMode mode, bool locked, CancellationToken ct)
+    {
+        var units = plan.Units.Concat(plan.ExportOnly).Where(u => u.Unit.Exports.Count > 0).ToList();
+        if (units.Count == 0)
+            return null;
+        Dictionary<string, IReadOnlyDictionary<string, UnitState>>? states = null;
+        if (mode != GenerationMode.Check && locked)
+        {
+            states = new Dictionary<string, IReadOnlyDictionary<string, UnitState>>(StringComparer.Ordinal);
+            foreach (var pack in units.Select(u => u.Pack.Name).Distinct(StringComparer.Ordinal))
+                states[pack] = await services.UnitState.LoadAsync(pack, ct).ConfigureAwait(false);
+        }
+
+        return Rendering.ExportTable.ForPlan(units, services.CreateRenderer() as Rendering.Renderer, services.Options.EffectiveParallelism,
+            states is null ? null : (pack, key) => states.TryGetValue(pack, out var byKey) && byKey.TryGetValue(key, out var state) ? state : null, ct);
+    }
+
+    /// <summary>Disposes the export tables the run prepared (their evaluator's script pools); call once nothing reads them.</summary>
+    public void Dispose()
+    {
+        while (_exportTables.TryDequeue(out var table))
+            table.Dispose();
+    }
+
     /// <summary>Stage 5.</summary>
     /// <param name="run">The prepared run.</param>
     /// <param name="mode">The mode.</param>
@@ -306,6 +350,9 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     public async Task<SkipResult> SkipAsync(PreparedRun run, GenerationMode mode, bool force, CancellationToken ct)
     {
         var start = Clock.Now;
+        // Forced and check runs reuse no stored export values: every record they read is evaluated.
+        if (run.Exports is { } exports && (force || mode == GenerationMode.Check))
+            exports.ReuseStates = false;
         if (run.StatesLoaded is { } statesLoaded && !force && mode != GenerationMode.Check)
         {
             try
@@ -453,7 +500,11 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     {
         var renderer = services.CreateRenderer();
         var writer = services.CreateWriter(run.Paths);
-        var renderContext = new RenderContext(run.Resolved, run.Packs, run.SchemaDiffs, services.Scripts, run.Hasher, jobs) { Scoped = run.Selection is not null };
+        var renderContext = new RenderContext(run.Resolved, run.Packs, run.SchemaDiffs, services.Scripts, run.Hasher, jobs)
+        {
+            Scoped = run.Selection is not null,
+            Exports = run.Exports,
+        };
         var postContext = new PostProcessContext(Path.GetFullPath(services.Options.RepoRoot), run.Paths, run.Snapshot.Settings.Formatters, _formattersVerified);
         var processor = new UnitProcessor(this, services.PostProcessor, postContext, hook, toRender.Count, progress);
 

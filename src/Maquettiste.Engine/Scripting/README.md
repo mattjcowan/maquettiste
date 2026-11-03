@@ -115,6 +115,19 @@ Scripts run in load order against a global `maquettiste`:
   (below).
 - `maquettiste.params` is a read-only accessor returning the current call's `ScriptCallContext.Parameters` (frozen; empty while
   loading). Section 10 does not say how scripts see parameters; this is the choice made here.
+- `maquettiste.use(name)` (library packs, next-phase-2-design.md section 5.2) returns the frozen object of a used pack's
+  helpers: one host function per name of the `ScriptLibrary` the pool was created with (`IScriptSandboxFactory.CreatePool`'s
+  `libraries` overload), the same object for every call in one engine. It may run while scripts load, so
+  `const naming = maquettiste.use("naming");` at the top of a file works; a name outside the libraries is a `TypeError`
+  (MQ6016, or MQ5002 in a rule script). A member call converts its arguments out as a script's results are (`FromJs`; a
+  model proxy leaves as its object), calls `ScriptCallContext.Libraries.Call(pack, helper, args, caller)` and converts the
+  result in as a helper's arguments are (`ToJs`). Without a call context (while loading) or without `Libraries` (selectors
+  and filters, which run while planning) the call is a `TypeError` that says so. The used pack's helper runs in a sandbox
+  of its own pool, so its scripts load exactly as they do for the pack itself; a failure there is its own
+  `ScriptErrorException` or `ScriptLimitException` at its own script and line, which passes through the calling engine
+  (`Run` only resets that engine's call stack). The calling engine's wall clock keeps running during the nested call;
+  each engine counts its own statements. The pool and the sandbox add nothing else, so a pool without libraries behaves
+  as before.
 - `rule`: `id` has no whitespace (the diagnostic rule is `x/<id>`); `severity` is `error` (default), `warning` or
   `info`; `kinds` lists kind names from `KindInfo` (empty or missing = all kinds; `RunRule` returns no diagnostics for
   other kinds). `element` is a deep-frozen copy of the element's canonical JSON; `model` offers `get(id)` (an element,

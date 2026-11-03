@@ -175,6 +175,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         var missingSidecars = needed.Where(p => !entries.ContainsKey(p)).ToArray();
 
+        // 3b. The project's library packs: the pack.json files and scripts of the closure of maquettiste.json's uses.
+        await CheckLibrariesAsync(entries, previous, full || request.VerifyHashes, request.VerifyHashes, hints, counters, ct).ConfigureAwait(false);
+
         // 4. A partial load that brings an id also held by a file it did not look at re-checks that file: a rename reported only
         //    by its new path must not leave the old path behind as a duplicate.
         if (!full)
@@ -260,13 +263,198 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     /// <returns>The paths.</returns>
     internal HashSet<string> EnumerateModelFiles() => Enumerate();
 
+    /// <summary>
+    /// Reads the files of the project's library packs (next-phase-2-design.md section 5.2) as <see cref="ModelFileKind.LibraryFile"/>
+    /// entries, like sidecars: each pack.json of the closure of <c>maquettiste.json</c>'s uses, level by level, then the scripts those
+    /// manifests name (or every <c>*.js</c> no copy unit copies). A file left out of the closure leaves the entries. Nothing else of a
+    /// pack is read, and no pack is read when the project has no uses.
+    /// </summary>
+    private async Task CheckLibrariesAsync(Dictionary<string, FileEntry> entries, LoaderState previous, bool all, bool verify, HashSet<string> hints,
+        Counters counters, CancellationToken ct)
+    {
+        var uses = entries.TryGetValue(ModelPaths.SettingsFile, out var settingsEntry) && settingsEntry.Parsed.Settings is { } settings ? settings.Uses : [];
+        var needed = new HashSet<string>(StringComparer.Ordinal);
+        var checkedPaths = new HashSet<string>(StringComparer.Ordinal);
+        List<LibraryPack> walked = [];
+        while (uses.Count > 0)
+        {
+            var missing = new List<string>();
+            walked = WalkLibraries(uses, path =>
+            {
+                if (checkedPaths.Contains(path))
+                    return entries.TryGetValue(path, out var e) && e.Kind == ModelFileKind.LibraryFile ? e : null;
+                missing.Add(path);
+                return null;
+            });
+            if (missing.Count == 0)
+                break;
+            var toCheck = missing.Where(p => all || hints.Contains(p) || !entries.TryGetValue(p, out var e) || e.Kind != ModelFileKind.LibraryFile)
+                .Order(StringComparer.Ordinal).ToArray();
+            var results = await CheckAllAsync(toCheck, previous, verify, counters, null, ct, ModelFileKind.LibraryFile).ConfigureAwait(false);
+            for (var i = 0; i < toCheck.Length; i++)
+            {
+                if (results[i] is { } entry)
+                    entries[toCheck[i]] = entry;
+                else
+                    entries.Remove(toCheck[i]);
+            }
+
+            checkedPaths.UnionWith(missing);
+        }
+
+        foreach (var pack in walked)
+        {
+            needed.Add(pack.Folder + "/pack.json");
+            foreach (var script in pack.Scripts)
+                needed.Add(pack.Folder + "/" + script);
+        }
+
+        foreach (var stale in entries.Where(kv => kv.Value.Kind == ModelFileKind.LibraryFile && !needed.Contains(kv.Key)).Select(kv => kv.Key).ToList())
+            entries.Remove(stale);
+        var scripts = needed.Where(p => !checkedPaths.Contains(p) && (all || hints.Contains(p) || !entries.ContainsKey(p))).Order(StringComparer.Ordinal).ToArray();
+        var scriptEntries = await CheckAllAsync(scripts, previous, verify, counters, null, ct, ModelFileKind.LibraryFile).ConfigureAwait(false);
+        for (var i = 0; i < scripts.Length; i++)
+        {
+            if (scriptEntries[i] is { } entry)
+                entries[scripts[i]] = entry;
+            else
+                entries.Remove(scripts[i]);
+        }
+    }
+
+    /// <summary>A pack of the project's uses closure: its folder, its pack.json entry, the manifest when it reads, its scripts (pack-relative).</summary>
+    private sealed record LibraryPack(string Name, string Folder, FileEntry Entry, PackManifest? Manifest, IReadOnlyList<string> Scripts);
+
+    /// <summary>
+    /// The closure of <paramref name="uses"/> as far as <paramref name="manifestOf"/> knows the pack.json files, breadth first in
+    /// entry order: each existing pack once, with its manifest when it deserializes and the scripts it names.
+    /// </summary>
+    private List<LibraryPack> WalkLibraries(IReadOnlyList<PackUse> uses, Func<string, FileEntry?> manifestOf)
+    {
+        var result = new List<LibraryPack>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<string>(uses.Select(u => u.Pack));
+        while (queue.Count > 0)
+        {
+            var name = queue.Dequeue();
+            if (!seen.Add(name) || ModelPaths.LibraryFolder(name) is not { } folder || manifestOf(folder + "/pack.json") is not { } entry)
+                continue;
+            PackManifest? manifest;
+            try
+            {
+                manifest = entry.Bytes.Length == 0 ? null : JsonSerializer.Deserialize<PackManifest>(entry.Bytes, EngineJson.Options);
+            }
+            catch (Exception ex) when (DocumentReader.IsDeserializationFailure(ex))
+            {
+                manifest = null;
+            }
+
+            IReadOnlyList<string> scripts = [];
+            if (manifest is not null)
+            {
+                foreach (var use in manifest.Uses)
+                    queue.Enqueue(use.Pack);
+                var prefix = folder + "/";
+                var files = Documents.List(folder, true).Where(p => p.StartsWith(prefix, StringComparison.Ordinal)).Select(p => p[prefix.Length..])
+                    .Where(p => !p.Split('/').Any(segment => segment.StartsWith('.'))).Order(StringComparer.Ordinal).ToList();
+                scripts = Planning.PackFileRoles.Scripts(files, manifest, Planning.PackFileRoles.CopiedFiles(files, manifest));
+            }
+
+            result.Add(new LibraryPack(name, folder, entry, manifest, scripts));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// The project's script libraries from the library entries, in dependency order (Kahn's order, the earliest name first among the
+    /// ready ones), and the MQ6042 and MQ6043 findings on <c>maquettiste.json</c>'s own uses entries. A pack whose manifest or a script
+    /// does not read, whose uses reach such a pack, or that is in a cycle is left out (the pack loader reports why on its pack.json).
+    /// </summary>
+    private List<ScriptLibrarySource> Libraries(ProjectSettings settings, FileEntry? settingsEntry, Dictionary<string, FileEntry> entries,
+        List<Diagnostic> diagnostics)
+    {
+        if (settings.Uses.Count == 0)
+            return [];
+        var walked = WalkLibraries(settings.Uses, p => entries.TryGetValue(p, out var e) && e.Kind == ModelFileKind.LibraryFile ? e : null);
+        var sources = new Dictionary<string, ScriptLibrarySource>(StringComparer.Ordinal);
+        foreach (var pack in walked)
+        {
+            if (pack.Manifest is not { } manifest)
+                continue;
+            var scripts = new List<ScriptSource>();
+            foreach (var path in pack.Scripts)
+            {
+                if (entries.TryGetValue(pack.Folder + "/" + path, out var e) && e.Kind == ModelFileKind.LibraryFile && e.Parsed.Text is { } code)
+                    scripts.Add(new ScriptSource(_paths.ToRepoPath(e.ModelPath), code, e.Hash));
+            }
+
+            if (scripts.Count != pack.Scripts.Count)
+                continue;
+            var parameters = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
+            foreach (var (key, value) in manifest.Parameters)
+                parameters[key] = value;
+            if (settings.Packs.TryGetValue(pack.Name, out var packSettings))
+            {
+                foreach (var (key, value) in packSettings.Parameters)
+                    parameters[key] = value;
+            }
+
+            IReadOnlyList<string> packUses = [.. manifest.Uses.Select(u => u.Pack)];
+            var fields = new List<string?> { "mq-library-1", pack.Name, manifest.Version, string.Join('\n', packUses), Planning.CanonicalForm.Json(parameters) };
+            foreach (var script in scripts)
+                fields.AddRange([script.Path, script.Hash]);
+            sources[pack.Name] = new ScriptLibrarySource(pack.Name, manifest.Version, packUses, parameters, scripts, HashBuilder.Of([.. fields]));
+        }
+
+        // A pack whose uses name a pack that is not a library here cannot reach its helpers: it goes too, until none is left to drop.
+        bool dropped;
+        do
+        {
+            dropped = false;
+            foreach (var name in sources.Keys.Order(StringComparer.Ordinal).ToList())
+            {
+                if (sources[name].Uses.Any(u => !sources.ContainsKey(u) || string.Equals(u, name, StringComparison.Ordinal)))
+                {
+                    sources.Remove(name);
+                    dropped = true;
+                }
+            }
+        }
+        while (dropped);
+
+        var ordered = new List<ScriptLibrarySource>();
+        var ready = new SortedSet<string>(sources.Keys.Where(n => sources[n].Uses.Count == 0), StringComparer.Ordinal);
+        var done = new HashSet<string>(StringComparer.Ordinal);
+        while (ready.Count > 0)
+        {
+            var next = ready.Min!;
+            ready.Remove(next);
+            done.Add(next);
+            ordered.Add(sources[next]);
+            foreach (var (name, source) in sources)
+            {
+                if (!done.Contains(name) && !ready.Contains(name) && source.Uses.All(done.Contains))
+                    ready.Add(name);
+            }
+        }
+
+        var versions = ordered.ToDictionary(l => l.Pack, l => l.Version, StringComparer.Ordinal);
+        var exists = walked.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+        var settingsPath = _paths.ToRepoPath(ModelPaths.SettingsFile);
+        foreach (var finding in ProjectUses.Check(settings.Uses, exists, versions, settingsPath))
+            diagnostics.Add(settingsEntry is null ? finding : _reader.Locate(finding, settingsEntry.Bytes));
+        return ordered;
+    }
+
     private async Task<FileEntry?[]> CheckAllAsync(
         string[] modelPaths,
         LoaderState previous,
         bool verify,
         Counters counters,
         IProgress<ProgressUpdate>? progress,
-        CancellationToken ct)
+        CancellationToken ct,
+        ModelFileKind unclassified = ModelFileKind.Sidecar)
     {
         var results = new FileEntry?[modelPaths.Length];
         if (modelPaths.Length == 0)
@@ -279,7 +467,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         {
             var path = modelPaths[i];
             previous.Entries.TryGetValue(path, out var old);
-            var kind = ModelPaths.Classify(path) ?? ModelFileKind.Sidecar;
+            var kind = ModelPaths.Classify(path) ?? unclassified;
             results[i] = await CheckAsync(path, kind, old, verify, counters, token).ConfigureAwait(false);
             progress?.Report(new ProgressUpdate(PipelineStage.Load, Interlocked.Increment(ref done), modelPaths.Length, _paths.ToRepoPath(path), null));
         }).ConfigureAwait(false);
@@ -472,9 +660,10 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             }
         }
 
+        var libraries = Libraries(settings, settingsEntry, entries, diagnostics);
         diagnostics.Sort(Diagnostic.Order);
         var snapshot = ModelSnapshot.CreateAfter(previousSnapshot, documents, settings, settingsHash, extensions, scripts, version, diagnostics,
-            options.EffectiveParallelism, ct, shards, seedScripts, customKinds);
+            options.EffectiveParallelism, ct, shards, seedScripts, customKinds, libraries);
         return (snapshot, byPath);
     }
 

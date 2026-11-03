@@ -12,7 +12,8 @@ public sealed record PackListResponse(IReadOnlyList<PackSummary> Packs);
 /// <summary>The body of <c>POST /api/packs</c>.</summary>
 /// <param name="Name">The new pack's name (its folder).</param>
 /// <param name="From"><c>empty</c> (the default) or the name of a pack of this project to copy.</param>
-public sealed record NewPackRequest(string? Name, string? From);
+/// <param name="Library">Create a library pack: no units, a partial and a helpers file (<c>from</c> must be <c>empty</c>).</param>
+public sealed record NewPackRequest(string? Name, string? From, bool Library = false);
 
 /// <summary>The body of <c>POST /api/packs/{pack}/rename</c>.</summary>
 /// <param name="Name">The new name (the folder it moves to).</param>
@@ -51,7 +52,7 @@ public static class PackEndpoints
             return error;
         if (string.IsNullOrEmpty(request!.Name))
             return Api.BadRequest("name is required.");
-        var result = await generation.CreatePackAsync(request.Name, request.From ?? "empty", null, ct).ConfigureAwait(false);
+        var result = await generation.CreatePackAsync(request.Name, request.From ?? "empty", null, request.Library, ct).ConfigureAwait(false);
         if (result.Outcome == SaveOutcome.Saved)
         {
             Api.SetETag(context, result.Hash);

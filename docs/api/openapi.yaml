@@ -358,6 +358,7 @@ paths:
                       scripts: []
                       parameterSchema: null
                       usesSchemaDiff: true
+                      uses: []
                       units:
                       - id: table
                         template: table.scriban
@@ -374,6 +375,7 @@ paths:
                         delimiters: null
                         companion: null
                         transforms: []
+                        exports: {}
                       - id: schema
                         template: schema.scriban
                         for: each database
@@ -389,6 +391,7 @@ paths:
                         delimiters: null
                         companion: null
                         transforms: []
+                        exports: {}
                     packDiagnostics: []
                     extensions:
                     - $schema: null
@@ -4146,6 +4149,7 @@ paths:
                       reason: new
                       causes: []
                       causeCount: 0
+                      exports: null
                       outputs:
                       - path: src/Generated/Billing/Customer.g.cs
                         contentHash: 2abfe941da822a487dc3f4b301459b8c239f525a00b18a48b31b016176fc5c82
@@ -4199,6 +4203,7 @@ paths:
                     unitsRendered:
                       new: 43
                     unitsSkipped: {}
+                    exports: []
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -4408,6 +4413,7 @@ paths:
                         unitsRendered:
                           new: 43
                         unitsSkipped: {}
+                        exports: []
                     applyResult: null
                     error: null
                     queuedUtc: '2026-09-28T18:55:12.9542269+00:00'
@@ -4944,6 +4950,8 @@ paths:
                 tracked: [db/main/billing/tables/customers.sql, db/main/schema.sql]
                 hints: []
                 hintsUpdated: []
+                usesUpdated: []
+                textReferences: []
                 diagnostics: []
         '409':
           description: pack.json changed since it was read; `hash` and `current` are the disk version.
@@ -6829,6 +6837,11 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/PackSettings'
+        uses:
+          description: The packs whose helpers the project's own scripts may call through `maquettiste.use`.
+          type: array
+          items:
+            $ref: '#/components/schemas/PackUse'
         validation:
           type: object
           required: [rules]
@@ -6997,6 +7010,16 @@ components:
               type: [string, 'null']
             category:
               type: [string, 'null']
+    PackUse:
+      x-engine-record: Maquettiste.Engine.Model.PackUse
+      description: A pack that a pack, or the project's scripts, use; the version is a range in the engine-range syntax.
+      type: object
+      required: [pack, version]
+      properties:
+        pack:
+          type: string
+        version:
+          type: string
     PackSettings:
       x-engine-record: Maquettiste.Engine.Model.PackSettings
       type: object
@@ -7184,7 +7207,7 @@ components:
     PackManifest:
       x-engine-record: Maquettiste.Engine.Model.PackManifest
       type: object
-      required: [$schema, name, version, engine, description, parameters, parameterSchema, scripts, usesSchemaDiff, units]
+      required: [$schema, name, version, engine, description, parameters, parameterSchema, scripts, usesSchemaDiff, uses, units]
       properties:
         $schema:
           type: [string, 'null']
@@ -7210,14 +7233,20 @@ components:
             type: string
         usesSchemaDiff:
           type: boolean
+        uses:
+          description: The packs this pack uses, in `pack.json` order (library packs).
+          type: array
+          items:
+            $ref: '#/components/schemas/PackUse'
         units:
+          description: The render units; empty for a library.
           type: array
           items:
             $ref: '#/components/schemas/PackUnit'
     PackUnit:
       x-engine-record: Maquettiste.Engine.Model.PackUnit
       type: object
-      required: [id, template, for, where, output, mode, sources, tokens, blockComment, blockCommentEnd, createFile, formatter, delimiters, companion, transforms]
+      required: [id, template, for, where, output, mode, sources, tokens, blockComment, blockCommentEnd, createFile, formatter, delimiters, companion, transforms, exports]
       properties:
         id:
           type: string
@@ -7280,6 +7309,21 @@ components:
           type: array
           items:
             type: string
+        exports:
+          type: object
+          description: >-
+            Names the unit exports per element (`PackExport`): a template string, or `{each, value}` rendered per item of a
+            list member and keyed by the item's id. Other packs read them with `exported`; empty when the unit exports none.
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: object
+                required: [each, value]
+                properties:
+                  each:
+                    type: string
+                  value:
+                    type: string
     ExtensionSchema:
       x-engine-record: Maquettiste.Engine.Model.ExtensionSchema
       type: object
@@ -12339,7 +12383,7 @@ components:
     PlanUnit:
       x-engine-record: Maquettiste.Engine.PlanUnit
       type: object
-      required: [key, inputHash, readKeys, skipped, outputs, pack, unit, template, elementId, reason, causes, causeCount]
+      required: [key, inputHash, readKeys, skipped, outputs, pack, unit, template, elementId, reason, causes, causeCount, exports]
       properties:
         pack:
           type: [string, 'null']
@@ -12375,10 +12419,43 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlanFile'
+        exports:
+          description: >-
+            The unit's export values (next-phase-2-design.md section 5.3): a rendered unit's from its render, a skipped one's from
+            the export table; null when the unit declares no exports.
+          oneOf:
+            - $ref: '#/components/schemas/UnitExports'
+            - type: 'null'
+    UnitExports:
+      x-engine-record: Maquettiste.Engine.Pipeline.UnitExports
+      type: object
+      required: [values, readKeys, inputHash]
+      properties:
+        values:
+          description: Export name to text, or (an `each` export) to an object of item id to text; keys ordinal.
+          type: object
+          additionalProperties: true
+        readKeys:
+          description: The dependency keys the export templates read, ordinal.
+          type: array
+          items:
+            type: string
+        inputHash:
+          description: The hash of the unit's static hash and the export keys; stored values serve readers while it is unchanged.
+          type: string
+    PlanExport:
+      x-engine-record: Maquettiste.Engine.PlanExport
+      type: object
+      required: [key, exports]
+      properties:
+        key:
+          type: string
+        exports:
+          $ref: '#/components/schemas/UnitExports'
     GenerationPlan:
       x-engine-record: Maquettiste.Engine.GenerationPlan
       type: object
-      required: [id, request, modelVersion, packs, units, changes, diagnostics, counts, unitsRendered, unitsSkipped]
+      required: [id, request, modelVersion, packs, units, changes, diagnostics, counts, unitsRendered, unitsSkipped, exports]
       properties:
         id:
           $ref: '#/components/schemas/Ulid'
@@ -12413,6 +12490,13 @@ components:
           $ref: '#/components/schemas/UnitReasonCounts'
         unitsSkipped:
           $ref: '#/components/schemas/UnitReasonCounts'
+        exports:
+          description: >-
+            The exporting units the plan used without planning them (units of used packs, units a scoped run left out), by key;
+            apply checks their export inputs again.
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanExport'
     PlanResult:
       x-engine-record: Maquettiste.Engine.PlanResult
       type: object
@@ -12612,7 +12696,7 @@ components:
     PackSummary:
       x-engine-record: Maquettiste.Engine.PackSummary
       type: object
-      required: [name, version, description, enabled, output, units, fileCount, diagnostics]
+      required: [name, version, description, enabled, output, units, fileCount, diagnostics, uses, usedBy]
       properties:
         name:
           type: string
@@ -12635,6 +12719,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Diagnostic'
+        uses:
+          description: The packs this pack uses, in `pack.json` order; a pack without units is a library.
+          type: array
+          items:
+            $ref: '#/components/schemas/PackUse'
+        usedBy:
+          description: The packs whose `uses` name it, ordinal, then `maquettiste.json` when the project's `uses` does.
+          type: array
+          items:
+            type: string
     NewPackRequest:
       type: object
       required: [name]
@@ -12645,6 +12739,9 @@ components:
         from:
           type: [string, 'null']
           description: '`empty` (the default) or the name of a pack of this project.'
+        library:
+          type: boolean
+          description: 'A library pack: no units, `partials/header.scriban` and a `helpers.js` with one helper; `from` must be `empty`.'
     PackFileInfo:
       x-engine-record: Maquettiste.Engine.PackFileInfo
       type: object
@@ -12663,7 +12760,7 @@ components:
           enum: [manifest, template, partial, script, type-map, copy-source, other]
         usedBy:
           type: array
-          description: '`unit:<id>`, `companion:<id>` and `include:<path>`, ordinal.'
+          description: '`unit:<id>`, `companion:<id>`, `include:<path>` and `include:<pack>:<path>` (a file of another pack, whose `uses` names this one, includes it by its prefixed name), ordinal.'
           items:
             type: string
     PackParameterInfo:
@@ -12686,7 +12783,7 @@ components:
     PackDocument:
       x-engine-record: Maquettiste.Engine.PackDocument
       type: object
-      required: [name, enabled, output, hash, document, parameters, files, diagnostics, registrations]
+      required: [name, enabled, output, hash, document, parameters, files, diagnostics, registrations, usedBy]
       properties:
         name:
           type: string
@@ -12717,6 +12814,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScriptRegistration'
+        usedBy:
+          description: The packs whose `uses` name it, ordinal, then `maquettiste.json` when the project's `uses` does.
+          type: array
+          items:
+            type: string
     ScriptRegistration:
       x-engine-record: Maquettiste.Engine.Scripting.ScriptRegistration
       type: object
@@ -12931,7 +13033,7 @@ components:
     PackRenameResult:
       x-engine-record: Maquettiste.Engine.PackRenameResult
       type: object
-      required: [outcome, from, to, hash, current, settingsHash, files, tracked, hints, hintsUpdated, diagnostics]
+      required: [outcome, from, to, hash, current, settingsHash, files, tracked, hints, hintsUpdated, usesUpdated, textReferences, diagnostics]
       properties:
         outcome:
           $ref: '#/components/schemas/SaveOutcome'
@@ -12972,6 +13074,16 @@ components:
         hintsUpdated:
           type: array
           description: The ids of the elements whose hints the rename moved itself (the MCP tool and the command line ask for it); always empty here.
+          items:
+            type: string
+        usesUpdated:
+          type: array
+          description: The `pack.json` files and `maquettiste.json` whose `uses` entries were rewritten to the new name (or would be, on a preview), ordinal.
+          items:
+            type: string
+        textReferences:
+          type: array
+          description: Repo-relative template and script files whose text names the old pack; not edited.
           items:
             type: string
         diagnostics:
@@ -13133,7 +13245,7 @@ components:
     TemplateContextResult:
       x-engine-record: Maquettiste.Engine.TemplateContextResult
       type: object
-      required: [pack, unit, scope, variables, members, helpers, registrations]
+      required: [pack, unit, scope, variables, members, helpers, registrations, namespaces, exportsFrom]
       properties:
         pack:
           type: string
@@ -13161,6 +13273,47 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScriptRegistration'
+        namespaces:
+          description: >-
+            The helper namespaces the unit sees, by name: one per pack of its uses closure that registers helpers, and the
+            pack's own when another pack uses it.
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateNamespace'
+        exportsFrom:
+          description: >-
+            The packs whose exports the unit may read with `exported` (its own and its uses closure), each with the names its
+            units declare; packs that declare none are left out. Ordinal by pack.
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateExportSource'
+    TemplateExportSource:
+      x-engine-record: Maquettiste.Engine.TemplateExportSource
+      type: object
+      required: [pack, names]
+      properties:
+        pack:
+          type: string
+        names:
+          type: array
+          items:
+            type: string
+    TemplateNamespace:
+      x-engine-record: Maquettiste.Engine.TemplateNamespace
+      description: A helper namespace a unit sees.
+      type: object
+      required: [name, pack, helpers]
+      properties:
+        name:
+          description: The namespace, the pack name with `-` replaced by `_`.
+          type: string
+        pack:
+          type: string
+        helpers:
+          description: The pack's helper names, ordinal.
+          type: array
+          items:
+            type: string
     PackFileMove:
       x-engine-record: Maquettiste.Engine.PackFileMove
       type: object

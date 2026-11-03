@@ -61,6 +61,7 @@ nav:
       - Reference data and seeds: guides/reference-data-and-seeds.md
       - Processes: guides/processes.md
       - Generate code: guides/generate-code.md
+      - Share and test packs: guides/share-and-test-packs.md
       - Schema changes: guides/schema-changes.md
       - Upgrade tests: guides/upgrade-tests.md
       - Typed properties and layers: guides/typed-properties-and-layers.md

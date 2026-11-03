@@ -228,6 +228,10 @@ internal sealed class CountingSandboxFactory : IScriptSandboxFactory
     public IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct) =>
         new Pool(this, _inner.CreatePool(scripts, limits, size, ct));
 
+    public IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, IReadOnlyList<ScriptLibrary> libraries, SandboxLimits limits, int size,
+        CancellationToken ct) =>
+        new Pool(this, _inner.CreatePool(scripts, libraries, limits, size, ct));
+
     private sealed class Pool(CountingSandboxFactory owner, IScriptSandboxPool inner) : IScriptSandboxPool
     {
         public IReadOnlyList<ScriptRegistration> Registrations => inner.Registrations;

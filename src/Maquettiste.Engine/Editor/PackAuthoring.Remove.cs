@@ -10,7 +10,8 @@ namespace Maquettiste.Engine;
 /// <summary>The result of removing a pack (<c>DELETE /api/packs/{pack}</c>).</summary>
 /// <param name="Outcome"><c>saved</c> (removed); <c>conflict</c> (409: <c>pack.json</c> changed since it was read, and <paramref name="Hash"/>
 /// and <paramref name="Current"/> are the disk version, or <c>maquettiste.json</c> kept changing during the removal, and both are null);
-/// <c>invalid</c> (422: the settings save was refused; nothing was removed) or <c>not-found</c>.</param>
+/// <c>invalid</c> (422: the settings save was refused; nothing was removed), <c>referenced</c> (409: a pack or <c>maquettiste.json</c> uses
+/// it; the diagnostics name them) or <c>not-found</c>.</param>
 /// <param name="Hash">The disk hash of <c>pack.json</c> on conflict, else <see langword="null"/>.</param>
 /// <param name="Current">The disk text of <c>pack.json</c> on conflict, else <see langword="null"/>.</param>
 /// <param name="Files">The pack-relative files deleted, ordinal (hidden ones included).</param>
@@ -39,6 +40,17 @@ internal static partial class PackAuthoring
         var manifestPath = Path.Combine(root, "pack.json");
         if (!File.Exists(manifestPath))
             return new PackRemoveResult(SaveOutcome.NotFound, null, null, [], [], null, []);
+
+        // Library packs: a pack that another pack or the project's uses names stays until those entries go.
+        var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        if (await UsersAsync(services.Options, snapshot.Settings.Uses, name, ct).ConfigureAwait(false) is { Count: > 0 } users)
+        {
+            var paths = new Loading.ModelPaths(services.Options);
+            return new PackRemoveResult(SaveOutcome.Referenced, null, null, [], [], null, [.. users.Select(user => RuleCatalog.Create("MQ6022",
+                $"Pack '{name}' is used by {(user == "maquettiste.json" ? "the project's uses in maquettiste.json" : "pack '" + user + "'")}; remove that uses entry first.",
+                filePath: paths.ToRepoPath(user == "maquettiste.json" ? Loading.ModelPaths.SettingsFile : "templates/" + user + "/pack.json"), jsonPointer: "/uses"))]);
+        }
+
         await WriteGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {

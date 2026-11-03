@@ -1,6 +1,6 @@
 [
   {
-    "id": "01M40H3DPS9JK8TSPW2KDBTCMR",
+    "id": "01M6G7D59SESYNWQTKJ5Z823V8",
     "kind": "apply",
     "state": "succeeded",
     "queuePosition": null,
@@ -8,7 +8,7 @@
       "stage": "write",
       "done": 43,
       "total": 43,
-      "currentPath": "db/main/billing/tables/notes.sql",
+      "currentPath": "db/main/billing/tables/payments.sql",
       "pack": "sql-ddl"
     },
     "planResult": null,
@@ -17,11 +17,11 @@
       "staleUnits": [],
       "stalePaths": [],
       "result": {
-        "runId": "01M40H3DPWV4GT5991R5888AJC",
+        "runId": "01M6G7D59VHAYF85M39ZPPN2Y8",
         "mode": "apply",
         "outcome": "succeeded",
         "changes": [],
-        "unitsRendered": 43,
+        "unitsRendered": 46,
         "unitsSkipped": 0,
         "filesWritten": 43,
         "filesDeleted": 0,
@@ -29,44 +29,44 @@
         "timings": [
           {
             "stage": "load",
-            "wall": "00:00:00.0043518",
-            "busy": "00:00:00.0043518",
+            "wall": "00:00:00.0012116",
+            "busy": "00:00:00.0012116",
             "items": 33
           },
           {
             "stage": "validate",
-            "wall": "00:00:00.0010587",
-            "busy": "00:00:00.0010587",
+            "wall": "00:00:00.0006668",
+            "busy": "00:00:00.0006668",
             "items": 33
           },
           {
             "stage": "resolve",
-            "wall": "00:00:00.0021776",
-            "busy": "00:00:00.0021776",
+            "wall": "00:00:00.0031750",
+            "busy": "00:00:00.0031750",
             "items": 33
           },
           {
             "stage": "plan",
-            "wall": "00:00:00.1821024",
-            "busy": "00:00:00.1741795",
-            "items": 45
+            "wall": "00:00:00.0892058",
+            "busy": "00:00:00.0848249",
+            "items": 48
           },
           {
             "stage": "write",
-            "wall": "00:00:00.1088881",
-            "busy": "00:00:00.1088881",
+            "wall": "00:00:00.0292689",
+            "busy": "00:00:00.0292689",
             "items": 43
           }
         ]
       }
     },
     "error": null,
-    "queuedUtc": "2026-10-03T09:21:40.5696568+00:00",
-    "startedUtc": "2026-10-03T09:21:40.5703763+00:00",
-    "finishedUtc": "2026-10-03T09:21:41.0374262+00:00"
+    "queuedUtc": "2026-11-03T08:11:28.4413692+00:00",
+    "startedUtc": "2026-11-03T08:11:28.4415208+00:00",
+    "finishedUtc": "2026-11-03T08:11:28.5953421+00:00"
   },
   {
-    "id": "01M40H3B75MSXN9VBWEP0J9A9B",
+    "id": "01M6G7D416C61PMW9STS76A6G5",
     "kind": "plan",
     "state": "succeeded",
     "queuePosition": null,
@@ -80,7 +80,7 @@
     "planResult": {
       "outcome": "succeeded",
       "plan": {
-        "id": "01M40H3B7NCBAJ3SBVZW3J5FPF",
+        "id": "01M6G7D41HJANQZ06VP3QPK5WP",
         "request": {
           "mode": "apply",
           "packs": null,
@@ -89,7 +89,10 @@
           "handEdits": null,
           "includeDiffs": false,
           "lock": "wait",
-          "stageBarriers": false
+          "stageBarriers": false,
+          "against": null,
+          "units": null,
+          "elements": null
         },
         "modelVersion": 1,
         "packs": [
@@ -111,15 +114,16 @@
           "unchanged": 0
         },
         "unitsRendered": {
-          "new": 43
+          "new": 46
         },
-        "unitsSkipped": {}
+        "unitsSkipped": {},
+        "exports": []
       }
     },
     "applyResult": null,
     "error": null,
-    "queuedUtc": "2026-10-03T09:21:38.0217891+00:00",
-    "startedUtc": "2026-10-03T09:21:38.0351541+00:00",
-    "finishedUtc": "2026-10-03T09:21:40.3564711+00:00"
+    "queuedUtc": "2026-11-03T08:11:27.1425874+00:00",
+    "startedUtc": "2026-11-03T08:11:27.1495631+00:00",
+    "finishedUtc": "2026-11-03T08:11:28.3134983+00:00"
   }
 ]

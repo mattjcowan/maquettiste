@@ -60,6 +60,35 @@ public sealed class PackNewTests
     }
 
     [Fact]
+    public async Task Pack_new_library_writes_a_pack_without_units()
+    {
+        using var repo = CliRepo.Billing();
+        var result = await repo.RunAsync("pack", "new", "naming", "--library");
+        Assert.True(result.ExitCode == 0, result.ToString());
+        Assert.Equal([".maquettiste/templates/naming/helpers.js", ".maquettiste/templates/naming/pack.json", ".maquettiste/templates/naming/partials/header.scriban"],
+            Text.Lines(result.Out));
+        var manifest = File.ReadAllBytes(repo.PathOf(".maquettiste/templates/naming/pack.json"));
+        Assert.True(TestServices.Json.IsCanonical(manifest, "pack.json", "templates/naming/pack.json"));
+        using (var doc = JsonDocument.Parse(manifest))
+            Assert.False(doc.RootElement.TryGetProperty("units", out _));
+        Assert.Contains("maquettiste.helper(\"title_case\"", repo.Read(".maquettiste/templates/naming/helpers.js"), StringComparison.Ordinal);
+
+        // A library that nothing uses yet is a warning (MQ6046), never an error.
+        var validate = await repo.RunAsync("validate");
+        Assert.True(validate.ExitCode == 0, validate.ToString());
+    }
+
+    [Fact]
+    public async Task Library_with_from_sql_ddl_is_a_usage_error()
+    {
+        using var repo = CliRepo.Billing();
+        var result = await repo.RunAsync("pack", "new", "naming", "--library", "--from", "sql-ddl");
+        Assert.Equal(4, result.ExitCode);
+        Assert.Contains("--library", result.Error, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(repo.PathOf(".maquettiste/templates/naming")));
+    }
+
+    [Fact]
     public async Task Pack_new_from_a_starter_renames_it()
     {
         using var repo = CliRepo.Billing();

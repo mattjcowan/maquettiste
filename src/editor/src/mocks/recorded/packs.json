@@ -3,7 +3,7 @@
     {
       "name": "csharp-dapper",
       "version": "1.0.0",
-      "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package; for processes, the states, definition and contracts, handlers, services, machine and store as pairs, HTTP endpoints with regions, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario; optionally, a managed block in an ignore file that keeps the generated folder out of version control.",
+      "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package; for operations, the request, result, error codes and handler interface; for processes, the states, definition and contracts, handlers, services, machine and store as pairs, HTTP endpoints with regions, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario; optionally, a managed block in an ignore file that keeps the generated folder out of version control.",
       "enabled": true,
       "output": "src/Generated",
       "units": [
@@ -14,15 +14,19 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder (package_folder entity) ((pascal entity.name) + \".g.cs\") }}",
           "mode": "pair",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": {
             "template": "entity.partial.scriban",
             "output": "{{ join_path pack.params.partialFolder (package_folder entity) ((pascal entity.name) + \".cs\") }}"
           },
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "enum",
@@ -31,12 +35,16 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder (package_folder enum) ((pascal enum.name) + \".g.cs\") }}",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "value-object",
@@ -45,12 +53,16 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder (package_folder value_object) ((pascal value_object.name) + \".g.cs\") }}",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "reference-type",
@@ -59,12 +71,16 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"ReferenceData\" ((pascal reference_type.name) + \".g.cs\") }}",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "resources",
@@ -73,12 +89,16 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"ReferenceData\" (locale.is_default ? \"ReferenceData.resx\" : (\"ReferenceData.\" + locale.tag + \".resx\")) }}",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "repository",
@@ -98,12 +118,16 @@
           },
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "query",
@@ -112,12 +136,34 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"Queries\" ((cs_class (pascal query.name)) + \"Query.g.cs\") }}",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
+        },
+        {
+          "id": "operation-contracts",
+          "template": "operation-contracts.scriban",
+          "for": "each operation",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"Operations\" (package_folder operation) ((pascal operation.name) + (operation.subject ? (pascal operation.subject.name) : \"\") + \".g.cs\") }}",
+          "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "blockCommentEnd": null,
+          "createFile": false,
+          "companion": null,
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "registrations",
@@ -126,12 +172,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "type-handlers",
@@ -140,12 +190,16 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"DapperTypeHandlers.g.cs\" }}",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "process-states",
@@ -154,12 +208,16 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"States.cs\") }}",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "process-definition",
@@ -168,12 +226,16 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Definition.cs\") }}",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "process-contracts",
@@ -182,12 +244,16 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Contracts.cs\") }}",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "process-handlers",
@@ -196,15 +262,19 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Handlers.g.cs\") }}",
           "mode": "pair",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": {
             "template": "process-handlers.partial.scriban",
             "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Handlers.cs\") }}"
           },
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "process-services",
@@ -213,15 +283,19 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Services.g.cs\") }}",
           "mode": "pair",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": {
             "template": "process-services.partial.scriban",
             "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Services.cs\") }}"
           },
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "process-machine",
@@ -230,15 +304,19 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Machine.g.cs\") }}",
           "mode": "pair",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": {
             "template": "process-machine.partial.scriban",
             "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Machine.cs\") }}"
           },
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "process-store",
@@ -247,15 +325,19 @@
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Store.g.cs\") }}",
           "mode": "pair",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": {
             "template": "process-store.partial.scriban",
             "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Store.cs\") }}"
           },
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "process-endpoints",
@@ -264,12 +346,16 @@
           "where": null,
           "output": null,
           "mode": "regions",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "dispatch",
@@ -278,12 +364,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "dispatch-companion",
@@ -292,12 +382,16 @@
           "where": null,
           "output": null,
           "mode": "once",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "dispatch-registry",
@@ -306,12 +400,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "dispatch-behaviours",
@@ -320,12 +418,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "interpreter",
@@ -334,12 +436,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "interpreter-companion",
@@ -348,12 +454,16 @@
           "where": null,
           "output": null,
           "mode": "once",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "actors",
@@ -362,12 +472,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "scenario-tests",
@@ -376,12 +490,34 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
+        },
+        {
+          "id": "seed-loader",
+          "template": "seed-loader.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "blockCommentEnd": null,
+          "createFile": false,
+          "companion": null,
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "gitignore",
@@ -390,21 +526,27 @@
           "where": null,
           "output": null,
           "mode": "block",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": true,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         }
       ],
-      "fileCount": 39,
-      "diagnostics": []
+      "fileCount": 42,
+      "diagnostics": [],
+      "uses": [],
+      "usedBy": []
     },
     {
       "name": "sql-ddl",
       "version": "1.0.0",
-      "description": "SQL DDL for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
+      "description": "SQL DDL for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and writes seed rows (table seeds and bound entities' seeds inserted once or upserted), one seed script per environment named in the environments parameter, and one script per such environment for the SQL objects that run only in it.",
       "enabled": true,
       "output": "db",
       "units": [
@@ -415,12 +557,16 @@
           "where": null,
           "output": "{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "schema",
@@ -429,12 +575,16 @@
           "where": null,
           "output": "{{ kebab database.name }}/schema.sql",
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "migration",
@@ -443,12 +593,16 @@
           "where": null,
           "output": null,
           "mode": "once",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "seed",
@@ -457,12 +611,52 @@
           "where": null,
           "output": "{{ kebab database.name }}/seed.sql",
           "mode": "regions",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
+        },
+        {
+          "id": "seed-environments",
+          "template": "seed-environments.scriban",
+          "for": "each database",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "blockCommentEnd": null,
+          "createFile": false,
+          "companion": null,
+          "transforms": [],
+          "exports": {}
+        },
+        {
+          "id": "object-environments",
+          "template": "object-environments.scriban",
+          "for": "each database",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
+          "formatter": null,
+          "delimiters": null,
+          "blockComment": "#",
+          "blockCommentEnd": null,
+          "createFile": false,
+          "companion": null,
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "process-tables",
@@ -471,12 +665,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "view",
@@ -485,12 +683,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "sequence",
@@ -499,12 +701,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "routine",
@@ -513,12 +719,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "database-type",
@@ -527,12 +737,16 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         },
         {
           "id": "sql-object",
@@ -541,16 +755,22 @@
           "where": null,
           "output": null,
           "mode": "overwrite",
+          "sources": [],
+          "tokens": {},
           "formatter": null,
           "delimiters": null,
           "blockComment": "#",
+          "blockCommentEnd": null,
           "createFile": false,
           "companion": null,
-          "transforms": []
+          "transforms": [],
+          "exports": {}
         }
       ],
-      "fileCount": 18,
-      "diagnostics": []
+      "fileCount": 22,
+      "diagnostics": [],
+      "uses": [],
+      "usedBy": []
     }
   ]
 }

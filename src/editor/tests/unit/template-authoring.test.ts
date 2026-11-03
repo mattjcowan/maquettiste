@@ -113,6 +113,7 @@ function unit(key: string, patch: Partial<PlanUnit> = {}): PlanUnit {
   return {
     key,
     inputHash: "h",
+    exports: null,
     readKeys: [],
     skipped: false,
     outputs: [],

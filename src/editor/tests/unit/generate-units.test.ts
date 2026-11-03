@@ -299,6 +299,8 @@ describe("pack tabs and explorer rows", () => {
       fileCount: 5,
       diagnostics: [],
       units: unitsOf(doc()).map(toPackUnit),
+      uses: [],
+      usedBy: [],
     };
     const outputs: S["PackOutputs"] = {
       pack: "sql-ddl",

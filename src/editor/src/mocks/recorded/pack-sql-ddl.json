@@ -2,20 +2,22 @@
   "name": "sql-ddl",
   "enabled": true,
   "output": "db",
-  "hash": "bddbd2d766562a472eab34ec0a47cdb3e3f418756b008a2b0ef6bff3074ac548",
+  "hash": "8f8bd443bcf883194372841f46e753f91232b670ebd3eb850503648ebfeb9d36",
   "document": {
     "name": "sql-ddl",
     "version": "1.0.0",
     "engine": ">=1.0 <2.0",
-    "description": "SQL DDL for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
+    "description": "SQL DDL for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle: one script per table (and, on request, per view, sequence, routine, database type and SQL object), one schema script per database, once-mode migrations from the schema diff, a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and writes seed rows (table seeds and bound entities' seeds inserted once or upserted), one seed script per environment named in the environments parameter, and one script per such environment for the SQL objects that run only in it.",
     "parameters": {
       "comments": true,
+      "environments": [],
       "idempotent": false,
       "objectScripts": false,
       "processTables": false,
       "quoting": "",
       "referenceStrategy": "lookup-table",
       "schemaScript": "inline",
+      "sqliteBail": false,
       "strategyMap": {
         "check": "check",
         "lookup-table": "lookup-table",
@@ -48,6 +50,16 @@
         "for": "each database",
         "output": "{{ kebab database.name }}/seed.sql",
         "mode": "regions"
+      },
+      {
+        "id": "seed-environments",
+        "template": "seed-environments.scriban",
+        "for": "each database"
+      },
+      {
+        "id": "object-environments",
+        "template": "object-environments.scriban",
+        "for": "each database"
       },
       {
         "id": "process-tables",
@@ -85,6 +97,13 @@
     {
       "name": "comments",
       "default": true,
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
+      "name": "environments",
+      "default": [],
       "value": null,
       "schema": null,
       "required": false
@@ -132,6 +151,13 @@
       "required": false
     },
     {
+      "name": "sqliteBail",
+      "default": false,
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
       "name": "strategyMap",
       "default": {
         "check": "check",
@@ -146,15 +172,38 @@
   "files": [
     {
       "path": "README.md",
-      "size": 37634,
-      "hash": "35af0ec23afc36a8e120fcb36d9c1510a18c3264b2ee03dddf9a5f8026775503",
+      "size": 64217,
+      "hash": "c00864e13d4647263ab4401f4245955d0664c9d48fad2c39834ba0e5de2ee425",
       "role": "other",
       "usedBy": []
     },
     {
+      "path": "_data.scriban",
+      "size": 9889,
+      "hash": "d45dbba42a9e144dbbe4d28f1f7c7b905270b0fd8dd199c337785e939ec20313",
+      "role": "partial",
+      "usedBy": [
+        "include:migration.scriban",
+        "include:seed-environments.scriban",
+        "include:seed.scriban"
+      ]
+    },
+    {
+      "path": "_ledger.scriban",
+      "size": 5598,
+      "hash": "3307612762ab785186261ded2b427ac58cc9a23d46e0b281bf068e5354e44446",
+      "role": "partial",
+      "usedBy": [
+        "include:migration.scriban",
+        "include:object-environments.scriban",
+        "include:schema.scriban",
+        "include:sql-object.scriban"
+      ]
+    },
+    {
       "path": "_migration.scriban",
-      "size": 57631,
-      "hash": "97618ef6ed58f007e699da619ac30552dd3e5059e8477aec1d94311ed1d1ac22",
+      "size": 118441,
+      "hash": "09ba77bb432ce92e6616356efae73a520c3e0d71ff8e1cb23d600950c310ecd7",
       "role": "partial",
       "usedBy": [
         "include:migration.scriban"
@@ -162,14 +211,16 @@
     },
     {
       "path": "_objects.scriban",
-      "size": 15562,
-      "hash": "810ba47cf0ed567c59e56b25dc1097e2515baad863741637fe874ca508c6ce99",
+      "size": 18040,
+      "hash": "7024b17c761c5a180312b793f6907da37dc34042f43c96d332168bc91aa33426",
       "role": "partial",
       "usedBy": [
         "include:database-type.scriban",
         "include:migration.scriban",
+        "include:object-environments.scriban",
         "include:routine.scriban",
         "include:schema.scriban",
+        "include:seed-environments.scriban",
         "include:seed.scriban",
         "include:sequence.scriban",
         "include:sql-object.scriban",
@@ -178,26 +229,29 @@
     },
     {
       "path": "_reference.scriban",
-      "size": 25474,
-      "hash": "5d63a0305407b4101cb3950d6f3f204baa14b7072c0a4e314a29e10f93fc2a14",
+      "size": 36478,
+      "hash": "f2754f55647a397439c9f4f053064fa4b09a1d9e36474ce62a818f9f735e13d2",
       "role": "partial",
       "usedBy": [
         "include:migration.scriban",
         "include:schema.scriban",
+        "include:seed-environments.scriban",
         "include:seed.scriban"
       ]
     },
     {
       "path": "_sql.scriban",
-      "size": 22026,
-      "hash": "850c1729c7f194c3155d044c2fc0d22091477d8d9ca8c6fe017a0d8cc28a32fd",
+      "size": 27794,
+      "hash": "712e07f8875e1221962cd825dbc742f0f0eea3932516c28cfa651710f9a8ceee",
       "role": "partial",
       "usedBy": [
         "include:database-type.scriban",
         "include:migration.scriban",
+        "include:object-environments.scriban",
         "include:process-tables.scriban",
         "include:routine.scriban",
         "include:schema.scriban",
+        "include:seed-environments.scriban",
         "include:seed.scriban",
         "include:sequence.scriban",
         "include:sql-object.scriban",
@@ -207,8 +261,8 @@
     },
     {
       "path": "_table.scriban",
-      "size": 3156,
-      "hash": "d4fd93f2e1a357da23efba4001524576056760d51e759ada54f7bddae024c746",
+      "size": 3333,
+      "hash": "dac5f76df49540310c6b2a9386fb5bd46c1357d23d73de858f3a477d215ffe7e",
       "role": "partial",
       "usedBy": [
         "include:_migration.scriban",
@@ -228,24 +282,33 @@
     },
     {
       "path": "helpers.js",
-      "size": 3935,
-      "hash": "28d88f9c05fc700c843e01772a6dd0b3d89a17a24d64208619bd47ec454fcef4",
+      "size": 3777,
+      "hash": "c0e9c68a38c645e86a7ad998519b6394bf8369af93fe0ea532cd52819a9d8bc6",
       "role": "script",
       "usedBy": []
     },
     {
       "path": "migration.scriban",
-      "size": 15599,
-      "hash": "77f70cf7048dee23cd70e8e0200a9aae97fd8b2b462eed10190db216b33590ab",
+      "size": 23199,
+      "hash": "60c419d191aa2ed999f782459f1e51f38e323e04aa67569811174cda776c8df5",
       "role": "template",
       "usedBy": [
         "unit:migration"
       ]
     },
     {
+      "path": "object-environments.scriban",
+      "size": 1919,
+      "hash": "94dee5252fddd22ce57bec1028194d27be7f2918e0ec5ccac443077a6cd31b06",
+      "role": "template",
+      "usedBy": [
+        "unit:object-environments"
+      ]
+    },
+    {
       "path": "pack.json",
-      "size": 2191,
-      "hash": "bddbd2d766562a472eab34ec0a47cdb3e3f418756b008a2b0ef6bff3074ac548",
+      "size": 2686,
+      "hash": "8f8bd443bcf883194372841f46e753f91232b670ebd3eb850503648ebfeb9d36",
       "role": "manifest",
       "usedBy": []
     },
@@ -269,17 +332,26 @@
     },
     {
       "path": "schema.scriban",
-      "size": 3164,
-      "hash": "06c5bdd8b7b0b1ef42f4c71cdc84e641eebd632c9cb4c4ebca1263a18d32f088",
+      "size": 4223,
+      "hash": "ab385e7c80a30bc79618535fde725de1828061c0f7767f56e042b9b8679225dc",
       "role": "template",
       "usedBy": [
         "unit:schema"
       ]
     },
     {
+      "path": "seed-environments.scriban",
+      "size": 1006,
+      "hash": "ad7fcf69a70fa87c38c1c64cae3ba84846b4f70bd12241dc60f6c2db8a9ec973",
+      "role": "template",
+      "usedBy": [
+        "unit:seed-environments"
+      ]
+    },
+    {
       "path": "seed.scriban",
-      "size": 1558,
-      "hash": "18550194daf0c4693180682fa626a50105dc8140834191da388f1a0cd7a6c81a",
+      "size": 2158,
+      "hash": "f6e2c94e75eeb8236e2cb25bdc30071f980305c9449198220755e17ae1fcd5f4",
       "role": "template",
       "usedBy": [
         "unit:seed"
@@ -296,8 +368,8 @@
     },
     {
       "path": "sql-object.scriban",
-      "size": 829,
-      "hash": "d070b22e7a585a8f8d64163d07cc92f8216baaf71884c8c120a759d9873e4ab9",
+      "size": 1347,
+      "hash": "1e95d0e6d1c410d3a4798324f663ae59407d5fec7b0719e13f897b3be6391a55",
       "role": "template",
       "usedBy": [
         "unit:sql-object"
@@ -305,8 +377,8 @@
     },
     {
       "path": "table.scriban",
-      "size": 589,
-      "hash": "bdb63a7513972e5ac432d4bdbafd8f3ca5230cdb68edba4322fc0e42d78dd87b",
+      "size": 438,
+      "hash": "165c1ed878b4a31b6a37c277c05a1db983e1f4a5760cb0b8635ea7526e2b06f2",
       "role": "template",
       "usedBy": [
         "unit:table"
@@ -327,17 +399,21 @@
     {
       "kind": "helper",
       "name": "ddl_cycle_breaks",
-      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js"
+      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js",
+      "wholeModel": false
     },
     {
       "kind": "helper",
       "name": "ddl_order",
-      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js"
+      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js",
+      "wholeModel": false
     },
     {
       "kind": "helper",
       "name": "reference_realization",
-      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js"
+      "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js",
+      "wholeModel": false
     }
-  ]
+  ],
+  "usedBy": []
 }

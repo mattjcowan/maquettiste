@@ -78,7 +78,7 @@ internal sealed class PlanCapture(PlanStore plans, string planId, string repoRoo
 
         var rendered = processed.Rendered;
         var keys = rendered.ReadKeys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
-        _units[rendered.Unit.Key] = new PlanUnit(rendered.Unit.Key, rendered.InputHash, keys, false, files);
+        _units[rendered.Unit.Key] = new PlanUnit(rendered.Unit.Key, rendered.InputHash, keys, false, files) { Exports = rendered.Exports };
     }
 
     /// <summary>Records the skipped units from their stored state.</summary>
@@ -105,8 +105,22 @@ internal sealed class PlanCapture(PlanStore plans, string planId, string repoRoo
                 files.Add(new PlanFile(output.Path, disk ?? "", output.ManifestHash, mode, role, root, disk));
             }
 
-            _units[unit.Unit.Key] = new PlanUnit(unit.Unit.Key, unit.Previous.InputHash, unit.Previous.ReadKeys, true, files);
+            // A skipped exporting unit's values come from the export table: its stored ones, whose inputs are unchanged.
+            var exports = unit.Unit.Unit.Exports.Count == 0 ? null : Prepared?.Exports?.Unit(unit.Unit).Exports ?? unit.Previous.Exports;
+            _units[unit.Unit.Key] = new PlanUnit(unit.Unit.Key, unit.Previous.InputHash, unit.Previous.ReadKeys, true, files) { Exports = exports };
         }
+    }
+
+    /// <summary>The exporting units whose values the run's table served or evaluated without the plan planning them: units of used
+    /// packs and units outside a scoped run's selection, by key.</summary>
+    /// <param name="prepared">The prepared run.</param>
+    /// <returns>The entries.</returns>
+    public static IReadOnlyList<PlanExport> Exports(PreparedRun prepared)
+    {
+        if (prepared.Exports is not { } table)
+            return [];
+        var planned = prepared.Plan.Units.Select(u => u.Key).ToHashSet(StringComparer.Ordinal);
+        return [.. table.Served.Where(p => !planned.Contains(p.Key)).OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => new PlanExport(p.Key, p.Value))];
     }
 
     /// <summary>The recorded units in plan order.</summary>

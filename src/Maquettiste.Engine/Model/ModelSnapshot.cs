@@ -40,8 +40,10 @@ public sealed class ModelSnapshot
         IReadOnlyList<LocaleShardDocument> shards,
         StereotypeDefaults stereotypeDefaults,
         ImmutableArray<ScriptSource> seedScripts,
-        ImmutableArray<CustomKindDocument> customKinds)
+        ImmutableArray<CustomKindDocument> customKinds,
+        IReadOnlyList<ScriptLibrarySource> scriptLibraries)
     {
+        ScriptLibraries = scriptLibraries;
         Version = version;
         Settings = settings;
         SettingsHash = settingsHash;
@@ -109,6 +111,7 @@ public sealed class ModelSnapshot
     /// <param name="localeShards">The locale shards (reference-types-seeds-localization.md section 3.3).</param>
     /// <param name="seedScripts">The rows scripts from <c>extensions/seeds/</c> (next-phase-2-design.md section 3.4).</param>
     /// <param name="customKinds">The custom kind files from <c>extensions/kinds/</c> (next-phase-2-design.md section 4.2).</param>
+    /// <param name="scriptLibraries">The closure of <c>maquettiste.json</c>'s uses, in dependency order (library packs).</param>
     /// <returns>The snapshot.</returns>
     public static ModelSnapshot Create(
         IEnumerable<ElementDocument> documents,
@@ -120,15 +123,16 @@ public sealed class ModelSnapshot
         IReadOnlyList<Diagnostic>? loadDiagnostics = null,
         IReadOnlyList<LocaleShardDocument>? localeShards = null,
         IReadOnlyList<ScriptSource>? seedScripts = null,
-        IReadOnlyList<CustomKindDocument>? customKinds = null) =>
+        IReadOnlyList<CustomKindDocument>? customKinds = null,
+        IReadOnlyList<ScriptLibrarySource>? scriptLibraries = null) =>
         CreateAfter(null, documents, settings, settingsHash, extensions, ruleScripts, version, loadDiagnostics, ModelIndexer.DefaultParallelism,
-            CancellationToken.None, localeShards, seedScripts, customKinds);
+            CancellationToken.None, localeShards, seedScripts, customKinds, scriptLibraries);
 
     /// <summary>
     /// <see cref="Create"/> after the store's previous snapshot, whose indexes are patched when few documents changed (the result
     /// is the same as without it), walking at most <paramref name="parallelism"/> documents at once and observing
     /// <paramref name="ct"/> (the loader and the store pass <see cref="EngineOptions.EffectiveParallelism"/> and their token). Without
-    /// <paramref name="localeShards"/>, <paramref name="seedScripts"/> or <paramref name="customKinds"/> the previous snapshot's are kept.
+    /// <paramref name="localeShards"/>, <paramref name="seedScripts"/>, <paramref name="customKinds"/> or <paramref name="scriptLibraries"/> the previous snapshot's are kept.
     /// </summary>
     internal static ModelSnapshot CreateAfter(
         ModelSnapshot? previous,
@@ -143,7 +147,8 @@ public sealed class ModelSnapshot
         CancellationToken ct,
         IReadOnlyList<LocaleShardDocument>? localeShards = null,
         IReadOnlyList<ScriptSource>? seedScripts = null,
-        IReadOnlyList<CustomKindDocument>? customKinds = null)
+        IReadOnlyList<CustomKindDocument>? customKinds = null,
+        IReadOnlyList<ScriptLibrarySource>? scriptLibraries = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(settings);
@@ -175,7 +180,8 @@ public sealed class ModelSnapshot
             localeShards is null ? previous?.LocaleShards ?? [] : [.. localeShards.OrderBy(s => s.ModelPath, StringComparer.Ordinal)],
             stereotypeDefaults,
             [.. (seedScripts ?? previous?.SeedScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)],
-            kinds);
+            kinds,
+            scriptLibraries ?? previous?.ScriptLibraries ?? []);
     }
 
     /// <summary>The snapshot version.</summary>
@@ -198,6 +204,12 @@ public sealed class ModelSnapshot
 
     /// <summary>JavaScript rule scripts, ordinal by path.</summary>
     public IReadOnlyList<ScriptSource> RuleScripts { get; }
+
+    /// <summary>
+    /// The closure of <c>maquettiste.json</c>'s uses, in dependency order; empty without uses (library packs, next-phase-2-design.md
+    /// section 5.2). The project's rule scripts reach their helpers through <c>maquettiste.use</c>.
+    /// </summary>
+    public IReadOnlyList<ScriptLibrarySource> ScriptLibraries { get; }
 
     /// <summary>
     /// The rows scripts of <c>extensions/seeds/*.js</c> (next-phase-2-design.md section 3.4), ordinal by path: read with the model, run

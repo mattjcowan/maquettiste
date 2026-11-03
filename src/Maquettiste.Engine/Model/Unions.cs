@@ -86,6 +86,51 @@ internal sealed class DescriptionJsonConverter : JsonConverter<Description>
     }
 }
 
+internal sealed class PackExportJsonConverter : JsonConverter<PackExport>
+{
+    public override PackExport? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.String:
+                return new PackExport { Value = reader.GetString()! };
+            case JsonTokenType.StartObject:
+                string? each = null, value = null;
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                        throw new JsonException("Expected a property name in an export object.");
+                    var name = reader.GetString();
+                    reader.Read();
+                    if (name == "each" && reader.TokenType == JsonTokenType.String)
+                        each = reader.GetString();
+                    else if (name == "value" && reader.TokenType == JsonTokenType.String)
+                        value = reader.GetString();
+                    else
+                        throw new JsonException($"Unexpected property '{name}' in an export object.");
+                }
+
+                return value is null ? throw new JsonException("An export object needs a 'value'.") : new PackExport { Value = value, Each = each };
+            default:
+                throw new JsonException("An export is a template string or an object with 'each' and 'value'.");
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, PackExport value, JsonSerializerOptions options)
+    {
+        if (value.Each is null)
+        {
+            writer.WriteStringValue(value.Value);
+            return;
+        }
+
+        writer.WriteStartObject();
+        writer.WriteString("each", value.Each);
+        writer.WriteString("value", value.Value);
+        writer.WriteEndObject();
+    }
+}
+
 internal sealed class TypeRefJsonConverter : JsonConverter<TypeRef>
 {
     public override TypeRef? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

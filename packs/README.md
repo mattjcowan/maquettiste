@@ -226,9 +226,72 @@ An absent value is null in scripts as in templates, never `""`: a database objec
 types, with `nullable` and `collection` patterns wrapping `{type}`. `type_of attribute "<target>"` applies it; editing the map
 re-renders exactly the units that used it.
 
-### 8. Test the pack
+### 8. Library packs
+
+A pack can use another pack: its templates include the other pack's partials and call its helpers. A pack that only
+serves others has no `units` (a library); `maquettiste pack new naming --library` writes one with a partial and a helper.
+
+```json
+{ "name": "records", "version": "1.0.0", "engine": ">=1.0 <2.0",
+  "uses": [ { "pack": "naming", "version": "^1.2.0" } ],
+  "units": [ { "id": "record", "template": "record.scriban", "for": "each entity",
+               "output": "records/{{ naming.class_name entity }}.cs" } ] }
+```
+
+- **`uses`** lists packs by folder name with a version range in the `engine` syntax (`^1.2.0`, `>=1.0 <2.0`). A used pack
+  loads with the pack, enabled or not, and is never rendered or written for it. Packs run after the packs they use.
+- **Cross-pack includes.** `{{ include "naming:partials/header.scriban" }}` renders the used pack's partial with the
+  including unit's variables. An unprefixed include inside that partial resolves in `naming`. A used partial parses with
+  the default delimiters, whatever the unit's.
+- **Namespaces.** Each used pack with scripts is a read-only object named after the pack (`-` becomes `_`):
+  `{{ naming.class_name entity }}` or `{{ entity | naming.class_name }}`. Its helpers run in that pack's own sandbox with
+  its own parameters. A used pack also sees its own namespace, so its partials render in its own units.
+- **Scripts.** `const naming = maquettiste.use("naming");` at the top of a script returns the frozen helpers object;
+  calling one works inside a helper, not while scripts load, and not in selectors or script filters, which run while
+  planning. Only registered helpers cross.
+- **Project rule scripts.** `uses` in `maquettiste.json` (same entry shape) lets `extensions/rules/*.js` call
+  `maquettiste.use("naming")`. Editing a library script or its parameters runs the cached rules again.
+- **Rules.** MQ6042 (a missing, failed or repeated `uses` entry), MQ6043 (a version outside the range, or a range that
+  does not parse), MQ6044 (a pack that uses itself or a cycle), MQ6045 (a namespace that collides with a builtin, a
+  template keyword or variable, or a root helper) and MQ6046 (warning: a pack with no units that nothing uses).
+- **Renames and deletes.** Renaming a pack rewrites every `uses` entry that names it and lists the files whose text
+  still names it; deleting a used pack, or a partial another pack includes, is refused until those users change.
+
+### 9. Test the pack
 
 Generate a known model and compare the output byte for byte, as `tests/Maquettiste.Packs.Tests` does for the billing fixture;
 run generation twice and `generate --check` to prove that a second run is clean; compile or execute the output where you can
 (the tests build the C# with Dapper and run the repositories against SQLite built from the sql-ddl output). Run
 `maquettiste validate` to see pack errors (MQ6xxx) with file, line and column.
+
+## Exports
+
+A unit can state names per element that other packs read, so a name has one definition. `exports` in a unit maps a
+snake_case name to a template, rendered with the unit's variables as `output` is, or to `{ "each": "<list member>",
+"value": "<template>" }`, rendered once per item of that member of the element (`attributes`, `columns`, an enum's
+`members`) with the item as `item` and keyed by the item's id. Values are text: line endings LF, leading and trailing
+whitespace trimmed.
+
+```json
+{ "id": "record", "template": "record.scriban", "for": "each entity",
+  "output": "{{ entity.package.name }}/{{ exports.class_name }}.cs",
+  "exports": {
+    "class_name": "{{ pascal entity.name }}Record",
+    "namespace": "{{ project.properties.baseNamespace }}.{{ entity.package.name }}",
+    "members": { "each": "attributes", "value": "{{ pascal item.name }}" } } }
+```
+
+- The unit's own template, `output` and companion read its values as the variable `exports`, so a file's name and the
+  name other packs read are one definition.
+- `exported <element | id | model> "<pack>"` returns a pack's record for an element as a read-only map, or `null` when
+  no unit of the pack plans the element. The record merges the exports of every unit of the pack that plans the
+  element, with its scope, `where` filter and skip hints applied. `exported model "<pack>"` reads the `for: model` units.
+- A template reads the exports of its own pack and of the packs in its `uses` closure. An export template reads only
+  the packs its pack uses, never its own, and sees neither `data`, `schema_diff` nor `exports`.
+- Exports are computed from the model, never read back from rendered files, so render order cannot change a byte.
+  A unit that read a record renders again when that record changes, and only then: editing the exporting template's
+  body renders only the exporting units.
+- `maquettiste pack exports <pack> [--element <id>]...` and the MCP tool `get_pack_exports` show the records.
+- Rules: MQ6047 (a template reads a pack its pack does not use, or an export template reads its own pack), MQ6048 (two
+  units of one pack give one name different values for one element), MQ6049 (`each` names no list of items with
+  ids, or two items share an id) and MQ6050 (a unit reads exports that failed to evaluate; it is not rendered).

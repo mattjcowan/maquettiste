@@ -392,7 +392,7 @@
     {
       "name": "get_plan",
       "title": "Get plan",
-      "description": "A stored plan: its request, packs, every file with what apply does to it (added, modified, deleted; unchanged, not-rendered and kept are left alone; hand-edited, conflict, orphaned-owned), counts by kind, units by reason, and diagnostics (and, with units, every planned unit and output).",
+      "description": "A stored plan: its request, packs, every file with what apply does to it (added, modified, deleted; unchanged, not-rendered and kept are left alone; hand-edited, conflict, orphaned-owned), counts by kind, units by reason, and diagnostics (and, with units, every planned unit and output, each unit with the export values it declares, and the exports of the units the plan read without planning them).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -599,7 +599,7 @@
     {
       "name": "list_packs",
       "title": "Template packs",
-      "description": "The template packs under .maquettiste/templates/ with their manifests (units, output roots, options) and the diagnostics of loading them.",
+      "description": "The template packs under .maquettiste/templates/ with their manifests (units, output roots, options, and uses: the packs each uses, with a version range), usedBy (pack name to the packs whose uses name it, then maquettiste.json when the project's uses does) and the diagnostics of loading them (MQ6042 to MQ6046 for uses problems and libraries nothing uses). A library pack has no units.",
       "inputSchema": {
         "type": "object",
         "properties": {}

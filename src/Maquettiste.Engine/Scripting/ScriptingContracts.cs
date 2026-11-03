@@ -20,6 +20,22 @@ public interface IScriptSandboxFactory
     /// </param>
     /// <returns>The pool.</returns>
     IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct);
+
+    /// <summary>
+    /// Creates a pool whose scripts reach the given packs' helpers through <c>maquettiste.use(name)</c> (library packs,
+    /// next-phase-2-design.md section 5.2). The scripts load exactly as they do without libraries; only <c>maquettiste.use</c> is added.
+    /// </summary>
+    /// <param name="scripts">The scripts, in load order.</param>
+    /// <param name="libraries">The packs <c>maquettiste.use</c> reaches, with their helper names.</param>
+    /// <param name="limits">The sandbox limits.</param>
+    /// <param name="size">The number of engines.</param>
+    /// <param name="ct">The run's cancellation.</param>
+    /// <returns>The pool.</returns>
+    /// <exception cref="NotSupportedException">The factory cannot reach other packs' helpers and <paramref name="libraries"/> is not empty.</exception>
+    IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, IReadOnlyList<ScriptLibrary> libraries, SandboxLimits limits, int size,
+        CancellationToken ct)
+        => libraries.Count == 0 ? CreatePool(scripts, limits, size, ct)
+            : throw new NotSupportedException("This factory cannot reach other packs' helpers.");
 }
 
 /// <summary>A pool of sandboxed engines that ran the same scripts.</summary>
@@ -93,7 +109,35 @@ public enum ScriptRegistrationKind
 /// Cancellation observed by this call (checked before it starts and, through the engine's constraint, while it runs); the pool's
 /// run token applies as well.
 /// </param>
-public sealed record ScriptCallContext(IReadRecorder? Reads, string Seed, IReadOnlyDictionary<string, object?> Parameters, CancellationToken CancellationToken);
+public sealed record ScriptCallContext(IReadRecorder? Reads, string Seed, IReadOnlyDictionary<string, object?> Parameters, CancellationToken CancellationToken)
+{
+    /// <summary>
+    /// Where <c>maquettiste.use</c> calls go (library packs, next-phase-2-design.md section 5.2); <see langword="null"/> when no
+    /// pack is reachable (while scripts load, and in selectors and filters, which run while planning).
+    /// </summary>
+    public IScriptLibraryCalls? Libraries { get; init; }
+}
+
+/// <summary>A pack whose helpers <c>maquettiste.use</c> reaches: its name and its helper names, ordinal.</summary>
+/// <param name="Pack">The used pack's name.</param>
+/// <param name="Helpers">The helpers it registered, ordinal.</param>
+public sealed record ScriptLibrary(string Pack, IReadOnlyList<string> Helpers);
+
+/// <summary>Calls a used pack's helper for the current call (library packs, next-phase-2-design.md section 5.2).</summary>
+public interface IScriptLibraryCalls
+{
+    /// <summary>
+    /// Calls a helper of a used pack in a sandbox of that pack's own pool, with the caller's read recorder and seed and the used
+    /// pack's parameters. A failure is the used pack's <see cref="ScriptErrorException"/> or <see cref="ScriptLimitException"/>, at its
+    /// own script.
+    /// </summary>
+    /// <param name="pack">The used pack.</param>
+    /// <param name="helper">The helper name.</param>
+    /// <param name="args">The arguments, converted out of the calling script as a script's results are.</param>
+    /// <param name="caller">The calling script's call context.</param>
+    /// <returns>The result, converted into the calling script as helper results are.</returns>
+    object? Call(string pack, string helper, IReadOnlyList<object?> args, ScriptCallContext caller);
+}
 
 /// <summary>One sandboxed Jint engine. Not thread-safe: one unit at a time, on one thread.</summary>
 public interface IScriptSandbox

@@ -12,7 +12,14 @@ namespace Maquettiste.Engine;
 /// not, in ordinal folder order (<c>settings.packs</c> says which run).</param>
 /// <param name="Diagnostics">Load diagnostics: the full pack loader's for enabled packs (the ones a run would stop on), and the parse and
 /// schema diagnostics of disabled packs, which a run never loads.</param>
-public sealed record PackListResult(IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> Diagnostics);
+public sealed record PackListResult(IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>
+    /// Pack name → the packs whose uses name it, ordinal, then <c>maquettiste.json</c> when the project's uses does (library packs); only
+    /// packs with users are listed.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> UsedBy { get; init; } = new SortedDictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+}
 
 /// <summary>Lists the packs of a model folder for the editor (E2).</summary>
 internal static class PackCatalog
@@ -55,8 +62,16 @@ internal static class PackCatalog
                 diagnostics.AddRange(errors);
         }
 
+        var graph = await Planning.PackUses.ReadAsync(paths, templates, folders, ct).ConfigureAwait(false);
+        var usedBy = new SortedDictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var name in folders)
+        {
+            if (graph.UsedBy(name, snapshot.Settings.Uses) is { Count: > 0 } users)
+                usedBy[name] = users;
+        }
+
         return new PackListResult(manifests, [.. diagnostics.Distinct().OrderBy(d => d.FilePath ?? "", StringComparer.Ordinal).ThenBy(d => d.Line ?? 0)
-            .ThenBy(d => d.Column ?? 0).ThenBy(d => d.Rule, StringComparer.Ordinal).ThenBy(d => d.Message, StringComparer.Ordinal)]);
+            .ThenBy(d => d.Column ?? 0).ThenBy(d => d.Rule, StringComparer.Ordinal).ThenBy(d => d.Message, StringComparer.Ordinal)]) { UsedBy = usedBy };
     }
 
     private static (PackManifest? Manifest, IReadOnlyList<Diagnostic> Errors) Read(ISchemaRegistry schemas, byte[] bytes, string file)

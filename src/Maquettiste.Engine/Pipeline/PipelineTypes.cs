@@ -86,9 +86,12 @@ public interface IReadRecorder
     void Record(string dependencyKey);
 }
 
-/// <summary>A loaded, enabled template pack.</summary>
+/// <summary>A loaded template pack: an enabled run pack, or (in <see cref="PackSet.Used"/>) a pack a run pack uses.</summary>
 /// <param name="Name">The pack name.</param>
-/// <param name="Order">The pack's position in ordinal name order.</param>
+/// <param name="Order">
+/// The pack's position in dependency order: after every pack it uses, ties by ordinal name (Kahn's order, the earliest name first
+/// among the packs that are ready), so a project without <c>uses</c> keeps ordinal name order.
+/// </param>
 /// <param name="RootPath">The absolute pack folder.</param>
 /// <param name="RelativePath">The repo-relative pack folder.</param>
 /// <param name="Manifest">The pack manifest.</param>
@@ -107,7 +110,17 @@ public sealed record LoadedPack(
     IReadOnlyDictionary<string, JsonElement> Parameters,
     IReadOnlyList<ScriptSource> Scripts,
     string ScriptsHash,
-    IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> TypeMaps);
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> TypeMaps)
+{
+    /// <summary>The names in its uses, in pack.json order.</summary>
+    public IReadOnlyList<string> Uses { get; init; } = [];
+
+    /// <summary>Its uses closure in dependency order, itself left out.</summary>
+    public IReadOnlyList<string> Sees { get; init; } = [];
+
+    /// <summary>The packs whose uses name it, ordinal, then <c>maquettiste.json</c> when the project's uses does.</summary>
+    public IReadOnlyList<string> UsedBy { get; init; } = [];
+}
 
 /// <summary>A JavaScript source file.</summary>
 /// <param name="Path">The repo-relative path.</param>
@@ -116,10 +129,33 @@ public sealed record LoadedPack(
 public sealed record ScriptSource(string Path, string Code, string Hash);
 
 /// <summary>The packs of a run.</summary>
-/// <param name="Packs">Enabled packs, in ordinal name order.</param>
-/// <param name="Diagnostics">Pack loading diagnostics (MQ6001, MQ6002).</param>
+/// <param name="Packs">The run's enabled packs, in dependency order (<see cref="LoadedPack.Order"/>).</param>
+/// <param name="Diagnostics">Pack loading diagnostics (MQ6001, MQ6002, MQ6042 to MQ6046).</param>
 public sealed record PackSet(IReadOnlyList<LoadedPack> Packs, IReadOnlyList<Diagnostic> Diagnostics)
 {
+    /// <summary>Packs a run pack uses that the run does not select, in dependency order; never rendered or written.</summary>
+    public IReadOnlyList<LoadedPack> Used { get; init; } = [];
+
+    /// <summary>A loaded pack by name, run or used; <see langword="null"/> when neither.</summary>
+    /// <param name="name">The pack name.</param>
+    /// <returns>The pack, or <see langword="null"/>.</returns>
+    public LoadedPack? Find(string name)
+    {
+        foreach (var pack in Packs)
+        {
+            if (string.Equals(pack.Name, name, StringComparison.Ordinal))
+                return pack;
+        }
+
+        foreach (var pack in Used)
+        {
+            if (string.Equals(pack.Name, name, StringComparison.Ordinal))
+                return pack;
+        }
+
+        return null;
+    }
+
     /// <summary>
     /// Whether the planner skips a unit whose output pattern cannot stay under an allowed root (MQ6019). The paths operation turns it
     /// off, because it reports MQ6019 itself and still shows where each path would go.
@@ -146,7 +182,18 @@ public sealed record PlannedUnit(string Key, LoadedPack Pack, PackUnit Unit, IRe
 /// <summary>The planned units of a run.</summary>
 /// <param name="Units">Units in pack order, then ordinal by key.</param>
 /// <param name="Diagnostics">Planning diagnostics.</param>
-public sealed record UnitPlan(IReadOnlyList<PlannedUnit> Units, IReadOnlyList<Diagnostic> Diagnostics);
+public sealed record UnitPlan(IReadOnlyList<PlannedUnit> Units, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>Exporting units of used packs, planned for their exports only, in pack order then by key; never rendered or written.</summary>
+    public IReadOnlyList<PlannedUnit> ExportOnly { get; init; } = [];
+}
+
+/// <summary>A unit's export values, the keys their evaluation read (ordinal) and the input hash over them.</summary>
+/// <param name="Values">The values: a JSON object of export name to text, or to an object of item id to text (<c>each</c>), keys
+/// ordinal.</param>
+/// <param name="ReadKeys">The dependency keys the export templates read, ordinal; a subset of the unit's read keys.</param>
+/// <param name="InputHash"><c>InputHash(static hash, ReadKeys)</c>: stored values serve readers while it is unchanged.</param>
+public sealed record UnitExports(JsonElement Values, IReadOnlyList<string> ReadKeys, string InputHash);
 
 /// <summary>One output file recorded in a unit's state.</summary>
 /// <param name="Path">The repo-relative path.</param>
@@ -176,6 +223,9 @@ public sealed record UnitState(string Key, string InputHash, IReadOnlyList<strin
     /// name an element the model no longer has ("Customer (entity) was deleted"); <see langword="null"/> when not recorded.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Names { get; init; }
+
+    /// <summary>The unit's export values at render time (unit state format 5), or <see langword="null"/> when it declares none.</summary>
+    public UnitExports? Exports { get; init; }
 }
 
 /// <summary>A unit skipped because its inputs and outputs are unchanged.</summary>
@@ -221,6 +271,9 @@ public sealed record RenderedUnit(
 
     /// <summary>The labels of the element keys read (see <see cref="UnitState.Names"/>).</summary>
     public IReadOnlyDictionary<string, string>? Names { get; init; }
+
+    /// <summary>The unit's export values (see <see cref="UnitState.Exports"/>), or <see langword="null"/> when it declares none.</summary>
+    public UnitExports? Exports { get; init; }
 }
 
 /// <summary>The output root that contains a file.</summary>

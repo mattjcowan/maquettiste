@@ -29,6 +29,10 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
     private readonly ConcurrentDictionary<string[], TableFields> _tables = new(ReferenceEqualityComparer.Instance);
     private Func<string, string>? _compute;
 
+    /// <summary>The run's export table, which hashes <c>px:</c> keys (next-phase-2-design.md section 5.3); every such key is absent
+    /// without one.</summary>
+    internal Rendering.ExportTable? Exports { get; init; }
+
     /// <inheritdoc/>
     public string CurrentHash(string dependencyKey)
     {
@@ -211,6 +215,7 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "n" => NameHash(rest),
             "x" => ExtensionFileHash(rest),
             "c" => CustomKindHash(rest),
+            "px" => Exports?.Hash(rest) ?? Absent,
             // The rule view's index and reference reads (rows scripts, next-phase-2-design.md section 3.4) hash as the rule cache hashes
             // them, so a unit that read scripted rows renders again exactly when one of those reads changes.
             "ix" or "rt" => Validation.RuleKeyHasher.Of(model).CurrentHash(key),
@@ -334,7 +339,7 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
         if (slash <= 0)
             return Absent;
         var name = packAndPath[..slash];
-        var pack = packs.Packs.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.Ordinal));
+        var pack = packs.Find(name);
         if (pack is null)
             return Absent;
         return PackFiles.Hash(pack.RootPath, packAndPath[(slash + 1)..]) ?? Absent;

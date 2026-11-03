@@ -33,6 +33,22 @@ golden tree).
   reports its own cancellation as `ScriptAbortException`) is rethrown as cancellation, never MQ6006, and `RenderAsync` checks the
   token again after each result arrives, so a unit rendered while the cancel was arriving is never yielded. `InputHash = Hasher.InputHash(StaticHash, sorted read keys)`. Progress: one `Render` update per
   unit, in order, with the first output path (else the unit key).
+- **Library packs** (next-phase-2-design.md section 5.2). An include name may start with `<pack>:` (a pack name, then the
+  pack-relative path; `PackPaths.SplitPack`): the pack must be the unit's own or in its uses closure (`LoadedPack.Sees`),
+  else the include fails the unit with MQ6006. Without a prefix the name resolves in the pack whose folder holds the
+  including file (`UnitRun.PackOfSource`, from the caller's source path, the part before `#` for an inline expression), so a
+  library partial's own includes stay in the library. `PackTemplateLoader` returns `<pack>:<path>`; `CreateTemplate` records
+  `t:<pack>/<path>` and parses another pack's file with `{{ }}` whatever the unit's `delimiters`. Partials render with the
+  unit's variables. `PackRuntime.Create` builds the used packs' runtimes first (once per run; uses is acyclic), creates the
+  pack's pool with one `ScriptLibrary` per used pack with scripts (so `maquettiste.use` works in its scripts), and builds one
+  read-only namespace object per used pack with scripts, plus its own when another pack uses it; `RenderFiles` pushes the
+  namespaces between the root helpers and the unit's variables, so `{{ entity | naming.class_name }}` pipes. A namespace
+  equal to a root helper of the pack (or a builtin, keyword or variable, which the loader already refuses) is MQ6045 and
+  fails every unit of the pack; a used pack whose scripts fail to load fails every unit that sees it with its own MQ6016 or
+  MQ6007. `UnitRun` is the `IScriptLibraryCalls` of its call context: a used pack's helper, from a namespace or through
+  `maquettiste.use`, leases a sandbox of that pack's pool on first use and holds it to the end of the unit, and runs with the
+  unit's recorder and seed and the used pack's parameters. A used pack missing from the run's `PackSet` (a preview that
+  loaded one pack alone) is MQ6042 for the unit.
 - **Copy units** (next-phase-1-design.md section 5.4). A `copy` unit renders no template: each file its sources match
   comes from the shared matcher (`Planning.CopySources`), never from disk, and lands at the unit's output folder
   (rendered; the pack's output base when absent) plus its path after the literal base of the first pattern that matched
@@ -190,3 +206,15 @@ golden tree).
   `LedgerSchema` (PostgreSQL only), else `""`. It records the database and `s:migrations` (the hash of
   `migrations.ledgerSchema`), as `type_of` records `s:typeMaps`, so a changed schema re-renders every script that writes
   ledger rows.
+
+## Exports (next-phase-2-design.md section 5.3)
+
+`Exports.cs` holds the per-run `ExportTable`: `Record` merges a pack's exporting units for an element in unit key
+order (MQ6048 on a conflict), `Unit` serves stored values while their export input hash is unchanged, `Evaluate`
+renders export templates in the table's own `RenderRun` (`UnitRun.EvaluatingExports`). All three are `Lazy` per key.
+`exported` (MQ6047, MQ6050) and the `exports` variable read it. Evaluation never recurses into the same pack, so no
+worker waits on a pool lease it holds. The table cannot borrow the render stage's `RenderRun`: the skip stage hashes
+`px:` keys before any render starts, and a preview renders each unit in a run of its own. So the table is disposable:
+`GenerationRun` disposes the tables it prepared when its run, plan or apply ends, and a preview or path listing
+disposes its session's table when the request ends. An export evaluation returns the used packs' leases it took, as a
+render does.

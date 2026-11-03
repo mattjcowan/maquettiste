@@ -1696,6 +1696,78 @@
     "canBeOff": true
   },
   {
+    "id": "MQ6042",
+    "defaultSeverity": "error",
+    "description": "A uses entry in pack.json or maquettiste.json names a pack that does not exist or did not load, or a list names one pack twice.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6043",
+    "defaultSeverity": "error",
+    "description": "A used pack's version does not satisfy the uses range, or the range does not parse.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6044",
+    "defaultSeverity": "error",
+    "description": "A pack's uses names the pack itself or forms a cycle.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6045",
+    "defaultSeverity": "error",
+    "description": "A used pack's helper namespace collides with a builtin, a template keyword or variable, or a root helper of a pack that sees it.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6046",
+    "defaultSeverity": "warning",
+    "description": "A pack has no units, and no pack and no project uses lists it.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6047",
+    "defaultSeverity": "error",
+    "description": "A template reads the exports of a pack its pack does not see, or an export template reads its own pack's exports.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6048",
+    "defaultSeverity": "error",
+    "description": "Two units of one pack export one name for one element with different values.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6049",
+    "defaultSeverity": "error",
+    "description": "An export's each names a member that is not a list of items with ids, or two items share an id.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6050",
+    "defaultSeverity": "error",
+    "description": "A unit reads exports that failed to evaluate; it is not rendered.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
     "id": "MQ7001",
     "defaultSeverity": "error",
     "description": "Duplicate code in a reference type, across all its seeds.",

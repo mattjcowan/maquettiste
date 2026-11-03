@@ -101,7 +101,7 @@ public sealed class LastRunTests
         await AssertFullAsync(repo);
         Assert.False(File.Exists(legacy));
         await AssertReplayedAsync(repo);
-        File.Delete(Path.Combine(repo.Repo.CacheDirectory, "units", "e2e.v4.bin"));
+        File.Delete(Path.Combine(repo.Repo.CacheDirectory, "units", "e2e.v5.bin"));
         Assert.True((await AssertFullAsync(repo)).UnitsRendered > 0);
         await AssertReplayedAsync(repo);
         var record = await File.ReadAllBytesAsync(RecordPath(repo), Ct);

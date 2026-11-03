@@ -7,6 +7,19 @@ one.
 
 ## 0.12.0 (unreleased)
 
+- **Library packs.** A pack can list other packs in `uses`, each with a version range: its templates include their
+  partials by a prefixed name (`{{ include "naming:partials/header.scriban" }}`) and call their helpers through a
+  namespace named after the pack (`{{ naming.class_name entity }}`), and its scripts reach them with
+  `maquettiste.use("naming")`. A pack without units is a library; `maquettiste pack new <name> --library` and `new_pack`
+  with `library` write one. `uses` in `maquettiste.json` gives the project's rule scripts the same reach. Changing a
+  library's version, scripts or parameters renders again the units that use it and runs cached rules again. Pack
+  lists and reads show `uses` and `usedBy`, the template context lists the namespaces a unit sees, renames rewrite
+  `uses` entries and list the files that still name the old pack, and deleting a used pack or a partial another pack
+  includes is refused. New rules MQ6042 to MQ6046. The
+  [user guide](user-guide.md#library-packs-share-partials-and-helpers) and the new
+  [Share and test packs](guides/share-and-test-packs.md) guide have the details.
+- **Unit state format 5.** The unit state format moves to version 5, so the first generate after upgrading re-renders
+  every unit once.
 - **Stereotypes that contribute structure.** A stereotype that applies to tables can carry `columns`, a `primaryKey`,
   `uniques`, `foreignKeys`, `checks` and `indexes`, and every table that carries it inherits them, designed, imported or
   synthesized. An inherited member's id is `<tableKey>.<memberId>`, which seeds, keys, indexes, binding fields and
@@ -190,6 +203,12 @@ one.
     keyed id only when the table inherits the member.
   - Changing an enum or reference type re-checks tables that get its typed column through an implied stereotype, and
     changing a schema's defaults re-checks the relations whose overlay puts their table in that schema.
+
+- Packs read each other's names. A unit's `exports` states names per element, such as a class name, a namespace or a
+  name per attribute; another pack that lists it in `uses` reads them with `exported`, and the unit's own templates read
+  them as `exports`. A changed name renders again exactly the files that read it. `maquettiste pack exports` and the MCP
+  tool `get_pack_exports` (74 tools) show the names; plans record them. New rules MQ6047 to MQ6050. Unit states move to
+  format 5, so the first run after the upgrade renders every unit once.
 
 ## 0.11.0 (unreleased)
 

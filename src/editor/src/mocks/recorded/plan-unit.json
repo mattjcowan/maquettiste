@@ -1,7 +1,7 @@
 {
   "unit": {
     "key": "csharp-dapper/actors",
-    "inputHash": "8df1b5eb27a0b89728cf50bcd2d70f59bce0fd39481a5e28216f21497dd7b59e",
+    "inputHash": "3c6a8dadf6c3ad25c51ef9bc03a2f676f77e221d2f6125d0da34b559e8ea0cae",
     "readKeys": [
       "k:process",
       "t:csharp-dapper/_csharp.scriban",
@@ -16,7 +16,8 @@
     "elementId": null,
     "reason": "new",
     "causes": [],
-    "causeCount": 0
+    "causeCount": 0,
+    "exports": null
   },
   "groups": [
     {

@@ -1262,6 +1262,23 @@ them at its designed table. Constants are SQL literals in the statements, not pa
 - **Modes.** `overwrite`, `once` (written only when missing; recorded as owned), `regions` (committed roots only; MQ6015), `pair` (`Output` rendered every time with `Template`; `Companion.Template` rendered to `Companion.Output` only when that file is missing, as owned). As built on 2026-10-02 (spec-errata E42): `regions` works on any root (MQ6015 is retired), and `block` manages one delimited block of lines inside a file the team owns (§12.3b); a block unit's file blocks are blocks too, and formatters never run on them.
 - **Built versus committed.** A file's root is the longest `outputs.allow` path that contains it. `Commit` decides the manifest location (§12.2), `--check` coverage, the roots `init` names as built, and the `.gitignore` entries `init --gitignore` writes when asked (never by default; spec-errata E39). As built on 2026-10-02 (spec-errata E42), this distinction is gone: an allow entry is only a path, a folder generation may write under or the file of that exact name (`.gitignore`, `src/App/.gitignore`; an entry ending in `/` is a folder only), every pack has one manifest (§12.2), `--check` covers every root, and `init` has no `.gitignore` logic (`--gitignore` is refused). A `commit` member left in `maquettiste.json` is dropped before the schema check and reported once per entry (MQ1010, info); `maquettiste format` and every settings write drop it.
 
+- **Library packs** (next-phase-2-design.md section 5.2). `pack.json` `uses` lists packs with a version range (the
+  `engine` range syntax); `units` may be empty (a library). A run loads the closure of its packs' uses, enabled or not,
+  into `PackSet.Used` (never rendered or written); `LoadedPack.Order` is the dependency order (Kahn's, ties by ordinal
+  name), so a project without `uses` keeps ordinal order. `PackLoader.LoadClosureAsync` loads one pack with its closure
+  for the pack read, previews, path listings, the template context and explanations; a preview session's stamp covers
+  the closure's folders only. `include "<pack>:<path>"` renders a used pack's partial (default delimiters; unprefixed
+  includes inside it resolve in that pack) and records `t:<pack>/<path>`, which the hasher resolves through
+  `PackSet.Find`. Each used pack with scripts is a template namespace (`-` becomes `_`) whose helpers run in that pack's
+  pool with its parameters. A unit's static hash folds, for each pack of its closure in dependency order, the name,
+  version, scripts hash and canonical parameters into the scripts field (`H("uses-1", ...)`); a pack without uses
+  hashes the same bytes as before. MQ6042 to MQ6046 cover missing, repeated or failed entries, ranges, cycles,
+  namespace collisions and unused libraries.
+
+Unit `exports` (next-phase-2-design.md section 5.3) maps a snake_case name to a template, or to `{ each, value }`
+rendered per item of a list member and keyed by the item's id. The unit's canonical JSON in the static hash leaves out
+an empty `exports`, so units without exports keep their static hash.
+
 ## 9. Rendering (W5)
 
 - **Template cache**: `internal interface ITemplateCache { Template Get(LoadedPack pack, string path, Delimiters? delimiters); }` returns a parsed Scriban `Template`, keyed by (pack, path, file hash, delimiters), in a `ConcurrentDictionary` owned by the renderer instance for one run. Renderers are per run: `EngineServices.CreateRenderer()` builds one with a fresh `TemplateCache` for each run and each preview, so nothing accumulates in a long-lived host. Parse errors → MQ6003 with line and column.
@@ -1286,6 +1303,12 @@ them at its designed table. Constants are SQL literals in the statements, not pa
   ledger, which is every dialect but PostgreSQL; records `s:migrations`; docs/ledger.md). Pack helpers from JavaScript
   register under their own names and fail with MQ6013 on a collision.
 - **Output normalization**: rendered text is kept as a string; post-processing (§13) encodes it.
+
+`exported <element | id | model> "<pack>"` returns a pack's merged export record for an element, `null` when no unit
+of the pack plans it, and records `px:<pack>/<id>` (`px:<pack>` for model scope). The variable `exports` holds the
+unit's own values. Records come from the run's export table (`Rendering/Exports.cs`), computed from the model on
+demand, never read back from rendered files; export templates see neither `data`, `schema_diff` nor `exports`, and
+read only the packs their pack uses (MQ6047 to MQ6050).
 
 ## 10. Script sandbox (W4)
 
@@ -1325,6 +1348,17 @@ Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
   register its rows once.
 - **Pool**: one Jint engine per worker (`size` = render parallelism), rented for a whole unit. A unit renders synchronously on its worker thread, which `LimitMemory`'s per-thread accounting requires.
 - **Model view**: `JsModelProxy : ObjectInstance` exposes an `IResolvedObject`'s template-visible properties in camelCase, read-only (`Set`, `DefineOwnProperty` and `Delete` refuse), records dependencies like the Scriban accessor, and wraps lists as frozen array-likes. Values cross as JSON-like data: string, number (integral → `long`), bool, null, arrays, plain objects, and resolved objects as proxies both ways. A returned function or symbol is an error.
+
+- **Library calls** (next-phase-2-design.md section 5.2). `CreatePool(scripts, libraries, ...)` gives a pool the used
+  packs it reaches (`ScriptLibrary`: name and helper names); `maquettiste.use(name)` returns a frozen object of that
+  pack's helpers, also while scripts load. A call goes to `ScriptCallContext.Libraries` (`IScriptLibraryCalls`), which
+  runs the helper in the used pack's own pool with the caller's recorder and seed and the used pack's parameters; values
+  cross as they cross into templates. Without a call context (loading) or without `Libraries` (selectors and script
+  filters, while planning) a call is a `TypeError`. The planner's pools get the libraries so a top-level `use` loads.
+  The project's rule scripts reach the closure of `maquettiste.json`'s `uses` (`ModelSnapshot.ScriptLibraries`, read by
+  the model loader): the validator builds one pool per library and `RuleRun` implements `IScriptLibraryCalls`; a
+  library failure is MQ5002 (a limit MQ5003) at the library's script, and the libraries' hashes fold into every rule
+  file's cache key.
 
 ## 11. Hashing and incremental generation (W6)
 
@@ -1371,6 +1405,11 @@ still holds and no journal exists: `Succeeded`, every unit skipped, nothing writ
 full run would return. Anything else (a changed, added or removed file, another engine build, a damaged or foreign record, a
 recorded path that cannot be checked) runs the full pipeline. Long-lived hosts neither read nor write it. Details:
 `Generation/README.md`.
+
+`px:<pack>/<id>` and `px:<pack>` hash a pack's merged export record as `H("mq-exports-1", canonical record)`, absent
+without one. Unit state format 5 (`.v5.bin`) stores each exporting unit's values, export keys (as positions among its
+read keys) and export input hash, `InputHash(static hash, export keys)`; stored values serve readers while that hash is
+unchanged. A format 4 file loads empty, so the first run after the upgrade renders every unit once.
 
 ## 12. Writer, manifest and journal (W7)
 

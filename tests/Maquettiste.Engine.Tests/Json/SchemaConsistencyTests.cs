@@ -300,5 +300,5 @@ public sealed class SchemaConsistencyTests
 
     private static bool IsModelRecord(Type type) =>
         type.IsClass && type != typeof(string) && type.Namespace is "Maquettiste.Engine.Model" or "Maquettiste.Engine"
-        && type != typeof(Description) && type != typeof(TypeRef) && !typeof(System.Collections.IEnumerable).IsAssignableFrom(type);
+        && type != typeof(Description) && type != typeof(TypeRef) && type != typeof(PackExport) && !typeof(System.Collections.IEnumerable).IsAssignableFrom(type);
 }

@@ -27,7 +27,14 @@ namespace Maquettiste.Engine;
 /// <param name="FileCount">Files in the pack folder (hidden ones left out).</param>
 /// <param name="Diagnostics">The pack's load diagnostics.</param>
 public sealed record PackSummary(string Name, string? Version, string? Description, bool Enabled, string Output, IReadOnlyList<PackUnit> Units,
-    int FileCount, IReadOnlyList<Diagnostic> Diagnostics);
+    int FileCount, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>The packs this pack uses, in <c>pack.json</c> order (library packs).</summary>
+    public IReadOnlyList<PackUse> Uses { get; init; } = [];
+
+    /// <summary>The packs whose uses name it, ordinal, then <c>maquettiste.json</c> when the project's uses does.</summary>
+    public IReadOnlyList<string> UsedBy { get; init; } = [];
+}
 
 /// <summary>One file of a pack folder.</summary>
 /// <param name="Path">The pack-relative path, <c>/</c> separators.</param>
@@ -60,6 +67,9 @@ public sealed record PackDocument(string Name, bool Enabled, string Output, stri
 {
     /// <summary>What the pack's own scripts register (helpers, selectors, filters, transforms, rules), by kind then name; empty when they fail.</summary>
     public IReadOnlyList<ScriptRegistration> Registrations { get; init; } = [];
+
+    /// <summary>The packs whose uses name it, ordinal, then <c>maquettiste.json</c> when the project's uses does (library packs).</summary>
+    public IReadOnlyList<string> UsedBy { get; init; } = [];
 }
 
 /// <summary>A pack file's text with its ETag.</summary>
@@ -137,6 +147,7 @@ internal static partial class PackAuthoring
                 .Where(n => !n.StartsWith('.') && File.Exists(Path.Combine(templates, n, "pack.json"))).Order(StringComparer.Ordinal).ToList()
             : [];
         var loader = new PackLoader(options, schemas);
+        var graph = await UsesGraphAsync(options, ct).ConfigureAwait(false);
         var result = new List<PackSummary>(names.Count);
         foreach (var name in names)
         {
@@ -144,7 +155,11 @@ internal static partial class PackAuthoring
             var (pack, diagnostics) = await loader.LoadNamedAsync(snapshot, name, ct).ConfigureAwait(false);
             var files = EnumerateFiles(Path.Combine(templates, name)).Count;
             result.Add(new PackSummary(name, pack?.Manifest.Version, pack?.Manifest.Description, settings.Enabled, settings.Output,
-                pack?.Manifest.Units ?? [], files, diagnostics));
+                pack?.Manifest.Units ?? [], files, diagnostics)
+            {
+                Uses = pack?.Manifest.Uses ?? TryManifest(Path.Combine(templates, name))?.Uses ?? [],
+                UsedBy = graph.UsedBy(name, snapshot.Settings.Uses),
+            });
         }
 
         return result;
@@ -169,7 +184,10 @@ internal static partial class PackAuthoring
         }
 
         var settings = snapshot.Settings.Packs.TryGetValue(name, out var s) ? s : new PackSettings();
-        var (pack, loadDiagnostics) = await new PackLoader(options, schemas).LoadNamedAsync(snapshot, name, ct).ConfigureAwait(false);
+        // With its uses closure (library packs), so a pack whose uses do not load says why, and its cross-pack includes resolve.
+        var set = await new PackLoader(options, schemas).LoadClosureAsync(snapshot, name, ct).ConfigureAwait(false);
+        var pack = set.Packs.FirstOrDefault();
+        var loadDiagnostics = set.Diagnostics;
         var manifest = pack?.Manifest ?? TryManifest(document);
         var files = await DescribeFilesAsync(root, manifest, ct).ConfigureAwait(false);
         var paths = new ModelPaths(options);
@@ -184,7 +202,10 @@ internal static partial class PackAuthoring
         }
 
         return new PackDocument(name, settings.Enabled, settings.Output, ContentHash.Of(bytes), document, Parameters(manifest, settings), files,
-            PackLoader.Sort(diagnostics.Distinct()));
+            PackLoader.Sort(diagnostics.Distinct()))
+        {
+            UsedBy = pack?.UsedBy ?? await UsersAsync(options, snapshot.Settings.Uses, name, ct).ConfigureAwait(false),
+        };
     }
 
     /// <summary>One file's text (<c>GET /api/packs/{pack}/file?path=</c>), or <see langword="null"/> when it does not exist.</summary>
@@ -341,15 +362,30 @@ internal static partial class PackAuthoring
     /// supply other names. <c>conflict</c> when the folder exists; <c>invalid</c> for an unknown starter.
     /// </summary>
     public static async Task<PackWriteResult> CreateAsync(EngineServices services, string name, string from,
-        IReadOnlyDictionary<string, IReadOnlyList<KeyValuePair<string, byte[]>>>? starters, CancellationToken ct)
+        IReadOnlyDictionary<string, IReadOnlyList<KeyValuePair<string, byte[]>>>? starters, CancellationToken ct, bool library = false)
     {
         var root = PackRoot(services.Options, name);
         var packFile = new ModelPaths(services.Options).ToRepoPath("templates/" + name + "/pack.json");
+        if (library && !string.Equals(from, "empty", StringComparison.Ordinal))
+            return Invalid($"A library pack starts from 'empty'; '{from}' cannot be combined with library.", packFile);
         if (Directory.Exists(root) || File.Exists(root))
             return new PackWriteResult(SaveOutcome.Conflict, null, null, [RuleCatalog.Create("MQ6001", $"templates/{name}/ already exists.", filePath: packFile)], []);
         var files = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
         JsonObject manifest;
-        if (string.Equals(from, "empty", StringComparison.Ordinal))
+        if (library)
+        {
+            // A library (next-phase-2-design.md section 5.2): no units, a partial and one helper that the packs listing it in uses reach.
+            manifest = new JsonObject
+            {
+                ["name"] = name,
+                ["version"] = "0.1.0",
+                ["engine"] = ">=1.0 <2.0",
+                ["description"] = "A new library pack: partials and helpers that other packs use.",
+            };
+            foreach (var (path, text) in LibraryStarter(name))
+                files[path] = Encoding.UTF8.GetBytes(text);
+        }
+        else if (string.Equals(from, "empty", StringComparison.Ordinal))
         {
             manifest = new JsonObject
             {
@@ -405,12 +441,61 @@ internal static partial class PackAuthoring
         return new PackWriteResult(SaveOutcome.Saved, ContentHash.Of(files["pack.json"]), null, [], [.. files.Keys]);
     }
 
+    /// <summary>
+    /// The files of a new library pack besides its <c>pack.json</c>: <c>partials/header.scriban</c> and a <c>helpers.js</c> with one helper.
+    /// <c>maquettiste pack new --library</c> writes the same files.
+    /// </summary>
+    /// <param name="name">The pack name, for the comments.</param>
+    /// <returns>Pack-relative path to text, ordinal.</returns>
+    public static IReadOnlyList<KeyValuePair<string, string>> LibraryStarter(string name)
+    {
+        var space = PackRuntime.Namespace(name);
+        return
+        [
+            new("helpers.js", $$"""
+                // Library helpers: a pack that lists '{{name}}' in its uses calls them as {{space}}.<helper> in its templates, and its scripts
+                // (or the project's rule scripts, through maquettiste.json's uses) as maquettiste.use("{{name}}").<helper>(...).
+                // Helpers must be pure: no state kept between calls.
+                maquettiste.helper("title_case", (text) => String(text).replace(/(^|[\s_-])([a-z])/g, (_, sep, c) => sep + c.toUpperCase()));
+
+                """),
+            new("partials/header.scriban", """
+                {{~ if element ~}}
+                // {{ element.name }}: generated, do not edit.
+                {{~ else ~}}
+                // Generated, do not edit.
+                {{~ end ~}}
+
+                """),
+        ];
+    }
+
     /// <summary>The folder's files, pack-relative, hidden segments left out, ordinal.</summary>
     public static IReadOnlyList<string> EnumerateFiles(string root) => PackFileRoles.EnumerateFiles(root);
 
     /// <summary>Roles and users of every file of a pack (<see cref="PackFileRoles.DescribeAsync"/>, shared with the loader).</summary>
-    public static Task<IReadOnlyList<PackFileInfo>> DescribeFilesAsync(string root, PackManifest? manifest, CancellationToken ct) =>
-        PackFileRoles.DescribeAsync(root, manifest, ct);
+    /// <remarks>Also lists the packs that include a file with a literal <c>&lt;pack&gt;:&lt;path&gt;</c> name (<c>include:&lt;pack&gt;:&lt;path&gt;</c>), so
+    /// a delete or move of a partial another pack includes is refused as referenced.</remarks>
+    public static async Task<IReadOnlyList<PackFileInfo>> DescribeFilesAsync(string root, PackManifest? manifest, CancellationToken ct) =>
+        await PackFileRoles.WithCrossPackUsersAsync(root, await PackFileRoles.DescribeAsync(root, manifest, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+
+    /// <summary>
+    /// The users of a pack (library packs): the packs whose <c>uses</c> name it, ordinal, then <c>maquettiste.json</c> when the project's
+    /// uses does. Reads the <c>pack.json</c> files only.
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> UsersAsync(EngineOptions options, IReadOnlyList<PackUse> projectUses, string name, CancellationToken ct) =>
+        (await UsesGraphAsync(options, ct).ConfigureAwait(false)).UsedBy(name, projectUses);
+
+    private static async Task<PackUses> UsesGraphAsync(EngineOptions options, CancellationToken ct)
+    {
+        var paths = new ModelPaths(options);
+        var templates = Path.Combine(paths.ModelRoot, "templates");
+        var folders = Directory.Exists(templates)
+            ? Directory.EnumerateDirectories(templates).Select(Path.GetFileName).OfType<string>()
+                .Where(n => !n.StartsWith('.') && File.Exists(Path.Combine(templates, n, "pack.json"))).Order(StringComparer.Ordinal).ToList()
+            : [];
+        return await PackUses.ReadAsync(paths, templates, folders, ct).ConfigureAwait(false);
+    }
 
     private static IReadOnlyList<PackParameterInfo> Parameters(PackManifest? manifest, PackSettings settings)
     {

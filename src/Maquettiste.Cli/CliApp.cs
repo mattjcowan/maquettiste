@@ -164,13 +164,16 @@ public sealed class CliApp(CliEnvironment environment)
           format                Rewrite every model file in canonical form and report the count
                                   --check (write nothing; exit 2 when a file would change)
           pack new <name>       Scaffold a template pack under .maquettiste/templates/<name>/
-                                  --from empty|sql-ddl|csharp-dapper
+                                  --from empty|sql-ddl|csharp-dapper; --library writes a library pack (no units,
+                                  partials/header.scriban, a helpers.js) that other packs list in their uses
           pack remove <name>    Preview removing a pack (its folder, its packs.<name> settings entry and its manifests);
                                   --apply removes it; the files it generated stay on disk, untracked; --format text|json
           pack rename <name> <new-name>
                                 Preview renaming a pack (its folder, its packs.<name> settings entry, its manifests and unit
                                   states); --apply renames it and moves the generation hints that name it (--keep-hints
                                   leaves them); the files it generated stay tracked; --format text|json
+          pack exports <pack>   Print the names a pack exports per element, evaluated now from the model: --element <id>
+                                  (repeatable, at most 20; without it, the model-scope record), --format text|json
           bench                 Run the synthetic benchmark
                                   --out <dir>, --seed, --entities, --relations, --enums, --fanout, --keep,
                                   --baseline <file>, --max-regression <percent>, --format text|json, --no-example-packs,

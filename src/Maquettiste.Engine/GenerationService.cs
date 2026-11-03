@@ -81,8 +81,13 @@ public sealed partial class GenerationService
     public Task<GenerationResult> RunAsync(GenerationRequest request, IProgress<ProgressUpdate>? progress, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var run = new GenerationRun(_services, _store, progress);
-        return ExecuteAsync(request, NewId(), run, null, ct);
+        return Core();
+
+        async Task<GenerationResult> Core()
+        {
+            using var run = new GenerationRun(_services, _store, progress);
+            return await ExecuteAsync(request, NewId(), run, null, ct).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Computes and persists a plan: a dry run whose post-processed bytes are stored (host-contracts requirement 29).</summary>
@@ -103,7 +108,7 @@ public sealed partial class GenerationService
         ArgumentNullException.ThrowIfNull(request);
         var planId = NewId();
         var capture = new PlanCapture(_services.Plans, planId, RepoRoot);
-        var run = new GenerationRun(_services, _store, progress) { PlansSelectedUnitsOnly = selectedUnitsOnly };
+        using var run = new GenerationRun(_services, _store, progress) { PlansSelectedUnitsOnly = selectedUnitsOnly };
         var check = request.Mode == GenerationMode.Check;
         GenerationResult result;
         try
@@ -139,6 +144,7 @@ public sealed partial class GenerationService
             Counts = PlanEntries.Counts(changes),
             UnitsRendered = rendered,
             UnitsSkipped = skipped,
+            Exports = prepared is null ? [] : PlanCapture.Exports(prepared),
         };
         var policies = prepared is null
             ? new SortedDictionary<string, HandEditPolicy>(StringComparer.Ordinal)
@@ -173,7 +179,7 @@ public sealed partial class GenerationService
         if (plan is null)
             return new ApplyResult(RunOutcome.Failed, [], [], null);
         var runId = NewId();
-        var run = new GenerationRun(_services, _store, progress);
+        using var run = new GenerationRun(_services, _store, progress);
         var request = plan.Request with { Mode = GenerationMode.Apply, IncludeDiffs = false };
         if (plan.Diagnostics.Any(Outcomes.IsInvalid))
         {
@@ -584,7 +590,18 @@ public sealed partial class GenerationService
         CancellationToken ct)
     {
         // A scoped plan plans again with its filters, so the units it did not select never count as appeared or vanished.
-        var prepared = await run.PrepareAsync(request.Packs, GenerationMode.Apply, ct, baseline: baseline, selection: UnitSelection.Of(request)).ConfigureAwait(false);
+        // Exports (next-phase-2-design.md section 5.3): the table is seeded from the plan, so apply never evaluates an export.
+        var seeds = new Dictionary<string, UnitExports>(StringComparer.Ordinal);
+        foreach (var unit in plan.Units)
+        {
+            if (unit.Exports is { } values)
+                seeds[unit.Key] = values;
+        }
+
+        foreach (var entry in plan.Exports)
+            seeds[entry.Key] = entry.Exports;
+        var prepared = await run.PrepareAsync(request.Packs, GenerationMode.Apply, ct, baseline: baseline, selection: UnitSelection.Of(request),
+            seededExports: seeds).ConfigureAwait(false);
         if (prepared is null)
             return new ApplyResult(RunOutcome.Invalid, [], [], Result(runId, GenerationMode.Apply, RunOutcome.Invalid, run));
 
@@ -600,6 +617,18 @@ public sealed partial class GenerationService
 
         var plannedKeys = plan.Units.Select(u => u.Key).ToHashSet(StringComparer.Ordinal);
         foreach (var key in current.Keys.Where(k => !plannedKeys.Contains(k)))
+            staleUnits.Add(key);
+
+        // The exporting units the plan read without planning them: each must still exist with the same export inputs; and a record
+        // read now whose units the plan did not seed makes the plan stale (it is never evaluated at apply).
+        foreach (var entry in plan.Exports)
+        {
+            if (prepared.Exports?.Find(entry.Key) is not { } now
+                || !string.Equals(prepared.Hasher.InputHash(now.StaticHash, entry.Exports.ReadKeys), entry.Exports.InputHash, StringComparison.Ordinal))
+                staleUnits.Add(entry.Key);
+        }
+
+        foreach (var key in prepared.Exports?.Unseeded ?? [])
             staleUnits.Add(key);
 
         // Disk: every planned path must hash as it did at plan time, or already hold exactly the planned bytes that an engine write
@@ -658,7 +687,7 @@ public sealed partial class GenerationService
                 states[planned.Pack.Name] = packStates = await _services.UnitState.LoadAsync(planned.Pack.Name, ct).ConfigureAwait(false);
             var state = packStates.TryGetValue(unit.Key, out var stored) && string.Equals(stored.InputHash, unit.InputHash, StringComparison.Ordinal)
                 ? stored
-                : new UnitState(unit.Key, unit.InputHash, unit.ReadKeys, [.. unit.Outputs.Select(Stat)]);
+                : new UnitState(unit.Key, unit.InputHash, unit.ReadKeys, [.. unit.Outputs.Select(Stat)]) { Exports = unit.Exports };
             skipped.Add(new SkippedUnit(planned, state));
         }
 
@@ -731,6 +760,7 @@ public sealed partial class GenerationService
             {
                 KeyHashes = Planning.KeyHashes.Of(unit.ReadKeys, currentHash), // the plan's inputs are current (checked above)
                 Names = PlanExplainer.NamesOf(unit.ReadKeys, find),
+                Exports = unit.Exports,
             };
             yield return new ProcessedUnit(rendered, files, [], false);
         }
@@ -886,11 +916,20 @@ public sealed record PlanUnit(string Key, string InputHash, IReadOnlyList<string
 
     /// <summary>Every cause, counted.</summary>
     public int CauseCount { get; init; }
+
+    /// <summary>The unit's export values (next-phase-2-design.md section 5.3): rendered, from the render; skipped, from the export
+    /// table; <see langword="null"/> when the unit declares none.</summary>
+    public UnitExports? Exports { get; init; }
 }
+
+/// <summary>An exporting unit whose values the plan used without planning it: a unit of a used pack, or one a scoped run left out.</summary>
+/// <param name="Key">The unit key.</param>
+/// <param name="Exports">Its values, export keys and export input hash, which apply checks again.</param>
+public sealed record PlanExport(string Key, UnitExports Exports);
 
 /// <summary>Why a unit renders (generation-ui.md section 4.2).</summary>
 /// <param name="Kind">The cause kind: <c>element</c>, <c>kind-set</c>, <c>referrers</c>, <c>setting</c>, <c>template</c>, <c>schema-diff</c>,
-/// <c>translation</c>, <c>localization</c>, <c>absent</c>, <c>inputs</c>, <c>output-missing</c>, <c>output-edited</c>, <c>target-missing</c>.</param>
+/// <c>translation</c>, <c>localization</c>, <c>exports</c>, <c>absent</c>, <c>inputs</c>, <c>output-missing</c>, <c>output-edited</c>, <c>target-missing</c>.</param>
 /// <param name="Key">The read key, or the output path; empty for a cause with no single key.</param>
 /// <param name="Detail">One sentence.</param>
 /// <param name="ElementId">The element it names, when one.</param>
@@ -940,6 +979,9 @@ public sealed record GenerationPlan(
 
     /// <summary>The units the plan skips, counted by reason (<c>unchanged</c>: nothing they read changed).</summary>
     public IReadOnlyDictionary<string, int> UnitsSkipped { get; init; } = new SortedDictionary<string, int>(StringComparer.Ordinal);
+
+    /// <summary>The exporting units the plan used without planning them (units of used packs, units a scoped run left out), by key.</summary>
+    public IReadOnlyList<PlanExport> Exports { get; init; } = [];
 }
 
 /// <summary>The result of planning.</summary>

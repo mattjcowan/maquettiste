@@ -120,12 +120,12 @@ internal static class BuiltinHelpers
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_tag", "in_category", "lookup",
         "banner", "file", "row", "row_uuid", "stable_id", "seed_named", "custom_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
         "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
-        "binding_sql", "binding_sql_parameters", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort");
+        "binding_sql", "binding_sql_parameters", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort", "exported");
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
     public static readonly FrozenSet<string> Variables = FrozenSet.Create(StringComparer.Ordinal,
         "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "view", "sequence", "routine", "database_type", "sql_object", "query", "reference_type",
-        "seed", "locale", "process", "actor", "scenario", "operation", "custom", "database", "attribute", "pack", "project", "mapping", "mappings", "schema_diff", "hints", "data", "unit");
+        "seed", "locale", "process", "actor", "scenario", "operation", "custom", "database", "attribute", "pack", "project", "mapping", "mappings", "schema_diff", "hints", "data", "unit", "exports");
 
     private static readonly JavaScriptEncoder JsonEncoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
 
@@ -204,6 +204,7 @@ internal static class BuiltinHelpers
         Add(builtins, "has_tag", 2, 2, (c, a) => HasTag(c, a[0], AsText(a[1])));
         Add(builtins, "in_category", 2, 2, (c, a) => InCategory(c, a[0], AsText(a[1])));
         Add(builtins, "lookup", 1, 1, (c, a) => Lookup(c, AsText(a[0])));
+        Add(builtins, "exported", 2, 2, (c, a) => Exported(c, a[0], AsText(a[1])));
         Add(builtins, "row", 2, 2, (c, a) => Row(c, a[0], a[1]));
         Add(builtins, "row_uuid", 1, 1, (c, a) => RowUuid(c, a[0]));
         Add(builtins, "stable_id", 2, 2, (c, a) => StableId(c, a[0], a[1]));
@@ -1489,6 +1490,43 @@ internal static class BuiltinHelpers
         if (column is not null)
             context.Recorder.RecordObject(column);
         return column;
+    }
+
+    /// <summary>
+    /// <c>exported &lt;element | id | model&gt; "&lt;pack&gt;"</c> (next-phase-2-design.md section 5.3): the pack's merged export record
+    /// for the element, or its model-scope record, as a read-only map; <see langword="null"/> when no unit of the pack exports for it.
+    /// A unit reads its own pack and the packs it sees; an export template only the packs it sees (MQ6047). Records <c>px:</c>.
+    /// </summary>
+    private static object? Exported(TrackingTemplateContext context, object? target, string pack)
+    {
+        var unit = context.Unit;
+        var own = string.Equals(pack, unit.Planned.Pack.Name, StringComparison.Ordinal);
+        if (own ? unit.EvaluatingExports : !unit.Planned.Pack.Sees.Contains(pack, StringComparer.Ordinal))
+        {
+            throw new RenderHelperException("MQ6047", own
+                ? $"The export templates of unit '{unit.Planned.Unit.Id}' read the exports of their own pack '{pack}'; an export template reads only the packs its pack uses."
+                : $"The unit '{unit.Planned.Unit.Id}' reads the exports of '{pack}', which its pack '{unit.Planned.Pack.Name}' does not use. Add '{pack}' to the uses of its pack.json.");
+        }
+
+        var id = TrackingTemplateContext.Unwrap(target) switch
+        {
+            ResolvedModel => null,
+            IResolvedObject resolved => resolved.Id,
+            string text when text.Length > 0 => text,
+            _ => throw new RenderHelperException("MQ6006", "exported takes an element, an element id or model, then a pack name."),
+        };
+        context.Recorder.Record(id is null ? "px:" + pack : "px:" + pack + "/" + id);
+        var record = unit.Run.Exports.Record(pack, id);
+        if (record.Failed)
+        {
+            var element = id is null ? null : unit.Run.Context.Model.Find(id);
+            var of = element is null ? (id is null ? "the model" : id) : Generation.PlanExplainer.LabelOf(element) ?? id;
+            throw new ExportReadException(
+                $"The unit '{unit.Planned.Key}' reads the exports of {of} from '{pack}', which failed to evaluate in '{record.FailedUnit}': {record.Diagnostics[0].Message}",
+                record.Diagnostics);
+        }
+
+        return record.Values is { } values ? context.Wrap(values) : null;
     }
 
     private static object? Lookup(TrackingTemplateContext context, string id)

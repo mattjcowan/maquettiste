@@ -6,7 +6,7 @@ namespace Maquettiste.Engine.Scripting;
 
 /// <summary>
 /// A pool of sandboxed engines that ran the same prepared scripts (engine-design.md section 10): one engine per worker, rented for
-/// a whole unit. The first engine is built eagerly, so script load errors surface from <see cref="ScriptSandboxFactory.CreatePool"/>;
+/// a whole unit. The first engine is built eagerly, so script load errors surface from <c>ScriptSandboxFactory.CreatePool</c>;
 /// the others are built on demand. More leases than <c>size</c> get extra engines, which are dropped on return rather than kept.
 /// </summary>
 internal sealed class ScriptSandboxPool : IScriptSandboxPool
@@ -16,6 +16,7 @@ internal sealed class ScriptSandboxPool : IScriptSandboxPool
     private readonly MemberCatalog _catalog = new();
     private readonly CancellationToken _runToken;
     private readonly int _size;
+    private readonly IReadOnlyList<ScriptLibrary> _libraries;
     private readonly ConcurrentStack<ScriptSandbox> _idle = new();
     private int _disposed;
 
@@ -25,15 +26,17 @@ internal sealed class ScriptSandboxPool : IScriptSandboxPool
     /// <param name="size">The number of engines kept.</param>
     /// <param name="runToken">The run's cancellation, wired into every engine.</param>
     /// <param name="warnings">The scripts' load warnings (MQ5005), ordinal by path.</param>
+    /// <param name="libraries">The packs <c>maquettiste.use</c> reaches (library packs); none by default.</param>
     public ScriptSandboxPool(IReadOnlyList<PreparedScript> scripts, SandboxLimits limits, int size, CancellationToken runToken,
-        IReadOnlyList<Diagnostic>? warnings = null)
+        IReadOnlyList<Diagnostic>? warnings = null, IReadOnlyList<ScriptLibrary>? libraries = null)
     {
+        _libraries = libraries ?? [];
         _scripts = scripts;
         _limits = limits;
         _size = size;
         _runToken = runToken;
         Warnings = warnings ?? [];
-        var first = ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken);
+        var first = ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken, _libraries);
         Registrations = first.Registrations;
         _idle.Push(first);
     }
@@ -48,7 +51,7 @@ internal sealed class ScriptSandboxPool : IScriptSandboxPool
     public IScriptSandboxLease Rent()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        var sandbox = _idle.TryPop(out var idle) ? idle : ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken);
+        var sandbox = _idle.TryPop(out var idle) ? idle : ScriptSandbox.Create(_scripts, _limits, _catalog, _runToken, _libraries);
         return new Lease(this, sandbox);
     }
 

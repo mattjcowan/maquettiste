@@ -1,3 +1,4 @@
+using Maquettiste.Engine;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -87,6 +88,14 @@ internal static class StarterPacks
 
             """),
     ];
+
+    /// <summary>
+    /// The files of a library pack for <c>pack new --library</c> (next-phase-2-design.md section 5.2): <c>partials/header.scriban</c> and a
+    /// <c>helpers.js</c> with one helper, the engine's own starter; the pack.json, with no units, is written by the caller.
+    /// </summary>
+    /// <param name="name">The pack name.</param>
+    /// <returns>Pack-relative path to text.</returns>
+    public static IReadOnlyList<KeyValuePair<string, string>> Library(string name) => PackAuthoring.LibraryStarter(name);
 
     /// <summary>The built-in stand-ins for the example packs.</summary>
     private static IReadOnlyList<KeyValuePair<string, string>> Fallback(string pack) => pack switch

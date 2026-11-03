@@ -107,4 +107,27 @@ public sealed class PackListTests
         Assert.Equal("overwrite", sql["units"]![0]!["mode"]!.GetValue<string>());
         Assert.Empty(node["diagnostics"]!.AsArray());
     }
+
+    [Fact]
+    public async Task List_packs_shows_uses_used_by_and_libraries()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        repo.WriteLibraryPacks();
+        repo.EditSettingsOnDisk(node => node["uses"] = new JsonArray(new JsonObject { ["pack"] = "naming", ["version"] = "^1.0.0" }));
+
+        var result = await repo.Service.GetPacksAsync(EditorRepo.Ct);
+
+        var records = Assert.Single(result.Packs, p => p.Name == "records");
+        Assert.Equal([("naming", "^1.2.0")], records.Uses.Select(u => (u.Pack, u.Version)));
+        var naming = Assert.Single(result.Packs, p => p.Name == "naming");
+        Assert.Empty(naming.Units); // a library
+        Assert.Equal(["records", "maquettiste.json"], result.UsedBy["naming"]);
+        Assert.False(result.UsedBy.ContainsKey("records"));
+        Assert.DoesNotContain(result.Diagnostics, d => d.Rule is "MQ6042" or "MQ6043" or "MQ6046");
+
+        // The editor's list carries the same.
+        var summaries = await repo.Service.ListPacksAsync(EditorRepo.Ct);
+        Assert.Equal(["records", "maquettiste.json"], summaries.Single(p => p.Name == "naming").UsedBy);
+        Assert.Equal(["naming"], summaries.Single(p => p.Name == "records").Uses.Select(u => u.Pack));
+    }
 }

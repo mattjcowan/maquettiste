@@ -88,6 +88,23 @@ public sealed class RuleCacheTests
     }
 
     [Fact]
+    public void Without_project_uses_rule_cache_keys_are_unchanged()
+    {
+        var s = Build();
+        using var pool = new Maquettiste.Engine.Scripting.ScriptSandboxFactory().CreatePool(s.Model.RuleScripts, s.Model.Settings.Limits, 1, Ct);
+
+        // No library packs: every cached rule's key is its file's own hash, as before libraries existed.
+        var files = Maquettiste.Engine.Validation.ModelValidator.CachedRuleFiles(s.Model, pool);
+        Assert.NotEmpty(files);
+        Assert.All(files.Values, f => Assert.Equal((RulePath, Hash(Probes)), (f.Path, f.Hash)));
+
+        // With one, the key folds the library's hash in.
+        var library = new ScriptLibrarySource("naming", "1.4.0", [], new Dictionary<string, System.Text.Json.JsonElement>(), [], "library-hash");
+        var withUses = ModelSnapshot.Create(s.Model.Documents, s.Model.Settings, s.Model.SettingsHash, [], s.Model.RuleScripts, 2, scriptLibraries: [library]);
+        Assert.All(Maquettiste.Engine.Validation.ModelValidator.CachedRuleFiles(withUses, pool).Values, f => Assert.NotEqual(Hash(Probes), f.Hash));
+    }
+
+    [Fact]
     public async Task An_unchanged_element_reuses_its_results()
     {
         var factory = new CountingSandboxFactory();
