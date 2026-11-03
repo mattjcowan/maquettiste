@@ -215,6 +215,8 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "n" => NameHash(rest),
             "x" => ExtensionFileHash(rest),
             "c" => CustomKindHash(rest),
+            // What a kind declares (next-phase-2-design.md section 5.5): through the resolved model's calculation host; absent without one.
+            "cv" => resolved.Calculated?.DeclarationHash(rest) ?? Absent,
             "px" => Exports?.Hash(rest) ?? Absent,
             // The rule view's index and reference reads (rows scripts, next-phase-2-design.md section 3.4) hash as the rule cache hashes
             // them, so a unit that read scripted rows renders again exactly when one of those reads changes.
@@ -242,6 +244,12 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
         }
 
         foreach (var script in model.RuleScripts)
+        {
+            if (At(script.Path))
+                return script.Hash;
+        }
+
+        foreach (var script in model.CalculationScripts)
         {
             if (At(script.Path))
                 return script.Hash;

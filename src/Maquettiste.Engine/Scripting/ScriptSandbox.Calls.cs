@@ -9,6 +9,7 @@ using Jint.Runtime.Descriptors;
 using Jint.Runtime.Interop;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine.Scripting;
 
@@ -33,7 +34,10 @@ internal sealed partial class ScriptSandbox
     /// <param name="DeclaredIn">The rule script.</param>
     /// <param name="WholeModel">Whether it was registered with <c>scope: "model"</c>: <c>check(model, report)</c>, once per whole-model
     /// validation.</param>
-    private sealed record RuleSpec(string Id, DiagnosticSeverity Severity, FrozenSet<string>? Kinds, Function Check, string DeclaredIn, bool WholeModel = false);
+    /// <param name="Resolved">Whether it was registered with <c>scope: "resolved"</c>: <c>check(element, model, report)</c> on each
+    /// resolved object of its kinds, in the checks after resolution.</param>
+    private sealed record RuleSpec(string Id, DiagnosticSeverity Severity, FrozenSet<string>? Kinds, Function Check, string DeclaredIn, bool WholeModel = false,
+        bool Resolved = false);
 
     /// <summary>What is being called, for diagnostics.</summary>
     /// <param name="Label">For example <c>Helper 'money'</c>.</param>
@@ -59,11 +63,27 @@ internal sealed partial class ScriptSandbox
         _inCall = true;
         _callContext = ctx;
         _state.Begin(ctx);
+        _values.BeginCall();
         _random.Seed(ctx.Seed ?? "");
         try
         {
             _engine.Constraints.Reset();
-            return body();
+            var result = body();
+            // A read of a failed calculated value fails the call even when the script caught it (next-phase-2-design.md section 5.5).
+            if (_values.FailedRead is { } failed)
+                throw new CalculatedValueException(failed);
+            return result;
+        }
+        catch (CalculatedValueException)
+        {
+            _engine.Advanced.ResetCallStack();
+            throw;
+        }
+        catch (ScriptLimitException ex) when (_values.FailedRead is { } failed
+            && !ctx.CancellationToken.IsCancellationRequested && !_runToken.IsCancellationRequested)
+        {
+            _engine.Advanced.ResetCallStack();
+            throw new CalculatedValueException(failed, ex);
         }
         catch (ScriptLimitException ex) when (ctx.CancellationToken.IsCancellationRequested || _runToken.IsCancellationRequested)
         {
@@ -76,6 +96,12 @@ internal sealed partial class ScriptSandbox
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not ScriptErrorException and not ScriptLimitException)
         {
+            if (_values.FailedRead is { } failed && !ctx.CancellationToken.IsCancellationRequested && !_runToken.IsCancellationRequested)
+            {
+                _engine.Advanced.ResetCallStack();
+                throw new CalculatedValueException(failed, ex);
+            }
+
             throw Translate(ex, site, ctx.CancellationToken);
         }
         catch (Exception ex) when (ex is ScriptErrorException or ScriptLimitException && _callContext?.Libraries is not null)
@@ -92,6 +118,7 @@ internal sealed partial class ScriptSandbox
         finally
         {
             _state.End();
+            _values.EndCall();
             _callContext = null;
             _inCall = false;
         }
@@ -129,6 +156,13 @@ internal sealed partial class ScriptSandbox
                 return Limit(site, $"exceeded the recursion limit ({_limits.ScriptRecursion})", stack, ex);
             case JavaScriptException js:
                 var (file, line, column) = InCode(Locate(js, stack, site));
+                // A read of a calculated value the object's kind does not declare is MQ5012 at the reading line (section 5.5).
+                if (_values.IsUndeclaredRead(js.Error))
+                {
+                    return new ScriptErrorException(RuleCatalog.Create("MQ5012", $"{site.Label} threw {ErrorText(js)}", site.ElementId, file)
+                        with { Line = line, Column = column }, ex);
+                }
+
                 return new ScriptErrorException(new Diagnostic(site.Rule ? "MQ5002" : "MQ6016", DiagnosticSeverity.Error,
                     $"{site.Label} threw {ErrorText(js)}", site.ElementId, file, null, line, column), ex);
             default:

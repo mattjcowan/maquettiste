@@ -1402,7 +1402,7 @@
   {
     "id": "MQ5002",
     "defaultSeverity": "error",
-    "description": "Validation rule script error.",
+    "description": "Validation rule or calculation script error.",
     "family": "MQ50xx",
     "familyLabel": "Extensions and script rules",
     "canBeOff": true
@@ -1410,7 +1410,7 @@
   {
     "id": "MQ5003",
     "defaultSeverity": "error",
-    "description": "Validation rule exceeded a sandbox limit.",
+    "description": "Validation rule or calculation script exceeded a sandbox limit.",
     "family": "MQ50xx",
     "familyLabel": "Extensions and script rules",
     "canBeOff": true
@@ -1426,7 +1426,39 @@
   {
     "id": "MQ5005",
     "defaultSeverity": "warning",
-    "description": "A rule or rows script declares top-level let or var variables; it keeps no state between calls, so its results are never cached.",
+    "description": "A rule, rows or calculation script declares top-level let or var variables; it keeps no state between calls, so its results are never cached.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5010",
+    "defaultSeverity": "error",
+    "description": "A calculated value failed on an object: its function threw, broke a sandbox limit or returned a value that is not JSON.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5011",
+    "defaultSeverity": "error",
+    "description": "A calculated value does not fit its schema.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5012",
+    "defaultSeverity": "error",
+    "description": "A template, script or rule reads a calculated value that is not declared for the object's kind.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5013",
+    "defaultSeverity": "error",
+    "description": "Calculated values read each other in a cycle.",
     "family": "MQ50xx",
     "familyLabel": "Extensions and script rules",
     "canBeOff": true

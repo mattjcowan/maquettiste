@@ -308,7 +308,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Completion data for a unit's templates (getTemplateContext).</summary>
     [McpServerTool(Name = "get_template_context", Title = "Template context", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("What a unit's templates can use: the globals (model, element, the scope alias, pack.params.*, mapping, hints, data, unit), the members of the model and of the scope's records in snake_case, and the built-in helpers. An each custom:<type> unit's alias is custom, and members lists the custom kind's declared content keys under custom.content.")]
+    [Description("What a unit's templates can use: the globals (model, element, the scope alias, pack.params.*, mapping, hints, data, unit), the members of the model and of the scope's records in snake_case, and the built-in helpers. An each custom:<type> unit's alias is custom, and members lists the custom kind's declared content keys under custom.content. The element's members include calculated.<name> for every calculated value the project's calculation files declare for the scope's kind; read one with element.calculated.<name>, test for one with has_calculated.")]
     public Task<CallToolResult> GetTemplateContext(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The unit id; required.")] string? unit = null,

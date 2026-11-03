@@ -106,6 +106,15 @@ clobber a concurrent edit or leave a dangling id.
    `check(model, report)`, each `report` naming its `element` id; it runs once per whole-model `validate`, never on a
    save. Read with `model.withStereotype`, `withTag`, `withProperty` or `byQualifiedName` rather than scanning
    `model.all`. For CI, set `limits.scriptTimeoutMs` to 0 so findings do not depend on the machine's load.
+   A check of what generation sees (inherited attributes, calculated values) is a resolved rule: `scope: "resolved"`,
+   `kinds` from the resolved kinds (`entity`, `attribute`, `table`, ...), `check(element, model, report)` per resolved
+   object; it runs in `validate` and before generation plans, never on a save or a preview. A value several packs or
+   rules need (a public name, an `apiName`) is a calculated value, defined once in `extensions/calculated/<name>.js`
+   with `maquettiste.calculated({ name, kinds, schema, description, value(element, model) })` and nothing else;
+   `write_extension_file` reports a bad declaration at once (MQ5002). Templates read `element.calculated.<name>` (test
+   with `has_calculated element "<name>"`), scripts `e.calculated.<name>`. `get_calculated` with `ids` evaluates the
+   values of those objects only, `get_resolved_model` pages carry `calculated`; `validate` reports a value that throws
+   (MQ5010), misses its schema (MQ5011), is not declared (MQ5012) or loops (MQ5013). Add one only when asked.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
    per database, and in `columns` the table columns whose `typeRef` names it;
    `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as

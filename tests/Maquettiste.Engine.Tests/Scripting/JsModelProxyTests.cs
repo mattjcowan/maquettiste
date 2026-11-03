@@ -1,3 +1,5 @@
+using Maquettiste.Engine.Tests.Resolution;
+using Maquettiste.Engine.Pipeline;
 using System.Text.Json;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
@@ -288,5 +290,50 @@ public sealed class JsModelProxyTests
         Assert.Equal(0.1 + 0.2, result[4]);
         Assert.True(double.IsNaN((double)result[5]!));
         Assert.True(double.IsPositiveInfinity((double)result[6]!));
+    }
+
+    private static readonly ScriptSource CalculatedNames = Resolution.CalculationKit.File("names.js", """
+        maquettiste.calculated({ name: "publicName", kinds: ["entity"], schema: { type: "string" }, value(e) { return e.pluralName.toLowerCase(); } });
+        maquettiste.calculated({ name: "code", kinds: ["entity"], schema: {}, value(e) { return e.name.length; } });
+        """);
+
+    [Fact]
+    public void Calculated_values_are_a_frozen_object_whose_keys_are_the_declared_names()
+    {
+        var kit = new Resolution.CalculationKit();
+        var model = kit.Resolve(Resolution.CalculationKit.Snapshot(Resolution.CalculationKit.Billing(), CalculatedNames));
+        using var pool = Scripts.Pool("""
+            maquettiste.helper('shape', e => {
+              const c = e.calculated;
+              return [Object.keys(c).join(','), Object.isFrozen(c), c.publicName, JSON.stringify(c)];
+            });
+            maquettiste.helper('copy', e => [Object.keys(e.calculated).join(','), e.calculated.code, e.package === null || !('calculated' in (e.package || {}))], { plain: true });
+            """);
+        using var lease = pool.Rent();
+        var reads = new ListRecorder();
+
+        var shape = (IReadOnlyList<object?>)lease.Sandbox.CallHelper("shape", [model.Entity("Invoice")], Scripts.Ctx(reads))!;
+        var copy = (IReadOnlyList<object?>)lease.Sandbox.CallHelper("copy", [model.Entity("Customer")], Scripts.Ctx())!;
+
+        Assert.Equal(["code,publicName", true, "invoices", """{"code":7,"publicName":"invoices"}"""], shape);
+        Assert.Contains("cv:entity", reads.Keys);
+        Assert.Contains("x:calculated/names.js", reads.Keys);
+        Assert.Equal(["code,publicName", 8L, true], copy);
+    }
+
+    [Fact]
+    public void The_in_operator_tests_a_calculated_value_without_evaluating_it()
+    {
+        var kit = new Resolution.CalculationKit();
+        var model = kit.Resolve(Resolution.CalculationKit.Snapshot(Resolution.CalculationKit.Billing(), CalculatedNames));
+        using var pool = Scripts.Pool("maquettiste.helper('has', (e, n) => n in e.calculated);");
+        using var lease = pool.Rent();
+        var reads = new ListRecorder();
+
+        Assert.Equal(true, lease.Sandbox.CallHelper("has", [model.Entity("Invoice"), "publicName"], Scripts.Ctx(reads)));
+        Assert.Equal(false, lease.Sandbox.CallHelper("has", [model.Entity("Invoice"), "publicNam"], Scripts.Ctx()));
+        Assert.Equal(false, lease.Sandbox.CallHelper("has", [model.Entity("Invoice").Attributes[0], "publicName"], Scripts.Ctx()));
+        Assert.Equal(0, kit.Factory.CalculationCalls);
+        Assert.Contains("cv:entity", reads.Keys);
     }
 }

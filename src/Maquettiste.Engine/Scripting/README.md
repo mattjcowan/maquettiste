@@ -108,6 +108,8 @@ Scripts run in load order against a global `maquettiste`:
 | `rows(fn)` (rows scripts only, once) | `fn(model, seed)` | an array of plain objects of JSON values → `JsonElement` |
 | `rule({ id, severity, kinds, check })` | `check(element, model, report)` | nothing; `report(message, { pointer, severity })` |
 | `rule({ id, severity, scope: "model", check })` | `check(model, report)`, once per whole-model validation | nothing; `report(message, { element, pointer, severity })` |
+| `rule({ id, severity, scope: "resolved", kinds, check })` | `check(element, model, report)` per resolved object of its kinds (`RunResolvedRule`) | nothing; `report(message, { pointer, severity })` |
+| `calculated({ name, kinds, schema, description, value })` (calculation files only) | `value(element, model)` per resolved object of its kinds (`RunCalculation`) | a JSON value → `null`, `bool`, `long`, `double`, `string`, or a list or map of them |
 
 - Names are unique per kind (a helper and a filter may share a name); registering after loading is a `TypeError`.
 - `helper`'s optional third argument is an object whose only key is `plain`, a boolean; any other value, key or `plain`
@@ -143,6 +145,21 @@ Scripts run in load order against a global `maquettiste`:
   `report` needs an `element` option naming a document or sub-element, whose file the diagnostic takes (the entry's
   pointer before the given one, the given id as the element id); a missing or unknown id is a `TypeError`, so MQ5002 on
   the rule file. `RunRule` returns nothing for a model rule.
+- `scope: "resolved"` (next-phase-2-design.md section 5.5) needs `kinds` from `ResolvedKinds.All` (resolved kind names
+  such as `entity`, `attribute`, `table`, `column`); none, or an element-only kind, is a `TypeError` (MQ5002).
+  `ScriptRegistration.Resolved` marks it, `RunRule` and `RunModelRule` return nothing for it, and `RunResolvedRule` runs
+  it on one `IResolvedObject` with the resolved model: `element` and `model` are the proxies of the model view (below),
+  and the diagnostics carry the object's id and the given pointer; `Validation/ResolvedChecks` locates them
+  (`ResolvedLocations`). The extension file API's `ExtensionRuleInfo.Resolved` reads `ScriptSandbox.Rules`.
+- Calculation files (`extensions/calculated/*.js`, `IsCalculationScript`) are project scripts as rule and rows scripts
+  are: one function scope per file, the early freeze, MQ5002 and MQ5003 while loading, MQ5005 for top-level `let` or
+  `var`, and no script library. They may call `maquettiste.calculated` and nothing else; `calculated` from any other
+  script is a `TypeError`. A declaration checks its `name` (`^[a-z][A-Za-z0-9]*$`, at most 64), its `kinds` (from
+  `ResolvedKinds.All`), its `schema` (compiled with `CompileCalculationSchema`, draft 2020-12), an optional
+  `description`, and refuses any other key and a (name, kind) pair already declared (the later file by path). The
+  registration carries a `CalculatedValueDeclaration`. `RunCalculation(name, element, model, ctx)` calls `value` once,
+  with its own statement budget, and converts the result out as a transform's (`CalculationJson` gives the JSON the
+  schema check reads); a non-JSON result is a script error, which `Resolution/CalculationHost` reports as MQ5010.
 - Read keys: `get` records `e:<id>`; `all` records `k:<kind>` and `e:` per document; the index functions record
   `ix:<index>:<value>` (`ix:stereotype:`, `ix:tag:`, `ix:property:`, and `ix:qn:<canonical name>` for `byQualifiedName`)
   and `e:` per document; `referencesTo` records `rt:<id>`. `Validation/RuleKeyHasher` hashes them per snapshot for the
@@ -159,6 +176,12 @@ Conceptual objects add `hasStereotype(key)` and `hasTag(key)`. Proxies are cache
 Dependency recording matches the Scriban accessor: every member read, `in` test or key enumeration of an `IResolvedObject`
 records its `Dependencies`; reading the length or an item of an `RList<T>` records its `MembershipKeys`; `find` of a missing id
 records `e:<id>`. Keys go to the recorder of the call that reads them, even through proxies cached by an earlier call.
+
+Every annotated object has `calculated` (next-phase-2-design.md section 5.5): a frozen object whose keys are the names
+its kind declares, ordinal. Reading a key evaluates the value through `RCalculated.Read` with the call's recorder, so
+the reader records the value's keys and its calculation file's `x:` key; enumerating the keys or an `in` test records
+`cv:<kind>` and evaluates nothing. A name the kind does not declare is a script error carrying MQ5012, and a value that
+failed rethrows its own diagnostic. A plain helper's copies carry every value of an argument's object at hop 0 only.
 
 Lists cross as frozen `JsListProxy` array-likes whose prototype is `Array.prototype`: indexing, `length`, `for…of`, spread,
 `Array.from`, `map`, `filter` and `find` work; `Array.isArray` is `false` and mutators throw.

@@ -18,6 +18,48 @@ public sealed class McpExtensionToolTests
         """;
 
     [Fact]
+    public async Task Calculation_files_list_their_calculated_values()
+    {
+        // next-phase-2-design.md section 5.5: calculated/<name>.js is kind calculated, checked alone on write and listed with what it
+        // declares; a rule with scope "resolved" is marked; get_calculated then reads the values.
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+        const string Names = """
+            maquettiste.calculated({
+              name: "apiName",
+              kinds: ["entity"],
+              schema: { type: "string", pattern: "^[a-z_]+$" },
+              description: "The entity's name in the API.",
+              value(entity) { return entity.name.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase(); },
+            });
+
+            """;
+
+        var broken = await session.OkAsync("write_extension_file", new { path = "calculated/names.js", text = "maquettiste.calculated({ name: \"apiName\" });\n", expectedHash = "new" });
+        Assert.Equal(("MQ5002", 1), ((string)broken["diagnostics"]![0]!["rule"]!, (int)broken["diagnostics"]![0]!["line"]!));
+        var written = await session.OkAsync("write_extension_file", new { path = "calculated/names.js", text = Names, expectedHash = (string)broken["hash"]! });
+        Assert.Empty(written["diagnostics"]!.AsArray());
+        await session.OkAsync("write_extension_file", new
+        {
+            path = "rules/api-names.js",
+            text = "maquettiste.rule({ id: \"api-names\", scope: \"resolved\", kinds: [\"entity\"], check(entity, model, report) {} });\n",
+            expectedHash = "new",
+        });
+
+        var files = (await session.OkAsync("list_extension_files"))["files"]!.AsArray();
+        Assert.Equal([("retention.json", "schema"), ("rules/api-names.js", "rule"), ("calculated/names.js", "calculated")],
+            files.Select(f => ((string)f!["path"]!, (string)f["kind"]!)));
+        var declared = Assert.Single(files[2]!["calculations"]!.AsArray())!;
+        Assert.Equal(("apiName", "entity", "string", "The entity's name in the API."),
+            ((string)declared["name"]!, (string)declared["kinds"]![0]!, (string)declared["schema"]!["type"]!, (string)declared["description"]!));
+        Assert.True((bool)files[1]!["rules"]![0]!["resolved"]!);
+        Assert.Equal("calculated", (string)(await session.OkAsync("read_extension_file", new { path = "calculated/names.js" }))["kind"]!);
+
+        var answer = await session.OkAsync("get_calculated", new { ids = new[] { "01J92P0V0FJ23CGSNKM7P1W5V7" } });
+        Assert.Equal("invoice", (string)answer["items"]![0]!["calculated"]!["apiName"]!);
+    }
+
+    [Fact]
     public async Task An_agent_writes_a_script_rule_and_validate_runs_it()
     {
         var ct = TestContext.Current.CancellationToken;

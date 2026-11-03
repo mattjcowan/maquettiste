@@ -49,7 +49,8 @@ Designed in `next-phase-1-design.md`. 0.11.0 is a preview and not released yet.
 
 Milestone D is designed in section 3 of `next-phase-2-design.md` and was merged in pull request #1. The first cut of
 operations (section 4.1) was merged in pull request #3, project-defined kinds (4.2) in #4, the small fixes in #5, and
-library packs with exports (5.2, 5.3) in #6; tests for packs (5.4) follow. 0.12.0 is not released yet.
+library packs with exports (5.2, 5.3) in #6, tests for packs (5.4) in #7; calculated values (5.5) follow. 0.12.0 is not
+released yet.
 
 | # | Item | Requested | Status | Design |
 | --- | --- | --- | --- | --- |
@@ -63,6 +64,7 @@ library packs with exports (5.2, 5.3) in #6; tests for packs (5.4) follow. 0.12.
 | 5.1 | Library packs: `uses` with version ranges, shared partials and namespaced helpers, libraries in project rule scripts, `pack new --library` | yes | Built, 0.12.0 | [5.2](next-phase-2-design.md#52-library-packs) |
 | 5.3 | Packs that read each other's exports: unit `exports`, `exported`, incremental keys that follow them, `pack exports` | yes | Built, 0.12.0 | [5.3](next-phase-2-design.md#53-packs-that-read-each-others-exports) |
 | 8.2 | Tests for packs: cases compared byte for byte, helper tests in the sandbox, `pack test` and `test_pack`, a case for each shipped pack | yes | Built, 0.12.0 | [5.4](next-phase-2-design.md#54-tests-for-packs) |
+| 5.2 | Values calculated once by project scripts: calculation files per kind, `calculated` in templates, rules and agents, checks after resolution; nothing when a project declares none | yes | Built, 0.12.0 | [5.5](next-phase-2-design.md#55-values-calculated-by-project-scripts) |
 
 ## Left over from built items
 
@@ -74,11 +76,10 @@ library packs with exports (5.2, 5.3) in #6; tests for packs (5.4) follow. 0.12.
 
 ## Phase 2: not built yet
 
-Designed in sections 4 to 6 of `next-phase-2-design.md`. The *build next* items left hold 24 tasks as designed.
+Designed in sections 4 to 6 of `next-phase-2-design.md`. The *build next* items left hold 18 tasks as designed.
 
 | # | Item | Requested | Status | Tasks | Design | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 5.2 | Values calculated once by project scripts | yes | Build next | 6 | [5.5](next-phase-2-design.md#55-values-calculated-by-project-scripts) | Costs nothing unless a project declares values. After the validation speed fix, with its own time budget on the bench model. |
 | 8.3 | Declarative rules and per-element suppressions | yes | Build next | 7 | [5.6](next-phase-2-design.md#56-declarative-rules) | Takes the resolved-checks stage designed in 5.5. Conditions written in the expression language come with 3.8. |
 | 7.2 | Impact before apply | yes | Build next | 5 | [6.1](next-phase-2-design.md#61-impact-before-apply) | Leaves out the export keys of 5.3. Migration steps and their grade come with 6.1. |
 | 7.3 | A model diff between two models | yes | Build next | 6 | [6.2](next-phase-2-design.md#62-a-model-diff-between-two-models) | Compares snapshots, folders and the working model. |
@@ -238,6 +239,10 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 - **Lock files.** The project-reference ranges in `packages.lock.json` still read `1.0.0-alpha.1` (harmless metadata
   from the first restore). Refreshing them would mean a release script that re-evaluates the locks at every version
   bump.
+- **Tests that hit sandbox time limits on busy runners.** CI fails now and then when a runner is loaded: a template
+  preview over the sandbox limit (MQ6007, `SnapshotEndpointTests`) or a scenario action over its 50 ms limit (MQ9503,
+  `ProcessDocsTests`). The limits guard real use; the test hosts should run with limits that do not depend on the
+  runner's load (the statement limit still bounds a script), so that a failure always means a defect.
 - **Regex limit tests.** Since the retry in 0.7.1, the catastrophic-pattern tests take about 0.5 s against a 1 s bound;
   watch them on slow runners.
 

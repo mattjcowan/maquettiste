@@ -97,11 +97,14 @@ internal sealed class TrackingTemplateContext : TemplateContext
             case TrackedList:
             case ValueList:
             case MapView:
+            case CalculatedView:
             case IResolvedObject:
             case ITemplateView:
                 return value;
             case Enum e:
                 return _unit.Run.Catalog.EnumName(e);
+            case RCalculated calculated:
+                return new CalculatedView(calculated, this);
             case JsonElement json:
                 return Wrap(TemplateValues.Plain(json));
         }
@@ -128,6 +131,7 @@ internal sealed class TrackingTemplateContext : TemplateContext
         TrackedList list => list.Source,
         ValueList list => list.Source,
         MapView map => map.Source,
+        CalculatedView calculated => calculated.Source,
         _ => value,
     };
 
@@ -159,6 +163,8 @@ internal sealed class TrackingTemplateContext : TemplateContext
         {
             case MapView:
                 return MapAccessor.Instance;
+            case CalculatedView:
+                return CalculatedAccessor.Instance;
             case KeyValuePair<string, object?>:
                 return EntryAccessor.Instance;
             case IScriptObject:

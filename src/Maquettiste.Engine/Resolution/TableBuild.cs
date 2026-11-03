@@ -12,6 +12,7 @@ internal sealed class TableBuild
         Source = source;
         Overlay = overlay;
         SourceElementId = sourceElementId;
+        table.FileId = source?.Id ?? overlay?.Id;
         if (overlay is not null)
         {
             foreach (var column in overlay.Columns)

@@ -54,6 +54,12 @@ internal sealed partial class ResolveRun
     /// <summary>The rows cache those runs go through.</summary>
     public SeedRowsCache SeedRows { get; init; } = new();
 
+    /// <summary>
+    /// The host of the run's calculated values (next-phase-2-design.md section 5.5), or <see langword="null"/> when the project declares
+    /// none; a full run binds every annotated object it builds to it (<see cref="CalculationHost.Build{T}"/>) and attaches it to the model.
+    /// </summary>
+    public CalculationHost? Calculations { get; init; }
+
     private static readonly Scripting.IScriptSandboxFactory DefaultScripts = new Scripting.ScriptSandboxFactory();
 
     public Inflector Inflector { get; }
@@ -205,8 +211,10 @@ internal sealed partial class ResolveRun
             CategoryTrees = new RList<RCategoryTree>(trees, ["k:category-tree"]),
             Diagnostics = [.. Diagnostics.Order(Diagnostic.Order)],
             ById = _byId, // lookups only, never enumerated; freezing a few hundred thousand ids costs more than it saves
+            Calculated = Calculations,
         };
         FreezeDependencies();
+        Calculations?.Attach(result);
         return result;
     }
 

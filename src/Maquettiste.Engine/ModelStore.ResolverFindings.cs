@@ -6,11 +6,13 @@ namespace Maquettiste.Engine;
 public sealed partial class ModelStore
 {
     private readonly Lock _findingsGate = new();
-    private (ModelSnapshot Snapshot, Task<IReadOnlyList<Diagnostic>> Task)? _findings;
+    private (ModelSnapshot Snapshot, Task<ResolverFindings> Task)? _findings;
     private readonly Lock _resolvedGate = new();
     private (ModelSnapshot Snapshot, Task<ResolvedSnapshot> Task)? _resolved;
     private readonly Lock _wholeGate = new();
     private (ModelSnapshot Snapshot, Task<ValidationReport> Task)? _whole;
+    private readonly Lock _modelGate = new();
+    private (ModelSnapshot Snapshot, Task<Resolution.ResolvedModel> Task)? _model;
 
     /// <summary>
     /// A snapshot's whole-model validation report and, when it has no error (pending migration facts aside, MQ4101), its resolved model:
@@ -48,8 +50,46 @@ public sealed partial class ModelStore
         var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, CancellationToken.None).ConfigureAwait(false);
         if (report.Diagnostics.Any(Generation.Outcomes.BlocksResolution))
             return new ResolvedSnapshot(snapshot, report, null);
-        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, CancellationToken.None).ConfigureAwait(false);
-        return new ResolvedSnapshot(snapshot, report, resolved);
+        Task<Resolution.ResolvedModel> resolving;
+        lock (_modelGate)
+        {
+            if (_model is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled)
+            {
+                resolving = cached.Task;
+            }
+            else
+            {
+                resolving = _services.Resolver.ResolveAsync(snapshot, null, CancellationToken.None);
+                _model = (snapshot, resolving);
+            }
+        }
+
+        return new ResolvedSnapshot(snapshot, report, await resolving.ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// The snapshot's resolved model when the store already holds it or is resolving it (<see cref="ResolvedAsync"/>, or a generation run
+    /// that shared its own), else <see langword="null"/>: a plan or generate after a validate of the same snapshot resolves nothing again,
+    /// and its checks find the values the validate evaluated in the same host.
+    /// </summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <returns>The resolution, or <see langword="null"/>.</returns>
+    internal Task<Resolution.ResolvedModel>? SharedModel(ModelSnapshot snapshot)
+    {
+        lock (_modelGate)
+            return _model is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled ? cached.Task : null;
+    }
+
+    /// <summary>Keeps a generation run's resolved model of a snapshot whose validation has no error, unless the store holds one of it.</summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <param name="model">Its resolved model.</param>
+    internal void ShareModel(ModelSnapshot snapshot, Resolution.ResolvedModel model)
+    {
+        lock (_modelGate)
+        {
+            if (_model is not { } cached || !ReferenceEquals(cached.Snapshot, snapshot) || cached.Task.IsFaulted || cached.Task.IsCanceled)
+                _model = (snapshot, Task.FromResult(model));
+        }
     }
 
     /// <summary>
@@ -92,9 +132,9 @@ public sealed partial class ModelStore
     /// <param name="snapshot">The snapshot.</param>
     /// <param name="ct">Cancellation of the wait only.</param>
     /// <returns>The resolver's diagnostics, or none when the model has validation errors.</returns>
-    private Task<IReadOnlyList<Diagnostic>> ResolverFindingsAsync(ModelSnapshot snapshot, CancellationToken ct)
+    private Task<ResolverFindings> ResolverFindingsAsync(ModelSnapshot snapshot, CancellationToken ct)
     {
-        Task<IReadOnlyList<Diagnostic>> task;
+        Task<ResolverFindings> task;
         lock (_findingsGate)
         {
             if (_findings is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled)
@@ -111,16 +151,22 @@ public sealed partial class ModelStore
         return task.WaitAsync(ct);
     }
 
-    private async Task<IReadOnlyList<Diagnostic>> FindAsync(ModelSnapshot snapshot)
+    private async Task<ResolverFindings> FindAsync(ModelSnapshot snapshot)
     {
         if (snapshot.LoadDiagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
-            return [];
+            return ResolverFindings.Empty;
         var shared = await ResolvedAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
         if (shared.Model is not { } resolved)
-            return [];
+            return ResolverFindings.Empty;
+        // The checks after resolution (next-phase-2-design.md section 5.5) run here, once per snapshot, so every validate path reports
+        // the calculated values that fail and the resolved rules' findings; the latter apart, for a validation without script rules.
+        var checks = _services.Checks is { } run
+            ? await run.RunAsync(snapshot, resolved, CancellationToken.None).ConfigureAwait(false)
+            : Validation.ResolvedCheckResult.Empty;
+
         // Positioned like validation's findings, so a text line, SARIF and the Problems panel point into the file.
         var positions = new Validation.Positions(_options, snapshot);
-        var found = new List<Diagnostic>(resolved.Diagnostics.Count);
+        var found = new List<Diagnostic>(resolved.Diagnostics.Count + checks.Findings.Count);
         foreach (var d in resolved.Diagnostics)
         {
             if (d.Line is null && d.FilePath is not null && d.JsonPointer is not null
@@ -130,7 +176,16 @@ public sealed partial class ModelStore
                 found.Add(d);
         }
 
-        return found;
+        found.AddRange(checks.Findings);
+        return new ResolverFindings(found, checks.ScriptFindings);
+    }
+
+    /// <summary>The resolver's findings with the checks' (<see cref="ResolverFindingsAsync"/>).</summary>
+    /// <param name="Findings">The resolver's diagnostics and the checks' findings other than script rules'.</param>
+    /// <param name="ScriptFindings">The resolved rules' findings, which a validation without script rules leaves out.</param>
+    private sealed record ResolverFindings(IReadOnlyList<Diagnostic> Findings, IReadOnlyList<Diagnostic> ScriptFindings)
+    {
+        public static ResolverFindings Empty { get; } = new([], []);
     }
 
     /// <summary>

@@ -107,6 +107,47 @@
       }
     },
     {
+      "name": "get_calculated",
+      "title": "Calculated values",
+      "description": "The calculated values the project's calculation files (extensions/calculated/*.js) compute for the objects the ids name, evaluated for those objects and whatever they read, nothing else: {items: [{id, kind, holder, calculated}], missing, declarations, diagnostics}. One item per resolved object an id names; an attribute held by several entities (inherited, or added by a stereotype) gives one item per holder, with holder set to the holder's id. calculated maps each name the object's kind declares to its value; a value that fails (MQ5010 thrown or over a limit, MQ5011 not fitting its schema, MQ5013 a cycle) is left out and its diagnostic is in diagnostics. declarations lists what the calculation files declare for the items' kinds (name, kinds, schema, description); missing lists the ids that name nothing. A model with errors returns no items and the errors in diagnostics. get_resolved_model pages also carry calculated values for their records.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "Element or sub-element ids (an entity, an attribute, a table, ...), 1 to 100; required.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          },
+          "names": {
+            "description": "Only these calculated value names; default every name each object's kind declares.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default": null
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      }
+    },
+    {
       "name": "get_database_view",
       "title": "Database view",
       "description": "The resolved physical view of one database: tables (from the entities mapped to it, by its byConvention setting or by mapping elements, their relations and overlays) with columns (dbTypeId when a column uses a database type), keys, indexes and foreign keys, views, sequences, routines (parameters and result with native types), database types (nativeName, isCreated), SQL objects (phase, dependsOn) and queries (parameters, sources, the select list with types, the trees as written, collections with their keys, and the SQL for the database's dialect), as generation sees them. Each table, view, sequence, routine, database type, SQL object and query carries its own file's annotations (displayName, pluralName, description, stereotypes, tags, category, properties, generation); a synthesized table without an overlay has none but the stereotypes its schema and package defaults give it, with their default properties. Columns, keys, foreign keys and indexes a stereotype contributes follow the table's own, keyed <tableKey>.<memberId>, and carry memberOrigin (source stereotype, schema-default or package-default; stereotype; memberId; the facets the table redefined), which own members leave null: name such a member by that keyed id, and change it on the stereotype or with the table's redefines and excludes, never by copying it as an own column.",
@@ -493,7 +534,7 @@
     {
       "name": "get_resolved_model",
       "title": "Resolved model",
-      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's; an attribute without a description of its own shows the comment of the column a binding maps it to, and descriptionColumn names that column), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id. operations: subject, level, effect, input members (type or keyOf), outcomes (isDefault, completes, returns with members, entity and list), errors (code, input), defaultOutcome, fires and requires by id. custom-elements: one custom element per record with type, package, content as written and members (id, name, array, parent, pointer), every member at any depth. databases: the database view (tables with columns, keys, foreign keys and indexes, members a stereotype contributes keyed <tableKey>.<memberId> with their memberOrigin, and on a table without a file the stereotypes its schema and package defaults give it; views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. migrations: one open migration fact per record, by database name then applied order, with its state, missing intent, after links, object, current key, from, to and content hash. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. A model with errors returns no items and the errors in diagnostics, unless its only errors are pending migration facts (MQ4101): those still return items.",
+      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's; an attribute without a description of its own shows the comment of the column a binding maps it to, and descriptionColumn names that column), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id. operations: subject, level, effect, input members (type or keyOf), outcomes (isDefault, completes, returns with members, entity and list), errors (code, input), defaultOutcome, fires and requires by id. custom-elements: one custom element per record with type, package, content as written and members (id, name, array, parent, pointer), every member at any depth. databases: the database view (tables with columns, keys, foreign keys and indexes, members a stereotype contributes keyed <tableKey>.<memberId> with their memberOrigin, and on a table without a file the stereotypes its schema and package defaults give it; views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. migrations: one open migration fact per record, by database name then applied order, with its state, missing intent, after links, object, current key, from, to and content hash. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. Each page also carries calculated: the calculated values of its records and the sub-objects they list, by site (the object id, or <holder id>/<attribute id> for an attribute its holder does not own) then name; a value that fails is left out and its diagnostic joins diagnostics. A model with errors returns no items and the errors in diagnostics, unless its only errors are pending migration facts (MQ4101): those still return items.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1282,7 +1323,7 @@
     {
       "name": "validate",
       "title": "Validate",
-      "description": "Validates the whole model, or only some elements, with the built-in rules and, by default, the project's script rules (extensions/rules/*.js, findings x/<id>; a rule file that does not load is MQ5002 on that file). Returns the diagnostics (rule id such as MQ3001, severity, message, element id, file path, JSON pointer, line and column) and the error, warning and info counts. With against (a model snapshot id; a folder holding another copy of the project too, from the command-line server), the whole model is also compared with that baseline: a change since it that a migration must follow and no migration fact the baseline lacks explains is MQ4102, a fact whose combined effect the model no longer shows is MQ4103, baseline objects whose owners have errors are skipped with MQ4109. A value that names nothing is bad-request.",
+      "description": "Validates the whole model, or only some elements, with the built-in rules and, by default, the project's script rules (extensions/rules/*.js, findings x/<id>; a rule file that does not load is MQ5002 on that file). On a model without errors it also evaluates every calculated value (extensions/calculated/*.js; MQ5010 to MQ5013 for the values that fail) and runs the rules registered with scope \"resolved\" on each resolved object of their kinds; validating some elements reports only what falls on them. Returns the diagnostics (rule id such as MQ3001, severity, message, element id, file path, JSON pointer, line and column) and the error, warning and info counts. With against (a model snapshot id; a folder holding another copy of the project too, from the command-line server), the whole model is also compared with that baseline: a change since it that a migration must follow and no migration fact the baseline lacks explains is MQ4102, a fact whose combined effect the model no longer shows is MQ4103, baseline objects whose owners have errors are skipped with MQ4109. A value that names nothing is bad-request.",
       "inputSchema": {
         "type": "object",
         "properties": {

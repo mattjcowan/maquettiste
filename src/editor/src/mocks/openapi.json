@@ -7289,7 +7289,7 @@
         ],
         "operationId": "listExtensionFiles",
         "summary": "The custom property schemas, script rules and rows scripts of the model",
-        "description": "The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules\n(`rules/<name>.js`), then the seeds' rows scripts (`seeds/<name>.js`, kind `seed-rows`), each ordinal by path, with size, hash\nand what is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load alone in the sandbox\n(MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not\ncall `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level\n(MQ5005, a warning). Then the custom kinds (`kinds/<type>.json`, kind `custom-kind`), with MQ1001 or MQ1002 when one does not\nparse or pass `custom-kind.json` and its own findings (MQ1017, MQ1018, MQ2009, MQ7212). No rows script runs. Rule findings\n(`x/<id>`) come from `POST /api/validate`.\n",
+        "description": "The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules\n(`rules/<name>.js`), then the seeds' rows scripts (`seeds/<name>.js`, kind `seed-rows`), each ordinal by path, with size, hash\nand what is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load alone in the sandbox\n(MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not\ncall `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level\n(MQ5005, a warning). Then the custom kinds (`kinds/<type>.json`, kind `custom-kind`), with MQ1001 or MQ1002 when one does not\nparse or pass `custom-kind.json` and its own findings (MQ1017, MQ1018, MQ2009, MQ7212). Then the calculation files\n(`calculated/<name>.js`, kind `calculated`), each loaded alone: MQ5002 or MQ5003 when one does not load, MQ5005 for a top-level\n`let` or `var`, and `calculations`, what it declares. No rows script runs and no calculated value is evaluated. Rule findings\n(`x/<id>`) come from `POST /api/validate`; `resolved` marks a rule registered with scope \"resolved\".\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelStore.ListExtensionFilesAsync()",
         "responses": {
@@ -7356,7 +7356,7 @@
         ],
         "operationId": "putExtensionFile",
         "summary": "Write one extension file",
-        "description": "`If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB, and the\nwrite goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its\nMQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is\nwritten as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in\n`diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is\nrefreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings\nreach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not\nload or does not register its rows exactly once comes back as MQ7127. A custom kind (`kinds/<type>.json`) must be JSON that\npasses `custom-kind.json`, else 422 (MQ1001, MQ1002); it is written in canonical form, and `diagnostics` carry its own findings\nand the MQ3033 findings of the elements of its type (at most 50, then a line with the count), which never refuse it. A path\nother than `<name>.json`, `rules/<name>.js`, `seeds/<name>.js` or `kinds/<type>.json`, or one through a link, is 400.\n",
+        "description": "`If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB, and the\nwrite goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its\nMQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is\nwritten as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in\n`diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is\nrefreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings\nreach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not\nload or does not register its rows exactly once comes back as MQ7127. A custom kind (`kinds/<type>.json`) must be JSON that\npasses `custom-kind.json`, else 422 (MQ1001, MQ1002); it is written in canonical form, and `diagnostics` carry its own findings\nand the MQ3033 findings of the elements of its type (at most 50, then a line with the count), which never refuse it. A\ncalculation file (`calculated/<name>.js`) is written as sent and loaded alone, never evaluated: MQ5002, MQ5003 and MQ5005 come\nback at once. A path other than `<name>.json`, `rules/<name>.js`, `seeds/<name>.js`, `kinds/<type>.json` or\n`calculated/<name>.js`, or one through a link, is 400.\n",
         "x-maquettiste-role": "maintainer",
         "x-maquettiste-engine": "ModelStore.WriteExtensionFileAsync(path, text, expectedHash)",
         "parameters": [
@@ -7519,7 +7519,7 @@
         ],
         "operationId": "moveExtensionFile",
         "summary": "Rename one extension file within its kind",
-        "description": "`If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a\n`<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`, a custom kind a `kinds/<type>.json`), else 422.\nA custom kind that custom elements use is 422, with one MQ1019 per element that would lose its kind, as a delete is. Nothing\nelse changes: a seed whose `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.\n",
+        "description": "`If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a\n`<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`, a custom kind a `kinds/<type>.json`, a\ncalculation file a `calculated/<name>.js`), else 422.\nA custom kind that custom elements use is 422, with one MQ1019 per element that would lose its kind, as a delete is. Nothing\nelse changes: a seed whose `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.\n",
         "x-maquettiste-role": "maintainer",
         "x-maquettiste-engine": "ModelStore.MoveExtensionFileAsync(move, expectedHash)",
         "parameters": [
@@ -13304,7 +13304,8 @@
         "required": [
           "items",
           "next",
-          "diagnostics"
+          "diagnostics",
+          "calculated"
         ],
         "properties": {
           "items": {
@@ -13387,7 +13388,15 @@
             "items": {
               "$ref": "#/components/schemas/Diagnostic"
             },
-            "description": "When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty."
+            "description": "When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise the failures of the calculated values the page reads (MQ5010, MQ5011, MQ5013)."
+          },
+          "calculated": {
+            "description": "The calculated values (`extensions/calculated/*.js`) of the records on the page and the sub-objects they list, by site (the object's id, or `<holder id>/<attribute id>` for an attribute its holder does not own), then by name, ordinal. A value that fails is left out and its diagnostic is in `diagnostics`; an object with no value is left out.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": true
+            }
           }
         }
       },
@@ -21651,7 +21660,8 @@
           "size",
           "hash",
           "diagnostics",
-          "rules"
+          "rules",
+          "calculations"
         ],
         "properties": {
           "path": {
@@ -21665,14 +21675,22 @@
               "$ref": "#/components/schemas/ExtensionRuleInfo"
             }
           },
+          "calculations": {
+            "description": "For a calculation file that loads, the calculated values it declares, in call order; empty for every other file.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalculatedValueDeclaration"
+            }
+          },
           "kind": {
-            "description": "`schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows script, `seeds/<name>.js`) or `custom-kind` (a custom kind, `kinds/<type>.json`).",
+            "description": "`schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows script, `seeds/<name>.js`), `custom-kind` (a custom kind, `kinds/<type>.json`) or `calculated` (a calculation file, `calculated/<name>.js`).",
             "type": "string",
             "enum": [
               "schema",
               "rule",
               "seed-rows",
-              "custom-kind"
+              "custom-kind",
+              "calculated"
             ]
           },
           "size": {
@@ -21695,7 +21713,8 @@
         "required": [
           "id",
           "severity",
-          "wholeModel"
+          "wholeModel",
+          "resolved"
         ],
         "properties": {
           "id": {
@@ -21708,6 +21727,43 @@
           "wholeModel": {
             "type": "boolean",
             "description": "The rule was registered with scope \"model\": check(model, report) runs once per whole-model validation (validate, generation), not per element, and a validation of some elements (a save) skips it."
+          },
+          "resolved": {
+            "type": "boolean",
+            "description": "The rule was registered with scope \"resolved\": check(element, model, report) runs on each resolved object of its kinds in the checks after resolution (validate, generation), never on element saves or in previews."
+          }
+        }
+      },
+      "CalculatedValueDeclaration": {
+        "x-engine-record": "Maquettiste.Engine.Scripting.CalculatedValueDeclaration",
+        "description": "What one `maquettiste.calculated` call in a calculation file declares.",
+        "type": "object",
+        "required": [
+          "name",
+          "kinds",
+          "schema",
+          "description"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9]*$"
+          },
+          "kinds": {
+            "description": "The resolved kinds whose objects get the value, ordinal.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "schema": {
+            "description": "The JSON Schema every value must fit."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -21730,7 +21786,8 @@
               "schema",
               "rule",
               "seed-rows",
-              "custom-kind"
+              "custom-kind",
+              "calculated"
             ]
           },
           "hash": {

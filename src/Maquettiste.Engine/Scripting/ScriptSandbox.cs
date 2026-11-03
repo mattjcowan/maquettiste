@@ -158,7 +158,9 @@ internal sealed record PreparedScript(ScriptSource Source, Prepared<AstScript> P
         var (at, col) = Map(found.Location.Start.Line, found.Location.Start.Column + 1);
         var name = found.Declarations.Count > 0 && found.Declarations[0].Id is Identifier id ? $" '{id.Name}'" : "";
         var keyword = found.Kind == VariableDeclarationKind.Var ? "var" : "let";
-        var (file, what) = ScriptSandbox.IsRowsScript(Source.Path) ? ("Rows script", "a rows script") : ("Rule file", "a rule");
+        var (file, what) = ScriptSandbox.IsRowsScript(Source.Path) ? ("Rows script", "a rows script")
+            : ScriptSandbox.IsCalculationScript(Source.Path) ? ("Calculation file", "a calculated value")
+            : ("Rule file", "a rule");
         var warning = RuleCatalog.Create("MQ5005",
             $"{file} {Source.Path} declares{name} with {keyword} at its top level: {what} keeps no state between calls, so this file's " +
             "results are never cached. Use const, or declare the variable inside the function that uses it.",
@@ -270,8 +272,8 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     public IReadOnlyList<ScriptRegistration> Registrations => _registrations;
 
     /// <summary>The rules the scripts registered, with the severity each one declared (the Extensions screen and Settings › Validation).</summary>
-    internal IReadOnlyList<(string Id, DiagnosticSeverity Severity, bool WholeModel)> Rules =>
-        [.. _rules.Values.OrderBy(r => r.Id, StringComparer.Ordinal).Select(r => (r.Id, r.Severity, r.WholeModel))];
+    internal IReadOnlyList<(string Id, DiagnosticSeverity Severity, bool WholeModel, bool Resolved)> Rules =>
+        [.. _rules.Values.OrderBy(r => r.Id, StringComparer.Ordinal).Select(r => (r.Id, r.Severity, r.WholeModel, r.Resolved))];
 
     /// <summary>Whether a limit breach, cancellation or host failure left the engine in a state the pool should not reuse.</summary>
     public bool Faulted { get; private set; }
@@ -346,8 +348,15 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     /// <c>seeds</c>). A pack script in a folder of that name deeper in its pack is not one.
     /// </summary>
     /// <param name="path">The script path.</param>
-    /// <returns><see langword="true"/> for rule and rows scripts.</returns>
-    public static bool IsRuleScript(string path) => InModelFolder(path, "rules") || InModelFolder(path, "seeds");
+    /// <returns><see langword="true"/> for rule, rows and calculation scripts.</returns>
+    /// <remarks>Calculation files (<c>extensions/calculated/</c>, next-phase-2-design.md section 5.5) are model scripts too: they share the
+    /// scope per file, the early freeze and MQ5002, MQ5003 and MQ5005.</remarks>
+    public static bool IsRuleScript(string path) => InModelFolder(path, "rules") || InModelFolder(path, "seeds") || InModelFolder(path, "calculated");
+
+    /// <summary>Whether a script path is a calculation file: a file directly in the model's <c>extensions/calculated/</c> folder.</summary>
+    /// <param name="path">The script path.</param>
+    /// <returns><see langword="true"/> for calculation files.</returns>
+    public static bool IsCalculationScript(string path) => InModelFolder(path, "calculated");
 
     /// <summary>Whether a script path is a rows script: a file directly in the model's <c>extensions/seeds/</c> folder.</summary>
     /// <param name="path">The script path.</param>
@@ -620,6 +629,8 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
             new ClrFunction(_engine, "rule", (_, args) => RegisterRule(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
         api.FastSetProperty("rows", new PropertyDescriptor(
             new ClrFunction(_engine, "rows", (_, args) => RegisterRows(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
+        api.FastSetProperty("calculated", new PropertyDescriptor(
+            new ClrFunction(_engine, "calculated", (_, args) => RegisterCalculated(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
         var paramsGetter = new ClrFunction(_engine, "get params", (_, _) => CurrentParameters(), 0, PropertyFlag.Configurable);
         api.DefineOwnProperty("params", new GetSetPropertyDescriptor(paramsGetter, JsValue.Undefined, enumerable: true, configurable: false));
         api.FastSetProperty("use", new PropertyDescriptor(
@@ -705,6 +716,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     {
         var path = _loadingPath ?? throw TypeError($"maquettiste.{api} can only be called while scripts load.");
         RefuseInRowsScript(path, api);
+        RefuseInCalculationFile(path, api);
         RefuseInTestFile(path, api);
         var name = args.Length > 0 && args[0] is JsString s ? s.ToString() : "";
         if (name.Length == 0)
@@ -749,6 +761,16 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     {
         if (IsRowsScript(path))
             throw TypeError($"maquettiste.{api} cannot be called by a rows script ({path}): a rows script registers its rows once with maquettiste.rows(fn).");
+    }
+
+    /// <summary>
+    /// A calculation file declares calculated values and nothing else (next-phase-2-design.md section 5.5): any other registration fails
+    /// its load.
+    /// </summary>
+    private void RefuseInCalculationFile(string path, string api)
+    {
+        if (IsCalculationScript(path))
+            throw TypeError($"maquettiste.{api} cannot be called by a calculation file ({path}): a calculation file declares calculated values only, with maquettiste.calculated({{ name, kinds, schema, value }}).");
     }
 
     /// <summary>A helper test file registers tests and nothing else (next-phase-2-design.md section 5.4): any other call fails its load.</summary>
@@ -896,6 +918,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     {
         var path = _loadingPath ?? throw TypeError("maquettiste.rows can only be called while scripts load.");
         RefuseInTestFile(path, "rows");
+        RefuseInCalculationFile(path, "rows");
         if (!IsRowsScript(path))
             throw TypeError($"maquettiste.rows can only be called by a rows script in extensions/seeds/, not by {path}.");
         if (args.Length == 0 || args[0] is not Function fn)
@@ -911,6 +934,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     {
         var path = _loadingPath ?? throw TypeError("maquettiste.rule can only be called while scripts load.");
         RefuseInRowsScript(path, "rule");
+        RefuseInCalculationFile(path, "rule");
         RefuseInTestFile(path, "rule");
         if (args.Length == 0 || args[0] is not ObjectInstance spec)
             throw TypeError("maquettiste.rule({ id, severity, kinds, scope, check }): the argument must be an object.");
@@ -921,8 +945,26 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         var severityValue = spec.Get("severity");
         if (!severityValue.IsUndefined() && !TryParseSeverity(severityValue, out severity))
             throw TypeError($"maquettiste.rule '{id}': severity must be 'error', 'warning' or 'info'.");
+        // scope "element" (the default) checks each element of its kinds; "model" checks the whole model once (section 5.7);
+        // "resolved" checks each resolved object of its kinds after resolution (next-phase-2-design.md section 5.5).
+        var wholeModel = false;
+        var resolved = false;
+        var scopeValue = spec.Get("scope");
+        if (!scopeValue.IsUndefined())
+        {
+            (wholeModel, resolved) = (scopeValue is JsString scopeName ? scopeName.ToString() : null) switch
+            {
+                "element" => (false, false),
+                "model" => (true, false),
+                "resolved" => (false, true),
+                _ => throw TypeError($"maquettiste.rule '{id}': scope must be 'element', 'model' or 'resolved'."),
+            };
+        }
+
         FrozenSet<string>? kinds = null;
         var kindsValue = spec.Get("kinds");
+        if (wholeModel && !kindsValue.IsUndefined() && !kindsValue.IsNull())
+            throw TypeError($"maquettiste.rule '{id}': a rule with scope 'model' checks the whole model once and takes no kinds.");
         if (!kindsValue.IsUndefined() && !kindsValue.IsNull())
         {
             if (kindsValue is not ObjectInstance kindList)
@@ -932,36 +974,282 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
             for (var i = 0UL; i < length; i++)
             {
                 var item = kindList.Get(JsNumber.Create((double)i));
-                if (item is not JsString kindName || !KindInfo.TryGet(kindName.ToString(), out _))
-                    throw TypeError($"maquettiste.rule '{id}': unknown kind '{TypeConverter.ToString(item)}'.");
-                names.Add(kindName.ToString());
+                var known = item is JsString kindName && (resolved ? ResolvedKinds.Contains(kindName.ToString()) : KindInfo.TryGet(kindName.ToString(), out _));
+                if (!known)
+                {
+                    throw TypeError(resolved
+                        ? $"maquettiste.rule '{id}': '{TypeConverter.ToString(item)}' is not a kind of the resolved model (one of {string.Join(", ", ResolvedKinds.All)})."
+                        : $"maquettiste.rule '{id}': unknown kind '{TypeConverter.ToString(item)}'.");
+                }
+
+                names.Add(item.ToString());
             }
 
             kinds = names.Count == 0 ? null : names.ToFrozenSet(StringComparer.Ordinal);
         }
 
-        // scope "element" (the default) checks each element of its kinds; "model" checks the whole model once (section 5.7).
-        var wholeModel = false;
-        var scopeValue = spec.Get("scope");
-        if (!scopeValue.IsUndefined())
-        {
-            wholeModel = (scopeValue is JsString scopeName ? scopeName.ToString() : null) switch
-            {
-                "element" => false,
-                "model" => true,
-                _ => throw TypeError($"maquettiste.rule '{id}': scope must be 'element' or 'model'."),
-            };
-        }
-
-        if (wholeModel && !kindsValue.IsUndefined() && !kindsValue.IsNull())
-            throw TypeError($"maquettiste.rule '{id}': a rule with scope 'model' checks the whole model once and takes no kinds.");
+        if (resolved && kinds is null)
+            throw TypeError($"maquettiste.rule '{id}': a rule with scope 'resolved' names the kinds it checks (kinds: [\"entity\"]).");
         if (spec.Get("check") is not Function check)
             throw TypeError($"maquettiste.rule '{id}': check must be a function.");
         if (_rules.TryGetValue(id, out var existing))
             throw TypeError($"A rule with id '{id}' is already registered by {existing.DeclaredIn}.");
-        _rules.Add(id, new RuleSpec(id, severity, kinds, check, path, wholeModel));
-        _registrations.Add(new ScriptRegistration(ScriptRegistrationKind.Rule, id, path) { WholeModel = wholeModel, Kinds = kinds });
+        _rules.Add(id, new RuleSpec(id, severity, kinds, check, path, wholeModel, resolved));
+        _registrations.Add(new ScriptRegistration(ScriptRegistrationKind.Rule, id, path) { WholeModel = wholeModel, Resolved = resolved, Kinds = kinds });
         return JsValue.Undefined;
+    }
+
+    /// <summary>The keys a <c>maquettiste.calculated</c> declaration may have.</summary>
+    private static readonly FrozenSet<string> CalculatedKeys = FrozenSet.Create(StringComparer.Ordinal, "name", "kinds", "schema", "description", "value");
+
+    /// <summary>The calculated values this engine's calculation files declared, by (name, kind).</summary>
+    private readonly Dictionary<(string Name, string Kind), CalculationSpec> _calculations = [];
+
+    /// <summary>A declared calculated value: its function and the file that declared it.</summary>
+    private sealed record CalculationSpec(string Name, Function Value, string DeclaredIn);
+
+    /// <summary>
+    /// <c>maquettiste.calculated({ name, kinds, schema, description, value })</c> (next-phase-2-design.md section 5.5): only a calculation
+    /// file may call it. A key outside those five, a missing or malformed part, a kind outside <see cref="ResolvedKinds.All"/>, a schema
+    /// that does not compile or a (name, kind) pair another call already declared is a <c>TypeError</c>, so the file fails to load with
+    /// MQ5002 at the call; of two files that declare one pair, the later by path (they load in path order) gets it.
+    /// </summary>
+    private JsValue RegisterCalculated(JsValue[] args)
+    {
+        var path = _loadingPath ?? throw TypeError("maquettiste.calculated can only be called while scripts load.");
+        RefuseInTestFile(path, "calculated");
+        if (!IsCalculationScript(path))
+        {
+            throw TypeError($"maquettiste.calculated can only be called by a calculation file in extensions/calculated/, not by {path}: calculated " +
+                "values belong to the project.");
+        }
+
+        if (args.Length == 0 || args[0] is not ObjectInstance spec || spec is Function || spec.IsArray())
+            throw TypeError("maquettiste.calculated({ name, kinds, schema, value }): the argument must be an object.");
+        var name = spec.Get("name") is JsString nameValue ? nameValue.ToString() : "";
+        if (!IsCalculatedName(name))
+        {
+            throw TypeError($"maquettiste.calculated: name '{name}' must start with a lowercase letter, hold only letters and digits " +
+                "(^[a-z][A-Za-z0-9]*$) and be at most 64 characters.");
+        }
+
+        foreach (var key in spec.GetOwnPropertyKeys(Types.String))
+        {
+            if (!CalculatedKeys.Contains(key.ToString()))
+                throw TypeError($"maquettiste.calculated '{name}': unknown key '{key}'; the keys are name, kinds, schema, description and value.");
+        }
+
+        var kinds = new SortedSet<string>(StringComparer.Ordinal);
+        if (spec.Get("kinds") is not ObjectInstance kindList || !kindList.IsArray())
+            throw TypeError($"maquettiste.calculated '{name}': kinds must be an array of one or more resolved kinds, such as [\"entity\"].");
+        var length = TypeConverter.ToLength(kindList.Get("length"));
+        for (var i = 0UL; i < length; i++)
+        {
+            var item = kindList.Get(JsNumber.Create((double)i));
+            if (item is not JsString kindName || !ResolvedKinds.Contains(kindName.ToString()))
+            {
+                throw TypeError($"maquettiste.calculated '{name}': '{TypeConverter.ToString(item)}' is not a resolved kind; the kinds are " +
+                    string.Join(", ", ResolvedKinds.All) + ".");
+            }
+
+            kinds.Add(kindName.ToString());
+        }
+
+        if (kinds.Count == 0)
+            throw TypeError($"maquettiste.calculated '{name}': kinds must name at least one resolved kind.");
+        var schemaValue = spec.Get("schema");
+        if (schemaValue.IsUndefined())
+            throw TypeError($"maquettiste.calculated '{name}': schema is required: the JSON Schema every value must fit, such as {{ type: \"string\" }}.");
+        JsonElement schema;
+        try
+        {
+            schema = CalculationJson(_values.FromJs(schemaValue, $"schema of calculated value '{name}'"));
+        }
+        catch (ScriptValueException e)
+        {
+            throw TypeError($"maquettiste.calculated '{name}': schema must be a JSON Schema made of JSON values: {e.Message}");
+        }
+
+        if (schema.ValueKind is not (JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False))
+            throw TypeError($"maquettiste.calculated '{name}': schema must be a JSON Schema object (or true or false).");
+        if (CompileCalculationSchema(schema).Error is { } error)
+            throw TypeError($"maquettiste.calculated '{name}': its schema does not compile: {error}");
+        var descriptionValue = spec.Get("description");
+        if (!descriptionValue.IsUndefined() && descriptionValue is not JsString)
+            throw TypeError($"maquettiste.calculated '{name}': description must be a string.");
+        var description = descriptionValue is JsString text ? text.ToString() : null;
+        if (spec.Get("value") is not Function value)
+            throw TypeError($"maquettiste.calculated '{name}': value must be a function value(element, model) that returns the value.");
+        foreach (var kind in kinds)
+        {
+            if (_calculations.TryGetValue((name, kind), out var existing))
+                throw TypeError($"The calculated value '{name}' for {kind} is already declared by {existing.DeclaredIn}.");
+        }
+
+        foreach (var kind in kinds)
+            _calculations.Add((name, kind), new CalculationSpec(name, value, path));
+        var (line, column) = InCode(FromStack(SafeStackTrace()) ?? (path, null, null)) is var (file, l, c) && string.Equals(file, path, StringComparison.Ordinal)
+            ? (l, c)
+            : (null, null);
+        _registrations.Add(new ScriptRegistration(ScriptRegistrationKind.CalculatedValue, name, path)
+        {
+            CalculatedValue = new CalculatedValueDeclaration(name, [.. kinds], schema, description),
+            Line = line,
+            Column = column,
+        });
+        return JsValue.Undefined;
+    }
+
+    /// <summary>Whether a text is a calculated value's name: <c>^[a-z][A-Za-z0-9]*$</c>, at most 64 characters.</summary>
+    /// <param name="name">The text.</param>
+    /// <returns><see langword="true"/> for a valid name.</returns>
+    internal static bool IsCalculatedName(string name) =>
+        name.Length is > 0 and <= 64 && name[0] is >= 'a' and <= 'z' && name.All(char.IsAsciiLetterOrDigit);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (global::Json.Schema.JsonSchema? Schema, string? Error)> CompiledSchemas =
+        new(StringComparer.Ordinal);
+
+    private static readonly global::Json.Schema.EvaluationOptions SchemaCheck = new()
+    {
+        OutputFormat = global::Json.Schema.OutputFormat.List, Culture = CultureInfo.InvariantCulture,
+    };
+
+    /// <summary>
+    /// Compiles a calculated value's schema (draft 2020-12, as extension files use), once per distinct text: every engine of a pool
+    /// registers the same declarations, and the calculation host checks values against the same schema. A reference that cannot be
+    /// resolved fails here, not on the first value.
+    /// </summary>
+    /// <param name="schema">The schema.</param>
+    /// <returns>The compiled schema, or the reason it does not compile.</returns>
+    internal static (global::Json.Schema.JsonSchema? Schema, string? Error) CompileCalculationSchema(JsonElement schema)
+    {
+        var text = schema.GetRawText();
+        if (CompiledSchemas.TryGetValue(text, out var done))
+            return done;
+        (global::Json.Schema.JsonSchema?, string?) result;
+        try
+        {
+            var options = new global::Json.Schema.BuildOptions { SchemaRegistry = new global::Json.Schema.SchemaRegistry() };
+            var compiled = global::Json.Schema.JsonSchema.Build(schema, options, new Uri("https://maquettiste.invalid/calculated/schema.json"));
+            using var empty = JsonDocument.Parse("{}");
+            _ = compiled.Evaluate(empty.RootElement, SchemaCheck); // surfaces unresolvable references now, once
+            result = (compiled, null);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            result = (null, e.Message);
+        }
+
+        if (CompiledSchemas.Count >= 1024)
+            CompiledSchemas.Clear(); // a long-lived host's edits only; a bound, not a policy
+        return CompiledSchemas.GetOrAdd(text, result);
+    }
+
+    /// <inheritdoc/>
+    public object? RunCalculation(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(model);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_calculations.TryGetValue((name, element.Kind), out var calculation))
+        {
+            throw new ScriptErrorException(new Diagnostic("MQ5002", DiagnosticSeverity.Error,
+                $"No calculated value '{name}' is declared for {element.Kind}.", element.Id, null, null, null, null));
+        }
+
+        return Run(new CallSite($"Calculated value '{name}'", calculation.DeclaredIn, element.Id, true), ctx, () =>
+        {
+            var result = _engine.Call(calculation.Value, JsValue.Undefined, [_values.ToJs(element), _values.ToJs(model)]);
+            return CalculationValue(_values.FromJs(result, $"value of calculated value '{name}'"), name);
+        });
+    }
+
+    /// <summary>
+    /// A value a calculated value's function returned, checked to be JSON: null, booleans, strings, finite numbers (integral ones within
+    /// ±2^53−1 as <see cref="long"/>, as script results are), and arrays (<see cref="IReadOnlyList{T}"/>) and objects
+    /// (<see cref="ScriptObjectMap"/>) of them. A model object, a function or a number that is not finite is a
+    /// <see cref="ScriptValueException"/>, which the call reports.
+    /// </summary>
+    private static object? CalculationValue(object? value, string name)
+    {
+        switch (value)
+        {
+            case null or bool or string or long:
+                return value;
+            case double d when double.IsFinite(d):
+                return d;
+            case ScriptObjectMap map:
+                foreach (var (_, item) in map)
+                    CalculationValue(item, name);
+                return map;
+            case IReadOnlyList<object?> list:
+                var items = new object?[list.Count];
+                for (var i = 0; i < items.Length; i++)
+                    items[i] = CalculationValue(list[i], name);
+                return items;
+            case IResolvedObject r:
+                throw new ScriptValueException($"Calculated value '{name}' returned a model object ({r.Kind} {r.Id}); a calculated value holds JSON values " +
+                    "only: return its id instead.");
+            case double:
+                throw new ScriptValueException($"Calculated value '{name}' returned a number that is not finite; a calculated value holds JSON values only.");
+            default:
+                throw new ScriptValueException($"Calculated value '{name}' returned a {value.GetType().Name}; a calculated value holds JSON values only.");
+        }
+    }
+
+    /// <summary>A JSON value (as <see cref="CalculationValue"/> accepts it) as a <see cref="JsonElement"/>.</summary>
+    /// <param name="value">The value.</param>
+    /// <returns>The element.</returns>
+    internal static JsonElement CalculationJson(object? value)
+    {
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer, RowsWriterOptions))
+            WriteValue(writer, value, 0);
+        using var document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.Clone();
+
+        static void WriteValue(Utf8JsonWriter writer, object? value, int depth)
+        {
+            if (depth > 64)
+                throw new ScriptValueException("The value nests deeper than 64 levels.");
+            switch (value)
+            {
+                case null:
+                    writer.WriteNullValue();
+                    break;
+                case bool b:
+                    writer.WriteBooleanValue(b);
+                    break;
+                case string s:
+                    writer.WriteStringValue(s);
+                    break;
+                case long l:
+                    writer.WriteNumberValue(l);
+                    break;
+                case double d when double.IsFinite(d):
+                    writer.WriteNumberValue(d);
+                    break;
+                case IReadOnlyDictionary<string, object?> map:
+                    writer.WriteStartObject();
+                    foreach (var (key, item) in map)
+                    {
+                        writer.WritePropertyName(key);
+                        WriteValue(writer, item, depth + 1);
+                    }
+
+                    writer.WriteEndObject();
+                    break;
+                case IReadOnlyList<object?> list:
+                    writer.WriteStartArray();
+                    foreach (var item in list)
+                        WriteValue(writer, item, depth + 1);
+                    writer.WriteEndArray();
+                    break;
+                default:
+                    throw new ScriptValueException($"A value of type {value.GetType().Name} is not JSON.");
+            }
+        }
     }
 
     private static bool TryParseSeverity(JsValue value, out DiagnosticSeverity severity)
@@ -1058,8 +1346,8 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
                 $"No validation rule with id '{ruleId}' is registered.", element.Element.Id, element.Path, null, null, null));
         }
 
-        if (rule.WholeModel || (rule.Kinds is not null && !rule.Kinds.Contains(KindInfo.Get(element.Element.Kind).Name)))
-            return []; // a whole-model rule runs through RunModelRule only
+        if (rule.WholeModel || rule.Resolved || (rule.Kinds is not null && !rule.Kinds.Contains(KindInfo.Get(element.Element.Kind).Name)))
+            return []; // a whole-model rule runs through RunModelRule only, a resolved rule through RunResolvedRule
 
         var diagnostics = new List<Diagnostic>();
         var open = true;
@@ -1115,6 +1403,51 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
             Run(new CallSite($"Rule 'x/{ruleId}'", rule.DeclaredIn, null, true), ctx, () =>
             {
                 _engine.Call(rule.Check, JsValue.Undefined, [RuleModel(model), report]);
+                return 0;
+            });
+        }
+        catch (ScriptErrorException ex)
+        {
+            diagnostics.Add(ex.Diagnostic);
+        }
+        finally
+        {
+            open = false;
+        }
+
+        return diagnostics;
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<Diagnostic> RunResolvedRule(string ruleId, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(ruleId);
+        ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(model);
+        if (!_rules.TryGetValue(ruleId, out var rule) || !rule.Resolved)
+        {
+            throw new ScriptErrorException(new Diagnostic("MQ5002", DiagnosticSeverity.Error,
+                $"No resolved validation rule with id '{ruleId}' is registered.", element.Id, rule?.DeclaredIn, null, null, null));
+        }
+
+        if (rule.Kinds is not null && !rule.Kinds.Contains(element.Kind))
+            return [];
+        var diagnostics = new List<Diagnostic>();
+        var open = true;
+        var report = new ClrFunction(_engine, "report", (_, args) =>
+        {
+            if (!open)
+                throw TypeError($"report() of rule '{ruleId}' was called after the rule returned.");
+            var message = args.Length > 0 && !args[0].IsUndefined() ? TypeConverter.ToString(args[0]) : "";
+            var (pointer, severity) = ReportOptions(rule, args.Length > 1 ? args[1] as ObjectInstance : null);
+            diagnostics.Add(new Diagnostic("x/" + rule.Id, severity, message, element.Id, null, pointer, null, null));
+            return JsValue.Undefined;
+        }, 2, PropertyFlag.Configurable);
+        try
+        {
+            Run(new CallSite($"Rule 'x/{ruleId}'", rule.DeclaredIn, element.Id, true), ctx, () =>
+            {
+                _engine.Call(rule.Check, JsValue.Undefined, [_values.ToJs(element), _values.ToJs(model), report]);
                 return 0;
             });
         }

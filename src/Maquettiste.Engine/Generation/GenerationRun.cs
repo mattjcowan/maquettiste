@@ -167,7 +167,10 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
         var snapshot = await Clock.TimeAsync(PipelineStage.Load, progress, () => store.GetSnapshotAsync(ct), s => s.Documents.Count).ConfigureAwait(false);
 
         var resolveStart = Clock.Now;
-        var speculative = barriers ? null : CancellationTokenSource.CreateLinkedTokenSource(ct);
+        // The store's resolved model of this snapshot when it holds one (a validate or a preview resolved it, or an earlier run shared
+        // its own): the run resolves nothing again, and its checks reuse the values that host evaluated.
+        var shared = store.SharedModel(snapshot);
+        var speculative = barriers || shared is not null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct);
         Task<ResolvedModel>? early = null;
         if (speculative is not null)
         {
@@ -219,7 +222,15 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
                 Planning.OutputStats.Collect(services.Options.RepoRoot, await statesTask.ConfigureAwait(false), services.Options.EffectiveParallelism, ct), ct));
 
             ResolvedModel resolved;
-            if (early is not null)
+            if (shared is not null)
+            {
+                start = Clock.Now;
+                progress?.Report(new ProgressUpdate(PipelineStage.Resolve, 0, 0, null, null));
+                resolved = await shared.WaitAsync(ct).ConfigureAwait(false);
+                Clock.Record(PipelineStage.Resolve, start, snapshot.Documents.Count);
+                progress?.Report(new ProgressUpdate(PipelineStage.Resolve, snapshot.Documents.Count, snapshot.Documents.Count, null, null));
+            }
+            else if (early is not null)
             {
                 progress?.Report(new ProgressUpdate(PipelineStage.Resolve, 0, 0, null, null));
                 used = true;
@@ -234,9 +245,23 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
                 Clock.Record(PipelineStage.Resolve, start, snapshot.Documents.Count);
             }
 
+            // The validation passed, so a validate or a preview of this snapshot would resolve the same model: the store keeps this one.
+            if (shared is null)
+                store.ShareModel(snapshot, resolved);
+
             Add(resolved.Diagnostics);
             if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
                 return null;
+
+            // The checks after resolution (next-phase-2-design.md section 5.5): a calculated value that fails or a resolved rule's
+            // error stops the run before it plans, as validate reports them.
+            if (services.Checks is { } checks)
+            {
+                var found = await checks.RunAsync(snapshot, resolved, ct).ConfigureAwait(false);
+                Add(found.All);
+                if (found.All.Any(Outcomes.IsInvalid))
+                    return null;
+            }
 
             var (diffs, pendingSnapshots) = baseline is null
                 ? await SchemaDiffsAsync(resolved, packs, mode, selection is null, ct).ConfigureAwait(false)

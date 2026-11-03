@@ -620,6 +620,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var extensions = new List<ExtensionDocument>();
         var scripts = new List<ScriptSource>();
         var seedScripts = new List<ScriptSource>();
+        var calculationScripts = new List<ScriptSource>();
         var shards = new List<LocaleShardDocument>();
         var customKinds = new List<CustomKindDocument>();
         foreach (var entry in entries.Values.OrderBy(e => e.ModelPath, StringComparer.Ordinal))
@@ -657,13 +658,19 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                     if (entry.Parsed.Text is { } rows)
                         seedScripts.Add(new ScriptSource(_paths.ToRepoPath(entry.ModelPath), rows, entry.Hash));
                     break;
+                case ModelFileKind.CalculationScript:
+                    // Calculation files are read, never run here: a calculated value is evaluated when something reads it (section 5.5).
+                    diagnostics.AddRange(entry.Parsed.Diagnostics);
+                    if (entry.Parsed.Text is { } calculation)
+                        calculationScripts.Add(new ScriptSource(_paths.ToRepoPath(entry.ModelPath), calculation, entry.Hash));
+                    break;
             }
         }
 
         var libraries = Libraries(settings, settingsEntry, entries, diagnostics);
         diagnostics.Sort(Diagnostic.Order);
         var snapshot = ModelSnapshot.CreateAfter(previousSnapshot, documents, settings, settingsHash, extensions, scripts, version, diagnostics,
-            options.EffectiveParallelism, ct, shards, seedScripts, customKinds, libraries);
+            options.EffectiveParallelism, ct, shards, seedScripts, customKinds, libraries, calculationScripts);
         return (snapshot, byPath);
     }
 
@@ -894,6 +901,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         result.UnionWith(EnumerateFiles("extensions", ".json", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/rules", ".js", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/seeds", ".js", recursive: false));
+        result.UnionWith(EnumerateFiles("extensions/calculated", ".js", recursive: false));
         result.UnionWith(EnumerateFiles("extensions/kinds", ".json", recursive: false));
         return result;
     }

@@ -200,12 +200,70 @@ public sealed class ExtensionFilesTests
         await Assert.ThrowsAsync<ExtensionPathException>(() => repo.Store.WriteExtensionFileAsync("seeds/nested/a.js", Rows, null, Ct));
     }
 
+    [Fact]
+    public async Task A_calculation_file_is_checked_alone_on_write()
+    {
+        // next-phase-2-design.md section 5.5: calculated/<name>.js is a calculation file (kind calculated), written as sent and loaded
+        // alone, never evaluated, so MQ5002, MQ5003 and MQ5005 come back at once; the list shows what it declares and marks resolved rules.
+        await using var repo = E2ERepo.Create(demo: false);
+        const string Names = """
+            maquettiste.calculated({
+              name: "apiName",
+              kinds: ["entity"],
+              schema: { type: "string" },
+              description: "The name an API gives the entity.",
+              value(entity) { return entity.name.toLowerCase(); },
+            });
+
+            """;
+
+        var created = await repo.Store.WriteExtensionFileAsync("calculated/names.js", Names, null, Ct);
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        Assert.Empty(created.Diagnostics);
+        Assert.Equal(Names, repo.Repo.ReadFile(".maquettiste/extensions/calculated/names.js"));
+        Assert.Equal([".maquettiste/extensions/calculated/names.js"], (await repo.Store.GetSnapshotAsync(Ct)).CalculationScripts.Select(s => s.Path));
+        Assert.Equal("calculated", (await repo.Store.ReadExtensionFileAsync("calculated/names.js", Ct))!.Kind);
+        const string Resolved = """
+            maquettiste.rule({ id: "api-names", scope: "resolved", kinds: ["entity"], check(entity, model, report) {} });
+
+            """;
+        await repo.Store.WriteExtensionFileAsync("rules/api.js", Resolved, null, Ct);
+
+        // Listed last, with its declarations; the resolved rule is marked.
+        var files = (await repo.Store.ListExtensionFilesAsync(Ct)).Files;
+        Assert.Equal([("retention.json", "schema"), ("rules/api.js", "rule"), ("calculated/names.js", "calculated")], files.Select(f => (f.Path, f.Kind)));
+        var declared = Assert.Single(files[2].Calculations);
+        Assert.Equal(("apiName", "entity", "The name an API gives the entity."), (declared.Name, Assert.Single(declared.Kinds), declared.Description));
+        Assert.Empty(files[2].Rules);
+        var rule = Assert.Single(files[1].Rules);
+        Assert.Equal(("x/api-names", true, false), (rule.Id, rule.Resolved, rule.WholeModel));
+        Assert.Empty(files[0].Calculations);
+
+        // A malformed declaration, another registration, or a top-level let: saved, and reported at once with the line.
+        var unknown = await repo.Store.WriteExtensionFileAsync("calculated/bad.js", "\nmaquettiste.calculated({ name: \"x\", kinds: [\"nothing\"], schema: {}, value: () => 1 });\n", null, Ct);
+        Assert.Equal(SaveOutcome.Saved, unknown.Outcome);
+        Assert.Equal(("MQ5002", ".maquettiste/extensions/calculated/bad.js", 2), (unknown.Diagnostics[0].Rule, unknown.Diagnostics[0].FilePath, unknown.Diagnostics[0].Line));
+        var helper = await repo.Store.WriteExtensionFileAsync("calculated/helper.js", "maquettiste.helper('x', () => 1);\n", null, Ct);
+        Assert.Equal("MQ5002", Assert.Single(helper.Diagnostics).Rule);
+        Assert.Empty(Assert.Single((await repo.Store.ListExtensionFilesAsync(Ct)).Files, f => f.Path == "calculated/helper.js").Calculations);
+        var state = await repo.Store.WriteExtensionFileAsync("calculated/state.js", "let n = 0;\n" + Names.Replace("apiName", "count", StringComparison.Ordinal), null, Ct);
+        Assert.Equal(("MQ5005", DiagnosticSeverity.Warning), (Assert.Single(state.Diagnostics).Rule, state.Diagnostics[0].Severity));
+
+        // A calculation file moves within its kind only.
+        Assert.Equal(SaveOutcome.Invalid, (await repo.Store.MoveExtensionFileAsync(new ExtensionFileMove("calculated/state.js", "rules/state.js"), state.Hash!, Ct)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.Store.MoveExtensionFileAsync(new ExtensionFileMove("calculated/state.js", "calculated/counter.js"), state.Hash!, Ct)).Outcome);
+        Assert.Equal("calculated", (await repo.Store.ReadExtensionFileAsync("calculated/counter.js", Ct))!.Kind);
+        Assert.Equal(SaveOutcome.Saved, (await repo.Store.DeleteExtensionFileAsync("calculated/counter.js", state.Hash!, Ct)).Outcome);
+        await Assert.ThrowsAsync<ExtensionPathException>(() => repo.Store.WriteExtensionFileAsync("calculated/nested/a.js", Names, null, Ct));
+    }
+
     [Theory]
     [InlineData("../maquettiste.json")]
     [InlineData("rules/nested/a.js")]
     [InlineData("rules/a.json")]
     [InlineData("seeds/a.json")]
     [InlineData("seeds/nested/a.js")]
+    [InlineData("calculated/a.json")]
     [InlineData("notes.txt")]
     [InlineData(".hidden.json")]
     [InlineData("a.js")]

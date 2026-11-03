@@ -386,4 +386,25 @@ public sealed class HashingAndStateTests
         Assert.False(File.Exists(v4));
         Assert.True(File.Exists(store.FileOf("p")));
     }
+
+    [Fact]
+    public void Calculated_value_declaration_keys_hash_the_kinds_declarations_or_absent()
+    {
+        static string Hash(params ScriptSource[] files)
+        {
+            var snapshot = Resolution.CalculationKit.Snapshot(Resolution.CalculationKit.Billing(), files);
+            var model = new Resolution.CalculationKit().Resolve(snapshot);
+            return new DependencyHasher(snapshot, model, new PackSet([], []), new Dictionary<string, SchemaDiffResult>()).CurrentHash("cv:entity");
+        }
+
+        var a = Resolution.CalculationKit.File("a.js", "maquettiste.calculated({ name: 'a', kinds: ['entity'], schema: {}, value() { return 1; } });");
+        var edited = Resolution.CalculationKit.File("a.js", a.Code + "\n// edited");
+        var other = Resolution.CalculationKit.File("b.js", "maquettiste.calculated({ name: 'b', kinds: ['attribute'], schema: {}, value() { return 1; } });");
+
+        Assert.Equal(DependencyHasher.Absent, Hash());
+        Assert.Equal(DependencyHasher.Absent, Hash(other));
+        Assert.NotEqual(DependencyHasher.Absent, Hash(a));
+        Assert.Equal(Hash(a), Hash(a, other));
+        Assert.NotEqual(Hash(a), Hash(edited));
+    }
 }

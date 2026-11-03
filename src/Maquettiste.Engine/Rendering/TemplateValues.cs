@@ -291,6 +291,118 @@ internal sealed class ViewAccessor(FrozenDictionary<string, TemplateMember> memb
         throw new ScriptRuntimeException(span, "The model is read-only.");
 }
 
+/// <summary>
+/// <c>element.calculated</c> as templates see it (next-phase-2-design.md section 5.5): <c>element.calculated.publicName</c> reads one
+/// value, evaluating it on first read, and records the calculation file's <c>x:</c> key and the keys the value read; <c>for e in
+/// element.calculated</c> yields every declared name in ordinal order as <c>e.key</c> and <c>e.value</c>. Listing the names records
+/// what the kind declares (<c>cv:&lt;kind&gt;</c>). A name the kind does not declare fails the unit with MQ5012.
+/// </summary>
+internal sealed class CalculatedView : IEnumerable<KeyValuePair<string, object?>>
+{
+    private readonly TrackingTemplateContext _context;
+
+    /// <summary>Creates the view.</summary>
+    /// <param name="source">The object's calculated values.</param>
+    /// <param name="context">The unit's context (its recorder and cancellation).</param>
+    public CalculatedView(RCalculated source, TrackingTemplateContext context)
+    {
+        Source = source;
+        _context = context;
+    }
+
+    /// <summary>The object's calculated values.</summary>
+    public RCalculated Source { get; }
+
+    /// <summary>The declared names, ordinal; records <c>cv:&lt;kind&gt;</c>.</summary>
+    public IReadOnlyList<string> Names => Source.ReadNames(_context.Recorder);
+
+    /// <summary>Whether the kind declares a name; records <c>cv:&lt;kind&gt;</c>, evaluates nothing.</summary>
+    /// <param name="name">The name.</param>
+    /// <returns><see langword="true"/> when declared.</returns>
+    public bool Declares(string name) => Source.Declares(name, _context.Recorder);
+
+    /// <summary>Reads a value, wrapped for templates.</summary>
+    /// <param name="name">The name.</param>
+    /// <returns>The value.</returns>
+    /// <exception cref="CalculatedValueException">The value failed, or the kind does not declare the name.</exception>
+    public object? Read(string name) => _context.Wrap(Source.Read(name, _context.Recorder, _context.Unit.CancellationToken));
+
+    /// <inheritdoc/>
+    public IEnumerator<KeyValuePair<string, object?>> GetEnumerator()
+    {
+        foreach (var name in Names)
+            yield return KeyValuePair.Create(name, Read(name));
+    }
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+/// <summary>
+/// The members of a <see cref="CalculatedView"/>: the declared names, read through the object's calculation host rather than the
+/// CLR members of <see cref="RCalculated"/>. A failed or undeclared read is a template error at the reading line whose inner exception
+/// carries the value's diagnostic, which the unit then fails with.
+/// </summary>
+internal sealed class CalculatedAccessor : IObjectAccessor
+{
+    /// <summary>The shared instance (stateless).</summary>
+    public static readonly CalculatedAccessor Instance = new();
+
+    /// <inheritdoc/>
+    public bool HasIndexer => true;
+
+    /// <inheritdoc/>
+    public Type? IndexType => typeof(string);
+
+    /// <inheritdoc/>
+    public int GetMemberCount(TemplateContext context, SourceSpan span, object target) => ((CalculatedView)target).Names.Count;
+
+    /// <inheritdoc/>
+    public IEnumerable<string> GetMembers(TemplateContext context, SourceSpan span, object target) => ((CalculatedView)target).Names;
+
+    /// <inheritdoc/>
+    public bool HasMember(TemplateContext context, SourceSpan span, object target, string member) => ((CalculatedView)target).Declares(member);
+
+    /// <inheritdoc/>
+    public bool TryGetValue(TemplateContext context, SourceSpan span, object target, string member, out object? value)
+    {
+        value = Read((CalculatedView)target, member, span);
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public bool TrySetValue(TemplateContext context, SourceSpan span, object target, string member, object? value) =>
+        throw new ScriptRuntimeException(span, $"Calculated values are read-only: cannot set `{member}`.");
+
+    /// <inheritdoc/>
+    public bool TryGetItem(TemplateContext context, SourceSpan span, object target, object index, out object? value)
+    {
+        if (index is string name)
+        {
+            value = Read((CalculatedView)target, name, span);
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    /// <inheritdoc/>
+    public bool TrySetItem(TemplateContext context, SourceSpan span, object target, object index, object? value) =>
+        throw new ScriptRuntimeException(span, "Calculated values are read-only.");
+
+    private static object? Read(CalculatedView view, string name, SourceSpan span)
+    {
+        try
+        {
+            return view.Read(name);
+        }
+        catch (CalculatedValueException e)
+        {
+            throw new ScriptRuntimeException(span, e.Message, e);
+        }
+    }
+}
+
 /// <summary>Members <c>key</c> and <c>value</c> of the entries a map yields in a <c>for</c> loop.</summary>
 internal sealed class EntryAccessor : IObjectAccessor
 {

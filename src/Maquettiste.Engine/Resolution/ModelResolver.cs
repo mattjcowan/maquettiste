@@ -26,7 +26,9 @@ internal interface IDatabaseResolver
 /// <param name="scripts">The sandbox factory that runs seeds' rows scripts (next-phase-2-design.md section 3.4); a factory of its own
 /// when absent.</param>
 /// <param name="seedRows">The engine's rows cache; a cache of its own when absent.</param>
-internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSandboxFactory? scripts = null, SeedRowsCache? seedRows = null)
+/// <param name="calculations">The engine's calculated values service (next-phase-2-design.md section 5.5); one of its own when absent.</param>
+internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSandboxFactory? scripts = null, SeedRowsCache? seedRows = null,
+    CalculationService? calculations = null)
     : IModelResolver, IDatabaseResolver
 {
     /// <summary>The engine options (the resolver needs none today; kept for the constructor contract of section 18).</summary>
@@ -37,6 +39,10 @@ internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSand
 
     /// <summary>The rows cache: a seed's scripted rows are built on first read, through it (decision 15).</summary>
     internal SeedRowsCache SeedRows { get; } = seedRows ?? new SeedRowsCache();
+
+    /// <summary>The calculated values service: a snapshot with calculation files gets a host per resolution, one without none.</summary>
+    internal CalculationService Calculations { get; } = calculations ?? new CalculationService(scripts ?? new Scripting.ScriptSandboxFactory(),
+        (options ?? throw new ArgumentNullException(nameof(options))).EffectiveParallelism);
 
     /// <summary>The inflector of the last resolution and the settings it was made for (its plural cache carries over between runs).</summary>
     private InflectorEntry? _inflector;
@@ -76,10 +82,12 @@ internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSand
     {
         ArgumentNullException.ThrowIfNull(model);
         ct.ThrowIfCancellationRequested();
-        return Task.Run(() => new ResolveRun(model, progress, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count))
-        {
-            Scripts = Scripts, SeedRows = SeedRows,
-        }.Run(), ct);
+        var host = Calculations.CreateHost(model);
+        return Task.Run(() => CalculationHost.Build(host, () =>
+            new ResolveRun(model, progress, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count))
+            {
+                Scripts = Scripts, SeedRows = SeedRows, Calculations = host,
+            }.Run()), ct);
     }
 
     /// <summary>Resolves the conceptual layer and one database only (<see cref="ResolveRun.RunOneDatabase"/>).</summary>

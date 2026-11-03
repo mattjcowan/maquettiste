@@ -184,6 +184,10 @@ internal sealed class FakeSandboxFactory(params (string Name, Func<ElementDocume
         // The fake registers no whole-model rule, so the validator never calls this.
         public IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model, ScriptCallContext ctx) => throw new NotSupportedException();
 
+        // Nor a resolved rule (scope "resolved"), which only the checks after resolution run.
+        public IReadOnlyList<Diagnostic> RunResolvedRule(string ruleId, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx) =>
+            throw new NotSupportedException();
+
         public object? CallHelper(string name, IReadOnlyList<object?> args, ScriptCallContext ctx) => throw new NotSupportedException();
 
         public IReadOnlyList<string> Select(string name, ResolvedModel model, ScriptCallContext ctx) => throw new NotSupportedException();
@@ -195,6 +199,10 @@ internal sealed class FakeSandboxFactory(params (string Name, Func<ElementDocume
 
         // The fake registers no rows script, so nothing calls this.
         public System.Text.Json.JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx) =>
+            throw new NotSupportedException();
+
+        // The fake registers no calculated value, so nothing calls this.
+        public object? RunCalculation(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx) =>
             throw new NotSupportedException();
     }
 }
@@ -208,10 +216,22 @@ internal sealed class CountingSandboxFactory : IScriptSandboxFactory
     private readonly ScriptSandboxFactory _inner = new();
     private readonly System.Collections.Concurrent.ConcurrentQueue<(string Rule, string Element)> _calls = new();
     private int _modelRuleCalls;
+    private int _resolvedRuleCalls;
     private int _ruleCalls;
+    private int _calculationCalls;
+    private int _poolsCreated;
+
+    /// <summary>The <see cref="IScriptSandbox.RunCalculation"/> calls so far.</summary>
+    public int CalculationCalls => Volatile.Read(ref _calculationCalls);
+
+    /// <summary>The pools created so far.</summary>
+    public int PoolsCreated => Volatile.Read(ref _poolsCreated);
 
     /// <summary>The <see cref="IScriptSandbox.RunModelRule"/> calls so far.</summary>
     public int ModelRuleCalls => Volatile.Read(ref _modelRuleCalls);
+
+    /// <summary>Calls of resolved rules (scope "resolved"), one per object and rule.</summary>
+    public int ResolvedRuleCalls => Volatile.Read(ref _resolvedRuleCalls);
 
     /// <summary>The <see cref="IScriptSandbox.RunRule"/> calls so far.</summary>
     public int RuleCalls => Volatile.Read(ref _ruleCalls);
@@ -225,12 +245,18 @@ internal sealed class CountingSandboxFactory : IScriptSandboxFactory
         return [.. taken.OrderBy(c => c.Rule, StringComparer.Ordinal).ThenBy(c => c.Element, StringComparer.Ordinal)];
     }
 
-    public IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct) =>
-        new Pool(this, _inner.CreatePool(scripts, limits, size, ct));
+    public IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct)
+    {
+        Interlocked.Increment(ref _poolsCreated);
+        return new Pool(this, _inner.CreatePool(scripts, limits, size, ct));
+    }
 
     public IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, IReadOnlyList<ScriptLibrary> libraries, SandboxLimits limits, int size,
-        CancellationToken ct) =>
-        new Pool(this, _inner.CreatePool(scripts, libraries, limits, size, ct));
+        CancellationToken ct)
+    {
+        Interlocked.Increment(ref _poolsCreated);
+        return new Pool(this, _inner.CreatePool(scripts, libraries, limits, size, ct));
+    }
 
     private sealed class Pool(CountingSandboxFactory owner, IScriptSandboxPool inner) : IScriptSandboxPool
     {
@@ -262,6 +288,12 @@ internal sealed class CountingSandboxFactory : IScriptSandboxFactory
             return inner.Sandbox.RunModelRule(ruleId, model, ctx);
         }
 
+        public IReadOnlyList<Diagnostic> RunResolvedRule(string ruleId, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx)
+        {
+            Interlocked.Increment(ref owner._resolvedRuleCalls);
+            return inner.Sandbox.RunResolvedRule(ruleId, element, model, ctx);
+        }
+
         public object? CallHelper(string name, IReadOnlyList<object?> args, ScriptCallContext ctx) => inner.Sandbox.CallHelper(name, args, ctx);
 
         public IReadOnlyList<string> Select(string name, ResolvedModel model, ScriptCallContext ctx) => inner.Sandbox.Select(name, model, ctx);
@@ -273,5 +305,11 @@ internal sealed class CountingSandboxFactory : IScriptSandboxFactory
 
         public System.Text.Json.JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx) =>
             inner.Sandbox.RunRows(script, seed, model, ctx);
+
+        public object? RunCalculation(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx)
+        {
+            Interlocked.Increment(ref owner._calculationCalls);
+            return inner.Sandbox.RunCalculation(name, element, model, ctx);
+        }
     }
 }

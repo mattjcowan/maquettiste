@@ -3279,6 +3279,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. |
 | `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations` (open migration facts by database, in applied order), `processes`, `operations` (each operation's input members, outcomes with what they return, errors with their codes, and the events it fires and what it requires, by id) and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
+| `maquettiste model calculated` | The calculated values (see "Calculated values") of the elements `--element <id>` names (repeat it; an attribute id gives one line per entity that holds the attribute), evaluated for them only: one line per object and value, such as `entity Invoice 01J92P0V0FJ23CGSNKM7P1W5V7 publicName = "invoices"`; `--name <name>` (repeatable) keeps only those values, `--format json` prints the answer `get_calculated` gives. A value that fails is reported on stderr and the command exits 1. |
 | `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
 | `maquettiste model apply <batch.json>` | Applies a batch file all or nothing, as the agent server's `apply_batch` does: `{ "operations": [...] }` or the bare array of creates, updates, deletes and the schema, materialize, process, tag and reference-type refactor operations. Id fields take ids, qualified names such as `@table:billing.notes` or `@entity:Billing.Invoice`, and placeholders (`"as": "$pm"` names a new element for the whole batch), and the engine mints every missing id, so a batch needs no id written by hand (docs/mcp.md, "Batches by name"). A name or placeholder that finds nothing is MQ1012, a name that finds several is MQ1013 (use a longer form or the id), a misused identity (a placeholder declared twice, a misplaced `as`, a sub-element dropped and added again without its id) is MQ1014 and a malformed or misplaced name is MQ1015; any of them writes nothing. Prints a line per path written or deleted, then each name and placeholder with its id, and per reference-type refactor `<op> <type>: <n> uses, <m> rows moved, <k> rows removed, <t> translations removed`; `--dry-run` writes nothing and prints the diffs, the names, and a `+` or `-` line per diagnostic the change adds or removes; `--format json` prints the `apply_batch` answer. Exit 1 when the file is not a valid batch or the batch is invalid or refused, 3 on a conflict. The agent server's `patch_element` changes part of one element with an RFC 6902 JSON Patch instead; a patch that cannot be applied (an unknown operation, a path that does not resolve, a failed `test`, a change to `/id` or `/kind`) is MQ1016 and writes nothing. |
 | `maquettiste binding drift [<entity>...]` | Per binding, the columns of its table file added, renamed, retyped and removed since its provenance was recorded, from files only (`--database`, `--all` for bindings in step too, `--format json`); `--check` exits 2 when a listed binding drifts. See "Provenance and drift" under Binding entities. |
@@ -4023,6 +4024,30 @@ apply to it (giving both is MQ5002), and one call spends one `scriptStatements` 
 that names nothing, or a `report` without one, is MQ5002 on the rule file. The MCP tool `list_extension_files` marks
 such a rule (`wholeModel`).
 
+**Rules on the resolved model.** A rule with `scope: "resolved"` checks what generation sees instead of what the files
+hold: its `check(element, model, report)` runs once per resolved object of its `kinds`, with `element` and `model` the
+read-only resolved views pack scripts get (inherited and virtual attributes included, and the calculated values below).
+`kinds` is required and takes resolved kinds (`entity`, `attribute`, `table`, `column`, ...); an attribute an entity
+inherits is checked once per entity that holds it. `report(message, { pointer, severity })` lands on the file that
+declares the object, and on its entity for an attribute the entity does not own. Resolved rules run in the checks after
+resolution: `maquettiste validate`, the MCP `validate` tool, the editor's full validation and generation, where an error
+stops the run before planning. They never run on an element save or in a preview, and `includeScriptRules: false` leaves
+them out with the other script rules. Their results are cached by object and by what they read, as element rules' are.
+`list_extension_files` marks such a rule (`resolved`).
+
+```js
+maquettiste.rule({
+  id: "public-names-unique",
+  scope: "resolved",
+  kinds: ["entity"],
+  check(entity, model, report) {
+    const name = entity.calculated.publicName;
+    const other = model.entities.find((e) => e.id !== entity.id && e.calculated.publicName === name);
+    if (other) report(`${entity.name} and ${other.name} share the public name ${name}.`);
+  },
+});
+```
+
 **New script rule…** writes a rule that reports nothing until you edit it, with this contract in its comments. In the code
 editor, completion offers `maquettiste.rule` (a whole rule), `report`, `element.` and `model.` members, the severities and
 the kinds; typing `report(` or `model.all(` shows the arguments.
@@ -4035,8 +4060,9 @@ by default everywhere: the editor's validation, `maquettiste validate`, `generat
 `includeScriptRules` is true unless you pass false.
 
 **Severities in Settings › Validation.** The family **Extensions and script rules** holds the built-in rules about these
-files: MQ5001 (a custom property value that fails its schema), MQ5002 (a rule script error), MQ5003 (a rule that broke a
-sandbox limit), MQ5004 (an invalid extension file) and MQ5005 (a rule file that keeps state at its top level). Below the
+files: MQ5001 (a custom property value that fails its schema), MQ5002 (a rule or calculation script error), MQ5003 (a
+rule or calculation script that broke a sandbox limit), MQ5004 (an invalid extension file), MQ5005 (a rule, rows or
+calculation script that keeps state at its top level) and MQ5010 to MQ5013 (calculated values, below). Below the
 built-in families, **Script rules** lists every `x/<id>` the project's rule files register, with the severity the rule
 declares as its Default. Each row's picker sets `error`, `warning`, `info` or `off` in `validation.rules` of
 `maquettiste.json`, as for the built-in rules; `off` stops the rule from running, and the severity you set also applies
@@ -4082,6 +4108,70 @@ that).
 - A rule id registered twice is MQ5002 on the second file.
 
 Clicking such a finding in the Problems panel opens the rule file on the Extensions tab.
+
+### Calculated values (`extensions/calculated/*.js`)
+
+A calculated value is a named value your project computes for each object of some kinds, defined once and read by every
+template, pack script and resolved rule. Each file directly in `extensions/calculated/` declares one or more with
+`maquettiste.calculated`, and nothing else:
+
+```js
+// extensions/calculated/names.js
+function kebab(text) {
+  return text.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
+maquettiste.calculated({
+  name: "publicName",
+  kinds: ["entity"],
+  schema: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
+  description: "The name clients see in URLs and payloads.",
+  value(entity) {
+    return kebab(entity.pluralName);
+  },
+});
+```
+
+In the billing example `Invoice` gets `invoices`, `InvoiceLine` gets `invoice-lines` and `Customer` gets `customers`.
+
+| Part | Meaning |
+| --- | --- |
+| `name` | `^[a-z][A-Za-z0-9]*$`, at most 64 characters. Unique per kind across the calculation files; one name may serve several kinds. |
+| `kinds` | Required: the resolved kinds whose objects get the value (`entity`, `attribute`, `table`, `column`, `enum`, ...). |
+| `schema` | Required: a JSON Schema every value must fit. `null` is a value only when the schema allows it. |
+| `description` | Optional: what the value means; `list_extension_files` and `get_calculated` show it. |
+| `value(element, model)` | Called once per object of those kinds, with the read-only resolved views pack scripts get. Returns the value (`undefined` is `null`): a string, number, boolean, `null`, or a list or map of them. |
+
+**Reading them.** A template reads `{{ element.calculated.publicName }}` and tests for one with `{{ if has_calculated
+element "publicName" }}`, which evaluates nothing. A pack script, a helper, a resolved rule and another calculated value
+read `entity.calculated.publicName`, and `"publicName" in entity.calculated` tests for one. A value is evaluated the
+first time something reads it and reused after that, so a preview evaluates only the values of the objects it reads.
+Reading a name the object's kind does not declare is MQ5012 on the reader. A rule with the default scope reads the saved
+JSON, which has no calculated values; give it `scope: "resolved"` to read them.
+
+**Seeing them.** `maquettiste model calculated --element <id>` and the MCP tool `get_calculated` give the values of the
+objects you name, evaluated for those only. Each `get_resolved_model` page carries `calculated` for its records and the
+attributes they list. `get_template_context` lists `calculated.<name>` among the scope's members.
+
+**When a value fails.** A value function that throws, breaks a sandbox limit or returns something that is not JSON is
+MQ5010 on the calculation file, at the failing line, with the object's id. A value that does not fit its schema is
+MQ5011 at the `maquettiste.calculated` call. Values that read each other in a cycle are one MQ5013 naming the chain. A
+value that reads a failed value fails too. `maquettiste validate`, the MCP `validate` tool and the editor's full
+validation evaluate every value and report each failure once; generation stops on one before planning. A file that does
+not load, a malformed declaration or a (name, kind) pair another file already declares is MQ5002 on that file (the later
+file by path), shown on the Extensions tab as soon as it is saved. `validation.rules` may lower or turn off MQ5010 to
+MQ5013.
+
+**What it costs.** A project that declares no calculated value pays nothing: no sandbox is created and nothing is
+evaluated. Otherwise each value is computed once per object of its kinds, in parallel; on a benchmark model of 5,000
+entities, two values on entities add about 36 ms to `validate`. The editor, the MCP server and
+`maquettiste generate --watch` cache each value by the keys it read (the object, what `model` returned, the calculation
+file), so after an edit only the values that read what changed run again. A generated file that reads a calculated value
+is planned again when that value changes, and only then.
+
+**The sandbox.** Calculation files run in the sandbox rule files use, under the same `limits`, one function scope per
+file and no script library. A file that declares `let` or `var` at its top level gets MQ5005 and its values are never
+cached. Calculated values write no model file and never read a database.
 
 ### Rows scripts (`extensions/seeds/*.js`)
 

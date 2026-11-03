@@ -5175,8 +5175,10 @@ paths:
         (MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not
         call `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level
         (MQ5005, a warning). Then the custom kinds (`kinds/<type>.json`, kind `custom-kind`), with MQ1001 or MQ1002 when one does not
-        parse or pass `custom-kind.json` and its own findings (MQ1017, MQ1018, MQ2009, MQ7212). No rows script runs. Rule findings
-        (`x/<id>`) come from `POST /api/validate`.
+        parse or pass `custom-kind.json` and its own findings (MQ1017, MQ1018, MQ2009, MQ7212). Then the calculation files
+        (`calculated/<name>.js`, kind `calculated`), each loaded alone: MQ5002 or MQ5003 when one does not load, MQ5005 for a top-level
+        `let` or `var`, and `calculations`, what it declares. No rows script runs and no calculated value is evaluated. Rule findings
+        (`x/<id>`) come from `POST /api/validate`; `resolved` marks a rule registered with scope "resolved".
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.ListExtensionFilesAsync()
       responses:
@@ -5228,8 +5230,10 @@ paths:
         reach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not
         load or does not register its rows exactly once comes back as MQ7127. A custom kind (`kinds/<type>.json`) must be JSON that
         passes `custom-kind.json`, else 422 (MQ1001, MQ1002); it is written in canonical form, and `diagnostics` carry its own findings
-        and the MQ3033 findings of the elements of its type (at most 50, then a line with the count), which never refuse it. A path
-        other than `<name>.json`, `rules/<name>.js`, `seeds/<name>.js` or `kinds/<type>.json`, or one through a link, is 400.
+        and the MQ3033 findings of the elements of its type (at most 50, then a line with the count), which never refuse it. A
+        calculation file (`calculated/<name>.js`) is written as sent and loaded alone, never evaluated: MQ5002, MQ5003 and MQ5005 come
+        back at once. A path other than `<name>.json`, `rules/<name>.js`, `seeds/<name>.js`, `kinds/<type>.json` or
+        `calculated/<name>.js`, or one through a link, is 400.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: ModelStore.WriteExtensionFileAsync(path, text, expectedHash)
       parameters:
@@ -5333,7 +5337,8 @@ paths:
       summary: Rename one extension file within its kind
       description: |
         `If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a
-        `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`, a custom kind a `kinds/<type>.json`), else 422.
+        `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`, a custom kind a `kinds/<type>.json`, a
+        calculation file a `calculated/<name>.js`), else 422.
         A custom kind that custom elements use is 422, with one MQ1019 per element that would lose its kind, as a delete is. Nothing
         else changes: a seed whose `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.
       x-maquettiste-role: maintainer
@@ -8742,7 +8747,7 @@ components:
       x-engine-record: Maquettiste.Engine.ResolvedPage
       description: One page of the resolved model (`getResolvedModel`).
       type: object
-      required: [items, next, diagnostics]
+      required: [items, next, diagnostics, calculated]
       properties:
         items:
           type: array
@@ -8776,7 +8781,18 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Diagnostic'
-          description: When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty.
+          description: >-
+            When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise the failures of the
+            calculated values the page reads (MQ5010, MQ5011, MQ5013).
+        calculated:
+          description: >-
+            The calculated values (`extensions/calculated/*.js`) of the records on the page and the sub-objects they list, by site (the
+            object's id, or `<holder id>/<attribute id>` for an attribute its holder does not own), then by name, ordinal. A value that
+            fails is left out and its diagnostic is in `diagnostics`; an object with no value is left out.
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
     ResolvedAnnotations:
       description: 'The annotations every conceptual record carries (`RAnnotated`): the display and plural names fall back to the name and the inflector.'
       type: object
@@ -12849,7 +12865,7 @@ components:
     ExtensionFileInfo:
       x-engine-record: Maquettiste.Engine.ExtensionFileInfo
       type: object
-      required: [path, kind, size, hash, diagnostics, rules]
+      required: [path, kind, size, hash, diagnostics, rules, calculations]
       properties:
         path:
           description: The path under `extensions/`.
@@ -12859,12 +12875,18 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExtensionRuleInfo'
+        calculations:
+          description: For a calculation file that loads, the calculated values it declares, in call order; empty for every other file.
+          type: array
+          items:
+            $ref: '#/components/schemas/CalculatedValueDeclaration'
         kind:
           description: >-
             `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`), `seed-rows` (a seed's rows
-            script, `seeds/<name>.js`) or `custom-kind` (a custom kind, `kinds/<type>.json`).
+            script, `seeds/<name>.js`), `custom-kind` (a custom kind, `kinds/<type>.json`) or `calculated` (a calculation file,
+            `calculated/<name>.js`).
           type: string
-          enum: [schema, rule, seed-rows, custom-kind]
+          enum: [schema, rule, seed-rows, custom-kind, calculated]
         size:
           type: integer
         hash:
@@ -12876,7 +12898,7 @@ components:
     ExtensionRuleInfo:
       x-engine-record: Maquettiste.Engine.ExtensionRuleInfo
       type: object
-      required: [id, severity, wholeModel]
+      required: [id, severity, wholeModel, resolved]
       properties:
         id:
           type: string
@@ -12888,6 +12910,29 @@ components:
           description: >-
             The rule was registered with scope "model": check(model, report) runs once per whole-model validation (validate,
             generation), not per element, and a validation of some elements (a save) skips it.
+        resolved:
+          type: boolean
+          description: >-
+            The rule was registered with scope "resolved": check(element, model, report) runs on each resolved object of its kinds in
+            the checks after resolution (validate, generation), never on element saves or in previews.
+    CalculatedValueDeclaration:
+      x-engine-record: Maquettiste.Engine.Scripting.CalculatedValueDeclaration
+      description: What one `maquettiste.calculated` call in a calculation file declares.
+      type: object
+      required: [name, kinds, schema, description]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z][A-Za-z0-9]*$'
+        kinds:
+          description: The resolved kinds whose objects get the value, ordinal.
+          type: array
+          items:
+            type: string
+        schema:
+          description: The JSON Schema every value must fit.
+        description:
+          type: [string, 'null']
     ExtensionFileContent:
       x-engine-record: Maquettiste.Engine.ExtensionFileContent
       type: object
@@ -12897,7 +12942,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [schema, rule, seed-rows, custom-kind]
+          enum: [schema, rule, seed-rows, custom-kind, calculated]
         hash:
           $ref: '#/components/schemas/Hash'
         text:

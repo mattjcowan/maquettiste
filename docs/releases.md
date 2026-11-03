@@ -187,6 +187,21 @@ one.
   `model export` and `model stats` filter by `custom` or `custom:<type>`, and the extension file tools handle custom
   kind files. An operation's `requires` can name a custom element. The editor shows custom elements as JSON for now.
   The [user guide](user-guide.md#custom-kinds-extensionskindsjson) has the details.
+- **Calculated values.** A project can define a named value once, in `extensions/calculated/<name>.js`, with
+  `maquettiste.calculated({ name, kinds, schema, description, value(element, model) })`: an entity's public name, an
+  `apiName`, a label per attribute. Templates read it as `{{ element.calculated.publicName }}` and test for it with the
+  new helper `has_calculated`; pack scripts, helpers and other values read `element.calculated.publicName`. Each value
+  is evaluated when something first reads it and checked against its schema, so a preview evaluates only the values of
+  the objects it reads, and a unit that read a value renders again exactly when that value changes. A rule with `scope:
+  "resolved"` checks resolved objects of its kinds, calculated values included, after resolution, in validate and before
+  generation plans. `maquettiste model calculated --element <id>` and the MCP and assistant tool `get_calculated` (76
+  MCP tools) show the values of the objects named; `get_resolved_model` pages carry them, the template context lists
+  them, and the extension file tools handle calculation files and mark resolved rules. New rules MQ5010 to MQ5013 (a
+  value that fails, does not fit its schema, is not declared, or reads itself in a cycle); MQ5002, MQ5003 and MQ5005
+  also cover calculation files. A project that declares no calculated value pays nothing. Otherwise each value is
+  computed once per object of its kinds, in parallel: on the 5,000-entity benchmark, two values on entities add about 36
+  ms to `validate`. The editor, the MCP server and `generate --watch` cache values by what they read. The [user
+  guide](user-guide.md#calculated-values-extensionscalculatedjs) has the details.
 - **Fixes from the milestone D review.** The 37 notes of [issue #2](https://github.com/mattjcowan/maquettiste/issues/2)
   are fixed before release. Those a user can see:
   - On PostgreSQL, a value map that retypes an enum column first drops the views the model knows about, and those the

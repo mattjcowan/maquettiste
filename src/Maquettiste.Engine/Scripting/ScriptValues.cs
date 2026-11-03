@@ -11,6 +11,7 @@ using Jint.Native.Function;
 using Jint.Native.Object;
 using Jint.Runtime;
 using Jint.Runtime.Descriptors;
+using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine.Scripting;
@@ -62,6 +63,43 @@ internal sealed class ScriptValues
     /// <param name="value">The value.</param>
     /// <returns>The script value.</returns>
     public JsValue ToJs(object? value) => ToJs(value, 0);
+
+    /// <summary>
+    /// The diagnostic of the first failed calculated value the running call read, or <see langword="null"/>: the call fails with it
+    /// even when its script caught the error (next-phase-2-design.md section 5.5).
+    /// </summary>
+    public Diagnostic? FailedRead { get; private set; }
+
+    private readonly List<JsValue> _undeclared = [];
+
+    /// <summary>Starts a top-level call: no failed or undeclared read yet.</summary>
+    public void BeginCall()
+    {
+        FailedRead = null;
+        _undeclared.Clear();
+    }
+
+    /// <summary>Ends a top-level call.</summary>
+    public void EndCall() => BeginCall();
+
+    /// <summary>Notes a failed calculated value the call read (the first one wins).</summary>
+    /// <param name="diagnostic">The value's diagnostic.</param>
+    public void NoteFailedRead(Diagnostic diagnostic) => FailedRead ??= diagnostic;
+
+    /// <summary>Notes the error object of a read of an undeclared calculated value (MQ5012 when it ends the call).</summary>
+    /// <param name="error">The error object.</param>
+    public void NoteUndeclared(JsValue error) => _undeclared.Add(error);
+
+    /// <summary>Whether an error object is that of a read of an undeclared calculated value in the running call.</summary>
+    /// <param name="error">The error object.</param>
+    /// <returns><see langword="true"/> for such a read.</returns>
+    public bool IsUndeclaredRead(JsValue error) => _undeclared.Exists(e => ReferenceEquals(e, error));
+
+    /// <summary>
+    /// Takes the memory baseline of the running call again after a read of a calculated value: Jint measures memory by what the thread
+    /// allocates, and a nested value is evaluated on this thread, so its allocations must not count against the reader.
+    /// </summary>
+    public void ResetMemoryBaseline() => Engine.Constraints.Find<Jint.Constraints.MemoryLimitConstraint>()?.Reset();
 
     /// <summary>Converts a JSON value into a deeply frozen script value.</summary>
     /// <param name="element">The JSON value.</param>
@@ -133,6 +171,8 @@ internal sealed class ScriptValues
             return existing;
 
         var type = value.GetType();
+        if (value is RCalculated calculated)
+            return Remember(value, new JsCalculatedProxy(this, calculated));
         if (value is ResolvedModel || MemberCatalog.IsProxyType(type))
             return Remember(value, new JsModelProxy(this, value, _catalog.GetTable(type)));
 
@@ -265,10 +305,40 @@ internal sealed class ScriptValues
             {
                 if (member.Function != ProxyFunction.None)
                     continue;
+                if (member.Property!.PropertyType == typeof(RCalculated))
+                {
+                    // Every calculated value of an object at hop 0, none deeper: a plain copy never evaluates a whole neighbourhood.
+                    if (hop == 0 && value is RAnnotated annotated)
+                        copy.FastSetProperty(member.Name, new PropertyDescriptor(CopyCalculated(RCalculated.Of(annotated), next, depth + 1), PropertyFlag.ConfigurableEnumerableWritable));
+                    continue;
+                }
+
                 copy.FastSetProperty(member.Name, new PropertyDescriptor(Copy(member.Property!.GetValue(value), next, depth + 1), PropertyFlag.ConfigurableEnumerableWritable));
             }
 
             return owner.Freeze(copy);
+        }
+
+        /// <summary>The frozen object of an object's calculated values, every declared name in ordinal order.</summary>
+        private JsValue CopyCalculated(RCalculated calculated, int hop, int depth)
+        {
+            var entries = new List<KeyValuePair<string, JsValue>>();
+            foreach (var name in calculated.ReadNames(owner.State.Reads))
+            {
+                object? value;
+                try
+                {
+                    value = calculated.Read(name, owner.State.Reads, owner.State.Token);
+                }
+                finally
+                {
+                    owner.ResetMemoryBaseline();
+                }
+
+                entries.Add(KeyValuePair.Create(name, Copy(value, hop, depth + 1)));
+            }
+
+            return owner.FrozenObject(entries);
         }
     }
 
