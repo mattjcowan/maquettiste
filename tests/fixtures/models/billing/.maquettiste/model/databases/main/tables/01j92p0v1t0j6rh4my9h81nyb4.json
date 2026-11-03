@@ -34,7 +34,7 @@
       "id": "01J92P0V1W3BP53NMDVMSQSRQV",
       "name": "ck_invoice_status",
       "expression": {
-        "*": "status in (0, 1, 2, 3)"
+        "*": "status in ('D', 'I', 'P', 'V')"
       }
     }
   ],

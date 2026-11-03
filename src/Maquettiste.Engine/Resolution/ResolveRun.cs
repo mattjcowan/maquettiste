@@ -214,7 +214,7 @@ internal sealed partial class ResolveRun
     /// The definitions <c>model</c> lists (next-phase-1-design.md section 5.5): the stereotype of each key (the one
     /// <see cref="ModelSnapshot.GetStereotype"/> gives, by key), and the tag vocabularies and category trees validation uses, one per
     /// scope, the global one first, then by (package qualified name, id). Each depends on its own file; a tree also completes the
-    /// shared <see cref="RCategory"/> instances (parent, children, order, description) the conceptual pass created.
+    /// shared <see cref="RCategory"/> instances (parent, children, order, description, rationale, decision, status) the conceptual pass created.
     /// </summary>
     private (List<RStereotypeDefinition> Stereotypes, List<RTagVocabulary> Vocabularies, List<RCategoryTree> Trees) ResolveDefinitions()
     {
@@ -297,6 +297,9 @@ internal sealed partial class ResolveRun
         {
             rc.Order = source.Order;
             rc.Description = source.Description?.Text;
+            rc.Rationale = source.Rationale;
+            rc.Decision = source.Decision;
+            rc.Status = StatusName(source.Status);
             rc.Parent = source.Parent is { } parentId && byId.TryGetValue(parentId, out var parent) && !ReferenceEquals(parent, rc) ? parent : null;
             if (rc.Parent is null)
                 roots.Add(rc);

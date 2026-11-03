@@ -1137,7 +1137,10 @@ MQ4049 (E) a writing binding whose constant column is not in the write table; MQ
 a constant or soft-delete value that does not fit its column (type, length, integer range, NULL into NOT NULL); MQ4052 (E) a write
 table other than the source without a column for a key field; MQ4053 (E) a key delete from a table without a primary key, or a
 delete without a write table; MQ4054 (I) an entity mapping element ignored because of a binding; MQ4055 (E) a materialize
-refusal. MQ4012 counts a binding as placing the entity.
+refusal; MQ4058 (W) the stored attributes no field maps (own, inherited, a stereotype's, each value object member; not
+a collection, a derived attribute that is not stored or a to-one end), once per binding with the names, whatever it
+writes.
+MQ4012 counts a binding as placing the entity.
 
 *SQL* (`Rendering/BindingSql.cs`, public, beside `QuerySql` and sharing its quoting, literals, placeholder styles and
 dialects): `BindingSql.Render(binding, statement, dialect?, options?)` returns a `QuerySqlText` for `select` (the fields' columns

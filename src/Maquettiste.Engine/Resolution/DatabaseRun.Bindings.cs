@@ -10,7 +10,7 @@ namespace Maquettiste.Engine.Resolution;
 /// collected before anything is placed, so the entity is never projected here; the tables, views and queries a binding names get the
 /// entity's file among their dependency keys as they are created (they list the binding in <c>BoundBy</c>); and once the queries are
 /// resolved each binding resolves its source, constants, field map, accounted columns, write table and delete, and the rules MQ4044 to
-/// MQ4053 report what it gets wrong with the JSON pointer of the binding's entry in the entity's file.
+/// MQ4053 and MQ4058 report what it gets wrong with the JSON pointer of the binding's entry in the entity's file.
 /// </summary>
 internal sealed partial class DatabaseRun
 {
@@ -205,6 +205,7 @@ internal sealed partial class DatabaseRun
                 ? Account([.. writeTable.Columns.Select(c => (c.Name, (RColumn?)c, (string?)c.Type))], fields, constants, listed, write: true)
                 : [];
             ReportUnaccounted();
+            ReportUnmapped();
             ReportDrift();
             _b.Dependencies = _deps.ToList();
             return _b;
@@ -699,6 +700,42 @@ internal sealed partial class DatabaseRun
                     continue;
                 Report("MQ4047", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' accounts for no {(names.Count == 1 ? "column" : "columns")} {string.Join(", ", names.Select(n => "'" + n + "'"))} of {what}: map {(names.Count == 1 ? "it" : "each")} to a field, give {(names.Count == 1 ? "it" : "each")} a constant, or list {(names.Count == 1 ? "it" : "them")} in columns (ignored, database or computed).", "");
             }
+        }
+
+        /// <summary>
+        /// MQ4058: the stored attributes of the entity that no field maps, so the entity reads them from nowhere, once per binding with
+        /// the names (the editor's field map reports the same). An attribute counts when it is stored: own, inherited or a stereotype's
+        /// virtual one, and not a collection or a derived attribute that is not stored (a stored derivation counts). A value object
+        /// attribute counts as each of its members a field can map. A field naming the attribute maps it, even when its column is
+        /// wrong (MQ4045's). Every binding is checked, whatever it writes or deletes; the to-one relation ends a binding can map are
+        /// not attributes and are left out. A source that is nothing of the database is MQ4044's, so it reports nothing here.
+        /// </summary>
+        private void ReportUnmapped()
+        {
+            if (_b.SourceKind is null)
+                return;
+            var mapped = file.Fields.Select(f => f.Attribute).ToHashSet(StringComparer.Ordinal);
+            var names = new List<string>();
+            foreach (var attribute in entity.Attributes)
+            {
+                if (attribute.Collection || attribute.Derived is { Stored: false })
+                    continue;
+                if (attribute.Type is { Kind: "value-object", ValueObject: { } valueObject })
+                {
+                    foreach (var member in valueObject.Attributes)
+                    {
+                        if (!member.Collection && member.Type.Kind != "value-object" && !mapped.Contains(attribute.Id + "." + member.Id))
+                            names.Add(attribute.Name + Casing.Pascal(member.Name));
+                    }
+                }
+                else if (!mapped.Contains(attribute.Id))
+                {
+                    names.Add(attribute.Name);
+                }
+            }
+
+            if (names.Count > 0)
+                Report("MQ4058", $"No field maps {string.Join(", ", names)}: the entity reads {(names.Count == 1 ? "it" : "them")} from nowhere.", "/fields");
         }
 
         /// <summary>

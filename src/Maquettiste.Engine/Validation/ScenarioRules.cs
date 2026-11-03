@@ -19,7 +19,7 @@ internal static class ScenarioRules
         switch (report.Document.Element)
         {
             case Process process:
-                foreach (var problem in ProcessExpressions.Get(process).Problems)
+                foreach (var problem in ProcessExpressions.ProblemsOf(process))
                 {
                     report.Add("MQ9501", $"The expression of {problem.Kind} '{problem.Name}' does not parse: {problem.Message}; fix its syntax, or remove the expression to make the {problem.Kind} a stub.",
                         problem.Pointer, problem.Id);

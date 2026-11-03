@@ -1679,8 +1679,10 @@ Each binding is a card, one per database:
   key**, **Soft delete** (a column and the value it is set to; reads then leave those rows out) or **None**; a read-only
   binding deletes nothing.
 - **SQL**: the binding's five statements (select, select by key, insert, update, delete) for the database's dialect or another.
-- Problems: the binding's findings (MQ4044 to MQ4055) show on the card as you edit. A stored attribute no field maps is a
-  warning there too (proposed as MQ4058; the engine does not report it yet).
+- Problems: the binding's findings (MQ4044 to MQ4055) show on the card as you edit. A stored attribute no field maps is
+  warning MQ4058, with the names: own, inherited and stereotype attributes, each member of a value object attribute, on
+  a read-only binding too. A collection, a derived attribute that is not stored and the key of a to-one relationship are
+  not expected.
 
 **Add binding…** picks a database without a binding and its source; the fields start empty, so **Map by name…** is the next
 step. The trash button removes a binding (the table, view or query stays). Every gesture on the tab is one save of the entity
@@ -2335,10 +2337,11 @@ optional fields sit right after `description` in its file:
 A file without them is written exactly as before. Until the editor's screens show them, edit them on the inspector's
 **JSON** tab. `get_element`, `get_elements` and `model export` return them with the rest of the document, and
 templates read `rationale`, `decision` and `status` (the JSON text) on entities and their attributes, tables and their
-columns, databases and their schemas, and the other resolved elements; enum members, categories and stereotypes do not
-carry them in templates yet, and neither does `get_resolved_model`. Process states, transitions and the other parts of a
-process do not take them: the process does. A migration fact's `status` is its status as an element; the fact's own
-progress is its `state`. Editing the three fields records no migration fact, because they never change a database.
+columns, databases and their schemas, enum members, categories, the stereotypes `model.stereotypes` lists, and the other
+resolved elements. Each is null when the file does not write it. `get_resolved_model` does not carry them yet. Process
+states, transitions and the other parts of a process do not take them: the process does. A migration fact's `status`
+is its status as an element; the fact's own progress is its `state`. Editing the three fields records no migration
+fact, because they never change a database.
 
 **Retiring.** `retired` means no longer to be used. Each reference to a retired element or sub-element is MQ2022, a
 warning on the file that holds the reference, so retiring something lists its last users: an attribute typed by a
@@ -2486,7 +2489,8 @@ The model also lists its definitions. `model.stereotypes` has one stereotype per
 global vocabulary first, then each domain's: `package` (none for the global one), `strict` and `definitions`, each with
 `key`, `description` and `color`. `model.category_trees` has the global tree first, then each domain's: `package`,
 `roots`, and `categories`, every category depth-first in sibling order. A category, wherever a template meets it
-(`table.category`, a tree's `categories`), also has `parent`, `children`, `order` and `description`.
+(`table.category`, a tree's `categories`), also has `parent`, `children`, `order`, `description`, `rationale`,
+`decision` and `status`.
 
 **A pack** is a folder, `.maquettiste/templates/<pack>/`, holding the templates and one `pack.json` that says what to
 run. The example packs are `sql-ddl` (database scripts), `csharp-dapper` (classes and repositories, and the process

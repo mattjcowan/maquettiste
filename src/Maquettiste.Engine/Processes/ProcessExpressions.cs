@@ -43,30 +43,11 @@ public sealed class ProcessExpressions
 
     private ProcessExpressions(Process process)
     {
-        var problems = new List<ExpressionProblem>();
         var code = new StringBuilder();
         var compiled = new HashSet<string>(StringComparer.Ordinal);
-        for (var i = 0; i < process.Guards.Count; i++)
-            Add(process.Guards[i].Id, process.Guards[i].Name, "guard", process.Guards[i].Expression, "/guards/" + N(i) + "/expression");
-        for (var i = 0; i < process.Actions.Count; i++)
-            Add(process.Actions[i].Id, process.Actions[i].Name, "action", process.Actions[i].Expression, "/actions/" + N(i) + "/expression");
-        Problems = problems;
+        Problems = Collect(process, compiled, code);
         Compiled = compiled;
         _scripts = compiled.Count == 0 ? [] : PreparedScript.PrepareAll([new ScriptSource("process:" + process.Name + ".js", code.ToString(), "")], Limits);
-
-        void Add(string id, string name, string kind, string? expression, string pointer)
-        {
-            if (expression is null || compiled.Contains(id))
-                return;
-            if (Parse(expression) is { } problem)
-            {
-                problems.Add(new ExpressionProblem(id, pointer, name, kind, problem));
-                return;
-            }
-
-            compiled.Add(id);
-            code.Append("maquettiste.helper(").Append(JsonSerializer.Serialize(id)).Append(", ").Append(Wrap(expression)).Append(");\n");
-        }
     }
 
     /// <summary>The sandbox limits of an expression: 50 ms and 100,000 statements; the other limits are the sandbox defaults.</summary>
@@ -90,6 +71,50 @@ public sealed class ProcessExpressions
         if (Cache.Count >= CacheLimit)
             Cache.Clear();
         return Cache.GetOrAdd(key, _ => new ProcessExpressions(process));
+    }
+
+    /// <summary>
+    /// The expressions of a process that do not parse (MQ9501), in guard then action order: the <see cref="Problems"/> of
+    /// <see cref="Get"/>, found by parsing alone. Validation reads these for every process, so it neither compiles the expressions
+    /// nor goes through the shared cache: a model with more processes than the cache holds would clear it on every run, and with
+    /// every validation thread contending for it that cost more than the rest of the process rules together.
+    /// </summary>
+    /// <param name="process">The process.</param>
+    /// <returns>The problems.</returns>
+    internal static IReadOnlyList<ExpressionProblem> ProblemsOf(Process process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        return Collect(process, new HashSet<string>(StringComparer.Ordinal), null);
+    }
+
+    /// <summary>Whether <see cref="Get"/> holds compiled expressions for the process's current expressions (for tests).</summary>
+    /// <param name="process">The process.</param>
+    /// <returns><see langword="true"/> when they are cached.</returns>
+    internal static bool IsCached(Process process) => Cache.ContainsKey(Key(process));
+
+    // The problems of a process's expressions; the ids that parse go to compiled and, with code, their helper registrations to code.
+    private static List<ExpressionProblem> Collect(Process process, HashSet<string> compiled, StringBuilder? code)
+    {
+        var problems = new List<ExpressionProblem>();
+        for (var i = 0; i < process.Guards.Count; i++)
+            Add(process.Guards[i].Id, process.Guards[i].Name, "guard", process.Guards[i].Expression, "/guards/" + N(i) + "/expression");
+        for (var i = 0; i < process.Actions.Count; i++)
+            Add(process.Actions[i].Id, process.Actions[i].Name, "action", process.Actions[i].Expression, "/actions/" + N(i) + "/expression");
+        return problems;
+
+        void Add(string id, string name, string kind, string? expression, string pointer)
+        {
+            if (expression is null || compiled.Contains(id))
+                return;
+            if (Parse(expression) is { } problem)
+            {
+                problems.Add(new ExpressionProblem(id, pointer, name, kind, problem));
+                return;
+            }
+
+            compiled.Add(id);
+            code?.Append("maquettiste.helper(").Append(JsonSerializer.Serialize(id)).Append(", ").Append(Wrap(expression)).Append(");\n");
+        }
     }
 
     /// <summary>Returns why an expression does not parse as one expression, or <see langword="null"/>; nothing runs.</summary>

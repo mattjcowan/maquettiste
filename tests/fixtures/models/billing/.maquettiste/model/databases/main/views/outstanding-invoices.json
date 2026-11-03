@@ -6,7 +6,7 @@
   "database": "01J92P0V1QRN2181XM2ZWE02W4",
   "schema": "01J92P0V1RC04SKQ5353EAKHG2",
   "body": {
-    "*": "select id, number, issued_on from billing.invoices where status = 1"
+    "*": "select id, number, issued_on from billing.invoices where status = 'I'"
   },
   "columns": [
     {

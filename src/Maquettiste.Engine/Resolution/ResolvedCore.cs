@@ -179,6 +179,18 @@ public sealed class RCategory
 
     /// <summary>The description text, or <see langword="null"/> when there is none.</summary>
     public string? Description { get; internal set; }
+
+    /// <summary>Markdown text: why the category is shaped this way, from its own entry; <see langword="null"/> when there is none.</summary>
+    public string? Rationale { get; internal set; }
+
+    /// <summary>A URL or a reference (such as <c>ADR-0042</c>) of the decision record; <see langword="null"/> when there is none.</summary>
+    public string? Decision { get; internal set; }
+
+    /// <summary>
+    /// The status as its JSON value (<c>proposed</c>, <c>approved</c>, <c>deprecated</c> or <c>retired</c>); <see langword="null"/> when
+    /// none is written.
+    /// </summary>
+    public string? Status { get; internal set; }
 }
 
 /// <summary>A stereotype applied to an object.</summary>

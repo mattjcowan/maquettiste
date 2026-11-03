@@ -120,6 +120,25 @@ internal sealed class UnitSelection
         return new UnitSelection(_units, _elements, pairs.ToFrozenSet(StringComparer.Ordinal), true);
     }
 
+    /// <summary>
+    /// The packs with only the selected units in their manifests, for a run that plans the selected units alone
+    /// (<see cref="GenerationRun.PlansSelectedUnitsOnly"/>); without a unit filter, the packs as they are.
+    /// </summary>
+    /// <param name="packs">The run's packs.</param>
+    /// <returns>The packs to plan.</returns>
+    public PackSet SelectedUnitsOnly(PackSet packs)
+    {
+        ArgumentNullException.ThrowIfNull(packs);
+        if (!IsResolved)
+            throw new InvalidOperationException("Resolve the selection against the run's packs before narrowing them.");
+        if (_pairs is not { } pairs)
+            return packs;
+        return packs with
+        {
+            Packs = [.. packs.Packs.Select(p => p with { Manifest = p.Manifest with { Units = [.. p.Manifest.Units.Where(u => pairs.Contains(p.Name + "/" + u.Id))] } })],
+        };
+    }
+
     /// <summary>The MQ6034 warning of a selection that matches no planned unit and no manifest entry.</summary>
     /// <returns>The diagnostic.</returns>
     public Diagnostic NothingSelected()

@@ -294,6 +294,59 @@ public sealed class ResolverBehaviorTests
     }
 
     [Fact]
+    public async Task Rationale_decision_and_status_reach_templates_on_enum_members_stereotypes_and_categories()
+    {
+        // next-phase-1-design.md section 4.5: an enum member, a stereotype definition and a category read the three fields from
+        // their own entry or file, as elements do; status is its JSON value and an unwritten field is null.
+        var b = new ModelBuilder(seed: 89);
+        b.Enum("InvoiceState").Member("draft", 0).Member("paid", 1);
+        b.Stereotype("audited");
+        var billing = b.Category("Billing");
+        b.Category("Archive", billing);
+        b.Entity("Invoice").Key("id", "uuid").Category(billing);
+        var annotated = new ModelBuilder(seed: 90);
+        foreach (var element in b.BuildElements())
+        {
+            annotated.Add(element switch
+            {
+                EnumType e => e with
+                {
+                    Members = [e.Members[0] with { Rationale = "A bill not yet **issued**.", Decision = "ADR-0007", Status = ElementStatus.Deprecated }, e.Members[1]],
+                },
+                Stereotype s => s with { Rationale = "Who changed a row, and when.", Decision = "https://example.com/adr/12", Status = ElementStatus.Approved },
+                CategoryTree t => t with
+                {
+                    Categories = [t.Categories[0] with { Rationale = "Everything we bill.", Decision = "ADR-0031", Status = ElementStatus.Proposed }, t.Categories[1]],
+                },
+                _ => element,
+            });
+        }
+
+        var model = ResolutionKit.Resolve(annotated);
+        var members = Assert.Single(model.Enums).Members;
+        Assert.Equal(("A bill not yet **issued**.", "ADR-0007", "deprecated"), (members[0].Rationale, members[0].Decision, members[0].Status));
+        Assert.Equal((null, null, null), (members[1].Rationale, members[1].Decision, members[1].Status));
+        var audited = Assert.Single(model.Stereotypes);
+        Assert.Equal(("Who changed a row, and when.", "https://example.com/adr/12", "approved"), (audited.Rationale, audited.Decision, audited.Status));
+        var categories = Assert.Single(model.CategoryTrees).Categories;
+        Assert.Equal(("Everything we bill.", "ADR-0031", "proposed"), (categories[0].Rationale, categories[0].Decision, categories[0].Status));
+        Assert.Equal((null, null, null), (categories[1].Rationale, categories[1].Decision, categories[1].Status));
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ for e in model.enums }}{{ for m in e.members }}{{ m.name }}:{{ m.rationale }}:{{ m.decision }}:{{ m.status }};{{ end }}{{ end }}"
+            + "|{{ for s in model.stereotypes }}{{ s.key }}:{{ s.rationale }}:{{ s.decision }}:{{ s.status }};{{ end }}"
+            + "|{{ for t in model.category_trees }}{{ for c in t.categories }}{{ c.name }}:{{ c.rationale }}:{{ c.decision }}:{{ c.status }};{{ end }}{{ end }}"
+            + "|{{ entity.category.rationale }}:{{ entity.category.decision }}:{{ entity.category.status }}",
+            model.Entity("Invoice"), model: model);
+        Assert.Equal(
+            "draft:A bill not yet **issued**.:ADR-0007:deprecated;paid:::;"
+            + "|audited:Who changed a row, and when.:https://example.com/adr/12:approved;"
+            + "|Billing:Everything we bill.:ADR-0031:proposed;Archive:::;"
+            + "|Everything we bill.:ADR-0031:proposed",
+            unit.Text());
+    }
+
+    [Fact]
     public void A_schema_default_reaches_a_table_without_a_file()
     {
         // next-phase-2-design.md section 3.1: a synthesized table without an overlay takes its schema's defaults (and the stereotypes
