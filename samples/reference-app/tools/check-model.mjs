@@ -37,9 +37,11 @@ for (const [path, text] of first.files) {
 }
 for (const extra of onDisk) problems.push(`not built by build-model.mjs: ${extra}`);
 
-// Copies: .schema/v1 from schemas/v1, templates/<pack> from packs/<pack>.
-function compareTrees(source, copy, label) {
-  const a = listFiles(source).map((p) => relative(source, p));
+// Copies: .schema/v1 from schemas/v1, templates/<pack> from packs/<pack> without the pack's tests/
+// (5.4: the copies carry no tests).
+const outsideTests = (f) => f.split(/[\\/]/)[0] !== "tests";
+function compareTrees(source, copy, label, keep = () => true) {
+  const a = listFiles(source).map((p) => relative(source, p)).filter(keep);
   const b = new Set(listFiles(copy).map((p) => relative(copy, p)));
   for (const f of a) {
     if (!b.has(f)) problems.push(`${label}: missing ${f}`);
@@ -49,7 +51,8 @@ function compareTrees(source, copy, label) {
   for (const f of b) problems.push(`${label}: extra ${f}`);
 }
 compareTrees(join(repoRoot, "schemas", "v1"), join(mq, ".schema", "v1"), ".schema/v1");
-for (const p of PACKS) compareTrees(join(repoRoot, "packs", p), join(mq, "templates", p), `templates/${p}`);
+for (const p of PACKS)
+  compareTrees(join(repoRoot, "packs", p), join(mq, "templates", p), `templates/${p}`, outsideTests);
 
 // The domain's promised shape (phase2-design.md section 7.1).
 const s = first.stats;
