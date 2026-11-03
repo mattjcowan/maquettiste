@@ -83,6 +83,17 @@ describe("quick fix derivation", () => {
     });
   });
 
+  it("MQ3108 converts the element's text expressions to trees", () => {
+    const table = { kind: "table", id: "T", name: "invoices" } as unknown as ModelJson;
+    expect(deriveQuickFix(diag("MQ3108", "T", "/checks/0/condition"), "text-to-trees", docs(table))).toEqual({
+      kind: "operation",
+      op: "text-to-trees",
+      id: "T",
+      label: "Convert expressions to trees",
+      ids: ["T"],
+    });
+  });
+
   it("MQ9013 and MQ9016 remove the node, MQ9102 and MQ9105 add the missing actor", () => {
     const unused = deriveQuickFix(diag("MQ9013", "P", "/events/1"), null, docs(process));
     expect(unused).toMatchObject({ kind: "update", id: "P", label: "Remove unused" });

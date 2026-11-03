@@ -324,11 +324,15 @@ public sealed class RQueryWhen
 /// <c>param</c> (<see cref="Param"/>), <c>value</c> (<see cref="Value"/>), <c>null</c>, <c>op</c> (<see cref="Op"/>,
 /// <see cref="Args"/>), <c>call</c> (<see cref="Call"/>, <see cref="Routine"/>, <see cref="Args"/>), <c>case</c> (<see cref="Case"/>,
 /// <see cref="Else"/>), <c>cast</c> (<see cref="Cast"/>, <see cref="Type"/>) or <c>sql</c> (<see cref="Sql"/>, <see cref="SqlText"/>).
-/// <see cref="Type"/>, <see cref="NativeType"/> and <see cref="Nullable"/> are inferred for every node.
+/// <see cref="Type"/>, <see cref="NativeType"/> and <see cref="Nullable"/> are inferred for every node. The expression language's
+/// lowering (next-phase-3-design.md section 3.1) adds two internal nodes the query schema does not have: <c>typed</c> (a literal with
+/// its type: <see cref="NativeType"/> and <see cref="LiteralText"/>) and <c>pred</c> (<see cref="Pred"/>, a condition where a value
+/// goes); and a <c>call</c> may carry a <see cref="Template"/>.
 /// </summary>
 public sealed class RQueryExpression
 {
-    /// <summary><c>column</c>, <c>param</c>, <c>value</c>, <c>null</c>, <c>op</c>, <c>call</c>, <c>case</c>, <c>cast</c> or <c>sql</c>.</summary>
+    /// <summary><c>column</c>, <c>param</c>, <c>value</c>, <c>null</c>, <c>op</c>, <c>call</c>, <c>case</c>, <c>cast</c> or <c>sql</c>;
+    /// internally also <c>typed</c> or <c>pred</c>.</summary>
     public string Node { get; internal set; } = "";
 
     /// <summary>A column reference as the file writes it.</summary>
@@ -385,6 +389,15 @@ public sealed class RQueryExpression
     /// <summary>The value a cast converts.</summary>
     public RQueryExpression? Cast { get; internal set; }
 
+    /// <summary>The condition a <c>pred</c> node writes as a value, in parentheses (internal: the expression language's lowering).</summary>
+    internal RQueryPredicate? Pred { get; set; }
+
+    /// <summary>
+    /// A call's SQL as a template over its lowered <see cref="Args"/>: <c>{0}</c>, <c>{1}</c>… one argument, <c>{*}</c> all of them and
+    /// <c>{rest}</c> those after the first, joined with <c>, </c> (internal: the expression language's lowering).
+    /// </summary>
+    internal string? Template { get; set; }
+
     /// <summary>The opaque expression per dialect name (or <c>"*"</c>).</summary>
     public IReadOnlyDictionary<string, string> Sql { get; internal set; } = System.Collections.Frozen.FrozenDictionary<string, string>.Empty;
 
@@ -407,11 +420,13 @@ public sealed class RQueryExpression
 /// <summary>
 /// A node of a resolved predicate tree. <see cref="Node"/> says which members apply: <c>and</c> / <c>or</c> (<see cref="And"/> /
 /// <see cref="Or"/>), <c>not</c> (<see cref="Not"/>), <c>compare</c> (<see cref="Op"/>, <see cref="Left"/>, <see cref="Right"/> or
-/// <see cref="Values"/>) or <c>exists</c> (<see cref="Exists"/>).
+/// <see cref="Values"/>) or <c>exists</c> (<see cref="Exists"/>). The expression language's lowering adds two internal nodes:
+/// <c>match</c> (<see cref="Left"/> matches the pattern <see cref="Right"/>) and <c>distinct</c> (<see cref="Op"/> <c>distinct</c>
+/// or <c>notDistinct</c>, <see cref="Left"/>, <see cref="Right"/>).
 /// </summary>
 public sealed class RQueryPredicate
 {
-    /// <summary><c>and</c>, <c>or</c>, <c>not</c>, <c>compare</c> or <c>exists</c>.</summary>
+    /// <summary><c>and</c>, <c>or</c>, <c>not</c>, <c>compare</c> or <c>exists</c>; internally also <c>match</c> or <c>distinct</c>.</summary>
     public string Node { get; internal set; } = "";
 
     /// <summary>The conditions of an <c>and</c>.</summary>

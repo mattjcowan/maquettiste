@@ -298,8 +298,15 @@ public sealed class ProcessExpressionSession : IDisposable
             case double:
                 writer.WriteNullValue();
                 break;
-            case int or long or decimal or float:
+            case int or long or decimal or float or short or byte or sbyte or ushort or uint:
                 writer.WriteNumberValue(Convert.ToDecimal(value, CultureInfo.InvariantCulture));
+                break;
+            case ulong u:
+                writer.WriteNumberValue(u);
+                break;
+            case System.Numerics.BigInteger big:
+                // Every digit, as JSON text: a tree expression reads it exactly (mq.dec).
+                writer.WriteRawValue(big.ToString(CultureInfo.InvariantCulture));
                 break;
             case JsonElement json:
                 json.WriteTo(writer);

@@ -118,6 +118,9 @@ public sealed class ResolvedCoverageTests
 
         // Custom elements (next-phase-2-design.md section 4.2).
         new("custom", "custom.json", "", typeof(RCustom)),
+
+        // Expressions (next-phase-3-design.md section 3.8).
+        new("constraint", "constraint.json", "", null),
     ];
 
     /// <summary>Properties no resolved object carries, anywhere, and why.</summary>
@@ -211,6 +214,10 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
+
+        // Expression trees (next-phase-3-design.md section 3.8) are read and checked from the files first; the resolved model
+        // carries them from tasks H7 (checks, entity checks), H8 (process guards) and H10 (operation guards).
+        ("check", "condition"), ("entity", "checks"), ("guard", "condition"), ("operation", "guards"),
     ];
 
     /// <summary>
@@ -218,9 +225,9 @@ public sealed class ResolvedCoverageTests
     /// resolves into <c>entity.mappings</c> and <c>relation.mappings</c> (<see cref="REntityMapping"/>, <see cref="RRelationMapping"/>)
     /// rather than an object of its own, so its annotations and its own fields are not reachable; a diagram is not resolved. The tag
     /// vocabularies and category trees resolve into <c>model.tag_vocabularies</c> and <c>model.category_trees</c>
-    /// (next-phase-1-design.md section 5.5).
+    /// (next-phase-1-design.md section 5.5). A constraint (next-phase-3-design.md section 3.8) resolves from task H7.
     /// </summary>
-    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram" };
+    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "constraint" };
 
     [Fact]
     public void Every_property_of_every_model_file_is_a_member_of_its_resolved_object()

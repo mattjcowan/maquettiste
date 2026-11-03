@@ -8592,7 +8592,7 @@ components:
           description: Whether validation.rules may set the rule to off (false for MQ1xxx).
         quickFix:
           type: string
-          enum: [sync-enum, set-lifecycle, set-initial, refresh-scenario]
+          enum: [sync-enum, set-lifecycle, set-initial, refresh-scenario, text-to-trees]
           description: The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none.
     Diagnostic:
       x-engine-record: Maquettiste.Engine.Diagnostics.Diagnostic

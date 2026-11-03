@@ -1,6 +1,6 @@
 // The Problems panel's quick fixes (phase-3-design.md 3, "Quick fixes" and its derivation table): what a diagnostic's
 // fix is, read from its rule, its element and its pointer. The named operations (`set-initial`, `sync-enum`,
-// `refresh-scenario`, `set-lifecycle`) are batch operations of the engine; the others are plain updates of the
+// `refresh-scenario`, `set-lifecycle`, `text-to-trees`) are batch operations of the engine; the others are plain updates of the
 // diagnostic's element (or, for MQ9205, of the subject entity) built here. Pure: the panel loads the documents
 // `fixDocuments` names and applies the result as one batch that undo reverts.
 import type { Diagnostic, ModelJson } from "@/api/types";
@@ -8,7 +8,7 @@ import { atPointer, clone } from "@/lib/json";
 
 type Json = Record<string, unknown>;
 
-export type QuickFixOperation = "set-initial" | "set-lifecycle" | "refresh-scenario";
+export type QuickFixOperation = "set-initial" | "set-lifecycle" | "refresh-scenario" | "text-to-trees";
 
 export type QuickFix =
   /** A named batch operation; `ids` are every document it may change (the undo step's before and after). */
@@ -89,6 +89,8 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
   if (catalogFix === "sync-enum") return element.kind === "process" ? { kind: "sync-enum", process: id, label: "Sync enum" } : null;
   if (catalogFix === "refresh-scenario")
     return element.kind === "scenario" ? { kind: "operation", op: "refresh-scenario", id, label: "Update expectations from replay", ids: [id] } : null;
+  // MQ3108: every expression the element holds as text becomes its tree (next-phase-3-design.md decision 4).
+  if (catalogFix === "text-to-trees") return { kind: "operation", op: "text-to-trees", id, label: "Convert expressions to trees", ids: [id] };
   if (catalogFix === "set-initial") {
     if (!pointer.endsWith("/initial")) return null;
     const at = parent(pointer);

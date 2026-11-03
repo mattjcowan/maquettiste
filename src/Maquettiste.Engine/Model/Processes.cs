@@ -283,6 +283,12 @@ public sealed record ProcessGuard : IProcessNode
     /// <summary>A JavaScript expression returning a boolean, or <see langword="null"/> for a stub.</summary>
     public string? Expression { get; init; }
 
+    /// <summary>
+    /// The condition as an expression tree over context and event (next-phase-3-design.md section 3.1), or <see langword="null"/>;
+    /// only true passes.
+    /// </summary>
+    public Expr? Condition { get; init; }
+
     /// <summary>Markdown text, or a reference to a sidecar Markdown file.</summary>
     public Description? Description { get; init; }
 }

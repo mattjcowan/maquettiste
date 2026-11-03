@@ -84,6 +84,12 @@ public sealed record RuleCondition
 
     /// <summary>Holds when a number of objects of a kind within bounds link to the object.</summary>
     public RuleReferences? ReferencedBy { get; init; }
+
+    /// <summary>
+    /// Holds when the expression, which reads the selected object's members (<see cref="Expr.Member"/>), is true; judged as a guard
+    /// (next-phase-3-design.md section 3.1).
+    /// </summary>
+    public Expr? Expression { get; init; }
 }
 
 /// <summary>The <c>equals</c> test.</summary>

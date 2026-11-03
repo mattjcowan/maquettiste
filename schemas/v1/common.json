@@ -376,19 +376,25 @@
       "additionalProperties": false
     },
     "derived": {
+      "description": "How a derived attribute is computed: by raw text (expression) or by an expression tree (value), exactly one of the two (MQ3107).",
       "type": "object",
-      "x-order": ["expression", "stored"],
+      "x-order": ["expression", "value", "stored"],
       "properties": {
         "expression": {
+          "description": "The raw expression, interpreted by templates.",
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "default": ""
+        },
+        "value": {
+          "description": "The value as an expression of the attribute's type.",
+          "$ref": "#/$defs/expr"
         },
         "stored": {
           "type": "boolean",
           "default": false
         }
       },
-      "required": ["expression"],
       "additionalProperties": false
     },
     "attribute": {
@@ -875,8 +881,9 @@
     },
     "checkConstraint": {
       "title": "Check constraint",
+      "description": "A check: SQL text per dialect (expression) or an expression tree (condition), exactly one of the two (MQ3107).",
       "type": "object",
-      "x-order": ["id", "name", "column", "expression"],
+      "x-order": ["id", "name", "column", "expression", "condition"],
       "properties": {
         "id": {
           "$ref": "#/$defs/id"
@@ -891,10 +898,270 @@
         },
         "expression": {
           "$ref": "#/$defs/dialectMap",
-          "minProperties": 1
+          "minProperties": 1,
+          "default": {}
+        },
+        "condition": {
+          "description": "The condition as an expression tree over the table's columns; unknown passes, as in any CHECK.",
+          "$ref": "#/$defs/expr"
         }
       },
-      "required": ["id", "expression"],
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "entityCheck": {
+      "title": "Entity check",
+      "description": "A condition every record of the entity meets; unknown passes, as in a CHECK. A database enforces it only through a binding that lists it in checks.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "pluralName",
+        "attribute",
+        "condition",
+        "message",
+        "description",
+        "rationale",
+        "decision",
+        "status",
+        "stereotypes",
+        "tags",
+        "category",
+        "properties",
+        "generation",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier",
+          "default": ""
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "pluralName": {
+          "type": "string"
+        },
+        "attribute": {
+          "description": "The attribute a failure points at: an id, or the keyed id of an inherited or contributed attribute (MQ3114 when the condition does not read it).",
+          "type": "string",
+          "minLength": 1
+        },
+        "condition": {
+          "description": "The condition, a boolean expression over the entity's own attributes.",
+          "$ref": "#/$defs/expr"
+        },
+        "message": {
+          "description": "The text a failure reports.",
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "rationale": {
+          "description": "Markdown text: why the element is shaped this way.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "stereotypes": {
+          "$ref": "#/$defs/keyList",
+          "default": []
+        },
+        "tags": {
+          "$ref": "#/$defs/tagList",
+          "default": []
+        },
+        "category": {
+          "$ref": "#/$defs/id"
+        },
+        "properties": {
+          "$ref": "#/$defs/properties",
+          "default": {}
+        },
+        "generation": {
+          "$ref": "#/$defs/generation",
+          "default": {}
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "condition"
+      ],
+      "additionalProperties": false
+    },
+    "expr": {
+      "title": "Expression",
+      "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
+      "type": "object",
+      "x-order": ["value", "type", "null", "path", "ref", "member", "now", "op", "call", "args", "case", "else", "satisfies", "with", "text"],
+      "properties": {
+        "value": {
+          "description": "A literal: a string, an integer or a boolean; with type, the value's text, so that digits are kept.",
+          "type": ["string", "integer", "boolean"]
+        },
+        "type": {
+          "description": "The type of a literal written as text.",
+          "enum": ["decimal", "double", "date", "time", "datetime", "datetimeoffset", "uuid"]
+        },
+        "null": {
+          "description": "The null literal.",
+          "const": true
+        },
+        "path": {
+          "description": "To-one navigation ids (relation end ids), then one attribute, column, input member, context or payload attribute, or constraint parameter id; attributeId.memberId for a value object member; keyed ids for inherited and contributed members.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "ref": {
+          "description": "The id of an enum member or of a reference-type code.",
+          "type": "string",
+          "minLength": 1
+        },
+        "member": {
+          "description": "A member of the selected object in the path syntax of declared rules (properties.retentionDays); rule conditions only.",
+          "type": "string",
+          "minLength": 1
+        },
+        "now": {
+          "description": "The clock, a datetimeoffset; guard sites only.",
+          "const": true
+        },
+        "op": {
+          "enum": ["eq", "ne", "lt", "le", "gt", "ge", "between", "in", "notIn", "isNull", "isNotNull", "distinct", "notDistinct", "and", "or", "not", "implies", "add", "sub", "mul", "div", "neg", "concat", "coalesce"]
+        },
+        "call": {
+          "description": "A function of the closed table (trim, length, matches, nonnull_count, add_days, add_months, date_part, date_of, round, json_type, json_length); another name is MQ3101.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expr"
+          }
+        },
+        "case": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/exprWhen"
+          },
+          "minItems": 1
+        },
+        "else": {
+          "$ref": "#/$defs/expr"
+        },
+        "satisfies": {
+          "description": "The id of the constraint cited.",
+          "$ref": "#/$defs/id"
+        },
+        "with": {
+          "description": "One argument per parameter of the constraint.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/exprArgument"
+          }
+        },
+        "text": {
+          "description": "The expression as text, parsed in the site's scope.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["value"]
+        },
+        {
+          "required": ["null"]
+        },
+        {
+          "required": ["path"]
+        },
+        {
+          "required": ["ref"]
+        },
+        {
+          "required": ["member"]
+        },
+        {
+          "required": ["now"]
+        },
+        {
+          "required": ["op"]
+        },
+        {
+          "required": ["call"]
+        },
+        {
+          "required": ["case"]
+        },
+        {
+          "required": ["satisfies"]
+        },
+        {
+          "required": ["text"]
+        }
+      ],
+      "dependentRequired": {
+        "type": ["value"],
+        "op": ["args"],
+        "call": ["args"],
+        "else": ["case"],
+        "satisfies": ["with"]
+      },
+      "additionalProperties": false
+    },
+    "exprWhen": {
+      "title": "Expression case branch",
+      "type": "object",
+      "x-order": ["when", "then"],
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/expr"
+        },
+        "then": {
+          "$ref": "#/$defs/expr"
+        }
+      },
+      "required": ["when", "then"],
+      "additionalProperties": false
+    },
+    "exprArgument": {
+      "title": "Constraint argument",
+      "type": "object",
+      "x-order": ["parameter", "value"],
+      "properties": {
+        "parameter": {
+          "description": "The id of the constraint's parameter.",
+          "$ref": "#/$defs/id"
+        },
+        "value": {
+          "$ref": "#/$defs/expr"
+        }
+      },
+      "required": ["parameter", "value"],
       "additionalProperties": false
     },
     "tableIndex": {

@@ -3279,7 +3279,7 @@ export interface components {
              * @description The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none.
              * @enum {string}
              */
-            quickFix?: "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
+            quickFix?: "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "text-to-trees";
         };
         Diagnostic: {
             rule: string;
@@ -6983,6 +6983,92 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
+         * Expression
+         * @description A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).
+         */
+        expr: {
+            /** @description A literal: a string, an integer or a boolean; with type, the value's text, so that digits are kept. */
+            value?: string | number | boolean;
+            /**
+             * @description The type of a literal written as text.
+             * @enum {unknown}
+             */
+            type?: "decimal" | "double" | "date" | "time" | "datetime" | "datetimeoffset" | "uuid";
+            /**
+             * @description The null literal.
+             * @constant
+             */
+            null?: true;
+            /** @description To-one navigation ids (relation end ids), then one attribute, column, input member, context or payload attribute, or constraint parameter id; attributeId.memberId for a value object member; keyed ids for inherited and contributed members. */
+            path?: string[];
+            /** @description The id of an enum member or of a reference-type code. */
+            ref?: string;
+            /** @description A member of the selected object in the path syntax of declared rules (properties.retentionDays); rule conditions only. */
+            member?: string;
+            /**
+             * @description The clock, a datetimeoffset; guard sites only.
+             * @constant
+             */
+            now?: true;
+            /** @enum {unknown} */
+            op?: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "between" | "in" | "notIn" | "isNull" | "isNotNull" | "distinct" | "notDistinct" | "and" | "or" | "not" | "implies" | "add" | "sub" | "mul" | "div" | "neg" | "concat" | "coalesce";
+            /** @description A function of the closed table (trim, length, matches, nonnull_count, add_days, add_months, date_part, date_of, round, json_type, json_length); another name is MQ3101. */
+            call?: string;
+            args?: components["schemas"]["expr"][];
+            case?: components["schemas"]["exprWhen"][];
+            else?: components["schemas"]["expr"];
+            /** @description The id of the constraint cited. */
+            satisfies?: components["schemas"]["id"];
+            /** @description One argument per parameter of the constraint. */
+            with?: components["schemas"]["exprArgument"][];
+            /** @description The expression as text, parsed in the site's scope. */
+            text?: string;
+        } & (unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown);
+        /** Expression case branch */
+        exprWhen: {
+            when: components["schemas"]["expr"];
+            then: components["schemas"]["expr"];
+        };
+        /** Constraint argument */
+        exprArgument: {
+            /** @description The id of the constraint's parameter. */
+            parameter: components["schemas"]["id"];
+            value: components["schemas"]["expr"];
+        };
+        /**
+         * Entity check
+         * @description A condition every record of the entity meets; unknown passes, as in a CHECK. A database enforces it only through a binding that lists it in checks.
+         */
+        entityCheck: {
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            /** @description The attribute a failure points at: an id, or the keyed id of an inherited or contributed attribute (MQ3114 when the condition does not read it). */
+            attribute?: string;
+            /** @description The condition, a boolean expression over the entity's own attributes. */
+            condition: components["schemas"]["expr"];
+            /** @description The text a failure reports. */
+            message?: string;
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
          * @description A built-in scalar type keyword.
          * @enum {unknown}
          */
@@ -6994,8 +7080,15 @@ export interface components {
         length: number;
         precision: number;
         scale: number;
+        /** @description How a derived attribute is computed: by raw text (expression) or by an expression tree (value), exactly one of the two (MQ3107). */
         derived: {
-            expression: string;
+            /**
+             * @description The raw expression, interpreted by templates.
+             * @default
+             */
+            expression?: string;
+            /** @description The value as an expression of the attribute's type. */
+            value?: components["schemas"]["expr"];
             /** @default false */
             stored?: boolean;
         };
@@ -7108,6 +7201,11 @@ export interface components {
                 name: components["schemas"]["identifier"];
                 attributes: components["schemas"]["idList"];
             }[];
+            /**
+             * @description Conditions every record of the entity meets. A database enforces one only through a binding that lists it.
+             * @default []
+             */
+            checks?: components["schemas"]["entityCheck"][];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
             /**
@@ -7174,6 +7272,11 @@ export interface components {
                         [key: string]: string;
                     };
                 };
+                /**
+                 * @description The ids of the entity's checks the write table enforces, lowered through the field map (MQ3110). A check no binding lists reaches no table.
+                 * @default []
+                 */
+                checks?: components["schemas"]["idList"];
                 description?: components["schemas"]["description"];
                 /** @default [] */
                 tags?: components["schemas"]["tagList"];
@@ -7652,13 +7755,19 @@ export interface components {
              */
             deferrable?: "not-deferrable" | "initially-immediate" | "initially-deferred";
         };
-        /** Check constraint */
+        /**
+         * Check constraint
+         * @description A check: SQL text per dialect (expression) or an expression tree (condition), exactly one of the two (MQ3107).
+         */
         checkConstraint: {
             id: components["schemas"]["id"];
             name?: components["schemas"]["label"];
             /** @description A column check: the id or key of the column it constrains. The constraint is written in the table like any other check; a migration that drops the column drops the check first. */
             column?: string;
-            expression: components["schemas"]["dialectMap"];
+            /** @default {} */
+            expression?: components["schemas"]["dialectMap"];
+            /** @description The condition as an expression tree over the table's columns; unknown passes, as in any CHECK. */
+            condition?: components["schemas"]["expr"];
         };
         /**
          * @description Storage parameters per dialect name (postgresql, sqlserver, mysql, oracle): each a map of parameter name to value, written in the DDL of a database of that dialect only (PostgreSQL and SQL Server WITH (name = value), MySQL table options, Oracle physical attributes). A number or boolean is written as the dialect writes it; a string is written as SQL as it is.
@@ -9337,6 +9446,8 @@ export interface components {
             displayName?: string;
             /** @description A JavaScript expression over context and event returning a boolean. */
             expression?: string;
+            /** @description The condition as an expression tree over context and event; only true passes. A guard holds expression or condition, not both (MQ3107), or neither as a stub. */
+            condition?: components["schemas"]["expr"];
             description?: components["schemas"]["description"];
         };
         /**
@@ -9591,6 +9702,8 @@ export interface components {
                     displayName?: string;
                     /** @description A JavaScript expression over context and event returning a boolean. */
                     expression?: string;
+                    /** @description The condition as an expression tree over context and event; only true passes. A guard holds expression or condition, not both (MQ3107), or neither as a stub. */
+                    condition?: components["schemas"]["expr"];
                     description?: components["schemas"]["description"];
                 };
                 /**
@@ -10300,6 +10413,37 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
+         * Operation guard
+         * @description A condition the operation requires before it runs, and the error it raises when the condition does not hold.
+         */
+        "$defs-guard": {
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            /** @description The condition, a boolean expression over the input members and, for a record operation, the subject. */
+            condition: components["schemas"]["expr"];
+            /** @description The error the guard raises: an own error's id or an inherited one's keyed id (MQ3111). */
+            error?: string;
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
          * Error redefinition
          * @description An exception to one inherited error: the stereotype error it names (member) and the facets it states. It has no id of its own.
          */
@@ -10353,6 +10497,11 @@ export interface components {
              * @default []
              */
             errors?: components["schemas"]["operationError"][];
+            /**
+             * @description Conditions the operation requires, checked in order: the first that does not hold reports its error. Only true passes.
+             * @default []
+             */
+            guards?: components["schemas"]["$defs-guard"][];
             /**
              * @description Per-operation exceptions to the errors the operation inherits from its stereotypes: each entry names a stereotype error by its id and states only the facets it changes (input, displayName, description). The error keeps its keyed id (<operation id>.<error id>); name and code are not redefinable (MQ2027).
              * @default []
@@ -10514,6 +10663,37 @@ export interface components {
                     maxPageSize?: number;
                 };
                 /**
+                 * Operation guard
+                 * @description A condition the operation requires before it runs, and the error it raises when the condition does not hold.
+                 */
+                guard: {
+                    id: components["schemas"]["id"];
+                    /** @default  */
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    pluralName?: string;
+                    /** @description The condition, a boolean expression over the input members and, for a record operation, the subject. */
+                    condition: components["schemas"]["expr"];
+                    /** @description The error the guard raises: an own error's id or an inherited one's keyed id (MQ3111). */
+                    error?: string;
+                    description?: components["schemas"]["description"];
+                    /** @description Markdown text: why the element is shaped this way. */
+                    rationale?: string;
+                    /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                    decision?: string;
+                    status?: components["schemas"]["status"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default [] */
+                    tags?: components["schemas"]["tagList"];
+                    category?: components["schemas"]["id"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
+                    /** @default {} */
+                    generation?: components["schemas"]["generation"];
+                    source?: components["schemas"]["source"];
+                };
+                /**
                  * Error redefinition
                  * @description An exception to one inherited error: the stereotype error it names (member) and the facets it states. It has no id of its own.
                  */
@@ -10578,12 +10758,12 @@ export interface components {
         idOrName: components["schemas"]["id"] | components["schemas"]["placeholder"] | components["schemas"]["qualifiedName"];
         /**
          * Model batch
-         * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the fold into a stereotype and the reference-type refactors, from the editor, a refactoring or an AI proposal.
+         * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the text-to-trees conversion, the fold into a stereotype and the reference-type refactors, from the editor, a refactoring or an AI proposal.
          */
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag" | "tags-to-property" | "names-to-ids" | "fold-into-stereotype" | "map-by-name" | "resync-binding" | "rename-code" | "retire-code" | "merge-reference-types" | "rename-reference-type";
+                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag" | "tags-to-property" | "names-to-ids" | "fold-into-stereotype" | "map-by-name" | "resync-binding" | "rename-code" | "retire-code" | "merge-reference-types" | "rename-reference-type" | "text-to-trees";
                 /** @description The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder. For fold-into-stereotype, the stereotype whose members the tables adopt; for rename-code, retire-code and rename-reference-type, the reference type; for merge-reference-types, the reference type merged away. */
                 id?: components["schemas"]["idOrName"];
                 /** @description Create and update: a placeholder that names the operation's element for the whole batch. */
@@ -10613,7 +10793,7 @@ export interface components {
                 columns?: string[];
                 /** @description The binding field references (attribute ids, attributeId.memberId for a value object member, to-one end ids) that get a column of the entity's table mapped to them (materialize-columns, one entity only); absent means every attribute the binding leaves unmapped. An item that starts with @ or $ names one attribute or end; the composite attributeId.memberId stays ids. */
                 attributes?: string[];
-                /** @description The elements names-to-ids and tags-to-property act on, each an id, a qualified name or a placeholder; absent means every element they apply to (names-to-ids: every document with x-ref sites; tags-to-property: every holder the vocabulary governs, and the moved tags' declarations leave the vocabulary). */
+                /** @description The elements names-to-ids, tags-to-property and text-to-trees act on, each an id, a qualified name or a placeholder; absent means every element they apply to (names-to-ids: every document with x-ref sites; tags-to-property: every holder the vocabulary governs, and the moved tags' declarations leave the vocabulary; text-to-trees: every document that holds an expression as text). */
                 elementIds?: components["schemas"]["idOrName"][];
                 /** @description The tag keys to remove, or the one to rename (retag). */
                 tags?: components["schemas"]["tagList"];

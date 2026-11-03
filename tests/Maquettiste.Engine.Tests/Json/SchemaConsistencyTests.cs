@@ -113,7 +113,7 @@ public sealed class SchemaConsistencyTests
         // next-phase-2-design.md section 3.3 (D30): provenance follows delete in a binding; its columns map a column id or a keyed id to
         // "<8 hex>:<8 hex>", and the canonical writer sorts the keys.
         var binding = Schemas.GetLayout("entity.json").Properties["bindings"].Layout.Items!;
-        Assert.Equal(["id", "database", "source", "constants", "fields", "columns", "write", "delete", "provenance", "description", "tags", "properties"], binding.Keys);
+        Assert.Equal(["id", "database", "source", "constants", "fields", "columns", "write", "delete", "provenance", "checks", "description", "tags", "properties"], binding.Keys);
 
         const string Keyed = "01JAX3K9V2Q7M4T8W1Z5C6B0DE.01JAX3KB2C3D4E5F6G7H8J9KAM", Plain = "01JAX3KC3D4E5F6G7H8J9KAMBN";
         string Entity(string provenance) =>

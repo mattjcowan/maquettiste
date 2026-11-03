@@ -43,6 +43,7 @@ public sealed partial class ModelStore
                 : o.Op == BatchOp.Retag ? Wrap("MQ1002", Retag(snapshot, o, materialized))
                 : o.Op == BatchOp.TagsToProperty ? TagsToProperty(snapshot, o, materialized, pointer)
                 : o.Op == BatchOp.NamesToIds ? NamesToIds(snapshot, o, materialized, pointer)
+                : o.Op == BatchOp.TextToTrees ? TextToTrees(snapshot, o, materialized, pointer)
                 : Wrap("MQ9019", processWork.Apply(o));
             if (refusals is { Count: > 0 })
                 invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null, refusals, [], null);

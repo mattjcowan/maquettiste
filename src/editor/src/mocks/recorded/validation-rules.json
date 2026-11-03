@@ -640,6 +640,119 @@
     "canBeOff": true
   },
   {
+    "id": "MQ3101",
+    "defaultSeverity": "error",
+    "description": "An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3102",
+    "defaultSeverity": "error",
+    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, or a payload attribute some using event lacks.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3103",
+    "defaultSeverity": "error",
+    "description": "An expression's types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, + on a date, date_part of hour or minute on a date, a site result that is not bool, a derived value of another type, a type the core does not have (float among them), or an enum member or code against a value of no enum or reference type.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3104",
+    "defaultSeverity": "error",
+    "description": "now() at a check site, a value site or a rule condition, directly or through a constraint; only guards read the clock.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3105",
+    "defaultSeverity": "error",
+    "description": "A regular expression outside the portable subset.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3106",
+    "defaultSeverity": "error",
+    "description": "An expression argument that must be a literal is not: a pattern, a date_part part, round digits, an in list item; or an in list holds null.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3107",
+    "defaultSeverity": "error",
+    "description": "An expression site holds both its raw form and a tree, or neither; a process guard is reported only for both, since a guard with neither is a stub.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3108",
+    "defaultSeverity": "warning",
+    "description": "A file holds an expression as text; renames will not follow it. Convert it to a tree.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true,
+    "quickFix": "text-to-trees"
+  },
+  {
+    "id": "MQ3109",
+    "defaultSeverity": "error",
+    "description": "A satisfies names no constraint, misses or adds a parameter, binds one to another type, names a constraint whose condition is not a boolean that types, or constraints cite each other in a cycle.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3110",
+    "defaultSeverity": "error",
+    "description": "A binding lists a check that is not its entity's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column, or the binding has no write table.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3111",
+    "defaultSeverity": "error",
+    "description": "An operation guard's error is not an error of the operation, or the guard reads the subject of an operation without a record subject.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3113",
+    "defaultSeverity": "error",
+    "description": "An expression has more than 512 nodes or nests deeper than 64.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3114",
+    "defaultSeverity": "warning",
+    "description": "A column check does not read its column, or an entity check does not read its attribute.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3115",
+    "defaultSeverity": "warning",
+    "description": "An entity check is listed by no binding with a write table, though one of them maps every attribute it reads, so no database enforces it.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
     "id": "MQ4001",
     "defaultSeverity": "error",
     "description": "Identifier longer than the dialect's limit.",
@@ -1082,7 +1195,7 @@
   {
     "id": "MQ4056",
     "defaultSeverity": "warning",
-    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a routine's volatility or settings on SQL Server, a temporal key (withoutOverlaps, a foreign key's period) an exclusion constraint or partitioning outside PostgreSQL, an index operator class outside PostgreSQL, index storage parameters on MySQL, SQLite and Oracle, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL; also migration facts outside PostgreSQL (a fact's migration keeps TODO comments where its steps would go, a rekey writes no DDL on any dialect, and no ledger rows are written), index column nulls outside PostgreSQL, a range or multirange column outside PostgreSQL (stored as the dialect's text type), and a run-once SQL object outside PostgreSQL (the scripts leave it out: its guard needs the migration ledger); also a seed cell that names a row whose referenced value the database fills, outside PostgreSQL (written as NULL with a TODO comment).",
+    "description": "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a routine's volatility or settings on SQL Server, a temporal key (withoutOverlaps, a foreign key's period) an exclusion constraint or partitioning outside PostgreSQL, an index operator class outside PostgreSQL, index storage parameters on MySQL, SQLite and Oracle, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL; also migration facts outside PostgreSQL (a fact's migration keeps TODO comments where its steps would go, a rekey writes no DDL on any dialect, and no ledger rows are written), index column nulls outside PostgreSQL, a range or multirange column outside PostgreSQL (stored as the dialect's text type), and a run-once SQL object outside PostgreSQL (the scripts leave it out: its guard needs the migration ledger); also a seed cell that names a row whose referenced value the database fills, outside PostgreSQL (written as NULL with a TODO comment); also a check written in the expression language on a database whose dialect is not PostgreSQL (the DDL leaves it out).",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true

@@ -469,7 +469,7 @@ types where the core refuses mixed ones), so a hand conversion must check them.
 | MQ3106 | E | An argument that must be a literal is not: a pattern, a `date_part` part, `round` digits, an `in` list item; or an `in` list holds null. | Write a literal |
 | MQ3107 | E | A site holds both its raw form and a tree, or neither; a process guard is reported only for both, since a guard with neither is a stub. | Keep one |
 | MQ3108 | W | A file holds an expression as text; renames will not follow it. | `text-to-trees` |
-| MQ3109 | E | A `satisfies` names no constraint, misses or adds a parameter, binds one to another type, or constraints cite each other in a cycle. | Bind every parameter |
+| MQ3109 | E | A `satisfies` names no constraint, misses or adds a parameter, binds one to another type, names a constraint whose condition is not a boolean that types, or constraints cite each other in a cycle. | Bind every parameter |
 | MQ3110 | E | A binding lists a check that is not its entity's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column, or it has no write table. | Map the attribute to a varying column, or remove the check from the binding |
 | MQ3111 | E | An operation guard's `error` is not an error of the operation, or it reads the subject of an operation without a record subject. | Name an own or inherited error |
 | MQ3113 | E | An expression has more than 512 nodes or nests deeper than 64. | Split it into constraints |

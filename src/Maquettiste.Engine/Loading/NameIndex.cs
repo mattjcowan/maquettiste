@@ -127,6 +127,8 @@ internal sealed class NameIndex
                 AddAttributes(entity.Attributes, forms, Add);
                 foreach (var key in entity.AlternateKeys)
                     Add("key", key.Id, forms.Then(key.Name));
+                foreach (var check in entity.Checks)
+                    Add("key", check.Id, forms.Then(check.Name));
                 if (Wants("binding"))
                 {
                     foreach (var binding in entity.Bindings)
@@ -190,6 +192,10 @@ internal sealed class NameIndex
             case Operation operation when forms is not null:
                 AddOperation(operation, forms, Add);
                 break;
+            case Constraint constraint when forms is not null:
+                foreach (var parameter in constraint.Parameters)
+                    Add("parameter", parameter.Id, forms.Then(parameter.Name));
+                break;
             case Custom custom when forms is not null && schemas is not null && Wants("member"):
                 AddMembers(custom, schemas, forms, Add);
                 break;
@@ -206,13 +212,15 @@ internal sealed class NameIndex
         "key" => [ElementKind.Table, ElementKind.Entity],
         "schema" => [ElementKind.Database],
         "enum-member" => [ElementKind.Enum],
-        "event" or "guard" or "action" or "invoke" or "gate" or "meaning" or "state" => [ElementKind.Process],
+        "guard" => [ElementKind.Process, ElementKind.Operation],
+        "event" or "action" or "invoke" or "gate" or "meaning" or "state" => [ElementKind.Process],
         "end" => [ElementKind.Relation],
         "reference-field" => [ElementKind.ReferenceType],
         "row" => [ElementKind.Seed],
         "binding" => [ElementKind.Entity, ElementKind.ReferenceType],
         "category" => [ElementKind.CategoryTree],
         "operation-member" or "outcome" => [ElementKind.Operation],
+        "parameter" => [ElementKind.Constraint],
         "error" => [ElementKind.Operation, ElementKind.Stereotype],
         "member" => [ElementKind.Custom],
         _ => KindInfo.TryGet(kind, out var info) ? [info.Kind] : [],
@@ -350,6 +358,8 @@ internal sealed class NameIndex
 
         foreach (var error in operation.Errors)
             add("error", error.Id, forms.Then(error.Name));
+        foreach (var guard in operation.Guards)
+            add("guard", guard.Id, forms.Then(guard.Name));
     }
 
     private static void AddProcess(Process process, Forms forms, Action<string, string, Forms?> add)

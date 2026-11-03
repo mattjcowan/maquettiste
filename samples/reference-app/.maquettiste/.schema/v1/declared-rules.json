@@ -141,7 +141,7 @@
       "minimum": 0
     },
     "condition": {
-      "description": "Exactly one operator: all, any and not combine; has, equals, count, references and referencedBy test.",
+      "description": "Exactly one operator: all, any and not combine; has, equals, count, references, referencedBy and expression test.",
       "type": "object",
       "x-order": [
         "all",
@@ -151,7 +151,8 @@
         "equals",
         "count",
         "references",
-        "referencedBy"
+        "referencedBy",
+        "expression"
       ],
       "properties": {
         "all": {
@@ -236,6 +237,10 @@
         "referencedBy": {
           "description": "Holds when at least min (default 1) and at most max objects of kind link to the object, through field when given.",
           "$ref": "#/$defs/links"
+        },
+        "expression": {
+          "description": "Holds when the expression is true; it reads the selected object's members with member nodes and is judged as a guard.",
+          "$ref": "common.json#/$defs/expr"
         }
       },
       "minProperties": 1,

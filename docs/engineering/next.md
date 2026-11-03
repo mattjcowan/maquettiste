@@ -94,7 +94,7 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
-| 3.8 | One expression language for checks, validations, derived values and guards, lowered to SQL and JavaScript | yes | Later | Large. Designed in `next-phase-3-design.md`, approved 2026-11-03; the build waits on its plan and estimate. |
+| 3.8 | One expression language for checks, validations, derived values and guards, lowered to SQL and JavaScript | yes | Build next | Large. Designed in `next-phase-3-design.md`, approved 2026-11-03. The first half is built: the core, both lowerings, the corpus, the rules and the writes (tasks H1 to H6). The second half (H7 to H14) is next. |
 | 3.12 | Projections | no | Later | Added by the roadmap's review; operation payloads and scenarios use them. Needs 3.8. |
 | 5.5 | The query kind for hand-written SQL, and CTEs in the structured query | yes | Later | For database-first teams. Written tables and result columns are declared, not read from the SQL text. Includes raw SQL as a binding's read source (from the bindings work below). |
 | 6.1 | A live PostgreSQL planner: `db plan`, `db apply`, `db adopt` | yes | Later | Large, PostgreSQL only. Built when more than one team manages databases with Maquettiste. |

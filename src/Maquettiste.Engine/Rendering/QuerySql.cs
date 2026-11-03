@@ -127,6 +127,22 @@ public static class QuerySql
     /// <summary>One expression as the query's statement writes it for its database's dialect (to compare two expressions).</summary>
     internal static string ExpressionText(RQuery query, RQueryExpression expression) => new Writer(query, null, null).Text(expression);
 
+    /// <summary>
+    /// A condition over one row in PostgreSQL, as a CHECK needs it (row mode, next-phase-3-design.md section 3.1): column names
+    /// unqualified and <c>COLLATE "C"</c> after each string operand of a comparison, <c>in</c>, <c>between</c>, <c>distinct</c> or
+    /// <c>match</c>.
+    /// </summary>
+    /// <param name="condition">The condition.</param>
+    /// <param name="quoting">How the database quotes identifiers.</param>
+    /// <returns>The SQL text.</returns>
+    internal static string RowText(RQueryPredicate condition, Quoting quoting) => new Writer(Dialect.PostgreSql, quoting).Condition(condition);
+
+    /// <summary>A value over one row in PostgreSQL, in row mode (<see cref="RowText(RQueryPredicate, Quoting)"/>).</summary>
+    /// <param name="value">The value.</param>
+    /// <param name="quoting">How the database quotes identifiers.</param>
+    /// <returns>The SQL text.</returns>
+    internal static string RowText(RQueryExpression value, Quoting quoting) => new Writer(Dialect.PostgreSql, quoting).Text(value);
+
     /// <summary>The text an <c>sql</c> expression has for a dialect: its own, else <c>"*"</c>'s; a blank text counts as none.</summary>
     internal static string? SqlFor(IReadOnlyDictionary<string, string> texts, string dialect) =>
         texts.TryGetValue(dialect, out var text) && !string.IsNullOrWhiteSpace(text) ? text
@@ -151,7 +167,8 @@ public static class QuerySql
 
     private sealed class Writer
     {
-        private readonly RQuery _root;
+        private readonly RQuery? _root;
+        private readonly bool _row;
         private readonly Dialect _dialect;
         private readonly string _dialectName;
         private readonly Quoting _quoting;
@@ -166,17 +183,29 @@ public static class QuerySql
         public Writer(RQuery query, string? dialect, QuerySqlOptions? options)
         {
             _root = Root(query);
-            var name = dialect ?? _root.Database.Dialect;
+            var name = dialect ?? _root!.Database.Dialect;
             if (!SqlDialects.TryParse(name, out _dialect))
                 throw new ArgumentException($"'{name}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
             _dialectName = DialectTypeMaps.Name(_dialect);
-            SqlDialects.TryParseQuoting(_root.Database.Quoting, out _quoting);
+            SqlDialects.TryParseQuoting(_root!.Database.Quoting, out _quoting);
             _options = options ?? QuerySqlOptions.Default;
             if (_options.Placeholder is not ("@" or ":" or "$"))
                 throw new ArgumentException($"The placeholder style '{_options.Placeholder}' is not @, : or $.", nameof(options));
             if (_options.Lists is not ("expand" or "any"))
                 throw new ArgumentException($"The list style '{_options.Lists}' is not expand or any.", nameof(options));
         }
+
+        // Row mode: one row's condition or value, with no query around it.
+        public Writer(Dialect dialect, Quoting quoting)
+        {
+            _row = true;
+            _dialect = dialect;
+            _dialectName = DialectTypeMaps.Name(dialect);
+            _quoting = quoting;
+            _options = QuerySqlOptions.Default;
+        }
+
+        public string Condition(RQueryPredicate predicate) => Predicate(predicate, true);
 
         public QuerySqlText Result() => new(_sb.ToString(), [.. _parameters], [.. _diagnostics]);
 
@@ -400,14 +429,22 @@ public static class QuerySql
                     return "NOT (" + Predicate(predicate.Not!, true) + ")";
                 case "exists":
                     return "EXISTS (" + Subquery(predicate.Exists!) + ")";
+                case "match":
+                    return Operand(predicate.Left!) + " ~ " + Expression(predicate.Right!);
+                case "distinct":
+                    return Operand(predicate.Left!) + (predicate.Op == "notDistinct" ? " IS NOT DISTINCT FROM " : " IS DISTINCT FROM ") + Operand(predicate.Right!);
                 default:
                     return Compare(predicate);
             }
         }
 
+        // An operand of a comparison; in row mode a string compares by code point, whatever the column's collation.
+        private string Operand(RQueryExpression expression) =>
+            _row && expression.Type == "string" ? Expression(expression) + " COLLATE \"C\"" : Expression(expression);
+
         private string Compare(RQueryPredicate predicate)
         {
-            var left = Expression(predicate.Left!);
+            var left = predicate.Op is "isNull" or "isNotNull" ? Expression(predicate.Left!) : Operand(predicate.Left!);
             var op = predicate.Op;
             switch (op)
             {
@@ -418,9 +455,9 @@ public static class QuerySql
                 case "in" or "notIn":
                     if (predicate.Right is { Node: "param", Param: { Collection: true } list })
                         return InList(left, list.Name, op == "notIn");
-                    return left + (op == "notIn" ? " NOT IN (" : " IN (") + string.Join(", ", predicate.Values.Select(Expression)) + ")";
+                    return left + (op == "notIn" ? " NOT IN (" : " IN (") + string.Join(", ", predicate.Values.Select(Operand)) + ")";
                 case "between":
-                    return left + " BETWEEN " + Expression(predicate.Values[0]) + " AND " + Expression(predicate.Values[1]);
+                    return left + " BETWEEN " + Operand(predicate.Values[0]) + " AND " + Operand(predicate.Values[1]);
                 case "ilike" when _dialect != Dialect.PostgreSql:
                     return "LOWER(" + left + ") LIKE LOWER(" + Expression(predicate.Right!) + ")";
             }
@@ -437,7 +474,7 @@ public static class QuerySql
                 "ilike" => " ILIKE ",
                 _ => " " + op + " ",
             };
-            return left + symbol + Expression(predicate.Right!);
+            return left + symbol + Operand(predicate.Right!);
         }
 
         /// <summary>
@@ -463,7 +500,11 @@ public static class QuerySql
             switch (expression.Node)
             {
                 case "column":
-                    return Q(expression.Alias!) + "." + Q(expression.ColumnName!);
+                    return _row ? Q(expression.ColumnName!) : Q(expression.Alias!) + "." + Q(expression.ColumnName!);
+                case "typed":
+                    return expression.NativeType + " " + SqlDialects.Literal(expression.LiteralText, _dialect);
+                case "pred":
+                    return "(" + Predicate(expression.Pred!, true) + ")";
                 case "param":
                     return Placeholder(expression.Param!.Name);
                 case "value":
@@ -491,8 +532,8 @@ public static class QuerySql
                     if (SqlFor(expression.Sql, _dialectName) is { } text)
                         return text;
                     _diagnostics.Add(RuleCatalog.Create("MQ4029",
-                        $"Query '{_root.Name}' has an sql expression without a text for {_dialectName} (and no \"*\" text), so it cannot be rendered there.",
-                        _root.Id));
+                        $"Query '{_root?.Name}' has an sql expression without a text for {_dialectName} (and no \"*\" text), so it cannot be rendered there.",
+                        _root?.Id));
                     return "NULL";
                 }
 
@@ -505,7 +546,7 @@ public static class QuerySql
         {
             var args = expression.Args.Select(Expression).ToList();
             if (args.Count == 1)
-                return "(" + (expression.Op == "-" ? "-" : "") + args[0] + ")";
+                return "(" + (expression.Op == "-" ? args[0].StartsWith('-') ? "- " : "-" : "") + args[0] + ")";
             switch (expression.Op)
             {
                 case "concat" when _dialect is Dialect.SqlServer or Dialect.MySql:
@@ -528,6 +569,8 @@ public static class QuerySql
                 return name + "(" + string.Join(", ", args) + ")";
             }
 
+            if (expression.Template is { } template)
+                return Fill(template, args);
             var call = expression.Call!;
             var spelled = FunctionName(call, _dialect);
             if (spelled == "CURRENT_TIMESTAMP")
@@ -537,9 +580,37 @@ public static class QuerySql
             return (spelled ?? call) + "(" + string.Join(", ", args) + ")";
         }
 
+        // A template's placeholders: {0}, {1}… one argument, {*} all of them, {rest} those after the first.
+        private static string Fill(string template, List<string> args)
+        {
+            var text = new StringBuilder();
+            for (var i = 0; i < template.Length; i++)
+            {
+                var close = template[i] == '{' ? template.IndexOf('}', i) : -1;
+                if (close < 0)
+                {
+                    text.Append(template[i]);
+                    continue;
+                }
+
+                var name = template[(i + 1)..close];
+                text.Append(name switch
+                {
+                    "*" => string.Join(", ", args),
+                    "rest" => string.Join(", ", args.Skip(1)),
+                    _ => args[int.Parse(name, CultureInfo.InvariantCulture)],
+                });
+                i = close;
+            }
+
+            return text.ToString();
+        }
+
         private string CastType(RQueryExpression expression)
         {
             var keyword = expression.Type ?? "string";
+            if (_root is null)
+                return expression.NativeType ?? keyword;
             if (string.Equals(_dialectName, _root.Database.Dialect, StringComparison.Ordinal) && expression.NativeType is { Length: > 0 } native)
                 return native;
             var settings = _root.Settings ?? throw new InvalidOperationException("A resolved query carries its project settings.");

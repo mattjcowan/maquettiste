@@ -130,6 +130,39 @@ internal sealed partial class ChangePlanner
             return;
         }
 
+        // An id inside an expression tree (next-phase-3-design.md section 3.1): a tree never loses a node, since it would mean something
+        // else. remove-references refuses; delete-dependents removes what holds the tree: the check or guard, the derived value, or a
+        // constraint whole.
+        if (ExpressionHolder(reference.JsonPointer) is { } holder)
+        {
+            if (mode != DeleteResolution.DeleteDependents)
+            {
+                _cascadeRefused.Add((index, referrerId, reference,
+                    $"an expression names {Label(target)}, and remove-references does not rewrite an expression; delete with delete-dependents to remove the check or guard that holds it."));
+                return;
+            }
+
+            if (holder.Length > 0)
+            {
+                var drop = new CascadeOp(holder, true, reference, index);
+                List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != holder && !IsUnder(o.Pointer, holder)), drop];
+                if (TryOps(referrer, dropped, narrow, out _) is null)
+                {
+                    Commit(referrerId, dropped);
+                    foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
+                    {
+                        if (pointer.Length > 0 && (pointer == holder || IsUnder(pointer, holder)))
+                            _cascadeQueue.Enqueue((index, subId, mode));
+                    }
+
+                    return;
+                }
+            }
+
+            MarkCascadeDeleted(index, referrerId, "needs " + Label(target), mode);
+            return;
+        }
+
         // Links to a member of a deleted stereotype (next-phase-2-design.md sections 3.1 and 4.1): a table's or an operation's redefinition
         // of it goes whole and an exclusion of it is cleared, in both resolutions; any other keyed use of an inherited copy (an index, a key, a binding field, a
         // query) refuses remove-references, and delete-dependents removes it as it removes a deleted column's uses.
@@ -714,6 +747,28 @@ internal sealed partial class ChangePlanner
             array.RemoveAt(i);
             return true;
         }
+    }
+
+    /// <summary>
+    /// The part that holds the expression tree a pointer is inside: a check or guard (<c>/checks/0</c>, <c>/guards/2</c>), a derived value
+    /// (<c>/attributes/1/derived</c>), or <c>""</c> for a constraint's condition, which needs the whole element; <see langword="null"/>
+    /// when the pointer is in no tree.
+    /// </summary>
+    private static string? ExpressionHolder(string pointer)
+    {
+        if (!JsonPointer.TryParse(pointer, out var segments))
+            return null;
+        for (var k = 0; k < segments.Length - 1; k++)
+        {
+            if (segments[k] == "condition" && k == 0)
+                return "";
+            if (segments[k] == "condition" && k >= 2 && segments[k - 2] is "checks" or "guards")
+                return JsonPointer.Build(segments[..k]);
+            if (segments[k] == "value" && k >= 1 && segments[k - 1] == "derived")
+                return JsonPointer.Build(segments[..k]);
+        }
+
+        return null;
     }
 
     private static bool IsUnder(string pointer, string ancestor) =>

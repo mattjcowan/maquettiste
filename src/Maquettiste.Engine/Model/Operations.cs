@@ -45,6 +45,12 @@ public sealed record Operation : Element, IPackaged
     public IReadOnlyList<OperationError> Errors { get; init; } = [];
 
     /// <summary>
+    /// The guards, checked in order (next-phase-3-design.md section 3.1): the first that does not hold reports its error. Only true
+    /// passes.
+    /// </summary>
+    public IReadOnlyList<OperationGuard> Guards { get; init; } = [];
+
+    /// <summary>
     /// Per-operation exceptions to the errors the operation inherits from its stereotypes (next-phase-2-design.md section 3.1): each
     /// entry names a stereotype error and states only the facets it changes (<c>input</c>, <c>displayName</c>, <c>description</c>).
     /// </summary>
@@ -202,6 +208,17 @@ public sealed record OperationError : ElementBase
     /// error has none.</summary>
     [ElementRef(IndexKinds = ["operation-member"])]
     public string? Input { get; init; }
+}
+
+/// <summary>A condition an operation requires before it runs (index kind <c>guard</c>), and the error it raises when the condition fails.</summary>
+public sealed record OperationGuard : ElementBase
+{
+    /// <summary>The condition, a boolean expression over the input members and, for a record operation, the subject.</summary>
+    public required Expr Condition { get; init; }
+
+    /// <summary>The error the guard raises: an own error's id or an inherited one's keyed id (MQ3111).</summary>
+    [ElementRef(Keyed = true)]
+    public string? Error { get; init; }
 }
 
 /// <summary>

@@ -17,6 +17,15 @@ using Maquettiste.Engine.Resolution;
 namespace Maquettiste.Engine.Scripting;
 
 /// <summary>
+/// A JSON value whose numbers cross into a script as their exact text (next-phase-3-design.md section 3.1, lowering): each number
+/// becomes the frozen object <c>{ "$mq.number": "&lt;its JSON text&gt;" }</c>, which the expression runtime's <c>mq.dec</c> and
+/// <c>mq.dbl</c> read, so an integer beyond 2^53 or a decimal of 16 or more digits keeps every digit. Tree expressions take their row,
+/// context and payload so; JavaScript guards and actions still receive numbers.
+/// </summary>
+/// <param name="Value">The JSON value.</param>
+internal sealed record ExactJson(JsonElement Value);
+
+/// <summary>
 /// Moves values across the sandbox boundary (engine-design.md section 10): JSON-like data (string, number, bool, null, arrays,
 /// plain objects) and resolved objects as proxies both ways. Values entering a script are frozen; resolved objects keep their
 /// identity within one engine. Only values that cannot change (resolved-model objects and their immutable collections) are
@@ -104,7 +113,7 @@ internal sealed class ScriptValues
     /// <summary>Converts a JSON value into a deeply frozen script value.</summary>
     /// <param name="element">The JSON value.</param>
     /// <returns>The script value.</returns>
-    public JsValue FromJson(JsonElement element) => FromJson(element, 0);
+    public JsValue FromJson(JsonElement element) => FromJson(element, 0, exact: false);
 
     /// <summary>Freezes an object with <c>Object.freeze</c>.</summary>
     /// <param name="value">The object.</param>
@@ -164,7 +173,9 @@ internal sealed class ScriptValues
             case Enum e:
                 return new JsString(_catalog.EnumName(e));
             case JsonElement json:
-                return FromJson(json, depth);
+                return FromJson(json, depth, exact: false);
+            case ExactJson exact:
+                return FromJson(exact.Value, depth, exact: true);
         }
 
         if (_proxies.TryGetValue(value, out var existing))
@@ -237,7 +248,7 @@ internal sealed class ScriptValues
                 throw new ScriptValueException($"A value passed to a script nests deeper than {owner._maxDepth} levels.");
             switch (value)
             {
-                case null or JsValue or string or bool or char or Enum or JsonElement:
+                case null or JsValue or string or bool or char or Enum or JsonElement or ExactJson:
                 case int or long or short or byte or sbyte or ushort or uint or ulong or double or float or decimal:
                     return owner.ToJs(value, depth);
                 case ResolvedModel:
@@ -358,7 +369,8 @@ internal sealed class ScriptValues
         return proxy;
     }
 
-    private JsValue FromJson(JsonElement element, int depth)
+    // With exact, a number crosses as { "$mq.number": text } (ExactJson).
+    private JsValue FromJson(JsonElement element, int depth, bool exact)
     {
         if (depth > _maxDepth)
             throw new ScriptValueException($"A JSON value nests deeper than {_maxDepth} levels.");
@@ -367,16 +379,18 @@ internal sealed class ScriptValues
             case JsonValueKind.Object:
                 var entries = new List<KeyValuePair<string, JsValue>>();
                 foreach (var property in element.EnumerateObject())
-                    entries.Add(KeyValuePair.Create(property.Name, FromJson(property.Value, depth + 1)));
+                    entries.Add(KeyValuePair.Create(property.Name, FromJson(property.Value, depth + 1, exact)));
                 return FrozenObject(entries);
             case JsonValueKind.Array:
                 var items = new JsValue[element.GetArrayLength()];
                 var index = 0;
                 foreach (var item in element.EnumerateArray())
-                    items[index++] = FromJson(item, depth + 1);
+                    items[index++] = FromJson(item, depth + 1, exact);
                 return FrozenArray(items);
             case JsonValueKind.String:
                 return new JsString(element.GetString()!);
+            case JsonValueKind.Number when exact:
+                return FrozenObject([KeyValuePair.Create<string, JsValue>("$mq.number", new JsString(element.GetRawText()))]);
             case JsonValueKind.Number:
                 return element.TryGetInt64(out var l) ? JsNumber.Create(l) : JsNumber.Create(element.GetDouble());
             case JsonValueKind.True:
