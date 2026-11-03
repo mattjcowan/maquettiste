@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Processes;
 using Maquettiste.Engine.Scripting;
 using Maquettiste.Engine.Validation;
 using Maquettiste.Testing;
@@ -34,6 +35,33 @@ public sealed class ModelValidatorTests
 
         Assert.Empty(report.Diagnostics);
         Assert.False(report.HasErrors);
+    }
+
+    [Fact]
+    public async Task Expression_syntax_MQ9501_is_found_by_parsing_without_compiling_the_expressions()
+    {
+        var b = Billing(out _, out _);
+        var process = new Process
+        {
+            Id = b.NewId(),
+            Name = "InvoiceApproval",
+            States = [new ProcessState { Id = b.NewId(), Name = "Draft" }],
+            Guards =
+            [
+                new ProcessGuard { Id = b.NewId(), Name = "overCreditLimit", Expression = "context.total >" },
+                new ProcessGuard { Id = b.NewId(), Name = "approved", Expression = "context.approved" },
+            ],
+            Actions = [new ProcessAction { Id = b.NewId(), Name = "sendReminder", Expression = "({ reminders: context.reminders + 1 })" }],
+        };
+        b.Add(process);
+
+        var report = await Validate(b.Build());
+
+        // Whole-model validation reads every process's expression problems. Compiling them through the shared cache, which holds
+        // fewer processes than a large model has, refilled it on every run and cost more than the other process rules together.
+        Assert.False(ProcessExpressions.IsCached(process));
+        Assert.Equal("/guards/0/expression", Assert.Single(report.Diagnostics, d => d.Rule == "MQ9501").JsonPointer);
+        Assert.Equal(ProcessExpressions.Get(process).Problems, ProcessExpressions.ProblemsOf(process));
     }
 
     [Fact]

@@ -1088,6 +1088,14 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4058",
+    "defaultSeverity": "warning",
+    "description": "A stored attribute of a bound entity is mapped by no field of its binding, so the entity reads it from nowhere: an own, inherited or stereotype attribute, or a member of a value object attribute; a collection, a derived attribute that is not stored and a to-one relation end are left out, whatever the binding writes.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
     "id": "MQ4059",
     "defaultSeverity": "error",
     "description": "A foreign key references columns of a table that are neither its primary key nor one of its unique keys (a unique constraint, or a unique index without a filter except on Oracle): a database accepts a foreign key only to a key.",

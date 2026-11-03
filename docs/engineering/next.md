@@ -66,7 +66,7 @@ yet.
 | --- | --- | --- | --- |
 | Editor screens for the items above | yes | Later | Screens for operations and project-defined kinds come first, since the JSON form handles their nested members worst. Each item ships in the engine, the CLI and MCP first; the generic JSON form edits what has no screen yet. Each design section lists its screens under "Editor follow-ups". |
 | Sealing facts into a revision, and squashing (6.2) | yes | Later | Built with the live planner (6.1): squashing must check each environment's ledger, which only 6.1 reads. Facts stay open until then. |
-| Rationale, decision and status in templates for enum members, stereotypes and categories (3.11) | yes | Build next | One of the small fixes. |
+| Rationale, decision and status in templates for enum members, stereotypes and categories (3.11) | yes | Built, 0.12.0 | |
 
 ## Phase 2: not built yet
 
@@ -115,7 +115,7 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. The *build next* items 
 | 4.6 | Charts joined to operations; the process runtime generated from them | yes | Later | Needs operations (3.6) and the expression language (3.8). The engine runs no process; packs generate the runtime. |
 | 4.5 | A structure hash per process, and records in flight when a process changes | yes | Later | Needs the lifecycle (4.1); the state map is a step in the migration ledger (6.2). |
 | 8.1 | Scenarios run against the running system | yes | Later | Needs operations (3.6) and projections (3.12); the team writes the test template. |
-| 8.5 | Upgrade tests from history | yes | Covered | No separate feature: build the previous version from a folder or snapshot, migrate, run the suite. The guide page for it is build next, one of the small fixes. |
+| 8.5 | Upgrade tests from history | yes | Covered | No separate feature: build the previous version from a folder or snapshot, migrate, run the suite. The guide page "Upgrade tests" walks through it. |
 
 ## Not doing
 
@@ -154,16 +154,16 @@ Decided on 2026-10-30, each with what to use instead.
 Queued at 0.7.1, before the roadmap, from the owner's reviews; none of it was requested by a team that uses
 Maquettiste. The old item "Migrations as recorded facts" became the migration ledger (6.2) and is built.
 
-### Validation speed (build next, the first of the small fixes)
+### Validation speed (fixed in 0.12.0)
 
-The gate 3 bench line "MQ90xx-MQ92xx, whole model, added to validate" has a 400 ms budget. It measured 359 ms at gate 3;
-since the database designer, bindings and DDL rounds (0.6.0) it runs between 400 and 850 ms, so the line misses on most
-local runs and on some CI runs. The time is spent in whole-model validation, not in the process rules themselves.
+The gate 3 bench line "MQ90xx-MQ92xx, whole model, added to validate" (400 ms budget) ran between 400 and 850 ms since
+0.6.0. The cause: validation compiled every process expression into a shared cache of 512 entries only to find parse
+errors, so with 1,000 processes the cache cleared itself on every run and its locks serialized the validation threads.
+Validation now parses without compiling; the line measures 0 to 63 ms.
 
-- Profile `validate` on the bench model (5,000 entities, 1,000 processes) and on the reference app; find which rules or
-  indexes grew superlinear (the binding and table rules added in 0.6.0 are the first suspects).
-- Fix at the cause; never raise the budget.
-- Also check the editor's validation on the 5,000-entity scale dataset (`explorer-redesign.md` §4.5).
+Left: scenario replay still compiles through that cache, which thrashes the same way above 512 processes. A cache sized
+to the model, or one that does not clear itself whole, would fix it. Also check the editor's validation on the
+5,000-entity scale dataset (`explorer-redesign.md` §4.5).
 
 ### Bindings, the rest (`binding` phases B and C)
 
@@ -178,8 +178,8 @@ Left:
 - **Split.** One entity read from and written to several tables.
 - **Routine bindings.** Read, write and delete through stored routines.
 - **Converters** as named, reusable elements on a field map.
-- **The unmapped-attribute rule in the engine (build next, one of the small fixes).** MQ4058 (an attribute of a bound
-  entity that no column maps) exists in the editor's mock only; the engine should report it too.
+- **The unmapped-attribute rule in the engine (built).** MQ4058 (a stored attribute of a bound entity that no field
+  maps) is a binding rule of the engine, as the editor's field map reports it.
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
 
@@ -231,8 +231,6 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 
 ### Smaller items
 
-- **Explain still prepares the whole pack (build next, one of the small fixes).** Explaining one unit (an explicit
-  click) runs a full dry-run preparation; it should plan only the unit asked about, as the preview now does.
 - **The store rescans every file per request.** Reading the model snapshot stats every model file each time (about
   150 ms on 40,000 files); a file watcher or a cheaper change check would remove most of a warm preview's time.
 - **Oracle DDL against a server.** Every other dialect ran against a real server in 0.6.0; Oracle did not.

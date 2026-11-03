@@ -278,10 +278,10 @@ describe("the designer's writes against the mock", () => {
     expect(await renameViewColumn(services, qc, VIEW, 1, "invoice_number")).toBe(true);
     const renamed = await doc(VIEW);
     expect((renamed.columns as Json[])[1].name).toBe("invoice_number");
-    expect(renamed.body).toEqual({ "*": "select id, number AS invoice_number, issued_on from billing.invoices where status = 1" });
+    expect(renamed.body).toEqual({ "*": "select id, number AS invoice_number, issued_on from billing.invoices where status = 'I'" });
     expect(services.store.getState().notice?.text).toContain("Also rewritten: the body of view outstanding_invoices.");
     expect(await services.undo.undo()).toMatchObject({ ok: true });
-    expect((await doc(VIEW)).body).toEqual({ "*": "select id, number, issued_on from billing.invoices where status = 1" });
+    expect((await doc(VIEW)).body).toEqual({ "*": "select id, number, issued_on from billing.invoices where status = 'I'" });
   });
 
   it("makes each schema operation one undo step", async () => {

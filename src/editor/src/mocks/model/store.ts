@@ -449,7 +449,7 @@ export class MockModel {
       // The queries' findings (MQ3001, MQ4018, MQ4021 to MQ4043), which only the resolver can see (queries.ts).
       const paths = new Map([...this.entries.values()].filter((e) => e.json.kind === "query").map((e) => [e.id, e.path]));
       out.push(...applyRules(resolveQueries(view, docs, paths).diagnostics, this.rules()));
-      // The binding rules (MQ4044 to MQ4050, and the proposed MQ4058), as resolver findings (bindings.ts).
+      // The binding rules (MQ4044 to MQ4050, and MQ4058), as resolver findings (bindings.ts).
       out.push(
         ...applyRules(
           bindingFindings(view, docs, (id) => this.entries.get(id)?.path ?? null),

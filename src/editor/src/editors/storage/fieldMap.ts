@@ -52,7 +52,7 @@ export interface StorageAttribute {
   isKey: boolean;
   required: boolean;
   readOnly: boolean;
-  /** No field mapping it is worth a warning: a stored attribute, or the key of a many-to-one this entity is the many side of. */
+  /** No field mapping it shows as unmapped: a stored attribute (MQ4058 warns), or the key of a many-to-one this entity is the many side of. */
   expected: boolean;
 }
 
@@ -384,8 +384,8 @@ export interface MapProblem {
 /**
  * What the engine's binding rules report on one binding, as far as the editor can tell from the source's columns: a field naming
  * nothing (MQ4045), a column mapped twice (MQ4045), a missing key field on a writing binding (MQ4046), unaccounted columns
- * (MQ4047, once with the names), a constant the source lacks (MQ4048), and the proposed warning for a stored attribute no field
- * maps (MQ4058, not an engine rule yet).
+ * (MQ4047, once with the names), a constant the source lacks (MQ4048), and the stored attributes no field maps (MQ4058, once
+ * with the names; a to-one relation key is not an attribute and is left out, as the engine's rule leaves it).
  */
 export function bindingProblems(binding: Binding, attributes: readonly StorageAttribute[], source: BindingSource | undefined): MapProblem[] {
   const out: MapProblem[] = [];
@@ -450,7 +450,7 @@ export function bindingProblems(binding: Binding, attributes: readonly StorageAt
       message: `Nothing accounts for ${unaccounted.map((r) => r.column.name).join(", ")} of ${source.name}: map a field, set a constant or ignore it.`,
       pointer: "/columns",
     });
-  const unmapped = attributeRows(binding, attributes, source.columns).filter((r) => r.status === "unmapped");
+  const unmapped = attributeRows(binding, attributes, source.columns).filter((r) => r.status === "unmapped" && r.attribute.origin !== "relation");
   if (unmapped.length)
     out.push({
       rule: UNMAPPED_ATTRIBUTE_RULE,
@@ -461,7 +461,7 @@ export function bindingProblems(binding: Binding, attributes: readonly StorageAt
   return out;
 }
 
-/** The proposed rule for a stored attribute no field of a binding maps (warning; the mock reports it, the engine does not yet). */
+/** The rule for the stored attributes no field of a binding maps (warning; the engine's binding rules report it too). */
 export const UNMAPPED_ATTRIBUTE_RULE = "MQ4058";
 
 const nameOfRef = (attributes: readonly StorageAttribute[], ref: string) => attributes.find((a) => a.ref === ref)?.name ?? ref;

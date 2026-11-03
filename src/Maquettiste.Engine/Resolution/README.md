@@ -59,7 +59,7 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   `model.tag_vocabularies` and `model.category_trees` (the global one first, then by package qualified name and id), each
   depending on its own file, with membership keys `k:stereotype`, `k:tag-vocabulary` and `k:category-tree`. A tree lists
   the same `RCategory` instances annotated objects carry; the run completes their `Parent`, `Children` (by order, none
-  counting as 0, then file order), `Order` and `Description`.
+  counting as 0, then file order), `Order`, `Description`, `Rationale`, `Decision` and `Status`.
 - Dependency keys (section 11, D38): `e:` of every contributing file, `s:conventions`, `s:typeMaps`, `s:inflection` when used, and
   `r:<id>` for every entity and relation an object derives from (lookup tables: `r:<enumId>`; designed tables: `r:<tableId>`).
   A foreign-key relation also lists what its resolved `RForeignKey`'s name and actions come from (the host table's designed or

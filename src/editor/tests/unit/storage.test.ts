@@ -141,7 +141,7 @@ describe("the field map", () => {
     expect([b.write, writes(b, NOTES)]).toEqual([undefined, true]);
   });
 
-  it("reports the binding rules it can see, and the proposed warning for an unmapped attribute", () => {
+  it("reports the binding rules it can see, and the warning for an unmapped attribute", () => {
     const b: Binding = { id: "B", database: "D", source: "T", fields: [{ attribute: "a-body", column: "nope" }] };
     expect(bindingProblems(b, ATTRS, NOTES).map((p) => [p.rule, p.severity])).toEqual([
       ["MQ4045", "error"],

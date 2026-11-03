@@ -136,7 +136,8 @@ public sealed class ResolvedCoverageTests
         // carrier; model.stereotypes lists the definition without it (next-phase-1-design.md section 5.5).
         [("stereotype", "storage")] = "merged into table.storage",
         // A category is the one summary every annotated object in it shares (id, name, path, parent, children, order, description,
-        // next-phase-1-design.md section 5.5); its own names and annotations describe the vocabulary, not the model.
+        // rationale, decision and status, next-phase-1-design.md sections 4.5 and 5.5); its own names and other annotations describe
+        // the vocabulary, not the model.
         [("category", "displayName")] = "category summary",
         [("category", "pluralName")] = "category summary",
         [("category", "stereotypes")] = "category summary",
@@ -190,7 +191,8 @@ public sealed class ResolvedCoverageTests
     /// </summary>
     private static readonly HashSet<(string Target, string Property)> Pending =
     [
-        // An enum member resolves its name, display name, value, code, description, order and properties only.
+        // An enum member resolves its name, display name, value, code, description, rationale, decision, status, order and
+        // properties only.
         ("enum member", "pluralName"), ("enum member", "stereotypes"), ("enum member", "tags"), ("enum member", "category"),
         ("enum member", "generation"),
 
@@ -201,15 +203,7 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
-
-        // Rationale, decision and status (next-phase-1-design.md section 4.5) resolve on every RAnnotated object; these two
-        // targets resolve to types that are not RAnnotated (an enum member is a plain RObject, a category the summary annotated
-        // objects share), so their annotations wait with their other pending members.
-        .. Annotations("enum member", "category"),
     ];
-
-    private static IEnumerable<(string Target, string Property)> Annotations(params string[] targets) =>
-        targets.SelectMany(t => new[] { (t, "rationale"), (t, "decision"), (t, "status") });
 
     /// <summary>
     /// Kinds with no resolved object at all (found 2026-10-01, a later round): every property of their files is pending. A mapping

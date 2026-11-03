@@ -282,6 +282,18 @@ public sealed class REnumMember : RObject
     /// <summary>The description text.</summary>
     public string? Description { get; internal set; }
 
+    /// <summary>Markdown text: why the member is shaped this way, from its own entry; <see langword="null"/> when there is none.</summary>
+    public string? Rationale { get; internal set; }
+
+    /// <summary>A URL or a reference (such as <c>ADR-0042</c>) of the decision record; <see langword="null"/> when there is none.</summary>
+    public string? Decision { get; internal set; }
+
+    /// <summary>
+    /// The status as its JSON value (<c>proposed</c>, <c>approved</c>, <c>deprecated</c> or <c>retired</c>); <see langword="null"/> when
+    /// none is written.
+    /// </summary>
+    public string? Status { get; internal set; }
+
     /// <summary>The integer value.</summary>
     public long? Value { get; internal set; }
 

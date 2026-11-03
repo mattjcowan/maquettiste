@@ -92,6 +92,13 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     /// <summary>The run's progress.</summary>
     public IProgress<ProgressUpdate>? Progress => progress;
 
+    /// <summary>
+    /// Whether a scoped run's planner is given the selected units alone (<see cref="UnitSelection.SelectedUnitsOnly"/>) rather than
+    /// every unit of its packs, the plan then filtered as before: explaining one unit plans only that unit (generation-ui.md section
+    /// 4.3), as a path listing does. The packs, hashes and renders are the run's own, so the selected units plan and explain the same.
+    /// </summary>
+    public bool PlansSelectedUnitsOnly { get; init; }
+
     /// <summary>Every diagnostic so far, sorted.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics => Outcomes.Sort(_diagnostics);
 
@@ -230,7 +237,15 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
                 return null;
 
             start = Clock.Now;
-            var plan = await services.Planner.PlanAsync(resolved, packs, services.Scripts, progress, ct).ConfigureAwait(false);
+            var planned = PlansSelectedUnitsOnly && selection is not null ? selection.SelectedUnitsOnly(packs) : packs;
+            var plan = await services.Planner.PlanAsync(resolved, planned, services.Scripts, progress, ct).ConfigureAwait(false);
+            if (!ReferenceEquals(planned, packs))
+            {
+                // Each planned unit keeps the run's pack (its whole manifest), as an unscoped plan gives it.
+                var byName = packs.Packs.ToDictionary(p => p.Name, StringComparer.Ordinal);
+                plan = plan with { Units = [.. plan.Units.Select(u => u with { Pack = byName[u.Pack.Name] })] };
+            }
+
             Clock.Record(PipelineStage.Plan, start, plan.Units.Count);
             Add(plan.Diagnostics);
             // A unit-level error (MQ6019) skipped only its unit: the pack's other units still render, and the run ends invalid.

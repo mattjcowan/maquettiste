@@ -61,6 +61,31 @@ public sealed class PreviewBoundsTests
     }
 
     [Fact]
+    public async Task Explaining_one_unit_plans_and_renders_that_unit_alone_with_the_answer_a_whole_plan_gives()
+    {
+        await using var repo = EditorRepo.Create();
+        var (service, planner, renderer) = Counted(repo);
+
+        var explained = await service.ExplainAsync("sql-ddl", "table", TableKey, null, Ct);
+        Assert.NotNull(explained);
+        Assert.Equal((true, "new"), (explained.Planned, explained.Reason));
+        // One unit planned (the pack has more), and only that unit for that element rendered.
+        Assert.Equal([1], planner.UnitsPerCall);
+        Assert.Equal(["sql-ddl/table:" + TableKey], renderer.Keys);
+        var scoped = (await service.GetPlanAsync(explained.PlanId!, Ct))!;
+        Assert.Equal([explained.Key], scoped.Units.Select(u => u.Key));
+
+        // The same answer as the unit's in a plan of the whole pack, input hash and outputs included.
+        var whole = (await repo.Service.PlanAsync(new GenerationRequest { Packs = ["sql-ddl"] }, null, Ct)).Plan!;
+        var unit = whole.Units.Single(u => u.Key == explained.Key);
+        var mine = explained.PlanUnit!;
+        Assert.Equal((unit.Reason, unit.InputHash, unit.Skipped, unit.CauseCount), (mine.Reason, mine.InputHash, mine.Skipped, mine.CauseCount));
+        Assert.Equal(unit.ReadKeys, mine.ReadKeys);
+        Assert.Equal(unit.Outputs.Select(o => o.Path), mine.Outputs.Select(o => o.Path));
+        Assert.True(whole.Units.Select(u => u.Unit).Distinct(StringComparer.Ordinal).Count() > 1);
+    }
+
+    [Fact]
     public async Task Concurrent_requests_share_one_session_and_one_resolution_kept_until_the_model_changes()
     {
         await using var repo = EditorRepo.Create();

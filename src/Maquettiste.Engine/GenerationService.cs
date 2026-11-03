@@ -91,12 +91,19 @@ public sealed partial class GenerationService
     /// <param name="ct">Cancellation.</param>
     /// <returns>The plan.</returns>
     /// <exception cref="ArgumentException"><see cref="GenerationRequest.Against"/> resolves to nothing (as <see cref="RunAsync"/>).</exception>
-    public async Task<PlanResult> PlanAsync(GenerationRequest request, IProgress<ProgressUpdate>? progress, CancellationToken ct)
+    public Task<PlanResult> PlanAsync(GenerationRequest request, IProgress<ProgressUpdate>? progress, CancellationToken ct) =>
+        PlanAsync(request, progress, selectedUnitsOnly: false, ct);
+
+    /// <summary>
+    /// <see cref="PlanAsync(GenerationRequest, IProgress{ProgressUpdate}?, CancellationToken)"/>; with <paramref name="selectedUnitsOnly"/>
+    /// a scoped request's planner is given its selected units alone (<see cref="GenerationRun.PlansSelectedUnitsOnly"/>).
+    /// </summary>
+    private async Task<PlanResult> PlanAsync(GenerationRequest request, IProgress<ProgressUpdate>? progress, bool selectedUnitsOnly, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
         var planId = NewId();
         var capture = new PlanCapture(_services.Plans, planId, RepoRoot);
-        var run = new GenerationRun(_services, _store, progress);
+        var run = new GenerationRun(_services, _store, progress) { PlansSelectedUnitsOnly = selectedUnitsOnly };
         var check = request.Mode == GenerationMode.Check;
         GenerationResult result;
         try

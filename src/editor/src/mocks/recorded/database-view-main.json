@@ -1909,7 +1909,7 @@
         "id": "01J92P0V1YZ4YP352KD1A50FXS",
         "name": "outstanding_invoices",
         "schema": "billing",
-        "body": "select id, number, issued_on from billing.invoices where status = 1",
+        "body": "select id, number, issued_on from billing.invoices where status = 'I'",
         "columns": [
           {
             "name": "id",

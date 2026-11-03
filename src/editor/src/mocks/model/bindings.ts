@@ -2,7 +2,7 @@
 // editor's Storage tab and its bulk actions and the Database screen's Store as table files: the materialize status of a
 // database, the plans of materialize-tables, materialize-entities, materialize-attributes and materialize-columns (the preview, and the batch operations that write them),
 // the five statements of a binding for a dialect (simple SQL, not the engine's renderer), and the binding rules the editor
-// shows inline (MQ4044 to MQ4048, MQ4050, and the proposed MQ4058). It shares the field map model with the editor (editors/storage/fieldMap.ts).
+// shows inline (MQ4044 to MQ4048, MQ4050 and MQ4058). It shares the field map model with the editor (editors/storage/fieldMap.ts).
 import type { DatabaseView, Diagnostic, MaterializeChange, MaterializePlan, MaterializeStatus, BindingSqlResult, TableView } from "@/api/types";
 import { bindingProblems, columnRows, findColumn, sourceOf, storageAttributes, writes, type Binding } from "@/editors/storage/fieldMap";
 import { applyCase, resolveDatabase, type PhysicalInput } from "./physical";

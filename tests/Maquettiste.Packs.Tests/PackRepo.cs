@@ -152,10 +152,6 @@ internal sealed class PackRepo : IDisposable
         CopyTree(Fixtures.Path("models", "billing", ".maquettiste"), Repo.ModelRoot);
         foreach (var pack in Packs)
             CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", pack), Path.Combine(Repo.ModelRoot, "templates", pack));
-        // The shared fixture's overlays compare the status column with enum values, but the column stores the member codes
-        // (varchar(1)), which PostgreSQL rejects; compare with the codes so the generated DDL runs.
-        Patch(".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json", "status in (0, 1, 2, 3)", "status in ('D', 'I', 'P', 'V')");
-        Patch(".maquettiste/model/databases/main/views/outstanding-invoices.json", "where status = 1", "where status = 'I'");
         if (dialects)
         {
             Repo.WriteFile(".maquettiste/maquettiste.json", DialectSettings);

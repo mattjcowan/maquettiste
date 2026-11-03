@@ -352,6 +352,64 @@ public sealed class BindingTests
     }
 
     [Fact]
+    public void MQ4058_names_the_stored_attributes_no_field_maps_once_per_binding()
+    {
+        var shop = new Shop();
+        Assert.DoesNotContain(shop.Resolve().Diagnostics, d => d.Rule == "MQ4058");
+
+        var money = shop.Builder.ValueObject("Money").Attr("amount", "decimal").Attr("currency", "string", a => a.Length(3));
+        shop.Builder.Stereotype("archived").AppliesTo("entity").Attr("archivedAt", "datetimeoffset");
+        shop.InvoiceNote.Stereotype("archived")
+            .Attr("pinned", "bool")
+            .Attr("total", money)
+            .Attr("rank", "int32", a => a.Derived("now - born", stored: true))
+            .Attr("summary", "string", a => a.Derived("first + last"))
+            .Attr("labels", "string", a => a.Collection());
+        // A second binding whose source is nothing of its database.
+        shop.InvoiceNote.Bind(new EntityBinding
+        {
+            Id = "", Database = shop.Builder.Database("archive", Dialect.PostgreSql).Id, Source = "missing",
+        });
+        var model = shop.Resolve();
+
+        var found = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4058");
+        Assert.Equal((DiagnosticSeverity.Warning, "/bindings/0/fields", shop.InvoiceNote.Id), (found.Severity, found.JsonPointer, found.ElementId));
+        // Not the virtual derivation, nor the collection; the unresolved source of the second binding is MQ4044's alone.
+        Assert.Equal("No field maps pinned, totalAmount, totalCurrency, rank, archivedAt: the entity reads them from nowhere.", found.Message);
+        Assert.Contains(model.Diagnostics, d => d.Rule == "MQ4044" && d.JsonPointer == "/bindings/1/source");
+    }
+
+    [Fact]
+    public void MQ4058_reports_a_read_only_binding_and_each_value_object_member_no_field_maps()
+    {
+        // The read-only query binding of NoteCount leaves total unmapped: it reads it as much as a binding that writes.
+        var shop = new Shop(edit: (_, entity, b) => entity == "NoteCount" ? b with { Fields = [b.Fields[0]] } : b);
+        var readOnly = Assert.Single(shop.Resolve().Diagnostics, d => d.Rule == "MQ4058");
+        Assert.Equal((shop.NoteCount.Id, "/bindings/0/fields", "No field maps total: the entity reads it from nowhere."),
+            (readOnly.ElementId, readOnly.JsonPointer, readOnly.Message));
+
+        // A member its field maps is mapped; the other member is not.
+        var b = new ModelBuilder(seed: 58);
+        var db = b.Database("main", Dialect.PostgreSql);
+        var (rentals, id, amount) = (b.NewId(), b.NewId(), b.NewId());
+        b.Add(new Table
+        {
+            Id = rentals, Name = "rentals", Database = db.Id,
+            Columns = [new Column { Id = id, Name = "id", Type = "uuid", Nullable = false }, new Column { Id = amount, Name = "amount", Type = "decimal", Nullable = false }],
+            PrimaryKey = new PrimaryKey { Columns = [id] },
+        });
+        var money = b.ValueObject("Money").Attr("amount", "decimal").Attr("currency", "string", a => a.Length(3));
+        var rental = b.Entity("Rental").Key("id", "uuid").Attr("cost", money);
+        rental.Bind(new EntityBinding
+        {
+            Id = "", Database = db.Id, Source = rentals,
+            Fields = [Shop.Field(rental, "id", id), new BindingField { Attribute = rental.AttrId("cost") + "." + money.AttrId("amount"), Column = amount }],
+        });
+        var partly = Assert.Single(ResolutionKit.Resolve(b).Diagnostics, d => d.Rule == "MQ4058");
+        Assert.Equal("No field maps costCurrency: the entity reads it from nowhere.", partly.Message);
+    }
+
+    [Fact]
     public void A_relation_between_bound_entities_uses_the_foreign_key_its_mapping_names()
     {
         var b = new ModelBuilder(seed: 44);

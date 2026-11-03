@@ -290,8 +290,11 @@ public sealed partial class GenerationService
 
     /// <summary>
     /// Why a unit does or does not render an element (generation-ui.md section 4.3), with the first reason that applies. When the unit plans
-    /// the element, the answer carries the planned unit's reason and causes from <paramref name="planId"/>, or from a new dry-run plan of
-    /// the pack when no plan is given or the plan does not hold the unit. <see langword="null"/> when there is no such pack.
+    /// the element, the answer carries the planned unit's reason and causes from <paramref name="planId"/>, or, when no plan is given or the
+    /// plan does not hold the unit, from a new dry-run plan of that unit alone. Like a preview it never touches the whole pack: the reasons
+    /// it gives before planning read the pack's preview session (the store's shared resolution of the snapshot, nothing planned), and the
+    /// new plan is scoped to the unit and the element, its planner given that unit only, so no other unit is planned or rendered.
+    /// <see langword="null"/> when there is no such pack.
     /// </summary>
     /// <exception cref="PackPathException">The name is not a pack key.</exception>
     /// <param name="pack">The pack.</param>
@@ -310,39 +313,46 @@ public sealed partial class GenerationService
         var key = UnitPlanner.KeyOf(pack, unitId, elementId);
         ExplainResult Answer(string reason, string detail, IReadOnlyList<Diagnostic>? diagnostics = null) =>
             new(pack, unitId, elementId, false, reason, detail, key, null, null, diagnostics ?? []);
+        const string Invalid = "The model or the pack has errors, so nothing is planned.";
 
-        var run = new GenerationRun(_services, _store, null);
-        var prepared = await run.PrepareAsync([pack], GenerationMode.DryRun, ct, locked: false).ConfigureAwait(false);
-        if (prepared is null)
-            return Answer("pack-invalid", "The model or the pack has errors, so nothing is planned.", [.. run.Diagnostics.Where(Outcomes.IsInvalid)]);
-        var loaded = prepared.Packs.Packs.FirstOrDefault(p => string.Equals(p.Name, pack, StringComparison.Ordinal));
-        var disabled = false;
-        if (loaded is null)
-        {
-            var (named, errors) = await new PackLoader(_options, _services.Schemas).LoadNamedAsync(prepared.Snapshot, pack, ct).ConfigureAwait(false);
-            if (named is null)
-                return Answer("pack-invalid", $"Pack '{pack}' does not load, so none of its units run.", errors);
-            loaded = named;
-            disabled = true;
-        }
+        var session = await PrepareSessionAsync(pack, ct).ConfigureAwait(false);
+        var enabled = !session.Snapshot.Settings.Packs.TryGetValue(pack, out var packSettings) || packSettings.Enabled;
+        // The model's errors stop a run whatever its packs: the validation's (the session's shared one, which lets a preview through
+        // the errors that do not block resolution), then the resolver's. Then the pack's: an enabled pack's errors, a disabled one's load.
+        var shared = await _store.ResolvedAsync(session.Snapshot, ct).ConfigureAwait(false);
+        List<Diagnostic> modelErrors = [.. shared.Report.Diagnostics.Where(Outcomes.IsInvalid)];
+        if (modelErrors.Count == 0 && shared.Model is { } model)
+            modelErrors.AddRange(model.Diagnostics.Where(Outcomes.IsInvalid));
+        if (modelErrors.Count > 0)
+            return Answer("pack-invalid", Invalid, Outcomes.Sort(modelErrors));
+        if (session.Resolved is not { } resolved || session.Pack is not { } loaded)
+            return Answer("pack-invalid", enabled ? Invalid : $"Pack '{pack}' does not load, so none of its units run.", session.Failure);
 
         var unit = loaded.Manifest.Units.FirstOrDefault(u => string.Equals(u.Id, unitId, StringComparison.Ordinal));
         if (unit is null)
             return Answer("unknown-unit", $"Pack '{pack}' has no unit '{unitId}'.");
-        if (disabled)
+        if (!enabled)
             return Answer("pack-disabled", $"Pack '{pack}' is disabled (packs.{pack}.enabled is false in the project settings), so none of its units run.");
         if (selectedPacks is { Count: > 0 } && !selectedPacks.Contains(pack, StringComparer.Ordinal))
             return Answer("not-selected", $"Pack '{pack}' is not in this run's selection ({string.Join(", ", selectedPacks.Order(StringComparer.Ordinal))}).");
-        var element = elementId is null ? null : prepared.Resolved.Find(elementId);
+        var element = elementId is null ? null : resolved.Find(elementId);
         if (elementId is not null && element is null)
             return Answer("unknown-element", $"'{elementId}' is not in the resolved model (deleted, renamed or never defined).");
-        if (UnitPlanner.WhyNot(prepared.Resolved, loaded, unit, element, _services.Scripts, ct) is { } why)
+        if (UnitPlanner.WhyNot(resolved, loaded, unit, element, _services.Scripts, ct) is { } why)
             return Answer(why.Kind, why.Detail);
 
         var plan = planId is null ? null : await GetPlanAsync(planId, ct).ConfigureAwait(false);
         if (plan?.Units.Any(u => string.Equals(u.Key, key, StringComparison.Ordinal)) != true)
         {
-            var result = await PlanAsync(new GenerationRequest { Mode = GenerationMode.DryRun, Packs = [pack] }, null, ct).ConfigureAwait(false);
+            // This unit for this element alone: a scoped dry run whose planner sees no other unit of the pack.
+            var request = new GenerationRequest
+            {
+                Mode = GenerationMode.DryRun,
+                Packs = [pack],
+                Units = [pack + "/" + unitId],
+                Elements = elementId is null ? null : [elementId],
+            };
+            var result = await PlanAsync(request, null, selectedUnitsOnly: true, ct).ConfigureAwait(false);
             plan = result.Plan;
         }
 
