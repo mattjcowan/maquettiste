@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -36,6 +37,10 @@ public sealed class ProcessExpressions
     /// <summary>The per-expression statement limit.</summary>
     public const long StatementLimit = 100_000;
 
+    // The compiled expressions travel with the process object: replaying one model reuses them however many processes it has,
+    // and they go when the model does. The content cache only shares them across models (a process an edit left unchanged),
+    // up to CacheLimit; it is consulted once per process object, so a large model no longer clears it on every replay.
+    private static readonly ConditionalWeakTable<Process, ProcessExpressions> ByProcess = new();
     private const int CacheLimit = 512;
     private static readonly ConcurrentDictionary<string, ProcessExpressions> Cache = new(StringComparer.Ordinal);
 
@@ -68,12 +73,17 @@ public sealed class ProcessExpressions
     /// <summary>The ids of the guards and actions whose expressions compiled.</summary>
     public IReadOnlySet<string> Compiled { get; }
 
-    /// <summary>The compiled expressions of a process (cached by the expressions' content).</summary>
+    /// <summary>The compiled expressions of a process (held by the process object, and shared by the expressions' content).</summary>
     /// <param name="process">The process.</param>
     /// <returns>The compiled expressions.</returns>
     public static ProcessExpressions Get(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
+        return ByProcess.GetValue(process, static p => FromContent(p));
+    }
+
+    private static ProcessExpressions FromContent(Process process)
+    {
         var key = Key(process);
         if (Cache.TryGetValue(key, out var cached))
             return cached;
@@ -99,7 +109,7 @@ public sealed class ProcessExpressions
     /// <summary>Whether <see cref="Get"/> holds compiled expressions for the process's current expressions (for tests).</summary>
     /// <param name="process">The process.</param>
     /// <returns><see langword="true"/> when they are cached.</returns>
-    internal static bool IsCached(Process process) => Cache.ContainsKey(Key(process));
+    internal static bool IsCached(Process process) => ByProcess.TryGetValue(process, out _) || Cache.ContainsKey(Key(process));
 
     // The problems of a process's expressions; the ids that parse go to compiled and, with code, their helper registrations to code.
     private static List<ExpressionProblem> Collect(Process process, HashSet<string> compiled, StringBuilder? code)
