@@ -91,6 +91,7 @@ public sealed class ResolvedNullContractTests
         ["REntityCheck"] = "entity checks: ExpressionResolutionTests",
         ["RConstraint"] = "named constraints: ExpressionResolutionTests",
         ["RConstraintParameter"] = "named constraints: ExpressionResolutionTests",
+        ["ROperationGuard"] = "operation guards: OperationGuardTests",
     };
 
     [Fact]

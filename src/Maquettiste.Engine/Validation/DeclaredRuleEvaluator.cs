@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
@@ -17,7 +18,10 @@ namespace Maquettiste.Engine.Validation;
 /// matches are judged in parallel. An object where <c>require</c> does not hold gives <c>x/&lt;id&gt;</c> with the rule's severity, its
 /// rendered message and the location <see cref="ResolvedLocations"/> gives; a rule that selects nothing is MQ5017 on its <c>select</c>. A
 /// rule <c>validation.rules</c> sets <c>off</c> does not run; other settings apply after (<see cref="ResolvedChecks"/>). An object whose
-/// judgment reads a calculated value that failed gives nothing: the failure is reported once, on the value.
+/// judgment reads a calculated value that failed gives nothing: the failure is reported once, on the value. An <c>expression</c>
+/// condition (next-phase-3-design.md section 3.1, "Declared rule conditions") is typed as the static pass types it, lowered to
+/// JavaScript once per run and judged as a guard, only true holding, in one sandbox pool per rule-file hash; one that does not type
+/// holds (the static pass reports it). A project whose rules hold no expression loads no runtime.
 /// </summary>
 internal static class DeclaredRuleEvaluator
 {
@@ -63,6 +67,7 @@ internal static class DeclaredRuleEvaluator
 
         var objects = ResolvedKinds.ObjectsOf(resolved, rules.SelectMany(r => r.Rule.Select.Kind));
         var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, parallelism), CancellationToken = ct };
+        using var expressions = ExpressionConditions.Of(snapshot, rules, ct);
         foreach (var (rule, path, index) in rules)
         {
             ct.ThrowIfCancellationRequested();
@@ -77,7 +82,7 @@ internal static class DeclaredRuleEvaluator
 
             judged += selected.Count;
             var results = new Diagnostic?[selected.Count];
-            Parallel.For(0, selected.Count, options, i => results[i] = new Judge(snapshot, ct).Finding(rule, parts, selected[i]));
+            Parallel.For(0, selected.Count, options, i => results[i] = new Judge(snapshot, expressions, ct).Finding(rule, parts, selected[i]));
             foreach (var result in results)
             {
                 if (result is not null)
@@ -86,6 +91,148 @@ internal static class DeclaredRuleEvaluator
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// The expression conditions of a run's rules, lowered to JavaScript: one evaluator, a sandbox pool over the runtime and the file's
+    /// functions, per rule-file hash, each function registered under its condition's pointer in the file. Empty, and free, when no rule
+    /// holds an expression.
+    /// </summary>
+    private sealed class ExpressionConditions : IDisposable
+    {
+        private readonly Dictionary<Expr, (ExprEvaluator Evaluator, string Id, IReadOnlyList<string> Members)> _compiled = new(ReferenceEqualityComparer.Instance);
+        private readonly List<ExprEvaluator> _evaluators = [];
+
+        public static ExpressionConditions Of(ModelSnapshot snapshot, List<(DeclaredRule Rule, string Path, int Index)> rules, CancellationToken ct)
+        {
+            var expressions = new ExpressionConditions();
+            var files = snapshot.DeclaredRules.ToDictionary(f => f.Path, StringComparer.Ordinal);
+            var pools = new Dictionary<string, (ExprEvaluator? Evaluator, Dictionary<string, string> Functions)>(StringComparer.Ordinal);
+            var pending = new List<(Expr Tree, string Hash, string Id)>();
+            foreach (var group in rules.Where(r => HasExpression(r.Rule.Require)).GroupBy(r => r.Path, StringComparer.Ordinal))
+            {
+                var hash = files.TryGetValue(group.Key, out var file) ? file.Hash : group.Key;
+                if (!pools.TryGetValue(hash, out var pool))
+                    pools[hash] = pool = (null, new Dictionary<string, string>(StringComparer.Ordinal));
+                foreach (var (rule, _, index) in group)
+                {
+                    foreach (var (tree, typed) in DeclaredRuleChecks.TypedExpressions(snapshot, rule, group.Key, index))
+                    {
+                        pool.Functions.TryAdd(typed.Pointer, ExprLowering.ToJavaScript(typed, ExprSiteKind.RuleCondition));
+                        pending.Add((tree, hash, typed.Pointer));
+                    }
+                }
+            }
+
+            foreach (var (hash, (_, functions)) in pools.Where(p => p.Value.Functions.Count > 0).OrderBy(p => p.Key, StringComparer.Ordinal).ToList())
+            {
+                var evaluator = ExprEvaluator.Create(functions.OrderBy(f => f.Key, StringComparer.Ordinal), null, ct);
+                expressions._evaluators.Add(evaluator);
+                pools[hash] = (evaluator, functions);
+            }
+
+            foreach (var (tree, hash, id) in pending)
+            {
+                var members = ExprSites.Nodes(tree).Select(n => n.Member).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+                expressions._compiled[tree] = (pools[hash].Evaluator!, id, members);
+            }
+
+            return expressions;
+        }
+
+        /// <summary>
+        /// Whether an expression condition holds of an item: <see langword="true"/> only when it answers true, so one that stops at a
+        /// limit does not hold, as a guard that cannot answer fails; one that did not type holds.
+        /// </summary>
+        public bool Holds(Expr tree, Func<string, object?> read, CancellationToken ct)
+        {
+            if (!_compiled.TryGetValue(tree, out var compiled))
+                return true;
+            try
+            {
+                return compiled.Evaluator.Evaluate(compiled.Id, Row(compiled.Members, read), ct) is true;
+            }
+            catch (Exception ex) when (ex is ScriptLimitException or ScriptErrorException)
+            {
+                return false;
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (var evaluator in _evaluators)
+                evaluator.Dispose();
+        }
+
+        private static bool HasExpression(RuleCondition c) =>
+            c.Expression is not null || (c.All?.Any(HasExpression) ?? false) || (c.Any?.Any(HasExpression) ?? false)
+            || (c.Not is { } not && HasExpression(not)) || (c.Count?.Where is { } where && HasExpression(where));
+
+        /// <summary>
+        /// The row an expression reads: each member path's value at its place (<c>properties.retentionDays</c> under
+        /// <c>properties</c>), a value as <see cref="Write"/> writes it, a date or timestamp as ISO text.
+        /// </summary>
+        private static JsonElement Row(IReadOnlyList<string> members, Func<string, object?> read)
+        {
+            var root = new SortedDictionary<string, object?>(StringComparer.Ordinal);
+            foreach (var member in members)
+            {
+                var segments = member.Split('.');
+                var at = root;
+                for (var i = 0; i < segments.Length - 1 && at is not null; i++)
+                {
+                    if (!at.TryGetValue(segments[i], out var next))
+                        at[segments[i]] = next = new SortedDictionary<string, object?>(StringComparer.Ordinal);
+                    at = next as SortedDictionary<string, object?>;
+                }
+
+                at?.TryAdd(segments[^1], new Leaf(read(member)));
+            }
+
+            var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+            using (var writer = new Utf8JsonWriter(buffer))
+                WriteRow(writer, root);
+            using var document = JsonDocument.Parse(buffer.WrittenMemory);
+            return document.RootElement.Clone();
+        }
+
+        private static void WriteRow(Utf8JsonWriter writer, SortedDictionary<string, object?> node)
+        {
+            writer.WriteStartObject();
+            foreach (var (key, value) in node)
+            {
+                writer.WritePropertyName(key);
+                switch (value)
+                {
+                    case SortedDictionary<string, object?> nested:
+                        WriteRow(writer, nested);
+                        break;
+                    case Leaf { Value: DateOnly d }:
+                        writer.WriteStringValue(d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                        break;
+                    case Leaf { Value: TimeOnly t }:
+                        writer.WriteStringValue(t.ToString("HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
+                        break;
+                    case Leaf { Value: DateTime t }:
+                        writer.WriteStringValue(t.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
+                        break;
+                    case Leaf { Value: DateTimeOffset t }:
+                        writer.WriteStringValue(t.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'", CultureInfo.InvariantCulture));
+                        break;
+                    case Leaf { Value: Guid g }:
+                        writer.WriteStringValue(g.ToString("D", CultureInfo.InvariantCulture));
+                        break;
+                    case Leaf leaf:
+                        Write(writer, leaf.Value);
+                        break;
+                }
+            }
+
+            writer.WriteEndObject();
+        }
+
+        /// <summary>A member's value in a row, apart from the maps its path goes through.</summary>
+        private sealed record Leaf(object? Value);
     }
 
     /// <summary>Whether an object is one a selector matches: every key that has values holds one of them.</summary>
@@ -119,7 +266,7 @@ internal static class DeclaredRuleEvaluator
     private static object? Normalize(object? value) => value is JsonElement { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined } ? null : value;
 
     /// <summary>The judgment of one object: conditions, paths and links read from the resolved model and the index.</summary>
-    private sealed class Judge(ModelSnapshot snapshot, CancellationToken ct)
+    private sealed class Judge(ModelSnapshot snapshot, ExpressionConditions expressions, CancellationToken ct)
     {
         public Diagnostic? Finding(DeclaredRule rule, List<MessagePart> parts, RAnnotated value)
         {
@@ -169,6 +316,8 @@ internal static class DeclaredRuleEvaluator
                 return Within(References(references, item), references.Min, references.Max, 1);
             if (condition.ReferencedBy is { } referencedBy)
                 return Within(ReferencedBy(referencedBy, item), referencedBy.Min, referencedBy.Max, 1);
+            if (condition.Expression is { } expression)
+                return expressions.Holds(expression, path => Read(item, path), ct);
             return true;
         }
 

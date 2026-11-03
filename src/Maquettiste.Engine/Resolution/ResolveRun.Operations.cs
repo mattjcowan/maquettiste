@@ -1,3 +1,4 @@
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Engine.Resolution;
@@ -6,7 +7,8 @@ namespace Maquettiste.Engine.Resolution;
 /// Operations (next-phase-2-design.md section 4.1). Runs after the processes, since an operation's fired events and each event's
 /// <see cref="REvent.FiredBy"/> need the resolved events; <see cref="ROperation.Requires"/> is linked after every other pass
 /// (<see cref="LinkOperationRequires"/>). An operation's errors are its own, then those the stereotypes of its effective set contribute
-/// (<see cref="OperationErrors"/>), keyed <c>&lt;operationId&gt;.&lt;errorId&gt;</c>.
+/// (<see cref="OperationErrors"/>), keyed <c>&lt;operationId&gt;.&lt;errorId&gt;</c>. Its guards (next-phase-3-design.md section 3.1)
+/// are typed in the operation's scope and linked to the error each reports (<see cref="ResolveGuards"/>).
 /// </summary>
 internal sealed partial class ResolveRun
 {
@@ -167,6 +169,8 @@ internal sealed partial class ResolveRun
         }
 
         r.Errors = new RList<ROperationError>(errors, errorKeys.ToList());
+        if (operation.Guards.Count > 0)
+            r.Guards = new RList<ROperationGuard>(ResolveGuards(operation, r, errorKeys), fileKeys);
 
         // A fired event exists while its process file holds it: the list depends on those files too.
         var firesKeys = new DependencySet(Keys).AddRange(fileKeys);
@@ -180,6 +184,52 @@ internal sealed partial class ResolveRun
         }
 
         r.Fires = new RList<REvent>(fired, firesKeys.ToList());
+    }
+
+    /// <summary>
+    /// An operation's guards, in file order: each condition typed at a guard site over the input members and the subject's attributes,
+    /// its paths ending at the <see cref="ROperationMember"/>s and the subject's <see cref="RAttribute"/>s, and the error it reports
+    /// found among the resolved errors, an inherited one by its keyed id or its stereotype id. A guard depends on its file, the subject
+    /// whose attributes it reads, what its condition names beyond them (an enum, a seed, a constraint) and the keys of the errors.
+    /// </summary>
+    private List<ROperationGuard> ResolveGuards(Operation operation, ROperation r, DependencySet errorKeys)
+    {
+        var path = Model.GetDocument(operation.Id)?.Path;
+        var input = r.Input.ToDictionary(m => m.Id, StringComparer.Ordinal);
+        var subject = r.Subject?.Attributes.DistinctBy(a => a.Id, StringComparer.Ordinal).ToDictionary(a => a.Id, StringComparer.Ordinal) ?? [];
+        object? Target(ExprMember member) => input.TryGetValue(member.Id, out var m) ? m : AttributeTarget(subject, member.Id);
+
+        var guards = new List<ROperationGuard>(operation.Guards.Count);
+        foreach (var source in operation.Guards.DistinctBy(g => g.Id, StringComparer.Ordinal))
+        {
+            var guard = new ROperationGuard { Operation = r };
+            var deps = DepsOf(guard);
+            FillCommon(guard, source, null, deps);
+            deps.Element(operation.Id);
+            if (operation.Subject is { } subjectId)
+                deps.Element(subjectId);
+            guard.Package = r.Package;
+            if (source.Error is { } error)
+            {
+                deps.AddRange(errorKeys.ToList());
+                var own = error.Split(':', '.')[^1];
+                guard.Error = r.Errors.FirstOrDefault(e => string.Equals(e.Id, error, StringComparison.Ordinal))
+                    ?? r.Errors.FirstOrDefault(e => string.Equals(e.Id.Split('.')[^1], own, StringComparison.Ordinal));
+            }
+
+            if (ExprResolution.Type(Model, operation, source.Id) is { } typed)
+            {
+                var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Guard, ExprResolution.ApiColumns(Model, source.Id, path));
+                guard.Condition = ExprResolution.Build(root, Target, EnumMemberOf);
+                foreach (var name in ExprResolution.Names(Model, typed.Typed))
+                    deps.Element(name);
+            }
+
+            Register(guard);
+            guards.Add(guard);
+        }
+
+        return guards;
     }
 
     /// <summary>The operation's resolved entry for an applied stereotype (its annotations list the effective set in order).</summary>

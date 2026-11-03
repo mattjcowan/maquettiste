@@ -87,11 +87,12 @@ internal static class ExprSites
 
                 break;
             case Operation operation:
+                var subject = operation.Guards.Count > 0 && operation.Subject is { } subjectId && model.Get<Entity>(subjectId) is { } subjectEntity
+                    ? AttributesOf(model, subjectEntity).Select(a => a.Id).Concat(NavigationsOf(model, subjectEntity).Select(n => n.To.Id)).ToHashSet(StringComparer.Ordinal)
+                    : null;
                 for (var i = 0; i < operation.Guards.Count; i++)
                 {
                     var guard = operation.Guards[i];
-                    var subject = operation.Subject is { } subjectId && model.Get<Entity>(subjectId) is { } entity
-                        ? AttributesOf(model, entity).Select(a => a.Id).ToHashSet(StringComparer.Ordinal) : null;
                     sites.Add(new ExprSite(Ptr.At("/guards", i) + "/condition", guard.Condition, false, guard.Id, ExprSiteKind.Guard, s => Operation(s, model, operation))
                     {
                         Subject = subject,
@@ -304,14 +305,14 @@ internal static class ExprSites
         }
     }
 
-    private static void Attributes(ExprScope scope, ModelSnapshot model, Entity entity) => AddAttributes(scope, model, AttributesOf(model, entity), null);
+    private static void Attributes(ExprScope scope, ModelSnapshot model, Entity entity) => AddAttributes(scope.Root, model, AttributesOf(model, entity), null);
 
-    private static void AddAttributes(ExprScope scope, ModelSnapshot model, IEnumerable<ModelAttribute> attributes, string? prefix)
+    private static void AddAttributes(ExprContainer container, ModelSnapshot model, IEnumerable<ModelAttribute> attributes, string? prefix)
     {
         foreach (var attribute in attributes)
         {
             var type = TypeOf(model, attribute.Type);
-            scope.Root.Add(new ExprMember(attribute.Id, attribute.Name, type, !attribute.Required)
+            container.Add(new ExprMember(attribute.Id, attribute.Name, type, !attribute.Required)
             {
                 Prefix = prefix,
                 Collection = attribute.Collection,
@@ -321,7 +322,7 @@ internal static class ExprSites
                 continue;
             foreach (var member in valueObject.Attributes)
             {
-                scope.Root.Add(new ExprMember(attribute.Id + "." + member.Id, member.Name, TypeOf(model, member.Type), !attribute.Required || !member.Required)
+                container.Add(new ExprMember(attribute.Id + "." + member.Id, member.Name, TypeOf(model, member.Type), !attribute.Required || !member.Required)
                 {
                     Prefix = prefix is null ? attribute.Name : prefix + "." + attribute.Name,
                     Collection = member.Collection,
@@ -340,14 +341,58 @@ internal static class ExprSites
         }
 
         if (operation.Subject is { } subject && model.Get<Entity>(subject) is { } entity)
-            AddAttributes(scope, model, AttributesOf(model, entity), "subject");
+        {
+            AddAttributes(scope.Root, model, AttributesOf(model, entity), "subject");
+            AddNavigations(scope.Root, model, entity, "subject");
+        }
+    }
+
+    /// <summary>
+    /// The navigations a guard follows from an entity (and its bases), as resolution builds them: one per relation of two ends whose far
+    /// end names its <c>navigation</c>, held in a path by that end's id, to-one when its maximum is one. What each leads to is filled
+    /// when an expression first reads through it.
+    /// </summary>
+    private static void AddNavigations(ExprContainer container, ModelSnapshot model, Entity entity, string? prefix)
+    {
+        foreach (var (to, _) in NavigationsOf(model, entity))
+        {
+            var target = model.Get<Entity>(to.Entity);
+            container.Add(new ExprNavigation(to.Id, to.Navigation, new ExprContainer(c =>
+            {
+                if (target is null)
+                    return;
+                AddAttributes(c, model, AttributesOf(model, target), null);
+                AddNavigations(c, model, target, null);
+            }), to.Max == MaxCardinality.One, to.Min == 0) { Prefix = prefix });
+        }
+    }
+
+    /// <summary>The relation ends an entity (or one of its bases) navigates to, with the relation, in model order.</summary>
+    internal static IEnumerable<(RelationEnd To, Relation Relation)> NavigationsOf(ModelSnapshot model, Entity entity)
+    {
+        var chain = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = entity; current is not null && chain.Add(current.Id); current = current.Base is { } b ? model.Get<Entity>(b) : null)
+        {
+        }
+
+        foreach (var relation in model.All<Relation>())
+        {
+            if (relation.Ends.Count != 2 || relation.RelationKind == RelationKind.NAry)
+                continue;
+            for (var k = 0; k < 2; k++)
+            {
+                var (from, to) = (relation.Ends[1 - k], relation.Ends[k]);
+                if (to.Navigation.Length > 0 && chain.Contains(from.Entity))
+                    yield return (to, relation);
+            }
+        }
     }
 
     private static void Process(ExprScope scope, ModelSnapshot model, Process process, IReadOnlyList<ProcessEvent> events)
     {
-        AddAttributes(scope, model, process.Context, null);
+        AddAttributes(scope.Root, model, process.Context, null);
         foreach (var e in events)
-            AddAttributes(scope, model, e.Payload, "event");
+            AddAttributes(scope.Root, model, e.Payload, "event");
     }
 }
 

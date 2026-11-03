@@ -99,6 +99,22 @@ internal static class DeclaredRuleChecks
     }
 
     /// <summary>
+    /// The expression conditions of one rule that type (next-phase-3-design.md section 3.1, "Declared rule conditions"), by their trees,
+    /// typed exactly as the static pass types them, for the evaluator; one that does not type is left out, and the static pass says why.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="rule">The rule.</param>
+    /// <param name="path">The declaration file's path.</param>
+    /// <param name="index">The rule's index in the file.</param>
+    /// <returns>The typed trees, by tree.</returns>
+    internal static IReadOnlyDictionary<Expr, TypedExpr> TypedExpressions(ModelSnapshot model, DeclaredRule rule, string path, int index)
+    {
+        var typed = new Dictionary<Expr, TypedExpr>(ReferenceEqualityComparer.Instance);
+        new RuleCheck(model, path, "/rules/" + index, null, []) { Typed = typed }.Check(rule);
+        return typed;
+    }
+
+    /// <summary>
     /// Splits a message into its pieces: <c>{{</c> and <c>}}</c> write braces, <c>{$count}</c> is the count, and any other <c>{...}</c> a
     /// path.
     /// </summary>
@@ -219,6 +235,9 @@ internal static class DeclaredRuleChecks
     /// <summary>The checks of one rule, with the pointer of its entry.</summary>
     private sealed class RuleCheck(ModelSnapshot model, string path, string pointer, Func<string, string, bool>? declares, List<Diagnostic> found)
     {
+        /// <summary>Receives each expression condition that types, by its tree (<see cref="TypedExpressions"/>).</summary>
+        public Dictionary<Expr, TypedExpr>? Typed { get; init; }
+
         public void Check(DeclaredRule rule)
         {
             var select = rule.Select;
@@ -299,7 +318,9 @@ internal static class DeclaredRuleChecks
 
         /// <summary>
         /// An expression condition (next-phase-3-design.md section 3.1): each member path is walked as a has path is (MQ5016), and the
-        /// tree is typed at a rule-condition site, members typed by the values their paths end at.
+        /// tree is typed at a rule-condition site, members typed by the values their paths end at in the resolved record of the kinds
+        /// it reads, and <c>properties.x</c> by the property schemas that declare <c>x</c> for one of them. A list is a collection and an
+        /// object no value, which no expression reads; <c>count</c> and <c>has</c> stay for them.
         /// </summary>
         private void Expression(Expr expression, string at, IReadOnlyList<Type?> starts)
         {
@@ -310,13 +331,84 @@ internal static class DeclaredRuleChecks
                 if (members.ContainsKey(text))
                     continue;
                 var ends = Walk(text, at, starts, "The path '" + text + "'");
-                members[text] = ends is null ? null : new ExprMember(text, text, ExprTypeOf(ends.FirstOrDefault(e => e is not null)), true);
+                members[text] = ends is null ? null : MemberOf(text, ends.FirstOrDefault(e => e is not null), starts);
             }
 
             var scope = new ExprScope(ExprSiteKind.RuleCondition) { FilePath = path, Pointer = pointer + at, MemberPaths = text => members.GetValueOrDefault(text) };
             var problems = new List<Diagnostic>();
-            ExprTyper.Type(expression, scope, problems);
+            var typed = ExprTyper.Type(expression, scope, problems);
             found.AddRange(problems.Where(p => p.Rule != "MQ3102" || !p.Message.Contains("member", StringComparison.Ordinal) || members.Values.All(m => m is not null)));
+            if (Typed is not null && typed is not null && !problems.Any(p => p.Severity == DiagnosticSeverity.Error))
+                Typed[expression] = typed;
+        }
+
+        /// <summary>What a member path reads: a value of the type its end has, a collection, or an object (which no expression reads).</summary>
+        private ExprMember MemberOf(string text, Type? end, IReadOnlyList<Type?> starts)
+        {
+            if (end is null)
+            {
+                var dot = text.IndexOf('.', StringComparison.Ordinal);
+                if (dot > 0 && string.Equals(text[..dot], "properties", StringComparison.Ordinal) && text.IndexOf('.', dot + 1) < 0
+                    && PropertyType(text[(dot + 1)..], starts) is { } declared)
+                    return declared with { Id = text, Name = text };
+                return new ExprMember(text, text, ExprType.String, true);
+            }
+
+            if (IsList(end, out _))
+                return new ExprMember(text, text, ExprType.String, true) { Collection = true };
+            if (IsObject(end) || IsMap(end, out _))
+                return new ExprMember(text, text, new ExprType("object", null), true);
+            return new ExprMember(text, text, ExprTypeOf(end), true);
+        }
+
+        /// <summary>
+        /// The type of a custom property, from the first property schema (extension files by path, then stereotype parameters) that
+        /// declares it for a kind the condition reads; <see langword="null"/> when none does.
+        /// </summary>
+        private ExprMember? PropertyType(string name, IReadOnlyList<Type?> starts)
+        {
+            var kinds = starts.OfType<Type>().Select(KindOf).OfType<string>().ToList();
+            foreach (var source in model.PropertySchemas.Sources)
+            {
+                if (source.Kinds.Count > 0 && !kinds.Any(k => source.Kinds.Contains(k, StringComparer.Ordinal)))
+                    continue;
+                if (source.Properties.ValueKind == JsonValueKind.Object && source.Properties.TryGetProperty(name, out var schema))
+                    return SchemaMember(schema);
+            }
+
+            return null;
+        }
+
+        /// <summary>A property's member as its JSON schema types it: <c>integer</c>, <c>number</c> (a decimal), <c>boolean</c>, a
+        /// <c>string</c> by its <c>format</c>; an <c>array</c> is a collection and an <c>object</c> no value.</summary>
+        private static ExprMember SchemaMember(JsonElement schema)
+        {
+            string? type = null;
+            if (schema.ValueKind == JsonValueKind.Object && schema.TryGetProperty("type", out var declared))
+            {
+                type = declared.ValueKind == JsonValueKind.String ? declared.GetString()
+                    : declared.ValueKind == JsonValueKind.Array ? declared.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.String)
+                        .Select(t => t.GetString()).FirstOrDefault(t => !string.Equals(t, "null", StringComparison.Ordinal)) : null;
+            }
+
+            var format = schema.ValueKind == JsonValueKind.Object && schema.TryGetProperty("format", out var f) && f.ValueKind == JsonValueKind.String ? f.GetString() : null;
+            var exprType = type switch
+            {
+                "integer" => ExprType.Int64,
+                "number" => ExprType.Decimal,
+                "boolean" => ExprType.Bool,
+                "object" => new ExprType("object", null),
+                "string" => format switch
+                {
+                    "date" => ExprType.Date,
+                    "date-time" => ExprType.DateTimeOffset,
+                    "time" => ExprType.Time,
+                    "uuid" => ExprType.Uuid,
+                    _ => ExprType.String,
+                },
+                _ => ExprType.String,
+            };
+            return new ExprMember("", "", exprType, true) { Collection = string.Equals(type, "array", StringComparison.Ordinal) };
         }
 
         /// <summary>The expression type of a resolved value's CLR type; a value of no known scalar type reads as a string.</summary>

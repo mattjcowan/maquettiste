@@ -433,3 +433,8 @@ Tests: `Resolution/ResolverBehaviorTests.cs` (the stereotype member cases), `Mod
   and the differ treats equal shapes as unchanged (decision 22). It is a hash of the lowered check rather than of the stored tree, so
   a cited constraint's condition, a binding's field map or an enum member's stored value changing still changes it.
 - A model without expressions runs none of this: each entry point returns on the first test (`ExpressionCostTests`).
+- A process guard's condition (task H8) resolves in `BuildProcess` into `RGuard.Condition`, its paths ending at the context's and
+  payloads' attributes; `ProcessExpressions` lowers the same typed tree, so the JavaScript simulation runs is the condition's own. An
+  operation's guards (task H10) resolve in `ResolveGuards`, after its errors, into `ROperation.Guards` (`ROperationGuard`, kind
+  `guard`): paths end at the input's `ROperationMember`s and the subject's attributes, and `Error` is found among the resolved errors,
+  an inherited one by its keyed id or by its stereotype's error id.

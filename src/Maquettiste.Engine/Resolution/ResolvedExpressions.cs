@@ -208,6 +208,16 @@ internal static class ExprResolution
                     names.Add(seed.Target);
             }
 
+            // A path through a relation depends on the relation and on the record it reads.
+            foreach (var navigation in t.Through)
+            {
+                if (model.TryGetEntry(navigation.Id, out var end))
+                    names.Add(end.OwnerId);
+            }
+
+            if (t.Through.Count > 0 && t.Member is { } member && model.TryGetEntry(member.Id.Split('.')[0], out var attribute))
+                names.Add(attribute.OwnerId);
+
             if (t.Constraint is { } constraint)
                 names.Add(constraint.Id);
             if (t.Body is { } body)

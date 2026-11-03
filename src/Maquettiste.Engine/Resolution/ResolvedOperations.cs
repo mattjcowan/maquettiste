@@ -30,6 +30,12 @@ public sealed class ROperation : RElement
     /// <summary>The errors, in file order (the first cut resolves own errors only).</summary>
     public RList<ROperationError> Errors { get; internal set; } = RList<ROperationError>.Empty;
 
+    /// <summary>
+    /// The guards, in file order (next-phase-3-design.md section 3.1, "Operation guards"): checked in that order before the operation
+    /// runs, the first whose condition does not hold reporting its error. Only true passes, so a null operand fails a guard.
+    /// </summary>
+    public RList<ROperationGuard> Guards { get; internal set; } = RList<ROperationGuard>.Empty;
+
     /// <summary>The process events the operation fires, in file order; ids that name no event are skipped.</summary>
     public RList<REvent> Fires { get; internal set; } = RList<REvent>.Empty;
 
@@ -158,4 +164,29 @@ public sealed class ROperationError : RElement
 
     /// <summary>Where the error comes from (next-phase-2-design.md section 3.1); own errors share one instance.</summary>
     public RMemberOrigin MemberOrigin { get; internal set; } = RMemberOrigin.Own;
+}
+
+/// <summary>
+/// A resolved guard of an operation (next-phase-3-design.md section 3.1, "Operation guards"): a condition the operation requires before
+/// it runs, over its input members and, for a record-level operation, its subject's attributes under <c>subject</c>, and the error it
+/// reports when the condition does not hold. The engine runs no operation: packs render the condition from its typed tree, or run its
+/// JavaScript.
+/// </summary>
+public sealed class ROperationGuard : RElement
+{
+    /// <inheritdoc/>
+    public override string Kind => "guard";
+
+    /// <summary>The operation that holds the guard.</summary>
+    public ROperation Operation { get; internal set; } = null!;
+
+    /// <summary>
+    /// The condition, or <see langword="null"/> when it does not type (validation says why). Its paths end at the input's
+    /// <see cref="ROperationMember"/>s and the subject's <see cref="RAttribute"/>s; only true passes.
+    /// </summary>
+    public RExpression? Condition { get; internal set; }
+
+    /// <summary>The error the guard reports when its condition does not hold: an own or inherited error of the operation, or
+    /// <see langword="null"/> when it names none or one the operation does not have (MQ3111).</summary>
+    public ROperationError? Error { get; internal set; }
 }

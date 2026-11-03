@@ -34,8 +34,9 @@ public sealed record InterpreterOptions
 /// <summary>
 /// The engine's statechart interpreter (phase-3-design.md section 4.1), used by validation, simulation, scenario verification and
 /// recording, and the reference the generated interpreters are tested against. It serves those uses only: it persists nothing and runs
-/// nothing for the host. Deterministic: the clock is simulated and advances only on <c>time</c> inputs, collections are ordered by
-/// document order, and the sandbox's <c>Math.random</c> is seeded with the process id and the input index. Not thread-safe.
+/// nothing for the host. Deterministic: the clock is simulated and advances only on <c>time</c> inputs (a guard's condition reads it as
+/// <c>now()</c>), collections are ordered by document order, and the sandbox's <c>Math.random</c> is seeded with the process id and the
+/// input index. Not thread-safe.
 /// </summary>
 public sealed class StatechartInterpreter
 {
@@ -479,17 +480,21 @@ public sealed class StatechartInterpreter
 
     // ---- guards and actions ----
 
+    // A guard runs when its expression, or its condition (next-phase-3-design.md section 3.1), compiled into the chart's session.
     private bool CanEvaluate(Instance inst, ProcessGuard guard) =>
-        (guard.Expression is not null && Session(inst.Chart) is not null && ProcessExpressions.Get(inst.Chart.Process).Compiled.Contains(guard.Id))
-        || (_scope.Input?.Assume.ContainsKey(guard.Id) ?? false);
+        (Session(inst.Chart)?.Compiled.Contains(guard.Id) ?? false) || (_scope.Input?.Assume.ContainsKey(guard.Id) ?? false);
 
     private bool? Guard(Instance inst, ChartTransition t)
     {
         if (t.Guard is not { } guard)
             return t.Transition.Guard is null; // an undeclared guard (MQ2001) never holds
-        if (guard.Expression is not null && Session(inst.Chart) is { } session && ProcessExpressions.Get(inst.Chart.Process).Compiled.Contains(guard.Id))
+        if (Session(inst.Chart) is { } session && session.Compiled.Contains(guard.Id))
         {
-            var result = session.Evaluate(guard.Id, $"Guard '{guard.Name}'", ContextObject(inst), _scope.Event, Seed(inst), _options.CancellationToken);
+            // A condition answers true or false, so MQ9504 cannot occur for it; its now() is the simulated clock.
+            var label = $"Guard '{guard.Name}'";
+            var result = session.Conditions.Contains(guard.Id)
+                ? session.EvaluateCondition(guard.Id, label, ContextObject(inst), _scope.Event, ClockText(), Seed(inst), _options.CancellationToken)
+                : session.Evaluate(guard.Id, label, ContextObject(inst), _scope.Event, Seed(inst), _options.CancellationToken);
             bool value;
             if (result.Diagnostic is { } d)
             {
@@ -525,7 +530,7 @@ public sealed class StatechartInterpreter
     {
         var changed = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
         var source = ActionSource.Stub;
-        if (action.Expression is not null && Session(inst.Chart) is { } session && ProcessExpressions.Get(inst.Chart.Process).Compiled.Contains(action.Id))
+        if (action.Expression is not null && Session(inst.Chart) is { } session && session.Compiled.Contains(action.Id))
         {
             source = ActionSource.Expression;
             var result = session.Evaluate(action.Id, $"Action '{action.Name}'", ContextObject(inst), _scope.Event, Seed(inst), _options.CancellationToken);

@@ -568,15 +568,18 @@ public sealed record EventRecord(string Id, string Name, IReadOnlyList<Attribute
 /// <summary>A guard of a process.</summary>
 /// <param name="Id">The guard id.</param>
 /// <param name="Name">The name.</param>
-/// <param name="Expression">The expression, or <see langword="null"/> for a stub.</param>
-/// <param name="IsStub">Whether the guard has no expression.</param>
+/// <param name="Expression">The JavaScript expression, or <see langword="null"/> for a stub or a guard written as a condition.</param>
+/// <param name="IsStub">Whether the guard has neither an expression nor a condition.</param>
 /// <param name="UsedBy">The ids of the transitions it guards.</param>
 /// <param name="DisplayName">The display name.</param>
 /// <param name="Description">The description.</param>
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
+/// <param name="Condition">The condition written in the expression language (next-phase-3-design.md section 3.1), only true passing;
+/// <see langword="null"/>, and left out of the JSON, for a guard without one or one that does not type.</param>
 public sealed record GuardRecord(string Id, string Name, string? Expression, bool IsStub, IReadOnlyList<string> UsedBy, string DisplayName, string? Description,
-    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? Condition = null);
 
 /// <summary>An action of a process.</summary>
 /// <param name="Id">The action id.</param>
@@ -740,10 +743,26 @@ public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> Stat
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+/// <param name="Guards">The guards, in the order they are checked (next-phase-3-design.md section 3.1); <see langword="null"/>, and left out
+/// of the JSON, for an operation without any.</param>
 public sealed record OperationRecord(string Id, string Kind, string Name, string? Package, string? Subject, string? Level, string Effect,
     IReadOnlyList<OperationMemberRecord> Input, IReadOnlyList<OperationOutcomeRecord> Outcomes, string? DefaultOutcome, IReadOnlyList<OperationErrorRecord> Errors,
     IReadOnlyList<string> Fires, IReadOnlyList<string> Requires, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags,
-    string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+    string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<OperationGuardRecord>? Guards = null);
+
+/// <summary>A guard of an operation: a condition it requires before it runs, and the error it reports when the condition does not hold;
+/// only true passes (next-phase-3-design.md section 3.1).</summary>
+/// <param name="Id">The guard id.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Condition">The condition, or <see langword="null"/> when it does not type (validation says why).</param>
+/// <param name="Error">The id of the error it reports (an inherited error's keyed id), or <see langword="null"/>.</param>
+/// <param name="DisplayName">The display name.</param>
+/// <param name="Description">The description.</param>
+/// <param name="Stereotypes">The stereotype keys.</param>
+/// <param name="Properties">The custom properties.</param>
+public sealed record OperationGuardRecord(string Id, string Name, ExpressionRecord? Condition, string? Error, string DisplayName, string? Description,
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
 
 /// <summary>A member of an operation's input or of an outcome's returns: a typed value, a record key or a file.</summary>
 /// <param name="Id">The member id.</param>
@@ -1301,7 +1320,8 @@ public static class ResolvedRecords
                 t.Guard?.Id, t.GuardMissing, Ids(t.Actions), t.External, t.Gate?.Id, t.Label, t.IsTargetless, t.DisplayName, t.Description, Keys(t.Stereotypes), Plain(t.Properties)))],
             [.. p.Events.Select(e => new EventRecord(e.Id, e.Name, [.. e.Payload.Select(a => Attribute(a))], Ids(e.Actors), Ids(e.Transitions),
                 e.DisplayName, e.Description, Keys(e.Stereotypes), Plain(e.Properties)))],
-            [.. p.Guards.Select(g => new GuardRecord(g.Id, g.Name, g.Expression, g.IsStub, Ids(g.UsedBy), g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties)))],
+            [.. p.Guards.Select(g => new GuardRecord(g.Id, g.Name, g.Expression, g.IsStub, Ids(g.UsedBy), g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties),
+                Expression(g.Condition)))],
             [.. p.Actions.Select(a => new ActionRecord(a.Id, a.Name, a.Expression, a.IsStub, Ids(a.Raises), Ids(a.UsedBy), a.DisplayName, a.Description, Keys(a.Stereotypes), Plain(a.Properties)))],
             [.. p.Gates.Select(g => new GateRecord(g.Id, g.Name, g.Transition.Id, g.Required, Ids(g.Signers), Ids(g.RequiredActors), g.AllowRepeatSigner, g.ReasonRequired,
                 [.. g.Meanings.Select(m => new MeaningRecord(m.Id, m.Name, m.DisplayName, m.Description))],
@@ -1330,7 +1350,9 @@ public static class ResolvedRecords
                 e.MemberOrigin.MemberId is null ? null : new MemberOriginView(e.MemberOrigin.Source, e.MemberOrigin.Stereotype?.Key, e.MemberOrigin.MemberId, e.MemberOrigin.Redefined),
                 e.DisplayName!, e.Description, Keys(e.Stereotypes), Plain(e.Properties)))],
             Ids(o.Fires), Ids(o.Requires),
-            o.DisplayName!, o.PluralName!, o.Description, o.Tags, o.Category?.Id, Keys(o.Stereotypes), Plain(o.Properties), o.Generation);
+            o.DisplayName!, o.PluralName!, o.Description, o.Tags, o.Category?.Id, Keys(o.Stereotypes), Plain(o.Properties), o.Generation,
+            o.Guards.Count == 0 ? null : [.. o.Guards.Select(g => new OperationGuardRecord(g.Id, g.Name, Expression(g.Condition), g.Error?.Id,
+                g.DisplayName!, g.Description, Keys(g.Stereotypes), Plain(g.Properties)))]);
 
         public CustomRecord Custom(RCustom c) => new(c.Id, "custom", c.Name, c.Type, c.Package?.Id,
             model.Source.Get<Model.Custom>(c.Id)?.Content ?? System.Collections.Immutable.ImmutableDictionary<string, System.Text.Json.JsonElement>.Empty,
