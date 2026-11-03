@@ -34,7 +34,8 @@ internal static class McpServerSetup
         what cannot exist without it); dryRun true shows the plan first. apply_batch applies several changes all or nothing; its id
         fields take qualified names (@table:billing.notes, @entity:Billing.Invoice) and placeholders ("as": "$t" names a new element
         for the whole batch), the engine mints every missing id, and dryRun true answers the diffs and the diagnostics the change
-        adds or removes without writing. validate reports diagnostics with rule ids and positions. To generate code: plan, read get_plan_diff for the files you care about, then
+        adds or removes without writing, with an impact: read impact (the referrers of what changes, the databases it reaches and
+        per pack the generated files whose units would render again) before applying. validate reports diagnostics with rule ids and positions. To generate code: plan, read get_plan_diff for the files you care about, then
         apply_plan with the plan id (a plan whose inputs changed is refused as stale), or generate to render and write in one call
         with a short summary; units and elements limit either to some units and elements. Failures are tool errors whose JSON has a
         stable code (not-found, conflict, invalid, referenced, stale, bad-request, ...) and the engine's diagnostics.

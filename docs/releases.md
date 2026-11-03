@@ -220,6 +220,25 @@ one.
   MQ5019 (an unknown rule or member, or a repeated entry) and MQ5020 (an entry that matched nothing in a whole-model
   validate). Every kind schema gains `suppressions`. A project without suppressions pays nothing. The [user
   guide](user-guide.md#suppressions) has the details.
+- **Impact before apply.** A batch's dry run (MCP `apply_batch` with `dryRun`, `maquettiste model apply --dry-run`)
+  now also answers `impact`: the elements that point at what the change alters or deletes (`referrers`, at most 200
+  with `referrersTotal`), the databases it can reach, and per enabled pack the units whose stored inputs it touches,
+  with the files they would write again (at most 200 per pack with `unitsTotal`). A unit is `inputs` (a key it read is
+  touched), `deleted` (its element goes) or `added` (a created element enters its scope; `filtered` when its `where`
+  was not evaluated). A pack never generated here says so (`state: none`). The impact comes from the dry run's own
+  models and each pack's stored unit states: nothing is resolved, planned or rendered, so a large model answers as
+  fast as a small one, and the impact names the files that would render again, not their new bytes. The text output
+  prints a line per referrer, database and unit. [docs/mcp.md](mcp.md#impact) has the details.
+- **A model diff for review.** `maquettiste model diff <a> [<b>]` compares two models, each `working`, a model
+  snapshot id or a folder that holds another copy of the project (a CI checkout of the base), never a repository. It
+  groups the change by package (by qualified name, then "(no package)"), lists each element with its field changes,
+  each naming the member it belongs to (attribute `code`, `/name` from `"number"` to `"code"`), and puts the migration
+  facts of each database in their own group, labelled by what they record. `--format markdown` prints it for a pull
+  request or a hosted change log; `--format json` and `--element <id>` give the comparison and one element's fields.
+  The MCP tool `compare_snapshots` now always groups by package, takes a folder in `maquettiste mcp`, and gains
+  `fieldChanges` and `format` (`markdown` answers the bytes `model diff` prints). Every field change of a one-element
+  comparison, also over HTTP, names its sub-element (`subId`, `subKind`, `subName`, `subPointer`); the HTTP list
+  answers as before. The [schema changes guide](guides/schema-changes.md#review-a-change) has the details.
 - **Fixes from the milestone D review.** The 37 notes of [issue #2](https://github.com/mattjcowan/maquettiste/issues/2)
   are fixed before release. Those a user can see:
   - On PostgreSQL, a value map that retypes an enum column first drops the views the model knows about, and those the

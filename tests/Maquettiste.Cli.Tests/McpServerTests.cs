@@ -1234,11 +1234,89 @@ public sealed class McpReadTests
         Assert.Contains(("custom:setting", 1), kinds);
         Assert.DoesNotContain(kinds, k => k.Item1 == "custom");
     }
+
+    [Fact]
+    public async Task Compare_snapshots_takes_a_folder_and_answers_by_package()
+    {
+        // next-phase-2-design.md section 6.2: maquettiste mcp allows folders as sides; the answer is always grouped by package.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        using var copy = new TempRepo();
+        CliRepo.CopyTree(repo.ModelRoot, copy.ModelRoot);
+        await ModelCommandTests.ReviewChangeAsync(repo);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var comparison = await session.OkAsync("compare_snapshots", new { from = copy.RepoRoot, fieldChanges = true });
+
+        Assert.Equal(copy.RepoRoot, (string)comparison["from"]!);
+        Assert.False((bool)comparison["packsCompared"]!);
+        Assert.Equal(["Billing", "migrations of main"], comparison["packages"]!.AsArray().Select(p => (string)p!["name"]!));
+        Assert.Equal(["entity", "table", "migration"], comparison["elements"]!.AsArray().Select(e => (string)e!["kind"]!));
+        Assert.Equal(McpSession.BillingPackage, (string)comparison["elements"]![1]!["package"]!);
+        var field = comparison["elements"]![0]!["fields"]![0]!;
+        Assert.Equal(("attribute", "code", "/name"), ((string?)field["subKind"], (string?)field["subName"], (string?)field["subPointer"]));
+        Assert.Equal("bad-request", (await session.ErrorAsync("compare_snapshots", new { from = "./no-such-folder" })).Code);
+    }
+
+    [Fact]
+    public async Task Compare_snapshots_answers_the_markdown_model_diff_prints()
+    {
+        // The acceptance line of section 6.2: the MCP answer and the command line print the same review, byte for byte.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        var id = await ModelCommandTests.SnapshotAsync(repo, "before-review");
+        Assert.StartsWith("before-review-", id, StringComparison.Ordinal);
+        await ModelCommandTests.ReviewChangeAsync(repo);
+        var printed = await repo.RunAsync("model", "diff", id, "--format", "markdown");
+        Assert.True(printed.ExitCode == 0, printed.Error);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var answer = await session.OkAsync("compare_snapshots", new { from = id, fieldChanges = true, format = "markdown" });
+
+        Assert.Equal(printed.Out, (string)answer["markdown"]!);
+        Assert.Null(answer["next"]); // one page: the diff holds three elements
+        Assert.Contains("- added migration `rename column billing.invoices.number`", printed.Out, StringComparison.Ordinal);
+    }
 }
 
 /// <summary>Saves, conflicts, creates, deletes and batches.</summary>
 public sealed class McpWriteTests
 {
+    [Fact]
+    public async Task Apply_batch_dry_run_answers_the_impact()
+    {
+        // next-phase-2-design.md section 6.1: the dry run answers impact beside today's members; a dry run that would not save has none.
+        const string invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
+        const string number = "01J92P0V0R3VSP7D5238DTNZX1";
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        await using var session = await McpSession.StartAsync(repo, ct);
+        await session.OkAsync("generate");
+        var loaded = await session.OkAsync("get_element", new { id = invoice });
+        var element = loaded["json"]!.DeepClone().AsObject();
+        element["attributes"]!.AsArray().Single(a => (string?)a!["id"] == number)!["name"] = "code";
+        var operations = new[] { new { op = "update", id = invoice, expectedHash = (string)loaded["hash"]!, element } };
+        var before = repo.Tree(".maquettiste");
+
+        var preview = await session.OkAsync("apply_batch", new { operations, dryRun = true });
+
+        Assert.Equal(before, repo.Tree(".maquettiste"));
+        var impact = preview["impact"]!;
+        var referrers = impact["referrers"]!.AsArray();
+        Assert.Contains(referrers, r => (string)r!["fromName"]! == "InvoicesByCustomer" && (string)r["target"]! == number && (string)r["change"]! == "changed");
+        Assert.Equal(referrers.Count, (int)impact["referrersTotal"]!);
+        Assert.Equal("main", (string)impact["databases"]![0]!["name"]!);
+        var packs = impact["packs"]!.AsArray();
+        Assert.All(packs, p => Assert.Equal("known", (string)p!["state"]!));
+        var unit = packs.SelectMany(p => p!["units"]!.AsArray()).Single(u => (string)u!["key"]! == "classes/entity:" + invoice)!;
+        Assert.Equal("inputs", (string)unit["change"]!);
+        Assert.False(unit.AsObject().ContainsKey("filtered"));
+
+        var conflict = await session.ErrorAsync("apply_batch", new { operations = new[] { operations[0] with { expectedHash = new string('0', 64) } }, dryRun = true });
+        Assert.Equal("conflict", conflict.Code);
+        Assert.False(conflict.Json.AsObject().ContainsKey("impact"));
+    }
+
     [Fact]
     public async Task Apply_batch_takes_a_rename_code_operation()
     {

@@ -6376,6 +6376,26 @@ export interface components {
             previousName?: string;
             /** @description The path on the `from` side, when the file moved. */
             previousPath?: string;
+            /** @description Grouped by package only: the package the document states (a package's own row carries its `parent`), on the `to` side, or the `from` side for a removed element. Left out for none. */
+            package?: string;
+            /** @description Grouped by package, a migration fact only; the database the fact belongs to. */
+            database?: string;
+            /** @description Grouped by package, a migration fact only (it has no name): its `fact`, then its object's kind and names as the fact records them, such as `rename column billing.invoices.number`. */
+            label?: string;
+            /** @description With field changes, a changed element only; its field changes, each naming its sub-element. */
+            fields?: components["schemas"]["SnapshotFieldChange"][];
+            /** @description Written only when true; more fields differ than `fields` lists. */
+            fieldsTruncated?: boolean;
+        };
+        /** @description The changed elements of one group of a comparison grouped by package. */
+        SnapshotPackageChanges: {
+            /** @description The package id, or null for `(no package)` and for a database's migration facts. */
+            id: string | null;
+            /** @description The package's qualified name (its id when the side lacks the package), `(no package)`, or `migrations of <database name>`. */
+            name: string;
+            added: number;
+            removed: number;
+            changed: number;
         };
         SnapshotFileChange: {
             path: string;
@@ -6395,6 +6415,8 @@ export interface components {
             files: components["schemas"]["SnapshotFileChange"][];
             filesTruncated: boolean;
             packsCompared: boolean;
+            /** @description Grouped by package only: the counts per group in group order (packages by qualified name, `(no package)`, then the migration facts of each database by its name), which is also the order of `elements`. */
+            packages?: components["schemas"]["SnapshotPackageChanges"][];
         };
         SnapshotFieldChange: {
             /** @description A JSON pointer in the document (`""` for the whole document). */
@@ -6403,6 +6425,14 @@ export interface components {
             change: "added" | "removed" | "changed";
             before: unknown;
             after: unknown;
+            /** @description The id of the innermost object with an `id` on the pointer (a sub-element); left out for the element's own fields. */
+            subId?: string;
+            /** @description The sub-element's kind (`attribute`, `column`, `member`...), `sub-element` when unknown. */
+            subKind?: string;
+            /** @description The sub-element's name on the `to` side, else the `from` side; left out when it has none. */
+            subName?: string;
+            /** @description The pointer inside the sub-element (`""` when the change is the whole sub-element). */
+            subPointer?: string;
         };
         SnapshotElementDiff: {
             id: string;

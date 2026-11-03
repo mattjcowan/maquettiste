@@ -514,6 +514,43 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
+    /// The databases a dry run's change can reach (next-phase-2-design.md section 6.1, decision 6): <see cref="ChooseDatabases"/> over
+    /// every changed id, without the <see cref="Shapes"/> filter (a description change reaches a database's comments), and the
+    /// databases each code map reaches, with the footprints the fact recorder reads (cached per snapshot). Databases of both models,
+    /// by name then id; a superset chosen by ids alone, as for facts. Nothing is resolved.
+    /// </summary>
+    /// <param name="before">The model before the change.</param>
+    /// <param name="candidate">The candidate model.</param>
+    /// <param name="changedIds">The ids of the elements the change created, updated, deleted or rewrote.</param>
+    /// <param name="codeMaps">The write's code maps, if any.</param>
+    /// <returns>The databases, as the candidate holds them.</returns>
+    internal IReadOnlyList<Database> ReachedDatabases(ModelSnapshot before, ModelSnapshot candidate, IReadOnlyCollection<string> changedIds,
+        IReadOnlyList<CodeMap>? codeMaps = null)
+    {
+        var databases = candidate.All<Database>().Where(d => before.Get<Database>(d.Id) is not null)
+            .OrderBy(d => d.Name, StringComparer.Ordinal).ThenBy(d => d.Id, StringComparer.Ordinal).ToList();
+        if (databases.Count == 0 || (changedIds.Count == 0 && codeMaps is not { Count: > 0 }))
+            return [];
+        var cached = CachedEntries(before);
+        var reaches = new Dictionary<string, FrozenSet<string>>(StringComparer.Ordinal);
+        IReadOnlySet<string> FootprintBefore(string databaseId)
+        {
+            if (cached.TryGetValue(databaseId, out var entry))
+                return entry.Footprint;
+            if (!reaches.TryGetValue(databaseId, out var reach))
+                reaches[databaseId] = reach = before.Get<Database>(databaseId) is { } database ? DatabaseReach.Of(before, database) : FrozenSet<string>.Empty;
+            return reach;
+        }
+
+        var chosen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in changedIds)
+            chosen.UnionWith(ChooseDatabases(id, before, candidate, databases, FootprintBefore));
+        foreach (var map in codeMaps ?? [])
+            chosen.UnionWith(CodeMapDatabases(map, before, candidate, databases, FootprintBefore));
+        return [.. databases.Where(d => chosen.Contains(d.Id))];
+    }
+
+    /// <summary>
     /// The databases a change of one element can reshape, a superset chosen by ids alone (nothing is resolved to choose):
     /// a physical element or mapping, its database before and after; a database, itself; an entity, value object, scalar type, enum,
     /// relation or reference type, the databases whose footprint (or reach) holds it before, those its new package's convention or its

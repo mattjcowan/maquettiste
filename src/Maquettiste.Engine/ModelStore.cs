@@ -242,19 +242,31 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// <param name="batch">The batch.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The outcome per operation and, when saved, the files, ids, diagnostics delta and facts.</returns>
-    public async Task<BatchPreview> PreviewBatchAsync(ModelBatch batch, CancellationToken ct)
+    public async Task<BatchPreview> PreviewBatchAsync(ModelBatch batch, CancellationToken ct) =>
+        (await PreviewBatchCoreAsync(batch, ct).ConfigureAwait(false)).Preview;
+
+    /// <summary>
+    /// The dry run of <see cref="PreviewBatchAsync"/>, with the two models and the changed ids it ran over (null models when it would
+    /// not save), so the generation service adds the impact's packs without a second dry run (next-phase-2-design.md section 6.1).
+    /// </summary>
+    /// <param name="batch">The batch.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The run.</returns>
+    internal async Task<BatchPreviewRun> PreviewBatchCoreAsync(ModelBatch batch, CancellationToken ct)
     {
         var sink = new BatchPreviewSink();
         var result = await ApplyBatchCoreAsync(batch, ChangeSource.Editor, sink, ct).ConfigureAwait(false);
         if (result.Outcome != SaveOutcome.Saved)
-            return new BatchPreview(result.Outcome, result.Items, []);
-        return new BatchPreview(result.Outcome, result.Items, sink.Files)
+            return new BatchPreviewRun(new BatchPreview(result.Outcome, result.Items, []), null, null, []);
+        var preview = new BatchPreview(result.Outcome, result.Items, sink.Files)
         {
             Ids = result.Ids,
             DiagnosticsAdded = sink.Added,
             DiagnosticsRemoved = sink.Removed,
             Facts = sink.Facts,
+            Impact = sink.Impact,
         };
+        return new BatchPreviewRun(preview, sink.Before, sink.Candidate, sink.Changed);
     }
 
     private async Task<BatchResult> ApplyBatchCoreAsync(ModelBatch batch, ChangeSource source, BatchPreviewSink? preview, CancellationToken ct)
@@ -898,6 +910,18 @@ public sealed partial class ModelStore : IAsyncDisposable
             preview.Files.Clear();
             preview.Files.AddRange(await PreviewFilesAsync(plan, factWrites, ct).ConfigureAwait(false));
             preview.Facts = recording.Facts;
+            // The impact's referrers and reached databases (next-phase-2-design.md section 6.1): read from the two models, never resolved.
+            preview.Before = snapshot;
+            preview.Candidate = plan.Candidate;
+            preview.Changed = [.. plan.ChangeByElement.Keys.Order(StringComparer.Ordinal)];
+            if (plan.Candidate is { } candidate)
+            {
+                var excluded = preview.Changed.Concat(recording.Facts?.Select(f => f.Id) ?? []).ToHashSet(StringComparer.Ordinal);
+                var referrers = ImpactTargets.Referrers(snapshot, candidate, preview.Changed, excluded);
+                preview.Impact = new BatchImpact([.. referrers.Take(BatchImpact.MaxReferrers)], referrers.Count,
+                    [.. ReachedDatabases(snapshot, candidate, preview.Changed, codeMaps).Select(d => new ImpactDatabase(d.Id, d.Name))]);
+            }
+
             if (recording.Diagnostics.Any(d => d.Diagnostic.Rule == "MQ4101"))
                 preview.Added = [.. preview.Added.Concat(recording.Diagnostics.Select(d => d.Diagnostic).Where(d => d.Rule == "MQ4101")).Order(Diagnostic.Order)];
             return new BatchResult(SaveOutcome.Saved,
@@ -1789,6 +1813,13 @@ public sealed record BatchPreview(SaveOutcome Outcome, IReadOnlyList<SaveResult>
     /// the change reaches every database, whose facts are computed on save (a dry run never resolves every database), or when not saved.
     /// </summary>
     public IReadOnlyList<RecordedFact>? Facts { get; init; }
+
+    /// <summary>
+    /// When saved, how far the change reaches beyond its own files (next-phase-2-design.md section 6.1); <see langword="null"/> (and left
+    /// out of the JSON) otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BatchImpact? Impact { get; init; }
 }
 
 /// <summary>A file a batch would write or delete.</summary>
@@ -1854,4 +1885,16 @@ internal sealed class BatchPreviewSink
 
     /// <summary>The facts the batch would record (none until a plan records some); <see langword="null"/> when the change reaches every database.</summary>
     public IReadOnlyList<RecordedFact>? Facts { get; set; } = [];
+
+    /// <summary>The model before the change, once the dry run would save.</summary>
+    public ModelSnapshot? Before { get; set; }
+
+    /// <summary>The candidate model, once the dry run would save.</summary>
+    public ModelSnapshot? Candidate { get; set; }
+
+    /// <summary>The ids of the elements the change created, updated, deleted or rewrote, ordinal.</summary>
+    public IReadOnlyList<string> Changed { get; set; } = [];
+
+    /// <summary>The impact's referrers and databases, once the dry run would save.</summary>
+    public BatchImpact? Impact { get; set; }
 }

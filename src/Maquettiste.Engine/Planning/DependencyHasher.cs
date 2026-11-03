@@ -304,9 +304,18 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
         return hash.Add("mq-baseline-diff-1").Add(diff.Hash).Add(baselineHash).Finish();
     }
 
-    private string SettingsHash(string section)
+    private string SettingsHash(string section) => SettingsHashOf(model.Settings, section);
+
+    /// <summary>
+    /// The hash of the <c>s:&lt;section&gt;</c> key over a model's settings, absent for a section the key does not know. Needs no resolved
+    /// model, so the impact of a dry run (next-phase-2-design.md section 6.1) hashes the settings before and after a change with it.
+    /// </summary>
+    /// <param name="settings">The settings.</param>
+    /// <param name="section">The section after <c>s:</c>.</param>
+    /// <returns>The hash.</returns>
+    internal static string SettingsHashOf(ProjectSettings settings, string section)
     {
-        var settings = model.Settings;
+        ArgumentNullException.ThrowIfNull(settings);
         return section switch
         {
             // Database overrides are part of the conventions (engine-design.md section 11).

@@ -115,7 +115,7 @@ internal static class FactDocuments
     private static int Rank(string kind) => kind switch { "table" => 0, "column" => 1, "sequence" => 2, _ => 3 };
 
     /// <summary>An object's qualified name at the time: schema, table (for a member) and name, else its key.</summary>
-    private static string Name(MigrationObject o)
+    internal static string Name(MigrationObject o)
     {
         var parts = new List<string>(3);
         if (o.Schema is { Length: > 0 } schema)

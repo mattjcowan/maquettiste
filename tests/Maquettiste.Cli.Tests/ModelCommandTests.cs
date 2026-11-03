@@ -383,4 +383,136 @@ public sealed class ModelCommandTests
         Assert.Equal(1, (int)result["total"]!);
         Assert.Equal("custom:setting", (string)Assert.Single(result["kinds"]!.AsArray())!["kind"]!);
     }
+
+    [Fact]
+    public async Task Model_diff_prints_markdown_grouped_by_package()
+    {
+        // next-phase-2-design.md section 6.2: the review form, by package, with each changed element's field changes and the facts of
+        // each database in their own group.
+        using var repo = CliRepo.Billing();
+        var id = await SnapshotAsync(repo, "Before review");
+        await ReviewChangeAsync(repo);
+
+        var markdown = await repo.RunAsync("model", "diff", id, "--format", "markdown");
+
+        Assert.True(markdown.ExitCode == 0, markdown.Error);
+        var lines = Text.Lines(markdown.Out);
+        Assert.Equal($"# Model diff: `{id}` to `working`", lines[0]);
+        Assert.Contains("2 added, 0 removed, 1 changed.", lines);
+        var billing = Array.IndexOf(lines, "## Billing");
+        var migrations = Array.IndexOf(lines, "## migrations of main");
+        Assert.True(billing > 0 && migrations > billing, markdown.Out);
+        Assert.Equal($"- changed entity `Invoice` (`{Invoice}`)", lines[billing + 1]);
+        Assert.Equal("  - attribute `code`, `/name` from `\"number\"` to `\"code\"`", lines[billing + 2]);
+        Assert.StartsWith("- added table `payment_method` (`", lines[billing + 3], StringComparison.Ordinal);
+        Assert.StartsWith("- added migration `rename column billing.invoices.number` (`", lines[migrations + 1], StringComparison.Ordinal);
+
+        // Text, the default, is the same lines without the marks.
+        var text = await repo.RunAsync("model", "diff", id);
+        Assert.Equal(0, text.ExitCode);
+        Assert.Contains("    attribute code, /name from \"number\" to \"code\"", Text.Lines(text.Out));
+        Assert.DoesNotContain("`", text.Out, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Model_diff_takes_a_folder_and_a_snapshot()
+    {
+        using var repo = CliRepo.Billing();
+        using var copy = new Maquettiste.Testing.TempRepo();
+        CliRepo.CopyTree(repo.ModelRoot, copy.ModelRoot); // a CI checkout of the base stands in
+        var before = await SnapshotAsync(repo, "Before review");
+        await ReviewChangeAsync(repo);
+        var after = await SnapshotAsync(repo, "After review");
+
+        var json = await repo.RunAsync("model", "diff", copy.RepoRoot, after, "--format", "json");
+
+        Assert.True(json.ExitCode == 0, json.Error);
+        var comparison = JsonNode.Parse(json.Out)!;
+        Assert.Equal((copy.RepoRoot, after), ((string)comparison["from"]!, (string)comparison["to"]!));
+        Assert.Equal(["Billing", "migrations of main"], comparison["packages"]!.AsArray().Select(p => (string)p!["name"]!));
+        Assert.Equal(3, comparison["elements"]!.AsArray().Count);
+        Assert.Null(comparison["next"]);
+
+        // The folder renders the lines the snapshot of the same model renders, after the heading.
+        var folder = Text.Lines((await repo.RunAsync("model", "diff", copy.RepoRoot, "--format", "markdown")).Out);
+        var snapshot = Text.Lines((await repo.RunAsync("model", "diff", before, "--format", "markdown")).Out);
+        Assert.Equal($"# Model diff: `{copy.RepoRoot}` to `working`", folder[0]);
+        Assert.Equal(snapshot[1..], folder[1..]);
+        Assert.Equal(3, folder.Count(l => l.StartsWith("- ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Model_diff_element_prints_one_elements_fields()
+    {
+        using var repo = CliRepo.Billing();
+        var id = await SnapshotAsync(repo, "Before review");
+        await ReviewChangeAsync(repo);
+
+        var text = await repo.RunAsync("model", "diff", id, "--element", Invoice);
+        var json = await repo.RunAsync("model", "diff", id, "working", "--element", Invoice, "--format", "json");
+
+        Assert.True(text.ExitCode == 0, text.Error);
+        Assert.Equal([$"  changed entity Invoice ({Invoice})", "    attribute code, /name from \"number\" to \"code\""], Text.Lines(text.Out));
+        var field = Assert.Single(JsonNode.Parse(json.Out)!["fields"]!.AsArray())!;
+        Assert.Equal((InvoiceNumber, "attribute", "code", "/name"),
+            ((string?)field["subId"], (string?)field["subKind"], (string?)field["subName"], (string?)field["subPointer"]));
+        var missing = await repo.RunAsync("model", "diff", id, "--element", "01J00000000000000000000000");
+        Assert.Equal(1, missing.ExitCode);
+        Assert.Contains("neither side has the element '01J00000000000000000000000'", missing.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Model_diff_exits_4_for_a_side_that_names_nothing()
+    {
+        using var repo = CliRepo.Billing();
+
+        var unknown = await repo.RunAsync("model", "diff", "no-such-base");
+        Assert.Equal(4, unknown.ExitCode);
+        Assert.Contains("'no-such-base' names neither a model snapshot nor a folder.", unknown.Error, StringComparison.Ordinal);
+        Directory.CreateDirectory(repo.PathOf("notes"));
+        var notProject = await repo.RunAsync("model", "diff", "./notes");
+        Assert.Equal(4, notProject.ExitCode);
+        Assert.Contains("'./notes' is not a project", notProject.Error, StringComparison.Ordinal);
+        Assert.Equal(4, (await repo.RunAsync("model", "diff")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("model", "diff", "working", "working", "working")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("model", "diff", "working", "--format", "yaml")).ExitCode);
+        var same = await repo.RunAsync("model", "diff", "working", "--format", "markdown");
+        Assert.Equal((0, "# Model diff: `working` to `working`\n\n0 added, 0 removed, 0 changed.\n"), (same.ExitCode, same.Out));
+    }
+
+    private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
+    private const string InvoiceNumber = "01J92P0V0R3VSP7D5238DTNZX1";
+
+    internal static async Task<string> SnapshotAsync(CliRepo repo, string name)
+    {
+        var created = await repo.RunAsync("snapshot", "create", name, "--format", "json");
+        Assert.True(created.ExitCode == 0, created.Error);
+        return (string)JsonNode.Parse(created.Out)!["id"]!;
+    }
+
+    /// <summary>
+    /// The review's change, one batch through <c>model apply</c>: attribute number of Invoice renamed to code (main records a rename
+    /// fact), and table payment_method created in main with package Billing.
+    /// </summary>
+    internal static async Task ReviewChangeAsync(CliRepo repo)
+    {
+        const string Path = ".maquettiste/model/entities/invoice.json";
+        var hash = Engine.Hashing.ContentHash.Of(File.ReadAllBytes(repo.PathOf(Path)));
+        var invoice = JsonNode.Parse(repo.Read(Path))!.AsObject();
+        invoice["attributes"]!.AsArray().Single(a => (string?)a!["id"] == InvoiceNumber)!["name"] = "code";
+        var batch = new JsonObject
+        {
+            ["operations"] = new JsonArray(
+                new JsonObject { ["op"] = "update", ["id"] = Invoice, ["expectedHash"] = hash, ["element"] = invoice },
+                JsonNode.Parse("""
+                    { "op": "create", "element": { "kind": "table", "name": "payment_method", "database": "@database:main",
+                      "schema": "@schema:billing", "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+                      "columns": [ { "name": "code", "type": "string", "length": 16, "nullable": false } ],
+                      "primaryKey": { "columns": [ "@column:billing.payment_method.code" ] } } }
+                    """)),
+        };
+        repo.Write("review.json", batch.ToJsonString());
+        var applied = await repo.RunAsync("model", "apply", "review.json");
+        Assert.True(applied.ExitCode == 0, applied.Out + applied.Error);
+    }
 }

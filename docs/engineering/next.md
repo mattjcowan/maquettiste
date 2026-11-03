@@ -18,10 +18,10 @@ How to read the tables:
 Every roadmap item not built yet was requested, except projections (3.12), views (3.13) and declared environments
 (6.9). The older open work at the end came from the owner's reviews.
 
-The build-next order, one pull request each: operations, first cut (3.6); project-defined kinds (3.7); the small fixes
-marked below, validation speed first; library packs with exports (5.1, 5.3); tests for packs (8.2), whose design builds
-on libraries; calculated values (5.2); declarative rules and suppressions (8.3); the model diff with impact before apply
-(7.3, 7.2).
+The build-next order, one pull request each, now all built (pull requests #3 to #10): operations, first cut (3.6);
+project-defined kinds (3.7); the small fixes marked below, validation speed first; library packs with exports (5.1,
+5.3); tests for packs (8.2), whose design builds on libraries; calculated values (5.2); declarative rules and
+suppressions (8.3); the model diff with impact before apply (7.3, 7.2).
 
 ## Phase 1: built in 0.11.0
 
@@ -49,8 +49,8 @@ Designed in `next-phase-1-design.md`. 0.11.0 is a preview and not released yet.
 
 Milestone D is designed in section 3 of `next-phase-2-design.md` and was merged in pull request #1. The first cut of
 operations (section 4.1) was merged in pull request #3, project-defined kinds (4.2) in #4, the small fixes in #5, and
-library packs with exports (5.2, 5.3) in #6, tests for packs (5.4) in #7, calculated values (5.5) in #8; declarative
-rules (5.6) follow. 0.12.0 is not released yet.
+library packs with exports (5.2, 5.3) in #6, tests for packs (5.4) in #7, calculated values (5.5) in #8, declarative
+rules (5.6) in #9; the model diff and impact before apply (6.1, 6.2) follow. 0.12.0 is not released yet.
 
 | # | Item | Requested | Status | Design |
 | --- | --- | --- | --- | --- |
@@ -66,6 +66,8 @@ rules (5.6) follow. 0.12.0 is not released yet.
 | 8.2 | Tests for packs: cases compared byte for byte, helper tests in the sandbox, `pack test` and `test_pack`, a case for each shipped pack | yes | Built, 0.12.0 | [5.4](next-phase-2-design.md#54-tests-for-packs) |
 | 5.2 | Values calculated once by project scripts: calculation files per kind, `calculated` in templates, rules and agents, checks after resolution; nothing when a project declares none | yes | Built, 0.12.0 | [5.5](next-phase-2-design.md#55-values-calculated-by-project-scripts) |
 | 8.3 | Declarative rules (selector, condition, severity, message) on the resolved model, and per-element suppressions with a required reason, for built-in rules too | yes | Built, 0.12.0 | [5.6](next-phase-2-design.md#56-declarative-rules) |
+| 7.2 | Impact before apply: a batch's dry run lists referrers, diagnostics added and removed, reached databases and, per pack, the touched units and files | yes | Built, 0.12.0 | [6.1](next-phase-2-design.md#61-impact-before-apply) |
+| 7.3 | A model diff between snapshots, folders and the working model, graded and grouped by package, with a Markdown form | yes | Built, 0.12.0 | [6.2](next-phase-2-design.md#62-a-model-diff-between-two-models) |
 
 ## Left over from built items
 
@@ -77,12 +79,11 @@ rules (5.6) follow. 0.12.0 is not released yet.
 
 ## Phase 2: not built yet
 
-Designed in sections 4 to 6 of `next-phase-2-design.md`. The *build next* items left hold 11 tasks as designed.
+Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item of phase 2 is built; what follows is
+*later*.
 
 | # | Item | Requested | Status | Tasks | Design | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 7.2 | Impact before apply | yes | Build next | 5 | [6.1](next-phase-2-design.md#61-impact-before-apply) | Leaves out the export keys of 5.3. Migration steps and their grade come with 6.1. |
-| 7.3 | A model diff between two models | yes | Build next | 6 | [6.2](next-phase-2-design.md#62-a-model-diff-between-two-models) | Compares snapshots, folders and the working model. |
 | 3.6 | Operations, second cut: shared errors contributed by stereotypes, file members and returns, paging, csharp-dapper's `operation-endpoints` unit | yes | Later | E5, and parts of E7, E8 and E10 | [4.1](next-phase-2-design.md#41-operations) | Each part is marked "Second cut" in the design. Projection returns come with 3.12. |
 | 5.8 | DDL as structured steps from the engine | yes | Later | 18 | [5.1](next-phase-2-design.md#51-ddl-as-structured-steps-from-the-engine) | The same output; built with the live planner (6.1), the only item it pays back, never on its own. |
 | 3.10 | Requirements: `satisfies`, `verifies` and a coverage report | yes | Later | 6 | [4.3](next-phase-2-design.md#43-requirements) | Valuable for regulated teams; not needed to generate code. The roadmap had moved it up to phase 2. |

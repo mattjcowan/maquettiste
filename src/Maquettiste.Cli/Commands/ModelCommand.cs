@@ -7,7 +7,7 @@ using Maquettiste.Engine;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste model export|stats|delete|materialize|apply|calculated</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
+/// <c>maquettiste model export|stats|delete|materialize|apply|calculated|diff</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
 /// canonical documents (or, with <c>--resolved</c>, the resolved model's flat records) as one JSON array or as one JSON value per line;
 /// <c>stats</c> counts the kinds present, per package with <c>--by package</c>. Both take <c>--kind</c>, where <c>custom</c> means every custom
 /// element and <c>custom:&lt;type&gt;</c> one custom kind (next-phase-2-design.md section 4.2). Both read the same pages the editor API and the MCP
@@ -15,7 +15,8 @@ namespace Maquettiste.Cli.Commands;
 /// with a resolution, or with <c>--dry-run</c> prints what the delete would do (<c>GET /api/model/elements/{id}/delete-plan</c>).
 /// <c>apply</c> applies a batch file all or nothing, by name or by id, as the MCP tool <c>apply_batch</c> does (next-phase-1-design.md
 /// section 5.1). <c>calculated</c> prints the calculated values of the elements given, evaluated for them only, as the MCP tool
-/// <c>get_calculated</c> answers (next-phase-2-design.md section 5.5).
+/// <c>get_calculated</c> answers (next-phase-2-design.md section 5.5). <c>diff</c> prints the review form of a comparison of two models
+/// (section 6.2), as the MCP tool <c>compare_snapshots</c> answers with <c>format</c> <c>markdown</c>.
 /// </summary>
 internal static class ModelCommand
 {
@@ -29,7 +30,7 @@ internal static class ModelCommand
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
         var line = context.Line;
-        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export, stats, delete, materialize, apply or calculated.");
+        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export, stats, delete, materialize, apply, calculated or diff.");
         switch (verb)
         {
             case "export":
@@ -44,6 +45,12 @@ internal static class ModelCommand
                 break;
             case "apply":
                 line.Expect("model apply", 3, "--dry-run", "--format");
+                break;
+            case "diff":
+                if (line.Positionals.Count is < 3 or > 4)
+                    throw new UsageException("'model diff' takes <a> and, optionally, <b>: working, a model snapshot id or a folder (default working).");
+                line.Expect("model diff", line.Positionals.Count, "--format", "--element");
+                line.Choice("--format", "text", "text", "json", "markdown");
                 break;
             case "calculated":
                 line.Expect("model calculated", 2, "--element", "--name", "--format");
@@ -65,7 +72,7 @@ internal static class ModelCommand
                 });
                 break;
             default:
-                throw new UsageException($"Unknown model verb '{verb}': use export, stats, delete, materialize, apply or calculated.");
+                throw new UsageException($"Unknown model verb '{verb}': use export, stats, delete, materialize, apply, calculated or diff.");
         }
 
         if (await ProjectGuard.RepoAsync(context).ConfigureAwait(false) is not { } repo)
@@ -78,13 +85,15 @@ internal static class ModelCommand
             if (verb == "delete")
                 return await DeleteAsync(context, store, snapshot, ct).ConfigureAwait(false);
             if (verb == "apply")
-                return await ApplyAsync(context, store, snapshot, ct).ConfigureAwait(false);
+                return await ApplyAsync(context, store, options, snapshot, ct).ConfigureAwait(false);
             if (verb == "materialize")
                 return await MaterializeAsync(context, store, snapshot, ct).ConfigureAwait(false);
             if (verb == "stats")
                 return await StatsAsync(context, snapshot, ct).ConfigureAwait(false);
             if (verb == "calculated")
                 return await CalculatedAsync(context, store, options, ct).ConfigureAwait(false);
+            if (verb == "diff")
+                return await DiffAsync(context, store, ct).ConfigureAwait(false);
             var ndjson = line.Choice("--format", "json", "json", "ndjson") == "ndjson";
             if (line.Has("--resolved"))
             {
@@ -244,10 +253,12 @@ internal static class ModelCommand
     /// <c>model apply &lt;batch.json&gt;</c>: reads <c>{ "operations": [...] }</c> or the bare array, then applies it all or nothing, or with
     /// <c>--dry-run</c> previews it. Text on stdout: a usage line per reference-type refactor, the written and deleted paths (with
     /// <c>--dry-run</c>, the diffs), the names and
-    /// placeholders with their ids, and with <c>--dry-run</c> a <c>+ </c> or <c>- </c> line per diagnostic the change adds or removes;
+    /// placeholders with their ids, and with <c>--dry-run</c> a <c>+ </c> or <c>- </c> line per diagnostic the change adds or removes and
+    /// the impact's lines (<see cref="BatchOutput.ImpactLines"/>);
     /// <c>--format json</c> prints the <c>apply_batch</c> answer. Exit 0 when saved, 3 on a conflict, 1 for anything else.
     /// </summary>
-    private static async Task<int> ApplyAsync(GlobalContext context, ModelStore store, Engine.Model.ModelSnapshot snapshot, CancellationToken ct)
+    private static async Task<int> ApplyAsync(GlobalContext context, ModelStore store, EngineOptions options, Engine.Model.ModelSnapshot snapshot,
+        CancellationToken ct)
     {
         var line = context.Line;
         var json = line.Choice("--format", "text", "text", "json") == "json";
@@ -271,7 +282,8 @@ internal static class ModelCommand
         IReadOnlyList<SaveResult> items;
         if (dryRun)
         {
-            var preview = await store.PreviewBatchAsync(parsed.Batch, ct).ConfigureAwait(false);
+            // Through the generation service, so the impact lists the generated files per pack (next-phase-2-design.md section 6.1).
+            var preview = await new GenerationService(store, options).PreviewBatchAsync(parsed.Batch, ct).ConfigureAwait(false);
             (outcome, items) = (preview.Outcome, preview.Items);
             await context.Out.WriteAsync(json ? JsonSerializer.Serialize(BatchOutput.Preview(preview), Options) + "\n"
                 : outcome == SaveOutcome.Saved ? BatchOutput.PreviewText(preview, snapshot, parsed.Batch) : "").ConfigureAwait(false);
@@ -500,6 +512,65 @@ internal static class ModelCommand
         foreach (var id in answer.Missing)
             await context.Error.WriteLineAsync($"maquettiste: nothing has the id '{id}'.").ConfigureAwait(false);
         return failed ? Program.ExitCodes.Invalid : Program.ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// <c>model diff &lt;a&gt; [&lt;b&gt;]</c> (next-phase-2-design.md section 6.2): the review form of a comparison of two models, each
+    /// <c>working</c>, a model snapshot id or a folder, grouped by package with each changed element's field changes, every page joined;
+    /// with <c>--element</c> one element's field changes. Exit 4 when a side resolves to nothing, is not a project or is newer.
+    /// </summary>
+    private static async Task<int> DiffAsync(GlobalContext context, ModelStore store, CancellationToken ct)
+    {
+        var line = context.Line;
+        var from = line.Positionals[2];
+        var to = line.Positionals.Count > 3 ? line.Positionals[3] : SnapshotLibrary.Working;
+        var format = line.Choice("--format", "text", "text", "json", "markdown");
+        var library = new SnapshotLibrary(store);
+        var options = new SnapshotCompareOptions
+        {
+            ByPackage = true, FieldChanges = true, AllowFolders = true, CurrentDirectory = context.Environment.CurrentDirectory,
+        };
+        try
+        {
+            if (line.Value("--element") is { } id)
+            {
+                if (await library.CompareElementAsync(from, to, id, options, ct).ConfigureAwait(false) is not { } diff)
+                {
+                    await context.Error.WriteLineAsync($"maquettiste: neither side has the element '{id}'.").ConfigureAwait(false);
+                    return Program.ExitCodes.Invalid;
+                }
+
+                await CliFiles.EmitAsync(context, format switch
+                {
+                    "json" => JsonSerializer.Serialize(diff, CliJson.Options) + "\n",
+                    "markdown" => ModelDiffFormat.Markdown(diff),
+                    _ => ModelDiffFormat.Text(diff),
+                }, ct).ConfigureAwait(false);
+                return Program.ExitCodes.Success;
+            }
+
+            var first = (await library.CompareAsync(from, to, 0, SnapshotLibrary.MaxCompareLimit, options, ct).ConfigureAwait(false))!;
+            var elements = new List<SnapshotElementChange>(first.Elements);
+            for (var next = first.Next; next is { } offset;)
+            {
+                var page = (await library.CompareAsync(from, to, offset, SnapshotLibrary.MaxCompareLimit, options, ct).ConfigureAwait(false))!;
+                elements.AddRange(page.Elements);
+                next = page.Next;
+            }
+
+            var comparison = first with { Elements = elements, Next = null };
+            await CliFiles.EmitAsync(context, format switch
+            {
+                "json" => JsonSerializer.Serialize(comparison, CliJson.Options) + "\n",
+                "markdown" => ModelDiffFormat.Markdown(comparison),
+                _ => ModelDiffFormat.Text(comparison),
+            }, ct).ConfigureAwait(false);
+            return Program.ExitCodes.Success;
+        }
+        catch (ArgumentException ex)
+        {
+            throw new UsageException(ex.Message);
+        }
     }
 
     private static async Task<int> StatsAsync(GlobalContext context, Engine.Model.ModelSnapshot snapshot, CancellationToken ct)

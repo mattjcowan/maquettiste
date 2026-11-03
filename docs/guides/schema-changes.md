@@ -141,6 +141,37 @@ baseline is not diffed: MQ4109 says so.
 | MCP | `validate` and `plan` with `against` (a snapshot id or a folder) |
 | HTTP API | `POST /api/validate?against=<snapshot id>`; `POST /api/generate/plan` with `against` in its body (snapshot ids only) |
 
+## Review a change
+
+A reviewer reads a model change by package and by member, not by file. `maquettiste model diff <a> [<b>]` compares two
+models, each `working` (the default `<b>`), a model snapshot id or a folder, and never a repository, so it works the
+same for every team:
+
+- a hosted team takes a snapshot at each deploy and compares the next one with it;
+- in CI the base is a checkout of the main line in a folder: `maquettiste model diff ../base --format markdown`;
+- an agent takes a snapshot before it starts and compares with it before it reports.
+
+Each package of the model is one section, by qualified name, then "(no package)". Each element is one line, with one
+nested line per field change that names the member it belongs to:
+
+```markdown
+## Billing
+
+- changed entity `Invoice` (`01J92P0V0FJ23CGSNKM7P1W5V7`)
+  - attribute `code`, `/name` from `"number"` to `"code"`
+- added table `payment_method` (`01K9PQ4W7Z3N8B2D5F6H1J0K9M`)
+
+## migrations of main
+
+- added migration `rename column billing.invoices.number` (`01K9PQ4W8A1C3E5G7J9M2N4P6R`)
+```
+
+`--format markdown` pastes into a pull request comment or a hosted change log; text, the default, is the same lines
+without the marks; `--format json` is the comparison itself. The migration facts of each database form their own group,
+each labelled by what it records. A change that needs a fact and has none does not show there: run `maquettiste validate
+--against <a>` for those (MQ4102). A folder is compared without its packs and is read only, as a baseline is. Agents get
+the same review from the MCP tool `compare_snapshots` with `fieldChanges` and `format` `markdown`.
+
 ## Stale facts
 
 A fact is **stale** when the model no longer shows what it changed: a column renamed and renamed back, a type narrowed

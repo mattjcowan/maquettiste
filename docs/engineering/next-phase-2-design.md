@@ -8704,7 +8704,11 @@ touches, so a model with thousands of tables answers as fast as a small one.
    - `added`: a created element (or a created attribute, for `each attribute`) enters the unit's `each` scope. Its
      output paths are known only after rendering, so `outputs` is empty. `where` is not evaluated, so a unit with any
      `where` filter (`script` and `database` included) is listed with `filtered: true`; plan decides. Generation hints
-     that skip the pack (`generation.<pack>.skip` or `generation.*.skip`) drop it.
+     that skip the pack (`generation.<pack>.skip` or `generation.*.skip`) drop it. An element the change writes that
+     both models hold (or an attribute it declares) is `added` too for every unit of its scope with no stored state at
+     its key, since a `where` filter or a skip hint left it out and the change may let it in; it is `filtered` when the
+     unit has a `where` or the element's hints skipped the pack before. A `where` that reads other elements stays
+     plan's job.
    Selector units (`select ...`) and units of tables that only resolution makes are not listed for created elements:
    finding them needs a script run or the resolved candidate. The docs say so, and plan finds them.
 5. **Packs.** Every enabled pack of the model before the change is listed in pack order with a `state`: `known` (unit
