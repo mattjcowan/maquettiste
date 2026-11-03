@@ -13015,7 +13015,8 @@
               "sync-enum",
               "set-lifecycle",
               "set-initial",
-              "refresh-scenario"
+              "refresh-scenario",
+              "text-to-trees"
             ],
             "description": "The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none."
           }
@@ -27192,6 +27193,358 @@
         ],
         "additionalProperties": false
       },
+      "expr": {
+        "title": "Expression",
+        "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
+        "type": "object",
+        "x-order": [
+          "value",
+          "type",
+          "null",
+          "path",
+          "ref",
+          "member",
+          "now",
+          "op",
+          "call",
+          "args",
+          "case",
+          "else",
+          "satisfies",
+          "with",
+          "text"
+        ],
+        "properties": {
+          "value": {
+            "description": "A literal: a string, an integer or a boolean; with type, the value's text, so that digits are kept.",
+            "type": [
+              "string",
+              "integer",
+              "boolean"
+            ]
+          },
+          "type": {
+            "description": "The type of a literal written as text.",
+            "enum": [
+              "decimal",
+              "double",
+              "date",
+              "time",
+              "datetime",
+              "datetimeoffset",
+              "uuid"
+            ]
+          },
+          "null": {
+            "description": "The null literal.",
+            "const": true
+          },
+          "path": {
+            "description": "To-one navigation ids (relation end ids), then one attribute, column, input member, context or payload attribute, or constraint parameter id; attributeId.memberId for a value object member; keyed ids for inherited and contributed members.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "ref": {
+            "description": "The id of an enum member or of a reference-type code.",
+            "type": "string",
+            "minLength": 1
+          },
+          "member": {
+            "description": "A member of the selected object in the path syntax of declared rules (properties.retentionDays); rule conditions only.",
+            "type": "string",
+            "minLength": 1
+          },
+          "now": {
+            "description": "The clock, a datetimeoffset; guard sites only.",
+            "const": true
+          },
+          "op": {
+            "enum": [
+              "eq",
+              "ne",
+              "lt",
+              "le",
+              "gt",
+              "ge",
+              "between",
+              "in",
+              "notIn",
+              "isNull",
+              "isNotNull",
+              "distinct",
+              "notDistinct",
+              "and",
+              "or",
+              "not",
+              "implies",
+              "add",
+              "sub",
+              "mul",
+              "div",
+              "neg",
+              "concat",
+              "coalesce"
+            ]
+          },
+          "call": {
+            "description": "A function of the closed table (trim, length, matches, nonnull_count, add_days, add_months, date_part, date_of, round, json_type, json_length); another name is MQ3101.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/expr"
+            }
+          },
+          "case": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/exprWhen"
+            },
+            "minItems": 1
+          },
+          "else": {
+            "$ref": "#/components/schemas/expr"
+          },
+          "satisfies": {
+            "description": "The id of the constraint cited.",
+            "$ref": "#/components/schemas/id"
+          },
+          "with": {
+            "description": "One argument per parameter of the constraint.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/exprArgument"
+            }
+          },
+          "text": {
+            "description": "The expression as text, parsed in the site's scope.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "value"
+            ]
+          },
+          {
+            "required": [
+              "null"
+            ]
+          },
+          {
+            "required": [
+              "path"
+            ]
+          },
+          {
+            "required": [
+              "ref"
+            ]
+          },
+          {
+            "required": [
+              "member"
+            ]
+          },
+          {
+            "required": [
+              "now"
+            ]
+          },
+          {
+            "required": [
+              "op"
+            ]
+          },
+          {
+            "required": [
+              "call"
+            ]
+          },
+          {
+            "required": [
+              "case"
+            ]
+          },
+          {
+            "required": [
+              "satisfies"
+            ]
+          },
+          {
+            "required": [
+              "text"
+            ]
+          }
+        ],
+        "dependentRequired": {
+          "type": [
+            "value"
+          ],
+          "op": [
+            "args"
+          ],
+          "call": [
+            "args"
+          ],
+          "else": [
+            "case"
+          ],
+          "satisfies": [
+            "with"
+          ]
+        },
+        "additionalProperties": false
+      },
+      "exprWhen": {
+        "title": "Expression case branch",
+        "type": "object",
+        "x-order": [
+          "when",
+          "then"
+        ],
+        "properties": {
+          "when": {
+            "$ref": "#/components/schemas/expr"
+          },
+          "then": {
+            "$ref": "#/components/schemas/expr"
+          }
+        },
+        "required": [
+          "when",
+          "then"
+        ],
+        "additionalProperties": false
+      },
+      "exprArgument": {
+        "title": "Constraint argument",
+        "type": "object",
+        "x-order": [
+          "parameter",
+          "value"
+        ],
+        "properties": {
+          "parameter": {
+            "description": "The id of the constraint's parameter.",
+            "$ref": "#/components/schemas/id"
+          },
+          "value": {
+            "$ref": "#/components/schemas/expr"
+          }
+        },
+        "required": [
+          "parameter",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "entityCheck": {
+        "title": "Entity check",
+        "description": "A condition every record of the entity meets; unknown passes, as in a CHECK. A database enforces it only through a binding that lists it in checks.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "attribute",
+          "condition",
+          "message",
+          "description",
+          "rationale",
+          "decision",
+          "status",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "attribute": {
+            "description": "The attribute a failure points at: an id, or the keyed id of an inherited or contributed attribute (MQ3114 when the condition does not read it).",
+            "type": "string",
+            "minLength": 1
+          },
+          "condition": {
+            "description": "The condition, a boolean expression over the entity's own attributes.",
+            "$ref": "#/components/schemas/expr"
+          },
+          "message": {
+            "description": "The text a failure reports.",
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "condition"
+        ],
+        "additionalProperties": false
+      },
       "builtinType": {
         "description": "A built-in scalar type keyword.",
         "enum": [
@@ -27251,24 +27604,29 @@
         "minimum": 0
       },
       "derived": {
+        "description": "How a derived attribute is computed: by raw text (expression) or by an expression tree (value), exactly one of the two (MQ3107).",
         "type": "object",
         "x-order": [
           "expression",
+          "value",
           "stored"
         ],
         "properties": {
           "expression": {
+            "description": "The raw expression, interpreted by templates.",
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "default": ""
+          },
+          "value": {
+            "description": "The value as an expression of the attribute's type.",
+            "$ref": "#/components/schemas/expr"
           },
           "stored": {
             "type": "boolean",
             "default": false
           }
         },
-        "required": [
-          "expression"
-        ],
         "additionalProperties": false
       },
       "sensitivity": {
@@ -27496,6 +27854,7 @@
           "category",
           "key",
           "alternateKeys",
+          "checks",
           "attributes",
           "bindings",
           "properties",
@@ -27629,6 +27988,14 @@
             },
             "default": []
           },
+          "checks": {
+            "description": "Conditions every record of the entity meets. A database enforces one only through a binding that lists it.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/entityCheck"
+            },
+            "default": []
+          },
           "attributes": {
             "type": "array",
             "x-sort": "order",
@@ -27654,6 +28021,7 @@
                 "write",
                 "delete",
                 "provenance",
+                "checks",
                 "description",
                 "tags",
                 "properties"
@@ -27867,6 +28235,12 @@
                     "columns"
                   ],
                   "additionalProperties": false
+                },
+                "checks": {
+                  "description": "The ids of the entity's checks the write table enforces, lowered through the field map (MQ3110). A check no binding lists reaches no table.",
+                  "$ref": "#/components/schemas/idList",
+                  "uniqueItems": true,
+                  "default": []
                 },
                 "description": {
                   "$ref": "#/components/schemas/description"
@@ -29327,12 +29701,14 @@
       },
       "checkConstraint": {
         "title": "Check constraint",
+        "description": "A check: SQL text per dialect (expression) or an expression tree (condition), exactly one of the two (MQ3107).",
         "type": "object",
         "x-order": [
           "id",
           "name",
           "column",
-          "expression"
+          "expression",
+          "condition"
         ],
         "properties": {
           "id": {
@@ -29348,12 +29724,16 @@
           },
           "expression": {
             "$ref": "#/components/schemas/dialectMap",
-            "minProperties": 1
+            "minProperties": 1,
+            "default": {}
+          },
+          "condition": {
+            "description": "The condition as an expression tree over the table's columns; unknown passes, as in any CHECK.",
+            "$ref": "#/components/schemas/expr"
           }
         },
         "required": [
-          "id",
-          "expression"
+          "id"
         ],
         "additionalProperties": false
       },
@@ -34719,6 +35099,7 @@
           "name",
           "displayName",
           "expression",
+          "condition",
           "description"
         ],
         "properties": {
@@ -34734,6 +35115,10 @@
           "expression": {
             "description": "A JavaScript expression over context and event returning a boolean.",
             "type": "string"
+          },
+          "condition": {
+            "description": "The condition as an expression tree over context and event; only true passes. A guard holds expression or condition, not both (MQ3107), or neither as a stub.",
+            "$ref": "#/components/schemas/expr"
           },
           "description": {
             "$ref": "#/components/schemas/description"
@@ -35322,6 +35707,7 @@
               "name",
               "displayName",
               "expression",
+              "condition",
               "description"
             ],
             "properties": {
@@ -35337,6 +35723,10 @@
               "expression": {
                 "description": "A JavaScript expression over context and event returning a boolean.",
                 "type": "string"
+              },
+              "condition": {
+                "description": "The condition as an expression tree over context and event; only true passes. A guard holds expression or condition, not both (MQ3107), or neither as a stub.",
+                "$ref": "#/components/schemas/expr"
               },
               "description": {
                 "$ref": "#/components/schemas/description"
@@ -37339,6 +37729,98 @@
         ],
         "additionalProperties": false
       },
+      "guard-2": {
+        "title": "Operation guard",
+        "description": "A condition the operation requires before it runs, and the error it raises when the condition does not hold.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "condition",
+          "error",
+          "description",
+          "rationale",
+          "decision",
+          "status",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "condition": {
+            "description": "The condition, a boolean expression over the input members and, for a record operation, the subject.",
+            "$ref": "#/components/schemas/expr"
+          },
+          "error": {
+            "description": "The error the guard raises: an own error's id or an inherited one's keyed id (MQ3111).",
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "rationale": {
+            "description": "Markdown text: why the element is shaped this way.",
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "$ref": "#/components/schemas/status"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "condition"
+        ],
+        "additionalProperties": false
+      },
       "errorRedefinition": {
         "title": "Error redefinition",
         "description": "An exception to one inherited error: the stereotype error it names (member) and the facets it states. It has no id of its own.",
@@ -37392,6 +37874,7 @@
           "outcomes",
           "defaultOutcome",
           "errors",
+          "guards",
           "redefines",
           "excludes",
           "fires",
@@ -37476,6 +37959,14 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/operationError"
+            },
+            "default": []
+          },
+          "guards": {
+            "description": "Conditions the operation requires, checked in order: the first that does not hold reports its error. Only true passes.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/guard-2"
             },
             "default": []
           },
@@ -37858,6 +38349,98 @@
             },
             "additionalProperties": false
           },
+          "guard": {
+            "title": "Operation guard",
+            "description": "A condition the operation requires before it runs, and the error it raises when the condition does not hold.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "pluralName",
+              "condition",
+              "error",
+              "description",
+              "rationale",
+              "decision",
+              "status",
+              "stereotypes",
+              "tags",
+              "category",
+              "properties",
+              "generation",
+              "source"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier",
+                "default": ""
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "pluralName": {
+                "type": "string"
+              },
+              "condition": {
+                "description": "The condition, a boolean expression over the input members and, for a record operation, the subject.",
+                "$ref": "#/components/schemas/expr"
+              },
+              "error": {
+                "description": "The error the guard raises: an own error's id or an inherited one's keyed id (MQ3111).",
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              },
+              "rationale": {
+                "description": "Markdown text: why the element is shaped this way.",
+                "type": "string",
+                "minLength": 1
+              },
+              "decision": {
+                "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "status": {
+                "$ref": "#/components/schemas/status"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "tags": {
+                "$ref": "#/components/schemas/tagList",
+                "default": []
+              },
+              "category": {
+                "$ref": "#/components/schemas/id"
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
+              },
+              "generation": {
+                "$ref": "#/components/schemas/generation",
+                "default": {}
+              },
+              "source": {
+                "$ref": "#/components/schemas/source"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "condition"
+            ],
+            "additionalProperties": false
+          },
           "errorRedefinition": {
             "title": "Error redefinition",
             "description": "An exception to one inherited error: the stereotype error it names (member) and the facets it states. It has no id of its own.",
@@ -38036,7 +38619,7 @@
       "batch": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Model batch",
-        "description": "An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the fold into a stereotype and the reference-type refactors, from the editor, a refactoring or an AI proposal.",
+        "description": "An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the text-to-trees conversion, the fold into a stereotype and the reference-type refactors, from the editor, a refactoring or an AI proposal.",
         "type": "object",
         "x-order": [
           "operations"
@@ -38106,7 +38689,8 @@
                     "rename-code",
                     "retire-code",
                     "merge-reference-types",
-                    "rename-reference-type"
+                    "rename-reference-type",
+                    "text-to-trees"
                   ]
                 },
                 "id": {
@@ -38201,7 +38785,7 @@
                   "minItems": 1
                 },
                 "elementIds": {
-                  "description": "The elements names-to-ids and tags-to-property act on, each an id, a qualified name or a placeholder; absent means every element they apply to (names-to-ids: every document with x-ref sites; tags-to-property: every holder the vocabulary governs, and the moved tags' declarations leave the vocabulary).",
+                  "description": "The elements names-to-ids, tags-to-property and text-to-trees act on, each an id, a qualified name or a placeholder; absent means every element they apply to (names-to-ids: every document with x-ref sites; tags-to-property: every holder the vocabulary governs, and the moved tags' declarations leave the vocabulary; text-to-trees: every document that holds an expression as text).",
                   "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/idOrName"

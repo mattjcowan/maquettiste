@@ -324,7 +324,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "x-order": ["key", "name", "expression"],
+              "x-order": ["key", "name", "expression", "shape"],
               "properties": {
                 "key": {
                   "type": "string",
@@ -336,6 +336,11 @@
                 },
                 "expression": {
                   "type": "string"
+                },
+                "shape": {
+                  "description": "A tree check's hash of its id tree: equal shapes are the same check, though a renamed column changes its text.",
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "required": ["key", "name", "expression"],

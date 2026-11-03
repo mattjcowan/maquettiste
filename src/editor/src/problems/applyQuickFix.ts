@@ -33,7 +33,9 @@ export async function applyQuickFix(
   const operation =
     fix.kind === "update"
       ? { op: "update", id: fix.id, expectedHash: before[0].hash, element: fix.json }
-      : { op: fix.op, id: fix.id, ...((target ?? fix.target) ? { target: target ?? fix.target } : {}) };
+      : fix.op === "text-to-trees"
+        ? { op: fix.op, elementIds: [fix.id] }
+        : { op: fix.op, id: fix.id, ...((target ?? fix.target) ? { target: target ?? fix.target } : {}) };
   const result = await endpoints.applyBatch({ operations: [operation] } as never);
   if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The batch did not parse.";
   if (result.outcome !== "saved") {

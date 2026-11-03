@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/constraint.json",
+  "kind": "constraint",
+  "id": "01K9EXV0000000000000000K01",
+  "name": "PositiveAmount",
+  "parameters": [
+    {
+      "id": "01K9EXV0000000000000000K02",
+      "name": "amount",
+      "type": "decimal"
+    }
+  ],
+  "condition": {
+    "op": "gt",
+    "args": [
+      {
+        "path": [
+          "01K9EXV0000000000000000K02"
+        ]
+      },
+      {
+        "value": 0
+      }
+    ]
+  },
+  "description": "An amount above zero."
+}

@@ -19,7 +19,7 @@ Tests: `tests/Maquettiste.Engine.Tests/Scripting/`.
 | `ScriptSandboxPool.cs` | One engine per worker, rented for a whole unit. The first engine is built eagerly, so load errors surface from `CreatePool`. |
 | `ScriptSandbox.cs`, `ScriptSandbox.Calls.cs` | Engine options, the `maquettiste` global, calls, error and limit mapping, the validation-rule model view. |
 | `JsModelProxy.cs` | `JsModelProxy : ObjectInstance` and `JsListProxy : ArrayLikeObject`. |
-| `ScriptValues.cs` | CLR ↔ JavaScript conversion; `ScriptObjectMap` (plain objects leaving a script). |
+| `ScriptValues.cs` | CLR ↔ JavaScript conversion; `ScriptObjectMap` (plain objects leaving a script); `ExactJson` (numbers as exact text for tree expressions). |
 | `MemberCatalog.cs` | Per-pool reflection cache: which types cross as proxies, their camelCase members. |
 | `SandboxRuntime.cs` | Fixed clock, seeded xorshift128+ `Math.random`, call-token constraint, `ScriptErrorException`. |
 

@@ -1,0 +1,502 @@
+{
+  "about": "The differential corpus of the expression language (next-phase-3-design.md, task H5). Each case types its columns, lowers its text to PostgreSQL and to JavaScript, and runs both over every row. A row's answer is the condition's three-valued result; a check passes unless it is false and a guard holds only when it is true. A case at a table reads its row by column name in each mode; a guard case reads its context and payload by name, through relations, with now(). Column types: bool, int16, int32, int64, decimal, decimal(p,s), double, string, char(n), date, time, datetime, datetimeoffset, uuid, json, enum:<name>:integer, enum:<name>:text and code:<name>; a trailing ? makes the column optional.",
+  "enums": [
+    {
+      "name": "InvoiceStatus",
+      "members": [
+        { "name": "Draft", "code": "DRAFT", "value": 10 },
+        { "name": "Sent", "code": "SENT", "value": 20 },
+        { "name": "Paid", "code": "PAID", "value": 30 },
+        { "name": "Void" }
+      ]
+    }
+  ],
+  "referenceTypes": [ { "name": "PaymentTerm", "codes": [ "NET30", "NET60", "DUE" ] } ],
+  "constraints": [
+    { "name": "PositiveAmount", "parameters": { "amount": "decimal" }, "condition": "amount > 0" },
+    { "name": "ShortWindow", "parameters": { "opensOn": "date", "closesOn": "date" }, "condition": "closesOn between opensOn and add_days(opensOn, 31)" },
+    { "name": "LargeSquare", "parameters": { "amount": "decimal" }, "condition": "amount * amount > 2000000000" },
+    { "name": "LargeRateSquare", "parameters": { "rate": "double" }, "condition": "rate * rate > 2000000000" }
+  ],
+  "cases": [
+    {
+      "name": "a value set of an enum stored as text",
+      "columns": { "status": "enum:InvoiceStatus:text?" },
+      "text": "status in (InvoiceStatus.Draft, InvoiceStatus.Paid)",
+      "rows": [ [ { "status": "DRAFT" }, true ], [ { "status": "PAID" }, true ], [ { "status": "SENT" }, false ], [ { "status": "Void" }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "an enum stored as text compared with a member without a code",
+      "columns": { "status": "enum:InvoiceStatus:text?" },
+      "text": "status <> InvoiceStatus.Void",
+      "rows": [ [ { "status": "Void" }, false ], [ { "status": "DRAFT" }, true ], [ {}, null ] ]
+    },
+    {
+      "name": "an enum stored as an integer compared with a member",
+      "columns": { "status": "enum:InvoiceStatus:integer?" },
+      "text": "status = InvoiceStatus.Paid",
+      "rows": [ [ { "status": 30 }, true ], [ { "status": 10 }, false ], [ { "status": 3 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "an enum stored as an integer in a list, a member without a value at its position",
+      "columns": { "status": "enum:InvoiceStatus:integer?" },
+      "text": "status in (InvoiceStatus.Sent, InvoiceStatus.Void)",
+      "rows": [ [ { "status": 20 }, true ], [ { "status": 3 }, true ], [ { "status": 30 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "a reference-type code compared with a code",
+      "columns": { "terms": "code:PaymentTerm?" },
+      "text": "terms = PaymentTerm.NET30",
+      "rows": [ [ { "terms": "NET30" }, true ], [ { "terms": "NET60" }, false ], [ { "terms": "net30" }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "a reference-type code in a list",
+      "columns": { "terms": "code:PaymentTerm?" },
+      "text": "terms not in (PaymentTerm.NET30, PaymentTerm.DUE)",
+      "rows": [ [ { "terms": "DUE" }, false ], [ { "terms": "NET60" }, true ], [ {}, null ] ]
+    },
+    {
+      "name": "an optional value set",
+      "columns": { "currency": "string?" },
+      "text": "currency is null or currency in ('EUR', 'USD')",
+      "rows": [ [ {}, true ], [ { "currency": "EUR" }, true ], [ { "currency": "GBP" }, false ], [ { "currency": "eur" }, false ] ]
+    },
+    {
+      "name": "a range of integers",
+      "columns": { "quantity": "int32?" },
+      "text": "quantity between 1 and 100",
+      "rows": [ [ { "quantity": 1 }, true ], [ { "quantity": 100 }, true ], [ { "quantity": 0 }, false ], [ { "quantity": 101 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "a range of decimals with a scale",
+      "columns": { "amount": "decimal(12,2)" },
+      "text": "amount between 0.01 and 9999.99",
+      "rows": [ [ { "amount": 0.01 }, true ], [ { "amount": 0 }, false ], [ { "amount": 9999.99 }, true ], [ { "amount": 10000 }, false ] ]
+    },
+    {
+      "name": "every comparison",
+      "columns": { "quantity": "int32?" },
+      "text": "quantity <> 3 and quantity >= 1 and quantity < 10 and quantity > 0 and quantity <= 9",
+      "rows": [ [ { "quantity": 3 }, false ], [ { "quantity": 5 }, true ], [ { "quantity": 0 }, false ], [ { "quantity": 10 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "a format",
+      "columns": { "code": "string?" },
+      "text": "matches(code, '^[A-Z]{3}-[0-9]{4}$')",
+      "rows": [ [ { "code": "INV-0042" }, true ], [ { "code": "inv-0042" }, false ], [ { "code": "INV-42" }, false ], [ { "code": "INV-0042\n" }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "a regular expression's dot and a newline",
+      "columns": { "note": "string" },
+      "text": "matches(note, '^a.b$') or matches(note, '^c[0-9]+ ?$')",
+      "rows": [ [ { "note": "a\nb" }, true ], [ { "note": "axb" }, true ], [ { "note": "ab" }, false ], [ { "note": "c12 " }, true ], [ { "note": "c" }, false ] ]
+    },
+    {
+      "name": "reserved values",
+      "columns": { "code": "string" },
+      "text": "code not in ('NONE', 'TBD')",
+      "rows": [ [ { "code": "NONE" }, false ], [ { "code": "INV" }, true ], [ { "code": "none" }, true ] ]
+    },
+    {
+      "name": "not blank, a tab kept",
+      "columns": { "name": "string?" },
+      "text": "trim(name) <> ''",
+      "rows": [ [ { "name": "   " }, false ], [ { "name": "\t" }, true ], [ { "name": " a " }, true ], [ { "name": "" }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "a length beyond the basic plane",
+      "columns": { "name": "string" },
+      "text": "length(name) between 2 and 3",
+      "rows": [ [ { "name": "😀a" }, true ], [ { "name": "😀😀😀😀" }, false ], [ { "name": "a" }, false ], [ { "name": "é😀é" }, true ] ]
+    },
+    {
+      "name": "text ordered by code point",
+      "columns": { "name": "string" },
+      "text": "name < 'b'",
+      "rows": [ [ { "name": "a" }, true ], [ { "name": "B" }, true ], [ { "name": "é" }, false ], [ { "name": "😀" }, false ], [ { "name": "ab" }, true ], [ { "name": "b" }, false ] ]
+    },
+    {
+      "name": "text beyond the basic plane ordered after the plane's end",
+      "columns": { "name": "string" },
+      "text": "name < '😀'",
+      "rows": [ [ { "name": "Ａ" }, true ], [ { "name": "😁" }, false ], [ { "name": "a" }, true ] ]
+    },
+    {
+      "name": "text compared exactly",
+      "columns": { "code": "string" },
+      "text": "code = 'abc'",
+      "rows": [ [ { "code": "abc" }, true ], [ { "code": "ABC" }, false ], [ { "code": "abc " }, false ] ]
+    },
+    {
+      "name": "exactly one of",
+      "columns": { "email": "string?", "phone": "string?" },
+      "text": "nonnull_count(email, phone) = 1",
+      "rows": [ [ { "email": "a@example.test" }, true ], [ { "phone": "555" }, true ], [ { "email": "a@example.test", "phone": "555" }, false ], [ {}, false ] ]
+    },
+    {
+      "name": "both or neither",
+      "columns": { "startsOn": "date?", "endsOn": "date?" },
+      "text": "(startsOn is null) = (endsOn is null)",
+      "rows": [ [ { "startsOn": "2026-01-01", "endsOn": "2026-02-01" }, true ], [ {}, true ], [ { "startsOn": "2026-01-01" }, false ], [ { "endsOn": "2026-01-01" }, false ] ]
+    },
+    {
+      "name": "a state that needs a field",
+      "columns": { "status": "enum:InvoiceStatus:text?", "paidOn": "date?" },
+      "text": "status = InvoiceStatus.Paid implies paidOn is not null",
+      "rows": [ [ { "status": "PAID", "paidOn": "2026-02-01" }, true ], [ { "status": "PAID" }, false ], [ { "status": "DRAFT" }, true ], [ {}, null ] ]
+    },
+    {
+      "name": "a state if and only if a field",
+      "columns": { "status": "enum:InvoiceStatus:integer?", "paidOn": "date?" },
+      "text": "(status = InvoiceStatus.Paid) = (paidOn is not null)",
+      "rows": [ [ { "status": 30, "paidOn": "2026-02-01" }, true ], [ { "status": 10, "paidOn": "2026-02-01" }, false ], [ { "status": 10 }, true ], [ { "paidOn": "2026-02-01" }, null ] ]
+    },
+    {
+      "name": "the order of two columns",
+      "columns": { "issuedOn": "date", "dueOn": "date?" },
+      "text": "issuedOn <= dueOn",
+      "rows": [ [ { "issuedOn": "2026-01-31", "dueOn": "2026-02-28" }, true ], [ { "issuedOn": "2026-03-01", "dueOn": "2026-02-28" }, false ], [ { "issuedOn": "2026-01-31", "dueOn": "2026-01-31" }, true ], [ { "issuedOn": "2026-01-31" }, null ] ]
+    },
+    {
+      "name": "not itself",
+      "columns": { "token": "uuid", "parentToken": "uuid?" },
+      "text": "parentToken is distinct from token",
+      "rows": [
+        [ { "token": "0190a5c4-0000-7000-8000-000000000001", "parentToken": "0190a5c4-0000-7000-8000-000000000001" }, false ],
+        [ { "token": "0190a5c4-0000-7000-8000-000000000001", "parentToken": "0190A5C4-0000-7000-8000-000000000001" }, false ],
+        [ { "token": "0190a5c4-0000-7000-8000-000000000001", "parentToken": "0190a5c4-0000-7000-8000-000000000002" }, true ],
+        [ { "token": "0190a5c4-0000-7000-8000-000000000001" }, true ]
+      ]
+    },
+    {
+      "name": "a uuid compared with a literal",
+      "columns": { "token": "uuid?" },
+      "text": "token = uuid '0190a5c4-0000-7000-8000-00000000000a'",
+      "rows": [ [ { "token": "0190A5C4-0000-7000-8000-00000000000A" }, true ], [ { "token": "0190a5c4-0000-7000-8000-00000000000b" }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "arithmetic with a tolerance",
+      "columns": { "net": "decimal(12,2)", "tax": "decimal(12,2)?", "total": "decimal(12,2)" },
+      "text": "total - (net + tax) between -0.01 and 0.01",
+      "rows": [
+        [ { "net": 100.00, "tax": 20.00, "total": 120.00 }, true ],
+        [ { "net": 100.00, "tax": 20.00, "total": 120.01 }, true ],
+        [ { "net": 100.00, "tax": 20.00, "total": 119.98 }, false ],
+        [ { "net": 100.00, "total": 120.00 }, null ]
+      ]
+    },
+    {
+      "name": "a date window",
+      "columns": { "issuedOn": "date", "dueOn": "date?" },
+      "text": "dueOn between issuedOn and add_days(issuedOn, 90)",
+      "rows": [
+        [ { "issuedOn": "2026-01-01", "dueOn": "2026-04-01" }, true ],
+        [ { "issuedOn": "2026-01-01", "dueOn": "2026-04-02" }, false ],
+        [ { "issuedOn": "2026-01-01", "dueOn": "2025-12-31" }, false ],
+        [ { "issuedOn": "2026-01-01" }, null ]
+      ]
+    },
+    {
+      "name": "add_months at the end of a month",
+      "columns": { "issuedOn": "date", "dueOn": "date" },
+      "text": "add_months(issuedOn, 1) = dueOn",
+      "rows": [
+        [ { "issuedOn": "2026-01-31", "dueOn": "2026-02-28" }, true ],
+        [ { "issuedOn": "2024-01-31", "dueOn": "2024-02-29" }, true ],
+        [ { "issuedOn": "2024-02-29", "dueOn": "2024-03-29" }, true ],
+        [ { "issuedOn": "2026-01-31", "dueOn": "2026-03-03" }, false ]
+      ]
+    },
+    {
+      "name": "add_months backwards and over a year",
+      "columns": { "issuedOn": "date", "dueOn": "date" },
+      "text": "add_months(issuedOn, -1) = dueOn or add_months(issuedOn, 12) = dueOn",
+      "rows": [
+        [ { "issuedOn": "2026-03-31", "dueOn": "2026-02-28" }, true ],
+        [ { "issuedOn": "2024-03-31", "dueOn": "2024-02-29" }, true ],
+        [ { "issuedOn": "2024-02-29", "dueOn": "2025-02-28" }, true ],
+        [ { "issuedOn": "2024-02-29", "dueOn": "2025-03-01" }, false ]
+      ]
+    },
+    {
+      "name": "add_months on timestamps",
+      "columns": { "createdAt": "datetime", "sentAt": "datetimeoffset?" },
+      "text": "add_months(createdAt, 1) = datetime '2026-02-28T08:00:00' and add_months(sentAt, 1) = datetimeoffset '2026-02-28T23:30:00Z'",
+      "rows": [
+        [ { "createdAt": "2026-01-31T08:00:00", "sentAt": "2026-01-31T23:30:00+00:00" }, true ],
+        [ { "createdAt": "2026-01-31T08:00:00", "sentAt": "2026-02-01T00:30:00+01:00" }, true ],
+        [ { "createdAt": "2026-01-27T08:00:00", "sentAt": "2026-01-31T23:30:00+00:00" }, false ],
+        [ { "createdAt": "2026-01-31T08:00:00", "sentAt": "2026-02-01T00:30:00+00:00" }, false ],
+        [ { "createdAt": "2026-01-31T08:00:00" }, null ]
+      ]
+    },
+    {
+      "name": "add_days on timestamps over a change of daylight saving time",
+      "columns": { "createdAt": "datetime", "sentAt": "datetimeoffset" },
+      "text": "add_days(sentAt, 1) = datetimeoffset '2026-03-29T12:00:00Z' and date_part('minute', add_days(createdAt, 1)) = 30 and date_of(add_days(createdAt, 1)) = date '2026-03-01'",
+      "rows": [
+        [ { "createdAt": "2026-02-28T12:30:00", "sentAt": "2026-03-28T12:00:00+00:00" }, true ],
+        [ { "createdAt": "2024-02-28T12:30:00", "sentAt": "2026-03-28T12:00:00+00:00" }, false ],
+        [ { "createdAt": "2026-02-28T12:30:00", "sentAt": "2026-03-28T13:00:00+01:00" }, true ],
+        [ { "createdAt": "2026-02-28T12:30:00", "sentAt": "2026-03-28T13:00:00+00:00" }, false ]
+      ]
+    },
+    {
+      "name": "a datetime against a datetimeoffset",
+      "columns": { "createdAt": "datetime", "sentAt": "datetimeoffset?" },
+      "text": "createdAt < sentAt",
+      "rows": [
+        [ { "createdAt": "2026-01-01T10:00:00", "sentAt": "2026-01-01T10:30:00+00:00" }, true ],
+        [ { "createdAt": "2026-01-01T10:00:00", "sentAt": "2026-01-01T10:30:00+01:00" }, false ],
+        [ { "createdAt": "2026-01-01T10:00:00", "sentAt": "2026-01-01T05:30:00-05:00" }, true ],
+        [ { "createdAt": "2026-01-01T10:00:00" }, null ]
+      ]
+    },
+    {
+      "name": "the hour of an offset timestamp in UTC",
+      "columns": { "sentAt": "datetimeoffset" },
+      "text": "date_part('hour', sentAt) = 9",
+      "rows": [ [ { "sentAt": "2026-01-01T10:00:00+01:00" }, true ], [ { "sentAt": "2026-01-01T09:00:00-05:00" }, false ], [ { "sentAt": "2026-07-01T09:59:59+00:00" }, true ] ]
+    },
+    {
+      "name": "the date of an offset timestamp in UTC",
+      "columns": { "sentAt": "datetimeoffset" },
+      "text": "date_of(sentAt) = date '2026-01-01'",
+      "rows": [ [ { "sentAt": "2026-01-01T23:30:00+00:00" }, true ], [ { "sentAt": "2026-01-01T23:30:00-05:00" }, false ], [ { "sentAt": "2026-01-02T00:30:00+01:00" }, true ] ]
+    },
+    {
+      "name": "the parts of a date",
+      "columns": { "issuedOn": "date" },
+      "text": "date_part('isodow', issuedOn) < 6 and date_part('year', issuedOn) = 2026 and date_part('month', issuedOn) = 1 and date_part('day', issuedOn) > 1",
+      "rows": [ [ { "issuedOn": "2026-01-02" }, true ], [ { "issuedOn": "2026-01-03" }, false ], [ { "issuedOn": "2026-01-01" }, false ], [ { "issuedOn": "2025-01-02" }, false ], [ { "issuedOn": "2026-01-05" }, true ] ]
+    },
+    {
+      "name": "a time between two times",
+      "columns": { "opens": "time?" },
+      "text": "opens between time '09:00' and time '17:30'",
+      "rows": [ [ { "opens": "09:00" }, true ], [ { "opens": "08:59:59" }, false ], [ { "opens": "17:30:00.000001" }, false ], [ { "opens": "17:30:00" }, true ], [ {}, null ] ]
+    },
+    {
+      "name": "JSON shape",
+      "columns": { "payload": "json?" },
+      "text": "json_type(payload) = 'object'",
+      "rows": [ [ { "payload": {} }, true ], [ { "payload": [] }, false ], [ { "payload": "x" }, false ], [ { "payload": 12.5 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "JSON array length",
+      "columns": { "tags": "json?" },
+      "text": "json_length(tags) <= 2",
+      "rows": [ [ { "tags": [ 1, 2 ] }, true ], [ { "tags": [ 1, 2, 3 ] }, false ], [ { "tags": { "a": 1 } }, null ], [ {}, null ] ]
+    },
+    {
+      "name": "the division 2 / 10673 at its …4999… boundary",
+      "columns": { "a": "decimal", "b": "decimal" },
+      "text": "a / b = 0.0001873887379369",
+      "rows": [ [ { "a": 2, "b": 10673 }, true ], [ { "a": 2.000001, "b": 10673 }, false ], [ { "a": 1, "b": 0 }, null ] ]
+    },
+    {
+      "name": "the division scale rule",
+      "columns": { "a": "decimal", "b": "decimal" },
+      "text": "a / b in (0.3333333333333333, 0.000001, -0.6666666666666667)",
+      "rows": [ [ { "a": 1, "b": 3 }, true ], [ { "a": 1, "b": 1000000 }, true ], [ { "a": -2, "b": 3 }, true ], [ { "a": 2, "b": 3 }, false ], [ { "a": 1, "b": 0 }, null ] ]
+    },
+    {
+      "name": "integers divided and multiplied",
+      "columns": { "quantity": "int32", "small": "int16" },
+      "text": "quantity / 2 = 0.5 and small * 1000 > 30000",
+      "rows": [ [ { "quantity": 1, "small": 31 }, true ], [ { "quantity": 1, "small": 30 }, false ], [ { "quantity": 3, "small": 32767 }, false ] ]
+    },
+    {
+      "name": "an int64 beyond 2^53",
+      "columns": { "big": "int64" },
+      "text": "big = 9007199254740993 or big + 1 = -9007199254740992",
+      "rows": [ [ { "big": 9007199254740993 }, true ], [ { "big": 9007199254740992 }, false ], [ { "big": -9007199254740993 }, true ], [ { "big": 9223372036854775807 }, false ] ]
+    },
+    {
+      "name": "a decimal of twenty digits",
+      "columns": { "amount": "decimal" },
+      "text": "amount * 2 = 24691357802469135.782",
+      "rows": [ [ { "amount": 12345678901234567.891 }, true ], [ { "amount": 12345678901234567.89 }, false ], [ { "amount": 12345678901234567.8910 }, true ] ]
+    },
+    {
+      "name": "a fixed-length string with padded values",
+      "columns": { "code": "char(5)" },
+      "text": "code = 'AB' and length(code) = 2",
+      "rows": [ [ { "code": "AB   " }, true ], [ { "code": "AB" }, true ], [ { "code": "AB C " }, false ], [ { "code": "ABC  " }, false ] ]
+    },
+    {
+      "name": "a fixed-length string matched and ordered",
+      "columns": { "code": "char(4)?" },
+      "text": "matches(code, '^[A-Z]+$') and code < 'B'",
+      "rows": [ [ { "code": "AB  " }, true ], [ { "code": "B   " }, false ], [ { "code": "A1  " }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "and with null in every position",
+      "columns": { "a": "bool?", "b": "bool?" },
+      "text": "a and b",
+      "rows": [
+        [ { "a": true, "b": true }, true ], [ { "a": true, "b": false }, false ], [ { "a": true }, null ],
+        [ { "a": false, "b": true }, false ], [ { "a": false, "b": false }, false ], [ { "a": false }, false ],
+        [ { "b": true }, null ], [ { "b": false }, false ], [ {}, null ]
+      ]
+    },
+    {
+      "name": "or with null in every position",
+      "columns": { "a": "bool?", "b": "bool?" },
+      "text": "a or b",
+      "rows": [
+        [ { "a": true, "b": true }, true ], [ { "a": true, "b": false }, true ], [ { "a": true }, true ],
+        [ { "a": false, "b": true }, true ], [ { "a": false, "b": false }, false ], [ { "a": false }, null ],
+        [ { "b": true }, true ], [ { "b": false }, null ], [ {}, null ]
+      ]
+    },
+    {
+      "name": "implies and not with null in every position",
+      "columns": { "a": "bool?", "b": "bool?" },
+      "text": "a implies not b",
+      "rows": [
+        [ { "a": true, "b": true }, false ], [ { "a": true, "b": false }, true ], [ { "a": true }, null ],
+        [ { "a": false, "b": true }, true ], [ { "a": false }, true ], [ { "b": true }, null ], [ { "b": false }, true ], [ {}, null ]
+      ]
+    },
+    {
+      "name": "arithmetic with null in every position",
+      "columns": { "x": "int32?", "y": "int32?" },
+      "text": "x + y > x * y - 1",
+      "rows": [ [ { "y": 1 }, null ], [ { "x": 1 }, null ], [ {}, null ], [ { "x": 2, "y": 3 }, false ], [ { "x": 1, "y": 1 }, true ] ]
+    },
+    {
+      "name": "a negated decimal",
+      "columns": { "amount": "decimal?" },
+      "text": "-amount < 0",
+      "rows": [ [ { "amount": 5 }, true ], [ { "amount": -5 }, false ], [ { "amount": 0 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "coalesce",
+      "columns": { "issuedOn": "date", "dueOn": "date?" },
+      "text": "coalesce(dueOn, add_days(issuedOn, 30)) = date '2026-03-02'",
+      "rows": [ [ { "issuedOn": "2026-01-31" }, true ], [ { "issuedOn": "2026-01-01", "dueOn": "2026-03-02" }, true ], [ { "issuedOn": "2026-01-31", "dueOn": "2026-03-01" }, false ] ]
+    },
+    {
+      "name": "case without else",
+      "columns": { "amount": "decimal?" },
+      "text": "case when amount > 100 then 'large' when amount > 10 then 'medium' end = 'medium'",
+      "rows": [ [ { "amount": 50 }, true ], [ { "amount": 500 }, false ], [ { "amount": 5 }, null ], [ {}, null ] ]
+    },
+    {
+      "name": "case with else and a condition as a value",
+      "columns": { "flag": "bool?", "quantity": "int32" },
+      "text": "case when flag then quantity > 1 else quantity = 0 end",
+      "rows": [ [ { "flag": true, "quantity": 2 }, true ], [ { "flag": true, "quantity": 1 }, false ], [ { "quantity": 0 }, true ], [ { "flag": false, "quantity": 2 }, false ] ]
+    },
+    {
+      "name": "concatenation",
+      "columns": { "first": "string?", "last": "string" },
+      "text": "first || ' ' || last = 'Ada Byron'",
+      "rows": [ [ { "first": "Ada", "last": "Byron" }, true ], [ { "first": "Ada", "last": "King" }, false ], [ { "last": "Byron" }, null ] ]
+    },
+    {
+      "name": "is distinct from and is not distinct from",
+      "columns": { "a": "string?", "b": "string?" },
+      "text": "a is not distinct from b",
+      "rows": [ [ { "a": "x", "b": "x" }, true ], [ {}, true ], [ { "a": "x" }, false ], [ { "a": "x", "b": "X" }, false ] ]
+    },
+    {
+      "name": "a double",
+      "columns": { "rate": "double?" },
+      "text": "rate * 2 > double '0.5'",
+      "rows": [ [ { "rate": 0.3 }, true ], [ { "rate": 0.25 }, false ], [ { "rate": -1.5e3 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "round half away from zero",
+      "columns": { "amount": "decimal" },
+      "text": "round(amount, 1) in (2.6, -2.6)",
+      "rows": [ [ { "amount": 2.55 }, true ], [ { "amount": 2.549 }, false ], [ { "amount": -2.55 }, true ], [ { "amount": 2.65 }, false ] ]
+    },
+    {
+      "name": "a constraint satisfied",
+      "columns": { "amount": "decimal?" },
+      "text": "satisfies PositiveAmount(amount: amount)",
+      "rows": [ [ { "amount": 1 }, true ], [ { "amount": 0 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "a constraint over two columns",
+      "columns": { "issuedOn": "date", "dueOn": "date" },
+      "text": "satisfies ShortWindow(opensOn: issuedOn, closesOn: dueOn)",
+      "rows": [ [ { "issuedOn": "2026-01-31", "dueOn": "2026-03-03" }, true ], [ { "issuedOn": "2026-01-31", "dueOn": "2026-03-04" }, false ] ]
+    },
+    {
+      "name": "an int bound to a decimal parameter computes as a decimal",
+      "columns": { "quantity": "int32?" },
+      "text": "satisfies LargeSquare(amount: quantity)",
+      "rows": [ [ { "quantity": 50000 }, true ], [ { "quantity": 40000 }, false ], [ { "quantity": -50000 }, true ], [ {}, null ] ]
+    },
+    {
+      "name": "an int bound to a double parameter computes as a double",
+      "columns": { "quantity": "int32?" },
+      "text": "satisfies LargeRateSquare(rate: quantity)",
+      "rows": [ [ { "quantity": 50000 }, true ], [ { "quantity": 40000 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "decimals written without a point compute as decimals",
+      "columns": { "quantity": "int32?" },
+      "text": "quantity * decimal '100000' >= decimal '100000' * decimal '100000'",
+      "rows": [ [ { "quantity": 100000 }, true ], [ { "quantity": 99999 }, false ], [ {}, null ] ]
+    },
+    {
+      "name": "fractional seconds beyond six digits round as PostgreSQL rounds them",
+      "columns": { "createdAt": "datetime?", "opens": "time?" },
+      "text": "createdAt = datetime '2026-01-31T09:30:00.123456' and opens = time '09:30:00.123456'",
+      "rows": [
+        [ { "createdAt": "2026-01-31T09:30:00.1234565", "opens": "09:30:00.1234565" }, true ],
+        [ { "createdAt": "2026-01-31T09:30:00.1234555", "opens": "09:30:00.1234555" }, true ],
+        [ { "createdAt": "2026-01-31T09:30:00.12345650000000000001", "opens": "09:30:00.1234564999" }, true ],
+        [ { "createdAt": "2026-01-31T09:30:00.1234575", "opens": "09:30:00.1234565" }, false ],
+        [ { "createdAt": "2026-01-31T09:30:00.1234565", "opens": "09:30:00.1234565000001" }, false ],
+        [ {}, null ]
+      ]
+    },
+    {
+      "name": "a day and month count written with a scale",
+      "columns": { "issuedOn": "date", "quantity": "int32" },
+      "text": "add_days(issuedOn, quantity) = date '2026-01-02' and add_months(issuedOn, quantity) = date '2026-02-01'",
+      "rows": [ [ { "issuedOn": "2026-01-01", "quantity": 1.0 }, true ], [ { "issuedOn": "2026-01-01", "quantity": 1 }, true ], [ { "issuedOn": "2026-01-01", "quantity": 2.0 }, false ] ]
+    },
+    {
+      "name": "a datetime against now in UTC",
+      "site": "guard",
+      "columns": { "createdAt": "datetime?", "sentAt": "datetimeoffset?" },
+      "text": "createdAt < now() or sentAt > now()",
+      "rows": [
+        [ { "createdAt": "1990-01-01T00:00:00" }, true ],
+        [ { "createdAt": "2100-01-01T00:00:00" }, null ],
+        [ { "createdAt": "2100-01-01T00:00:00", "sentAt": "2100-01-01T00:00:00+14:00" }, true ],
+        [ { "sentAt": "1990-01-01T00:00:00-12:00" }, null ],
+        [ {}, null ]
+      ]
+    },
+    {
+      "name": "a guard over an event",
+      "site": "guard",
+      "columns": { "event.amount": "decimal?", "remaining": "decimal" },
+      "text": "event.amount <= remaining",
+      "rows": [
+        [ { "event": { "amount": 50 }, "remaining": 100 }, true ],
+        [ { "event": { "amount": 150 }, "remaining": 100 }, false ],
+        [ { "event": {}, "remaining": 100 }, null ]
+      ]
+    },
+    {
+      "name": "a guard through a relation",
+      "site": "guard",
+      "columns": { "total": "decimal" },
+      "relations": { "customer": { "creditLimit": "decimal" } },
+      "text": "total <= customer.creditLimit",
+      "rows": [
+        [ { "total": 100, "customer": { "creditLimit": 500 } }, true ],
+        [ { "total": 600, "customer": { "creditLimit": 500 } }, false ],
+        [ { "total": 100 }, null ]
+      ]
+    }
+  ]
+}

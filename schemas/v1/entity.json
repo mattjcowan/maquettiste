@@ -25,6 +25,7 @@
     "category",
     "key",
     "alternateKeys",
+    "checks",
     "attributes",
     "bindings",
     "properties",
@@ -139,6 +140,14 @@
       },
       "default": []
     },
+    "checks": {
+      "description": "Conditions every record of the entity meets. A database enforces one only through a binding that lists it.",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/entityCheck"
+      },
+      "default": []
+    },
     "attributes": {
       "type": "array",
       "x-sort": "order",
@@ -164,6 +173,7 @@
           "write",
           "delete",
           "provenance",
+          "checks",
           "description",
           "tags",
           "properties"
@@ -326,6 +336,12 @@
             },
             "required": ["columns"],
             "additionalProperties": false
+          },
+          "checks": {
+            "description": "The ids of the entity's checks the write table enforces, lowered through the field map (MQ3110). A check no binding lists reaches no table.",
+            "$ref": "common.json#/$defs/idList",
+            "uniqueItems": true,
+            "default": []
           },
           "description": {
             "$ref": "common.json#/$defs/description"

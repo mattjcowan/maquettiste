@@ -86,6 +86,7 @@ public abstract record ElementBase
 [JsonDerivedType(typeof(Scenario))]
 [JsonDerivedType(typeof(Migration))]
 [JsonDerivedType(typeof(Operation))]
+[JsonDerivedType(typeof(Constraint))]
 [JsonDerivedType(typeof(Custom))]
 public abstract record Element : ElementBase
 {

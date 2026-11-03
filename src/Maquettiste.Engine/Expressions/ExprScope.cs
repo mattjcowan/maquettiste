@@ -1,0 +1,253 @@
+using Maquettiste.Engine.Model;
+
+namespace Maquettiste.Engine.Expressions;
+
+/// <summary>
+/// A member an expression can read (next-phase-3-design.md section 3.1): an attribute, a value object member, a column, an input
+/// member, a context or payload attribute, a subject's attribute or a constraint parameter. The text names it by
+/// <see cref="Prefix"/> and <see cref="Name"/> (<c>event.amount</c>, <c>subject.total</c>, <c>total.amount</c>); the tree by
+/// <see cref="Id"/>, a keyed id for an inherited or contributed member and <c>attributeId.memberId</c> for a value object member.
+/// </summary>
+/// <param name="Id">The id a path holds.</param>
+/// <param name="Name">The member's own name: an attribute name, or a column's physical name.</param>
+/// <param name="Type">Its type; a kind the core does not have (<c>float</c>, <c>value-object</c>…) is refused where it is read.</param>
+/// <param name="Nullable">Whether the value may be missing: optional, nullable, or a payload member not every event carries.</param>
+public sealed record ExprMember(string Id, string Name, ExprType Type, bool Nullable)
+{
+    /// <summary>The dotted identifiers the text writes before <see cref="Name"/>, or <see langword="null"/>.</summary>
+    public string? Prefix { get; init; }
+
+    /// <summary>Whether the member is a collection, which no path reads (MQ3102).</summary>
+    public bool Collection { get; init; }
+
+    /// <summary>Whether the value is a fixed-length string: read without its trailing spaces.</summary>
+    public bool FixedLength { get; init; }
+
+    /// <summary>The declared scale of a decimal, or <see langword="null"/>.</summary>
+    public int? Scale { get; init; }
+
+    /// <summary>What the member stands for in the caller's model (a resolved attribute, a column…), or <see langword="null"/>.</summary>
+    public object? Target { get; init; }
+}
+
+/// <summary>A navigation an expression can follow at a guard site: a relation end, or a value it leads to.</summary>
+/// <param name="Id">The relation end id a path holds.</param>
+/// <param name="Name">The navigation's name.</param>
+/// <param name="Target">The members and navigations of what it leads to.</param>
+/// <param name="ToOne">Whether it leads to at most one record; a to-many navigation is refused (MQ3102).</param>
+/// <param name="Optional">Whether it may lead to nothing, which makes every value read through it nullable.</param>
+public sealed record ExprNavigation(string Id, string Name, ExprContainer Target, bool ToOne, bool Optional)
+{
+    /// <summary>The dotted identifiers the text writes before <see cref="Name"/>, or <see langword="null"/>.</summary>
+    public string? Prefix { get; init; }
+}
+
+/// <summary>A named constraint as an expression sees it: its typed parameters and its condition.</summary>
+/// <param name="Id">The constraint's id.</param>
+/// <param name="Name">The name the text writes after <c>satisfies</c>.</param>
+/// <param name="Parameters">The parameters, in order; a path in the condition names one by its id.</param>
+/// <param name="Condition">The condition.</param>
+public sealed record ExprConstraint(string Id, string Name, IReadOnlyList<ExprMember> Parameters, Expr Condition);
+
+/// <summary>The members and navigations of one record, context or row.</summary>
+public sealed class ExprContainer
+{
+    private readonly Dictionary<string, ExprMember> _members = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ExprNavigation> _navigations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, object> _byName = new(StringComparer.Ordinal);
+
+    /// <summary>Adds a member; a second member with the same id or name is ignored.</summary>
+    /// <param name="member">The member.</param>
+    /// <returns>This container.</returns>
+    public ExprContainer Add(ExprMember member)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        if (_members.TryAdd(member.Id, member))
+            _byName.TryAdd(Key(member.Prefix, member.Name), member);
+        return this;
+    }
+
+    /// <summary>Adds a navigation; a second navigation with the same id or name is ignored.</summary>
+    /// <param name="navigation">The navigation.</param>
+    /// <returns>This container.</returns>
+    public ExprContainer Add(ExprNavigation navigation)
+    {
+        ArgumentNullException.ThrowIfNull(navigation);
+        if (_navigations.TryAdd(navigation.Id, navigation))
+            _byName.TryAdd(Key(navigation.Prefix, navigation.Name), navigation);
+        return this;
+    }
+
+    /// <summary>The members, in the order they were added.</summary>
+    public IEnumerable<ExprMember> Members => _members.Values;
+
+    /// <summary>The member with an id, or <see langword="null"/>.</summary>
+    /// <param name="id">The id.</param>
+    /// <returns>The member.</returns>
+    public ExprMember? Member(string id) => _members.GetValueOrDefault(id);
+
+    /// <summary>The navigation with an id, or <see langword="null"/>.</summary>
+    /// <param name="id">The id.</param>
+    /// <returns>The navigation.</returns>
+    public ExprNavigation? Navigation(string id) => _navigations.GetValueOrDefault(id);
+
+    /// <summary>The member or navigation the text names with these segments, or <see langword="null"/>.</summary>
+    internal object? Find(IEnumerable<string> segments) => _byName.GetValueOrDefault(string.Join('\u0001', segments));
+
+    private static string Key(string? prefix, string name) =>
+        prefix is null ? name : string.Join('\u0001', prefix.Split('.').Append(name));
+}
+
+/// <summary>
+/// What an expression at one site can read (next-phase-3-design.md section 3.1), built by the engine per site: the site's kind, the
+/// members and navigations, the enums, reference types and constraints its names resolve to, the type a value site needs and where
+/// the expression sits for diagnostics.
+/// </summary>
+public sealed class ExprScope
+{
+    private readonly Dictionary<string, (string Id, string Name, bool Code, Dictionary<string, string> ByName)> _sets;
+    private readonly Dictionary<string, (string Owner, string Name)> _refs;
+    private readonly Dictionary<string, string> _setsByName;
+    private readonly Dictionary<string, ExprConstraint> _constraints;
+    private readonly Dictionary<string, ExprConstraint> _constraintsByName;
+
+    /// <summary>Creates an empty scope for a site.</summary>
+    /// <param name="site">The site's kind.</param>
+    public ExprScope(ExprSiteKind site)
+    {
+        Site = site;
+        AllowsNow = site == ExprSiteKind.Guard;
+        AllowsNavigation = site == ExprSiteKind.Guard;
+        _sets = new(StringComparer.Ordinal);
+        _refs = new(StringComparer.Ordinal);
+        _setsByName = new(StringComparer.Ordinal);
+        _constraints = new(StringComparer.Ordinal);
+        _constraintsByName = new(StringComparer.Ordinal);
+    }
+
+    private ExprScope(ExprScope parent, ExprConstraint constraint)
+        : this(parent.Site)
+    {
+        _sets = parent._sets;
+        _refs = parent._refs;
+        _setsByName = parent._setsByName;
+        _constraints = parent._constraints;
+        _constraintsByName = parent._constraintsByName;
+        AllowsNow = true;
+        AllowsNavigation = false;
+        ConstraintId = constraint.Id;
+        ElementId = constraint.Id;
+        Pointer = "/condition";
+        foreach (var parameter in constraint.Parameters)
+            Root.Add(parameter);
+    }
+
+    /// <summary>The site's kind.</summary>
+    public ExprSiteKind Site { get; }
+
+    /// <summary>Whether <c>now</c> may be read; by default at guard sites only (MQ3104).</summary>
+    public bool AllowsNow { get; init; }
+
+    /// <summary>Whether a path may follow navigations; by default at guard sites only (MQ3102).</summary>
+    public bool AllowsNavigation { get; init; }
+
+    /// <summary>The type a value site's result must have (a derived attribute's type), or <see langword="null"/> at other sites.</summary>
+    public ExprType? ValueType { get; init; }
+
+    /// <summary>The id of the element that holds the expression, for diagnostics.</summary>
+    public string? ElementId { get; init; }
+
+    /// <summary>The path of the file that holds the expression, for diagnostics.</summary>
+    public string? FilePath { get; init; }
+
+    /// <summary>The JSON pointer of the expression in its file (<c>/checks/0/condition</c>); node pointers extend it.</summary>
+    public string Pointer { get; init; } = "";
+
+    /// <summary>
+    /// At a rule condition, what a <c>member</c> node reads: the type of the selected object's member at a path, or
+    /// <see langword="null"/> when there is none (MQ3102).
+    /// </summary>
+    public Func<string, ExprMember?>? MemberPaths { get; init; }
+
+    /// <summary>The members and navigations a bare name reaches.</summary>
+    public ExprContainer Root { get; } = new();
+
+    /// <summary>The constraint whose own condition this scope types, or <see langword="null"/>.</summary>
+    public string? ConstraintId { get; }
+
+    /// <summary>Adds an enum, so <c>Status.Paid</c> names a member.</summary>
+    /// <param name="id">The enum's id.</param>
+    /// <param name="name">The name the text writes.</param>
+    /// <param name="members">Its members' ids and names.</param>
+    /// <returns>This scope.</returns>
+    public ExprScope AddEnum(string id, string name, IEnumerable<(string Id, string Name)> members) => AddSet(id, name, false, members);
+
+    /// <summary>Adds a reference type, so <c>PaymentTerm.NET30</c> names a code.</summary>
+    /// <param name="id">The reference type's id.</param>
+    /// <param name="name">The name the text writes.</param>
+    /// <param name="codes">Its codes' row ids and code values.</param>
+    /// <returns>This scope.</returns>
+    public ExprScope AddReferenceType(string id, string name, IEnumerable<(string Id, string Code)> codes) => AddSet(id, name, true, codes);
+
+    /// <summary>Adds a constraint, so <c>satisfies Name(…)</c> cites it.</summary>
+    /// <param name="constraint">The constraint.</param>
+    /// <returns>This scope.</returns>
+    public ExprScope AddConstraint(ExprConstraint constraint)
+    {
+        ArgumentNullException.ThrowIfNull(constraint);
+        if (_constraints.TryAdd(constraint.Id, constraint))
+            _constraintsByName.TryAdd(constraint.Name, constraint);
+        return this;
+    }
+
+    /// <summary>
+    /// The scope a constraint's own condition is typed in: its parameters, the same enums, reference types and constraints, <c>now</c>
+    /// allowed (a site that cites it decides) and no navigation.
+    /// </summary>
+    /// <param name="constraint">The constraint.</param>
+    /// <returns>The scope.</returns>
+    public ExprScope ForConstraint(ExprConstraint constraint)
+    {
+        ArgumentNullException.ThrowIfNull(constraint);
+        return new ExprScope(this, constraint);
+    }
+
+    /// <summary>The constraint with an id, or <see langword="null"/>.</summary>
+    /// <param name="id">The id.</param>
+    /// <returns>The constraint.</returns>
+    public ExprConstraint? Constraint(string id) => _constraints.GetValueOrDefault(id);
+
+    /// <summary>The type a <c>ref</c> to an enum member or a reference-type code has, or <see langword="null"/> for an unknown id.</summary>
+    /// <param name="id">The member's or code's id.</param>
+    /// <returns>The type.</returns>
+    public ExprType? RefType(string id) =>
+        _refs.TryGetValue(id, out var r) ? (_sets[r.Owner].Code ? ExprType.Code(r.Owner) : ExprType.Enum(r.Owner)) : null;
+
+    /// <summary>The text of a <c>ref</c>: the enum's or reference type's name, then the member's name or the code.</summary>
+    internal (string Set, string Name)? RefNames(string id) =>
+        _refs.TryGetValue(id, out var r) ? (_sets[r.Owner].Name, r.Name) : null;
+
+    /// <summary>The id of the member or code a set's name and a member name or code name.</summary>
+    internal string? FindRef(string set, string name) =>
+        _setsByName.TryGetValue(set, out var owner) && _sets[owner].ByName.TryGetValue(name, out var id) ? id : null;
+
+    /// <summary>The constraint the text names, or <see langword="null"/>.</summary>
+    internal ExprConstraint? FindConstraint(string name) => _constraintsByName.GetValueOrDefault(name);
+
+    private ExprScope AddSet(string id, string name, bool code, IEnumerable<(string Id, string Name)> members)
+    {
+        ArgumentNullException.ThrowIfNull(members);
+        if (_sets.ContainsKey(id))
+            return this;
+        var byName = new Dictionary<string, string>(StringComparer.Ordinal);
+        _sets[id] = (id, name, code, byName);
+        _setsByName.TryAdd(name, id);
+        foreach (var (memberId, memberName) in members)
+        {
+            if (_refs.TryAdd(memberId, (id, memberName)))
+                byName.TryAdd(memberName, memberId);
+        }
+
+        return this;
+    }
+}

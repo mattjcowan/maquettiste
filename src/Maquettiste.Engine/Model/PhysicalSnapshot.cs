@@ -283,6 +283,12 @@ public sealed record SnapshotCheck
 
     /// <summary>The expression for the database's dialect.</summary>
     public required string Expression { get; init; }
+
+    /// <summary>
+    /// The hash of a tree check's id tree, or <see langword="null"/> for a SQL text check (next-phase-3-design.md section 3.1): equal
+    /// shapes are the same check, though a renamed column changes its text.
+    /// </summary>
+    public string? Shape { get; init; }
 }
 
 /// <summary>An index in a snapshot.</summary>

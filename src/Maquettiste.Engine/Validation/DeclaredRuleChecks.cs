@@ -2,6 +2,7 @@ using System.Collections;
 using System.Text;
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
@@ -288,10 +289,57 @@ internal static class DeclaredRuleChecks
                 }
             }
 
+            if (condition.Expression is { } expression)
+                Expression(expression, at + "/expression", starts);
             if (condition.References is { } references)
                 Links(references, at + "/references");
             if (condition.ReferencedBy is { } referencedBy)
                 Links(referencedBy, at + "/referencedBy");
+        }
+
+        /// <summary>
+        /// An expression condition (next-phase-3-design.md section 3.1): each member path is walked as a has path is (MQ5016), and the
+        /// tree is typed at a rule-condition site, members typed by the values their paths end at.
+        /// </summary>
+        private void Expression(Expr expression, string at, IReadOnlyList<Type?> starts)
+        {
+            var members = new Dictionary<string, ExprMember?>(StringComparer.Ordinal);
+            foreach (var node in ExprSites.Nodes(expression).Where(n => n.Member is not null))
+            {
+                var text = node.Member!;
+                if (members.ContainsKey(text))
+                    continue;
+                var ends = Walk(text, at, starts, "The path '" + text + "'");
+                members[text] = ends is null ? null : new ExprMember(text, text, ExprTypeOf(ends.FirstOrDefault(e => e is not null)), true);
+            }
+
+            var scope = new ExprScope(ExprSiteKind.RuleCondition) { FilePath = path, Pointer = pointer + at, MemberPaths = text => members.GetValueOrDefault(text) };
+            var problems = new List<Diagnostic>();
+            ExprTyper.Type(expression, scope, problems);
+            found.AddRange(problems.Where(p => p.Rule != "MQ3102" || !p.Message.Contains("member", StringComparison.Ordinal) || members.Values.All(m => m is not null)));
+        }
+
+        /// <summary>The expression type of a resolved value's CLR type; a value of no known scalar type reads as a string.</summary>
+        private static ExprType ExprTypeOf(Type? type)
+        {
+            type = type is null ? null : Nullable.GetUnderlyingType(type) ?? type;
+            return type switch
+            {
+                null => ExprType.String,
+                _ when type == typeof(bool) => ExprType.Bool,
+                _ when type == typeof(short) => ExprType.Int16,
+                _ when type == typeof(int) => ExprType.Int32,
+                _ when type == typeof(long) => ExprType.Int64,
+                _ when type == typeof(decimal) => ExprType.Decimal,
+                _ when type == typeof(double) || type == typeof(float) => ExprType.Double,
+                _ when type == typeof(DateOnly) => ExprType.Date,
+                _ when type == typeof(TimeOnly) => ExprType.Time,
+                _ when type == typeof(DateTime) => ExprType.DateTime,
+                _ when type == typeof(DateTimeOffset) => ExprType.DateTimeOffset,
+                _ when type == typeof(Guid) => ExprType.Uuid,
+                _ when type == typeof(System.Text.Json.JsonElement) => ExprType.Json,
+                _ => ExprType.String,
+            };
         }
 
         private void Links(RuleReferences links, string at)

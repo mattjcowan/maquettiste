@@ -388,6 +388,47 @@ public sealed class CanonicalJsonTests
     }
 
     [Fact]
+    public void Absent_checks_guards_and_conditions_keep_files_byte_identical()
+    {
+        // next-phase-3-design.md section 3.1, decision 23: a model without expressions gains no key. Every canonical fixture file reads
+        // and writes back byte for byte: no empty check list, guard list, check text map or derived text appears.
+        var files = new[] { "billing", "bindings", "processes", "process-basics", "showcase" }
+            .Select(m => Fixtures.Path("models", m, ".maquettiste", "model"))
+            .Append(Fixtures.Path("validation", "clean", ".maquettiste", "model"))
+            .SelectMany(root => Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories).Order(StringComparer.Ordinal)
+                .Select(file => (File: file, Path: ".maquettiste/model/" + System.IO.Path.GetRelativePath(root, file).Replace('\\', '/'))))
+            .ToList();
+        var compared = 0;
+        foreach (var (file, path) in files)
+        {
+            var bytes = File.ReadAllBytes(file);
+            if (JsonNode.Parse(bytes)?["kind"]?.GetValue<string>() is not { } kind || !KindInfo.TryGet(kind, out var info))
+                continue; // not an element file
+            if (!Canonical.IsCanonical(bytes, info.SchemaFile, path))
+                continue; // a fixture that is not canonical on purpose
+            var element = ElementReader.ReadElement(bytes);
+            var text = Encoding.UTF8.GetString(Canonical.Serialize(element, info.SchemaFile, path));
+            Assert.Equal(Encoding.UTF8.GetString(bytes), text);
+            compared++;
+        }
+
+        Assert.True(compared > 100, compared.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        // A check written as a tree drops its empty text map, and a derived value its empty text.
+        const string table = """
+            { "kind": "table", "id": "01JAX3K9V2Q7M4T8W1Z5C6B0DE", "database": "01JAX3JZ0H6N2P5R8S1T4V7W9Y", "name": "invoices",
+              "columns": [{ "id": "01JAX3KA1B2C3D4E5F6G7H8J9K", "name": "total", "type": "decimal" }],
+              "checks": [{ "id": "01JAX3KB2C3D4E5F6G7H8J9KAM", "condition": { "op": "ge", "args": [{ "path": ["01JAX3KA1B2C3D4E5F6G7H8J9K"] }, { "value": 0 }] } }] }
+            """;
+        var tablePath = ".maquettiste/model/databases/main/tables/invoices.json";
+        var read = Assert.IsType<Table>(ElementReader.ReadElement(Encoding.UTF8.GetBytes(Write(table, "table.json", tablePath))));
+        Assert.Empty(read.Checks[0].Expression);
+        Assert.Equal("ge", read.Checks[0].Condition!.Op);
+        var tableText = Encoding.UTF8.GetString(Canonical.Serialize(read, "table.json", tablePath));
+        Assert.Equal(["id", "condition"], JsonNode.Parse(tableText)!["checks"]![0]!.AsObject().Select(p => p.Key));
+    }
+
+    [Fact]
     public void Absent_rationale_decision_and_status_keep_files_byte_identical()
     {
         // next-phase-1-design.md section 4.5: the three keys have no default, so a file without them reads and writes back as it was.

@@ -231,6 +231,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     PackageRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
                     OperationRules.Validate(context, report);
+                    ExpressionRules.Validate(context, report);
                     CustomRules.Validate(context, report);
                     ScenarioRules.Validate(context, report, runtime);
                     if (facts is not null)

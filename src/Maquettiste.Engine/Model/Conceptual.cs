@@ -70,6 +70,12 @@ public sealed record Entity : Element, IPackaged
     /// <summary>Named alternate (natural) keys.</summary>
     public IReadOnlyList<AlternateKey> AlternateKeys { get; init; } = [];
 
+    /// <summary>
+    /// Conditions every record of the entity meets (next-phase-3-design.md section 3.1). A database enforces one only through a
+    /// binding that lists it (<see cref="EntityBinding.Checks"/>).
+    /// </summary>
+    public IReadOnlyList<EntityCheck> Checks { get; init; } = [];
+
     /// <summary>The entity's own attributes, in canonical order: the canonical writer stable-sorts them by <see cref="ModelAttribute.Order"/> (missing = 0).</summary>
     public IReadOnlyList<ModelAttribute> Attributes { get; init; } = [];
 
@@ -78,6 +84,23 @@ public sealed record Entity : Element, IPackaged
     /// database is never projected into it, whatever the database's convention or a mapping element says.
     /// </summary>
     public IReadOnlyList<EntityBinding> Bindings { get; init; } = [];
+}
+
+/// <summary>
+/// A condition every record of an entity meets (next-phase-3-design.md section 3.1; index kind <c>key</c>, as a table's check is).
+/// Unknown passes, as in a CHECK.
+/// </summary>
+public sealed record EntityCheck : ElementBase
+{
+    /// <summary>The id of the attribute a failure points at (a keyed id for an inherited or contributed one), or <see langword="null"/>.</summary>
+    [ElementRef(Keyed = true)]
+    public string? Attribute { get; init; }
+
+    /// <summary>The condition, a boolean expression over the entity's own attributes.</summary>
+    public required Expr Condition { get; init; }
+
+    /// <summary>The text a failure reports, or <see langword="null"/>.</summary>
+    public string? Message { get; init; }
 }
 
 /// <summary>An entity's primary key.</summary>
@@ -184,11 +207,14 @@ public sealed record ModelAttribute : ElementBase
     public int? Order { get; init; }
 }
 
-/// <summary>How a derived attribute is computed.</summary>
+/// <summary>How a derived attribute is computed: by raw text or by an expression tree, exactly one of the two (MQ3107).</summary>
 public sealed record DerivedSpec
 {
-    /// <summary>The expression, interpreted by templates.</summary>
-    public required string Expression { get; init; }
+    /// <summary>The raw expression, interpreted by templates; empty when the value is a tree.</summary>
+    public string Expression { get; init; } = "";
+
+    /// <summary>The value as an expression of the attribute's type (next-phase-3-design.md section 3.1), or <see langword="null"/>.</summary>
+    public Expr? Value { get; init; }
 
     /// <summary>Whether the computed value is stored.</summary>
     public bool Stored { get; init; }

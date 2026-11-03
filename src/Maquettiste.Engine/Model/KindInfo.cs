@@ -43,6 +43,7 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
         new(ElementKind.Scenario, "scenario", typeof(Scenario), "scenario.json", ScenariosFolder, null),
         new(ElementKind.Migration, "migration", typeof(Migration), "migration.json", "model/databases/{db}/migrations/open", null),
         new(ElementKind.Operation, "operation", typeof(Operation), "operation.json", OperationsFolder, null),
+        new(ElementKind.Constraint, "constraint", typeof(Constraint), "constraint.json", ConstraintsFolder, null),
         new(ElementKind.Custom, "custom", typeof(Custom), "custom.json", CustomFolder, null),
     ];
 
@@ -54,6 +55,9 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
 
     /// <summary>The folder of operations; an operation with a subject lives in a sub-folder named after the subject's file stem.</summary>
     public const string OperationsFolder = "model/operations";
+
+    /// <summary>The folder of named constraints (next-phase-3-design.md section 3.1).</summary>
+    public const string ConstraintsFolder = "model/constraints";
 
     /// <summary>The folder of custom elements; each custom kind's elements share a sub-folder named after its type (<c>model/custom/&lt;type&gt;/</c>).</summary>
     public const string CustomFolder = "model/custom";

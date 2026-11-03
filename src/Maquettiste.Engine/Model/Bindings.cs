@@ -50,6 +50,13 @@ public sealed record EntityBinding
     public BindingDelete? Delete { get; init; }
 
     /// <summary>
+    /// The ids of the entity's checks the write table enforces, lowered through the field map (next-phase-3-design.md section 3.1).
+    /// A check no binding lists reaches no table.
+    /// </summary>
+    [ElementRef(IndexKinds = ["key"])]
+    public IReadOnlyList<string> Checks { get; init; } = [];
+
+    /// <summary>
     /// The columns of a table-file source as the last by-name operation recorded them (next-phase-2-design.md section 3.3); written by
     /// the engine only. <see langword="null"/> (absent): no operation recorded them, and only MQ4047 reports what the binding misses.
     /// </summary>

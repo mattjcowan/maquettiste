@@ -84,6 +84,9 @@ public enum ElementKind
     /// <summary>A command over the model: its subject, effect, input, outcomes, errors and fired events (<c>operation</c>).</summary>
     [JsonStringEnumMemberName("operation")] Operation,
 
+    /// <summary>A named condition over typed parameters, cited with <c>satisfies</c> (<c>constraint</c>).</summary>
+    [JsonStringEnumMemberName("constraint")] Constraint,
+
     /// <summary>An element of a custom kind the project declares in <c>extensions/kinds/</c> (<c>custom</c>).</summary>
     [JsonStringEnumMemberName("custom")] Custom,
 }

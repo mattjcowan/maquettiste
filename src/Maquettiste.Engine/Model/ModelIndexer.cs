@@ -107,9 +107,11 @@ internal static class ModelIndexer
         _ when type == typeof(OperationMember) => "operation-member",
         _ when type == typeof(OperationOutcome) => "outcome",
         _ when type == typeof(OperationError) => "error",
+        _ when type == typeof(OperationGuard) => "guard",
+        _ when type == typeof(ConstraintParameter) => "parameter",
         _ when type == typeof(EntityBinding) || type == typeof(ReferenceTypeBinding) => "binding",
         _ when type == typeof(AlternateKey) || type == typeof(PrimaryKey) || type == typeof(UniqueConstraint) || type == typeof(ForeignKey)
-            || type == typeof(MemberForeignKey) || type == typeof(CheckConstraint) || type == typeof(TableIndex) => "key",
+            || type == typeof(MemberForeignKey) || type == typeof(CheckConstraint) || type == typeof(TableIndex) || type == typeof(EntityCheck) => "key",
         _ => null,
     };
 
@@ -118,6 +120,7 @@ internal static class ModelIndexer
     {
         "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
         "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error", "member",
+        "parameter",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>

@@ -684,8 +684,13 @@ public sealed record CheckConstraint
     [ElementRef(Keyed = true)]
     public string? Column { get; init; }
 
-    /// <summary>The SQL expression per dialect name, or <c>"*"</c> for every dialect.</summary>
-    public required IReadOnlyDictionary<string, string> Expression { get; init; }
+    /// <summary>
+    /// The SQL expression per dialect name, or <c>"*"</c> for every dialect; empty when the check is a tree (<see cref="Condition"/>).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Expression { get; init; } = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty;
+
+    /// <summary>The condition as an expression tree (next-phase-3-design.md section 3.1), or <see langword="null"/> for a SQL text check.</summary>
+    public Expr? Condition { get; init; }
 }
 
 /// <summary>An exclusion constraint (PostgreSQL <c>EXCLUDE</c>): no two rows may match on every element.</summary>

@@ -155,6 +155,8 @@ public sealed partial class ModelStore : IAsyncDisposable
         await DefaultSeedColumnsAsync(node, ct).ConfigureAwait(false);
         if (await SeedInputAsync(node, null, ct).ConfigureAwait(false) is { } refused)
             return refused;
+        if (await ExpressionInputAsync(node, null, [], ct).ConfigureAwait(false) is { } unparsed)
+            return unparsed;
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Create, null, null, node, DeleteResolution.Refuse)], source, ct).ConfigureAwait(false);
         return Single(result);
     }
@@ -173,7 +175,11 @@ public sealed partial class ModelStore : IAsyncDisposable
             return invalid;
         if (await SeedInputAsync(node, id, ct).ConfigureAwait(false) is { } refused)
             return refused;
-        var result = await ExecuteAsync([new PlannedChange(BatchOp.Update, id, expectedHash, node, DeleteResolution.Refuse)], source, ct).ConfigureAwait(false);
+        var minted = new List<string>();
+        if (await ExpressionInputAsync(node, id, minted, ct).ConfigureAwait(false) is { } unparsed)
+            return unparsed;
+        var result = await ExecuteAsync([new PlannedChange(BatchOp.Update, id, expectedHash, node, DeleteResolution.Refuse, minted.Count > 0 ? minted : null)], source, ct)
+            .ConfigureAwait(false);
         return Single(result);
     }
 
@@ -321,6 +327,21 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
 
         batch = resolved.Batch;
+
+        // Expressions written as text become trees, read against the model as loaded (next-phase-3-design.md section 3.1): after 5.1's
+        // resolver, so that every sub-element has its id and text names the columns and attributes the batch adds.
+        for (var i = 0; i < batch.Operations.Count; i++)
+        {
+            if (batch.Operations[i].Op is BatchOp.Create or BatchOp.Update && nodes[i] is { } body && ExpressionInput(body, loaded) is { Count: > 0 } unparsed)
+            {
+                var at = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/element";
+                invalid[i] = new SaveResult(SaveOutcome.Invalid, batch.Operations[i].Id, null, null,
+                    [.. unparsed.Select(d => d with { JsonPointer = at + d.JsonPointer }).Order(Diagnostic.Order)], [], null);
+            }
+        }
+
+        if (invalid.Any(r => r is not null))
+            return Invalid(batch, invalid);
         if (SeedNames(loaded, batch, nodes, invalid))
             return Invalid(batch, invalid);
         var changes = new List<PlannedChange>(batch.Operations.Count);
@@ -407,7 +428,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// </summary>
     private static bool IsExpandedOperation(BatchOp op) =>
         IsSchemaOperation(op) || IsProcessOperation(op) || IsMaterializeOperation(op) || IsBindingOperation(op) || IsTagOperation(op)
-        || IsReferenceRefactor(op) || op is BatchOp.NamesToIds or BatchOp.FoldIntoStereotype;
+        || IsReferenceRefactor(op) || op is BatchOp.NamesToIds or BatchOp.TextToTrees or BatchOp.FoldIntoStereotype;
 
     /// <summary>Re-reads changed paths and updates the index (host-contracts requirement 17).</summary>
     /// <param name="paths">Repo-relative or absolute paths reported by a watcher.</param>
@@ -1654,6 +1675,9 @@ public enum BatchOp
     /// </summary>
     [JsonStringEnumMemberName("names-to-ids")] NamesToIds,
 
+    /// <summary>Turns expressions held as text into trees (next-phase-3-design.md section 3.1, MQ3108).</summary>
+    [JsonStringEnumMemberName("text-to-trees")] TextToTrees,
+
     /// <summary>
     /// <c>tags-to-property</c> (next-phase-1-design.md section 4.4): moves the tags that start with <c>prefix</c> into the custom
     /// property <c>name</c> of each element and sub-element that holds them, in the scope the tag vocabulary of <c>package</c> governs
@@ -1761,7 +1785,7 @@ public enum BatchOp
 /// <param name="As">Create and update: the placeholder (<c>$name</c>) that names the operation's element for the whole batch
 /// (next-phase-1-design.md section 5.1). Every id field of an operation may hold an id, a qualified name (<c>@kind:path</c>) or a
 /// placeholder; the batch resolver turns them into ids before the operation is planned.</param>
-/// <param name="ElementIds">The elements <c>names-to-ids</c> and <c>tags-to-property</c> act on, each an id, a qualified name or a
+/// <param name="ElementIds">The elements <c>names-to-ids</c>, <c>tags-to-property</c> and <c>text-to-trees</c> act on, each an id, a qualified name or a
 /// placeholder; absent means every element they apply to.</param>
 /// <param name="Prefix">The prefix of the tags that move into the property <c>name</c> (tags-to-property).</param>
 /// <param name="Redefine">fold-into-stereotype: write a <c>redefines</c> entry with the table's value for each redefinable facet in

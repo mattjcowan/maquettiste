@@ -66,6 +66,7 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "retag" => BatchOp.Retag,
                     "tags-to-property" => BatchOp.TagsToProperty,
                     "names-to-ids" => BatchOp.NamesToIds,
+                    "text-to-trees" => BatchOp.TextToTrees,
                     "fold-into-stereotype" => BatchOp.FoldIntoStereotype,
                     "map-by-name" => BatchOp.MapByName,
                     "resync-binding" => BatchOp.ResyncBinding,

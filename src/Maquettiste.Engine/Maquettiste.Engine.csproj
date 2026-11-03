@@ -25,6 +25,8 @@
     <EmbeddedResource Include="Agent/tools.json" LogicalName="Maquettiste.Engine.Agent.tools.json" />
     <!-- The migration ledger's DDL (next-phase-1-design.md section 3.3; Ledger/LedgerContract.cs). -->
     <EmbeddedResource Include="Ledger/ledger.postgresql.sql" LogicalName="Maquettiste.Engine.Ledger.ledger.postgresql.sql" />
+    <!-- The expression language's JavaScript runtime (next-phase-3-design.md section 3.1; Expressions/ExprRuntime.cs). -->
+    <EmbeddedResource Include="Expressions/expr-runtime.js" LogicalName="Maquettiste.Engine.Expressions.expr-runtime.js" />
     <EmbeddedResource Include="../../skills/maquettiste-modeling/SKILL.md" LogicalName="Maquettiste.Engine.Skills.maquettiste-modeling.SKILL.md" Link="Skills/maquettiste-modeling/SKILL.md" WithCulture="false" />
   </ItemGroup>
 

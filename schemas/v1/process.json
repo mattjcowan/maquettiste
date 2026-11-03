@@ -439,6 +439,7 @@
         "name",
         "displayName",
         "expression",
+        "condition",
         "description"
       ],
       "properties": {
@@ -454,6 +455,10 @@
         "expression": {
           "description": "A JavaScript expression over context and event returning a boolean.",
           "type": "string"
+        },
+        "condition": {
+          "description": "The condition as an expression tree over context and event; only true passes. A guard holds expression or condition, not both (MQ3107), or neither as a stub.",
+          "$ref": "common.json#/$defs/expr"
         },
         "description": {
           "$ref": "common.json#/$defs/description"
