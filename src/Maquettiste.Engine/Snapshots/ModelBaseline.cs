@@ -24,7 +24,11 @@ public enum BaselineKind
 /// </summary>
 /// <param name="message">The message, naming the value.</param>
 /// <param name="paramName">The parameter: <c>against</c>.</param>
-internal sealed class BadBaselineException(string message, string paramName) : ArgumentException(message, paramName);
+internal sealed class BadBaselineException(string message, string paramName) : ArgumentException(message, paramName)
+{
+    /// <summary>The message without the parameter's name.</summary>
+    public string Text { get; } = message;
+}
 
 /// <summary>
 /// A read-only model to compare with (next-phase-1-design.md section 3.1, scope 5.10): a model snapshot id or a folder that holds
@@ -115,6 +119,22 @@ public sealed class ModelBaseline : IDisposable
                 : $"'{against}' names no model snapshot.", nameof(against));
         }
 
+        return await OpenFolderAsync(working, against, currentDirectory, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Opens a folder baseline, the part of <see cref="OpenAsync"/>'s order after the snapshot ids: the folder must exist and be a project
+    /// root or its <c>.maquettiste</c> folder at a model format this release reads. A model comparison opens its folder sides here.
+    /// </summary>
+    /// <param name="working">The working model's store.</param>
+    /// <param name="against">The value as given.</param>
+    /// <param name="currentDirectory">The absolute folder a relative folder is resolved against.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The baseline, loaded; it owns its store.</returns>
+    /// <exception cref="BadBaselineException">The folder does not exist, is not a project, or holds a newer model format.</exception>
+    internal static async Task<ModelBaseline> OpenFolderAsync(ModelStore working, string against, string currentDirectory, CancellationToken ct)
+    {
+        var pathLike = IsPathLike(against);
         var folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(against, currentDirectory));
         if (!Directory.Exists(folder))
         {
@@ -144,7 +164,7 @@ public sealed class ModelBaseline : IDisposable
                 nameof(against));
         }
 
-        return await OpenFolderAsync(working, against, folder, repoRoot, modelRoot, ct).ConfigureAwait(false);
+        return await LoadFolderAsync(working, against, folder, repoRoot, modelRoot, ct).ConfigureAwait(false);
     }
 
     /// <summary>Releases a folder baseline's store; a snapshot's store stays in its library.</summary>
@@ -193,7 +213,7 @@ public sealed class ModelBaseline : IDisposable
         return pathLike || Directory.Exists(folder) ? folder : against;
     }
 
-    private static async Task<ModelBaseline> OpenFolderAsync(ModelStore working, string against, string folder, string repoRoot,
+    private static async Task<ModelBaseline> LoadFolderAsync(ModelStore working, string against, string folder, string repoRoot,
         string modelRoot, CancellationToken ct)
     {
         var options = working.Options with { RepoRoot = repoRoot, ModelRoot = modelRoot };
@@ -264,7 +284,8 @@ public sealed class ModelBaseline : IDisposable
         return metadata.ModelHash;
     }
 
-    private static string NewerFormat(string label, long format) =>
+    /// <summary>MQ1007's text for a model at a newer format, naming it by <paramref name="label"/>.</summary>
+    internal static string NewerFormat(string label, long format) =>
         $"MQ1007 {RuleCatalog.Get("MQ1007").Description.TrimEnd('.')}: the baseline ({label}) is at model format "
         + format.ToString(CultureInfo.InvariantCulture) + "; this release reads format "
         + EngineVersion.FormatVersion.ToString(CultureInfo.InvariantCulture) + ".";

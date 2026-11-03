@@ -113,6 +113,34 @@ add the parameter to its reads and switch its write affordances off.
   differ as JSON pointers (`added`, `removed`, `changed` with both values): objects by key; arrays of objects with distinct
   string ids matched by id (a reorder alone is one `changed` on the array); other arrays by position when the lengths match,
   else whole; at most 500 (`fieldsTruncated`). Arrays are materialized once, so a seed of 100,000 rows diffs in linear time.
+- **Sub-elements**: every field change names the innermost object with an `id` on its pointer (`subId`, `subKind` from
+  the record type the pointer reaches, as the id minter finds it, `member` inside a custom element's `content`,
+  `sub-element` when unknown; `subName`, the first text of `name`, `role`, `code`, `key` and `label` on the `to` side,
+  else the `from` side; `subPointer`, the pointer inside it). A whole sub-element added or removed is its own owner with
+  an empty `subPointer` (`Snapshots/FieldOwners.cs`).
+
+**Options** (next-phase-2-design.md section 6.2). `CompareAsync(from, to, offset, limit, options)` and
+`CompareElementAsync(from, to, id, options)` take `SnapshotCompareOptions`; without options they answer as before.
+
+- `AllowFolders` with `CurrentDirectory`: a side may be a folder that holds another copy of the project. A value
+  resolves in one order: `working`, then a folder when it is path-like (rooted, starting with `.`, or holding a
+  separator), else a snapshot id when the archive exists, else a folder when the directory exists, else an
+  `ArgumentException` naming it. A folder opens through `ModelBaseline` (a read-only store, no index cache, nothing
+  written; disposed at the call's end) and is read like the working side, without its packs. Only `maquettiste` and
+  `maquettiste mcp` allow folders. A snapshot side reads every document it needs through one open archive.
+- `ByPackage`: each row carries `package`, the package its document states (a package's own row carries its `parent`),
+  from the `to` side, or the `from` side for a removed element; a migration fact carries `database` and a `label` (its
+  `fact`, then its object's kind and names). The rows are ordered by group (packages by qualified name, built from the
+  side's package documents, a package the side lacks by its id; then "(no package)"; then the facts of each database by
+  its name; ties by id), then kind, name and id, and `packages` lists each group's counts in that order. Every changed
+  element's document is read before the page is cut.
+- `FieldChanges`: each changed row of the page carries its field changes (`fields`, at most 50, `fieldsTruncated`).
+
+`ModelDiffFormat.Markdown` and `ModelDiffFormat.Text` render a comparison made with `ByPackage` and `FieldChanges`: a
+heading naming both sides, one counts line, a section per group, one line per element and a nested line per field change
+(at most 20, values as compact JSON cut at 80 characters), then the other files on the last page. `maquettiste model
+diff` and the MCP tool `compare_snapshots` (`format` `markdown`) print the same bytes. The HTTP endpoint takes no
+options yet.
 
 ## 6. Restore
 

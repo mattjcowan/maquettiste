@@ -25,7 +25,7 @@ internal static class BatchOutput
     /// <summary>
     /// The answer of a dry run: what an apply would answer (<c>outcome</c>, <c>items</c>), each file without its full texts but with
     /// its unified diff, the diagnostics the change would add and remove over its scope, the ids it would resolve and mint, and the
-    /// migration facts it would record (<see langword="null"/> when the change reaches every database).
+    /// migration facts it would record (<see langword="null"/> when the change reaches every database), and when it would save, its impact.
     /// </summary>
     /// <param name="preview">The dry run.</param>
     /// <returns>The answer.</returns>
@@ -34,7 +34,10 @@ internal static class BatchOutput
         ArgumentNullException.ThrowIfNull(preview);
         return new BatchPreviewAnswer(preview.Outcome, preview.Items,
             [.. preview.Files.Select(f => new BatchPreviewFileAnswer(f.Path, f.Action, f.Id, f.Kind, f.Name, f.BeforeHash, f.Diff))],
-            preview.DiagnosticsAdded, preview.DiagnosticsRemoved, preview.Ids, preview.Facts);
+            preview.DiagnosticsAdded, preview.DiagnosticsRemoved, preview.Ids, preview.Facts)
+        {
+            Impact = preview.Impact,
+        };
     }
 
     /// <summary>
@@ -65,7 +68,7 @@ internal static class BatchOutput
     /// <summary>
     /// The text of a dry run that would save: a usage line per reference-type refactor (<see cref="UsageLines"/>), each file's unified
     /// diff, then <c>name  id</c> per name, then a <c>+ </c> line per diagnostic the change would add and a <c>- </c> line per diagnostic
-    /// it would remove.
+    /// it would remove, then the impact's lines (<see cref="ImpactLines"/>).
     /// </summary>
     /// <param name="preview">The dry run.</param>
     /// <param name="before">The model before the batch, where a refactored type's name is read.</param>
@@ -92,7 +95,54 @@ internal static class BatchOutput
             text.Append("+ ").Append(DiagnosticOutput.Line(d)).Append('\n');
         foreach (var d in preview.DiagnosticsRemoved)
             text.Append("- ").Append(DiagnosticOutput.Line(d)).Append('\n');
+        if (preview.Impact is { } impact)
+        {
+            foreach (var line in ImpactLines(impact))
+                text.Append(line).Append('\n');
+        }
+
         return text.ToString();
+    }
+
+    /// <summary>
+    /// The impact of a dry run as text (next-phase-2-design.md section 6.1): <c>referrer &lt;kind&gt; &lt;name or id&gt; &lt;pointer&gt; -&gt;
+    /// &lt;target&gt; (&lt;change&gt;)</c> per referrer, <c>database &lt;name&gt;</c> per database reached, then per pack
+    /// <c>&lt;pack&gt;: &lt;n&gt; units</c> and <c>  &lt;change&gt; &lt;key&gt; &lt;outputs&gt;</c> per unit, or a line that says the pack has no
+    /// unit states or does not load. A capped list ends with how many more there are.
+    /// </summary>
+    /// <param name="impact">The impact.</param>
+    /// <returns>The lines.</returns>
+    public static IEnumerable<string> ImpactLines(BatchImpact impact)
+    {
+        ArgumentNullException.ThrowIfNull(impact);
+        foreach (var r in impact.Referrers)
+            yield return $"referrer {r.FromKind} {r.FromName ?? r.Reference.FromElementId} {r.Reference.JsonPointer} -> {r.Target} ({r.Change})";
+        if (impact.ReferrersTotal > impact.Referrers.Count)
+            yield return string.Create(CultureInfo.InvariantCulture, $"... {impact.ReferrersTotal - impact.Referrers.Count} more referrers");
+        foreach (var d in impact.Databases)
+            yield return "database " + d.Name;
+        foreach (var pack in impact.Packs ?? [])
+        {
+            switch (pack.State)
+            {
+                case "none":
+                    yield return pack.Pack + ": no unit states; generate once to list generated files";
+                    continue;
+                case "invalid":
+                    yield return pack.Pack + ": the pack does not load; validate it to see why";
+                    continue;
+            }
+
+            yield return string.Create(CultureInfo.InvariantCulture, $"{pack.Pack}: {pack.UnitsTotal} {(pack.UnitsTotal == 1 ? "unit" : "units")}");
+            foreach (var unit in pack.Units)
+            {
+                var outputs = unit.Outputs.Count > 0 ? " " + string.Join(' ', unit.Outputs) : unit.Filtered ? " (where not evaluated)" : "";
+                yield return "  " + unit.Change + " " + unit.Key + outputs;
+            }
+
+            if (pack.UnitsTotal > pack.Units.Count)
+                yield return string.Create(CultureInfo.InvariantCulture, $"  ... {pack.UnitsTotal - pack.Units.Count} more units");
+        }
     }
 
     /// <summary>
@@ -183,7 +233,12 @@ internal static class BatchOutput
 /// <param name="Facts">When saved, the migration facts the batch would record; <see langword="null"/> when the change reaches every
 /// database or when not saved.</param>
 internal sealed record BatchPreviewAnswer(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, IReadOnlyList<BatchPreviewFileAnswer> Files,
-    IReadOnlyList<Diagnostic> DiagnosticsAdded, IReadOnlyList<Diagnostic> DiagnosticsRemoved, BatchIds Ids, IReadOnlyList<RecordedFact>? Facts);
+    IReadOnlyList<Diagnostic> DiagnosticsAdded, IReadOnlyList<Diagnostic> DiagnosticsRemoved, BatchIds Ids, IReadOnlyList<RecordedFact>? Facts)
+{
+    /// <summary>When saved, how far the change reaches (next-phase-2-design.md section 6.1); left out of the JSON when not saved.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public BatchImpact? Impact { get; init; }
+}
 
 /// <summary>A file of a dry-run answer: <see cref="BatchPreviewFile"/> without the texts before and after.</summary>
 /// <param name="Path">The repo-relative path.</param>

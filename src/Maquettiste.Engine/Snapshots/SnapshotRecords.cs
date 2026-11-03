@@ -55,7 +55,69 @@ public sealed record SnapshotKindChanges(string Kind, int Added, int Removed, in
 public sealed record SnapshotElementChange(
     string Id, string Kind, string Name, string Change, string Path,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousName = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousPath = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousPath = null)
+{
+    /// <summary>
+    /// With <see cref="SnapshotCompareOptions.ByPackage"/>: the package the document states (a package's own row carries its
+    /// <c>parent</c>), on the <c>to</c> side, or the <c>from</c> side for a removed element; <see langword="null"/> for none.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Package { get; init; }
+
+    /// <summary>With <see cref="SnapshotCompareOptions.ByPackage"/>, a migration fact only: the database the fact belongs to.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Database { get; init; }
+
+    /// <summary>
+    /// With <see cref="SnapshotCompareOptions.ByPackage"/>, a migration fact only (it has no name): its <c>fact</c>, then its object's
+    /// kind and names as the fact records them (<c>rename column billing.invoices.number</c>), or the fact alone.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Label { get; init; }
+
+    /// <summary>
+    /// With <see cref="SnapshotCompareOptions.FieldChanges"/>, a changed element only: its field changes, at most
+    /// <see cref="SnapshotCompareOptions.MaxElementFields"/>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<SnapshotFieldChange>? Fields { get; init; }
+
+    /// <summary>Whether more fields differ than <see cref="Fields"/> lists.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool FieldsTruncated { get; init; }
+}
+
+/// <summary>The changed elements of one group of a comparison made with <see cref="SnapshotCompareOptions.ByPackage"/>.</summary>
+/// <param name="Id">The package id, or <see langword="null"/> for "(no package)" and for a database's facts.</param>
+/// <param name="Name">The package's qualified name (its id when the side lacks it), "(no package)", or "migrations of &lt;database
+/// name&gt;".</param>
+/// <param name="Added">Elements in <c>to</c> only.</param>
+/// <param name="Removed">Elements in <c>from</c> only.</param>
+/// <param name="Changed">Elements whose document differs.</param>
+public sealed record SnapshotPackageChanges(string? Id, string Name, int Added, int Removed, int Changed);
+
+/// <summary>
+/// How <see cref="SnapshotLibrary.CompareAsync(string, string, int, int, SnapshotCompareOptions?, CancellationToken)"/> compares
+/// (next-phase-2-design.md section 6.2). Without options a comparison answers as before.
+/// </summary>
+public sealed record SnapshotCompareOptions
+{
+    /// <summary>The most field changes a changed element's row carries.</summary>
+    public const int MaxElementFields = 50;
+
+    /// <summary>Group the elements by package, the migration facts by database, and fill the rows' package members.</summary>
+    public bool ByPackage { get; init; }
+
+    /// <summary>Fill each changed element's <see cref="SnapshotElementChange.Fields"/>.</summary>
+    public bool FieldChanges { get; init; }
+
+    /// <summary>Whether a side may be a folder that holds another copy of the project (the command-line tool and its MCP server
+    /// only: a path sent to the editor's host would name a folder of the server).</summary>
+    public bool AllowFolders { get; init; }
+
+    /// <summary>The absolute folder a relative folder resolves against; required with <see cref="AllowFolders"/>.</summary>
+    public string? CurrentDirectory { get; init; }
+}
 
 /// <summary>A document that is not an element (settings, locale shards, extensions, sidecars, branding, packs) and differs.</summary>
 /// <param name="Path">The model-relative path.</param>
@@ -65,7 +127,7 @@ public sealed record SnapshotFileChange(string Path, string Change);
 /// <summary>
 /// What differs between two models (a snapshot or the working model on each side): documents are compared by hash first, elements by
 /// id, so only changed documents are read. The element list is paged (<see cref="Next"/>); the field-level detail of one element comes
-/// from <see cref="SnapshotLibrary.CompareElementAsync"/>.
+/// from <see cref="SnapshotLibrary.CompareElementAsync(string, string, string, SnapshotCompareOptions?, CancellationToken)"/>.
 /// </summary>
 /// <param name="From">The <c>from</c> side: a snapshot id or <c>working</c>.</param>
 /// <param name="To">The <c>to</c> side.</param>
@@ -80,14 +142,39 @@ public sealed record SnapshotFileChange(string Path, string Change);
 /// <param name="PacksCompared">Whether the packs were compared (both sides hold them).</param>
 public sealed record SnapshotComparison(
     string From, string To, int Added, int Removed, int Changed, IReadOnlyList<SnapshotKindChanges> Kinds, IReadOnlyList<SnapshotElementChange> Elements,
-    int? Next, IReadOnlyList<SnapshotFileChange> Files, bool FilesTruncated, bool PacksCompared);
+    int? Next, IReadOnlyList<SnapshotFileChange> Files, bool FilesTruncated, bool PacksCompared)
+{
+    /// <summary>With <see cref="SnapshotCompareOptions.ByPackage"/>: the counts per group, in group order (packages by qualified name,
+    /// "(no package)", then the facts of each database by its name), which is also the order of the elements.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<SnapshotPackageChanges>? Packages { get; init; }
+}
 
 /// <summary>One field that differs between the two documents of an element.</summary>
 /// <param name="Pointer">The JSON pointer in the document (the <c>to</c> side's, the <c>from</c> side's for a removed value).</param>
 /// <param name="Change"><c>added</c>, <c>removed</c> or <c>changed</c>.</param>
 /// <param name="Before">The value on the <c>from</c> side.</param>
 /// <param name="After">The value on the <c>to</c> side.</param>
-public sealed record SnapshotFieldChange(string Pointer, string Change, JsonElement? Before, JsonElement? After);
+public sealed record SnapshotFieldChange(string Pointer, string Change, JsonElement? Before, JsonElement? After)
+{
+    /// <summary>The id of the innermost object with an <c>id</c> on the pointer (a sub-element), or <see langword="null"/> for a field of
+    /// the element itself.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SubId { get; init; }
+
+    /// <summary>The sub-element's kind (<c>attribute</c>, <c>column</c>, <c>member</c>...), <c>sub-element</c> when unknown.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SubKind { get; init; }
+
+    /// <summary>The sub-element's name (its first text of <c>name</c>, <c>role</c>, <c>code</c>, <c>key</c> and <c>label</c>), on the
+    /// <c>to</c> side, else the <c>from</c> side.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SubName { get; init; }
+
+    /// <summary>The pointer inside the sub-element (empty when the change is the whole sub-element).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SubPointer { get; init; }
+}
 
 /// <summary>
 /// One element on both sides, in the form the editor's conflict view renders (the two whole documents, <see cref="Before"/> and

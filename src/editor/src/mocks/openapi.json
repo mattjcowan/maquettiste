@@ -25252,6 +25252,64 @@
           "previousPath": {
             "type": "string",
             "description": "The path on the `from` side, when the file moved."
+          },
+          "package": {
+            "type": "string",
+            "description": "Grouped by package only: the package the document states (a package's own row carries its `parent`), on the `to` side, or the `from` side for a removed element. Left out for none."
+          },
+          "database": {
+            "type": "string",
+            "description": "Grouped by package, a migration fact only; the database the fact belongs to."
+          },
+          "label": {
+            "type": "string",
+            "description": "Grouped by package, a migration fact only (it has no name): its `fact`, then its object's kind and names as the fact records them, such as `rename column billing.invoices.number`."
+          },
+          "fields": {
+            "type": "array",
+            "maxItems": 50,
+            "description": "With field changes, a changed element only; its field changes, each naming its sub-element.",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotFieldChange"
+            }
+          },
+          "fieldsTruncated": {
+            "type": "boolean",
+            "description": "Written only when true; more fields differ than `fields` lists."
+          }
+        }
+      },
+      "SnapshotPackageChanges": {
+        "x-engine-record": "Maquettiste.Engine.SnapshotPackageChanges",
+        "type": "object",
+        "description": "The changed elements of one group of a comparison grouped by package.",
+        "required": [
+          "id",
+          "name",
+          "added",
+          "removed",
+          "changed"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The package id, or null for `(no package)` and for a database's migration facts."
+          },
+          "name": {
+            "type": "string",
+            "description": "The package's qualified name (its id when the side lacks the package), `(no package)`, or `migrations of <database name>`."
+          },
+          "added": {
+            "type": "integer"
+          },
+          "removed": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "integer"
           }
         }
       },
@@ -25339,6 +25397,13 @@
           },
           "packsCompared": {
             "type": "boolean"
+          },
+          "packages": {
+            "type": "array",
+            "description": "Grouped by package only: the counts per group in group order (packages by qualified name, `(no package)`, then the migration facts of each database by its name), which is also the order of `elements`.",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotPackageChanges"
+            }
           }
         }
       },
@@ -25365,7 +25430,23 @@
             ]
           },
           "before": {},
-          "after": {}
+          "after": {},
+          "subId": {
+            "type": "string",
+            "description": "The id of the innermost object with an `id` on the pointer (a sub-element); left out for the element's own fields."
+          },
+          "subKind": {
+            "type": "string",
+            "description": "The sub-element's kind (`attribute`, `column`, `member`...), `sub-element` when unknown."
+          },
+          "subName": {
+            "type": "string",
+            "description": "The sub-element's name on the `to` side, else the `from` side; left out when it has none."
+          },
+          "subPointer": {
+            "type": "string",
+            "description": "The pointer inside the sub-element (`\"\"` when the change is the whole sub-element)."
+          }
         }
       },
       "SnapshotElementDiff": {

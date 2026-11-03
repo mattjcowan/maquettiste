@@ -147,24 +147,31 @@ internal static class IdMinter
         }
 
         /// <summary>The index kind of the record type the current path reaches from the element's kind, or <see langword="null"/>.</summary>
-        private string? KindAt()
+        private string? KindAt() =>
+            root is JsonObject element && element["kind"] is JsonValue kind && kind.TryGetValue<string>(out var name) ? IdMinter.KindAt(name, _path) : null;
+    }
+
+    /// <summary>
+    /// The index kind of the record type a path reaches from an element's kind (each segment a property name, or an item of a list or a
+    /// map), or <see langword="null"/> when the path reaches no sub-element type. A model comparison names the sub-element of a field
+    /// change with it (<c>Snapshots/FieldOwners.cs</c>).
+    /// </summary>
+    /// <param name="kindName">The element's kind, as its <c>kind</c> states it.</param>
+    /// <param name="path">The segments below the element's root.</param>
+    /// <returns>The kind, such as <c>attribute</c>, or <see langword="null"/>.</returns>
+    internal static string? KindAt(string kindName, IReadOnlyList<string> path)
+    {
+        if (!KindInfo.TryGet(kindName, out var info))
+            return null;
+        Type? type = info.ClrType;
+        foreach (var segment in path)
         {
-            if (root is not JsonObject element || element["kind"] is not JsonValue kind || !kind.TryGetValue<string>(out var name)
-                || !KindInfo.TryGet(name, out var info))
-            {
+            type = type is not null && ItemType(type) is { } item ? item : PropertyType(type, segment);
+            if (type is null)
                 return null;
-            }
-
-            Type? type = info.ClrType;
-            foreach (var segment in _path)
-            {
-                type = type is not null && ItemType(type) is { } item ? item : PropertyType(type, segment);
-                if (type is null)
-                    return null;
-            }
-
-            return ModelIndexer.SubElementKind(type);
         }
+
+        return ModelIndexer.SubElementKind(type);
     }
 
     /// <summary>The CLR type of a model record's JSON property, or <see langword="null"/> when unknown.</summary>

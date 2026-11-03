@@ -97,6 +97,11 @@ for a list of tool kinds the workshop can pick from, and the agent can send one 
    seed and its rows) and writes only ids into the files. The answer's `ids` lists each name with the id it found.
 4. With `dryRun: true` nothing is written: the answer shows each file as a diff and the diagnostics the change would add
    or remove. Ask the agent to show you that first.
+5. The dry run's `impact` says how far the change reaches. Here every element is new, so `referrers` is empty;
+   `databases` lists `main`, and each pack you have generated with lists as `added` the units the new table, reference
+   type and seed enter, without files yet. For a rename, such as `RepairOrder.reportedAt` to `reportedOn`, `referrers`
+   lists the elements that name the attribute and each pack lists the units that read it, with the files they would
+   write again. Ask the agent to read `impact.referrers` and `impact.packs` before it applies.
 
 Without an agent, save the same batch as `tool-kinds.json` and run `maquettiste model apply tool-kinds.json --dry-run`,
 then without `--dry-run`. When an update sends a document back, the agent keeps the ids of the parts it does not change:

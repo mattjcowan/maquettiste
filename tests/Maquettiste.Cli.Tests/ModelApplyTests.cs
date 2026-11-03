@@ -190,6 +190,57 @@ public sealed class ModelApplyTests
     }
 
     [Fact]
+    public async Task Model_apply_dry_run_prints_the_impact()
+    {
+        // next-phase-2-design.md section 6.1: the dry run runs through the generation service and prints the referrers, the databases
+        // reached and per pack the units whose stored inputs it touches, with their files.
+        const string invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
+        const string number = "01J92P0V0R3VSP7D5238DTNZX1";
+        using var repo = CliRepo.Billing();
+        var generated = await repo.RunAsync("generate");
+        Assert.True(generated.ExitCode == 0, generated.ToString());
+        string element;
+        string hash;
+        await using (var store = new Maquettiste.Engine.ModelStore(repo.Temp.Options))
+        {
+            await store.LoadAsync(TestContext.Current.CancellationToken);
+            var document = store.Current!.GetDocument(invoice)!;
+            var node = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
+            node["attributes"]!.AsArray().Single(a => (string?)a!["id"] == number)!["name"] = "code";
+            (element, hash) = (node.ToJsonString(), document.Hash);
+        }
+
+        var batch = Path.Combine(repo.Temp.Root, "rename.json");
+        File.WriteAllText(batch, $$"""[ { "op": "update", "id": "{{invoice}}", "expectedHash": "{{hash}}", "element": {{element}} } ]""");
+        var before = repo.Tree(".maquettiste");
+
+        var text = await repo.RunAsync("model", "apply", batch, "--dry-run");
+
+        Assert.True(text.ExitCode == 0, text.ToString());
+        var lines = Text.Lines(text.Out).ToList();
+        Assert.True(lines.Any(l => l.StartsWith("referrer query InvoicesByCustomer /", StringComparison.Ordinal) && l.EndsWith($" -> {number} (changed)", StringComparison.Ordinal)),
+            string.Join("\n", lines.Where(l => !l.StartsWith(' ') && !l.StartsWith('+') && !l.StartsWith('-') && !l.StartsWith('@'))));
+        Assert.True(lines.Contains("database main"), string.Join("\n", lines.SkipWhile(l => !l.StartsWith("referrer", StringComparison.Ordinal))));
+        Assert.Contains(lines, l => System.Text.RegularExpressions.Regex.IsMatch(l, "^classes: [0-9]+ units?$"));
+        Assert.Contains(lines, l => l.StartsWith("  inputs classes/entity:" + invoice + " ", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.StartsWith("ddl: ", StringComparison.Ordinal));
+        Assert.True(lines.IndexOf("database main") > lines.FindLastIndex(l => l.StartsWith("referrer ", StringComparison.Ordinal)));
+
+        var json = await repo.RunAsync("model", "apply", batch, "--dry-run", "--format", "json");
+
+        Assert.True(json.ExitCode == 0, json.ToString());
+        var impact = JsonNode.Parse(json.Out)!["impact"]!;
+        Assert.Equal(["databases", "packs", "referrers", "referrersTotal"], impact.AsObject().Select(p => p.Key).Order(StringComparer.Ordinal));
+        Assert.Equal(["classes", "ddl"], impact["packs"]!.AsArray().Select(p => (string)p!["pack"]!).Order(StringComparer.Ordinal));
+        var unit = impact["packs"]!.AsArray().Single(p => (string)p!["pack"]! == "classes")!["units"]!.AsArray()
+            .Single(u => (string)u!["key"]! == "classes/entity:" + invoice)!;
+        Assert.Equal(["change", "key", "keys", "outputs"], unit.AsObject().Select(p => p.Key).Order(StringComparer.Ordinal));
+        Assert.Equal("inputs", (string)unit["change"]!);
+        Assert.NotEmpty(unit["outputs"]!.AsArray());
+        Assert.Equal(before, repo.Tree(".maquettiste"));
+    }
+
+    [Fact]
     public async Task Names_to_ids_dry_run_writes_nothing()
     {
         using var repo = CliRepo.Billing();

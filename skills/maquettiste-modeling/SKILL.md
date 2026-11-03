@@ -75,6 +75,11 @@ clobber a concurrent edit or leave a dangling id.
      sub-elements: the engine mints them and the answer's `ids` lists every name and minted id. An ambiguous name
      (MQ1013) lists the candidates; use a longer form or the id. Run it with `dryRun: true` first: nothing is written,
      and the answer holds a diff per file and the diagnostics the change adds or removes.
+   - Read the dry run's `impact` before you apply: `impact.referrers` lists the elements that point at what the batch
+     changes or deletes (fix or include them), `impact.databases` the databases it can reach, and `impact.packs` per
+     pack the units whose generated files would be written again (`inputs`, `deleted`, or `added` for new elements).
+     Tell the user what it reaches, then apply. It names files, not their new bytes: after applying, `plan` with
+     `elements` shows those.
    - Keep the ids of sub-elements you re-send: a sub-element without an id in an update is new, and dropping one and
      adding one with the same name without its id is refused (MQ1014).
    - Custom property values still written as names where an `x-ref` types an id (MQ2010): `apply_batch`
@@ -98,6 +103,9 @@ clobber a concurrent edit or leave a dangling id.
 4. Check: a successful save already returns `diagnostics`; `validate` (optionally scoped by `elementIds`) checks the model.
    With `against` (a model snapshot id, or a folder holding another copy of the project) it also checks that migration
    facts explain every change since that baseline (MQ4102); `plan` takes the same `against` to diff migrations from it.
+   Before a larger change, `create_snapshot` first; when done, `compare_snapshots` with `from` that snapshot's id,
+   `fieldChanges: true` and `format: "markdown"` gives the review by package (each member's field changes, the
+   migration facts per database). Summarize it to the user by package, not by file.
    For a query, `preview_query_sql` returns the SQL it renders (for its database's dialect or another) with the diagnostics
    (MQ4021 to MQ4043) that point at the node to fix. For an entity's binding, `preview_binding_sql` returns its select,
    insert, update and delete statements; `validate` reports MQ4044 to MQ4054 for bindings.

@@ -187,6 +187,37 @@ public sealed class SnapshotEndpointTests
     }
 
     [Fact]
+    public async Task Compare_answers_as_before_and_field_changes_name_their_sub_element()
+    {
+        // next-phase-2-design.md section 6.2, decision 7: the list keeps its members and order (no package grouping over HTTP yet);
+        // the one-element detail names the sub-element of each field change.
+        await using var host = EditorHost.Create();
+        var id = (await host.SendJsonAsync("POST", "/api/snapshots", new { name = "Before" })).Json["id"]!.GetValue<string>();
+        var customer = await host.GetAsync("/api/model/elements/" + EditorHost.CustomerId);
+        var json = customer.Json["json"]!.AsObject();
+        var attribute = json["attributes"]![1]!.AsObject();
+        var renamed = attribute["name"]!.GetValue<string>() + "Renamed";
+        attribute["name"] = renamed;
+        Assert.Equal(200, (await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.CustomerId, json, r => r.IfMatch(customer.Json["hash"]!.GetValue<string>()))).Status);
+
+        var compare = await host.GetAsync("/api/snapshots/compare?from=" + id);
+        Assert.Equal(200, compare.Status);
+        Contract.AssertResponse(compare, "/api/snapshots/compare");
+        Assert.Null(compare.Json["packages"]);
+        var kinds = compare.Json["elements"]!.AsArray().Select(r => r!["kind"]!.GetValue<string>()).ToList();
+        Assert.Equal(kinds.Order(StringComparer.Ordinal), kinds);
+        Assert.All(compare.Json["elements"]!.AsArray(), r => Assert.Null(r!["package"] ?? r["fields"] ?? r["label"]));
+
+        var detail = await host.GetAsync($"/api/snapshots/compare/element?from={id}&to=working&id={EditorHost.CustomerId}");
+        Assert.Equal(200, detail.Status);
+        Contract.AssertResponse(detail, "/api/snapshots/compare/element");
+        var field = Assert.Single(detail.Json["fields"]!.AsArray())!;
+        Assert.Equal(("/attributes/1/name", attribute["id"]!.GetValue<string>(), "attribute", renamed, "/name"),
+            (field["pointer"]!.GetValue<string>(), field["subId"]!.GetValue<string>(), field["subKind"]!.GetValue<string>(),
+                field["subName"]!.GetValue<string>(), field["subPointer"]!.GetValue<string>()));
+    }
+
+    [Fact]
     public async Task Restore_replaces_the_working_model_publishes_model_changed_and_is_refused_under_the_run_lock()
     {
         await using var host = EditorHost.Create();

@@ -226,7 +226,8 @@ public sealed class CliApp(CliEnvironment environment)
                                 Apply a batch all or nothing ({ "operations": [...] } or the bare array, as apply_batch
                                   takes it): id fields take ids, qualified names (@table:billing.notes) or placeholders ($t,
                                   declared with "as"), and missing ids are minted; prints the paths written and the names
-                                  with their ids; --dry-run (print the diffs and the diagnostics added and removed, write
+                                  with their ids; --dry-run (print the diffs, the diagnostics added and removed and the
+                                  impact: referrers, databases reached and per pack the units and files it touches; write
                                   nothing), --format text|json
           model materialize tables --database <id|name> <entity...>
                                 Write a designed table per entity with its projection's shape and bind the entity to it:
@@ -246,6 +247,10 @@ public sealed class CliApp(CliEnvironment environment)
                                 The calculated values of the elements given (repeat --element; an attribute id gives one
                                   line per holder), evaluated for them only: --name <name> (repeatable), --format text|json;
                                   exit 1 when a value failed
+          model diff <a> [<b>]  Review what differs between two models, each working, a model snapshot id or a folder
+                                  (default <b>: working), grouped by package, each changed element with its field changes
+                                  and migration facts per database: --format text|json|markdown, --element <id> (one
+                                  element's field changes); exit 4 when a side names nothing
           binding drift [<entity>...]
                                 What changed in each binding's table since its provenance was recorded (added, renamed,
                                   retyped and removed columns): --database <id|name>, --all (also the bindings in step),

@@ -174,6 +174,23 @@ public sealed class AssistTests
     }
 
     [Fact]
+    public async Task Compare_snapshots_with_a_folder_through_the_assistant_answers_bad_request()
+    {
+        // next-phase-2-design.md section 6.2: a folder side would name a folder of the server, so the editor's assistant refuses it.
+        await using var host = EditorHost.Create();
+        host.Site.Ai.ReplyToolCall("compare_snapshots", new { from = host.RepoRoot }).Reply("That is a folder of the server.");
+        var events = Events(await ChatAsync(host, "Compare with my other copy"));
+
+        var finished = events.Single(e => (string?)e["type"] == "tool-finished");
+        Assert.True(finished["isError"]!.GetValue<bool>());
+        var result = host.Site.Ai.Requests[1].Messages[^1];
+        Assert.True(result.IsError);
+        Assert.Contains("\"bad-request\"", result.Content, StringComparison.Ordinal);
+        Assert.Contains("this host compares model snapshots and the working model only", result.Content, StringComparison.Ordinal);
+        Assert.Equal("final", (string?)events[^1]["type"]);
+    }
+
+    [Fact]
     public async Task Validate_against_a_folder_through_the_assistant_answers_bad_request()
     {
         await using var host = EditorHost.Create();

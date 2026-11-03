@@ -3,12 +3,12 @@
     {
       "name": "compare_snapshots",
       "title": "Compare snapshots",
-      "description": "What differs between two models, each a snapshot id (list_snapshots) or working (the working model): {from, to, added, removed, changed, kinds: [{kind, added, removed, changed}], elements: [{id, kind, name, change, path, previousName, previousPath}], next, files: [{path, change}], filesTruncated, packsCompared}. Elements are matched by id and compared by hash (a rename or a moved file says so); the other documents (settings, locale shards, extensions, sidecars) by path. Pages by offset and limit (next is the next offset). With id, one element instead: its two documents (before, after) and the fields that differ as JSON pointers.",
+      "description": "What differs between two models, each working (the working model), a snapshot id (list_snapshots) or, in maquettiste mcp only, a folder that holds another copy of the project (compared without its packs): {from, to, added, removed, changed, kinds: [{kind, added, removed, changed}], packages: [{id, name, added, removed, changed}], elements: [{id, kind, name, change, path, previousName, previousPath, package, database, label, fields, fieldsTruncated}], next, files: [{path, change}], filesTruncated, packsCompared}. Elements are matched by id and compared by hash (a rename or a moved file says so); the other documents (settings, locale shards, extensions, rule and calculation files) by path. Elements are grouped by package: packages by qualified name, then (no package), then the migration facts of each database (database and label instead of package); a package's own row carries its parent; inside a group by kind, name and id. With fieldChanges each changed element lists its field changes (at most 50), each naming the sub-element it belongs to (subId, subKind, subName, subPointer: attribute code, /name), and limit defaults to 50. format markdown answers {markdown, next}: the page as maquettiste model diff --format markdown prints it, for a pull request or a change log. Pages by offset and limit (next is the next offset). With id, one element instead: its two documents (before, after) and the fields that differ as JSON pointers with their sub-element; with format markdown {markdown, next}, next always null. Compare with the snapshot taken before a change, then summarize by package.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "from": {
-            "description": "A snapshot id or working; required.",
+            "description": "working, a snapshot id or (maquettiste mcp only) a folder; required.",
             "type": [
               "string",
               "null"
@@ -16,7 +16,7 @@
             "default": null
           },
           "to": {
-            "description": "A snapshot id or working (default working).",
+            "description": "working (the default), a snapshot id or (maquettiste mcp only) a folder.",
             "type": [
               "string",
               "null"
@@ -40,12 +40,26 @@
             "default": null
           },
           "limit": {
-            "description": "The page size, 1 to 5000 (default 500).",
+            "description": "The page size, 1 to 5000 (default 500, or 50 with fieldChanges or format markdown).",
             "type": [
               "integer",
               "null"
             ],
             "default": null
+          },
+          "fieldChanges": {
+            "description": "List each changed element's field changes, each naming its sub-element (default false).",
+            "type": "boolean",
+            "default": false
+          },
+          "format": {
+            "description": "json (the default) or markdown: {markdown, next}, the review form of the page.",
+            "type": "string",
+            "enum": [
+              "json",
+              "markdown"
+            ],
+            "default": "json"
           }
         },
         "required": [
