@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../../../.schema/v1/migration.json",
+  "kind": "migration",
+  "id": "01JFCT00000000000000000007",
+  "database": "01JDBS00000000000000000001",
+  "fact": "drop",
+  "object": {
+    "kind": "view",
+    "key": "01JVEW00000000000000000001",
+    "schema": "billing",
+    "name": "totals"
+  },
+  "acknowledge": "The view holds no data."
+}

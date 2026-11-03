@@ -87,7 +87,10 @@ public sealed class ObjectLayout
 
     /// <summary>
     /// For an array whose schema declares <c>"x-sort": "&lt;key&gt;"</c>: the integer item key the canonical writer stable-sorts the
-    /// items by, a missing or non-integer value counting as 0 (SPEC section 11: attributes in <c>order</c>).
+    /// items by, a missing or non-integer value counting as 0 (SPEC section 11: attributes in <c>order</c>). A string key sorts
+    /// ordinally after the integer ones (a migration fact's <c>values</c> by <c>from</c>), and <c>"."</c> sorts an array of strings by
+    /// the items themselves (its <c>after</c>; next-phase-1-design.md section 3.2). Keys joined by commas sort by each in turn, the next
+    /// one breaking ties of the one before (a value map's <c>collections</c> by <c>"table,attribute"</c>; next-phase-2-design.md section 3.5).
     /// </summary>
     public string? SortKey { get; internal set; }
 
@@ -106,6 +109,13 @@ public sealed class ObjectLayout
     /// is written as the package id).
     /// </summary>
     public string? CollapseKey { get; internal set; }
+
+    /// <summary>
+    /// Whether the object's schema requires an <c>id</c> typed <c>common.json#/$defs/id</c>, through its own keywords or the
+    /// <c>allOf</c>, <c>anyOf</c> and <c>oneOf</c> branches merged into it (never a <c>then</c>): an element root or a sub-element,
+    /// where the engine mints a missing id (next-phase-1-design.md section 5.1).
+    /// </summary>
+    public bool RequiresId { get; internal set; }
 
     /// <summary>Whether the location is an object with declared keys.</summary>
     public bool HasKeys => _keys.Count > 0;

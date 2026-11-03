@@ -1,7 +1,6 @@
 using System.Collections.Frozen;
 using System.Globalization;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Json.Schema;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
@@ -9,28 +8,37 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// The extension schemas of one validation run (MQ5001, MQ5004). Each <c>extensions/*.json</c> becomes
-/// <c>{ "type": "object", "properties": …, "required": … }</c>, built once with JsonSchema.Net under the base URI
-/// <c>https://maquettiste.invalid/extensions/&lt;file&gt;</c> (offline, D24). Element properties are evaluated with the stereotype
-/// <c>defaultProperties</c> merged under them (stereotype order, later wins; the element's own values win over all). Failures are
-/// leaf keyword failures only, as in <see cref="Json.ISchemaRegistry.Evaluate"/> (D34). Thread-safe after construction.
+/// The custom property schemas of one validation run (MQ5001, MQ5004, MQ2009, and MQ2018 for stereotype parameters). Each
+/// <c>extensions/*.json</c>, and each stereotype's <c>parameters</c> (next-phase-1-design.md section 4.2), becomes
+/// <c>{ "type": "object", "properties": …, "required": … }</c>, compiled once per set of files by the snapshot's
+/// <see cref="PropertySchemaSet"/> under the base URI <c>https://maquettiste.invalid/extensions/&lt;file&gt;</c> (offline, D24).
+/// The holders of properties are <see cref="PropertyHost.Of"/>'s. A holder's stereotypes are its effective set
+/// (<see cref="ModelSnapshot.EffectiveStereotypes(Element)"/> for the element, defaults included;
+/// <see cref="ModelSnapshot.EffectiveStereotypes(IReadOnlyList{string})"/> for a sub-element; implied ones included): they decide which schemas apply, and their
+/// <c>defaultProperties</c> are merged under the holder's own values (implied first, then own, later wins; the holder's own values
+/// win over all). Failures are leaf keyword failures only, as in <see cref="Json.ISchemaRegistry.Evaluate"/> (D34). Thread-safe
+/// after construction.
 /// </summary>
 internal sealed class ExtensionSet
 {
-    private const string BaseUri = "https://maquettiste.invalid/extensions/";
-
-    private static readonly FrozenSet<string> ApplicatorKeywords =
+    /// <summary>The applicator keywords whose failures only summarize their children's (the leaves are reported).</summary>
+    internal static readonly FrozenSet<string> ApplicatorKeywords =
         new[] { "properties", "items", "prefixItems", "allOf", "$ref", "additionalProperties", "patternProperties", "dependentSchemas", "then", "else" }
             .ToFrozenSet(StringComparer.Ordinal);
 
     private readonly List<(ExtensionDocument Document, JsonSchema Schema)> _extensions = [];
+    private readonly List<(PropertySchemaSource Source, string Key, JsonSchema Schema)> _parameters = [];
     private readonly EvaluationOptions _evaluation = new() { OutputFormat = OutputFormat.List, Culture = CultureInfo.InvariantCulture };
 
     /// <summary>Builds the extension schemas, reporting invalid extension files.</summary>
     /// <param name="model">The snapshot.</param>
-    /// <param name="fileDiagnostics">Receives MQ5004 diagnostics for extension files, or <see langword="null"/> to drop them.</param>
+    /// <param name="fileDiagnostics">Receives MQ5004 and MQ2009 diagnostics for extension files, or <see langword="null"/> to drop
+    /// them.</param>
     public ExtensionSet(ModelSnapshot model, List<Diagnostic>? fileDiagnostics)
     {
+        var schemas = model.PropertySchemas;
+        if (fileDiagnostics is not null)
+            ReportKeywords(model, schemas, fileDiagnostics);
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var document in model.Extensions)
         {
@@ -59,7 +67,7 @@ internal sealed class ExtensionSet
                     Invalid($"'required' names '{extension.Required[i]}', which 'properties' does not define.", Ptr.At("/required", i));
             }
 
-            var schema = Compile(document, out var error);
+            var (schema, error) = schemas.SourceOf(document.Path)?.Compiled ?? (null, "the file is not in the snapshot's schema set");
             if (schema is null)
             {
                 Invalid($"The extension is not a valid JSON Schema: {error}", "/properties");
@@ -68,118 +76,99 @@ internal sealed class ExtensionSet
 
             _extensions.Add((document, schema));
         }
+
+        // Stereotype parameters that compile (one that does not is MQ2019 on the stereotype).
+        foreach (var source in schemas.Sources)
+        {
+            if (source.StereotypeKey is { } key && source.Compiled.Schema is { } compiled)
+                _parameters.Add((source, key, compiled));
+        }
     }
 
     /// <summary>The number of usable extensions.</summary>
     public int Count => _extensions.Count;
 
-    private JsonSchema? Compile(ExtensionDocument document, out string? error)
+    /// <summary>
+    /// MQ2009 for the extension files: each malformed or misplaced <c>x-ref</c> the schema set found, and each <c>of</c> that names
+    /// no element of the model (the keyword is then ignored by no walk: its values are judged by validation).
+    /// </summary>
+    private static void ReportKeywords(ModelSnapshot model, PropertySchemaSet schemas, List<Diagnostic> fileDiagnostics)
     {
-        var root = new JsonObject
+        fileDiagnostics.AddRange(schemas.Diagnostics);
+        foreach (var source in schemas.Sources)
         {
-            ["type"] = "object",
-            ["properties"] = JsonNode.Parse(document.Schema.Properties.GetRawText()),
-        };
-        if (document.Schema.Required.Count > 0)
-            root["required"] = new JsonArray([.. document.Schema.Required.Select(r => (JsonNode?)JsonValue.Create(r))]);
-        try
-        {
-            var element = JsonSerializer.SerializeToElement(root);
-            var fileName = document.Path[(document.Path.LastIndexOf('/') + 1)..];
-            var options = new BuildOptions { SchemaRegistry = new global::Json.Schema.SchemaRegistry() };
-            var schema = JsonSchema.Build(element, options, new Uri(BaseUri + Uri.EscapeDataString(fileName)));
-            using var empty = JsonDocument.Parse("{}");
-            _ = schema.Evaluate(empty.RootElement, _evaluation); // surfaces unresolvable references now, once
-            error = null;
-            return schema;
-        }
-        catch (Exception e) when (e is not OutOfMemoryException)
-        {
-            error = e.Message;
-            return null;
-        }
-    }
-
-    /// <summary>Evaluates an element and its attributes, enum members and columns against the applicable extensions.</summary>
-    /// <param name="context">The validation context.</param>
-    /// <param name="report">The report of the element's document.</param>
-    public void Check(ValidationContext context, Report report)
-    {
-        if (_extensions.Count == 0)
-            return;
-        var element = report.Document.Element;
-        CheckItem(context, element, "", element.KindName, report);
-        IReadOnlyList<ModelAttribute> attributes = element switch
-        {
-            Entity e => e.Attributes,
-            ValueObject v => v.Attributes,
-            Relation r => r.Attributes,
-            Stereotype s => s.Attributes,
-            _ => [],
-        };
-        for (var i = 0; i < attributes.Count; i++)
-            CheckItem(context, attributes[i], Ptr.At("/attributes", i), "attribute", report);
-        if (element is EnumType enumType)
-        {
-            for (var i = 0; i < enumType.Members.Count; i++)
-                CheckItem(context, enumType.Members[i], Ptr.At("/members", i), "enum-member", report);
-        }
-
-        if (element is Table table)
-        {
-            for (var i = 0; i < table.Columns.Count; i++)
-                CheckItem(context, table.Columns[i], Ptr.At("/columns", i), "column", report);
-        }
-
-        if (element is Process process)
-        {
-            CheckStates(process.States, "");
-            for (var i = 0; i < process.Transitions.Count; i++)
-                CheckItem(context, process.Transitions[i].Id, process.Transitions[i].Stereotypes, process.Transitions[i].Properties, Ptr.At("/transitions", i), "transition", report);
-            for (var i = 0; i < process.Events.Count; i++)
-                CheckItem(context, process.Events[i].Id, process.Events[i].Stereotypes, process.Events[i].Properties, Ptr.At("/events", i), "event", report);
-        }
-
-        void CheckStates(IReadOnlyList<ProcessState> states, string pointer)
-        {
-            for (var i = 0; i < states.Count; i++)
+            if (source.StereotypeKey is not null)
+                continue; // a stereotype's keywords are judged with the stereotype (BuiltinRules.CheckStereotype)
+            foreach (var (pointer, xref) in source.Keywords)
             {
-                var at = Ptr.At(pointer + "/states", i);
-                CheckItem(context, states[i].Id, states[i].Stereotypes, states[i].Properties, at, "state", report);
-                CheckStates(states[i].States, at);
+                if (xref.Of is { } of && of != XRef.ElementScope && !(model.TryGetEntry(of, out var entry) && entry.OwnerId == of))
+                    fileDiagnostics.Add(RuleCatalog.Create("MQ2009", $"x-ref of names {of}, which is no element of the model.", null, source.Path, pointer + "/of"));
             }
         }
     }
 
-    private void CheckItem(ValidationContext context, ElementBase item, string pointer, string kind, Report report) =>
-        CheckItem(context, item.Id, item.Stereotypes, item.Properties, pointer, kind, report);
-
-    // A process node (state, transition, event) is not an ElementBase but carries stereotypes and properties the same way.
-    private void CheckItem(ValidationContext context, string? id, IReadOnlyList<string> stereotypes, IReadOnlyDictionary<string, JsonElement> properties,
-        string pointer, string kind, Report report)
+    /// <summary>
+    /// Evaluates each holder of the element's properties (<see cref="PropertyHost.Of"/>) against the applicable extensions and the
+    /// parameters of the stereotypes it carries.
+    /// </summary>
+    /// <param name="context">The validation context.</param>
+    /// <param name="report">The report of the element's document.</param>
+    public void Check(ValidationContext context, Report report)
     {
+        if (_extensions.Count == 0 && _parameters.Count == 0)
+            return;
+        var element = report.Document.Element;
+        foreach (var host in PropertyHost.Of(element, null))
+        {
+            // The element's set holds its defaults (next-phase-2-design.md section 3.1); a sub-element's is its own list's.
+            var effective = host.Pointer.Length == 0 ? context.Model.EffectiveStereotypes(element) : context.Model.EffectiveStereotypes(host.Stereotypes);
+            CheckItem(context.Model, host.Id, effective, host.Stereotypes.Count > 0, host.Properties, host.Pointer, host.KindName, report);
+        }
+    }
+
+    private void CheckItem(ModelSnapshot model, string? id, IReadOnlyList<AppliedStereotype> effective, bool hasList,
+        IReadOnlyDictionary<string, JsonElement> properties, string pointer, string kind, Report report)
+    {
+        if (properties.Count == 0 && effective.Count == 0 && _extensions.Count == 0)
+            return;
+        var keys = effective.Count == 0 ? [] : effective.Select(s => s.Stereotype.Key).ToList();
         JsonElement? merged = null;
         foreach (var (document, schema) in _extensions)
         {
             var target = document.Schema.AppliesTo;
             if (target.Kinds.Count > 0 && !target.Kinds.Contains(kind, StringComparer.Ordinal))
                 continue;
-            if (target.Stereotypes.Count > 0 && !target.Stereotypes.Any(s => stereotypes.Contains(s, StringComparer.Ordinal)))
+            if (target.Stereotypes.Count > 0 && !target.Stereotypes.Any(s => keys.Contains(s, StringComparer.Ordinal)))
                 continue;
-            merged ??= Merge(context.Model, stereotypes, properties);
+            merged ??= Merge(effective, properties);
+            Evaluate(schema, merged.Value, "MQ5001", $"Extension '{document.Schema.Name}'", document.Path, "the properties do not match the extension schema", null);
+        }
+
+        if (keys.Count == 0)
+            return;
+        foreach (var (source, key, schema) in _parameters)
+        {
+            if (!source.AppliesTo(kind, keys))
+                continue;
+            merged ??= Merge(effective, properties);
+            Evaluate(schema, merged.Value, "MQ2018", $"Stereotype '{key}' parameters", source.Path, "the properties do not match its parameters", key);
+        }
+
+        void Evaluate(JsonSchema schema, JsonElement values, string rule, string what, string path, string mismatch, string? stereotypeKey)
+        {
             EvaluationResults results;
             try
             {
-                results = schema.Evaluate(merged.Value, _evaluation);
+                results = schema.Evaluate(values, _evaluation);
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
-                report.Add("MQ5004", $"Extension '{document.Schema.Name}' ({document.Path}) could not be evaluated: {e.Message}", pointer + "/properties", id);
-                continue;
+                report.Add(rule == "MQ5001" ? "MQ5004" : "MQ2019", $"{what} ({path}) could not be evaluated: {e.Message}", pointer + "/properties", id);
+                return;
             }
 
             if (results.IsValid)
-                continue;
+                return;
             var any = false;
             foreach (var detail in results.Details ?? [])
             {
@@ -191,54 +180,76 @@ internal sealed class ExtensionSet
                         continue;
                     var location = detail.InstanceLocation.ToString();
                     var text = keyword.Length == 0 ? message : keyword + ": " + message;
-                    var (at, origin) = Locate(context.Model, stereotypes, properties, pointer, location);
-                    report.Add("MQ5001", $"Extension '{document.Schema.Name}': properties{location} {text}{origin}", at, id);
+                    var (at, origin) = Locate(model, effective, hasList, properties, pointer, location, stereotypeKey);
+                    report.Add(rule, $"{what}: properties{location} {text}{origin}", at, id);
                     any = true;
                 }
             }
 
             if (!any)
-                report.Add("MQ5001", $"Extension '{document.Schema.Name}': the properties do not match the extension schema.", pointer + "/properties", id);
+                report.Add(rule, $"{what}: {mismatch}.", pointer + "/properties", id);
         }
     }
 
     /// <summary>
     /// The pointer of a failing property value: in the item's own <c>properties</c>, or, for a value that comes from a stereotype's
-    /// <c>defaultProperties</c>, the stereotype's entry in the item's <c>stereotypes</c> list (the file has no value to point at).
+    /// <c>defaultProperties</c>, that stereotype's entry in the item's <c>stereotypes</c> list (for an implied stereotype, the entry
+    /// of the stereotype that implies it): the file has no value to point at. A missing value a stereotype's parameters require
+    /// (<paramref name="stereotypeKey"/>) points at that stereotype's entry too. A default stereotype has no entry: it points at the
+    /// <c>stereotypes</c> list, or at the item when its file has none (next-phase-2-design.md section 3.1); the origin names its
+    /// holder (<c>schema 'billing'</c>, <c>package 'Billing'</c>).
     /// </summary>
-    private static (string Pointer, string Origin) Locate(ModelSnapshot model, IReadOnlyList<string> stereotypes, IReadOnlyDictionary<string, JsonElement> properties,
-        string pointer, string location)
+    private static (string Pointer, string Origin) Locate(ModelSnapshot model, IReadOnlyList<AppliedStereotype> effective, bool hasList,
+        IReadOnlyDictionary<string, JsonElement> properties, string pointer, string location, string? stereotypeKey)
     {
         var segments = Ptr.Split(location);
-        if (segments.Length == 0 || properties.ContainsKey(segments[0]))
-            return (pointer + "/properties" + location, "");
-        for (var i = stereotypes.Count - 1; i >= 0; i--)
+        if (segments.Length == 0)
         {
-            if (model.GetStereotype(stereotypes[i]) is { } stereotype && stereotype.DefaultProperties.ContainsKey(segments[0]))
-                return (Ptr.At(pointer + "/stereotypes", i), $" (the value comes from the defaultProperties of stereotype '{stereotype.Key}')");
+            if (stereotypeKey is not null && effective.FirstOrDefault(s => s.Stereotype.Key == stereotypeKey) is { } carrier)
+                return (EntryPointer(carrier), Implied(carrier));
+            return (pointer + "/properties" + location, "");
+        }
+
+        if (properties.ContainsKey(segments[0]))
+            return (pointer + "/properties" + location, "");
+        for (var i = effective.Count - 1; i >= 0; i--)
+        {
+            var applied = effective[i];
+            if (applied.Stereotype.DefaultProperties.ContainsKey(segments[0]))
+                return (EntryPointer(applied), $" (the value comes from the defaultProperties of stereotype '{applied.Stereotype.Key}'{Implied(applied)})");
         }
 
         return (pointer + "/properties" + location, "");
+
+        string EntryPointer(AppliedStereotype applied) =>
+            applied.Entry >= 0 ? Ptr.At(pointer + "/stereotypes", applied.Entry) : hasList ? pointer + "/stereotypes" : pointer;
+
+        string Implied(AppliedStereotype applied) =>
+            (applied.ImpliedBy is { } by ? $", which '{by}' implies" : "")
+            + (applied.DefaultHolder is { } holder ? ", a default of " + BuiltinRules.DefaultHolderName(model, applied.Source, holder) : "");
     }
 
-    /// <summary>Merges the stereotype default properties (stereotype order, later wins) under the item's own properties.</summary>
+    /// <summary>
+    /// Merges the default properties of the item's effective stereotypes (implied first, then own; later wins) under the item's own
+    /// properties.
+    /// </summary>
     /// <param name="model">The snapshot.</param>
     /// <param name="item">The element or sub-element.</param>
     /// <returns>The merged properties as a JSON object with ordinal key order.</returns>
     public static JsonElement Merge(ModelSnapshot model, ElementBase item)
     {
+        ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(item);
-        return Merge(model, item.Stereotypes, item.Properties);
+        // A top-level element's set holds its defaults (next-phase-2-design.md section 3.1).
+        return Merge(item is Element element ? model.EffectiveStereotypes(element) : model.EffectiveStereotypes(item.Stereotypes), item.Properties);
     }
 
-    private static JsonElement Merge(ModelSnapshot model, IReadOnlyList<string> stereotypes, IReadOnlyDictionary<string, JsonElement> properties)
+    private static JsonElement Merge(IReadOnlyList<AppliedStereotype> effective, IReadOnlyDictionary<string, JsonElement> properties)
     {
         var merged = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
-        foreach (var key in stereotypes)
+        foreach (var applied in effective)
         {
-            if (model.GetStereotype(key) is not { } stereotype)
-                continue;
-            foreach (var (name, value) in stereotype.DefaultProperties)
+            foreach (var (name, value) in applied.Stereotype.DefaultProperties)
                 merged[name] = value;
         }
 
@@ -247,7 +258,11 @@ internal sealed class ExtensionSet
         return JsonSerializer.SerializeToElement(merged);
     }
 
-    private static bool InsideDiscardedBranch(EvaluationResults node)
+    /// <summary>Whether a result sits in a branch the evaluation discards (an <c>if</c> or <c>not</c>, an alternative that another
+    /// one satisfied).</summary>
+    /// <param name="node">The result.</param>
+    /// <returns><see langword="true"/> when its failures do not count.</returns>
+    internal static bool InsideDiscardedBranch(EvaluationResults node)
     {
         for (var child = node; child.Parent is { } parent; child = parent)
         {

@@ -24,6 +24,15 @@ public abstract record ElementBase
     /// <summary>Markdown text, or a reference to a sidecar Markdown file beside the element's file.</summary>
     public Description? Description { get; init; }
 
+    /// <summary>Markdown text: why the element is shaped this way. No sidecar.</summary>
+    public string? Rationale { get; init; }
+
+    /// <summary>A URL or a reference (such as <c>ADR-0042</c>) of the decision record. Not an element id, and not checked.</summary>
+    public string? Decision { get; init; }
+
+    /// <summary>The element's status, or <see langword="null"/> when none is written (there is no default).</summary>
+    public ElementStatus? Status { get; init; }
+
     /// <summary>Tag keys, in the order written.</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 
@@ -32,6 +41,7 @@ public abstract record ElementBase
     public string? Category { get; init; }
 
     /// <summary>Stereotype keys, in application order.</summary>
+    [StereotypeKeys]
     public IReadOnlyList<string> Stereotypes { get; init; } = [];
 
     /// <summary>Custom property values, validated by extension schemas.</summary>
@@ -74,6 +84,7 @@ public abstract record ElementBase
 [JsonDerivedType(typeof(Process))]
 [JsonDerivedType(typeof(Actor))]
 [JsonDerivedType(typeof(Scenario))]
+[JsonDerivedType(typeof(Migration))]
 public abstract record Element : ElementBase
 {
     /// <summary>
@@ -89,6 +100,15 @@ public abstract record Element : ElementBase
     /// <summary>The element's kind.</summary>
     [JsonIgnore]
     public abstract ElementKind Kind { get; }
+
+    /// <summary>
+    /// Stereotype keys that a database schema's or a package's default stereotypes would give the element, left out of its
+    /// effective set with the stereotypes they imply (next-phase-2-design.md section 3.1). Only defaults can be excluded (MQ2029).
+    /// <see langword="null"/> when the file does not state the key. Virtual only so that <see cref="Migration"/>, whose file has no such
+    /// key, can leave it out of its JSON contract.
+    /// </summary>
+    [StereotypeKeys]
+    public virtual IReadOnlyList<string>? ExcludeStereotypes { get; init; }
 }
 
 /// <summary>Per-pack generation hints on an element (<c>generation.&lt;pack&gt;</c>).</summary>

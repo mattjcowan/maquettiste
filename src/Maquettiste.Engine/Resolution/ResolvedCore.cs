@@ -73,8 +73,8 @@ public abstract class RObject : IResolvedObject
 }
 
 /// <summary>
-/// The annotations a model file carries besides its structure: display names, description, tags, category, stereotypes, custom
-/// properties and generation hints. Every conceptual object (<see cref="RElement"/>) has them, and so does every physical object
+/// The annotations a model file carries besides its structure: display names, description, rationale, decision and status, tags,
+/// category, stereotypes, custom properties and generation hints. Every conceptual object (<see cref="RElement"/>) has them, and so does every physical object
 /// (<see cref="RDatabase"/>, <see cref="RSchema"/>, <see cref="RTable"/>, <see cref="RColumn"/>, <see cref="RView"/>,
 /// <see cref="RSequence"/>): a physical object reads them from its own file or entry (the database file and its schema entries, a
 /// designed or imported table, a synthesized table's overlay and its column entries, a view or sequence file) and never from the
@@ -84,19 +84,41 @@ public abstract class RObject : IResolvedObject
 public abstract class RAnnotated : RObject
 {
     /// <summary>
-    /// The display name. A conceptual object falls back to its name; a physical object holds its file's value, or the empty string
-    /// when the file sets none or the object has no file.
+    /// The display name. A conceptual object falls back to its name, so it always has one; a physical object holds its file's value,
+    /// or <see langword="null"/> when the file sets none or the object has no file.
     /// </summary>
-    public string DisplayName { get; internal set; } = "";
+    public string? DisplayName { get; internal set; }
 
     /// <summary>
-    /// The plural name. A conceptual object falls back to the inflector; a physical object holds its file's value, or the empty
-    /// string when the file sets none or the object has no file.
+    /// The plural name. A conceptual object falls back to the inflector, so it always has one; a physical object holds its file's
+    /// value, or <see langword="null"/> when the file sets none or the object has no file.
     /// </summary>
-    public string PluralName { get; internal set; } = "";
+    public string? PluralName { get; internal set; }
 
-    /// <summary>The description text, with a sidecar file loaded; <see langword="null"/> when there is none.</summary>
+    /// <summary>
+    /// The owning package, or <see langword="null"/> for the root (for a package: its parent). A conceptual object holds its own; a
+    /// physical object its file's, where a table without one falls back to its entity's or relation's; a seed falls back to its
+    /// target's and a scenario to its process's. Membership never changes where a table goes in a database.
+    /// </summary>
+    public RPackage? Package { get; internal set; }
+
+    /// <summary>
+    /// The description text, with a sidecar file loaded; <see langword="null"/> when there is none. An entity attribute with none of its own
+    /// shows the comment of the column its entity's bindings map it to (<see cref="RAttribute.DescriptionColumn"/>).
+    /// </summary>
     public string? Description { get; internal set; }
+
+    /// <summary>Markdown text: why the object is shaped this way, from its own file or entry; <see langword="null"/> when there is none.</summary>
+    public string? Rationale { get; internal set; }
+
+    /// <summary>A URL or a reference (such as <c>ADR-0042</c>) of the decision record; <see langword="null"/> when there is none.</summary>
+    public string? Decision { get; internal set; }
+
+    /// <summary>
+    /// The status as its JSON value (<c>proposed</c>, <c>approved</c>, <c>deprecated</c> or <c>retired</c>); <see langword="null"/> when
+    /// none is written.
+    /// </summary>
+    public string? Status { get; internal set; }
 
     /// <summary>Tag keys.</summary>
     public IReadOnlyList<string> Tags { get; internal set; } = [];
@@ -129,12 +151,12 @@ public abstract class RElement : RAnnotated
 {
     /// <summary>The name.</summary>
     public string Name { get; internal set; } = "";
-
-    /// <summary>The owning package, or <see langword="null"/> for the root (for a package: its parent).</summary>
-    public RPackage? Package { get; internal set; }
 }
 
-/// <summary>A resolved category.</summary>
+/// <summary>
+/// A resolved category: the one instance every annotated object in it carries as its category, and an item of its
+/// <see cref="RCategoryTree"/>.
+/// </summary>
 public sealed class RCategory
 {
     /// <summary>The category id.</summary>
@@ -145,6 +167,18 @@ public sealed class RCategory
 
     /// <summary>Names from the root to this category, joined with <c>/</c>.</summary>
     public string Path { get; internal set; } = "";
+
+    /// <summary>The parent category, or <see langword="null"/> for a root (or a parent the tree lacks).</summary>
+    public RCategory? Parent { get; internal set; }
+
+    /// <summary>The child categories, in sibling order: by <see cref="Order"/> (none counts as 0), then file order.</summary>
+    public IReadOnlyList<RCategory> Children { get; internal set; } = [];
+
+    /// <summary>The position among siblings, or <see langword="null"/> when the file sets none.</summary>
+    public int? Order { get; internal set; }
+
+    /// <summary>The description text, or <see langword="null"/> when there is none.</summary>
+    public string? Description { get; internal set; }
 }
 
 /// <summary>A stereotype applied to an object.</summary>
@@ -161,6 +195,19 @@ public sealed class RStereotype
 
     /// <summary>The display color.</summary>
     public string? Color { get; internal set; }
+
+    /// <summary>
+    /// The key of the stereotype the object carries that implies this one (next-phase-1-design.md section 4.2), or
+    /// <see langword="null"/> when the object lists it itself.
+    /// </summary>
+    public string? ImpliedBy { get; internal set; }
+
+    /// <summary>
+    /// Where the object's stereotype comes from (next-phase-2-design.md section 3.1): <c>own</c> (its own list), <c>implied</c> (by an own
+    /// one), <c>schema-default</c> or <c>package-default</c> (a database schema's or a package's <c>defaultStereotypes</c>, or a
+    /// stereotype one of them implies). For an attribute's <see cref="RAttribute.FromStereotype"/>, where its owner got the stereotype.
+    /// </summary>
+    public string Source { get; internal set; } = "own";
 }
 
 /// <summary>
@@ -195,13 +242,13 @@ public sealed class ResolvedModel
     /// <summary>Reference types, by (name, id).</summary>
     public RList<RReferenceType> ReferenceTypes { get; internal init; } = RList<RReferenceType>.Empty;
 
-    /// <summary>Seeds, by (name, id).</summary>
+    /// <summary>Seeds in merge order: by the qualified name of the package the seed's file states (none first), then name, then id.</summary>
     public RList<RSeed> Seeds { get; internal init; } = RList<RSeed>.Empty;
 
     private RList<RSeed>? _seedsInOrder;
 
     /// <summary>
-    /// Seeds in insert order: a seed whose rows another seed's rows name comes first; ties by (dependency depth, name, id). Ordered on
+    /// Seeds in insert order: a seed whose rows another seed's rows name comes first; ties by dependency depth, then merge order. Ordered on
     /// first read (it reads the rows of every seed whose cells name other rows).
     /// </summary>
     public RList<RSeed> SeedsInOrder
@@ -234,6 +281,21 @@ public sealed class ResolvedModel
 
     /// <summary>Databases, by name.</summary>
     public RList<RDatabase> Databases { get; internal init; } = RList<RDatabase>.Empty;
+
+    /// <summary>
+    /// Every open migration fact (next-phase-1-design.md section 3.2), by (database name, applied order): each database's
+    /// <see cref="RDatabase.Migrations"/> in turn.
+    /// </summary>
+    public RList<RMigration> Migrations { get; internal init; } = RList<RMigration>.Empty;
+
+    /// <summary>The stereotype definitions (next-phase-1-design.md section 5.5), one per key, by key.</summary>
+    public RList<RStereotypeDefinition> Stereotypes { get; internal init; } = RList<RStereotypeDefinition>.Empty;
+
+    /// <summary>The tag vocabularies, one per scope: the global one first, then by (package qualified name, id).</summary>
+    public RList<RTagVocabulary> TagVocabularies { get; internal init; } = RList<RTagVocabulary>.Empty;
+
+    /// <summary>The category trees, one per scope: the global one first, then by (package qualified name, id).</summary>
+    public RList<RCategoryTree> CategoryTrees { get; internal init; } = RList<RCategoryTree>.Empty;
 
     /// <summary>Resolution diagnostics.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics { get; internal init; } = [];

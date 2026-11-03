@@ -33,11 +33,13 @@ Tests: `tests/Maquettiste.Engine.Tests/Generation/` (a fake renderer that honors
 2. Unfinished journal read and overlaid on the manifests (every mode), so files an interrupted run wrote are never hand edits.
 3. Load (`ModelStore.GetSnapshotAsync`, which rescans by stat), validate (any error → `Invalid`, nothing written), pack load
    (any error → `Invalid`), resolve (any error → `Invalid`), schema diffs (only when a run pack sets `usesSchemaDiff`; in check
-   mode a non-empty diff is MQ6018, drift), plan (errors → `Invalid`), manifests (all packs), hasher. The manifests, and outside
-   check mode the run packs' unit states, are read on the thread pool from the end of pack loading, beside resolve and plan; the
-   run awaits the manifests after planning, and the skip stage awaits the state read before the change detector loads the states
-   again (the store reuses what it decoded). A run that stops earlier leaves those reads to finish on their own (their failures
-   are observed, never thrown).
+   mode a non-empty diff is MQ6018, drift; with `GenerationRequest.Against` each database diffs from the baseline
+   model's capture instead, read under today's keys, no committed snapshot is read, prepared or written, check mode adds
+   no MQ6018 and the baseline's `ModelHash` folds into every `d:` key), plan (errors → `Invalid`), manifests (all
+   packs), hasher. The manifests, and outside check mode the run packs' unit states, are read on the thread pool from
+   the end of pack loading, beside resolve and plan; the run awaits the manifests after planning, and the skip stage
+   awaits the state read before the change detector loads the states again (the store reuses what it decoded). A run
+   that stops earlier leaves those reads to finish on their own (their failures are observed, never thrown).
 4. Skip (stage 5); then the pinned version of each formatter that a unit to render names is verified (MQ6008 → `Invalid`);
    formatters chosen by extension are verified lazily by the post-processor (`FormatterVersionsVerified = false`).
    mode a non-empty diff is MQ6018, drift; a snapshot file that cannot be read is MQ1001 on that file → `Invalid`, where it used
@@ -56,14 +58,17 @@ Tests: `tests/Maquettiste.Engine.Tests/Generation/` (a fake renderer that honors
    skipped units, hand-edit policy per pack (`Request.HandEdits` ← `packs.<name>.handEdits` ← `handEdits`; `fail` in check mode),
    `AllPacks` when no pack filter, diffs in dry run only, the journal in apply only. Every run covers every root (spec-errata E42
    removed `GenerationRequest.Roots`).
-8. Apply only, when the outcome is `Succeeded`: snapshots with a non-empty diff are saved at `ToRevision`
-   (the bytes were serialized on the thread pool since the diff, see "Performance notes (WA)"). Then `Journal.EndAsync`. A cancelled or failed apply closes the journal without `end` (`DisposeAsync`), so the next run resumes.
+8. Apply only, when the outcome is `Succeeded`: snapshots with a non-empty diff are saved at `ToRevision`, with the
+   aliases of the snapshot they replace and their `facts` extended by the diff's `Facts`, pruned to the database's facts
+   (the bytes were serialized on the thread pool since the diff, see "Performance notes (WA)"). Then `Journal.EndAsync`.
+   A cancelled or failed apply closes the journal without `end` (`DisposeAsync`), so the next run resumes.
 
-Outcome: errors other than MQ6009, MQ6010 and MQ6018 → `Invalid`; a conflict (or in check mode any hand edit) → `Conflicts`;
-in check mode an added, modified, deleted or orphaned file (an owned orphan, `OrphanedOwned`, included: an apply would drop its
-manifest line), a stale manifest entry or MQ6018 → `Drift`; else `Succeeded`. Check renders every root (E42); a block whose
-target file is missing without `createFile` (MQ6028, info) is not drift.
-Cancellation returns `Cancelled`; any other exception (an I/O failure while writing) propagates, with the journal left to resume.
+Outcome: errors other than MQ6009, MQ6010 and MQ6018 → `Invalid`; a conflict (or in check mode any hand edit) →
+`Conflicts`; in check mode an added, modified, deleted or orphaned file (an owned orphan, `OrphanedOwned`, included: an
+apply would drop its manifest line; a `once` file of a pack that still exists, on disk but no longer produced, is `Kept`
+with its entry and is not drift), a stale manifest entry or MQ6018 → `Drift`; else `Succeeded`. Check renders every root
+(E42); a block whose target file is missing without `createFile` (MQ6028, info) is not drift. Cancellation returns
+`Cancelled`; any other exception (an I/O failure while writing) propagates, with the journal left to resume.
 
 ## Last-run record (one-shot hosts; WB)
 
@@ -89,6 +94,9 @@ its model store warm and neither reads nor writes the record, so its runs are un
   listing, the outputs decoded only once every input matched. A file that cannot be read, or a path the file system refuses (only a
   record whose trailer was made to match could hold one), makes the replay give way to the full run instead of failing the run. A miss costs about 60 ms on the benchmark repo in a fresh
   process, most of it the thread pool starting, which the load then does not pay.
+- **Against a baseline, or scoped.** A run with `GenerationRequest.Against`, `Units` or `Elements` never answers from
+  the record or writes one (the key holds none of them, `LastRun.Serves`); an apply run with `ReuseLastRun` deletes it
+  first.
 - **Recording.** Any other apply run with `ReuseLastRun` first deletes the record, hashes the templates folder (before the packs
   load, so a template changed during the run shows as changed), and after the run writes a new record when the run `Succeeded`, no
   run pack has a non-empty schema diff (saving the snapshot changes what `d:` keys hash, so the next run is not a no-op), no
@@ -185,12 +193,15 @@ no watch member.
   policies; a change that affects a hand-edited path of the plan is `Stale`, one that affects none is ignored. Output roots are
   pinned by `PlanFile.Root`.
 
-- Known gap (design request, not a deviation): after an apply writes a `once` migration and advances the snapshot, the migration
-  unit renders nothing, so the migration is an owned orphan. The next `--check` reports it as drift (design section 16, SPEC
-  section 17) and the next apply drops its `o:` manifest line (D29), so a repository is stable only after a second apply. The
-  requested design change (D29, section 12.3): an owned orphan whose file still exists keeps its entry and is reported `Kept`; the
-  entry is dropped only once the file is gone. An earlier integration-stage change that stopped check from counting owned orphans
-  was reverted (WI review): it made `--check` pass while the next apply still changed the committed manifest.
+- Once files stay owned (next-phase-1-design.md section 3.2, amending D29 and engine-design.md section 12.3): after an
+  apply writes a `once` migration and advances the snapshot, the migration unit renders nothing, so the migration is an
+  owned orphan. `WriteRun.OrphanAsync` keeps such an orphan's manifest entry and reports it `Kept` while its file is on
+  disk and its pack still exists, unless it is a companion (`StripCompanion` tells them apart); a check right after the
+  apply is clean and the next apply leaves the committed manifest alone. A companion no run produces, an owned file of a
+  removed pack and an owned file gone from disk are `OrphanedOwned`: the entry is dropped and whatever is on disk stays.
+  Before this, every owned orphan was `OrphanedOwned`, so a repository was stable only after a second apply (the gap the
+  WI review raised; an earlier change that stopped check from counting owned orphans had been reverted because the next
+  apply still changed the committed manifest).
 - Check mode also reports, as `Modified` with the new manifest hash, an output whose manifest entry is missing or differs although
   the file on disk already has the new bytes (the manifest would change on apply): drift. The writer's `Unchanged` decision alone
   would hide it. Since E42 this covers every output (before, committed roots only); a block compares the hash of its lines (a
@@ -263,8 +274,18 @@ as `/private/var/...`. `WatchPaths.ResolveLinks` resolves the configured repo an
 and before the path reaches the store, so a manifest write under the real prefix no longer triggers a second run.
 ## Performance notes (WA, incremental runs with the example packs)
 
+- **Facts in the schema diff** (next-phase-1-design.md section 3.2). Before every diff the baseline is read under
+  today's keys: the committed snapshot's aliases (`SnapshotAliases.Normalize`), then the open `rekey` facts it does not
+  list as rendered, in applied order (`BaselineCheck.ToTodayKeys`); `GenerationRun.DiffFromCommitted` does this for runs
+  and for `LazySchemaDiffs` alike, and `generate --against` gets it from `BaselineCheck.CapturesAsync`.
+  `SchemaDiffResult.Facts` lists the complete and released facts the baseline lacks, in applied order: a fact alone
+  makes the diff non-empty (so check reports MQ6018 and the revision advances), and their ids and content hashes reach
+  the diff's hash. `FromState` and `ToState` (12 hex digits of SHA-256 over each side's canonical capture without
+  revision, aliases and facts; the baseline as stored, so a diff's `FromState` is the `ToState` of the run that saved
+  its baseline) are computed on first read. `FromBaseline` marks the diffs of a `generate --against` run, where nothing
+  counts revisions (sql-ddl then names a migration by its content alone).
 - **Schema snapshots are serialized while the run renders.** In apply mode, `SchemaDiffsAsync` diffs with
-  `SchemaDiffer.DiffAndCapture` (one capture instead of two) and, for each database whose diff is not empty, starts
+  one capture instead of two (`GenerationRun.DiffFromCommitted`) and, for each database whose diff is not empty, starts
   `SnapshotStore.Prepare` on the thread pool with that capture stamped `ToRevision` (`PreparedRun.PendingSnapshots`).
   `SaveSnapshotsAsync` awaits the prepared bytes and writes them (`SnapshotStore.WriteAsync`), under the same condition as
   before (apply, `Succeeded`). A snapshot store or differ that is not the engine's own (a test double) takes the old
@@ -278,6 +299,21 @@ and before the path reaches the store, so a manifest write under the real prefix
   the schema diff the run calls `SnapshotStore.Retain` with its databases (none when no pack diffs), so the store does not hold a
   removed or renamed database's snapshot.
 - The diff also runs its capture and unchanged-table check on `EngineOptions.EffectiveParallelism` threads (`SchemaDiff/README.md`).
+
+## Scoped runs (next-phase-1-design.md section 5.6)
+
+- `GenerationRequest.Units` and `Elements` make a `UnitSelection` (`UnitSelection.cs`). When every unit value names its
+  pack, only those packs load (intersected with `Packs`; a pack only a unit names and whose `pack.json` is missing is
+  left out, so the value is MQ6032 rather than the loader's MQ6001). The values resolve against the loaded packs (MQ6032
+  → `Invalid`), and at the end of `PrepareAsync` the plan keeps the selected units only, so skip, render, write, plan
+  capture and plan apply see nothing else; a selection matching no planned unit and no manifest entry is MQ6034 (a
+  warning, an empty plan). A plan stores the filters in its request and `ApplyLockedAsync` plans again with them.
+- `WriteContext.Selection`: the writer keeps every manifest entry of an unselected unit (and counts its path as
+  produced, so another pack's orphan there is not deleted) and carries over the unselected units' states; orphans of
+  selected units are deleted as usual, so selecting a deleted element's id removes its outputs. `AllPacks` is off for a
+  scoped run.
+- `RenderContext.Scoped`: a rendered unit whose keys hold `d:` fails with MQ6033 and keeps its outputs and state. A
+  scoped run prepares no snapshot for saving and never calls `SaveSnapshotsAsync`.
 
 ## Previews (2026-10-05, generation-ui.md section 5.2 "Bounds")
 

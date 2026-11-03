@@ -20,15 +20,16 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | types/ | value objects and custom scalar types | reusable across attributes |
 | reference-types/ | reference type: built-in `code` and `label`, plus your own fields | an attribute's `type` may name one (single, or `collection`); defaults and cells use the row's code; storage is template-defined unless `referenceData.strategies` declares one |
 | seeds/<target>/ | rows of an entity, relation or reference type | one row per line with its own id; owned by its target and deleted with it |
-| locales/<locale>/ | translation shards (`kind: "locale-shard"`) keyed by id | only display name, plural name, description, and a row's label and description |
+| locales/<locale>/ | translation shards (`kind: "locale-shard"`) keyed by id | only display name, plural name, description, a row's label and description, and the text of a custom property marked `x-translatable` (field `properties/<name>`) |
 | databases/<db>/ | database, tables (overlays), views, sequences | tables from entities store only overrides |
 | databases/<db>/routines/ | routine (`kind: "routine"`): a function or procedure, `parameters` typed by a built-in type or a database type id, `returns`, a `body` per dialect | `dependsOn` orders it; routines are not overloaded |
 | databases/<db>/types/ | database type (`kind: "database-type"`): a domain, composite, enum or range the database owns | a column uses it by naming its id or name in `nativeType` |
 | databases/<db>/objects/ | SQL object (`kind: "sql-object"`): a trigger, grant, extension or anything else, statements per dialect | `phase` before or after the tables; `dependsOn` orders it |
 | databases/<db>/queries/ | query (`kind: "query"`): `from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`, `collections` as JSON trees over the database's tables and views, with an `entity` as the row shape or, without one, the select list | column refs are `alias.<column key>` (the key `get_database_view` lists: an attribute id, a designed column's id), names accepted; never SQL text but an `sql` expression per dialect |
+| databases/<db>/migrations/open/ | migration fact (`kind: "migration"`): what a change of the database's shape means for its stored rows (`rename`, `change-type`, `drop`, `backfill`, `raw`, ...) | recorded by the saves themselves; complete a pending one, never delete one by hand |
 | mappings/ | projection overrides of older models, and relation mappings (`foreignKey`, junctions) | new work binds entities in their own file instead |
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
-| actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; not in a domain |
+| actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
 | diagrams/ | canvas membership and positions only (a process's diagram holds its chart's places) | never own elements |
 | vocabularies/ | tags, categories, stereotypes | |
@@ -46,12 +47,38 @@ clobber a concurrent edit or leave a dangling id.
 
 1. Find: `get_project`, then `get_model_index` (filter by `kind`, `package`, `tag`, `category`, `stereotype`, `query`)
    for ids; `get_references` for where an element is used; `get_database_view` for a database's tables and columns.
-2. Read: `get_schema` for the kind before building a document (its `extensions` constrain `properties`); `get_element` returns the document (`json`) and its `hash`.
+   `get_project`, `list_validation_rules` and `tag_usage` answer a short summary first; ask for more only when you need
+   it: `get_project` with `sections` (`settings`, `packs`, `extensions`), `list_validation_rules` with `family`
+   (`MQ41xx`), `ids` or `query` for full entries, `tag_usage` with `tag` for the ids of the elements that hold one tag.
+   Pass a page's `next` as `cursor` until it is null.
+2. Read: `get_schema` for the kind before building a document (its `extensions` and `stereotypeParameters` constrain
+   `properties`); `get_element` returns the document (`json`) and its `hash`. Read an element's `rationale` and
+   `status` before you edit it: the rationale says why it is shaped this way, and a `deprecated` or `retired` element is
+   not one to build on.
    Reading many elements: `get_model_kinds` (`by: "package"`) says what there is, `get_elements` returns documents in pages
    (`fields` keeps only the members you need), `get_resolved_model` returns what generation sees (resolved attributes, tables,
    processes) as flat records; pass each page's `next` as `cursor` until it is null, and never loop `get_element` over thousands of ids.
 3. Change: `save_element` (the whole edited document plus `expectedHash` = the hash you read), `create_element`,
    `delete_element`, or `apply_batch` for several changes that must land together (all or nothing).
+   - To change part of a large element, `patch_element` takes its `id` (an id, never a name), an RFC 6902 `patch` over
+     the document `get_element` returned and the same `expectedHash`, so you do not send the whole document back.
+     Put a `test` before a `replace` to check you change what you read: `[{"op":"test","path":"/columns/3/name",
+     "value":"body"},{"op":"replace","path":"/columns/3/name","value":"content"}]` renames the column.
+     It saves like `save_element` (conflict check, validation, `facts`); a new column added without an id gets one,
+     listed in `ids`. A path that does not resolve or a failed `test` is MQ1016 and nothing is written.
+   - In `apply_batch`, write names instead of ids: every id field and reference takes a qualified name, `@kind:path`
+     with the name as stored (`@database:main`, `@table:billing.notes`, `@column:billing.notes.body`,
+     `@entity:Billing.Invoice`, `@attribute:Invoice.total`), and `"as": "$pm"` on a create names the new element for
+     the whole batch, so other operations write `"$pm"` where its id goes. Send no ids for new elements and
+     sub-elements: the engine mints them and the answer's `ids` lists every name and minted id. An ambiguous name
+     (MQ1013) lists the candidates; use a longer form or the id. Run it with `dryRun: true` first: nothing is written,
+     and the answer holds a diff per file and the diagnostics the change adds or removes.
+   - Keep the ids of sub-elements you re-send: a sub-element without an id in an update is new, and dropping one and
+     adding one with the same name without its id is refused (MQ1014).
+   - Custom property values still written as names where an `x-ref` types an id (MQ2010): `apply_batch`
+     `{"op":"names-to-ids"}` (optionally `"elementIds":[...]`) converts them all; never look the ids up one by one.
+     Tags that carry a value (`status:draft`) move into a declared custom property with
+     `{"op":"tags-to-property","prefix":"status:","name":"status"}`. Run both with `dryRun: true` first.
    - `conflict`: the file changed since you read it; nothing was written. Merge your change into `current` and retry with
      its `hash`. Never retry blindly with the new hash and your old document.
    - `invalid`: nothing was written; fix what `diagnostics` name (rule id, JSON pointer).
@@ -60,20 +87,38 @@ clobber a concurrent edit or leave a dangling id.
      what cannot exist without the element (call `delete_element` with `dryRun: true` first and read the plan).
    - Renaming an attribute or element is a plain save of the new `name`: references are ids, so nothing else changes
      (an element rename also moves its file).
+   - A save that renames, retypes or drops a table, column or sequence, or makes a column not null, records migration
+     facts in the same write and lists them in `facts`. A pending one (MQ4101 in the answer's diagnostics; the save went
+     through) lacks its intent: read it with `get_element` and complete it with `save_element` (a `conversion`, a
+     `dataCheck` for a narrowing, an `acknowledge` for a drop, a `value` for a backfill), or set `held: true`. Never
+     delete a fact file by hand: `fold_migrations` (CLI `maquettiste migration fold`) removes stale facts and joins
+     consecutive ones; `list_migrations` lists them in applied order.
 4. Check: a successful save already returns `diagnostics`; `validate` (optionally scoped by `elementIds`) checks the model.
+   With `against` (a model snapshot id, or a folder holding another copy of the project) it also checks that migration
+   facts explain every change since that baseline (MQ4102); `plan` takes the same `against` to diff migrations from it.
    For a query, `preview_query_sql` returns the SQL it renders (for its database's dialect or another) with the diagnostics
    (MQ4021 to MQ4043) that point at the node to fix. For an entity's binding, `preview_binding_sql` returns its select,
    insert, update and delete statements; `validate` reports MQ4044 to MQ4054 for bindings.
    Custom property schemas (`extensions/<name>.json`) and script rules (`extensions/rules/<name>.js`, findings `x/<id>`, run by `validate`) are files: `list_extension_files`, `read_extension_file`, `write_extension_file` (with `expectedHash`, `new` to create; a rule's syntax error comes back at once), `move_extension_file`, `delete_extension_file`.
+   A check across the model (every reference type used, no two tables alike) is a whole-model rule: `scope: "model"`,
+   `check(model, report)`, each `report` naming its `element` id; it runs once per whole-model `validate`, never on a
+   save. Read with `model.withStereotype`, `withTag`, `withProperty` or `byQualifiedName` rather than scanning
+   `model.all`. For CI, set `limits.scriptTimeoutMs` to 0 so findings do not depend on the machine's load.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
-   per database; `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as
+   per database, and in `columns` the table columns whose `typeRef` names it;
+   `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as
    CSV; `localization_status`, `get_translations` and `set_translations` (with the `shardHash` values you read as
    `expected`) read and write translations, which never go in element files. From a terminal, `maquettiste l10n status`,
    `l10n export|import <locale>`, `l10n prune`, `l10n set-default <locale>` and `maquettiste seed new|export|import` do
    the same; import, prune, set-default and seed import only preview until given `--apply`.
-6. Generate: `plan` (stores a plan, touches nothing), `get_plan` / `get_plan_diff` for the files that matter, then
-   `apply_plan` with the plan id. `stale` means the inputs changed since the plan: plan again. `list_packs`,
-   `get_settings` and `save_settings` (with `expectedHash`) cover the packs and `maquettiste.json`.
+6. Generate: `generate` renders and writes in one call and answers a summary per pack (counts by kind, the first 50
+   paths, at most 100 diagnostics, errors first); no plan is stored. When someone should review the files first, use
+   `plan` (stores a plan, touches nothing), `get_plan` / `get_plan_diff` for the files that matter, then `apply_plan`
+   with the plan id. `stale` means the inputs changed since the plan: plan again. To regenerate part of the model,
+   `generate` and `plan` take `units` (`<pack>/<unit>`) and `elements` (ids, never names); every other file stays as it
+   is. Migrations render only in a full run (a selected `sql-ddl/migration` is MQ6033): for one database's schema,
+   pass `units: ["sql-ddl/schema"]` with the database id. `list_packs`, `get_settings` and `save_settings` (with
+   `expectedHash`) cover the packs and `maquettiste.json`.
 7. Explain and author templates: `get_plan` with `units` true gives each unit's pack, template, element, `reason` and
    `causes`; `explain_unit` answers why a unit renders or not (a plan unit by `planId` and `key`, or any `pack`, `unit`
    and `elementId`). Packs are files: `get_pack`, `list_pack_files`, `read_pack_file`, `write_pack_file` (with
@@ -120,10 +165,12 @@ root-level states must equal its bound enum's members, in order (MQ9203).
 
 Without the server (or for bulk mechanical edits the tools do not cover), edit the files directly:
 
-1. Change the JSON files (keep them canonical; the next save by the tool rewrites them anyway). New elements need a new
-   ULID `id` (uppercase, 26 characters); references are ids.
+1. Change the JSON files (keep them canonical; the next save by the tool rewrites them anyway); references are ids. To
+   add elements, write a batch file instead and run `maquettiste model apply <batch.json>` (`--dry-run` first): it takes
+   the `apply_batch` shapes, names and placeholders, and mints every id.
 2. `maquettiste validate` (exit 1 on errors; `--format sarif` for annotations). Fix dangling ids first.
-3. `maquettiste generate --dry-run --diff` to see what would change, then `maquettiste generate`.
+3. `maquettiste generate --dry-run --diff` to see what would change, then `maquettiste generate` (`--element <id>` and
+   `--unit <pack>/<unit>` limit it to some units and leave every other file as it is).
 4. `maquettiste generate --check` is what CI runs: it renders every output root and fails on stale, missing, orphaned or
    hand-edited output (guard only what the team commits, or run `generate` and compare the working tree).
 
@@ -154,25 +201,114 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   table columns for its unmapped attributes, `{"op":"materialize-columns","database":...,"entities":[...]}` (`"attributes":[...]`
   for some). From a terminal: `maquettiste model materialize tables|entities|attributes|columns ... --dry-run`. Which
   tables to materialize, and when, is the user's decision.
+- Bindings record their `provenance` (two short hashes per column of a table file); the engine writes it, so never write
+  or copy it by hand. When a bound table changes, `get_binding_drift` lists per binding the columns added, renamed,
+  retyped and removed since (MQ4087 is a mapped column renamed or retyped, MQ4088 provenance that does not describe the
+  source). Catch up with `preview_materialize` and then `apply_batch`
+  `{"op":"resync-binding","database":...,"entities":[...]}`: attributes that followed their column are renamed (ids
+  kept; add `"keepNames":true` to keep every name), retyped columns retype their attribute, added columns get
+  attributes, removed columns lose their fields; `"columns":[...]` limits it to some of one entity's.
+  `{"op":"map-by-name","database":...,"entities":[...]}` maps unmapped attributes to free columns of the same name. From
+  a terminal: `maquettiste binding drift|map|resync`. An attribute without a description shows its bound column's
+  comment, so do not copy a comment into a description.
 - Seeds: a seed's `target` is an entity, a relation, a reference type, or a table file (a table seed: rows the database needs
   without an entity, columns by column id, cells as column values, `key` a unique constraint id). `environments` (empty: every
   environment), `apply` (`once` default, or `converge`) and `delete` say how rows are applied; `rowsFrom: {"file": "<name>.csv"}`
   keeps large rows in a CSV beside the seed (send rows as usual; the engine writes the CSV).
+- Natural keys and stable ids: a table seed may list a foreign key of its table in `columns` (by id, or by name when you
+  write it), instead of the key's own columns, and give the referenced row's natural key in the cell
+  (`"ada@example.com"`, or `["ACME", "EU"]` for a composite key); never copy a referenced row's id or UUID into a cell.
+  A `uuid` column the database does not fill may say `"stableId": true`: the engine derives its value from the table and
+  the row key (UUID version 5), so leave it out of seeds (MQ7108) and key such a table's seeds by a unique constraint,
+  not by that column (MQ7125). Changing `stableId` or a seed's `key` changes the ids of rows already in databases: ask
+  first.
+- Scripted rows: a seed may take its rows from `rowsFrom: {"script": "seeds/<name>.js"}`, a file under
+  `.maquettiste/extensions/seeds/` written with `write_extension_file`, which calls
+  `maquettiste.rows((model, seed) => [{ <column name>: value }])` once and reads the model like a script rule. Such a
+  seed has no `rows` of its own and takes no CSV import. Check the result with `preview_seed_rows` (one seed, written
+  or scripted; `database` gives the values that database receives) rather than reading generated output, and fix
+  MQ7127 (the script failed) and MQ7128 (a key no column has, or no row key) at the script.
+- Seeds by name: when you write a seed, `columns` and `key` may hold names instead of ids (a table's column and unique
+  constraint names, an entity's attribute names and to-one end roles, a relation's end roles and attributes, a reference
+  type's attribute names, where `code`, `label` and `description` stay keywords), and a row may give
+  `"values": {"<column>": ...}` keyed by the `columns` entries as you wrote them. The engine stores ids and positional
+  cells; a name that finds nothing or several is MQ1002 and nothing is written. In a batch, `@column:...` names and
+  placeholders resolve first, so a seed can name the columns of a table created earlier in the same batch. Templates
+  find a seed with `seed_named "currencies"` and a row by its key with `seed_row`.
 - Tags: `tag_usage` counts each tag's uses in a vocabulary's scope (and the undeclared ones in use); to remove tags from the
   vocabulary and every use, or rename one, use `apply_batch` `{"op":"retag","tags":[...],"name":<new key>,"package":<domain>}`
   rather than editing every element.
+- Typed links: a custom property whose schema has `x-ref` (`{"kind":"attribute","of":"$element"}`, `{"kind":"entity"}`)
+  holds ids, never names, exactly like a reference field; `get_references` lists such values with their `schema`, and
+  deletes clear or refuse them by the schema's `optional`. MQ2010 is a name where the id belongs, MQ2011 a target out
+  of the `of` or `sameDatabase` scope.
+- Stereotype rules: a stereotype's `group` (one per element), `requires`, `conflicts` and `implies` (one level) bind
+  every element that carries it, implied stereotypes included (MQ2013 to MQ2017); its `parameters` type the
+  `properties` of its carriers, with `defaultProperties` as defaults (MQ2018). Read the stereotype before adding or
+  removing one on an element.
+- Stereotype members: a stereotype that applies to tables may carry `columns`, `primaryKey`, `uniques`, `foreignKeys`,
+  `checks` and `indexes`, which every table that carries it inherits, also through a database schema's or a package's
+  `defaultStereotypes`. Write an inherited member as `<tableKey>.<memberId>` wherever its id goes (seeds, keys,
+  indexes, binding fields, queries): the table file's id, or the synthesized key (`<entityId>@<databaseId>`) for a
+  table without one; `get_database_view` shows each keyed id with its `memberOrigin`. Change a member on the
+  stereotype, or for one table with `redefines` (facets only; the id stays) and `excludes` (member ids); a table drops
+  a default with `excludeStereotypes`. Never copy an inherited member into a table as an own column. To turn own copies
+  into inherited members, use `apply_batch` `{"op":"fold-into-stereotype","id":<stereotype>,"tables":[...]}` with
+  `dryRun` first; it records one `rekey` and the database does not change.
+- Layers: a package's `dependsOn` lists the packages its elements may reference (with their sub-packages; a parent's
+  list applies to its subtree). A reference to any other package is MQ2020: when you add one, check the layers first,
+  and never add a `dependsOn` entry just to silence it, since the direction of the layers is the user's decision.
+  `package` on a table, seed, stereotype or other kind is membership only and never changes a database.
+- Status: `status` is `proposed`, `approved`, `deprecated` or `retired`, with `rationale` (Markdown) and `decision` (a
+  URL or a record such as `ADR-0042`) beside it. A reference to a retired element is MQ2022: repoint it rather than
+  adding new ones. Write `rationale` when you make a choice the user will want explained.
 - Reference data (units, countries, statuses that grow) is a reference type with its rows in a seed; an entity's
   starting rows are a seed of that entity. Deleting an element deletes its seeds and translations in the same save.
 - The engine creates no table or column for reference data on its own: the packs decide the physical form, from the
-  storage strategy the project declares. Stereotypes and their meaning are the project's own, not built in.
-- Tag, stereotype or typed field: a tag is a label for grouping and search that no generation depends on (`domain:billing`);
-  a stereotype is a named, reusable meaning that changes what is generated or validated (`audited`, `tenant-scoped`, a
-  `high-churn` table storage profile); the values a feature needs are typed fields (a table's or index's `storage`, a
-  foreign key's `onDeleteColumns`), never strings packed into a tag (`storage:fillfactor=90` would be parsed and never
-  validated). A database feature the model has a field for (temporal keys, exclusion constraints, partitioning, storage
-  parameters, view security options, routine volatility and settings) goes in that field; what it has none for (grants,
-  extensions, policies, triggers) goes in a SQL object with `dependsOn`, which a migration runs again when it creates what
-  it depends on again.
+  storage strategy the project declares. When a table file already holds a reference type's rows, the type's optional
+  `bindings` say so per database (`database`, `table`, `fields` mapping `code`, `label`, `description` or a field id to a
+  column, `constants` for a table several types share); its rows then count as the table's rows in validation and seed data. Stereotypes and their meaning are the project's own, not built in.
+- A table column that holds an enum's values, a reference type's codes or a scalar type's values says so with
+  `typeRef: {"ref": "<type id>"}` beside its `type`, which stays the physical keyword; facets it leaves out come from
+  the type, and packs give it the same key or CHECK as an attribute of that type. A declared foreign key from such a
+  column points at the code column of the type's bound table (MQ4084). A column holding personal data or a secret states
+  `sensitive` (`pii` or `secret`); say it once, on the column or on the attribute a binding maps to it (two different
+  values are MQ4085, a warning).
+- Codes that databases store change through a refactor, never by editing a seed cell or a type's name: `apply_batch`
+  with `{"op":"rename-code","id":<type>,"code":"net30","to":"net-30"}`, `retire-code` (the same keys; `to` a live code),
+  `merge-reference-types` (`id` the type that goes, `target`, optional `codes`) or `rename-reference-type` (`id`,
+  `name`), with `dryRun` first to read the item's `usage` and the facts. Each keeps the old code in the type's
+  `formerCodes` and records a `value-map` fact per database, so each environment's migration moves the stored values.
+  Write the replacing row's code, never a former code (MQ7019), and never bring a code back (MQ7020, MQ4113). A plain
+  edit of a kept row's code warns MQ4114: undo it and use the refactor. Retiring or merging rows is the user's decision.
+- Tag, stereotype or typed field: a tag is a label for grouping and search that no generation depends on
+  (`domain:billing`); a stereotype is a named, reusable meaning that changes what is generated or validated (`audited`,
+  `tenant-scoped`, a `high-churn` table storage profile); the values a feature needs are typed fields (a table's or
+  index's `storage`, a foreign key's `onDeleteColumns`), never strings packed into a tag (`storage:fillfactor=90` would
+  be parsed and never validated). A database feature the model has a field for (temporal keys, exclusion constraints,
+  partitioning, storage parameters, view security options, routine volatility and settings, an index column's `nulls`,
+  range columns) goes in that field; what it has none for (grants, extensions, policies, triggers) goes in a SQL object
+  with `dependsOn`, which a migration runs again when it creates what it depends on again.
+- A range column is `type: "range"` or `"multirange"` with a `subtype` (`int32`, `int64`, `decimal`, `date`,
+  `datetime`, `datetimeoffset`), not `string` with `nativeType: "tstzrange"`; values are its text form (`"[1,10)"`), and
+  only columns take it, never attributes. An index column's `nulls` (`first` or `last`, PostgreSQL) changes the index
+  only when it differs from the direction's default.
+- Name indexes that share columns: two indexes on the same columns (a btree and a gin) both get the conventional
+  `ix_<table>_<columns>`, and that is MQ4068, as is an index or key named like another index, key or table where the
+  dialect keeps one namespace for them (a PostgreSQL schema holds index and key names with its tables). Names compare
+  without case after cutting to the identifier limit (63 bytes on PostgreSQL), so two long names that start alike
+  collide too.
+- The migration ledger is bookkeeping, not part of the model: on PostgreSQL the sql-ddl scripts record the migration
+  facts they reach in three tables (`contract`, `applied_fact`, `applied_object`) in the schema
+  `migrations.ledgerSchema` names (default `migration_ledger`). Never model those tables, and keep the ledger schema
+  apart from every modeled schema (MQ4067). For a team's own migrator, `get_ledger_ddl` (`grantRead` for the read grant)
+  or `maquettiste migration ledger --grant-read <role>` prints the DDL; the engine never reads the ledger.
+- A SQL object that belongs to some environments only (a dev view, test data) lists them in `environments`; sql-ddl then
+  runs it only in `objects.<env>.sql` on every deploy, so its statements must be safe to run again (`CREATE OR REPLACE`,
+  `IF NOT EXISTS`). A view, routine or SQL object may depend only on a SQL object that runs in every environment it runs
+  in (MQ4069). `apply: "once"` runs a SQL object one time per database behind a ledger guard (PostgreSQL only; no
+  transaction control or `CONCURRENTLY` in it), and a change to it never runs again. Switching an existing object from
+  `converge` to `once` runs it one more time everywhere (the ledger has no row for it yet; the migration says so).
 - Localization settings are `localization` in `maquettiste.json` (`defaultLocale`, `locales`, `fallbacks`, `require`);
   default texts stay in the element files. Locale tags are BCP 47 with a hyphen and canonical case (`zh-CN`,
   `zh-Hant-TW`, `fr`), never `zh_CN` (MQ7201).

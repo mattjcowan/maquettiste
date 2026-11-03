@@ -13,6 +13,12 @@ namespace Maquettiste.Cli.Commands;
 /// <c>maquettiste generate</c> (engine-design.md section 16; SPEC section 17): an incremental run, <c>--dry-run</c> (the plan as
 /// <c>A</c>/<c>M</c>/<c>D</c>/<c>H</c>/<c>K</c>/<c>O</c>/<c>C</c> lines, <c>--diff</c> adds unified diffs), <c>--check</c> (every root
 /// in memory: a file that would be added, changed or deleted exits 2, hand edits 3) or <c>--watch</c> (the engine's debounced watch hook over a file watcher on the model root).
+/// <c>--against &lt;snapshot id | folder&gt;</c> diffs the schema from a baseline model for one run instead of the committed physical
+/// snapshots, and leaves those alone (next-phase-1-design.md section 3.1); a value that names nothing exits 4.
+/// <c>--unit &lt;pack/unit | unit&gt;</c> and <c>--element &lt;id&gt;</c> (both repeatable; values of one flag OR, the two flags AND)
+/// limit the run to those units, keeping every other output and unit state (next-phase-1-design.md section 5.6): an unknown or
+/// ambiguous unit (MQ6032) or a selected unit that reads the schema diff (MQ6033) exits 1, a filter that selects nothing (MQ6034)
+/// warns and exits 0.
 /// </summary>
 internal static class GenerateCommand
 {
@@ -26,7 +32,8 @@ internal static class GenerateCommand
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
         var line = context.Line;
-        line.Expect("generate", 1, "--pack", "--force", "--roots", "--hand-edits", "--watch", "--dry-run", "--diff", "--check", "--format", "--no-wait");
+        line.Expect("generate", 1, "--pack", "--force", "--roots", "--hand-edits", "--watch", "--dry-run", "--diff", "--check", "--format", "--no-wait",
+            "--against", "--unit", "--element");
         var dryRun = line.Has("--dry-run");
         var check = line.Has("--check");
         var watch = line.Has("--watch");
@@ -40,6 +47,11 @@ internal static class GenerateCommand
             throw new UsageException("--watch prints text only.");
         if (diff && !dryRun && !check)
             throw new UsageException("--diff needs --dry-run (or --check).");
+        var against = line.Value("--against");
+        if (against is { Length: 0 })
+            throw new UsageException("--against needs a model snapshot id or a folder.");
+        if (watch && against is not null)
+            throw new UsageException("--watch cannot be combined with --against: a baseline serves one run.");
         if (line.Value("--roots") is not null)
             throw new UsageException("--roots was removed in 0.5.5: generate (and --check) covers every output root.");
         HandEditPolicy? handEdits = line.Value("--hand-edits") is null ? null : line.Choice("--hand-edits", "fail", "fail", "overwrite", "skip") switch
@@ -51,6 +63,12 @@ internal static class GenerateCommand
         var packs = line.Values("--pack");
         if (packs.Any(string.IsNullOrWhiteSpace))
             throw new UsageException("--pack needs a pack name.");
+        var units = line.Values("--unit");
+        if (units.Any(string.IsNullOrWhiteSpace))
+            throw new UsageException("--unit needs a unit: <pack>/<unit>, or a unit id that only one pack has.");
+        var elements = line.Values("--element");
+        if (elements.Any(string.IsNullOrWhiteSpace))
+            throw new UsageException("--element needs an element id.");
 
         if (await ProjectGuard.RepoAsync(context).ConfigureAwait(false) is not { } repo)
             return Program.ExitCodes.Invalid;
@@ -59,6 +77,8 @@ internal static class GenerateCommand
         {
             Mode = check ? GenerationMode.Check : dryRun ? GenerationMode.DryRun : GenerationMode.Apply,
             Packs = packs.Count > 0 ? [.. packs.Distinct(StringComparer.Ordinal)] : null,
+            Units = units.Count > 0 ? [.. units.Distinct(StringComparer.Ordinal)] : null,
+            Elements = elements.Count > 0 ? [.. elements.Distinct(StringComparer.Ordinal)] : null,
             Force = line.Has("--force"),
             Jobs = context.Jobs,
             HandEdits = handEdits,
@@ -70,19 +90,37 @@ internal static class GenerateCommand
         var store = new ModelStore(options);
         await using (store.ConfigureAwait(false))
         {
-            var service = new GenerationService(store, options);
+            // The command line accepts folders: a relative one is resolved against the current directory, and the request carries
+            // the full path (or the snapshot id).
+            var library = new SnapshotLibrary(store);
+            var service = new GenerationService(store, options) { Baselines = library, AllowFolderBaselines = true };
+            if (against is not null)
+                request = request with { Against = ModelBaseline.RequestText(library, against, context.Environment.CurrentDirectory) };
             if (watch)
                 return await WatchAsync(context, service, request, options, ct).ConfigureAwait(false);
 
             // A one-shot apply keeps and uses the engine's last-run record: a process whose model, templates, engine files and outputs
-            // are as the last apply left them answers without loading, validating, resolving or planning (Generation/README.md).
+            // are as the last apply left them answers without loading, validating, resolving or planning (Generation/README.md). A run
+            // against a baseline or limited by unit or element only forgets it, so a later full run never replays a stale record.
             service.ReuseLastRun = true;
 
             var progress = new ConsoleProgress(context.Progress, context.Error, hideWrite: check);
-            var result = await service.RunAsync(request, progress, ct).ConfigureAwait(false);
+            GenerationResult result;
+            try
+            {
+                result = await service.RunAsync(request, progress, ct).ConfigureAwait(false);
+            }
+            catch (BadBaselineException ex)
+            {
+                // The baseline resolves to nothing (or is at a newer model format): a usage error. Any other argument error is not
+                // relabelled.
+                progress.Complete();
+                throw new UsageException(ex.Message);
+            }
+
             progress.Complete();
             result = WithSchemaFindings(result, store, options);
-            await ReportAsync(context, result, format, progress.FilesCompared, prefix: "").ConfigureAwait(false);
+            await ReportAsync(context, result, format, progress.FilesCompared, progress.Compared, prefix: "").ConfigureAwait(false);
             return ExitCode(result.Outcome);
         }
     }
@@ -139,7 +177,7 @@ internal static class GenerateCommand
             progress.Complete();
             runs++;
             result = WithSchemaFindings(result, service.Store, options);
-            await ReportAsync(context, result, "text", progress.TakeFilesCompared(), prefix: string.Create(CultureInfo.InvariantCulture, $"[watch] run {runs}: ")).ConfigureAwait(false);
+            await ReportAsync(context, result, "text", progress.TakeFilesCompared(), progress.TakeCompared(), prefix: string.Create(CultureInfo.InvariantCulture, $"[watch] run {runs}: ")).ConfigureAwait(false);
         }, progress);
 
         // The watcher is live before the initial run: an edit saved during that run queues a notification, and the watch loop
@@ -164,7 +202,7 @@ internal static class GenerateCommand
             var first = await service.RunAsync(request, progress, ct).ConfigureAwait(false);
             progress.Complete();
             first = WithSchemaFindings(first, service.Store, options);
-            await ReportAsync(context, first, "text", progress.TakeFilesCompared(), prefix: "[watch] initial run: ").ConfigureAwait(false);
+            await ReportAsync(context, first, "text", progress.TakeFilesCompared(), progress.TakeCompared(), prefix: "[watch] initial run: ").ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -199,7 +237,8 @@ internal static class GenerateCommand
         return result with { Diagnostics = diagnostics };
     }
 
-    private static async Task ReportAsync(GlobalContext context, GenerationResult result, string format, int filesCompared, string prefix)
+    private static async Task ReportAsync(GlobalContext context, GenerationResult result, string format, int filesCompared, Func<string, bool> compared,
+        string prefix)
     {
         var quiet = context.Verbosity == Verbosity.Quiet;
         var listing = result.Mode != GenerationMode.Apply || !quiet;
@@ -234,7 +273,10 @@ internal static class GenerateCommand
             return;
 
         int Count(params FileChangeKind[] kinds) => result.Changes.Count(c => kinds.Contains(c.Kind));
-        var produced = Count(FileChangeKind.Added, FileChangeKind.Modified, FileChangeKind.Kept, FileChangeKind.Conflict)
+        // A kept owned file counts as produced only when this run rendered it: a once file kept on disk that no unit produces any
+        // more (an earlier migration) was never compared, so it takes nothing from the unchanged count.
+        var produced = Count(FileChangeKind.Added, FileChangeKind.Modified, FileChangeKind.Conflict)
+            + result.Changes.Count(c => c.Kind == FileChangeKind.Kept && compared(c.Path))
             + result.Changes.Count(c => c.Kind == FileChangeKind.HandEdited && c.NewHash is not null);
         var unchanged = Math.Max(0, filesCompared - produced);
         var verb = result.Mode switch

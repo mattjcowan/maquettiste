@@ -3,7 +3,7 @@
   "title": "Physical snapshot",
   "description": "snapshots/<db>.json: the schema diff baseline.",
   "type": "object",
-  "x-order": ["$schema", "database", "name", "dialect", "revision", "schemas", "tables", "views", "sequences", "types", "routines", "objects", "aliases"],
+  "x-order": ["$schema", "database", "name", "dialect", "revision", "schemas", "tables", "views", "sequences", "types", "routines", "objects", "aliases", "facts"],
   "properties": {
     "$schema": {
       "$ref": "common.json#/$defs/schemaPath"
@@ -68,6 +68,7 @@
                 "key",
                 "name",
                 "type",
+                "subtype",
                 "length",
                 "precision",
                 "scale",
@@ -86,7 +87,8 @@
                 "collation",
                 "comment",
                 "referenceType",
-                "strategy"
+                "strategy",
+                "referenceTable"
               ],
               "properties": {
                 "key": {
@@ -98,15 +100,18 @@
                   "minLength": 1
                 },
                 "type": {
-                  "description": "A built-in type, or reference for a column typed by a reference type (its code facets ride along).",
+                  "description": "A column type keyword (a built-in type, range or multirange), or reference for a column typed by a reference type (its code facets ride along).",
                   "anyOf": [
                     {
-                      "$ref": "common.json#/$defs/builtinType"
+                      "$ref": "common.json#/$defs/columnType"
                     },
                     {
                       "const": "reference"
                     }
                   ]
+                },
+                "subtype": {
+                  "$ref": "common.json#/$defs/rangeSubtype"
                 },
                 "length": {
                   "$ref": "common.json#/$defs/length"
@@ -167,6 +172,11 @@
                   "$ref": "common.json#/$defs/id"
                 },
                 "strategy": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "referenceTable": {
+                  "description": "For a reference column whose reference type is bound to a table of the column's database: that table's key. The binding wins over the strategy.",
                   "type": "string",
                   "minLength": 1
                 }
@@ -405,7 +415,7 @@
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "x-order": ["column", "expression", "operatorClass", "descending", "length"],
+                    "x-order": ["column", "expression", "operatorClass", "descending", "nulls", "length"],
                     "properties": {
                       "column": {
                         "type": "string",
@@ -420,6 +430,9 @@
                       "descending": {
                         "type": "boolean",
                         "default": false
+                      },
+                      "nulls": {
+                        "enum": ["first", "last"]
                       },
                       "length": {
                         "type": "integer"
@@ -653,6 +666,13 @@
       "items": {
         "$ref": "#/$defs/alias"
       }
+    },
+    "facts": {
+      "description": "The migration facts already rendered into a migration from this snapshot's history, by id: the facts of each applied diff. Held and pending facts never enter; ids gone from the model are dropped on write.",
+      "$ref": "common.json#/$defs/idList",
+      "uniqueItems": true,
+      "x-sort": ".",
+      "default": []
     }
   },
   "required": ["database", "name", "dialect"],

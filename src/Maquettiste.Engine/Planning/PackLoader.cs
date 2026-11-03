@@ -65,7 +65,7 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
             if (pack is not null)
             {
                 loaded.Add(pack);
-                diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json")));
+                diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json"), model, relative + "/pack.json"));
                 diagnostics.AddRange(await ParsePassAsync(pack, ct).ConfigureAwait(false));
             }
         }
@@ -99,7 +99,7 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
         var pack = await LoadOneAsync(name, 0, root, relative, settings, diagnostics, ct).ConfigureAwait(false);
         if (pack is not null)
         {
-            diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json")));
+            diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json"), model, relative + "/pack.json"));
             diagnostics.AddRange(await ParsePassAsync(pack, ct).ConfigureAwait(false));
         }
 
@@ -150,6 +150,9 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
                 if (failure.JsonPointer is { } p && ScopePointer().IsMatch(p) && document.RootElement.TryGetProperty("units", out var units)
                     && TryScope(units, p, out var unitId, out var scope))
                     Error(UnknownScope, UnitRules.UnknownScope(unitId, scope), p);
+                else if (failure.JsonPointer is { } u && UnitPointer().IsMatch(u) && failure.Message.Contains(" not: ", StringComparison.Ordinal)
+                    && document.RootElement.TryGetProperty("units", out var all) && CopyShape(all, u) is { } shape)
+                    Error(InvalidPack, shape.Message, u + shape.Member);
                 else
                     Error(InvalidPack, failure.Message, failure.JsonPointer);
             }
@@ -186,19 +189,28 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
             var pointer = "/units/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (!ids.Add(unit.Id))
                 Error(InvalidPack, $"Unit id '{unit.Id}' is used more than once in pack '{name}'.", pointer + "/id");
-            CheckTemplate(root, unit.Template, pointer + "/template", Error);
+            if (unit.Template is { } template)
+                CheckTemplate(root, template, pointer + "/template", Error);
+            for (var j = 0; j < unit.Sources.Count; j++)
+            {
+                // A malformed copy pattern fails the pack, as a template path outside it does; one that matches nothing is the
+                // planner's unit-level MQ6030 (next-phase-1-design.md section 5.4).
+                if (CopySources.PatternProblem(unit.Sources[j]) is { } problem)
+                    Error(InvalidPack, $"Source pattern '{unit.Sources[j]}' of unit '{unit.Id}' is malformed: {problem}.",
+                        pointer + "/sources/" + j.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
             if (unit.Companion is { } companion)
                 CheckTemplate(root, companion.Template, pointer + "/companion/template", Error);
             if (string.Equals(unit.For, "model", StringComparison.Ordinal) && unit.Where is { } where && HasElementFilters(where))
                 Error(InvalidPack, $"Unit '{unit.Id}' is for 'model', which has no element: its 'where' can only name a database.", pointer + "/where");
             if (string.Equals(unit.For, "each locale", StringComparison.Ordinal) && unit.Where is not null)
                 Error(InvalidPack, $"Unit '{unit.Id}' is for 'each locale', which has no element to filter: it takes no 'where'.", pointer + "/where");
-            if (unit.For is "each view" or "each sequence" or "each routine" or "each database type" or "each sql object" or "each query" && unit.Where is { } objectWhere)
+            if (unit.For is "each view" or "each sequence" or "each routine" or "each database type" or "each sql object" or "each query"
+                or "each database" or "each attribute" && unit.Where is { } objectWhere)
             {
-                // Views, sequences, routines, database types, SQL objects and queries belong to a database, not to a package, and are never abstract.
-                if (objectWhere.Packages.Count > 0 || objectWhere.NotPackages.Count > 0)
-                    Error(InvalidPack, $"Unit '{unit.Id}' is for '{unit.For}', which is in no package: its 'where' cannot filter on packages.",
-                        pointer + (objectWhere.Packages.Count > 0 ? "/where/packages" : "/where/notPackages"));
+                // Views, sequences, routines, database types, SQL objects, queries, databases and attributes are never abstract; they
+                // filter on the package their file states (next-phase-1-design.md section 4.3), an attribute on its owner's (5.5).
                 if (objectWhere.Abstract is not null)
                     Error(InvalidPack, $"Unit '{unit.Id}' is for '{unit.For}', which is never abstract: its 'where' cannot filter on 'abstract'.", pointer + "/where/abstract");
             }
@@ -213,8 +225,12 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
             }
         }
 
-        var scripts = await LoadScriptsAsync(root, relative, manifest, Error, ct).ConfigureAwait(false);
-        var typeMaps = await LoadTypeMapsAsync(root, relative, errors, ct).ConfigureAwait(false);
+        // The files copy units copy are copied as they are: never default scripts or type maps (next-phase-1-design.md section 5.4).
+        var packFiles = PackFileRoles.EnumerateFiles(root);
+        var copied = PackFileRoles.CopiedFiles(packFiles, manifest);
+        var scripts = await LoadScriptsAsync(root, relative, manifest, PackFileRoles.Scripts(packFiles, manifest, copied), Error, ct)
+            .ConfigureAwait(false);
+        var typeMaps = await LoadTypeMapsAsync(root, relative, PackFileRoles.TypeMaps(packFiles, copied), errors, ct).ConfigureAwait(false);
 
         if (errors.Count > 0)
         {
@@ -239,6 +255,30 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
 
     [System.Text.RegularExpressions.GeneratedRegex("^/units/[0-9]+/for$", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
     private static partial System.Text.RegularExpressions.Regex ScopePointer();
+
+    [System.Text.RegularExpressions.GeneratedRegex("^/units/[0-9]+$", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex UnitPointer();
+
+    /// <summary>
+    /// The plain message for a unit that breaks the copy shape (the schema's <c>not</c> branches, whose own text names no key): a copy
+    /// unit with a template, or another unit with <c>sources</c> or <c>tokens</c>; <see langword="null"/> when the unit breaks neither.
+    /// </summary>
+    private static (string Message, string Member)? CopyShape(JsonElement units, string pointer)
+    {
+        var index = int.Parse(pointer.Split('/')[2], System.Globalization.CultureInfo.InvariantCulture);
+        if (units.ValueKind != JsonValueKind.Array || index >= units.GetArrayLength() || units[index] is not { ValueKind: JsonValueKind.Object } unit)
+            return null;
+        var id = unit.TryGetProperty("id", out var idValue) && idValue.ValueKind == JsonValueKind.String ? idValue.GetString() : null;
+        var name = id is null ? "A unit" : $"Unit '{id}'";
+        var copy = unit.TryGetProperty("mode", out var mode) && mode.ValueKind == JsonValueKind.String && mode.ValueEquals("copy");
+        if (copy && unit.TryGetProperty("template", out _))
+            return ($"{name} is in mode copy, which copies its sources and takes no template; remove 'template'.", "/template");
+        if (!copy && unit.TryGetProperty("sources", out _))
+            return ($"{name} has 'sources', which only mode copy takes; set \"mode\": \"copy\" or remove them.", "/sources");
+        if (!copy && unit.TryGetProperty("tokens", out _))
+            return ($"{name} has 'tokens', which only mode copy takes; set \"mode\": \"copy\" or remove them.", "/tokens");
+        return null;
+    }
 
     private static bool TryScope(JsonElement units, string pointer, out string? unitId, out string scope)
     {
@@ -269,12 +309,12 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
     }
 
     private static async Task<IReadOnlyList<ScriptSource>> LoadScriptsAsync(string root, string relative, PackManifest manifest,
-        Action<string, string, string?> error, CancellationToken ct)
+        IReadOnlyList<string> defaults, Action<string, string, string?> error, CancellationToken ct)
     {
         var files = new List<(string Relative, string Full)>();
         if (manifest.Scripts.Count == 0)
         {
-            foreach (var packRelative in PackFileRoles.Scripts(PackFileRoles.EnumerateFiles(root), manifest))
+            foreach (var packRelative in defaults)
                 files.Add((packRelative, Path.Combine(root, packRelative.Replace('/', Path.DirectorySeparatorChar))));
         }
         else
@@ -315,13 +355,11 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
     }
 
     private static async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> LoadTypeMapsAsync(string root, string relative,
-        List<Diagnostic> errors, CancellationToken ct)
+        IReadOnlyList<string> typeMapPaths, List<Diagnostic> errors, CancellationToken ct)
     {
         var folder = Path.Combine(root, "types");
         var maps = ImmutableSortedDictionary.CreateBuilder<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
-        if (!Directory.Exists(folder))
-            return maps.ToImmutable();
-        foreach (var typeMap in PackFileRoles.EnumerateFiles(root).Where(PackFileRoles.IsTypeMap))
+        foreach (var typeMap in typeMapPaths)
         {
             ct.ThrowIfCancellationRequested();
             var fileName = typeMap["types/".Length..];

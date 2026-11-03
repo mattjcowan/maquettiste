@@ -9,7 +9,7 @@ test("open a pack, edit a unit's output pattern and save", async ({ page }) => {
   await workspace(page, "Generate");
   const tree = page.getByRole("tree", { name: "Packs" });
   const pack = tree.getByTestId("pack-row-p:sql-ddl");
-  await expect(pack).toContainText("11 units");
+  await expect(pack).toContainText("12 units");
 
   // The tree reads the pack's units aloud before anything opens.
   await pack.getByText("sql-ddl", { exact: true }).click();
@@ -31,7 +31,7 @@ test("open a pack, edit a unit's output pattern and save", async ({ page }) => {
 
   // Scope help in plain words for the focused row.
   await page.getByTestId("unit-row-schema").getByLabel("Scope of unit schema").focus();
-  await expect(page.getByTestId("scope-help")).toContainText("selector databases");
+  await expect(page.getByTestId("scope-help")).toContainText("once per database");
 
   // A constant output pattern: the summary follows, and every table claims the same path (MQ6020).
   const output = table.getByTestId("unit-output");

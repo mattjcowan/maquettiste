@@ -215,23 +215,48 @@ func routines_and_views(db)
   ret in_dependency_order($items)
 end
 
-# The SQL objects of a database with the given phase ("before" or "after"), in dependency order.
+# Whether the schema script and the migrations run a SQL object: not one with environments (only objects.<env>.sql runs it, see
+# object-environments.scriban) and not a left-out one (object_left_out).
+func object_in_schema(o, db)
+  ret o.environments.size == 0 && !object_left_out(o, db)
+end
+
+# Whether no script runs a SQL object: a run-once one outside PostgreSQL, whose guard needs the migration ledger (MQ4056).
+func object_left_out(o, db)
+  ret o.apply == "once" && db.dialect != "postgresql"
+end
+
+# Whether a script that runs a SQL object writes the ledger for it: a run-once object with statements (PostgreSQL only, since
+# object_left_out keeps the others out). Such a script writes ledger_prelude first.
+func object_writes_ledger(o, db)
+  ret o.apply == "once" && o.has_body && db.dialect == "postgresql"
+end
+
+# The SQL objects of a database with the given phase ("before" or "after") that the schema script and the migrations run
+# (object_in_schema), in dependency order.
 func objects_in_phase(db, phase)
   $items = []
   for o in db.objects
-    if o.phase == phase
+    if o.phase == phase && object_in_schema(o, db)
       $items[$items.size] = o
     end
   end
   ret in_dependency_order($items)
 end
 
-# ", routines N, database types N, SQL objects N" for the schema script's header, or "" when the database has none of them.
+# ", routines N, database types N, SQL objects N" for the schema script's header, or "" when the database has none of them; the
+# SQL objects counted are those the script runs (object_in_schema).
 func object_counts(db)
-  if db.routines.size + db.types.size + db.objects.size == 0
+  $objects = 0
+  for o in db.objects
+    if object_in_schema(o, db)
+      $objects = $objects + 1
+    end
+  end
+  if db.routines.size + db.types.size + $objects == 0
     ret ""
   end
-  ret ", routines " + db.routines.size + ", database types " + db.types.size + ", SQL objects " + db.objects.size
+  ret ", routines " + db.routines.size + ", database types " + db.types.size + ", SQL objects " + $objects
 end
 
 # Text without trailing whitespace and without a trailing semicolon.
@@ -342,7 +367,7 @@ func type_sql(t, db)
   $d = db.dialect
   if !t.is_created || ($d != "postgresql" && $d != "sqlserver")
     $s = "-- " + dialect_title(db) + " has no " + t.type_kind + " types; " + t.name + " is not created"
-    ret $s + (t.native_name != "" ? " (columns of this type are " + t.native_name + ")." : ".")
+    ret $s + (t.native_name != null ? " (columns of this type are " + t.native_name + ")." : ".")
   end
   $name = qn(t.schema, t.name, db)
   if t.definition
@@ -390,6 +415,18 @@ func object_sql(o, db)
     ret "-- " + o.object_kind + " " + o.name + " has no statements for " + db.dialect + "; it is not created."
   end
   ret o.body | string.rstrip
+end
+
+# The statements a script writes for a SQL object it runs: a run-once object inside its ledger guard (ledger_once_sql, so the
+# including template also includes _ledger.scriban), a comment for a left-out one, else object_sql.
+func object_run_sql(o, db)
+  if object_left_out(o, db) && o.has_body
+    ret "-- " + o.object_kind + " " + o.name + " runs once, which needs the migration ledger; " + db.dialect + " has none, so it is not created."
+  end
+  if object_writes_ledger(o, db)
+    ret ledger_once_sql(o, db)
+  end
+  ret object_sql(o, db)
 end
 
 # Whether the dialect creates schemas (MySQL's schemas are its databases; SQLite has none; Oracle's are users, created by hand).

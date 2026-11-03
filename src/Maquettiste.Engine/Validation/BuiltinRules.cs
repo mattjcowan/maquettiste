@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
@@ -32,6 +33,7 @@ internal static partial class BuiltinRules
             case Entity entity:
                 CheckEntity(context, entity, report);
                 MappingRules.CheckEntityPlacement(context, entity, report);
+                ColumnTypeRules.CheckEntity(context, entity, report);
                 break;
             case ValueObject valueObject:
                 CheckValueObject(context, valueObject, report);
@@ -51,6 +53,7 @@ internal static partial class BuiltinRules
                 break;
             case Table table:
                 PhysicalRules.CheckTable(context, table, report);
+                ColumnTypeRules.CheckTable(context, table, report);
                 break;
             case View view:
                 PhysicalRules.CheckView(context, view, report);
@@ -100,13 +103,20 @@ internal static partial class BuiltinRules
                 "/membership");
     }
 
-    // ---- MQ2001, MQ2002, MQ2005: references ----
+    // ---- MQ2001, MQ2002, MQ2005, MQ2010, MQ2011: references ----
 
     private static void CheckReferences(ValidationContext context, Report report)
     {
         var model = context.Model;
-        foreach (var site in context.Walker.Walk(report.Document.Element))
+        HashSet<(string Rule, string Pointer, string Message)>? xrefFindings = null;
+        foreach (var site in context.Walker.Walk(report.Document.Element, model.PropertySchemas, model.PropertyKeys(report.Document.Element)))
         {
+            if (site.XRef is { } xref)
+            {
+                CheckXRef(context, xref, report, xrefFindings ??= []);
+                continue;
+            }
+
             var reference = site.Reference;
             if (reference.Keyed)
                 continue; // physical keys: MQ4007, MQ4008 and the referenced-table check in PhysicalRules
@@ -134,6 +144,190 @@ internal static partial class BuiltinRules
             }
         }
     }
+
+    /// <summary>
+    /// One value an <c>x-ref</c> types (next-phase-1-design.md section 4.1), judged per schema: MQ2010 when it is a name or other
+    /// text, else MQ2001 for each id that does not exist (a reserved kind's values all dangle until the kind arrives) and MQ2002
+    /// when the id (the last of a keyed id) is of another kind, else MQ2011 when it is out of scope. A finding two schemas share is
+    /// reported once.
+    /// </summary>
+    private static void CheckXRef(ValidationContext context, XRefSite site, Report report, HashSet<(string Rule, string Pointer, string Message)> seen)
+    {
+        var model = context.Model;
+        var xref = site.Ref;
+        var kinds = string.Join(" or ", xref.Kinds);
+        void Add(string rule, string message)
+        {
+            if (seen.Add((rule, site.Pointer, message)))
+                report.Add(rule, message, site.Pointer, site.Host.Id);
+        }
+
+        if (XRefIds(site.Value) is not { } ids)
+        {
+            Add("MQ2010", $"'{site.Field}' holds '{site.Value}', which is a name or other text, not an id: its schema ({site.Source.Schema}) types it "
+                + $"as the id of {Article(kinds)} {kinds}. Write the id, or run the batch operation names-to-ids "
+                + "({\"op\":\"names-to-ids\"}), which turns each such name into the one id it finds.");
+            return;
+        }
+
+        var dangling = false;
+        foreach (var id in ids)
+        {
+            if (model.TryGetEntry(id, out _))
+                continue;
+            var note = ReservedKindsNote(xref);
+            Add("MQ2001", $"'{site.Field}' references '{id}', which does not exist." + (note.Length > 0 ? $" ({note}.)" : ""));
+            dangling = true;
+        }
+
+        if (dangling || !model.TryGetEntry(ids[^1], out var entry))
+            return;
+        if (!xref.Kinds.Contains(entry.Kind, StringComparer.Ordinal))
+        {
+            Add("MQ2002", $"'{site.Field}' references '{ids[^1]}', {Article(entry.Kind)} {entry.Kind}; its schema ({site.Source.Schema}) expects {Article(kinds)} {kinds}.");
+            return;
+        }
+
+        if (XRefScopeProblem(context, report.Document.Element, site, ids, entry) is { } problem)
+            Add("MQ2011", $"'{site.Field}' references '{ids[^1]}', {problem}.");
+    }
+
+    /// <summary>
+    /// The note an MQ2001 message adds when an <c>x-ref</c> allows reserved kinds, whose values all dangle until the
+    /// kinds arrive, or <c>""</c> when it allows none.
+    /// </summary>
+    /// <param name="xref">The keyword.</param>
+    /// <returns>The note, without brackets or a final full stop.</returns>
+    internal static string ReservedKindsNote(XRef xref)
+    {
+        var later = xref.Kinds.Where(XRef.IsReserved).ToList();
+        return later.Count switch
+        {
+            0 => "",
+            1 => $"{later[0]} arrives in a later phase, so no value of that kind exists yet",
+            _ => $"{string.Join(", ", later)} arrive in a later phase, so no value of those kinds exists yet",
+        };
+    }
+
+    /// <summary>The ids of an <c>x-ref</c> value: one id, or the ids a keyed id joins with <c>.</c>; <see langword="null"/> for text.</summary>
+    /// <param name="value">The value.</param>
+    /// <returns>The ids, in order, or <see langword="null"/>.</returns>
+    internal static string[]? XRefIds(string value)
+    {
+        if (IdFormat.IsValid(value))
+            return [value];
+        if (!value.Contains('.', StringComparison.Ordinal))
+            return null;
+        var segments = value.Split('.');
+        return segments.All(IdFormat.IsValid) ? segments : null;
+    }
+
+    /// <summary>Why an <c>x-ref</c> target is out of scope (MQ2011), or <see langword="null"/>.</summary>
+    private static string? XRefScopeProblem(ValidationContext context, Element element, XRefSite site, string[] ids, IndexEntry entry)
+    {
+        var xref = site.Ref;
+        var model = context.Model;
+        if (xref.Of == XRef.ElementScope)
+        {
+            if (site.Default)
+                return "but a stereotype default cannot use of \"$element\": a default serves many elements, so \"this element\" names none";
+            if (element is Table table && entry.Kind is "column" or "key" && model.Get<Stereotype>(entry.OwnerId) is { } stereotype)
+            {
+                // A column or key a stereotype gives a table is the table's member only by its keyed id (next-phase-2-design.md 3.1).
+                if (InheritedMemberScopeProblem(model, table, stereotype, ids) is { } inherited)
+                    return inherited;
+            }
+            else
+            {
+                // The host's top-level element, its base chain and the stereotypes it carries own the members in scope.
+                var scope = new HashSet<string>(StringComparer.Ordinal) { element.Id };
+                if (element is Entity entity)
+                    scope.UnionWith(context.Ancestors(entity).Select(a => a.Id));
+                scope.UnionWith(context.StereotypesOf(element).Select(s => s.Id));
+                if (!scope.Contains(entry.OwnerId))
+                    return $"a member of {Describe(model, entry.OwnerId)}; of \"$element\" takes a member of {element.KindName} {element.Name}, its base entities or its stereotypes";
+            }
+        }
+        else if (xref.Of is { } listId)
+        {
+            if (entry.Kind != "row" || context.SeedOfRow(entry.Id) is not { } seed || seed.Target != listId)
+                return $"which is not a row of a seed of {Describe(model, listId)} (of {listId})";
+        }
+
+        if (!xref.SameDatabase)
+            return null;
+        if (site.Default)
+            return "but a stereotype default cannot use sameDatabase: a default serves many elements, which need not share a database";
+        if (XRefDatabaseOf(element) is not { } hostDatabase)
+            return $"but {element.KindName} {element.Name} has no single database for sameDatabase to compare with";
+        // A keyed id of an inherited member is in its table's database, not in the stereotype's (which has none).
+        var targetDatabase = ids.Length > 1 && model.Get<Table>(ids[0]) is { } keyedTable ? keyedTable.Database
+            : model.Get<Element>(entry.OwnerId) is { } owner ? XRefDatabaseOf(owner) : null;
+        return targetDatabase == hostDatabase
+            ? null
+            : $"which is in {(targetDatabase is null ? "no database" : Describe(model, targetDatabase))}, not in {Describe(model, hostDatabase)} (sameDatabase)";
+    }
+
+    /// <summary>
+    /// Why a column or key of a stereotype is out of the <c>of: "$element"</c> scope of a table (next-phase-2-design.md section 3.1), or
+    /// <see langword="null"/>: the table reaches a member it inherits by its keyed id <c>&lt;tableId&gt;.&lt;memberId&gt;</c> only. A bare
+    /// member id, another table's keyed id and a member the table does not inherit (or excludes) are out of scope. An overlay's inherited
+    /// members are keyed by the synthesized table key, which holds <c>@</c> and so is no value an <c>x-ref</c> takes (MQ2010).
+    /// </summary>
+    private static string? InheritedMemberScopeProblem(ModelSnapshot model, Table table, Stereotype stereotype, string[] ids)
+    {
+        var memberId = ids[^1];
+        var tableKey = TableMembers.TableKeyOf(table) ?? table.Id;
+        var keyed = ContributedMembers.KeyOf(tableKey, memberId);
+        var what = $"a member of stereotype '{stereotype.Key}'";
+        if (ids.Length == 1)
+        {
+            // The keyed id is worth suggesting only when the table inherits the member; else it is out of scope too.
+            if (NotInherited() is { } problem)
+                return problem;
+            return table.Origin == TableOrigin.Synthesized
+                ? $"{what}; of \"$element\" takes a member a table inherits by its keyed id, and the keyed id of an overlay's inherited member ('{keyed}') holds the synthesized table key, which an x-ref value cannot hold"
+                : $"{what}; of \"$element\" takes a member a table inherits by its keyed id: write '{keyed}'";
+        }
+
+        if (ids.Length != 2 || !string.Equals(ids[0], tableKey, StringComparison.Ordinal))
+            return $"{what} as {Describe(model, ids[0])} inherits it; of \"$element\" takes a member of table {table.Name}, by its keyed id '{keyed}'";
+        return NotInherited();
+
+        string? NotInherited()
+        {
+            var set = TableMembers.Of(model, table);
+            bool Has<T>(IReadOnlyList<InheritedMember<T>> members) where T : class => members.Any(m => string.Equals(m.Key, keyed, StringComparison.Ordinal));
+            return Has(set.Columns) || Has(set.PrimaryKeys) || Has(set.Uniques) || Has(set.ForeignKeys) || Has(set.Indexes) || Has(set.Checks)
+                ? null
+                : $"{what} that table {table.Name} does not inherit{(set.Inheritable.ContainsKey(memberId) ? " (it excludes the member)" : "")}";
+        }
+    }
+
+    /// <summary>
+    /// The one database of an element for <c>sameDatabase</c>: a database itself, the database of a physical object, mapping or
+    /// migration fact, or the database of an entity's bindings when they all name one; <see langword="null"/> otherwise. The batch
+    /// operation <c>names-to-ids</c> narrows <c>sameDatabase</c> candidates with it.
+    /// </summary>
+    /// <param name="element">The element that holds the value, or the target's top-level element.</param>
+    /// <returns>The database id, or <see langword="null"/>.</returns>
+    internal static string? XRefDatabaseOf(Element element) => element switch
+    {
+        Database d => d.Id,
+        Table t => t.Database,
+        View v => v.Database,
+        Sequence q => q.Database,
+        Routine r => r.Database,
+        DatabaseType t => t.Database,
+        SqlObject o => o.Database,
+        Query q => q.Database,
+        Mapping m => m.Database,
+        Migration f => f.Database,
+        Entity { Bindings.Count: > 0 } e when e.Bindings.Select(b => b.Database).Distinct(StringComparer.Ordinal).Count() == 1 => e.Bindings[0].Database,
+        _ => null,
+    };
+
+    private static string Describe(ModelSnapshot model, string id) => model.Get<Element>(id) is { } e ? $"{e.KindName} {e.Name}" : id;
 
     private static void CheckCategoryReference(ValidationContext context, ReferenceSite site, Report report)
     {
@@ -186,7 +380,10 @@ internal static partial class BuiltinRules
     public static void CheckCommon(ValidationContext context, ElementBase item, string pointer, string kindName, Report report)
     {
         var model = context.Model;
-        CheckStereotypes(context, item.Id, item.Stereotypes, pointer, kindName, report);
+        if (pointer.Length == 0 && item is Element element && ReferenceEquals(element, report.Document.Element))
+            CheckElementStereotypes(context, element, kindName, report);
+        else
+            CheckStereotypes(context, item.Id, item.Stereotypes, pointer, kindName, report);
 
         if (item.Tags.Count > 0 && model.TagVocabularies.Any())
         {
@@ -207,7 +404,14 @@ internal static partial class BuiltinRules
         }
     }
 
-    /// <summary>Checks the stereotype keys of an element, a sub-element or a process node (MQ2003, MQ2004).</summary>
+    /// <summary>
+    /// Checks the stereotypes of a sub-element or a process node (MQ2003, MQ2004, MQ2013 to MQ2015) on its effective set
+    /// (<see cref="ModelSnapshot.EffectiveStereotypes(IReadOnlyList{string})"/>: implied first, then own; next-phase-1-design.md section 4.2). An unknown own
+    /// key is MQ2003 at its entry; a stereotype that does not apply to the kind is MQ2004 at its entry (for an implied one, the entry
+    /// of the stereotype that implies it). Two of one group (MQ2013), a missing required one (MQ2014) and two that conflict (MQ2015)
+    /// are reported at the later stereotype's entry. A top-level element is judged on its whole effective set, schema and package
+    /// defaults included (<see cref="CheckCommon"/> runs <c>CheckElementStereotypes</c> for it).
+    /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="id">The id of the item.</param>
     /// <param name="stereotypes">Its stereotype keys.</param>
@@ -216,14 +420,181 @@ internal static partial class BuiltinRules
     /// <param name="report">The report.</param>
     public static void CheckStereotypes(ValidationContext context, string? id, IReadOnlyList<string> stereotypes, string pointer, string kindName, Report report)
     {
-        for (var i = 0; i < stereotypes.Count; i++)
+        if (stereotypes.Count == 0)
+            return;
+        CheckUnknownKeys(context, stereotypes, pointer + "/stereotypes", id, report);
+        JudgeEffectiveSet(context.Model, context.Model.EffectiveStereotypes(stereotypes), applied => Ptr.At(pointer + "/stereotypes", applied.Entry), id, kindName, report);
+    }
+
+    /// <summary>
+    /// Checks the stereotypes of a top-level element on its whole effective set (next-phase-2-design.md section 3.1): its own list, the
+    /// stereotypes they imply, and the defaults of its database schema and packages (<see cref="ModelSnapshot.EffectiveStereotypes(Element)"/>).
+    /// MQ2003 for an unknown key in <c>stereotypes</c> or <c>excludeStereotypes</c>; MQ2004 as for any item (a default that does not apply
+    /// to the kind never reaches it, so a default never makes MQ2004); MQ2013 to MQ2015 judge the whole set, and a finding about a default
+    /// names the schema or package that gives it and how to exclude it, at <c>/stereotypes</c> (the file root without a list); MQ2029 for an
+    /// exclusion of an own or implied stereotype, MQ2030 for one no default gives.
+    /// </summary>
+    /// <param name="context">The validation context.</param>
+    /// <param name="element">The element.</param>
+    /// <param name="kindName">Its kind name for <c>appliesTo</c>.</param>
+    /// <param name="report">The report.</param>
+    private static void CheckElementStereotypes(ValidationContext context, Element element, string kindName, Report report)
+    {
+        var model = context.Model;
+        var excludes = element.ExcludeStereotypes ?? [];
+        if (element.Stereotypes.Count == 0 && excludes.Count == 0 && !model.StereotypeDefaults.HasDefaults)
+            return;
+        CheckUnknownKeys(context, element.Stereotypes, "/stereotypes", element.Id, report);
+        var holder = model.HolderOf(element);
+        var listPointer = element.Stereotypes.Count > 0 ? "/stereotypes" : "";
+        JudgeEffectiveSet(model, model.EffectiveStereotypes(holder), applied => applied.Entry >= 0 ? Ptr.At("/stereotypes", applied.Entry) : listPointer,
+            element.Id, kindName, report);
+        if (excludes.Count == 0)
+            return;
+
+        // MQ2029: only defaults can be excluded, never an own stereotype or one an own stereotype implies.
+        var own = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var key in element.Stereotypes)
+            own.TryAdd(key, null);
+        foreach (var key in element.Stereotypes)
         {
-            var key = stereotypes[i];
-            var at = Ptr.At(pointer + "/stereotypes", i);
-            if (context.Model.GetStereotype(key) is not { } stereotype)
-                report.Add("MQ2003", $"Stereotype '{key}' is not defined in model/vocabularies/stereotypes.", at, id);
-            else if (stereotype.AppliesTo.Count > 0 && !stereotype.AppliesTo.Contains(kindName, StringComparer.Ordinal))
-                report.Add("MQ2004", $"Stereotype '{key}' applies to {string.Join(", ", stereotype.AppliesTo)}, not to {Article(kindName)} {kindName}.", at, id);
+            foreach (var implied in model.GetStereotype(key)?.Implies ?? [])
+                own.TryAdd(implied, key);
+        }
+
+        // MQ2030: the keys the defaults give the element before any exclusion (kinds they do not apply to give nothing).
+        var given = model.EffectiveStereotypes(holder with { Own = [], Excludes = [] }).Select(s => s.Stereotype.Key).ToHashSet(StringComparer.Ordinal);
+        for (var i = 0; i < excludes.Count; i++)
+        {
+            var key = excludes[i];
+            var at = Ptr.At("/excludeStereotypes", i);
+            if (model.GetStereotype(key) is null)
+                report.Add("MQ2003", $"Stereotype '{key}' is not defined in model/vocabularies/stereotypes.", at, element.Id);
+            else if (own.TryGetValue(key, out var by))
+            {
+                report.Add("MQ2029", by is null
+                    ? $"'excludeStereotypes' names '{key}', which the {kindName} lists in 'stereotypes'; only a schema or package default can be excluded. Remove it from one list."
+                    : $"'excludeStereotypes' names '{key}', which '{by}' in 'stereotypes' implies; only a schema or package default can be excluded. Remove it from one list.",
+                    at, element.Id);
+            }
+            else if (!given.Contains(key))
+            {
+                report.Add("MQ2030", $"'excludeStereotypes' names '{key}', which no schema or package default gives this {kindName}, so it excludes nothing; remove the entry.",
+                    at, element.Id);
+            }
+        }
+    }
+
+    /// <summary>MQ2003 for each key of a stereotype key list that names no stereotype, at its entry.</summary>
+    private static void CheckUnknownKeys(ValidationContext context, IReadOnlyList<string> keys, string listPointer, string? id, Report report)
+    {
+        for (var i = 0; i < keys.Count; i++)
+        {
+            if (context.Model.GetStereotype(keys[i]) is null)
+                report.Add("MQ2003", $"Stereotype '{keys[i]}' is not defined in model/vocabularies/stereotypes.", Ptr.At(listPointer, i), id);
+        }
+    }
+
+    /// <summary>
+    /// A database schema entry's or a package's <c>defaultStereotypes</c> (next-phase-2-design.md section 3.1): MQ2003 for an unknown key
+    /// at its entry, and MQ2031 when the list, with the stereotypes its entries imply, holds two of one group or two that conflict, at
+    /// the later entry (for an implied one, the entry that implies it).
+    /// </summary>
+    /// <param name="context">The validation context.</param>
+    /// <param name="keys">The list.</param>
+    /// <param name="listPointer">The list's pointer.</param>
+    /// <param name="id">The id of the schema entry or package.</param>
+    /// <param name="report">The report.</param>
+    private static void CheckDefaultList(ValidationContext context, IReadOnlyList<string> keys, string listPointer, string id, Report report)
+    {
+        if (keys.Count == 0)
+            return;
+        CheckUnknownKeys(context, keys, listPointer, id, report);
+        var layer = StereotypeDefaults.Layer(keys, context.Model.GetStereotype);
+        var groups = new Dictionary<string, AppliedStereotype>(StringComparer.Ordinal);
+        for (var i = 0; i < layer.Count; i++)
+        {
+            var applied = layer[i];
+            var stereotype = applied.Stereotype;
+            var at = Ptr.At(listPointer, applied.Entry);
+            if (stereotype.Group is { } group && !groups.TryAdd(group, applied))
+            {
+                report.Add("MQ2031", $"'defaultStereotypes' gives {Named(applied)} and {Named(groups[group])}, both in group '{group}'; an element carries at most one stereotype of a group. Fix the list.",
+                    at, id);
+            }
+
+            for (var j = 0; j < i; j++)
+            {
+                var earlier = layer[j];
+                if (stereotype.Conflicts.Contains(earlier.Stereotype.Key, StringComparer.Ordinal)
+                    || earlier.Stereotype.Conflicts.Contains(stereotype.Key, StringComparer.Ordinal))
+                {
+                    report.Add("MQ2031", $"'defaultStereotypes' gives {Named(earlier)} and {Named(applied)}, which conflict. Fix the list.", at, id);
+                }
+            }
+        }
+
+        static string Named(AppliedStereotype applied) =>
+            applied.ImpliedBy is { } by ? $"'{applied.Stereotype.Key}' (implied by '{by}')" : $"'{applied.Stereotype.Key}'";
+    }
+
+    /// <summary>
+    /// MQ2004 and MQ2013 to MQ2015 on an effective set, each at the pointer <paramref name="at"/> gives the stereotype concerned (the
+    /// later one for a pair). A default stereotype is named with the schema or package that gives it, and a finding it takes part in
+    /// says how to leave it out (<c>excludeStereotypes</c>). The resolver also judges a table without a file with it, on its entity or
+    /// relation (next-phase-2-design.md section 3.1).
+    /// </summary>
+    internal static void JudgeEffectiveSet(ModelSnapshot model, IReadOnlyList<AppliedStereotype> effective, Func<AppliedStereotype, string> at, string? id,
+        string kindName, Report report)
+    {
+        string At(AppliedStereotype applied) => at(applied);
+        string Name(AppliedStereotype applied)
+        {
+            var from = applied.DefaultHolder is { } holder ? "a default of " + DefaultHolderName(model, applied.Source, holder) : null;
+            return (applied.ImpliedBy, from) switch
+            {
+                ({ } by, { } source) => $"'{applied.Stereotype.Key}' (implied by '{by}', {source})",
+                ({ } by, null) => $"'{applied.Stereotype.Key}' (implied by '{by}')",
+                (null, { } source) => $"'{applied.Stereotype.Key}' ({source})",
+                _ => $"'{applied.Stereotype.Key}'",
+            };
+        }
+
+        static string Exclusion(params AppliedStereotype[] pair) =>
+            pair.FirstOrDefault(p => p.DefaultHolder is not null) is { } fromDefault
+                ? $" To leave the default out of this element, add '{fromDefault.Stereotype.Key}' to its excludeStereotypes."
+                : "";
+
+        var keys = effective.Select(s => s.Stereotype.Key).ToHashSet(StringComparer.Ordinal);
+        var groups = new Dictionary<string, AppliedStereotype>(StringComparer.Ordinal);
+        for (var i = 0; i < effective.Count; i++)
+        {
+            var applied = effective[i];
+            var stereotype = applied.Stereotype;
+            if (stereotype.AppliesTo.Count > 0 && !stereotype.AppliesTo.Contains(kindName, StringComparer.Ordinal))
+                report.Add("MQ2004", $"Stereotype {Name(applied)} applies to {string.Join(", ", stereotype.AppliesTo)}, not to {Article(kindName)} {kindName}.", At(applied), id);
+            if (stereotype.Group is { } group && !groups.TryAdd(group, applied))
+            {
+                report.Add("MQ2013", $"Stereotype {Name(applied)} is in group '{group}', and {Article(kindName)} {kindName} carries at most one stereotype of a group: {Name(groups[group])} is in it too."
+                    + Exclusion(applied, groups[group]), At(applied), id);
+            }
+
+            foreach (var required in stereotype.Requires)
+            {
+                if (!keys.Contains(required))
+                    report.Add("MQ2014", $"Stereotype {Name(applied)} requires stereotype '{required}', which the {kindName} does not carry." + Exclusion(applied), At(applied), id);
+            }
+
+            for (var j = 0; j < i; j++)
+            {
+                var earlier = effective[j];
+                if (stereotype.Conflicts.Contains(earlier.Stereotype.Key, StringComparer.Ordinal)
+                    || earlier.Stereotype.Conflicts.Contains(stereotype.Key, StringComparer.Ordinal))
+                {
+                    report.Add("MQ2015", $"Stereotypes {Name(earlier)} and {Name(applied)} conflict: {Article(kindName)} {kindName} carries one or the other."
+                        + Exclusion(applied, earlier), At(applied), id);
+                }
+            }
         }
     }
 
@@ -236,6 +607,20 @@ internal static partial class BuiltinRules
         Package package => package.Id,
         _ => ModelIndexer.PackageOf(element),
     };
+
+    /// <summary>How a message names the holder of a default stereotype: <c>schema 'billing'</c> or <c>package 'Billing'</c>.</summary>
+    internal static string DefaultHolderName(ModelSnapshot model, StereotypeSource source, string holderId)
+    {
+        if (source == StereotypeSource.SchemaDefault)
+        {
+            var schema = model.TryGetEntry(holderId, out var entry) && model.Get<Database>(entry.OwnerId) is { } database
+                ? database.Schemas.FirstOrDefault(s => string.Equals(s.Id, holderId, StringComparison.Ordinal))
+                : null;
+            return $"schema '{(schema is { Name.Length: > 0 } ? schema.Name : holderId)}'";
+        }
+
+        return $"package '{(model.Get<Package>(holderId) is { Name.Length: > 0 } package ? package.Name : holderId)}'";
+    }
 
     private static string ScopeName(ModelSnapshot model, string? packageId) =>
         packageId is null ? "the model (global)" : $"domain '{(model.GetDocument(packageId)?.Element.Name is { Length: > 0 } name ? name : packageId)}'";
@@ -313,6 +698,8 @@ internal static partial class BuiltinRules
                 break;
             case Table { Origin: TableOrigin.Synthesized, Name.Length: 0 }:
                 break; // an overlay keeps the conventional name
+            case Migration { Name.Length: 0 }:
+                break; // a recorded fact has no name (next-phase-1-design.md section 3.2)
             case Stereotype stereotype:
                 CheckLabel(stereotype.Name, "stereotype", "/name", element.Id, report);
                 if (!KebabKey().IsMatch(stereotype.Key))
@@ -359,6 +746,8 @@ internal static partial class BuiltinRules
 
     private static void CheckPackage(ValidationContext context, Package package, Report report)
     {
+        CheckDefaultList(context, package.DefaultStereotypes, "/defaultStereotypes", package.Id, report);
+
         // MQ3003: walk the parent chain; report when it comes back to this package.
         var seen = new HashSet<string>(StringComparer.Ordinal) { package.Id };
         for (var current = package.Parent; current is not null;)
@@ -418,7 +807,7 @@ internal static partial class BuiltinRules
 
         // MQ3007: duplicate attribute names, inherited and virtual included (skipped inside an inheritance cycle).
         if (!inCycle)
-            CheckFlatDuplicates(entity, flat, report);
+            CheckFlatDuplicates(context, entity, flat, report);
 
         CheckAttributes(context, entity.Attributes, report);
     }
@@ -432,7 +821,7 @@ internal static partial class BuiltinRules
         }
     }
 
-    private static void CheckFlatDuplicates(ElementBase owner, IReadOnlyList<FlatAttribute> flat, Report report)
+    private static void CheckFlatDuplicates(ValidationContext context, ElementBase owner, IReadOnlyList<FlatAttribute> flat, Report report)
     {
         var seen = new Dictionary<string, FlatAttribute>(StringComparer.Ordinal);
         foreach (var item in flat)
@@ -460,10 +849,25 @@ internal static partial class BuiltinRules
             }
             else
             {
-                var index = IndexOf(owner.Stereotypes, item.From);
-                report.Add("MQ3007", $"Stereotype '{item.From}' adds attribute '{name}', which is already used by {from}.", Ptr.At("/stereotypes", index), owner.Id);
+                report.Add("MQ3007", $"Stereotype '{item.From}' adds attribute '{name}', which is already used by {from}.", StereotypePointer(context, owner, item.From), owner.Id);
             }
         }
+    }
+
+    /// <summary>
+    /// The pointer of a stereotype an element carries: its own entry (the first entry for an implied one, as phase 1 points), or, for
+    /// a schema or package default, the <c>stereotypes</c> list, or the file root when the file has none (next-phase-2-design.md
+    /// section 3.1).
+    /// </summary>
+    private static string StereotypePointer(ValidationContext context, ElementBase owner, string key)
+    {
+        if (owner is Element element && !owner.Stereotypes.Contains(key, StringComparer.Ordinal)
+            && context.Model.EffectiveStereotypes(element).FirstOrDefault(s => s.Stereotype.Key == key) is { Entry: < 0 })
+        {
+            return owner.Stereotypes.Count > 0 ? "/stereotypes" : "";
+        }
+
+        return Ptr.At("/stereotypes", IndexOf(owner.Stereotypes, key));
     }
 
     private static int IndexOf(IReadOnlyList<string> list, string value)
@@ -495,7 +899,7 @@ internal static partial class BuiltinRules
     {
         var flat = valueObject.Attributes.Select((a, i) => new FlatAttribute(a, AttributeSource.Own, valueObject.Id, i))
             .Concat(context.VirtualAttributes(valueObject)).ToList();
-        CheckFlatDuplicates(valueObject, flat, report);
+        CheckFlatDuplicates(context, valueObject, flat, report);
         CheckAttributes(context, valueObject.Attributes, report);
 
         // MQ3015: a containment edge that leads back to this value object.
@@ -607,7 +1011,7 @@ internal static partial class BuiltinRules
 
         var flat = relation.Attributes.Select((a, i) => new FlatAttribute(a, AttributeSource.Own, relation.Id, i))
             .Concat(context.VirtualAttributes(relation)).ToList();
-        CheckFlatDuplicates(relation, flat, report);
+        CheckFlatDuplicates(context, relation, flat, report);
         CheckAttributes(context, relation.Attributes, report);
         MappingRules.CheckRelationBindings(context, relation, report);
     }
@@ -696,6 +1100,7 @@ internal static partial class BuiltinRules
             var schema = database.Schemas[i];
             var pointer = Ptr.At("/schemas", i);
             CheckCommon(context, schema, pointer, "schema", report);
+            CheckDefaultList(context, schema.DefaultStereotypes, pointer + "/defaultStereotypes", schema.Id, report);
             CheckLabel(schema.Name, "schema", pointer + "/name", schema.Id, report);
             PhysicalRules.CheckIdentifierLength(database, limit, schema.Name, "Schema", pointer + "/name", schema.Id, report);
         }
@@ -756,8 +1161,282 @@ internal static partial class BuiltinRules
     private static void CheckStereotype(ValidationContext context, Stereotype stereotype, Report report)
     {
         var flat = stereotype.Attributes.Select((a, i) => new FlatAttribute(a, AttributeSource.Own, stereotype.Id, i)).ToList();
-        CheckFlatDuplicates(stereotype, flat, report);
+        CheckFlatDuplicates(context, stereotype, flat, report);
         CheckAttributes(context, stereotype.Attributes, report);
         PhysicalRules.CheckStereotypeStorage(stereotype, report);
+        CheckStereotypeLinks(context.Model, stereotype, report);
+        CheckStereotypeParameters(context.Model, stereotype, report);
+        CheckStereotypeMembers(context.Model, stereotype, report);
     }
+
+    /// <summary>
+    /// The members a stereotype contributes to tables (next-phase-2-design.md section 3.1): MQ2024 for members on a stereotype that does
+    /// not apply to tables, a column with <c>attribute</c> or <c>sequence</c>, and a key, index or check with a <c>name</c> (every carrier
+    /// would share it); MQ2025 for a key, index or check naming a column the stereotype does not declare; MQ2026 for a foreign key's
+    /// target; MQ2001 for a fixed <c>referencesTable</c> that is neither a table file nor a synthesized table key.
+    /// </summary>
+    private static void CheckStereotypeMembers(ModelSnapshot model, Stereotype stereotype, Report report)
+    {
+        var s = stereotype;
+        var lists = new List<string>();
+        if (s.Columns.Count > 0)
+            lists.Add("columns");
+        if (s.PrimaryKey is not null)
+            lists.Add("primaryKey");
+        if (s.Uniques.Count > 0)
+            lists.Add("uniques");
+        if (s.ForeignKeys.Count > 0)
+            lists.Add("foreignKeys");
+        if (s.Checks.Count > 0)
+            lists.Add("checks");
+        if (s.Indexes.Count > 0)
+            lists.Add("indexes");
+        if (lists.Count == 0)
+            return;
+        if (s.AppliesTo.Count > 0 && !s.AppliesTo.Contains("table", StringComparer.Ordinal))
+        {
+            report.Add("MQ2024", $"Stereotype '{s.Key}' declares {string.Join(", ", lists)} but does not apply to tables, so its members reach no table: add table to appliesTo, or remove the members.",
+                "/appliesTo");
+        }
+
+        var own = new HashSet<string>(s.Columns.Select(c => c.Id).Where(id => !string.IsNullOrEmpty(id)), StringComparer.Ordinal);
+        for (var i = 0; i < s.Columns.Count; i++)
+        {
+            var column = s.Columns[i];
+            var pointer = Ptr.At("/columns", i);
+            if (column.Attribute is not null)
+            {
+                report.Add("MQ2024", $"Column '{column.Name}' of stereotype '{s.Key}' sets attribute, which only a synthesized table's overlay column has: a contributed column stores no attribute (the stereotype's attributes serve entities).",
+                    pointer + "/attribute", column.Id);
+            }
+
+            if (column.Sequence is not null)
+            {
+                report.Add("MQ2024", $"Column '{column.Name}' of stereotype '{s.Key}' sets sequence: a sequence belongs to one database, and a stereotype's column reaches tables of any database. Use a default or an identity instead.",
+                    pointer + "/sequence", column.Id);
+            }
+
+            PhysicalRules.CheckStableId(column, pointer, $"Column '{column.Name}' of stereotype '{s.Key}'", report); // next-phase-2-design.md section 3.4
+        }
+
+        void Named(string? name, string pointer, string what, string? id)
+        {
+            if (name is not null)
+                report.Add("MQ2024", $"The {what} of stereotype '{s.Key}' sets a name, which every table that carries it would share: names come from the naming conventions per table, and a table may redefine one. Remove the name.", pointer, id);
+        }
+
+        void Columns(IReadOnlyList<string?> columns, string pointer, string what, string? id, string suffix = "")
+        {
+            for (var i = 0; i < columns.Count; i++)
+            {
+                if (columns[i] is { } column && !own.Contains(column))
+                    report.Add("MQ2025", NotDeclared(what, column), Ptr.At(pointer, i) + suffix, id);
+            }
+        }
+
+        string NotDeclared(string what, string column) =>
+            $"The {what} of stereotype '{s.Key}' names column '{column}', which the stereotype does not declare: a member names only its own stereotype's columns.";
+
+        if (s.PrimaryKey is { } pk)
+        {
+            Named(pk.Name, "/primaryKey/name", "primary key", pk.Id);
+            Columns(pk.Columns, "/primaryKey/columns", "primary key", pk.Id);
+        }
+
+        for (var i = 0; i < s.Uniques.Count; i++)
+        {
+            var unique = s.Uniques[i];
+            Named(unique.Name, Ptr.At("/uniques", i) + "/name", "unique constraint", unique.Id);
+            Columns(unique.Columns, Ptr.At("/uniques", i) + "/columns", "unique constraint", unique.Id);
+        }
+
+        for (var i = 0; i < s.ForeignKeys.Count; i++)
+        {
+            var fk = s.ForeignKeys[i];
+            var pointer = Ptr.At("/foreignKeys", i);
+            Columns(fk.Columns, pointer + "/columns", "foreign key", fk.Id);
+            Columns(fk.OnDeleteColumns, pointer + "/onDeleteColumns", "foreign key", fk.Id);
+            CheckContributedTarget(model, s, fk, pointer, report);
+        }
+
+        for (var i = 0; i < s.Checks.Count; i++)
+        {
+            var check = s.Checks[i];
+            Named(check.Name, Ptr.At("/checks", i) + "/name", "check constraint", check.Id);
+            if (check.Column is { } column && !own.Contains(column))
+                report.Add("MQ2025", NotDeclared("check constraint", column), Ptr.At("/checks", i) + "/column", check.Id);
+        }
+
+        for (var i = 0; i < s.Indexes.Count; i++)
+        {
+            var index = s.Indexes[i];
+            var pointer = Ptr.At("/indexes", i);
+            Named(index.Name, pointer + "/name", "index", index.Id);
+            Columns(index.Columns.Select(c => c.Column).ToList(), pointer + "/columns", "index", index.Id, "/column");
+            Columns(index.Include, pointer + "/include", "index", index.Id);
+        }
+    }
+
+    /// <summary>
+    /// A contributed foreign key's target (MQ2026): exactly one of <c>referencesTable</c> (MQ2001 when it names no table) and
+    /// <c>referencesParameter</c>, a required string parameter typed <c>x-ref: { kind: table, sameDatabase: true }</c>, so each carrier
+    /// names a table file of its own database; no <c>referencesColumns</c> beside a parameter, whose table differs per carrier.
+    /// </summary>
+    private static void CheckContributedTarget(ModelSnapshot model, Stereotype s, MemberForeignKey fk, string pointer, Report report)
+    {
+        var fixedTable = !string.IsNullOrEmpty(fk.ReferencesTable);
+        var parameter = fk.ReferencesParameter is { Length: > 0 } name ? name : null;
+        if (fixedTable == (parameter is not null))
+        {
+            report.Add("MQ2026", fixedTable
+                    ? $"Foreign key '{fk.Id}' of stereotype '{s.Key}' sets both referencesTable and referencesParameter: keep one target."
+                    : $"Foreign key '{fk.Id}' of stereotype '{s.Key}' has no target: set referencesTable (one table) or referencesParameter (a parameter each carrier gives).",
+                pointer + (fixedTable ? "/referencesParameter" : ""), fk.Id);
+            return;
+        }
+
+        if (parameter is null)
+        {
+            if (model.Get<Table>(fk.ReferencesTable!) is null && !PhysicalRules.IsSynthesizedTableKey(model, fk.ReferencesTable!))
+                report.Add("MQ2001", $"Foreign key '{fk.Id}' of stereotype '{s.Key}' references table '{fk.ReferencesTable}', which is neither a table file nor a synthesized table key.", pointer + "/referencesTable", fk.Id);
+            return;
+        }
+
+        if (ParameterTargetProblem(s, parameter) is { } problem)
+            report.Add("MQ2026", $"Foreign key '{fk.Id}' of stereotype '{s.Key}' takes its target from parameter '{parameter}', {problem}.", pointer + "/referencesParameter", fk.Id);
+        if (fk.ReferencesColumns.Count > 0)
+        {
+            report.Add("MQ2026", $"Foreign key '{fk.Id}' of stereotype '{s.Key}' lists referencesColumns beside referencesParameter: each carrier names its own table, so the key references that table's primary key. Remove referencesColumns.",
+                pointer + "/referencesColumns", fk.Id);
+        }
+    }
+
+    /// <summary>Why a stereotype parameter cannot name a contributed foreign key's target, or <see langword="null"/>.</summary>
+    private static string? ParameterTargetProblem(Stereotype s, string name)
+    {
+        const string Shape = "{\"type\": \"string\", \"x-ref\": {\"kind\": \"table\", \"sameDatabase\": true}}";
+        if (s.Parameters is not { Properties.ValueKind: JsonValueKind.Object } parameters || !parameters.Properties.TryGetProperty(name, out var schema))
+            return $"which the stereotype's parameters do not declare: declare it as {Shape} and list it in required";
+        var isString = schema.ValueKind == JsonValueKind.Object && schema.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String
+            && type.GetString() == "string";
+        var (refs, _, _) = PropertySchemaSet.Read(parameters.Properties, "/parameters/properties", static (_, _) => { });
+        var xref = refs.TryGetValue(name, out var node) ? node.Ref : null;
+        if (!isString || xref is not { SameDatabase: true, Kinds: [ "table" ] })
+            return $"which is not typed {Shape}";
+        return parameters.Required.Contains(name, StringComparer.Ordinal) ? null : "which is not in required: every carrier must name its table";
+    }
+
+    /// <summary>
+    /// The links of a stereotype (next-phase-1-design.md section 4.2): MQ2016 for a <c>requires</c>, <c>conflicts</c> or
+    /// <c>implies</c> entry that names an unknown key or the stereotype itself, a conflict with a stereotype it requires or implies, and
+    /// an implied stereotype of its own group; MQ2017 for an implied stereotype that implies others (implication is one level, which
+    /// also refuses cycles).
+    /// </summary>
+    private static void CheckStereotypeLinks(ModelSnapshot model, Stereotype stereotype, Report report)
+    {
+        foreach (var (field, keys) in new[] { ("requires", stereotype.Requires), ("conflicts", stereotype.Conflicts), ("implies", stereotype.Implies) })
+        {
+            for (var i = 0; i < keys.Count; i++)
+            {
+                var key = keys[i];
+                var at = Ptr.At("/" + field, i);
+                if (key == stereotype.Key)
+                {
+                    report.Add("MQ2016", $"'{field}' names the stereotype itself ('{key}').", at);
+                    continue;
+                }
+
+                if (model.GetStereotype(key) is not { } other)
+                {
+                    report.Add("MQ2016", $"'{field}' names stereotype '{key}', which is not defined in model/vocabularies/stereotypes.", at);
+                    continue;
+                }
+
+                switch (field)
+                {
+                    case "conflicts" when stereotype.Requires.Contains(key, StringComparer.Ordinal) || stereotype.Implies.Contains(key, StringComparer.Ordinal):
+                        report.Add("MQ2016",
+                            $"'conflicts' names '{key}', which the stereotype also {(stereotype.Implies.Contains(key, StringComparer.Ordinal) ? "implies" : "requires")}: no element could carry it.",
+                            at);
+                        break;
+                    case "implies":
+                        if (stereotype.Group is { } group && other.Group == group)
+                            report.Add("MQ2016", $"'implies' names '{key}', which is in the stereotype's own group '{group}': no element could carry both.", at);
+                        if (other.Implies.Count > 0)
+                        {
+                            report.Add("MQ2017",
+                                $"'implies' names '{key}', which implies {string.Join(", ", other.Implies.Select(k => "'" + k + "'"))}: implication is one level, so imply each directly.",
+                                at);
+                        }
+
+                        break;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The typed parameters of a stereotype (next-phase-1-design.md section 4.2): MQ2019 when <c>parameters</c> does not compile or
+    /// <c>required</c> names an undeclared parameter, MQ2009 for a malformed or misplaced <c>x-ref</c> in it (and an <c>of</c> that
+    /// names no element), MQ7212 and MQ7213 for a misplaced <c>x-translatable</c>, and MQ2018 for a default that fails its own property
+    /// schema. Defaults are checked without <c>required</c>:
+    /// a stereotype may leave a required parameter to its hosts, whose merged values are judged (<see cref="ExtensionSet"/>).
+    /// </summary>
+    private static void CheckStereotypeParameters(ModelSnapshot model, Stereotype stereotype, Report report)
+    {
+        if (stereotype.Parameters is not { } parameters)
+            return;
+        var document = report.Document;
+        var source = model.PropertySchemas.SourceOf(document.Path) is { } own && own.StereotypeKey == stereotype.Key && own.Hash == document.Hash
+            ? own
+            : PropertySchemaSource.OfStereotype(stereotype, parameters, document.Path, document.Hash);
+        PropertySchemaSet.Read(parameters.Properties, "/parameters/properties", (pointer, message) => report.Add("MQ2009", message, pointer));
+        foreach (var (rule, pointer, message) in PropertySchemaSet.TranslatableFindings(parameters.Properties, "/parameters/properties", stereotype.AppliesTo))
+            report.Add(rule, message, pointer); // MQ7212, MQ7213 (next-phase-1-design.md section 4.4)
+        foreach (var (pointer, xref) in source.Keywords)
+        {
+            if (xref.Of is { } of && of != XRef.ElementScope && !(model.TryGetEntry(of, out var entry) && entry.OwnerId == of))
+                report.Add("MQ2009", $"x-ref of names {of}, which is no element of the model.", pointer + "/of");
+        }
+
+        for (var i = 0; i < parameters.Required.Count; i++)
+        {
+            if (parameters.Properties.ValueKind != JsonValueKind.Object || !parameters.Properties.TryGetProperty(parameters.Required[i], out _))
+                report.Add("MQ2019", $"'required' names '{parameters.Required[i]}', which 'properties' does not declare.", Ptr.At("/parameters/required", i));
+        }
+
+        if (source.CompiledWithoutRequired is not { Schema: { } lenient })
+        {
+            report.Add("MQ2019", $"'parameters' is not a valid JSON Schema: {source.CompiledWithoutRequired.Error}", "/parameters/properties");
+            return;
+        }
+
+        if (stereotype.DefaultProperties.Count == 0)
+            return;
+        var defaults = JsonSerializer.SerializeToElement(new SortedDictionary<string, JsonElement>(stereotype.DefaultProperties.ToDictionary(), StringComparer.Ordinal));
+        var results = lenient.Evaluate(defaults, DefaultsEvaluation);
+        if (results.IsValid)
+            return;
+        var any = false;
+        foreach (var detail in results.Details ?? [])
+        {
+            if (detail.Errors is null || ExtensionSet.InsideDiscardedBranch(detail))
+                continue;
+            foreach (var (keyword, message) in detail.Errors.OrderBy(e => e.Key, StringComparer.Ordinal))
+            {
+                if (ExtensionSet.ApplicatorKeywords.Contains(keyword))
+                    continue;
+                var location = detail.InstanceLocation.ToString();
+                report.Add("MQ2018", $"The default {location.TrimStart('/')} fails its parameter schema: {(keyword.Length == 0 ? message : keyword + ": " + message)}",
+                    "/defaultProperties" + location);
+                any = true;
+            }
+        }
+
+        if (!any)
+            report.Add("MQ2018", "The defaults do not match their parameter schemas.", "/defaultProperties");
+    }
+
+    private static readonly global::Json.Schema.EvaluationOptions DefaultsEvaluation =
+        new() { OutputFormat = global::Json.Schema.OutputFormat.List, Culture = CultureInfo.InvariantCulture };
 }

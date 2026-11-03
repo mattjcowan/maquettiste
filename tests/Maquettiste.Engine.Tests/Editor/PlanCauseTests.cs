@@ -84,6 +84,30 @@ public sealed class PlanCauseTests
     }
 
     [Fact]
+    public void An_x_key_is_worded_as_an_extension_file()
+    {
+        // next-phase-2-design.md section 3.4: x:<path under extensions> (a rows script a unit's scripted rows came from) is an input
+        // cause, worded by its path.
+        IReadOnlyList<string> before = ["x:seeds/a.js", "x:seeds/b.js"];
+        var stored = new Maquettiste.Engine.Pipeline.UnitState("rows/codes", "old", before, [])
+        {
+            KeyHashes = Maquettiste.Engine.Planning.KeyHashes.Of(before, k => "then:" + k),
+        };
+        var unit = new PlanUnit("rows/codes", "new", ["x:seeds/a.js", "x:seeds/c.js"], false, []);
+
+        var (reason, causes) = Maquettiste.Engine.Generation.PlanExplainer.Explain(unit, stored, false, "/repo", _ => true, currentHash: k => "now:" + k);
+
+        Assert.Equal("inputs", reason);
+        Assert.Equal(
+        [
+            ("inputs", "x:seeds/b.js", "The extension file seeds/b.js is no longer read"),
+            ("inputs", "x:seeds/c.js", "The extension file seeds/c.js is read for the first time"),
+        ], causes.Where(c => c.Key != "x:seeds/a.js").Select(c => (c.Kind, c.Key, c.Detail)));
+        Assert.Contains(causes, c => (c.Kind, c.Key, c.Detail) == ("inputs", "x:seeds/a.js", "The extension file seeds/a.js changed"));
+        Assert.Equal("inputs", Maquettiste.Engine.Generation.PlanExplainer.KindOf("x:seeds/a.js"));
+    }
+
+    [Fact]
     public async Task A_check_plan_gives_its_units_the_check_reason()
     {
         await using var repo = Create();

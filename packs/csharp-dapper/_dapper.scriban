@@ -83,9 +83,14 @@ func row_prop(c)
   ret cs_ident (pascal c.name)
 end
 
-# The C# type of a row property: the column's type, with JSON columns held as text.
+# Whether a column type keyword is range or multirange, held as its text form like JSON (section 3.4).
+func range_type(k)
+  ret k == "range" || k == "multirange"
+end
+
+# The C# type of a row property: the column's type, with JSON, range and multirange columns held as text.
 func row_type(c)
-  if c.type == "json"
+  if c.type == "json" || range_type(c.type)
     ret c.nullable ? "string?" : "string"
   end
   ret type_of c "csharp"
@@ -300,10 +305,11 @@ func bind_nullable(f)
   ret false
 end
 
-# The C# type of a field's row property: its column's type keyword (JSON held as text), nullable as bind_nullable says.
+# The C# type of a field's row property: its column's type keyword (JSON, range and multirange held as text), nullable as
+# bind_nullable says.
 func bind_row_type(f)
   $k = f.type ? f.type : "string"
-  $t = $k == "json" ? "string" : (type_of $k "csharp")
+  $t = ($k == "json" || range_type($k)) ? "string" : (type_of $k "csharp")
   ret bind_nullable(f) ? $t + "?" : $t
 end
 

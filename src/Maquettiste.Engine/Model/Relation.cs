@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace Maquettiste.Engine.Model;
 
 /// <summary>A named association between entities, with roles, cardinality and its own attributes (SPEC section 7).</summary>
-public sealed record Relation : Element
+public sealed record Relation : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]

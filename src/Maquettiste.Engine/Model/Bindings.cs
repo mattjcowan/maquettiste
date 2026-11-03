@@ -49,6 +49,12 @@ public sealed record EntityBinding
     [JsonConverter(typeof(BindingDeleteJsonConverter))]
     public BindingDelete? Delete { get; init; }
 
+    /// <summary>
+    /// The columns of a table-file source as the last by-name operation recorded them (next-phase-2-design.md section 3.3); written by
+    /// the engine only. <see langword="null"/> (absent): no operation recorded them, and only MQ4047 reports what the binding misses.
+    /// </summary>
+    public BindingProvenance? Provenance { get; init; }
+
     /// <summary>Markdown text, or a reference to a sidecar Markdown file beside the entity's file.</summary>
     public Description? Description { get; init; }
 
@@ -57,6 +63,53 @@ public sealed record EntityBinding
 
     /// <summary>Custom property values (the property bag).</summary>
     public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = System.Collections.Immutable.ImmutableDictionary<string, JsonElement>.Empty;
+}
+
+/// <summary>
+/// What a binding's source looked like when a by-name operation last followed it (next-phase-2-design.md section 3.3): one entry per
+/// column of a designed or imported table file, two short hashes that tell a rename and a retype apart (<see cref="ColumnShapeHash"/>).
+/// It is a record, not a link: nothing in it is an <see cref="ElementRefAttribute"/>, so the index does not walk it and a column delete
+/// never sees it; a recorded id the source no longer has reads as removed.
+/// </summary>
+public sealed record BindingProvenance
+{
+    /// <summary>
+    /// Column id (an inherited column by its keyed id, <c>&lt;tableId&gt;.&lt;memberId&gt;</c>) to <c>"&lt;name part&gt;:&lt;type part&gt;"</c>,
+    /// 8 hex digits each. Ids here are records, not references. The canonical writer sorts the keys.
+    /// </summary>
+    public required IReadOnlyDictionary<string, string> Columns { get; init; }
+}
+
+/// <summary>
+/// The table file of one database that holds a reference type's rows (2026-10-11, optional): the column of each field the rows fill
+/// (<c>code</c>, <c>label</c>, <c>description</c> or a user field's id) and the constant columns that tell the type's rows apart in
+/// a table several types share. With it, the engine knows the rows are there: foreign keys into the table may name them, a table
+/// seed beside them may not repeat their keys, and the database's seed tables carry them.
+/// </summary>
+public sealed record ReferenceTypeBinding
+{
+    /// <summary>The binding's permanent ULID, unique across the whole model like every sub-element id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The id of the database.</summary>
+    [ElementRef(ElementKind.Database)]
+    public required string Database { get; init; }
+
+    /// <summary>The id of a table file of <see cref="Database"/>.</summary>
+    [ElementRef(ElementKind.Table)]
+    public required string Table { get; init; }
+
+    /// <summary>Columns with a fixed value on every row of the type (several allowed).</summary>
+    public IReadOnlyList<BindingConstant> Constants { get; init; } = [];
+
+    /// <summary>
+    /// The field map: <c>code</c>, <c>label</c>, <c>description</c> or a user field's id as <see cref="BindingField.Attribute"/>, and
+    /// the table's column (its id or physical name).
+    /// </summary>
+    public IReadOnlyList<BindingField> Fields { get; init; } = [];
+
+    /// <summary>Markdown text, or a reference to a sidecar Markdown file beside the reference type's file.</summary>
+    public Description? Description { get; init; }
 }
 
 /// <summary>A column with a fixed value in a binding.</summary>

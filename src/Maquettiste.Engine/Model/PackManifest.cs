@@ -42,14 +42,14 @@ public sealed record PackManifest
     public required IReadOnlyList<PackUnit> Units { get; init; }
 }
 
-/// <summary>One render unit of a pack: a template applied to a scope.</summary>
+/// <summary>One render unit of a pack: a template applied to a scope, or (mode <c>copy</c>) pack files copied as they are.</summary>
 public sealed record PackUnit
 {
     /// <summary>The unit id (<c>^[a-z][a-z0-9-]*$</c>), unique in the pack.</summary>
     public required string Id { get; init; }
 
-    /// <summary>The pack-relative template path.</summary>
-    public required string Template { get; init; }
+    /// <summary>The pack-relative template path; <see langword="null"/> only in mode <see cref="OutputMode.Copy"/>, which takes none.</summary>
+    public string? Template { get; init; }
 
     /// <summary><c>model</c>, <c>each package|entity|relation|enum|value object|table</c>, or <c>select &lt;name&gt;</c>.</summary>
     public required string For { get; init; }
@@ -63,6 +63,12 @@ public sealed record PackUnit
     /// <summary>The output mode.</summary>
     public OutputMode Mode { get; init; } = OutputMode.Overwrite;
 
+    /// <summary>Mode copy: pack-relative glob patterns of the files to copy, matched case-sensitively.</summary>
+    public IReadOnlyList<string> Sources { get; init; } = [];
+
+    /// <summary>Mode copy: literal text replaced in text files and output paths, mapped to a parameter name.</summary>
+    public IReadOnlyDictionary<string, string> Tokens { get; init; } = ImmutableSortedDictionary<string, string>.Empty;
+
     /// <summary>A formatter name, <c>"none"</c>, or <see langword="null"/> to choose by extension.</summary>
     public string? Formatter { get; init; }
 
@@ -74,6 +80,9 @@ public sealed record PackUnit
     /// <c>;</c>). Ignored by the other modes.
     /// </summary>
     public string BlockComment { get; init; } = "#";
+
+    /// <summary>Mode block: the text closing each delimiter line (for example "-->"), or null.</summary>
+    public string? BlockCommentEnd { get; init; }
 
     /// <summary>
     /// Whether a <see cref="OutputMode.Block"/> unit creates its target file when it does not exist (default <see langword="false"/>:
@@ -144,6 +153,12 @@ public enum OutputMode
     /// line, leaving the rest of the file untouched: <c>block</c>.
     /// </summary>
     [JsonStringEnumMemberName("block")] Block,
+
+    /// <summary>
+    /// The pack files a unit's <see cref="PackUnit.Sources"/> match, copied as they are (literal <see cref="PackUnit.Tokens"/> replaced
+    /// in text files and paths) and managed like <see cref="Overwrite"/> files: <c>copy</c>. The unit takes no template.
+    /// </summary>
+    [JsonStringEnumMemberName("copy")] Copy,
 }
 
 /// <summary>Custom template delimiters.</summary>

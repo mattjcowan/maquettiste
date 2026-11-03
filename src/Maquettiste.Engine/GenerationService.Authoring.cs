@@ -141,7 +141,7 @@ public sealed partial class GenerationService
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             slot?.Dispose();
-            return new UnitPathsResult(0, 0, [], [RuleCatalog.Create("MQ6007", $"The paths of '{pack}/{unitId}' did not finish within {deadline} ms (limits.scriptTimeoutMs x 4).")],
+            return new UnitPathsResult(0, 0, [], [RuleCatalog.Create("MQ6007", $"The paths of '{pack}/{unitId}' did not finish within {deadline} ms ({PreviewDeadlineText}).")],
                 clock.ElapsedMilliseconds);
         }
         using var held = slot;
@@ -157,7 +157,7 @@ public sealed partial class GenerationService
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            diagnostics.Add(RuleCatalog.Create("MQ6007", $"The paths of '{pack}/{unit.Id}' did not finish within {deadline} ms (limits.scriptTimeoutMs x 4).",
+            diagnostics.Add(RuleCatalog.Create("MQ6007", $"The paths of '{pack}/{unit.Id}' did not finish within {deadline} ms ({PreviewDeadlineText}).",
                 filePath: loaded.RelativePath + "/pack.json"));
             return new UnitPathsResult(0, 0, [], diagnostics, clock.ElapsedMilliseconds);
         }
@@ -195,7 +195,7 @@ public sealed partial class GenerationService
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            diagnostics.Add(RuleCatalog.Create("MQ6007", $"The paths of '{pack}/{unit.Id}' did not finish within {deadline} ms (limits.scriptTimeoutMs x 4); {rendered} of {toRender.Count} were rendered.",
+            diagnostics.Add(RuleCatalog.Create("MQ6007", $"The paths of '{pack}/{unit.Id}' did not finish within {deadline} ms ({PreviewDeadlineText}); {rendered} of {toRender.Count} were rendered.",
                 filePath: loaded.RelativePath + "/pack.json"));
         }
 
@@ -433,9 +433,11 @@ public sealed partial class GenerationService
     {
         "each package" => typeof(RPackage),
         "each entity" => typeof(REntity),
+        "each attribute" => typeof(RAttribute),
         "each relation" => typeof(RRelation),
         "each enum" => typeof(REnum),
         "each value object" => typeof(RValueObject),
+        "each database" => typeof(RDatabase),
         "each table" => typeof(RTable),
         "each view" => typeof(RView),
         "each sequence" => typeof(RSequence),

@@ -9,8 +9,8 @@ namespace Maquettiste.Engine;
 /// <param name="Scope">One of <see cref="ResolvedRecords.Scopes"/>: <c>all</c> (every kind but <c>tables</c>, <c>routines</c>,
 /// <c>database-types</c>, <c>sql-objects</c> and <c>queries</c>, which <c>databases</c> already holds), or one kind's plural, such as <c>entities</c> or
 /// <c>databases</c>.</param>
-/// <param name="Database">A database id: entities and relations mapped (not ignored) in it, that database, and its tables only; the
-/// other kinds are not narrowed.</param>
+/// <param name="Database">A database id: entities and relations mapped (not ignored) in it, that database, its tables and its migration
+/// facts only; the other kinds are not narrowed.</param>
 /// <param name="Cursor">The previous page's <see cref="ResolvedPage.Next"/>, or <see langword="null"/> for the first page.</param>
 /// <param name="Limit">The page size, 1 to <see cref="ModelPages.MaxLimit"/>.</param>
 public sealed record ResolvedQuery(string Scope = "all", string? Database = null, string? Cursor = null, int Limit = ModelPages.DefaultLimit);
@@ -20,7 +20,8 @@ public sealed record ResolvedQuery(string Scope = "all", string? Database = null
 /// <see cref="EnumRecord"/>, <see cref="ValueObjectRecord"/>, <see cref="ScalarTypeRecord"/>, <see cref="ReferenceTypeRecord"/>,
 /// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>,
 /// <see cref="DatabaseRecord"/>, <see cref="TableRecord"/>, <see cref="RoutineRecord"/>, <see cref="DatabaseTypeRecord"/> or
-/// <see cref="SqlObjectRecord"/> or <see cref="QueryRecord"/>; each has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
+/// <see cref="SqlObjectRecord"/>, <see cref="QueryRecord"/> or <see cref="MigrationRecord"/> (by database name, then applied order); each
+/// has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
 /// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one.</param>
 /// <param name="Diagnostics">When the model has errors, the errors that prevented resolution (and <paramref name="Items"/> is empty);
 /// otherwise empty (validate reports the warnings).</param>
@@ -118,11 +119,16 @@ public sealed record EntityRecord(string Id, string Kind, string Name, string? P
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+/// <param name="DescriptionColumn">
+/// The key of the column whose comment <paramref name="Description"/> shows, when the attribute has no description of its own; otherwise
+/// <see langword="null"/> (next-phase-2-design.md section 3.3, decision 12).
+/// </param>
 public sealed record AttributeRecord(string Id, string Name, string Owner, string? DeclaringEntity, TypeRecord Type, bool Required, object? Default,
     string? DefaultExpression, int? Length, int? Precision, int? Scale, bool Collection, bool Unique, bool Indexed, bool ReadOnly, bool Immutable,
     DerivedRecord? Derived, string? Sensitive, ValidationRecord? Validation, int Order, bool IsKey, bool IsInherited, bool IsVirtual, string? FromStereotype,
     ReferenceUsageRecord? Reference, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
-    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
+    string? DescriptionColumn);
 
 /// <summary>An attribute's resolved type.</summary>
 /// <param name="Kind"><c>builtin</c>, <c>enum</c>, <c>value-object</c>, <c>scalar</c> or <c>reference</c>.</param>
@@ -345,10 +351,18 @@ public sealed record ScalarTypeRecord(string Id, string Kind, string Name, strin
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+/// <param name="FormerCodes">The codes its rows used to have, ordinal by code, each with the row that replaced it (next-phase-2-design.md
+/// section 3.5).</param>
 public sealed record ReferenceTypeRecord(string Id, string Kind, string Name, string? Package, ReferenceFieldRecord Code, ReferenceFieldRecord Label,
     IReadOnlyList<AttributeRecord> Attributes, IReadOnlyList<RowRecord> Rows, IReadOnlyList<string> Seeds, IReadOnlyList<string> UsedBy,
     IReadOnlyList<StorageChoiceRecord> Storage, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
-    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
+    IReadOnlyList<FormerCodeRecord> FormerCodes);
+
+/// <summary>A code a row of a reference type used to have (next-phase-2-design.md section 3.5).</summary>
+/// <param name="Code">The former code: a string, or an integer for an integer code type.</param>
+/// <param name="ReplacedBy">The id of the row that replaced it.</param>
+public sealed record FormerCodeRecord(object? Code, string ReplacedBy);
 
 /// <summary>The code or label field of a reference type.</summary>
 /// <param name="Id">The field id.</param>
@@ -729,6 +743,27 @@ public sealed record SqlObjectRecord(string Id, string Kind, string Name, string
 /// <param name="Query">The query.</param>
 public sealed record QueryRecord(string Id, string Kind, string Name, string Database, QueryView Query);
 
+/// <summary>
+/// One open migration fact (scope <c>migrations</c>, next-phase-1-design.md section 3.2), sorted by database name, then applied order.
+/// </summary>
+/// <param name="Id">The fact's id.</param>
+/// <param name="Kind"><c>migration</c>.</param>
+/// <param name="Name">The fact's name: the empty string for a recorded fact.</param>
+/// <param name="Database">The database's id.</param>
+/// <param name="Order">The 1-based place of the fact in its database's applied order.</param>
+/// <param name="Fact">What the fact records: <c>rename</c>, <c>rekey</c>, <c>change-type</c>, <c>drop</c>, ...</param>
+/// <param name="State"><c>pending</c>, <c>complete</c>, <c>held</c> or <c>released</c>.</param>
+/// <param name="Missing">The intent fields MQ4101 names; empty unless pending.</param>
+/// <param name="After">The ids of the facts it follows that exist in its database.</param>
+/// <param name="Object">Its object as recorded, or <see langword="null"/>.</param>
+/// <param name="CurrentKey">The object's key moved through the <c>rekey</c> facts after it, or <see langword="null"/> without an object.</param>
+/// <param name="From">The state before, as recorded.</param>
+/// <param name="To">The state after, as recorded.</param>
+/// <param name="Hash">The fact content hash.</param>
+public sealed record MigrationRecord(string Id, string Kind, string Name, string Database, int Order, string Fact, string State,
+    IReadOnlyList<string> Missing, IReadOnlyList<string> After, MigrationObject? Object, string? CurrentKey, MigrationState? From,
+    MigrationState? To, string Hash);
+
 /// <summary>Projects the resolved model into flat records (resolved objects reference each other, so R-types are never serialized).</summary>
 public static class ResolvedRecords
 {
@@ -752,6 +787,7 @@ public static class ResolvedRecords
         ["database-types"] = "database-type",
         ["sql-objects"] = "sql-object",
         ["queries"] = "query",
+        ["migrations"] = "migration",
     };
 
     /// <summary>Every scope name, <c>all</c> first, then the others in <see cref="Scopes"/> order.</summary>
@@ -842,6 +878,19 @@ public static class ResolvedRecords
                 yield return new Entry("database", d.Name, d.Id, () => Database(d));
         }
 
+        if (all || scope == "migrations")
+        {
+            // Sorted by database name, then applied order: the name the page sorts by joins both (no name holds U+0001).
+            foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
+            {
+                foreach (var m in d.Migrations)
+                {
+                    yield return new Entry("migration", d.Name + "\u0001" + m.Order.ToString("D10", System.Globalization.CultureInfo.InvariantCulture), m.Id,
+                        () => Migration(m));
+                }
+            }
+        }
+
         if (scope == "tables")
         {
             foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
@@ -883,6 +932,9 @@ public static class ResolvedRecords
         }
     }
 
+    private static MigrationRecord Migration(RMigration m) => new(m.Id, "migration", m.Name, m.Database.Id, m.Order, m.Fact, m.State, m.Missing,
+        [.. m.After.Select(a => a.Id)], m.Source.Object, m.Object?.CurrentKey, m.Source.From, m.Source.To, m.Hash);
+
     private static DatabaseRecord Database(RDatabase database)
     {
         var view = DatabaseViews.From(database);
@@ -921,7 +973,10 @@ public static class ResolvedRecords
         return result;
     }
 
-    /// <summary>The projection of one resolved model: the database name to id map the per-database dictionaries need.</summary>
+    /// <summary>
+    /// The projection of one resolved model: the database name to id map the per-database dictionaries need. A conceptual object always
+    /// has its display and plural names (the resolver falls back to the name and the inflector), so the records read them as set.
+    /// </summary>
     private sealed class Projection(ResolvedModel model)
     {
         private readonly Dictionary<string, string> _databaseIds = model.Databases.GroupBy(d => d.Name, StringComparer.Ordinal)
@@ -930,7 +985,7 @@ public static class ResolvedRecords
         private string DatabaseId(string name) => _databaseIds.GetValueOrDefault(name) ?? name;
 
         public PackageRecord Package(RPackage p) => new(p.Id, "package", p.Name, p.Package?.Id ?? p.Parent?.Id, p.QualifiedName, Ids(p.Children),
-            Ids(p.Entities), Ids(p.ValueObjects), Ids(p.Enums), Ids(p.Relations), p.DisplayName, p.PluralName, p.Description, p.Tags, p.Category?.Id,
+            Ids(p.Entities), Ids(p.ValueObjects), Ids(p.Enums), Ids(p.Relations), p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id,
             Keys(p.Stereotypes), Plain(p.Properties), p.Generation);
 
         public EntityRecord Entity(REntity e)
@@ -945,7 +1000,7 @@ public static class ResolvedRecords
                 [.. e.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new EntityMappingRecord(m.Value.Database.Id, m.Value.Table.Key, m.Value.Inheritance,
                     m.Value.DiscriminatorColumn?.Key, Plain(m.Value.DiscriminatorValue), [.. m.Value.Columns.Select(c => new ColumnMappingRecord(c.AttributePath, c.Column.Key))]))],
                 e.IsPromoted, e.PromotedFrom?.Id, Ids(e.Seeds), e.Lifecycle?.Id,
-                e.DisplayName, e.PluralName, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation,
+                e.DisplayName!, e.PluralName!, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation,
                 [.. e.Bindings.OrderBy(b => b.Key, StringComparer.Ordinal).Select(b => BindingViews.Record(b.Value))]);
         }
 
@@ -955,36 +1010,55 @@ public static class ResolvedRecords
             a.Required, Plain(a.Default), a.DefaultExpression, a.Length, a.Precision, a.Scale, a.Collection, a.Unique, a.Indexed, a.ReadOnly, a.Immutable,
             a.Derived is { } d ? new DerivedRecord(d.Expression, d.Stored) : null, a.Sensitive, Validation(a.Validation), a.Order,
             key is not null && key.Contains(a.Id), a.IsInherited, a.IsVirtual, a.FromStereotype?.Key,
-            a.Reference is { } r ? new ReferenceUsageRecord(r.Type.Id, r.IsCollection, r.Required, Ids(r.Allowed), r.DefaultRow?.Id, Storage(r.Storage)) : null,
-            a.DisplayName, a.PluralName, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);
+            a.Reference is { } r ? new ReferenceUsageRecord(r.Type.Id, r.IsCollection, r.Required, Ids(Scripted(() => r.Allowed, RList<RRow>.Empty)),
+                Scripted(() => r.DefaultRow, null)?.Id, Storage(r.Storage)) : null,
+            a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation,
+            a.DescriptionColumn?.Key);
 
         public RelationRecord Relation(RRelation r) => new(r.Id, "relation", r.Name, r.Package?.Id, r.InverseName, r.RelationKind, r.Cardinality, r.AllowDuplicates,
             [.. r.Ends.Select(e => new EndRecord(e.Id, e.Entity.Id, e.Role, e.Navigation, e.Min, e.Max, e.IsMany, e.OnDelete, e.Ordered, e.Opposite?.Id))],
             [.. r.Attributes.Select(a => Attribute(a))],
             [.. r.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new RelationMappingRecord(DatabaseId(m.Key), m.Value.Shape, m.Value.ForeignKey?.Name,
                 m.Value.JunctionTable?.Key, m.Value.PromotedEntity?.Id))],
-            Ids(r.Seeds), r.DisplayName, r.PluralName, r.Description, r.Tags, r.Category?.Id, Keys(r.Stereotypes), Plain(r.Properties), r.Generation);
+            Ids(r.Seeds), r.DisplayName!, r.PluralName!, r.Description, r.Tags, r.Category?.Id, Keys(r.Stereotypes), Plain(r.Properties), r.Generation);
 
         public EnumRecord Enum(REnum e) => new(e.Id, "enum", e.Name, e.Package?.Id, e.Flags,
             [.. e.Members.Select(m => new EnumMemberRecord(m.Id, m.Name, m.DisplayName, m.Description, m.Value, m.Code, Plain(m.Properties)))],
-            e.DisplayName, e.PluralName, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation);
+            e.DisplayName!, e.PluralName!, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation);
 
         public ValueObjectRecord ValueObject(RValueObject v) => new(v.Id, "value-object", v.Name, v.Package?.Id, [.. v.Attributes.Select(a => Attribute(a))],
-            v.DisplayName, v.PluralName, v.Description, v.Tags, v.Category?.Id, Keys(v.Stereotypes), Plain(v.Properties), v.Generation);
+            v.DisplayName!, v.PluralName!, v.Description, v.Tags, v.Category?.Id, Keys(v.Stereotypes), Plain(v.Properties), v.Generation);
 
         public ScalarTypeRecord ScalarType(RScalarType s) => new(s.Id, "scalar-type", s.Name, s.Package?.Id, s.Base, s.Length, s.Precision, s.Scale, Validation(s.Validation),
-            s.NativeTypes, s.DisplayName, s.PluralName, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
+            s.NativeTypes, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
 
         public ReferenceTypeRecord ReferenceType(RReferenceType t) => new(t.Id, "reference-type", t.Name, t.Package?.Id, Field(t.Code), Field(t.Label),
             [.. t.Attributes.Select(a => Attribute(a))],
-            [.. t.Rows.Select(r => new RowRecord(r.Id, Plain(r.Code), r.Label, r.Description, Plain(r.Values), r.Seed.Id, r.Order))],
+            [.. Scripted(() => t.Rows, RList<RRow>.Empty).Select(r => new RowRecord(r.Id, Plain(r.Code), r.Label, r.Description, Plain(r.Values), r.Seed.Id, r.Order))],
             Ids(t.Seeds), Ids(t.UsedBy), Storage(t.Storage),
-            t.DisplayName, t.PluralName, t.Description, t.Tags, t.Category?.Id, Keys(t.Stereotypes), Plain(t.Properties), t.Generation);
+            t.DisplayName!, t.PluralName!, t.Description, t.Tags, t.Category?.Id, Keys(t.Stereotypes), Plain(t.Properties), t.Generation,
+            [.. Scripted(() => t.FormerCodes, []).Select(f => new FormerCodeRecord(Plain(f.Code), f.ReplacedBy.Id))]);
+
+        /// <summary>
+        /// Rows a seed's rows script gives (next-phase-2-design.md section 3.4), or <paramref name="none"/> when the script failed: a record
+        /// lists what is there, and validation reports the failure (MQ7127).
+        /// </summary>
+        private static T Scripted<T>(Func<T> read, T none)
+        {
+            try
+            {
+                return read();
+            }
+            catch (Scripting.ScriptErrorException)
+            {
+                return none;
+            }
+        }
 
         public SeedRecord Seed(RSeed s) => new(s.Id, "seed", s.Name, s.Package?.Id, s.Target?.Id,
             [.. s.Columns.Select(c => new SeedColumnRecord(c.Name, c.Kind, c.Attribute?.Id, c.End?.Id))],
-            [.. s.Rows.Select(r => new SeedRowRecord(r.Id, r.Order, Plain(r.Values)))],
-            s.DisplayName, s.PluralName, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
+            [.. s.RowsOrNone.Select(r => new SeedRowRecord(r.Id, r.Order, Plain(r.Values)))],
+            s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
 
         public ProcessRecord Process(RProcess p) => new(p.Id, "process", p.Name, p.Package?.Id, p.Use, p.Subject?.Id, p.BoundAttribute?.Id, p.BoundEnum?.Id, p.Initial?.Id,
             [.. p.Context.Select(a => Attribute(a))],
@@ -1003,16 +1077,16 @@ public static class ResolvedRecords
                 g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties)))],
             [.. p.Invokes.Select(i => new InvokeRecord(i.Id, i.Name, i.Type, i.Process?.Id, Ids(i.Actors), i.State.Id, i.DisplayName, i.Description, Keys(i.Stereotypes), Plain(i.Properties)))],
             Ids(p.Actors), Ids(p.Scenarios),
-            p.DisplayName, p.PluralName, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation);
+            p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation);
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),
-            a.DisplayName, a.PluralName, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);
+            a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);
 
         public ScenarioRecord Scenario(RScenario s) => new(s.Id, "scenario", s.Name, s.Package?.Id, s.Process.Id, new ScenarioStartRecord(Plain(s.Start.Context), s.Start.At),
             [.. s.Steps.Select(t => new StepRecord(t.Id, t.Index, t.Input, t.Event?.Id, t.Invoke?.Id, t.After, t.AfterMs, t.AfterTicks, t.Actor?.Id, t.Signer, t.Meaning?.Id,
                 t.Reason, Plain(t.Payload), Plain(t.Assume),
                 t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context)) : null, t.Description))],
-            s.Outcome, s.DisplayName, s.PluralName, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
+            s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
 
         private List<StorageChoiceRecord> Storage(IReadOnlyDictionary<string, RStorageChoice> storage) =>
             [.. storage.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => new StorageChoiceRecord(DatabaseId(s.Key), s.Value.Strategy, Plain(s.Value.Options), s.Value.Source,

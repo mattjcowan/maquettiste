@@ -1,0 +1,593 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Migration fact",
+  "description": "One change of a database's physical shape that its data must follow, with the intent a migration needs to apply it (model/databases/<db>/migrations/open/). A recorded fact has no name, so its file is <lowercase id>.json. Object keys are historical physical keys, not references; a later rekey fact moves them forward. The fact belongs to its database.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "database",
+    "fact",
+    "after",
+    "description",
+    "rationale",
+    "decision",
+    "status",
+    "stereotypes",
+    "tags",
+    "category",
+    "object",
+    "objects",
+    "collections",
+    "from",
+    "to",
+    "via",
+    "keys",
+    "conversion",
+    "dataCheck",
+    "acknowledge",
+    "value",
+    "where",
+    "sql",
+    "skipWhen",
+    "phase",
+    "environment",
+    "referenceType",
+    "fromReferenceType",
+    "process",
+    "values",
+    "held",
+    "released",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "migration"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "description": "An optional label; a recorded fact has none.",
+      "$ref": "common.json#/$defs/label",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "database": {
+      "description": "The database whose shape the fact changes; the fact belongs to it.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "fact": {
+      "description": "What the fact records.",
+      "enum": ["rename", "rekey", "change-type", "drop", "adopt", "baseline", "backfill", "raw", "value-map", "state-map"]
+    },
+    "after": {
+      "description": "Ids of the facts this one follows, set by the write path: an ordering hint, not a reference. A link to a fact that no longer exists is a warning (MQ4111).",
+      "$ref": "common.json#/$defs/idList",
+      "uniqueItems": true,
+      "x-sort": ".",
+      "default": []
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "object": {
+      "description": "The object of a rename, change-type, drop or backfill.",
+      "$ref": "#/$defs/migrationObject"
+    },
+    "objects": {
+      "description": "The objects of an adopt, baseline, value-map or state-map; context for raw. A value map's objects are the columns that hold the codes.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/migrationObject"
+      },
+      "default": []
+    },
+    "collections": {
+      "description": "A value map's template-defined collections that hold the codes: each by its owner table's key and attribute, both historical.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/collection"
+      },
+      "x-sort": "table,attribute",
+      "default": []
+    },
+    "from": {
+      "description": "The state before: a rename's name and schema, a change-type's type facets.",
+      "$ref": "#/$defs/migrationState"
+    },
+    "to": {
+      "description": "The state after.",
+      "$ref": "#/$defs/migrationState"
+    },
+    "via": {
+      "description": "The intermediate names of a folded rename, oldest first.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "keys": {
+      "description": "Every key a rekey moved; a column, index, unique, foreign-key or check entry's table is its table's key before the fact.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rekey"
+      },
+      "default": []
+    },
+    "conversion": {
+      "description": "How a change-type converts stored values: a cast, or an expression per dialect where {table} and {column} expand to quoted names.",
+      "type": "object",
+      "x-order": ["cast", "expression"],
+      "properties": {
+        "cast": {
+          "description": "A plain cast converts the values.",
+          "type": "boolean",
+          "default": false
+        },
+        "expression": {
+          "description": "The conversion per dialect.",
+          "$ref": "common.json#/$defs/dialectMap",
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "dataCheck": {
+      "description": "The rows the step must not find (a query per dialect; a row stops the step), or why no check is needed.",
+      "type": "object",
+      "x-order": ["query", "accept"],
+      "properties": {
+        "query": {
+          "description": "The query per dialect; {table} and {column} expand to quoted names.",
+          "$ref": "common.json#/$defs/dialectMap",
+          "default": {}
+        },
+        "accept": {
+          "description": "Why no check is needed.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "acknowledge": {
+      "description": "A drop's reason why the data may go.",
+      "type": "string",
+      "minLength": 1
+    },
+    "value": {
+      "description": "A backfill's value per dialect.",
+      "$ref": "common.json#/$defs/dialectMap",
+      "default": {}
+    },
+    "where": {
+      "description": "A backfill's rows per dialect; without one, the rows where {column} IS NULL.",
+      "$ref": "common.json#/$defs/dialectMap",
+      "default": {}
+    },
+    "sql": {
+      "description": "A raw fact's statements per dialect.",
+      "$ref": "common.json#/$defs/dialectMap",
+      "default": {}
+    },
+    "skipWhen": {
+      "description": "A raw fact's guard per dialect: a query whose row means the end state already holds.",
+      "$ref": "common.json#/$defs/dialectMap",
+      "default": {}
+    },
+    "phase": {
+      "description": "Whether a raw fact runs before or after the schema statements.",
+      "enum": ["before", "after"],
+      "default": "after"
+    },
+    "environment": {
+      "description": "An adopt's environment.",
+      "$ref": "common.json#/$defs/tagLabel"
+    },
+    "referenceType": {
+      "description": "A value-map's reference type, the one that holds the codes after the fact: a historical id, not a reference.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "fromReferenceType": {
+      "description": "A value-map of a merge: the reference type merged away, whose codes the fact maps: a historical id, not a reference.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "process": {
+      "description": "A state-map's process: a historical id, not a reference.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "values": {
+      "description": "Stored codes (or state codes) and their replacements.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/value"
+      },
+      "x-sort": "from",
+      "default": []
+    },
+    "held": {
+      "description": "The fact waits: migrators skip it until it is released.",
+      "type": "boolean",
+      "default": false
+    },
+    "released": {
+      "description": "A held fact may now run.",
+      "type": "boolean",
+      "default": false
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": ["kind", "id", "database", "fact"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "fact": {
+            "const": "rename"
+          }
+        },
+        "required": ["fact"]
+      },
+      "then": {
+        "required": ["object", "from", "to"],
+        "x-order": ["from", "to"],
+        "properties": {
+          "from": {
+            "required": ["name"]
+          },
+          "to": {
+            "required": ["name"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fact": {
+            "const": "rekey"
+          }
+        },
+        "required": ["fact"]
+      },
+      "then": {
+        "required": ["keys"],
+        "x-order": ["keys"],
+        "properties": {
+          "keys": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fact": {
+            "const": "change-type"
+          }
+        },
+        "required": ["fact"]
+      },
+      "then": {
+        "required": ["object", "from", "to"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fact": {
+            "enum": ["drop", "backfill"]
+          }
+        },
+        "required": ["fact"]
+      },
+      "then": {
+        "required": ["object"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fact": {
+            "const": "raw"
+          }
+        },
+        "required": ["fact"]
+      },
+      "then": {
+        "required": ["sql"],
+        "x-order": ["sql"],
+        "properties": {
+          "sql": {
+            "minProperties": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fact": {
+            "const": "adopt"
+          }
+        },
+        "required": ["fact"]
+      },
+      "then": {
+        "required": ["objects", "environment"],
+        "x-order": ["objects"],
+        "properties": {
+          "objects": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fact": {
+            "const": "value-map"
+          }
+        },
+        "required": ["fact"]
+      },
+      "then": {
+        "description": "Objects, collections and values may be empty (a type rename maps names only); MQ4106 judges the rest.",
+        "required": ["referenceType"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fact": {
+            "const": "state-map"
+          }
+        },
+        "required": ["fact"]
+      },
+      "then": {
+        "required": ["objects", "values", "process"],
+        "x-order": ["objects", "values"],
+        "properties": {
+          "objects": {
+            "minItems": 1
+          },
+          "values": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "factKey": {
+      "description": "A historical physical key, as the schema diff matches objects: plain text that is not walked, never a name (it does not start with @ or $).",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^@$]"
+    },
+    "objectKind": {
+      "enum": ["table", "column", "view", "sequence", "index", "unique", "foreign-key", "check", "routine", "database-type", "sql-object", "schema"]
+    },
+    "migrationObject": {
+      "description": "An object by physical key and by its physical names at the time.",
+      "type": "object",
+      "x-order": ["kind", "table", "key", "schema", "tableName", "name", "formerNames"],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/objectKind"
+        },
+        "table": {
+          "description": "The key of the table a member (a column, index or constraint) belongs to.",
+          "$ref": "#/$defs/factKey"
+        },
+        "key": {
+          "description": "The object's physical key.",
+          "$ref": "#/$defs/factKey"
+        },
+        "schema": {
+          "description": "The database schema name at the time.",
+          "type": "string"
+        },
+        "tableName": {
+          "description": "A member's table name at the time.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The object's name at the time.",
+          "type": "string"
+        },
+        "formerNames": {
+          "description": "The names the object had before: a baseline's objects, and a drop that migration fold joined with the renames before it.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      },
+      "required": ["kind", "key"],
+      "additionalProperties": false
+    },
+    "migrationState": {
+      "description": "A side of a fact: names, or a column's type facets and, for a reference column, how its codes are stored. A value map's sides carry its reference type's name and plural name.",
+      "type": "object",
+      "x-order": ["name", "pluralName", "schema", "type", "length", "precision", "scale", "nativeType", "strategy", "referenceTable", "nullable"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pluralName": {
+          "description": "A value map's reference type's plural name, so a pack finds the objects it named after the type.",
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string"
+        },
+        "type": {
+          "description": "The built-in type keyword.",
+          "type": "string",
+          "minLength": 1
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "precision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nativeType": {
+          "description": "The effective native type.",
+          "type": "string",
+          "minLength": 1
+        },
+        "strategy": {
+          "description": "A reference column's effective storage strategy.",
+          "type": "string",
+          "minLength": 1
+        },
+        "referenceTable": {
+          "description": "The key of the table a reference column's reference type is bound to, at the time.",
+          "$ref": "#/$defs/factKey"
+        },
+        "nullable": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "collection": {
+      "description": "A template-defined collection of a value map: the codes it holds, by its owner table and attribute.",
+      "type": "object",
+      "x-order": ["table", "schema", "tableName", "attribute", "name"],
+      "properties": {
+        "table": {
+          "description": "The owner table's key at the time.",
+          "$ref": "#/$defs/factKey"
+        },
+        "schema": {
+          "description": "The owner table's database schema name at the time.",
+          "type": "string"
+        },
+        "tableName": {
+          "description": "The owner table's name at the time.",
+          "type": "string"
+        },
+        "attribute": {
+          "description": "The id of the collection attribute: a historical id, not a reference.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "description": "The attribute's name at the time.",
+          "type": "string"
+        }
+      },
+      "required": ["table", "attribute"],
+      "additionalProperties": false
+    },
+    "rekey": {
+      "description": "One key a rekey moved.",
+      "type": "object",
+      "x-order": ["kind", "table", "from", "to", "name"],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/objectKind"
+        },
+        "table": {
+          "description": "A column, index, unique, foreign-key or check entry's table key before the fact. An index, unique, foreign-key or check entry moves the constraint's id (a fold into a stereotype); capture keys follow columns.",
+          "$ref": "#/$defs/factKey"
+        },
+        "from": {
+          "$ref": "#/$defs/factKey"
+        },
+        "to": {
+          "$ref": "#/$defs/factKey"
+        },
+        "name": {
+          "description": "The object's name at the time.",
+          "type": "string"
+        }
+      },
+      "required": ["kind", "from", "to"],
+      "additionalProperties": false
+    },
+    "value": {
+      "description": "A stored value and its replacement.",
+      "type": "object",
+      "x-order": ["from", "to"],
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": ["from", "to"],
+      "additionalProperties": false
+    }
+  }
+}

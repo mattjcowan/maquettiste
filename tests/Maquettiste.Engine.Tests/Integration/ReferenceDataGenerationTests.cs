@@ -69,6 +69,42 @@ public sealed class ReferenceDataGenerationTests
     }
 
     [Fact]
+    public async Task Renaming_a_package_that_orders_a_types_seeds_re_renders_the_type()
+    {
+        // Seeds merge by package qualified name (next-phase-1-design.md section 4.3), which no seed file holds: each seed records the
+        // packages of its chain, so renaming one of them re-renders what read the rows, here a type unit that reads no package.
+        const string Billing = "01JRDP00000000000000000001", Catalog = "01JRDP00000000000000000002", Ledger = "01JRDP00000000000000000003";
+        const string PoundSeed = "01JRDS00000000000000000004", Type = "gen/types/unit-of-measure.txt";
+        await using var repo = Create();
+        await repo.CreateAsync($$"""{"kind":"package","id":"{{Billing}}","name":"Billing"}""");
+        await repo.CreateAsync($$"""{"kind":"package","id":"{{Catalog}}","name":"Catalog","parent":"{{Billing}}"}""");
+        await repo.CreateAsync($$"""{"kind":"package","id":"{{Ledger}}","name":"Ledger"}""");
+        await repo.EditAsync(UnitSeed, n => n["package"] = Catalog);
+        await repo.CreateAsync($$"""
+            {"kind":"seed","id":"{{PoundSeed}}","name":"Pounds","package":"{{Ledger}}","target":"{{UnitOfMeasure}}",
+             "columns":["code","label","01JBNPZX45HY43KWJRP1XPA7Z3","01JBDJ8FSSZ5AWSH8VHTPRE95B"],
+             "rows":[{"id":"01JRDS00000000000000000005","values":["lb","Pound",453.59237,"lb"]}]}
+            """);
+        await repo.ApplyAsync();
+        Assert.StartsWith("UnitOfMeasure code=string(8)\n0 kg Kilogram ", repo.Repo.ReadFile(Type), StringComparison.Ordinal); // Billing.Catalog, Ledger
+        Assert.DoesNotContain(Pack + "/type:" + UnitOfMeasure, Rendered(await repo.PlanAsync()));
+
+        // The seed's own package: Alpha now sorts before Billing.Catalog.
+        await repo.EditAsync(Ledger, n => n["name"] = "Alpha");
+        Assert.Contains(Pack + "/type:" + UnitOfMeasure, Rendered(await repo.PlanAsync()));
+        await repo.ApplyAsync();
+        Assert.StartsWith("UnitOfMeasure code=string(8)\n0 lb Pound ", repo.Repo.ReadFile(Type), StringComparison.Ordinal);
+        await AssertIncrementalEqualsForcedAsync(repo);
+
+        // A parent of the other seed's package: Aaa.Catalog now sorts before Alpha.
+        await repo.EditAsync(Billing, n => n["name"] = "Aaa");
+        Assert.Contains(Pack + "/type:" + UnitOfMeasure, Rendered(await repo.PlanAsync()));
+        await repo.ApplyAsync();
+        Assert.StartsWith("UnitOfMeasure code=string(8)\n0 kg Kilogram ", repo.Repo.ReadFile(Type), StringComparison.Ordinal);
+        await AssertIncrementalEqualsForcedAsync(repo);
+    }
+
+    [Fact]
     public async Task Changing_a_strategy_declaration_re_renders_the_units_that_read_storage_choices()
     {
         await using var repo = Create();

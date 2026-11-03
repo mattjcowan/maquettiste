@@ -103,7 +103,7 @@ internal static partial class ResolutionKit
             {
                 sb.Append("  table ").Append(t.Schema is null ? "" : t.Schema + ".").Append(t.Name).Append(" key=").Append(L(t.Key)).Append(' ').Append(t.Origin)
                     .Append(t.Entity is { } te ? " entity=" + te.Name : "").Append(t.Relation is { } tr ? " relation=" + tr.Name : "")
-                    .Append(t.IsJunction ? " junction" : "").Append(Annotations(t, V)).Append('\n');
+                    .Append(t.IsJunction ? " junction" : "").Append(Annotations(t, V)).Append(Facts(t.FormerNames, t.Since, L)).Append('\n');
                 foreach (var c in t.Columns)
                 {
                     sb.Append("    ").Append(c.Position).Append(' ').Append(c.Name).Append(' ').Append(c.Type)
@@ -111,7 +111,8 @@ internal static partial class ResolutionKit
                         .Append(" native=").Append(c.NativeType).Append(c.Nullable ? " null" : " not-null")
                         .Append(c.IsPrimaryKey ? " pk" : "").Append(c.IsForeignKey ? " fk" : "").Append(c.IsDiscriminator ? " discriminator" : "")
                         .Append(c.Identity ? " identity" : "").Append(c.Sequence is { } s ? " seq=" + s.Name : "")
-                        .Append(c.Default is { } d ? " default=" + V(d) : "").Append(" key=").Append(L(c.Key)).Append(Annotations(c, V)).Append('\n');
+                        .Append(c.Default is { } d ? " default=" + V(d) : "").Append(" key=").Append(L(c.Key)).Append(Annotations(c, V))
+                        .Append(Facts(c.FormerNames, c.Since, L)).Append(c.Conversion is { } cv ? " conversion=" + L(cv.FactId) : "").Append('\n');
                 }
 
                 if (t.PrimaryKey is { } pk)
@@ -131,9 +132,16 @@ internal static partial class ResolutionKit
 
             foreach (var s in db.Sequences)
                 sb.Append("  sequence ").Append(s.Name).Append(' ').Append(s.Type).Append(" native=").Append(s.NativeType).Append(" key=").Append(L(s.Id))
-                    .Append(Annotations(s, V)).Append('\n');
+                    .Append(Annotations(s, V)).Append(Facts(s.FormerNames, s.Since, L)).Append('\n');
             foreach (var v in db.Views)
-                sb.Append("  view ").Append(v.Name).Append(Annotations(v, V)).Append(": ").Append(v.Body).Append('\n');
+                sb.Append("  view ").Append(v.Name).Append(Annotations(v, V)).Append(Facts(v.FormerNames, v.Since, L)).Append(": ").Append(v.Body).Append('\n');
+            foreach (var m in db.Migrations)
+            {
+                sb.Append("  migration ").Append(m.Order).Append(' ').Append(L(m.Id)).Append(' ').Append(m.Fact).Append(' ').Append(m.State)
+                    .Append(m.Missing.Count > 0 ? " missing=" + string.Join(',', m.Missing) : "")
+                    .Append(m.After.Count > 0 ? " after=" + string.Join(',', m.After.Select(a => L(a.Id))) : "")
+                    .Append(m.Object is { } o ? " object=" + o.Kind + ":" + (o.CurrentTable is { } ct ? L(ct) + "/" : "") + L(o.CurrentKey) : "").Append('\n');
+            }
         }
 
         DumpProcesses(model, sb, L, V);
@@ -142,6 +150,10 @@ internal static partial class ResolutionKit
         return sb.ToString();
     }
 
+    /// <summary>What the migration facts project onto a physical object (next-phase-1-design.md section 3.2), always printed.</summary>
+    private static string Facts(IReadOnlyList<string> formerNames, string? since, Func<string?, string> l) =>
+        " former_names=[" + string.Join(',', formerNames) + "] since=" + (since is null ? "-" : l(since));
+
     /// <summary>
     /// The annotations of a physical object, each only when set (a database, schema, table, column, view or sequence without a file or
     /// an entry of its own has none, so the lines of unannotated objects read as before).
@@ -149,9 +161,9 @@ internal static partial class ResolutionKit
     private static string Annotations(RAnnotated o, Func<object?, string> v)
     {
         var sb = new StringBuilder();
-        if (o.DisplayName.Length > 0)
+        if (!string.IsNullOrEmpty(o.DisplayName))
             sb.Append(" display=").Append(v(o.DisplayName));
-        if (o.PluralName.Length > 0)
+        if (!string.IsNullOrEmpty(o.PluralName))
             sb.Append(" plural=").Append(v(o.PluralName));
         if (o.Description is { } description)
             sb.Append(" description=").Append(v(description));

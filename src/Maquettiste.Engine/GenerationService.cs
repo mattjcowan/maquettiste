@@ -58,11 +58,26 @@ public sealed partial class GenerationService
     /// </summary>
     internal bool ReuseLastRun { get; set; }
 
+    /// <summary>
+    /// The host's snapshot library, which opens a <see cref="GenerationRequest.Against"/> model snapshot, so a long-lived host loads
+    /// one archive once (it keeps the two most recently opened loaded); <see langword="null"/> builds one per run.
+    /// </summary>
+    public SnapshotLibrary? Baselines { get; init; }
+
+    /// <summary>
+    /// Whether <see cref="GenerationRequest.Against"/> may name a folder that holds another copy of the project; <see langword="false"/>
+    /// by default. Only the command-line tool and its MCP server set it: a path in a request to the editor's host would name a folder
+    /// of the server.
+    /// </summary>
+    public bool AllowFolderBaselines { get; init; }
+
     /// <summary>Runs generation in the request's mode.</summary>
     /// <param name="request">The request.</param>
     /// <param name="progress">Progress.</param>
     /// <param name="ct">Cancellation; observed between files, returning within one second.</param>
     /// <returns>The result.</returns>
+    /// <exception cref="ArgumentException"><see cref="GenerationRequest.Against"/> resolves to nothing, or names a folder where
+    /// <see cref="AllowFolderBaselines"/> is off (the message names the value).</exception>
     public Task<GenerationResult> RunAsync(GenerationRequest request, IProgress<ProgressUpdate>? progress, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -75,6 +90,7 @@ public sealed partial class GenerationService
     /// <param name="progress">Progress.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The plan.</returns>
+    /// <exception cref="ArgumentException"><see cref="GenerationRequest.Against"/> resolves to nothing (as <see cref="RunAsync"/>).</exception>
     public async Task<PlanResult> PlanAsync(GenerationRequest request, IProgress<ProgressUpdate>? progress, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -138,6 +154,11 @@ public sealed partial class GenerationService
     /// <param name="ct">Cancellation.</param>
     /// <returns>The result: <see cref="RunOutcome.Failed"/> when the plan does not exist or its blobs are missing,
     /// <see cref="RunOutcome.Invalid"/> when the plan (or the model now) has errors.</returns>
+    /// <remarks>
+    /// A plan made against a baseline (<see cref="GenerationRequest.Against"/>) plans again against the same value: the baseline is
+    /// opened again, and a baseline that changed since the plan makes the units that read its schema diffs stale.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The plan's baseline no longer resolves.</exception>
     public async Task<ApplyResult> ApplyAsync(string planId, IProgress<ProgressUpdate>? progress, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(planId);
@@ -170,7 +191,9 @@ public sealed partial class GenerationService
         {
             try
             {
-                return await ApplyLockedAsync(plan, request, runId, run, ct).ConfigureAwait(false);
+                // A plan made against a baseline plans again against the same value (the stored request holds its text).
+                using var baseline = await OpenBaselineAsync(request, ct).ConfigureAwait(false);
+                return await ApplyLockedAsync(plan, request, runId, run, baseline, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -245,6 +268,7 @@ public sealed partial class GenerationService
     /// <summary>
     /// The resolved physical model of one database, for the editor's Database and Mappings workspaces (E1, phase2-design.md section
     /// 3.8): loads (the store rescans by stat), validates the whole model and resolves it, then projects the database into flat records.
+    /// As for previews, seeds with a rows script are left unjudged and no rows script runs (<see cref="ValidationScope.Previews"/>).
     /// Takes no run lock and writes nothing.
     /// </summary>
     /// <param name="databaseId">The database element's id.</param>
@@ -255,7 +279,7 @@ public sealed partial class GenerationService
     {
         ArgumentNullException.ThrowIfNull(databaseId);
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, ct).ConfigureAwait(false);
         if (report.HasErrors)
             return new DatabaseViewResult(null, report.Diagnostics);
         var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
@@ -286,7 +310,7 @@ public sealed partial class GenerationService
         if (dialect is not null && !Rendering.SqlDialects.TryParse(dialect, out _))
             throw new ArgumentException($"'{dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, ct).ConfigureAwait(false);
         if (report.HasErrors)
             return new QuerySqlResult(null, report.Diagnostics);
         var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
@@ -320,7 +344,7 @@ public sealed partial class GenerationService
         if (dialect is not null && !Rendering.SqlDialects.TryParse(dialect, out _))
             throw new ArgumentException($"'{dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, ct).ConfigureAwait(false);
         if (report.HasErrors)
             return new BindingSqlResult(null, report.Diagnostics);
         var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
@@ -404,11 +428,21 @@ public sealed partial class GenerationService
         {
             var skippedCount = 0;
             IRunJournal? open = null;
+            ModelBaseline? baseline = null;
             try
             {
+                // A baseline model to diff from, opened for this run only (next-phase-1-design.md section 3.1).
+                baseline = await OpenBaselineAsync(request, ct).ConfigureAwait(false);
+
                 // The last-run record (one-shot hosts only): answer from it when nothing changed, else drop it before this run changes
-                // what it describes, and hash the templates before the packs load, for the record this run may write.
-                var lastRun = ReuseLastRun && mode == GenerationMode.Apply && capture is null && !request.StageBarriers ? new LastRun(_services) : null;
+                // what it describes, and hash the templates before the packs load, for the record this run may write. A run against a
+                // baseline or limited by unit or element never answers from it or writes it (its key holds neither), and forgets it
+                // before it applies (next-phase-1-design.md sections 3.1 and 5.6).
+                var oneShot = ReuseLastRun && mode == GenerationMode.Apply && capture is null && !request.StageBarriers;
+                var served = LastRun.Serves(request);
+                if (oneShot && !served)
+                    new LastRun(_services).Forget();
+                var lastRun = oneShot && served ? new LastRun(_services) : null;
                 string? templates = null;
                 if (lastRun is not null)
                 {
@@ -419,7 +453,8 @@ public sealed partial class GenerationService
                     run.CollectRenderedInputHashes();
                 }
 
-                var prepared = await run.PrepareAsync(request.Packs, mode, ct, barriers: request.StageBarriers).ConfigureAwait(false);
+                var prepared = await run.PrepareAsync(request.Packs, mode, ct, barriers: request.StageBarriers, baseline: baseline,
+                    selection: UnitSelection.Of(request)).ConfigureAwait(false);
                 if (prepared is null)
                     return Result(runId, mode, RunOutcome.Invalid, run);
                 var skip = await run.SkipAsync(prepared, mode, request.Force, ct).ConfigureAwait(false);
@@ -465,7 +500,8 @@ public sealed partial class GenerationService
                 }
 
                 var outcome = Outcomes.Of(mode, run.Diagnostics, changes, !stale.IsEmpty);
-                if (mode == GenerationMode.Apply && outcome == RunOutcome.Succeeded)
+                // A scoped run never advances schema snapshots (next-phase-1-design.md section 5.6).
+                if (mode == GenerationMode.Apply && outcome == RunOutcome.Succeeded && prepared.Selection is null)
                     await run.SaveSnapshotsAsync(prepared, ct).ConfigureAwait(false);
                 if (journal is not null)
                 {
@@ -492,9 +528,20 @@ public sealed partial class GenerationService
                 // Interrupted: close the journal without "end", so the next run resumes it.
                 if (open is not null)
                     await open.DisposeAsync().ConfigureAwait(false);
+                baseline?.Dispose();
             }
         }
     }
+
+    /// <summary>
+    /// Opens a request's baseline (<see cref="GenerationRequest.Against"/>) for one run, with the host's library and folder policy, or
+    /// returns <see langword="null"/> when the request has none. The value is a snapshot id or a full folder path (the hosts resolve a
+    /// relative folder first), so the repository root is only a fallback for a relative one.
+    /// </summary>
+    /// <exception cref="ArgumentException">The value resolves to nothing, or names a folder where folders are not allowed.</exception>
+    private async Task<ModelBaseline?> OpenBaselineAsync(GenerationRequest request, CancellationToken ct) => request.Against is null
+        ? null
+        : await ModelBaseline.OpenAsync(_store, request.Against, RepoRoot, AllowFolderBaselines, Baselines, ct).ConfigureAwait(false);
 
     /// <summary>
     /// Check mode: an output whose manifest entry is missing or differs from what an apply would record is drift even when the file on
@@ -526,9 +573,11 @@ public sealed partial class GenerationService
         }
     }
 
-    private async Task<ApplyResult> ApplyLockedAsync(GenerationPlan plan, GenerationRequest request, string runId, GenerationRun run, CancellationToken ct)
+    private async Task<ApplyResult> ApplyLockedAsync(GenerationPlan plan, GenerationRequest request, string runId, GenerationRun run, ModelBaseline? baseline,
+        CancellationToken ct)
     {
-        var prepared = await run.PrepareAsync(request.Packs, GenerationMode.Apply, ct).ConfigureAwait(false);
+        // A scoped plan plans again with its filters, so the units it did not select never count as appeared or vanished.
+        var prepared = await run.PrepareAsync(request.Packs, GenerationMode.Apply, ct, baseline: baseline, selection: UnitSelection.Of(request)).ConfigureAwait(false);
         if (prepared is null)
             return new ApplyResult(RunOutcome.Invalid, [], [], Result(runId, GenerationMode.Apply, RunOutcome.Invalid, run));
 
@@ -618,7 +667,7 @@ public sealed partial class GenerationService
             var write = run.WriteContext(prepared, request, GenerationMode.Apply, runId, rendered.Select(u => current[u.Key]), skipped, journal, plannedPaths);
             summary = await run.WriteAsync(prepared, FromPlan(plan.Id, rendered, current, prepared.Hasher.CurrentHash, prepared.Resolved.Find, ct), write, ct).ConfigureAwait(false);
             outcome = Outcomes.Of(GenerationMode.Apply, run.Diagnostics, summary.Changes);
-            if (outcome == RunOutcome.Succeeded)
+            if (outcome == RunOutcome.Succeeded && prepared.Selection is null)
                 await run.SaveSnapshotsAsync(prepared, ct).ConfigureAwait(false);
             await journal.EndAsync(ct).ConfigureAwait(false);
             ended = true;
@@ -718,6 +767,35 @@ public sealed record GenerationRequest
 
     /// <summary>Whether stages 6 to 8 finish one after another (benchmark only).</summary>
     public bool StageBarriers { get; init; }
+
+    /// <summary>
+    /// The baseline the schema diffs run from for this run (next-phase-1-design.md section 3.1, <c>generate --against</c>): a model
+    /// snapshot id, or the full path of a folder that holds another copy of the project (only where
+    /// <see cref="GenerationService.AllowFolderBaselines"/> is set); <see langword="null"/> diffs from the committed physical snapshots.
+    /// The run opens it and never writes the committed snapshots; a plan stores the text, and applying it opens the baseline again,
+    /// so a baseline that changed in between makes the plan stale. A run with a baseline neither answers from nor writes the last-run
+    /// record.
+    /// </summary>
+    public string? Against { get; init; }
+
+    /// <summary>Units to run, "pack/unit" or a bare unit id; null means every unit of the selected packs.</summary>
+    /// <remarks>
+    /// Scoped generation (next-phase-1-design.md section 5.6): values OR, and AND with <see cref="Elements"/>; an empty list is no
+    /// filter. A bare unit id must name a unit exactly one run pack has, and a value naming a pack the run lacks or a unit no run pack
+    /// has is MQ6032. When every value names its pack, only those packs load (intersected with <see cref="Packs"/>). A scoped run
+    /// keeps every output and unit state of the units it does not select, still deletes the orphans of the ones it does, never
+    /// advances schema snapshots (a selected unit that reads the schema diff fails with MQ6033), and neither answers from nor writes
+    /// the last-run record. A plan stores the filters and its apply plans again with them.
+    /// </remarks>
+    public IReadOnlyList<string>? Units { get; init; }
+
+    /// <summary>Element ids whose units run (never model-scope units); null means every element.</summary>
+    /// <remarks>
+    /// Ids, never names; values OR, and AND with <see cref="Units"/>; an empty list is no filter. A synthesized table's id is its key
+    /// (<c>&lt;entityId&gt;@&lt;dbId&gt;</c>). The id of a deleted element selects its old outputs, so the run removes them and nothing
+    /// else. A filter that selects no unit and no output is MQ6034.
+    /// </remarks>
+    public IReadOnlyList<string>? Elements { get; init; }
 }
 
 /// <summary>The outcome of a run.</summary>

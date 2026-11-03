@@ -13,7 +13,8 @@ namespace Maquettiste.Engine.PostProcessing;
 /// UTF-8; (2) format with the unit's formatter (by name, else by extension; <c>"none"</c> disables it); (3) in <c>regions</c> mode,
 /// move each protected region body of the file on disk into the same region of the new output; (4) hash (the skeleton, prefixed
 /// <c>r:</c>, for regions; <c>o:</c> for owned files) and classify the root through <see cref="IOutputPathPolicy"/>. A <c>block</c>
-/// file is normalized and hashed (<c>b:</c>) as the block's lines alone, never formatted: the writer puts it in the file.
+/// file is normalized and hashed (<c>b:</c>) as the block's lines alone, never formatted: the writer puts it in the file. A <c>copy</c>
+/// file keeps the renderer's bytes as they are (next-phase-1-design.md section 5.4).
 /// Nothing is written: the result is in memory, so dry runs and <c>--check</c> use the same code.
 /// </summary>
 /// <param name="options">The engine options (the repo root when the context names none).</param>
@@ -41,7 +42,8 @@ internal sealed class PostProcessor(EngineOptions options, IFormatterRunner form
         var elementId = unit.Unit.Element?.Id;
         var repoRoot = string.IsNullOrEmpty(context.RepoRoot) ? options.RepoRoot : context.RepoRoot;
         var run = _runs.GetValue(context, _ => new RunState());
-        var named = SelectNamedFormatter(unit.Unit, context, run, diagnostics);
+        // A copy unit's files are written as they are: no formatter, so none is selected (or warned about).
+        var named = packUnit.Mode == OutputMode.Copy ? Selection.None : SelectNamedFormatter(unit.Unit, context, run, diagnostics);
 
         foreach (var file in unit.Files)
         {
@@ -142,6 +144,8 @@ internal sealed class PostProcessor(EngineOptions options, IFormatterRunner form
         var mode = FileMode(unit.Mode, file.Role);
         if (mode == OutputMode.Block)
             return Block(file, path, pack, unit, elementId, check.Root, diagnostics);
+        if (mode == OutputMode.Copy)
+            return Copy(file, path, elementId, check.Root, diagnostics);
 
         // (1) Normalize and encode. A template that slices a string inside a surrogate pair fails this unit, not the run.
         var text = TextNormalizer.Normalize(file.Text);
@@ -186,6 +190,27 @@ internal sealed class PostProcessor(EngineOptions options, IFormatterRunner form
         return new OutputFile(path, bytes, contentHash, manifestHash, mode, file.Role, check.Root);
     }
 
+    /// <summary>
+    /// A <c>copy</c> unit's file (next-phase-1-design.md section 5.4): its bytes as the renderer made them, with no line-ending
+    /// normalization, formatter or regions; managed like an <c>overwrite</c> file (the manifest hash is the content hash).
+    /// </summary>
+    private static OutputFile? Copy(RenderedFile file, string path, string? elementId, OutputRootInfo root, List<Diagnostic> diagnostics)
+    {
+        byte[] bytes;
+        if (file.Bytes is { } copied)
+        {
+            bytes = copied;
+        }
+        else if (!TextNormalizer.TryEncode(file.Text, out bytes))
+        {
+            diagnostics.Add(NotUnicode(path, elementId));
+            return null;
+        }
+
+        var hash = ContentHash.Of(bytes);
+        return new OutputFile(path, bytes, hash, hash, OutputMode.Copy, file.Role, root);
+    }
+
     /// <summary>A <c>block</c> file: the block's lines, normalized, with a final line end; no formatter, no regions.</summary>
     private static OutputFile? Block(RenderedFile file, string path, string pack, PackUnit unit, string? elementId, OutputRootInfo root, List<Diagnostic> diagnostics)
     {
@@ -193,7 +218,7 @@ internal sealed class PostProcessor(EngineOptions options, IFormatterRunner form
         var marker = Writing.ManagedBlock.Marker(pack, unit.Id);
         if (Writing.ManagedBlock.HoldsDelimiter(body, marker))
         {
-            diagnostics.Add(Error("MQ6006", $"The block of unit '{unit.Id}' for '{path}' holds one of its own delimiter lines ('maquettiste: begin {marker}' or 'end'), which would end it early.",
+            diagnostics.Add(Error("MQ6006", $"The block of unit '{unit.Id}' for '{path}' holds one of its own delimiter lines ('maquettiste: begin {marker}' or 'end', with or without closing text), which would end it early.",
                 elementId, path));
             return null;
         }

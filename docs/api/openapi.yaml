@@ -365,7 +365,10 @@ paths:
                         where: null
                         output: '{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql'
                         mode: overwrite
+                        sources: []
+                        tokens: {}
                         blockComment: '#'
+                        blockCommentEnd: null
                         createFile: false
                         formatter: null
                         delimiters: null
@@ -373,11 +376,14 @@ paths:
                         transforms: []
                       - id: schema
                         template: schema.scriban
-                        for: select databases
+                        for: each database
                         where: null
                         output: '{{ kebab database.name }}/schema.sql'
                         mode: overwrite
+                        sources: []
+                        tokens: {}
                         blockComment: '#'
+                        blockCommentEnd: null
                         createFile: false
                         formatter: null
                         delimiters: null
@@ -867,15 +873,18 @@ paths:
           indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
           for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
           `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.
+        - `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its
+          state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.
         - `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which
           `databases` holds.
 
-        `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to
-        it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
+        `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and
+        migration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
         is null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change
         between pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors
-        returns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export
-        --resolved` answer the same.
+        returns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent
+        (MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer
+        the same.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetResolvedAsync(query)
       parameters:
@@ -885,7 +894,7 @@ paths:
           description: What to read.
           schema:
             type: string
-            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects, queries]
+            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects, queries, migrations]
             default: all
         - name: database
           in: query
@@ -2523,11 +2532,23 @@ paths:
         An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the
         resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type
         an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a
-        validation reports what generation would.
+        validation reports what generation would. With `against`, the whole model is also compared with a model snapshot.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.ValidateAsync(scope)
       parameters:
         - $ref: '#/components/parameters/SnapshotQuery'
+        - name: against
+          in: query
+          required: false
+          description: >-
+            A model snapshot id to compare the whole model with (`ModelStore.ValidateAgainstAsync`): a change since the snapshot
+            that a migration must follow (a rename or moved key, a type change that is not a widening, a dropped table, column or
+            sequence, a column made not null) and that no migration fact the snapshot lacks explains is MQ4102; a fact whose
+            combined effect the model no longer shows is MQ4103; snapshot objects whose owners have errors are skipped with
+            MQ4109. This host compares with snapshots only: a folder, an id that names no snapshot, or a body with `elementIds`
+            is 400 `bad-request`.
+          schema:
+            type: string
       requestBody:
         required: false
         content:
@@ -2965,7 +2986,12 @@ paths:
         `{ "op": "materialize-columns", "entities": [...], "attributes"?: [...] }` (per bound entity reading a table file, a column of
         that table per attribute the binding leaves unmapped, shaped as the projection would make it, mapped to it). A refusal (an
         entity or table already bound; for attributes, an entity with no binding, a query source, a column already mapped; for
-        columns, a source that is not a table file, an attribute already mapped) is MQ4055 in `diagnostics`. The MCP tool `preview_materialize` answers the same.
+        columns, a source that is not a table file, an attribute already mapped) is MQ4055 in `diagnostics`. The binding
+        operations take the same route: `{ "op": "map-by-name", "entities": [...] }` (the attributes each binding leaves unmapped,
+        mapped to the free columns of the same loose name) and `{ "op": "resync-binding", "entities": [...], "columns"?: [...],
+        "keepNames"?: true }` (each binding whose source is a table file brought into step with it); both record provenance, read
+        files only, collect the binding rules (MQ4044 to MQ4054, MQ4087, MQ4088) from the conceptual layer and this database
+        alone, and a refusal is MQ4089. The MCP tool `preview_materialize` answers the same.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.PlanMaterializeAsync(request)
       requestBody:
@@ -3001,8 +3027,11 @@ paths:
         every view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,
         view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
         properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
-        overlay entry, has none. The Database workspace draws table diagrams from it and an entity's Storage tab
-        reads its binding sources' columns from it. A model with errors returns `view: null` and the diagnostics.
+        overlay entry, has none, except the stereotypes a table's schema and package defaults give it. Columns, keys,
+        foreign keys and indexes a stereotype contributes follow the table's own, keyed `<tableKey>.<memberId>`, with
+        their `memberOrigin` (next-phase-2-design.md 3.1). The Database workspace draws table diagrams from it and an
+        entity's Storage tab reads its binding sources' columns from it. A model with errors returns `view: null` and
+        the diagnostics.
       x-maquettiste-role: viewer
       x-engine-addition: E1 GenerationService.GetDatabaseViewAsync(databaseId)
       parameters:
@@ -3349,6 +3378,12 @@ paths:
             text/csv:
               schema:
                 type: string
+        '422':
+          description: The seed's rows script (`rowsFrom.script`) fails, so there are no rows to export; the report holds its MQ7127.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationReport'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -3500,10 +3535,12 @@ paths:
     get:
       tags: [reference-data]
       operationId: getReferenceTypeUsage
-      summary: The attributes that use a reference type, with their effective storage
+      summary: The attributes and columns that use a reference type, with their effective storage
       description: |
         reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage
-        choice per database.
+        choice per database. `columns` lists the designed, imported, extra and inherited columns whose own `typeRef` names the
+        type (next-phase-2-design.md 3.2), with their table, database, domain, required, the effective storage choice in that
+        database and the bound table; projected columns are covered by their attributes.
       x-maquettiste-role: viewer
       responses:
         '200':
@@ -3514,6 +3551,7 @@ paths:
                 $ref: '#/components/schemas/ReferenceTypeUsage'
               example:
                 usages: []
+                columns: []
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -3528,7 +3566,8 @@ paths:
         Every tag the tag vocabulary of `package` (the global one without it) declares, and every tag used inside that scope that no
         vocabulary on the element's domain chain declares, each with its uses there (the element's own tags and its sub-elements'),
         the ids of the elements holding them and up to five of their names. A domain that declares the same key keeps its own uses.
-        Remove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers the same.
+        Remove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers a summary of the
+        same, with pages and one tag's elements on request.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.GetTagUsageAsync(package)
       parameters:
@@ -3983,7 +4022,10 @@ paths:
         Queues a plan job and returns it at once. Join the realtime group `job:{id}` for `job.progress` and
         `job.completed`, then read `GET /api/jobs/{id}` once, so an event sent before the join is not missed. The
         functions force `includeDiffs: false`, `stageBarriers: false` and `lock: wait`; `mode` is ignored (a plan is
-        always a dry run).
+        always a dry run). `against` diffs the schema from a model snapshot for this plan instead of the committed
+        physical snapshots, which its apply leaves alone; the functions take snapshot ids only, so a folder, or an id
+        that names no snapshot, is 400 `bad-request`. `units` and `elements` limit the plan to some units (scoped
+        generation): it holds those units only, and its apply writes their files and leaves every other file alone.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: JobQueue.TryEnqueue(new JobRequest(JobKind.Plan, request, null))
       requestBody:
@@ -4165,7 +4207,7 @@ paths:
       tags: [generation]
       operationId: getPlanDiff
       summary: Unified diff for one file in a plan
-      description: From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders, such as a migration's placeholder); a deleted file diffs to nothing.
+      description: From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders); a deleted file diffs to nothing.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetPlanDiffAsync(planId, path)
       parameters:
@@ -4472,9 +4514,9 @@ paths:
         element for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders
         (pointer `/units/<i>/for` of the pack's `pack.json`).
         With `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the
-        pack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4
-        (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below
-        it). Nothing is written.
+        pack loads even when disabled, the sandbox limits apply and the render has a deadline of 4 x `limits.scriptTimeoutMs`,
+        or 8000 ms when it is 0 (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the
+        maintainer role (403 below it). Nothing is written.
 
         Bounds (generation-ui.md section 5.2): only this unit is rendered, for this element, and no unit is planned. The
         server keeps a preview session per pack (the model validated and resolved once per model version, shared with
@@ -4586,8 +4628,9 @@ paths:
         whole model, a database or a locale (`for: model`, `each locale`, a selector that returns databases): its paths come
         with a preview the user asks for. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020
         (two of the rendered elements render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused
-        path, and MQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or
-        `parameters` it uses unsaved text, which needs the maintainer role (403 below it). Nothing is written.
+        path, and MQ6007 when the deadline (4 x `limits.scriptTimeoutMs`, or 8000 ms when it is 0) is hit. With
+        `unitOverride`, `overlay` or `parameters` it uses unsaved text, which needs the maintainer role (403 below it).
+        Nothing is written.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.PathsAsync(pack, unit, elementIds, options, limit)
       parameters:
@@ -5112,12 +5155,14 @@ paths:
     get:
       tags: [extensions]
       operationId: listExtensionFiles
-      summary: The custom property schemas and script rules of the model
+      summary: The custom property schemas, script rules and rows scripts of the model
       description: |
         The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules
-        (`rules/<name>.js`), each ordinal by path, with size, hash and what is wrong with the file on its own: an invalid schema
-        (MQ5004) or a rule script that does not load alone in the sandbox (MQ5002 for a syntax error or a registration without an
-        id, MQ5003 for a limit), with line and column. Rule findings (`x/<id>`) come from `POST /api/validate`.
+        (`rules/<name>.js`), then the seeds' rows scripts (`seeds/<name>.js`, kind `seed-rows`), each ordinal by path, with size, hash
+        and what is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load alone in the sandbox
+        (MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not
+        call `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level
+        (MQ5005, a warning). No rows script runs. Rule findings (`x/<id>`) come from `POST /api/validate`.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.ListExtensionFilesAsync()
       responses:
@@ -5164,9 +5209,11 @@ paths:
         write goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its
         MQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is
         written as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in
-        `diagnostics` (MQ5002 with line and column). The model is refreshed before the answer, `project.changed` is published and a
-        validation follows, so the rule's `x/<id>` findings reach the Problems panel. A path other than `<name>.json` or
-        `rules/<name>.js`, or one through a link, is 400.
+        `diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is
+        refreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings
+        reach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not
+        load or does not register its rows exactly once comes back as MQ7127. A path other than `<name>.json`, `rules/<name>.js` or
+        `seeds/<name>.js`, or one through a link, is 400.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: ModelStore.WriteExtensionFileAsync(path, text, expectedHash)
       parameters:
@@ -5261,7 +5308,8 @@ paths:
       summary: Rename one extension file within its kind
       description: |
         `If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a
-        `<name>.json`, a rule a `rules/<name>.js`), else 422. Nothing refers to an extension file by its path, so nothing else changes.
+        `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`), else 422. Nothing else changes: a seed whose
+        `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: ModelStore.MoveExtensionFileAsync(move, expectedHash)
       parameters:
@@ -6657,6 +6705,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Diagnostic'
+        facts:
+          description: >-
+            When saved, the migration facts the save recorded: a change of `conventions`, `databases`, `typeMaps` or `inflection`
+            classifies every database; other settings record none. `null` when nothing was written.
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/RecordedFact'
+            - type: 'null'
     ProjectSettings:
       x-engine-record: Maquettiste.Engine.Model.ProjectSettings
       type: object
@@ -6809,6 +6866,19 @@ components:
               type: integer
             tokenBudgetPerDayPerUser:
               type: integer
+        migrations:
+          description: Migration facts (next-phase-1-design.md section 3.2); an older server leaves it out. `record` `off` makes no write record facts; `ledgerSchema` is the schema of the migration ledger tables in each PostgreSQL database (section 3.3).
+          x-engine-record: Maquettiste.Engine.Model.MigrationSettings
+          type: object
+          required: [record, ledgerSchema]
+          properties:
+            record:
+              type: string
+              enum: [automatic, 'off']
+            ledgerSchema:
+              type: string
+              pattern: '^[a-z_][a-z0-9_]*$'
+              maxLength: 63
     BrandingSettings:
       x-engine-record: Maquettiste.Engine.Model.BrandingSettings
       description: The project's icon and primary color per theme in the editor (MQ8001 to MQ8003). An older server leaves it out.
@@ -7129,12 +7199,13 @@ components:
     PackUnit:
       x-engine-record: Maquettiste.Engine.Model.PackUnit
       type: object
-      required: [id, template, for, where, output, mode, blockComment, createFile, formatter, delimiters, companion, transforms]
+      required: [id, template, for, where, output, mode, sources, tokens, blockComment, blockCommentEnd, createFile, formatter, delimiters, companion, transforms]
       properties:
         id:
           type: string
         template:
-          type: string
+          type: [string, 'null']
+          description: The pack-relative template path; null only in mode `copy`, which takes none.
         for:
           type: string
           description: '`each <kind>`, `select <kinds>` or `model`.'
@@ -7146,9 +7217,22 @@ components:
           type: [string, 'null']
         mode:
           $ref: '#/components/schemas/OutputMode'
+        sources:
+          type: array
+          description: 'Mode `copy`: pack-relative glob patterns of the files to copy, matched case-sensitively; empty otherwise.'
+          items:
+            type: string
+        tokens:
+          type: object
+          description: 'Mode `copy`: literal text replaced in copied text files and output paths, mapped to a parameter name; empty otherwise.'
+          additionalProperties:
+            type: string
         blockComment:
           type: string
           description: 'Mode `block`: the comment marker of the delimiter lines (`#` by default).'
+        blockCommentEnd:
+          type: [string, 'null']
+          description: 'Mode `block`: the text closing each delimiter line (for example `-->`), or null.'
         createFile:
           type: boolean
           description: 'Mode `block`: create the target file when it does not exist (otherwise the unit writes nothing: `target-missing`).'
@@ -7272,8 +7356,9 @@ components:
                 type: [string, 'null']
                 description: The text the fallback chain gives.
               field:
+                description: A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.
                 type: string
-                enum: [displayName, pluralName, label, description]
+                pattern: '^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$'
               source:
                 type: [string, 'null']
               translation:
@@ -7302,8 +7387,9 @@ components:
               id:
                 $ref: '#/components/schemas/Ulid'
               field:
+                description: A standard field, or `properties/<name>` for the text of an `x-translatable` custom property.
                 type: string
-                enum: [displayName, pluralName, label, description]
+                pattern: '^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$'
               value:
                 description: 'The text, `{ "file": "<sidecar>" }`, or `null` to remove.'
               confirm:
@@ -7419,7 +7505,7 @@ components:
             type: string
     ReferenceTypeUsage:
       type: object
-      required: [usages]
+      required: [usages, columns]
       properties:
         usages:
           type: array
@@ -7444,9 +7530,46 @@ components:
                 description: Database name to the effective storage choice.
                 additionalProperties:
                   $ref: '#/components/schemas/StorageChoice'
+        columns:
+          type: array
+          description: |
+            The designed, imported, extra and inherited columns whose own `typeRef` names the type (next-phase-2-design.md 3.2),
+            ordinal by table id then column id. Projected columns are covered by their attributes in `usages`.
+          items:
+            type: object
+            required: [table, column, database, required]
+            properties:
+              table:
+                type: string
+                description: |
+                  The table id: the table file's id, or a synthesized table's key (`<entityId>@<databaseId>`) for an overlay's
+                  extra column or a column a synthesized table inherits.
+              column:
+                type: string
+                description: The column id; a keyed id (`<tableKey>.<memberId>`) for an inherited column.
+              database:
+                $ref: '#/components/schemas/Ulid'
+              domain:
+                description: The table's package (a synthesized table without one, its entity's or relation's); null at the root.
+                oneOf:
+                  - $ref: '#/components/schemas/Ulid'
+                  - type: 'null'
+              required:
+                type: boolean
+                description: Whether the column is not nullable.
+              storage:
+                description: The type's effective storage choice in the database; null for template-defined.
+                oneOf:
+                  - $ref: '#/components/schemas/StorageChoice'
+                  - type: 'null'
+              boundTable:
+                description: The table of the type's binding in the database; null when the type has none there.
+                oneOf:
+                  - $ref: '#/components/schemas/Ulid'
+                  - type: 'null'
     ElementKind:
       type: string
-      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario]
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario, migration]
     ChangeSource:
       type: string
       enum: [editor, disk, cli, engine]
@@ -7493,7 +7616,7 @@ components:
           type: string
           description: The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label.
         database:
-          description: The owning database's id, on table, view, sequence, routine, database-type, sql-object, query and mapping rows (E5).
+          description: The owning database's id, on table, view, sequence, routine, database-type, sql-object, query, mapping and migration rows (E5).
           $ref: '#/components/schemas/Ulid'
         entity:
           description: The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5).
@@ -7608,6 +7731,7 @@ components:
         - $ref: '../../schemas/v1/process.json'
         - $ref: '../../schemas/v1/actor.json'
         - $ref: '../../schemas/v1/scenario.json'
+        - $ref: '../../schemas/v1/migration.json'
     NewModelDocument:
       description: 'A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other.'
       type: object
@@ -7714,6 +7838,17 @@ components:
           description: |
             The referrer belongs to the referenced element (a seed's `target`): the reference never refuses the target's delete,
             which deletes the referrer in the same save, so a delete confirmation lists these as deleted with it. Left out when false.
+        optional:
+          type: boolean
+          default: false
+          description: |
+            For a custom property value an `x-ref` types: every schema that types it says `optional`, so a delete with
+            `remove-references` may clear it. Left out when false.
+        schema:
+          type: string
+          description: |
+            For a custom property value an `x-ref` types: the schema that types it, `extension:<name>` (an extension file) or
+            `stereotype:<key>` (a stereotype's parameters). Left out for every other reference.
     ElementChange:
       x-engine-record: Maquettiste.Engine.ElementChange
       x-engine-addition: E5d adds `summary` on `model.changed`
@@ -7990,6 +8125,77 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ChangeSet'
             - type: 'null'
+        facts:
+          description: >-
+            The migration facts the write created or updated (next-phase-1-design.md section 3.2): a single-element create, save or
+            delete lists every fact its write recorded, cascades included; `null` on an item of a batch (the batch carries them) and
+            when nothing was written. A pending fact's MQ4101 is among `diagnostics`.
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/RecordedFact'
+            - type: 'null'
+        usage:
+          description: >-
+            What a reference-type refactor rewrites (next-phase-2-design.md section 3.5): on the item of the type the operation
+            names (for a merge, the merged-away type's delete), in a dry run and on apply; null on every other item.
+          oneOf:
+            - $ref: '#/components/schemas/RefactorUsage'
+            - type: 'null'
+    RefactorUsage:
+      x-engine-record: Maquettiste.Engine.RefactorUsage
+      description: What a reference-type refactor rewrites, found through the index, never a resolve.
+      type: object
+      required: [useCount, uses, rowsMoved, rowsRemoved, translationsRemoved]
+      properties:
+        useCount:
+          description: >-
+            The number of uses rewritten: codes in defaults, `allowedValues` entries and cells, ids that name a removed row, and
+            references to a merged-away type.
+          type: integer
+        uses:
+          description: The first 200 uses, ordinal by element id, then pointer; `toId` is the row or type the use named before.
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceInfo'
+        rowsMoved:
+          description: The rows a merge moves into the target type.
+          type: integer
+        rowsRemoved:
+          description: The rows removed (a retired code's row, a merged-away type's rows whose codes the target holds).
+          type: integer
+        translationsRemoved:
+          description: The translation entries removed with them, one per locale and node.
+          type: integer
+    RecordedFact:
+      x-engine-record: Maquettiste.Engine.RecordedFact
+      description: A migration fact a write created or updated, in `model/databases/<db>/migrations/open/`.
+      type: object
+      required: [id, database, fact, state, missing, summary, path]
+      properties:
+        id:
+          type: string
+        database:
+          description: The id of the fact's database.
+          type: string
+        fact:
+          type: string
+          enum: [rename, rekey, change-type, drop, adopt, baseline, backfill, raw, value-map, state-map]
+        state:
+          description: '`pending` while the fact lacks the intent its change needs (MQ4101), else `complete`.'
+          type: string
+          enum: [complete, pending]
+        missing:
+          description: The intent fields MQ4101 names; empty unless pending.
+          type: array
+          items:
+            type: string
+        summary:
+          description: One line by the names the fact records, such as `rename column billing.notes.text to body`.
+          type: string
+        path:
+          description: The repo-relative path of the fact's file.
+          type: string
     BatchOp:
       type: string
       description: >-
@@ -8026,15 +8232,72 @@ components:
         bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left
         to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at
         `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`.
-      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, set-lifecycle, set-initial, refresh-scenario, retag]
+        `tags-to-property` (next-phase-1-design.md section 4.4) moves the tags that start with `prefix` into the custom property
+        `name` of each element and sub-element with properties that holds them, in the scope `retag` would change, limited to
+        `elementIds`: the schema that declares the property converts the suffixes (a string takes one, a string array all of them
+        in list order, an integer, number or boolean one parsed with the invariant culture, an `enum` one member, an `x-ref` the
+        one id the suffix finds as `names-to-ids` resolves it); the tags leave their holders and, without `elementIds`, their
+        declarations leave the vocabulary, except a tag that something without properties (a relation end, for example) still
+        uses, whose declaration stays. It expands the same way and takes `expectedHashes`; no matching tag is MQ1002 at
+        `/operations/<n>`, and each holder whose property no schema declares, whose suffix does not fit or that already holds
+        another value is one MQ5001 at its file and `/properties/<name>`. `names-to-ids` (section 4.1) turns every custom property
+        value an `x-ref` types that is a name, not an id, into the one id it finds among the in-scope candidates of the keyword's
+        kinds (elements by their qualified-name forms, stereotypes by key; within `of` sub-elements by name, columns by physical
+        name, rows by code), in the elements `elementIds` lists or in every document with `x-ref` sites, stereotype defaults
+        included. It expands the same way and takes `expectedHashes`; each value that finds nothing or several is one MQ2010 at
+        its file and pointer, and nothing to convert writes nothing. `fold-into-stereotype` (next-phase-2-design.md section 3.1)
+        makes the stereotype `id`'s members replace the matching own members of `tables`, or of every designed and imported table
+        of `schema`; `redefine` and `excludeMissing` keep the database unchanged where a member differs or is missing, and a
+        refusal is MQ4077. The binding operations (next-phase-2-design.md section 3.3) act on `database` and `entities`, read files
+        only and never resolve the model: `map-by-name` maps every attribute a binding leaves unmapped to a free column of its
+        source with the same loose name (case and every character that is not an ASCII letter or digit ignored; a member as
+        `attributeMember`, a to-one navigation key with or without `Id`), fields naming a table file's columns by id and a view's
+        by name; `resync-binding` brings a binding whose source is a table file into step with the table: it renames an own
+        attribute that followed its column's name (unless `keepNames`), retypes an own attribute whose column was retyped, maps
+        by name, adds an attribute per added column still free and removes the fields of removed columns, keeping every
+        attribute; for one entity, `columns` (keys or physical names) limits it to those columns. Both record the binding's
+        `provenance` (each column's name and type hashes) for a table file, expand the same way, take `expectedHashes`, and a
+        refusal (an entity with no binding to the database, a source they cannot read, `columns` misused, nothing to map, or
+        every binding named in step) is MQ4089 at `/operations/<n>`. The reference-type refactors (next-phase-2-design.md
+        section 3.5) read the model as it was before the batch and find every use through the index: `rename-code` (`id` a
+        reference type, `code`, `to`) gives the row the new code and rewrites every default, `allowedValues` entry, seed cell,
+        typed column default, table seed cell and binding constant that named the old one; `retire-code` (`id`, `code`, `to`
+        another live code) removes the code's row with its translations, rewrites its uses to `to` and the ids that named the row
+        (`x-ref` values, former codes) to the row of `to`; `merge-reference-types` (`id` the type merged away, `target` the type
+        merged into, optional `codes`) maps each code the target holds to it, `codes` maps others to live target codes, moves every
+        other row into the target with its id, values and translations, retargets the seeds (one with the name of a target seed
+        joins it), points every reference to the type at the target and deletes it; `rename-reference-type` (`id`, `name`) renames
+        the type, its file and its seed folder following. Each keeps the old code as a former code of the type and answers
+        `usage` on the item of the type it names (the merged-away type's delete for a merge). They expand the same way, take
+        `expectedHashes`, refactor a type once per batch, and a refusal (an unknown or scripted code, a code taken or former, a
+        code that does not fit, mismatched code types, a binding or scripted rows on the merged type, a field the target lacks,
+        seeds of one name that differ in environments or apply, a second refactor of a type) is MQ7020 at `/operations/<n>`.
+      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, set-lifecycle, set-initial, refresh-scenario, retag, tags-to-property, names-to-ids, fold-into-stereotype, map-by-name, resync-binding, rename-code, retire-code, merge-reference-types, rename-reference-type]
     BatchOperation:
       x-engine-record: Maquettiste.Engine.BatchOperation
+      description: |
+        One batch operation. Every id field (`id`, `database`, `package`, `schema`, `target`, `default`, the items of
+        `entities`, `tables` and `elementIds`, an `attributes` item that starts with `@` or `$`, the keys of
+        `expectedHashes`) and every reference inside `element` takes an id, a qualified name (`@kind:path`, the name as
+        stored: `@table:billing.notes`) or a placeholder (`$name`, declared with `as`); the engine resolves them to ids before
+        the batch is planned and mints every missing id (next-phase-1-design.md section 5.1). A name that finds nothing is
+        MQ1012, several MQ1013; a misused identity is MQ1014 and a malformed or misplaced name MQ1015.
       type: object
       required: [op, id, expectedHash, element]
       properties:
         op:
           $ref: '#/components/schemas/BatchOp'
         id:
+          description: >-
+            An id, a qualified name or a placeholder. A create's `id` must be an id; an update's or delete's names an element
+            that exists before the batch, never a placeholder. For a reference-type refactor, the reference type (for
+            `merge-reference-types`, the one merged away).
+          type: [string, 'null']
+        as:
+          description: >-
+            Create and update: the placeholder (`$name`) that names the operation's element for the whole batch, so other
+            operations write it where the element's id goes. An object inside `element` whose schema requires an `id` may carry
+            `as` too, naming that sub-element.
           type: [string, 'null']
         expectedHash:
           type: [string, 'null']
@@ -8053,40 +8316,51 @@ components:
         value:
           description: 'The translated text, `{ "file": "<sidecar>" }`, or `null` to remove the translation (`translate`).'
         schema:
-          description: The database schema id (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`).
+          description: The database schema (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`) as an id, a qualified name or a placeholder.
           type: [string, 'null']
         name:
-          description: The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`).
+          description: The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`); the custom property the tags move to (`tags-to-property`); the reference type's new name (`rename-reference-type`).
           type: [string, 'null']
+        code:
+          description: The code a refactor renames (`rename-code`) or retires (`retire-code`), as the code's canonical text (an integer in decimal digits, a uuid in lowercase).
+          type: [string, 'null']
+        to:
+          description: The new code (`rename-code`); the live code whose row takes over the retired code's uses (`retire-code`).
+          type: [string, 'null']
+        codes:
+          description: '`merge-reference-types`: codes of the merged-away type mapped to live codes of the target, for codes the target does not hold itself; every other code moves into the target as a row.'
+          type: [object, 'null']
+          additionalProperties:
+            type: string
         target:
-          description: The schema id that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`).
+          description: The schema that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`); the reference type merged into (`merge-reference-types`). An id, a qualified name or a placeholder.
           type: [string, 'null']
         default:
-          description: The schema id that becomes the default when the removed schema is the default (`remove-schema`).
+          description: The schema that becomes the default when the removed schema is the default (`remove-schema`). An id, a qualified name or a placeholder.
           type: [string, 'null']
         database:
-          description: The database id (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`).
+          description: The database (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`, `map-by-name`, `resync-binding`). An id, a qualified name or a placeholder.
           type: [string, 'null']
         entities:
-          description: The entity ids (`materialize-tables`, `materialize-attributes`, `materialize-columns`).
+          description: The entities (`materialize-tables`, `materialize-attributes`, `materialize-columns`, `map-by-name`, `resync-binding`), each an id, a qualified name or a placeholder.
           type: [array, 'null']
           items:
             type: string
         tables:
-          description: The table and view ids (`materialize-entities`).
+          description: The tables and views (`materialize-entities`), each an id, a qualified name or a placeholder.
           type: [array, 'null']
           items:
             type: string
         package:
-          description: The package id the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, absent for the global one).
+          description: The package the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, `tags-to-property`; absent for the global one). An id, a qualified name or a placeholder.
           type: [string, 'null']
         columns:
-          description: The source columns, as keys or physical names (`materialize-attributes`, one entity); absent means every column nothing in the binding names.
+          description: The source columns, as keys or physical names (`materialize-attributes` and `resync-binding`, one entity); absent means every column nothing in the binding names (`materialize-attributes`) or every column of the source (`resync-binding`).
           type: [array, 'null']
           items:
             type: string
         attributes:
-          description: The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped.
+          description: The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped. An item that starts with `@` or `$` is one attribute or end by name or placeholder; the composite `attributeId.memberId` stays ids.
           type: [array, 'null']
           items:
             type: string
@@ -8095,11 +8369,31 @@ components:
           type: [array, 'null']
           items:
             type: string
+        elementIds:
+          description: >-
+            The elements `names-to-ids` and `tags-to-property` act on, each an id, a qualified name or a placeholder; absent means
+            every element they apply to.
+          type: [array, 'null']
+          items:
+            type: string
+        prefix:
+          description: The prefix of the tags that move into the property `name` (`tags-to-property`).
+          type: [string, 'null']
+        redefine:
+          description: '`fold-into-stereotype`: write a `redefines` entry with the table''s value where an own member differs from the stereotype''s in a redefinable facet, instead of refusing the table.'
+          type: [boolean, 'null']
+        excludeMissing:
+          description: '`fold-into-stereotype`: exclude each member of the stereotype a table lacks, instead of refusing the table.'
+          type: [boolean, 'null']
+        keepNames:
+          description: '`resync-binding`: keep every attribute''s name, even one that followed its column''s name; the provenance entry still takes the column''s new name.'
+          type: [boolean, 'null']
         expectedHashes:
           description: |
-            Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's
+            Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids` and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete (the preview's
             updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
-            a conflict and nothing is written.
+            a conflict and nothing is written. A key may be an id or a qualified name; a placeholder key is MQ1015, two keys for
+            one element are MQ1014.
           type: [object, 'null']
           additionalProperties:
             type: string
@@ -8140,6 +8434,57 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ChangeSet'
             - type: 'null'
+        facts:
+          description: The migration facts the batch created or updated (its items carry none); `null` when nothing was written.
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/RecordedFact'
+            - type: 'null'
+        ids:
+          description: When saved, the names the batch resolved, the placeholders it declared and the ids it minted; empty otherwise.
+          allOf:
+            - $ref: '#/components/schemas/BatchIds'
+    BatchIds:
+      x-engine-record: Maquettiste.Engine.BatchIds
+      description: The names a batch resolved and the ids it minted (next-phase-1-design.md section 5.1).
+      type: object
+      required: [names, minted]
+      properties:
+        names:
+          description: Each placeholder declared and each qualified name used, to its id, ordinal by key.
+          type: object
+          additionalProperties:
+            type: string
+        minted:
+          description: The ids the engine minted, in operation and document order.
+          type: array
+          items:
+            $ref: '#/components/schemas/MintedId'
+    MintedId:
+      x-engine-record: Maquettiste.Engine.MintedId
+      description: An id the engine minted for a batch.
+      type: object
+      required: [operation, pointer, kind, id, name, placeholder]
+      properties:
+        operation:
+          description: The operation's index in the batch.
+          type: integer
+          minimum: 0
+        pointer:
+          description: The JSON pointer into the operation's element (`""` for its root).
+          type: string
+        kind:
+          description: The element kind, else the index kind of the sub-element, else `sub-element`.
+          type: string
+        id:
+          type: string
+        name:
+          description: The longest qualified form (`@column:main.billing.payment_method.code`) when the kind has names.
+          type: [string, 'null']
+        placeholder:
+          description: The placeholder the batch declared on the object with `as`, if any.
+          type: [string, 'null']
 
     # ---------------------------------------------------------------- diagnostics
     DiagnosticSeverity:
@@ -8350,6 +8695,7 @@ components:
             - $ref: '#/components/schemas/DatabaseTypeRecord'
             - $ref: '#/components/schemas/SqlObjectRecord'
             - $ref: '#/components/schemas/QueryRecord'
+            - $ref: '#/components/schemas/MigrationRecord'
         next:
           type: [string, 'null']
           description: The cursor of the next page; null on the last one.
@@ -8522,7 +8868,7 @@ components:
       - $ref: '#/components/schemas/ResolvedAnnotations'
       - type: object
         required: [id, name, owner, declaringEntity, type, required, default, defaultExpression, length, precision, scale, collection, unique, indexed, readOnly, immutable, derived, sensitive,
-          validation, order, isKey, isInherited, isVirtual, fromStereotype, reference]
+          validation, order, isKey, isInherited, isVirtual, fromStereotype, reference, descriptionColumn]
         properties:
           id:
             type: string
@@ -8585,9 +8931,14 @@ components:
             oneOf:
             - $ref: '#/components/schemas/ReferenceUsageRecord'
             - type: 'null'
+          descriptionColumn:
+            type: [string, 'null']
+            description: >-
+              The key of the column whose comment `description` shows, when the attribute has no description of its own: the
+              first commented column its entity's bindings map it to, bindings in database name order.
     TypeRecord:
       x-engine-record: Maquettiste.Engine.TypeRecord
-      description: An attribute's resolved type; the named type by id.
+      description: An attribute's resolved type, or a column's `typeRef`; the named type by id.
       type: object
       required: [kind, name, builtin, enum, valueObject, scalar, referenceType]
       properties:
@@ -8963,7 +9314,7 @@ components:
       allOf:
       - $ref: '#/components/schemas/ResolvedAnnotations'
       - type: object
-        required: [id, kind, name, package, code, label, attributes, rows, seeds, usedBy, storage]
+        required: [id, kind, name, package, code, label, attributes, rows, seeds, usedBy, storage, formerCodes]
         properties:
           id:
             type: string
@@ -8999,6 +9350,22 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/StorageChoiceRecord'
+          formerCodes:
+            type: array
+            items:
+              $ref: '#/components/schemas/FormerCodeRecord'
+            description: The codes its rows used to have, ordinal by code, each with the row that replaced it.
+    FormerCodeRecord:
+      x-engine-record: Maquettiste.Engine.FormerCodeRecord
+      description: A code a row of a reference type used to have, and the row that holds its value now.
+      type: object
+      required: [code, replacedBy]
+      properties:
+        code:
+          description: The former code; an integer for an integer code type.
+        replacedBy:
+          type: string
+          description: The id of the row that replaced it.
     ReferenceFieldRecord:
       x-engine-record: Maquettiste.Engine.ReferenceFieldRecord
       description: The code or label field of a reference type.
@@ -9647,6 +10014,117 @@ components:
           $ref: '#/components/schemas/Ulid'
         query:
           $ref: '#/components/schemas/QueryView'
+    MigrationRecord:
+      x-engine-record: Maquettiste.Engine.MigrationRecord
+      description: One open migration fact (scope `migrations`, next-phase-1-design.md section 3.2), sorted by database name, then applied order.
+      type: object
+      required: [id, kind, name, database, order, fact, state, missing, after, object, currentKey, from, to, hash]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          type: string
+          const: migration
+        name:
+          type: string
+          description: The fact's name; the empty string for a recorded fact.
+        database:
+          $ref: '#/components/schemas/Ulid'
+        order:
+          type: integer
+          minimum: 1
+          description: The fact's place in its database's applied order, from 1.
+        fact:
+          type: string
+          enum: [rename, rekey, change-type, drop, adopt, baseline, backfill, raw, value-map, state-map]
+        state:
+          type: string
+          enum: [pending, complete, held, released]
+        missing:
+          type: array
+          items:
+            type: string
+          description: The intent fields MQ4101 names; empty unless the fact is pending.
+        after:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+          description: The ids of the facts it follows that exist in its database.
+        object:
+          description: Its object as recorded, or null.
+          oneOf:
+            - $ref: '#/components/schemas/MigrationRecordObject'
+            - type: 'null'
+        currentKey:
+          type: [string, 'null']
+          description: The object's key moved through the rekey facts after it; null without an object.
+        from:
+          description: The state before, as recorded, or null.
+          oneOf:
+            - $ref: '#/components/schemas/MigrationRecordState'
+            - type: 'null'
+        to:
+          description: The state after, as recorded, or null.
+          oneOf:
+            - $ref: '#/components/schemas/MigrationRecordState'
+            - type: 'null'
+        hash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: The fact content hash (what a migration ledger row records).
+    MigrationRecordObject:
+      x-engine-record: Maquettiste.Engine.Model.MigrationObject
+      description: A migration fact's object by physical key and by its physical names at the time (`migrationObject` of `schemas/v1/migration.json`, with null for what is not recorded).
+      type: object
+      required: [kind, table, key, schema, tableName, name, formerNames]
+      properties:
+        kind:
+          type: string
+          enum: [table, column, view, sequence, index, unique, foreign-key, check, routine, database-type, sql-object, schema]
+        table:
+          type: [string, 'null']
+          description: The key of the table a member (a column, index or constraint) belongs to.
+        key:
+          type: string
+        schema:
+          type: [string, 'null']
+        tableName:
+          type: [string, 'null']
+        name:
+          type: [string, 'null']
+        formerNames:
+          type: array
+          items:
+            type: string
+    MigrationRecordState:
+      x-engine-record: Maquettiste.Engine.Model.MigrationState
+      description: A side of a migration fact (`migrationState` of `schemas/v1/migration.json`, with null for what is not recorded).
+      type: object
+      required: [name, pluralName, schema, type, length, precision, scale, nativeType, strategy, referenceTable, nullable]
+      properties:
+        name:
+          type: [string, 'null']
+        pluralName:
+          type: [string, 'null']
+          description: A value map's reference type plural name, so a pack finds the objects it named after the type.
+        schema:
+          type: [string, 'null']
+        type:
+          type: [string, 'null']
+        length:
+          type: [integer, 'null']
+        precision:
+          type: [integer, 'null']
+        scale:
+          type: [integer, 'null']
+        nativeType:
+          type: [string, 'null']
+        strategy:
+          type: [string, 'null']
+        referenceTable:
+          type: [string, 'null']
+        nullable:
+          type: [boolean, 'null']
     # ---------------------------------------------------------------- databases (E1)
     DatabaseViewResult:
       x-engine-addition: E1
@@ -9906,8 +10384,10 @@ components:
       x-engine-record: Maquettiste.Engine.TableView
       description: |
         One resolved table. The annotation members (`displayName` to `generation`) come from the table's own file: the
-        designed or imported table, or a synthesized table's overlay. A synthesized table without an overlay has none;
-        it never takes its entity's, which `entityId` leads to.
+        designed or imported table, or a synthesized table's overlay. A synthesized table without an overlay has none but
+        the stereotypes its schema and package defaults give it, with their default properties; it never takes its
+        entity's annotations, which `entityId` leads to. Members a stereotype contributes (next-phase-2-design.md 3.1)
+        follow the own ones, keyed `<tableKey>.<memberId>`, each with its `memberOrigin`.
       type: object
       required: [key, name, schema, origin, entityId, relationId, isJunction, isLookup, comment, columns, primaryKey, uniques, foreignKeys, indexes,
         displayName, pluralName, description, stereotypes, tags, category, properties, generation]
@@ -9965,7 +10445,7 @@ components:
           description: The description text, a sidecar file's content loaded.
         stereotypes:
           type: array
-          description: The stereotype keys, in application order.
+          description: The stereotype keys, in application order (the effective set, with schema and package defaults).
           items:
             type: string
         tags:
@@ -9991,6 +10471,11 @@ components:
           description: The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before.
           items:
             $ref: '#/components/schemas/BoundByView'
+        referenceBindings:
+          type: array
+          description: The reference types whose rows it holds (their bindings), by type name; absent in recordings made before.
+          items:
+            $ref: '#/components/schemas/ReferenceBindingView'
     ViewView:
       x-engine-record: Maquettiste.Engine.ViewView
       description: One resolved view, with the annotations of its file (as `TableView`).
@@ -10004,8 +10489,8 @@ components:
         schema:
           type: [string, 'null']
         body:
-          type: string
-          description: The body for the database's dialect.
+          type: [string, 'null']
+          description: The body for the database's dialect (or the `*` body); null when the file has none for it.
         columns:
           type: array
           items:
@@ -10141,8 +10626,8 @@ components:
           type: string
           description: The file's language, else the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere).
         body:
-          type: string
-          description: The body for the database's dialect (or the `*` body); empty when the file has none for it.
+          type: [string, 'null']
+          description: The body for the database's dialect (or the `*` body); null when the file has none for it.
         hasBody:
           type: boolean
         deterministic:
@@ -10257,8 +10742,8 @@ components:
         scale:
           type: [integer, 'null']
         nativeType:
-          type: string
-          description: The native type of a single value; empty for a table result.
+          type: [string, 'null']
+          description: The native type of a single value; null for a table result.
         table:
           description: The columns of a table result, or null for a single value.
           oneOf:
@@ -10342,7 +10827,8 @@ components:
         isCreated:
           type: boolean
         nativeName:
-          type: string
+          type: [string, 'null']
+          description: What a column or parameter typed by it writes; null when the dialect has none for it (a composite or range outside PostgreSQL).
         dependsOn:
           type: array
           description: The ids of the database types its fields use.
@@ -10452,8 +10938,8 @@ components:
           items:
             type: string
         body:
-          type: string
-          description: The statements for the database's dialect (or the `*` ones); empty when the file has none for it.
+          type: [string, 'null']
+          description: The statements for the database's dialect (or the `*` ones); null when the file has none for it.
         hasBody:
           type: boolean
         displayName:
@@ -10559,8 +11045,8 @@ components:
           items:
             $ref: '#/components/schemas/QueryCollectionView'
         sql:
-          type: string
-          description: The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need.
+          type: [string, 'null']
+          description: The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need; null when it cannot be rendered there (MQ4029).
         sqlParameters:
           type: array
           description: The parameters the SQL names, in first-appearance order.
@@ -10761,6 +11247,41 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BindingConstantView'
+    ReferenceBindingView:
+      x-engine-record: Maquettiste.Engine.ReferenceBindingView
+      description: A reference type whose rows a table holds (its binding to the table's database).
+      type: object
+      required: [typeId, typeName, bindingId, codeColumn, fields, constants]
+      properties:
+        typeId:
+          $ref: '#/components/schemas/Ulid'
+        typeName:
+          type: string
+        bindingId:
+          $ref: '#/components/schemas/Ulid'
+        codeColumn:
+          type: [string, 'null']
+          description: The physical name of the column the code fills, or null when none does.
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceBindingFieldView'
+        constants:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingConstantView'
+    ReferenceBindingFieldView:
+      x-engine-record: Maquettiste.Engine.ReferenceBindingFieldView
+      description: One entry of a reference type binding's field map.
+      type: object
+      required: [field, column]
+      properties:
+        field:
+          type: string
+          description: code, label, description, or a user field's name.
+        column:
+          type: string
+          description: The column's physical name.
     BindingConstantView:
       x-engine-record: Maquettiste.Engine.BindingConstantView
       description: A constant column of a binding (a filter on every read, a value on every insert).
@@ -10924,13 +11445,13 @@ components:
             type: string
     MaterializeBody:
       x-engine-record: Maquettiste.Functions.MaterializeBody
-      description: A materialize batch operation without its database.
+      description: A materialize or binding batch operation without its database.
       type: object
       required: [op]
       properties:
         op:
           type: string
-          enum: [materialize-tables, materialize-entities, materialize-attributes, materialize-columns]
+          enum: [materialize-tables, materialize-entities, materialize-attributes, materialize-columns, map-by-name, resync-binding]
         entities:
           type: array
           items:
@@ -10951,6 +11472,9 @@ components:
           type: [array, 'null']
           items:
             type: string
+        keepNames:
+          description: '`resync-binding`: keep every attribute''s name, even one that followed its column''s name.'
+          type: [boolean, 'null']
     MaterializePlan:
       x-engine-record: Maquettiste.Engine.MaterializePlan
       type: object
@@ -11257,6 +11781,52 @@ components:
           description: The generation hints by pack name or `*`.
           additionalProperties:
             $ref: '#/components/schemas/GenerationHintsView'
+        memberOrigin:
+          description: Where an inherited column comes from; null for the table's own. Always sent by this engine; absent in recordings made before.
+          oneOf:
+            - $ref: '#/components/schemas/MemberOriginView'
+            - type: 'null'
+        typeRef:
+          description: |
+            The enum, reference type or scalar type the column's own entry names (its `typeRef`), or null. A projected column has
+            none: its attribute (`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in
+            recordings made before.
+          oneOf:
+            - $ref: '#/components/schemas/TypeRecord'
+            - type: 'null'
+        sensitive:
+          description: |
+            `pii` or `secret`: the column's own; else a projected column's attribute's own; else the strongest own value of the
+            attributes bindings map to it; null when none says. Always sent by this engine; absent in recordings made before.
+          type: [string, 'null']
+          enum: [pii, secret, null]
+    MemberOriginView:
+      x-engine-record: Maquettiste.Engine.MemberOriginView
+      description: |
+        Where a member of a table comes from when a stereotype of the table's effective set contributes it
+        (next-phase-2-design.md 3.1). The member's key in the table is `<tableKey>.<memberId>`, the keyed id that seeds,
+        indexes, bindings and queries write; change the member on the stereotype, or with the table's `redefines` and
+        `excludes`, never by copying it as an own column.
+      type: object
+      required: [source, stereotype, memberId, redefined]
+      properties:
+        source:
+          type: string
+          enum: [stereotype, schema-default, package-default]
+          description: A stereotype the table lists (or one it implies), or one a database schema's or a package's `defaultStereotypes` gives it.
+        stereotype:
+          type: [string, 'null']
+          description: The contributing stereotype's key.
+        memberId:
+          description: The stereotype member's id.
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        redefined:
+          type: array
+          description: The facets the table's `redefines` entry states for the member (JSON names, ordinal); empty when none.
+          items:
+            type: string
     KeyView:
       x-engine-addition: E1
       x-engine-record: Maquettiste.Engine.KeyView
@@ -11270,6 +11840,11 @@ components:
           type: array
           items:
             type: string
+        memberOrigin:
+          description: Where an inherited key comes from; null for the table's own. Always sent by this engine; absent in recordings made before.
+          oneOf:
+            - $ref: '#/components/schemas/MemberOriginView'
+            - type: 'null'
     ForeignKeyView:
       x-engine-addition: E1
       x-engine-record: Maquettiste.Engine.ForeignKeyView
@@ -11297,6 +11872,11 @@ components:
           type: [string, 'null']
         endId:
           type: [string, 'null']
+        memberOrigin:
+          description: Where an inherited foreign key comes from; null for the table's own. Always sent by this engine; absent in recordings made before.
+          oneOf:
+            - $ref: '#/components/schemas/MemberOriginView'
+            - type: 'null'
     IndexView:
       x-engine-addition: E1
       x-engine-record: Maquettiste.Engine.IndexView
@@ -11319,6 +11899,11 @@ components:
           type: boolean
         where:
           type: [string, 'null']
+        memberOrigin:
+          description: Where an inherited index comes from; null for the table's own. Always sent by this engine; absent in recordings made before.
+          oneOf:
+            - $ref: '#/components/schemas/MemberOriginView'
+            - type: 'null'
 
     # ---------------------------------------------------------------- generation
     GenerationMode:
@@ -11338,7 +11923,7 @@ components:
       enum: [main, block, companion]
     OutputMode:
       type: string
-      enum: [overwrite, once, regions, pair, block]
+      enum: [overwrite, once, regions, pair, block, copy]
     FileChangeKind:
       description: >-
         What Apply does to a file. `added`, `modified` and `deleted` are written or removed. `unchanged` (rendered, identical to the
@@ -11409,6 +11994,36 @@ components:
         stageBarriers:
           type: boolean
           default: false
+        against:
+          description: >-
+            The baseline the schema diff runs from for this run: a model snapshot id (the CLI and its MCP server also
+            take a folder, stored as its full path). `null`: the committed physical snapshots. A run against a baseline
+            never writes those; applying its plan opens the baseline again, and a baseline changed in between makes the
+            plan stale.
+          type: [string, 'null']
+          default: null
+        units:
+          description: >-
+            Scoped generation: only these units, each `<pack>/<unit>` or a unit id that exactly one pack of the run has
+            (values OR, and AND with `elements`). `null` or an empty list: every unit. A unit no run pack has, a pack the
+            run lacks or a unit id several run packs have is MQ6032. A scoped run writes only the selected units' files
+            (and deletes the files they no longer produce), keeps every other output and unit state, never advances the
+            schema snapshots (a selected unit that reads the schema diff is MQ6033) and, as a plan, stores the filters
+            that its apply plans again with.
+          type: [array, 'null']
+          items:
+            type: string
+          default: null
+        elements:
+          description: >-
+            Scoped generation: only the units of these elements, by id, never by name (a synthesized table's id is
+            `<entityId>@<databaseId>`); units that run once for the whole model never match. Values OR, and AND with
+            `units`. `null` or an empty list: every element. A filter that selects no unit and no earlier output is the
+            warning MQ6034.
+          type: [array, 'null']
+          items:
+            type: string
+          default: null
     ApplyRequest:
       type: object
       required: [planId]
@@ -11730,9 +12345,15 @@ components:
         path:
           $ref: '#/components/schemas/RepoPath'
         text:
+          description: The rendered text; a copy unit's binary file carries "".
           type: string
         role:
           $ref: '#/components/schemas/FileRole'
+        binary:
+          description: >-
+            A copy unit's file that is not text (not strict UTF-8, or holding a NUL byte); written only when true. Its text is
+            empty.
+          type: boolean
     PreviewResult:
       x-engine-record: Maquettiste.Engine.PreviewResult
       type: object
@@ -11813,7 +12434,8 @@ components:
           $ref: '#/components/schemas/Hash'
         role:
           type: string
-          enum: [manifest, template, partial, script, type-map, other]
+          description: '`copy-source`: a copy unit''s sources match the file, which is copied as it is and never parsed.'
+          enum: [manifest, template, partial, script, type-map, copy-source, other]
         usedBy:
           type: array
           description: '`unit:<id>`, `companion:<id>` and `include:<path>`, ordinal.'
@@ -11910,8 +12532,11 @@ components:
           items:
             $ref: '#/components/schemas/ExtensionRuleInfo'
         kind:
+          description: >-
+            `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`) or `seed-rows` (a seed's rows
+            script, `seeds/<name>.js`).
           type: string
-          enum: [schema, rule]
+          enum: [schema, rule, seed-rows]
         size:
           type: integer
         hash:
@@ -11923,13 +12548,18 @@ components:
     ExtensionRuleInfo:
       x-engine-record: Maquettiste.Engine.ExtensionRuleInfo
       type: object
-      required: [id, severity]
+      required: [id, severity, wholeModel]
       properties:
         id:
           type: string
           pattern: '^x/'
         severity:
           $ref: '#/components/schemas/DiagnosticSeverity'
+        wholeModel:
+          type: boolean
+          description: >-
+            The rule was registered with scope "model": check(model, report) runs once per whole-model validation (validate,
+            generation), not per element, and a validation of some elements (a save) skips it.
     ExtensionFileContent:
       x-engine-record: Maquettiste.Engine.ExtensionFileContent
       type: object
@@ -11939,7 +12569,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [schema, rule]
+          enum: [schema, rule, seed-rows]
         hash:
           $ref: '#/components/schemas/Hash'
         text:
@@ -13229,10 +13859,10 @@ components:
             - type: 'null'
             - $ref: '#/components/schemas/AssistContext'
     AssistProposalFile:
-      description: A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files).
+      description: A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files) and the change as a unified diff.
       x-engine-record: BatchPreviewFile
       type: object
-      required: [path, action, id, kind, name, beforeHash, before, after]
+      required: [path, action, id, kind, name, beforeHash, before, after, diff]
       properties:
         path:
           type: string
@@ -13250,6 +13880,9 @@ components:
         before:
           type: [string, 'null']
         after:
+          type: [string, 'null']
+        diff:
+          description: The change as a unified diff with three lines of context (`--- a/<path>`, `+++ b/<path>`, then hunks).
           type: [string, 'null']
     AssistProposal:
       description: |

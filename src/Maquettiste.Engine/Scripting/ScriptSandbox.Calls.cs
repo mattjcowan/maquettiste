@@ -15,10 +15,25 @@ namespace Maquettiste.Engine.Scripting;
 internal sealed partial class ScriptSandbox
 {
     /// <summary>A registered helper, selector, filter or transform.</summary>
-    private sealed record Registered(ScriptRegistrationKind Kind, string Name, string DeclaredIn, Function Function);
+    /// <param name="Kind">What it is.</param>
+    /// <param name="Name">The registered name.</param>
+    /// <param name="DeclaredIn">The script that registered it.</param>
+    /// <param name="Function">The function.</param>
+    /// <param name="Plain">
+    /// Whether a helper takes plain copies of its arguments (<c>{ plain: true }</c>, <see cref="ScriptValues.ToPlainJs"/>) rather than
+    /// proxies.
+    /// </param>
+    private sealed record Registered(ScriptRegistrationKind Kind, string Name, string DeclaredIn, Function Function, bool Plain = false);
 
     /// <summary>A registered validation rule.</summary>
-    private sealed record RuleSpec(string Id, DiagnosticSeverity Severity, FrozenSet<string>? Kinds, Function Check, string DeclaredIn);
+    /// <param name="Id">The rule id (without <c>x/</c>).</param>
+    /// <param name="Severity">The declared severity.</param>
+    /// <param name="Kinds">The kinds an element rule checks, or <see langword="null"/> for every kind.</param>
+    /// <param name="Check">The check function.</param>
+    /// <param name="DeclaredIn">The rule script.</param>
+    /// <param name="WholeModel">Whether it was registered with <c>scope: "model"</c>: <c>check(model, report)</c>, once per whole-model
+    /// validation.</param>
+    private sealed record RuleSpec(string Id, DiagnosticSeverity Severity, FrozenSet<string>? Kinds, Function Check, string DeclaredIn, bool WholeModel = false);
 
     /// <summary>What is being called, for diagnostics.</summary>
     /// <param name="Label">For example <c>Helper 'money'</c>.</param>
@@ -92,7 +107,7 @@ internal sealed partial class ScriptSandbox
                     : _runToken.IsCancellationRequested ? new OperationCanceledException("The script was cancelled.", ex, _runToken)
                     : new OperationCanceledException("The script was cancelled.", ex);
             case StatementsCountOverflowException:
-                return Limit(site, $"exceeded the statement limit ({_limits.ScriptStatements})", stack, ex);
+                return Limit(site, $"exceeded the statement limit ({StatementLimit(_limits)})", stack, ex);
             case RegexMatchTimeoutException:
                 return Limit(site, "ran a regular expression past its time limit", stack, ex);
             case TimeoutException:
@@ -102,11 +117,11 @@ internal sealed partial class ScriptSandbox
             case RecursionDepthOverflowException:
                 return Limit(site, $"exceeded the recursion limit ({_limits.ScriptRecursion})", stack, ex);
             case JavaScriptException js:
-                var (file, line, column) = Locate(js, stack, site);
+                var (file, line, column) = InCode(Locate(js, stack, site));
                 return new ScriptErrorException(new Diagnostic(site.Rule ? "MQ5002" : "MQ6016", DiagnosticSeverity.Error,
                     $"{site.Label} threw {ErrorText(js)}", site.ElementId, file, null, line, column), ex);
             default:
-                var (f, l, c) = FromStack(stack) ?? (site.DeclaredIn, null, null);
+                var (f, l, c) = InCode(FromStack(stack) ?? (site.DeclaredIn, null, null));
                 return new ScriptErrorException(new Diagnostic(site.Rule ? "MQ5002" : "MQ6016", DiagnosticSeverity.Error,
                     $"{site.Label} failed: {ex.Message}", site.ElementId, f, null, l, c), ex);
         }
@@ -114,9 +129,18 @@ internal sealed partial class ScriptSandbox
 
     private ScriptLimitException Limit(CallSite site, string what, string? stack, Exception ex)
     {
-        var (file, line, column) = FromStack(stack) ?? (site.DeclaredIn, null, null);
+        var (file, line, column) = InCode(FromStack(stack) ?? (site.DeclaredIn, null, null));
         return new ScriptLimitException(new Diagnostic(site.Rule ? "MQ5003" : "MQ6007", DiagnosticSeverity.Error,
             $"{site.Label} {what}.", site.ElementId, file, null, line, column), ex);
+    }
+
+    /// <summary>A position in this engine's prepared text, mapped to the script's own code (<see cref="PreparedScript.Map"/>).</summary>
+    private (string File, int? Line, int? Column) InCode((string File, int? Line, int? Column) position)
+    {
+        if (!_scripts.TryGetValue(position.File, out var script))
+            return position;
+        var (line, column) = script.Map(position.Line, position.Column);
+        return (position.File, line, column);
     }
 
     private string? SafeStackTrace()
@@ -165,29 +189,37 @@ internal sealed partial class ScriptSandbox
     }
 
     /// <summary>
-    /// The read-only model a validation rule sees (engine-design.md section 6): <c>get(id)</c>, <c>all(kind)</c> and
-    /// <c>referencesTo(id)</c>, each returning frozen copies of canonical JSON. One view per snapshot per engine.
+    /// The read-only model a validation rule sees (engine-design.md section 6; next-phase-1-design.md section 5.7): <c>get(id)</c>,
+    /// <c>all(kind)</c>, <c>referencesTo(id)</c>, the index functions <c>withStereotype(key)</c>, <c>withTag(tag)</c> and
+    /// <c>withProperty(key)</c>, and <c>byQualifiedName(name)</c>, each returning frozen copies of canonical JSON. One view per
+    /// snapshot per engine. Every function records the keys it reads (<see cref="Validation.RuleKeyHasher"/> hashes them), so a
+    /// rule's result can be reused while they are unchanged.
     /// </summary>
     private JsValue RuleModel(ModelSnapshot model)
     {
         if (_ruleModel is not null && ReferenceEquals(_ruleSnapshot, model))
             return _ruleModel;
-        var get = new ClrFunction(_engine, "get", (_, args) => RuleGet(model, IdArgument(args, "get")), 1, PropertyFlag.Configurable);
-        var all = new ClrFunction(_engine, "all", (_, args) => RuleAll(model, IdArgument(args, "all")), 1, PropertyFlag.Configurable);
-        var referencesTo = new ClrFunction(_engine, "referencesTo", (_, args) => RuleReferencesTo(model, IdArgument(args, "referencesTo")), 1, PropertyFlag.Configurable);
         _ruleSnapshot = model;
         _ruleModel = _values.FrozenObject(
         [
-            KeyValuePair.Create("get", (JsValue)get),
-            KeyValuePair.Create("all", (JsValue)all),
-            KeyValuePair.Create("referencesTo", (JsValue)referencesTo),
+            Function("get", args => RuleGet(model, IdArgument(args, "get"))),
+            Function("all", args => RuleAll(model, IdArgument(args, "all"))),
+            Function("referencesTo", args => RuleReferencesTo(model, IdArgument(args, "referencesTo"))),
+            Function("withStereotype", args => RuleIndexed(model, Validation.RuleModelIndex.Stereotype, IdArgument(args, "withStereotype"))),
+            Function("withTag", args => RuleIndexed(model, Validation.RuleModelIndex.Tag, IdArgument(args, "withTag"))),
+            Function("withProperty", args => RuleIndexed(model, Validation.RuleModelIndex.Property, IdArgument(args, "withProperty"))),
+            Function("byQualifiedName", args => RuleByQualifiedName(model, IdArgument(args, "byQualifiedName"))),
         ]);
         return _ruleModel;
+
+        KeyValuePair<string, JsValue> Function(string name, Func<JsValue[], JsValue> body) =>
+            KeyValuePair.Create(name, (JsValue)new ClrFunction(_engine, name, (_, args) => body(args), 1, PropertyFlag.Configurable));
     }
 
     private string IdArgument(JsValue[] args, string function) =>
         args.Length > 0 && args[0] is JsString s ? s.ToString() : throw TypeError($"model.{function}() takes a string.");
 
+    /// <summary><c>get(id)</c>: the document, or the part of it, holding an element or sub-element id; records <c>e:&lt;id&gt;</c>.</summary>
     private JsValue RuleGet(ModelSnapshot model, string id)
     {
         _state.Record("e:" + id);
@@ -198,16 +230,48 @@ internal sealed partial class ScriptSandbox
         return Navigate(document.Json, entry.JsonPointer) is { } sub ? _values.FromJson(sub) : JsValue.Null;
     }
 
+    /// <summary>
+    /// <c>all(kind)</c>: every document of a kind from the snapshot's sorted kind index, ordinal by (name, id); records <c>k:&lt;kind&gt;</c>
+    /// and <c>e:</c> per document.
+    /// </summary>
     private JsValue RuleAll(ModelSnapshot model, string kind)
     {
         if (!KindInfo.TryGet(kind, out var info))
             throw TypeError($"model.all(): unknown kind '{kind}'.");
         _state.Record("k:" + info.Name);
-        var documents = model.Documents
-            .Where(d => d.Element.Kind == info.Kind)
-            .OrderBy(d => d.Element.Name, StringComparer.Ordinal)
-            .ThenBy(d => d.Element.Id, StringComparer.Ordinal)
-            .ToList();
+        return Documents(model.DocumentsOf(info.Kind));
+    }
+
+    /// <summary>
+    /// <c>withStereotype</c>, <c>withTag</c> and <c>withProperty</c>: the documents an index of <see cref="Validation.RuleModelIndex"/> holds
+    /// under a value, ordinal by (name, id); records <c>ix:&lt;index&gt;:&lt;value&gt;</c> and <c>e:</c> per document.
+    /// </summary>
+    private JsValue RuleIndexed(ModelSnapshot model, string index, string value)
+    {
+        _state.Record(Validation.RuleModelIndex.Key(index, value));
+        return Documents(Validation.RuleModelIndex.Of(model).Find(index, value));
+    }
+
+    /// <summary>
+    /// <c>byQualifiedName(name)</c>: what <see cref="RuleGet"/> returns for each id a qualified name (<c>@entity:Billing.Invoice</c>,
+    /// next-phase-1-design.md section 5.1) finds in the snapshot's name index, ordinal by id; records <c>ix:qn:&lt;canonical name&gt;</c>
+    /// and <c>e:</c> per id. A malformed name, or a kind without names, is a <c>TypeError</c>.
+    /// </summary>
+    private JsValue RuleByQualifiedName(ModelSnapshot model, string text)
+    {
+        if (!Loading.QualifiedName.TryParse(text, out var name, out var error))
+            throw TypeError($"model.byQualifiedName() takes a qualified name such as '@entity:Billing.Invoice': '{text}' is malformed ({error}).");
+        _state.Record(Validation.RuleModelIndex.Key(Validation.RuleModelIndex.Qualified, name.Text));
+        var ids = Validation.RuleModelIndex.Of(model).FindQualified(name);
+        var items = new JsValue[ids.Count];
+        for (var i = 0; i < items.Length; i++)
+            items[i] = RuleGet(model, ids[i]);
+        return _values.FrozenArray(items);
+    }
+
+    /// <summary>Frozen copies of documents, recording <c>e:</c> for each.</summary>
+    private JsValue Documents(IReadOnlyList<ElementDocument> documents)
+    {
         var items = new JsValue[documents.Count];
         for (var i = 0; i < items.Length; i++)
         {
@@ -218,9 +282,13 @@ internal sealed partial class ScriptSandbox
         return _values.FrozenArray(items);
     }
 
+    /// <summary>
+    /// <c>referencesTo(id)</c>: every reference to an id, in (path, pointer) order, its own file and diagrams included; records
+    /// <c>rt:&lt;id&gt;</c>, whose hash covers every entry (<c>r:</c> skips the id's own file and diagrams).
+    /// </summary>
     private JsValue RuleReferencesTo(ModelSnapshot model, string id)
     {
-        _state.Record("r:" + id);
+        _state.Record("rt:" + id);
         var references = model.ReferencesTo(id);
         var items = new JsValue[references.Count];
         for (var i = 0; i < items.Length; i++)

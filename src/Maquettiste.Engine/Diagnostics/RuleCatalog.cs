@@ -28,6 +28,24 @@ public sealed record RuleInfo(string Id, DiagnosticSeverity DefaultSeverity, str
 public sealed record RuleCatalogEntry(string Id, DiagnosticSeverity DefaultSeverity, string Description, string Family, string FamilyLabel, bool CanBeOff,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuickFix = null);
 
+/// <summary>The rule catalog in a few lines (<see cref="RuleCatalog.Summarize"/>): what <c>list_validation_rules</c> answers with no argument.</summary>
+/// <param name="Total">The number of built-in rules.</param>
+/// <param name="Families">Each family with its rule count and id range, in id order.</param>
+public sealed record RuleCatalogSummary(int Total, IReadOnlyList<RuleFamilySummary> Families);
+
+/// <summary>One family of the rule catalog.</summary>
+/// <param name="Family">The hundreds group, for example <c>MQ72xx</c>.</param>
+/// <param name="FamilyLabel">What the family's rules cover.</param>
+/// <param name="Rules">The number of rules in the family.</param>
+/// <param name="First">The family's lowest rule id.</param>
+/// <param name="Last">The family's highest rule id.</param>
+public sealed record RuleFamilySummary(string Family, string FamilyLabel, int Rules, string First, string Last);
+
+/// <summary>One page of full catalog entries (<see cref="RuleCatalog.Page"/>).</summary>
+/// <param name="Items">The entries, in id order.</param>
+/// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one.</param>
+public sealed record RuleCatalogPage(IReadOnlyList<RuleCatalogEntry> Items, string? Next);
+
 /// <summary>The built-in rule catalog (engine-design.md section 6). JavaScript rules use <c>x/&lt;id&gt;</c> and are not listed here.</summary>
 public static class RuleCatalog
 {
@@ -48,6 +66,11 @@ public static class RuleCatalog
         new("MQ1009", E, "A second tag vocabulary or category tree in the same scope (global or one domain); the ordinally first file is used."),
         new("MQ1010", I, "An outputs.allow entry sets commit, which is ignored since 0.5.5; remove it (maquettiste format drops it)."),
         new("MQ1011", E, "A snapshot archive cannot be imported: not a zip, a path outside the snapshot layout, a size limit, or a missing or unreadable snapshot.json."),
+        new("MQ1012", E, "A name or placeholder in a batch finds nothing. No element or sub-element of that kind has the name (an update's or delete's target on the model as loaded; any other name on the model as the earlier operations leave it, with the operation's own element as it will be written), or no operation declares the placeholder. A form through an element renamed earlier in the batch keeps the old qualifier: use the id or a second batch."),
+        new("MQ1013", E, "A name in a batch finds more than one element or sub-element. Use a longer form (package, database, schema, owner or seed), or the id when every form is shared; the message lists each candidate's longest form and id."),
+        new("MQ1014", E, "A write misuses an identity: a placeholder declared twice; as on a delete, a schema, materialize, process or tag operation, or on an object that is not a sub-element; two expectedHashes keys for one element; or an update that drops a sub-element and adds one without an id under the same parent and property with the same name (send the existing id to keep it)."),
+        new("MQ1015", E, "A name in a batch is malformed or misplaced: not @kind:path or $name, an unknown kind or one without names, an empty or unclosed quoted segment, a name as a create's id (declare a placeholder with as), or a placeholder where the element must exist before the batch (an update's or delete's id, an expectedHashes key)."),
+        new("MQ1016", E, "A JSON Patch cannot be applied: an unknown op, a path or from that does not resolve, an index out of range, a failed test, or a change to id or kind; nothing is written."),
 
         new("MQ2001", E, "Dangling reference."),
         new("MQ2002", E, "Reference to an element of the wrong kind."),
@@ -57,6 +80,27 @@ public static class RuleCatalog
         new("MQ2006", I, "Undeclared tag (an error when the tag vocabulary is strict)."),
         new("MQ2007", E, "Attribute validation names an unknown rule."),
         new("MQ2008", E, "A tag or category is declared only in a domain vocabulary outside the element's domain chain."),
+        new("MQ2009", E, "An x-ref keyword is malformed: an unknown kind or key, a custom:<type> whose type is not a key, of or sameDatabase where they do not fit, an of naming no element, not on a string, under an applicator the link walk does not follow, or beside a patternProperties pattern that needs backtracking (a lookaround, backreference, atomic group or conditional)."),
+        new("MQ2010", E, "A value an x-ref types is a name or other text, not an id."),
+        new("MQ2011", E, "An x-ref value is out of scope: a member of another element, a row of another list, another database, a holder with no single database, or a stereotype default under of \"$element\" or sameDatabase."),
+        new("MQ2013", E, "An element carries two stereotypes of one group, own, implied or from a schema or package default."),
+        new("MQ2014", E, "An element carries a stereotype that requires another it does not carry."),
+        new("MQ2015", E, "An element carries two stereotypes that conflict."),
+        new("MQ2016", E, "A stereotype's requires, conflicts or implies names an unknown key or itself, conflicts with one it requires or implies, or implies one of its own group."),
+        new("MQ2017", E, "A stereotype implies one that implies others; implication is one level."),
+        new("MQ2018", E, "A property value fails the parameters of a stereotype the element carries (required included, on the merged values), or a default fails its own property schema (required not applied)."),
+        new("MQ2019", E, "A stereotype's parameters is not a valid schema, or its required names an undeclared parameter."),
+        new("MQ2020", E, "A reference from one package to another that its package does not depend on (dependsOn of the package or a parent)."),
+        new("MQ2021", E, "dependsOn names the package itself or forms a cycle."),
+        new("MQ2022", W, "A reference to a retired element or sub-element from one that is not retired (membership, owning references and diagrams excepted)."),
+        new("MQ2024", E, "A stereotype's members do not fit: members on a stereotype whose appliesTo leaves out table, a contributed column with attribute or sequence, or a contributed key, index or check with a name."),
+        new("MQ2025", E, "A stereotype's key, index or check names a column the stereotype does not declare."),
+        new("MQ2026", E, "A contributed foreign key's target is invalid: both or neither of referencesTable and referencesParameter; a referencesParameter that is not a required string parameter with x-ref kind table and sameDatabase; or referencesColumns beside referencesParameter."),
+        new("MQ2027", E, "A redefines entry is invalid: it names a member the element does not inherit, names one twice, states no facet, or states a facet its member's kind does not take."),
+        new("MQ2028", E, "An excludes entry names a member the element does not inherit or also redefines, or excludes a column that an inherited key, index or check the element keeps uses."),
+        new("MQ2029", E, "excludeStereotypes names a stereotype the element lists in stereotypes, or one a listed stereotype implies; only defaults can be excluded."),
+        new("MQ2030", W, "excludeStereotypes names a stereotype no schema or package default gives the element, so it excludes nothing."),
+        new("MQ2031", E, "A defaultStereotypes list names two stereotypes of one group, or two that conflict."),
 
         new("MQ3001", E, "Duplicate name in scope."),
         new("MQ3002", E, "Inheritance cycle."),
@@ -76,7 +120,7 @@ public static class RuleCatalog
         new("MQ3016", E, "Composition child with two owners."),
         new("MQ3017", W, "Default value looks like a credential."),
         new("MQ3018", E, "Invalid name for the element kind."),
-        new("MQ3019", E, "Literal default does not match the attribute's type (use defaultExpression for now, today, new-uuid or new-ulid)."),
+        new("MQ3019", E, "Literal default does not match its type: an attribute's (use defaultExpression for now, today, new-uuid or new-ulid) or a column's, checked against its resolved length; a json column takes a string of JSON text, and a column with a nativeType is checked for the kind of value only (use defaultSql otherwise)."),
         new("MQ3020", E, "A stereotype's key cannot change."),
         new("MQ3021", E, "A domain vocabulary redeclares a tag key or category name of the global vocabulary or an enclosing domain's."),
         new("MQ3022", E, "A diagram with membership 'package' and no package: it has nothing to follow; set the diagram's package, or set membership to 'explicit' so its members list is the diagram."),
@@ -136,8 +180,8 @@ public static class RuleCatalog
         new("MQ4053", E, "A binding deletes by key from a table without a primary key, or deletes (by key or softly) without a table to write."),
         new("MQ4054", I, "An entity mapping element maps an entity to a database where the entity has a binding: the binding wins and the mapping is ignored."),
         new("MQ4055", E, "A materialize operation is refused: an entity already bound to the database, a table an entity is already bound to, an entity in an inheritance hierarchy, a name already taken, or an id that is not what the operation takes."),
-        new("MQ4056", W, "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a routine's volatility or settings on SQL Server, a temporal key (withoutOverlaps, a foreign key's period) an exclusion constraint or partitioning outside PostgreSQL, an index operator class outside PostgreSQL, index storage parameters on MySQL, SQLite and Oracle, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL."),
-        new("MQ4057", E, "A column facet does not fit its type: unicode on a column that is not string or text, or fixedLength on a column that is not string or binary."),
+        new("MQ4056", W, "A table, view or sequence asks for a DDL feature its database's dialect does not have, so the DDL leaves it out: a deferrable foreign key (SQL Server, MySQL), ON UPDATE or ON DELETE restrict or set-default (Oracle), set-default (MySQL), index include columns (MySQL, SQLite, Oracle), a partial index (MySQL, Oracle), an index method other than the default outside PostgreSQL (clustered: SQL Server and PostgreSQL), an index expression (SQL Server: the index is left out), a key prefix length outside MySQL, a MySQL index on a text or blob column without one (the index is left out), nullsNotDistinct outside PostgreSQL, a stored computed column (Oracle), identity options (a seed on SQLite, an increment or always on SQLite and MySQL), a clustered primary key outside SQL Server, a routine's volatility or settings on SQL Server, a temporal key (withoutOverlaps, a foreign key's period) an exclusion constraint or partitioning outside PostgreSQL, an index operator class outside PostgreSQL, index storage parameters on MySQL, SQLite and Oracle, a foreign key's onDeleteColumns outside PostgreSQL (the action sets every column of the key), a materialized view outside PostgreSQL and Oracle, WITH CHECK OPTION on SQLite or on a materialized view, or a sequence on SQLite or MySQL; also migration facts outside PostgreSQL (a fact's migration keeps TODO comments where its steps would go, a rekey writes no DDL on any dialect, and no ledger rows are written), index column nulls outside PostgreSQL, a range or multirange column outside PostgreSQL (stored as the dialect's text type), and a run-once SQL object outside PostgreSQL (the scripts leave it out: its guard needs the migration ledger); also a seed cell that names a row whose referenced value the database fills, outside PostgreSQL (written as NULL with a TODO comment)."),
+        new("MQ4057", E, "A column facet does not fit its type: unicode on a column that is not string or text, fixedLength on a column that is not string or binary, a subtype on a column that is not range or multirange, or a range or multirange column without one."),
         new("MQ4059", E, "A foreign key references columns of a table that are neither its primary key nor one of its unique keys (a unique constraint, or a unique index without a filter except on Oracle): a database accepts a foreign key only to a key."),
         new("MQ4060", E, "A foreign key's onDeleteColumns does not fit: its onDelete is not set-null or set-default, or it names a column that is not one of the key's columns, or one twice."),
         new("MQ4061", W, "A foreign key's on-delete sets a column that cannot take the value: set-null on a column that is not nullable, or set-default on one that is not nullable and has no default; deleting a referenced row then fails."),
@@ -146,11 +190,42 @@ public static class RuleCatalog
         new("MQ4064", W, "A storage parameter that reaches nothing or that PostgreSQL would refuse: a PostgreSQL table or index parameter the table or index method does not take (a typo), or a stereotype with storage that does not apply to tables."),
         new("MQ4065", E, "A temporal key does not fit what PostgreSQL takes: a key WITHOUT OVERLAPS or a foreign key PERIOD with one column, a period key with an action other than no-action, a period key to a key that is not temporal, or a key without a period to a temporal key."),
         new("MQ4066", E, "Partitioning that PostgreSQL refuses: partitions without partitionBy, a partition with neither bounds nor default (or both), a primary or unique key without every partition column, more than one default partition, a default partition of a hash-partitioned table, or a partition name used twice."),
+        new("MQ4067", W, "The migration ledger's schema (migrations.ledgerSchema) is also a schema of a PostgreSQL database in the model, declared or named by one of its objects: the bookkeeping tables would share it with modeled objects."),
+        new("MQ4068", E, "Two index or constraint names collide in a namespace the dialect keeps (index and key names in a PostgreSQL schema with its tables, views and sequences; constraint names in a table; the other dialects' namespaces), compared case-insensitively after cutting each name to the identifier limit."),
+        new("MQ4069", E, "A view, routine or SQL object depends on a SQL object that does not run in every environment it runs in: the dependency's environments must cover the dependent's, and empty means every environment."),
+        new("MQ4070", W, "A SQL object with environments has phase before: environment scripts run after the schema script and the migrations, so its phase orders it only within its script."),
+        new("MQ4076", E, "A table gets two primary keys: an inherited one beside its own, its entity's key, or another stereotype's."),
+        new("MQ4077", E, "A fold into a stereotype is refused: the stereotype does not apply to tables or has no members; a target is not a designed or imported table file, excludes the stereotype or is written by another operation of the batch; or a matched column differs in a type facet, in another facet without `redefine`, or carries annotations its member lacks, or the stereotype would add a member the table lacks without `excludeMissing`."),
+        new("MQ4078", W, "A redefinition states a facet equal to the value the member inherits, so the table stops following the stereotype for that facet."),
+        new("MQ4079", W, "A synthesized table inherits a NOT NULL column with no default, identity or generation, which rows written through its entity or relation cannot fill."),
+        new("MQ4082", E, "A column's `typeRef` is misplaced: it names no enum, reference type or scalar type, it sits on an overlay entry of a projected column, or a reference type's binding fills the column with a field."),
+        new("MQ4083", E, "A typed column's type or a facet it states cannot hold its type's values: a reference type's codes, an enum's stored values, or a scalar type's base and facets."),
+        new("MQ4084", E, "A foreign key that includes a column typed by a reference type does not point where the type's rows are: the type has no binding in the column's database, or the key does not pair the column with the code column of the bound table."),
+        new("MQ4085", W, "A column and an attribute it stores, or that a binding maps to it, state different sensitivities."),
+        new("MQ4087", W, "A column a binding maps was renamed or retyped since its provenance was recorded, so the attribute may no longer follow it."),
+        new("MQ4088", W, "A binding's provenance does not describe its source: the source is not a table file, or none of the columns it records belongs to the source."),
+        new("MQ4089", E, "A map-by-name or resync-binding operation is refused: an entity with no binding to the database, a source it cannot read, columns for more than one entity or naming a column the source lacks, or nothing to map or re-sync."),
+
+        new("MQ4101", E, "A migration fact lacks the intent its change needs: a conversion, a data check for a narrowing, a drop's acknowledgement, a backfill's value or data check, a raw step's skipWhen guard; complete it or hold it."),
+        new("MQ4102", E, "A change since the baseline needs a migration fact and has none: a rename or moved key, a type change that is not a widening, a dropped table, column or sequence, or a column made not null."),
+        new("MQ4103", W, "An open fact the baseline lacks is stale: the model no longer shows its combined effect (a change made and undone, a pending change reverted or widened back), or a value map's codes were not codes of its type in the baseline model and its names did not change; migration fold removes it."),
+        new("MQ4104", E, "The after links of a database's open facts form a cycle."),
+        new("MQ4105", E, "A fact's after link names a fact of another database."),
+        new("MQ4106", E, "A fact's fields do not fit its type: from equal to to, a conversion or data check with both forms or neither, released without held, a key or object listed twice, a values code listed twice or mapped to itself, an object kind the type does not take, or a value map that maps codes in no column or collection and changes no name, or whose to is also a from."),
+        new("MQ4107", E, "Two open facts change the same object and neither comes after the other (merged copies changed one object); order them with after or fold them. The object is the fact's object key: a column for a column fact, a table for a table fact; a table drop also changes each of its members."),
+        new("MQ4108", W, "A fact's SQL text has no entry for the database's dialect and no \"*\" entry."),
+        new("MQ4109", W, "The baseline has errors that leave objects unresolved, so changes to them were not checked."),
+        new("MQ4110", I, "A write changed objects whose elements have errors, so no facts were recorded for them; validate --against checks them."),
+        new("MQ4111", W, "A fact's after link names a fact that does not exist (folded or removed in another copy); the link is ignored for ordering."),
+        new("MQ4112", E, "Since the baseline, a kept row's code changed, a former code was added, or a type's name or plural name changed, and no open value-map fact of a database holding the type records it."),
+        new("MQ4113", E, "An open value-map fact maps away a code that is a live code of its reference type."),
+        new("MQ4114", W, "A write changed a kept reference row's code, or a reference type's name or plural name, outside the refactor operations, so no value map was recorded."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule script error."),
         new("MQ5003", E, "Validation rule exceeded a sandbox limit."),
         new("MQ5004", E, "Invalid extension file."),
+        new("MQ5005", W, "A rule or rows script declares top-level let or var variables; it keeps no state between calls, so its results are never cached."),
 
         new("MQ6001", E, "Invalid pack.json."),
         new("MQ6002", E, "Engine version range not satisfied."),
@@ -180,6 +255,11 @@ public static class RuleCatalog
         new("MQ6027", E, "A block unit's target file holds its block twice, or a block that is not closed; the file is left alone."),
         new("MQ6028", I, "A block unit's target file does not exist and createFile is false; nothing is written (target-missing)."),
         new("MQ6029", E, "A write against a model snapshot opened read-only; nothing is written (restore the snapshot to change it)."),
+        new("MQ6030", E, "A copy unit's source pattern matches no pack file; the unit is skipped and the pack's other units still render."),
+        new("MQ6031", E, "A copy unit's token names a parameter the pack does not declare, or one whose value is not a string; the unit is skipped."),
+        new("MQ6032", E, "A generation filter names a pack the run lacks, a unit no run pack has, or a bare unit id several run packs have."),
+        new("MQ6033", E, "A run limited by unit or element renders a unit that reads the schema diff; schema snapshots advance only in whole-pack runs."),
+        new("MQ6034", W, "A generation filter selects no unit and no output; nothing is generated."),
 
         new("MQ7001", E, "Duplicate code in a reference type, across all its seeds."),
         new("MQ7002", W, "Two codes of one reference type differ only by case."),
@@ -194,6 +274,11 @@ public static class RuleCatalog
         new("MQ7011", E, "An allowedValues entry on a reference-typed attribute names a code that is not in the type's rows."),
         new("MQ7012", E, "The enum lookup-table storage option ('lookup') is retired: convert the enum to a reference type, whose storage strategy then decides the lookup table."),
         new("MQ7013", E, "A uuid code is not a UUID in canonical form: 8-4-4-4-12 lowercase hexadecimal digits with hyphens."),
+        new("MQ7014", E, "A value written into a column typed by an enum or a reference type is not one of its stored values or codes: a table seed cell, the column's literal default, or a binding constant."),
+        new("MQ7017", E, "A former code is a live code of its type, is listed twice, or does not fit the type's code (type, length, pattern)."),
+        new("MQ7018", E, "A former code's replacedBy names a row that is not a row of its type. A missing row is MQ2001."),
+        new("MQ7019", E, "A default, allowedValues entry or seed cell names a former code. It replaces MQ3019, MQ7009, MQ7011 and MQ7014 for that value."),
+        new("MQ7020", E, "A reference-type refactor cannot apply (an unknown or scripted code, a code taken or former, mismatched types, a binding, a missing field, a second refactor of the type in the batch); the message gives the reason."),
 
         new("MQ7101", E, "A seed targets an abstract entity."),
         new("MQ7102", E, "A seed key cell is missing, or two rows of one target share a key value."),
@@ -201,14 +286,24 @@ public static class RuleCatalog
         new("MQ7104", W, "A seed has more than 10,000 rows or 5 MB."),
         new("MQ7105", E, "A column of an entity seed names a to-many end."),
         new("MQ7106", E, "A relation link stated twice: an entity seed has an end column of a relation that also has seeds."),
-        new("MQ7107", E, "A table seed targets a table that is not a table file of a database, or lists a column the table does not have."),
-        new("MQ7108", E, "A table seed lists an identity, computed or generated column, whose value the database gives."),
-        new("MQ7109", E, "A table seed's cell does not fit its column: its type, length, precision or scale, or NULL in a NOT NULL column without a default."),
-        new("MQ7111", E, "A table seed's foreign key names no row of the referenced table's seeds."),
-        new("MQ7112", E, "Two rows of one table's seeds share a row key (in environments that overlap)."),
-        new("MQ7113", W, "A table receives rows from its own seeds and from the seeds of an entity bound to it: a row should have one source."),
+        new("MQ7107", E, "A table seed targets a table that is not a table file of a database, or lists a column or foreign key the table does not have."),
+        new("MQ7108", E, "A table seed lists an identity, computed, generated or stable id column, whose value the database or the engine gives."),
+        new("MQ7109", E, "A table seed's cell does not fit its column (type, length, precision or scale, or NULL in a NOT NULL column without a default), or a foreign-key cell does not have the referenced row key's shape."),
+        new("MQ7111", E, "A foreign key that a table seed or a reference type's binding fills, or a foreign-key cell's natural key, names no row of the referenced table's rows, or one they do not hold in every environment the row is loaded in."),
+        new("MQ7112", E, "Two rows of one table's seeds share a row key (in environments that overlap), or a table seed's row has the key of a row of a reference type bound to the table."),
+        new("MQ7113", W, "A table receives rows from the seeds of an entity bound to it and from its own seeds or a reference type bound to it: a row should have one source."),
         new("MQ7114", E, "A table seed has no row key (the unique constraint it names does not exist, or the table has no primary key), or a row lacks a key cell."),
-        new("MQ7116", E, "A seed's rows file is missing or cannot be read, or the seed has rows of its own beside it."),
+        new("MQ7116", E, "A seed's rows file or rows script is missing or cannot be read, or the seed has rows of its own beside it."),
+        new("MQ7117", E, "A reference type's binding names a table that is not a table file of its database, or the type has two bindings to one database."),
+        new("MQ7118", E, "A reference type's binding maps a field or a constant wrongly: no code column, an unknown field or column, a column filled twice or by the database, or a column the field does not fit."),
+        new("MQ7119", E, "A reference type's binding has no key: no primary key or unique constraint of its table is made of the code column (and constant columns), or another type bound to the table has the same constants or puts rows of the same key there."),
+        new("MQ7120", E, "A reference type's binding fills no value for a NOT NULL column of its table that has no default."),
+        new("MQ7121", E, "Two seeds of one table key their rows differently (a different key, or a key beside the primary key)."),
+        new("MQ7124", E, "`stableId` is set on a column that is not of type `uuid`, or whose value the database fills (identity, sequence, generated, computed)."),
+        new("MQ7125", E, "The row key of a table with a stable id column holds that column, or a value the database fills directly or through a foreign-key entry, so the stable id cannot be derived."),
+        new("MQ7126", E, "A table seed's column entry names a foreign key that is not its target's, is listed beside one of that key's own columns, references a table that has no rows in the model, or the seed's row key holds part of the entry's columns."),
+        new("MQ7127", E, "A seed's rows script fails: it does not load, registers anything but rows exactly once, throws, exceeds a sandbox limit, or returns something that is not an array of row objects."),
+        new("MQ7128", E, "A scripted row has a key its seed's columns do not name, or the seed's target has no row key to derive row ids from."),
 
         new("MQ7201", E, "Invalid localization settings: a locale that is not BCP 47, a default not in the locales, a fallback naming an undeclared locale, a fallback cycle, or a required node kind that does not exist."),
         new("MQ7202", W, "A locale folder for an undeclared locale or for the default locale; its files are not loaded."),
@@ -221,6 +316,8 @@ public static class RuleCatalog
         new("MQ7209", E, "One id in two shards of one locale; the ordinally first path applies."),
         new("MQ7210", W, "A shard whose locale differs from its folder, or whose scope differs from its path; it applies to its declared locale and scope."),
         new("MQ7211", W, "A plural name on a to-one relation end, or its translation; it is never read."),
+        new("MQ7212", E, "x-translatable is not on a top-level string property of an extension file or stereotype parameters: nested, on another type, or not a boolean."),
+        new("MQ7213", W, "x-translatable is on a property whose schema applies only to kinds without translations (physical objects, mappings, diagrams, vocabulary containers)."),
 
         new("MQ8001", E, "A branding color that is not a hex color (#rrggbb or #rgb)."),
         new("MQ8002", E, "The branding icon is not an .svg or .png file under branding/ in the model folder, or the file does not exist."),
@@ -287,6 +384,7 @@ public static class RuleCatalog
         ["MQ20xx"] = "References and vocabularies",
         ["MQ30xx"] = "Model structure",
         ["MQ40xx"] = "Databases and mappings",
+        ["MQ41xx"] = "Migrations",
         ["MQ50xx"] = "Extensions and script rules",
         ["MQ60xx"] = "Packs and generation",
         ["MQ70xx"] = "Reference types",
@@ -317,8 +415,53 @@ public static class RuleCatalog
 
     /// <summary>Every built-in rule with its family and whether it can be turned off, ordered by id.</summary>
     /// <returns>The catalog entries.</returns>
-    public static IReadOnlyList<RuleCatalogEntry> Describe() =>
-        [.. Rules.Select(r => new RuleCatalogEntry(r.Id, r.DefaultSeverity, r.Description, FamilyOf(r.Id), FamilyLabel(FamilyOf(r.Id)), r.CanBeDisabled, r.QuickFix))];
+    public static IReadOnlyList<RuleCatalogEntry> Describe() => [.. Rules.Select(Entry)];
+
+    /// <summary>
+    /// The catalog by family (next-phase-1-design.md section 5.2): the total, then each family with its label, rule count and first and
+    /// last ids, in id order, so an agent sees what there is without every description.
+    /// </summary>
+    /// <returns>The summary.</returns>
+    public static RuleCatalogSummary Summarize()
+    {
+        var families = new List<RuleFamilySummary>();
+        foreach (var rule in Rules)
+        {
+            var family = FamilyOf(rule.Id);
+            if (families.Count > 0 && families[^1].Family == family)
+                families[^1] = families[^1] with { Rules = families[^1].Rules + 1, Last = rule.Id };
+            else
+                families.Add(new RuleFamilySummary(family, FamilyLabel(family), 1, rule.Id, rule.Id));
+        }
+
+        return new RuleCatalogSummary(Rules.Length, families);
+    }
+
+    /// <summary>
+    /// One page of full entries that match every filter given (AND), in id order: <paramref name="family"/> equals the rule's
+    /// <see cref="FamilyOf"/>, <paramref name="ids"/> holds the rule id exactly, and <paramref name="query"/> occurs in the id or the
+    /// description, ignoring case (ordinal). Pages use the keyset cursor of the model's paged reads, keyed by rule id.
+    /// </summary>
+    /// <param name="family">A family key such as <c>MQ72xx</c>, or <see langword="null"/>.</param>
+    /// <param name="ids">Rule ids, or <see langword="null"/>; an empty collection matches nothing.</param>
+    /// <param name="query">Text to find, or <see langword="null"/>.</param>
+    /// <param name="cursor">The <see cref="RuleCatalogPage.Next"/> of the previous page, or <see langword="null"/> for the first.</param>
+    /// <param name="limit">The page size, 1 to 1000.</param>
+    /// <returns>The page.</returns>
+    /// <exception cref="FormatException"><paramref name="cursor"/> is not a cursor a paged read returned.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="limit"/> is out of range.</exception>
+    public static RuleCatalogPage Page(string? family, IReadOnlyCollection<string>? ids, string? query, string? cursor, int limit)
+    {
+        var only = ids is null ? null : new HashSet<string>(ids, StringComparer.Ordinal);
+        var rows = Rules.Where(r => (string.IsNullOrEmpty(family) || string.Equals(FamilyOf(r.Id), family, StringComparison.Ordinal))
+            && (only is null || only.Contains(r.Id))
+            && (string.IsNullOrEmpty(query) || r.Id.Contains(query, StringComparison.OrdinalIgnoreCase) || r.Description.Contains(query, StringComparison.OrdinalIgnoreCase)));
+        var (items, next) = ModelPages.Page(rows, r => ("rule", r.Id, ""), cursor, limit);
+        return new RuleCatalogPage([.. items.Select(Entry)], next);
+    }
+
+    private static RuleCatalogEntry Entry(RuleInfo r) =>
+        new(r.Id, r.DefaultSeverity, r.Description, FamilyOf(r.Id), FamilyLabel(FamilyOf(r.Id)), r.CanBeDisabled, r.QuickFix);
 
     /// <summary>Every built-in rule, ordered by id.</summary>
     public static IReadOnlyList<RuleInfo> All => Rules;

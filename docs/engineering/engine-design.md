@@ -35,7 +35,7 @@ maquettiste/
 
 | Folder | Holds | Owner (§18) |
 | --- | --- | --- |
-| *(root)* | `EngineOptions`, `EngineVersion`, `IIdGenerator` (Scaffold); `ModelStore` (W1); `GenerationService`, `JobQueue` (W6); `EngineVersion.Product` and `Build` (the release and its build, beside the contract `Value`) and `WorkspaceInfo` (the workspace name from `MAQUETTISTE_WORKSPACE` or `.git`), which the CLI, the MCP server and the editor API report | see left |
+| *(root)* | `EngineOptions`, `EngineVersion`, `IIdGenerator` (Scaffold); `ModelStore` (W1); `GenerationService`, `JobQueue` (W6); `EngineVersion.Product` and `Build` (the release and its build, beside the contract `Value`) and `WorkspaceInfo` (the workspace name as plain data: the hosts detect it from `MAQUETTISTE_WORKSPACE` or `.git` with `Maquettiste.Functions.WorkspaceDetection`, since the engine reads no version control), which the CLI, the MCP server and the editor API report | see left |
 | `Model/` | element records, `ModelSnapshot`, index, `KindInfo`, `BuiltinTypes`, `EngineJson` | Scaffold |
 | `Diagnostics/` | `Diagnostic`, `RuleCatalog`, `DiagnosticSeverity` | Scaffold |
 | `Pipeline/` | stage interfaces and the DTOs they exchange | Scaffold |
@@ -247,7 +247,7 @@ public sealed record Stereotype : Element {                 // Name is a renamab
     IReadOnlyDictionary<string, JsonElement> DefaultProperties = {}; string? Icon; string? Color; }
 
 // Reference types, seeds and localization (reference-types-seeds-localization.md, Appendix A). TypeRef.Ref may also name a ReferenceType.
-public sealed record ReferenceType : Element {             // no Package (RS3)
+public sealed record ReferenceType : Element {             // string? Package: membership only (next-phase-1-design.md 4.3)
     req ReferenceCode Code; req ReferenceLabel Label;
     IReadOnlyList<ModelAttribute> Attributes = [];          // x-sort "order"; names exclude code, label, description (MQ7010)
     IReadOnlyDictionary<string, StorageChoice> Storage = {}; }   // key: database id or "*"
@@ -416,12 +416,15 @@ is text, an unquoted one a JSON number, boolean, array or object when it parses 
 its document JSON, the change planner writes them back on every save (and deletes the file when `rowsFrom` goes), so the
 editor, the API and batches see rows as for any seed; the sidecar is watched, hashed and moved as description sidecars are. A
 CSV-backed seed is exempt from MQ7104's size limit. Resolution: `RTable.Seeds`; `RDatabase.SeedTables` (built on first read):
-per table in foreign key order (a cycle keeps name order, `InCycle`), the rows the database receives in database terms
+per table in foreign key order (a cycle keeps name order, `InCycle`; within a table, the seeds and then each seed's rows in the
+order the table's own foreign keys name them, a seed's rows kept together), the rows the database receives in database terms
 (`RDataRow`: `values` by column name, `key`, `source` `table|entity|relation`, the seed's settings): table seeds, entity seeds
 through the binding to the database (field map, constants, write table; a read-only binding none) or through the mapping of a
-database that projects the entity, relation seeds into junction tables; `RDatabase.SeedHash` hashes them canonically. Rules:
+database that projects the entity, relation seeds into junction tables, and (2026-10-11) the rows of the reference types bound to a
+table first (source `list`, through the type's binding); `RDatabase.SeedHash` hashes them canonically. Rules:
 MQ7107 (a table file and its columns), MQ7108 (no identity, generated or computed column), MQ7109 (a cell fits its column), MQ7111
-(a foreign key names a row of the referenced table's seeds, when it has seeds), MQ7112 (one row per key, across a table's seeds of
+(a foreign key a table seed or a reference type's binding fills names a row of the referenced table's seeds or of a reference type
+bound to it, when it has any, held in every environment the row is loaded in), MQ7117 to MQ7120 (a reference type's binding: its table, field map, key and NOT NULL columns), MQ7112 (one row per key, across a table's seeds of
 overlapping environments), MQ7113 (warning: a table seeded by its own seeds and a bound entity's), MQ7114 (a row key), MQ7116 (the
 rows file). CHECK constraints are left to the database.
 
@@ -440,7 +443,30 @@ validation (a save) and a strict vocabulary's errors stay one per use.
 
 ## 3. Canonical JSON and schemas
 
-**Canonical form** (S11): UTF-8 without BOM, LF, two-space indent, one space after `:`, trailing newline, no trailing whitespace; strings escaped minimally (`JavaScriptEncoder.UnsafeRelaxedJsonEscaping`, then `<`, `>`, `&` left literal); numbers as written by `Utf8JsonWriter`. Object keys follow the schema's `x-order` list for that object; keys of free-form maps (`properties`, `generation`, `variables`, `defaultSql`, `body`, `expression`, `parameters`, `typeMaps`, `plurals`, `rules`, `databases`, `packs`, `storage`, `options`, `strategies`, `fallbacks`, `entries`) sort ordinal. Arrays keep their order, except an array whose schema declares `"x-sort": "<key>"`, which is stable-sorted by that integer item key with a missing value counting as 0: the `attributes` arrays of entities, value objects, relations and stereotypes and the category tree's `categories` carry `"x-sort": "order"` (S6 "`order`: stable position used for … serialization", S11 "`order` for attributes"; D36). A property equal to its schema `default` (deep JSON equality; `[]` and `{}` count) is omitted, unless the property schema names a sibling in `"x-default-unless"` and that sibling is present: a column's `nullable` has `"default": true, "x-default-unless": "attribute"`, so a designed column's `nullable: true` is dropped while an overlay column's explicit `true` is kept. An array whose schema declares `"x-trim": "trailing-nulls"` (a seed row's `values`) drops its trailing `null` items. An array whose schema declares `"x-layout": "row-per-line"` (a seed's `rows`) writes each item on its own line, indented as an array item, in exactly one compact form: `{ "id": "<ulid>", "values": [<cell>, <cell>] }`, one space inside braces, none inside brackets, `", "` between items and `": "` after keys, nested objects written the same way, and numbers as the shortest plain decimal text of their value (no exponent, no `+`, no leading zeros, no trailing fractional zeros; `1e3` and `1000.0` give `1000`, `0.360` gives `0.36`), computed on the decimal text, never through `double` (reference-types-seeds-localization.md section 2.1, RS7). `CanonicalCheck` leaves arrays with either keyword to the node-based writer, so `IsCanonical` (MQ1003) and the writer read the same schema keywords. `$schema` is always first and is the relative path from the file's folder to `.maquettiste/.schema/v1/<schema file>` (e.g. `../../.schema/v1/entity.json`, `../../../../.schema/v1/table.json`, `.schema/v1/maquettiste.json`); `kind` is second.
+**Canonical form** (S11): UTF-8 without BOM, LF, two-space indent, one space after `:`, trailing newline, no trailing
+whitespace; strings escaped minimally (`JavaScriptEncoder.UnsafeRelaxedJsonEscaping`, then `<`, `>`, `&` left literal);
+numbers as written by `Utf8JsonWriter`. Object keys follow the schema's `x-order` list for that object; keys of
+free-form maps (`properties`, `generation`, `variables`, `defaultSql`, `body`, `expression`, `parameters`, `typeMaps`,
+`plurals`, `rules`, `databases`, `packs`, `storage`, `options`, `strategies`, `fallbacks`, `entries`) sort ordinal.
+Arrays keep their order, except an array whose schema declares `"x-sort": "<key>"`, which is stable-sorted by that
+integer item key with a missing value counting as 0: the `attributes` arrays of entities, value objects, relations and
+stereotypes and the category tree's `categories` carry `"x-sort": "order"` (S6 "`order`: stable position used for …
+serialization", S11 "`order` for attributes"; D36). A string key sorts ordinally after the integer ones, and `"x-sort":
+"."` sorts an array of strings by the items themselves (a migration fact's `values` by `from` and its `after`;
+next-phase-1-design.md section 3.2, decision 19). A property equal to its schema `default` (deep JSON equality; `[]` and
+`{}` count) is omitted, unless the property schema names a sibling in `"x-default-unless"` and that sibling is present:
+a column's `nullable` has `"default": true, "x-default-unless": "attribute"`, so a designed column's `nullable: true` is
+dropped while an overlay column's explicit `true` is kept. An array whose schema declares `"x-trim": "trailing-nulls"`
+(a seed row's `values`) drops its trailing `null` items. An array whose schema declares `"x-layout": "row-per-line"` (a
+seed's `rows`) writes each item on its own line, indented as an array item, in exactly one compact form: `{ "id":
+"<ulid>", "values": [<cell>, <cell>] }`, one space inside braces, none inside brackets, `", "` between items and `": "`
+after keys, nested objects written the same way, and numbers as the shortest plain decimal text of their value (no
+exponent, no `+`, no leading zeros, no trailing fractional zeros; `1e3` and `1000.0` give `1000`, `0.360` gives `0.36`),
+computed on the decimal text, never through `double` (reference-types-seeds-localization.md section 2.1, RS7).
+`CanonicalCheck` leaves arrays with either keyword to the node-based writer, so `IsCanonical` (MQ1003) and the writer
+read the same schema keywords. `$schema` is always first and is the relative path from the file's folder to
+`.maquettiste/.schema/v1/<schema file>` (e.g. `../../.schema/v1/entity.json`, `../../../../.schema/v1/table.json`,
+`.schema/v1/maquettiste.json`); `kind` is second.
 
 **One source for key order.** `schemas/v1/*.json` (draft 2020-12) are hand-written and are the only place key order and defaults live. Every object schema that has `properties` has an `"x-order": [...]` listing exactly those keys, except condition schemas under `if`, `not`, `contains` and `propertyNames`, which describe no document layout. No schema has `$id`; `$ref`s are relative (`common.json#/$defs/attribute`). The engine embeds the files; `SchemaRegistry` loads each with `JsonSchema.FromText(text, options, new Uri("https://maquettiste.invalid/schemas/v1/<file>"))` so references resolve offline, and builds an `ObjectLayout` tree per document kind (for each object location: ordered keys, default per key, child layouts, map-or-object). `CanonicalJsonWriter` walks a `JsonNode` against that layout. `SchemaConsistencyTests` (W1) fail the build if any `x-order` list differs from its `properties` keys, or if a model record property has no schema property (or the reverse). `ISchemaRegistry.Evaluate` reports leaf failures only (D34) and drops failures inside subschemas whose failure does not fail the document: an `if` condition, the operand of `not`, and branches of `oneOf`, `anyOf` or `contains` whose keyword passed. `maquettiste init`, the editor's start and the start of `maquettiste mcp` bring `.maquettiste/.schema/v1/` in line with the embedded files (`SchemaFolder.RefreshAsync`: files the engine no longer ships deleted, missing and stale files written, every path through the write guard as `WriteTarget.Model`; the editor's file watcher ignores the folder, so the refresh raises no change, and a folder that cannot be written is logged and the start goes on); `validate` and `generate` (every mode) warn MQ1008 when the folder differs from the embedded copies (byte comparison: missing, stale or extra `*.json` files), never refreshing it. The finding is on `maquettiste.json` without a pointer, names up to five differing files (then "and N more") and says that `maquettiste init` or the editor's start refreshes them; `validation.rules` can change its severity. `init` does not report it.
 
@@ -612,7 +638,7 @@ Diagnostics sort by `(FilePath, Line, Column, Rule, Message)` ordinal. `Line` an
 | MQ3xxx conceptual | 3001 duplicate name in scope · 3002 inheritance cycle · 3003 package cycle · 3004 category cycle · 3005 entity without key · 3006 key names missing attribute · 3007 duplicate attribute name, virtual included · 3008 relation end count or kind mismatch · 3009 navigation collides with a member · 3010 invalid cardinality · 3011 set-null on a required end · 3012 enum member name or code duplicated; flags values not powers of two · 3013 facet invalid for type · 3014 scalar base not built-in · 3015 value object containment cycle · 3016 composition child with two owners · 3017 default looks like a credential (warning; S19) · 3018 invalid name for kind · 3019 literal `default` does not match the attribute's effective type (a string on a numeric, bool or temporal type, a non-ISO 8601 temporal string, a value outside an enum's member names or codes, a number out of range); when the literal is a known expression name (`now`, `today`, `new-uuid`, `new-ulid`) the message says "use defaultExpression" · 3020 a save changes a stereotype's key |
 | MQ4xxx physical | 4001 identifier over dialect limit · 4002 duplicate table name in schema · 4003 duplicate column name · 4004 two mappings for one target · 4005 FK column type mismatch · 4006 native type unknown to dialect map, a plain name without quotes or schema (warning) · 4007 overlay references a missing column key · 4008 constraint or index names a missing column · 4009 mapping option invalid for the element · 4010 view body missing for the database dialect · 4011 a relation whose ends are both bound to designed or imported tables (`Mapping.Table`) names no `Mapping.ForeignKey`, or a designed `JunctionTable` without an `Ends` entry per end · 4012 an entity lands in no database (info; D46) · 4013 a database's `packages` unused because `byConvention` is `all` or `none` (warning; D46) · 4014 a convention package entry or an entity mapping names a schema its database does not declare (E26) · 4015 a schema operation refused: unknown schema or taken name, occupants and no target, or the default and no new default (E26) · 4016 a quoted or schema-qualified native type naming a type the database defines, once per type and database with its column count (info) |
 | MQ5xxx extensions | 5001 property fails extension schema · 5002 rule script error · 5003 rule exceeded a sandbox limit · 5004 invalid extension file |
-| MQ6xxx packs | 6001 invalid pack.json · 6002 engine range not satisfied · 6003 template parse error · 6004 output path refused · 6005 duplicate or case-colliding output path · 6006 render error · 6007 sandbox limit exceeded · 6008 formatter failed or version mismatch · 6009 hand edit · 6010 protected region lost · 6011 text outside file blocks in a unit without output (warning) · 6012 non-deterministic builtin used · 6013 helper name collides with a builtin · 6014 unit names an unknown formatter (warning) · ~~6015 regions mode on a built root~~ (retired 2026-10-02, E42) · 6016 script error · 6017 selector returned an unknown id · 6018 stale schema snapshot · as built 2026-10-02 (E42): 6019 now reads "cannot stay under an allowed output root or be an allowed file", 6027 a block unit's file holds its block twice or unclosed, left alone · 6028 a block unit's target file is missing without `createFile` (info, target-missing) |
+| MQ6xxx packs | 6001 invalid pack.json · 6002 engine range not satisfied · 6003 template parse error · 6004 output path refused · 6005 duplicate or case-colliding output path · 6006 render error · 6007 sandbox limit exceeded · 6008 formatter failed or version mismatch · 6009 hand edit · 6010 protected region lost · 6011 text outside file blocks in a unit without output (warning) · 6012 non-deterministic builtin used · 6013 helper name collides with a builtin · 6014 unit names an unknown formatter (warning) · ~~6015 regions mode on a built root~~ (retired 2026-10-02, E42) · 6016 script error · 6017 selector returned an unknown id · 6018 stale schema snapshot · as built 2026-10-02 (E42): 6019 now reads "cannot stay under an allowed output root or be an allowed file", 6027 a block unit's file holds its block twice or unclosed, left alone · 6028 a block unit's target file is missing without `createFile` (info, target-missing) · next-phase-1-design.md 5.4: 6030 a copy unit's source pattern matches no pack file (the unit is skipped, the pack's other units render) · 6031 a copy unit's token names a parameter the pack does not declare, or one whose value is not a string (the unit is skipped) |
 | MQ8xxx project | 8001 a `branding.colors` value that is not `#rrggbb` or `#rgb` · 8002 `branding.icon` is not `branding/<name>.svg` or `.png` in the model folder, or the file does not exist · 8003 the icon is not a safe SVG (scripts, event handlers, external references) or a PNG of at most 512 KB. Whole-model validation; MQ7xxx (reference data and localization) is in reference-types-seeds-localization.md |
 | `x/<id>` | JavaScript rules; the severity comes from the rule |
 
@@ -620,7 +646,7 @@ Diagnostics sort by `(FilePath, Line, Column, Rule, Message)` ordinal. `Line` an
 
 **Extension schemas**: for each element (and attribute, enum member, column), merge the stereotype `DefaultProperties` (stereotype order, later wins) under the element's own `properties`, then evaluate the result against each applicable `ExtensionSchema` as `{ "type": "object", "properties": …, "required": … }` through `ISchemaRegistry` (MQ5001, pointer `/properties/<name>`).
 
-**JavaScript rules** live in `extensions/rules/*.js` and register with `maquettiste.rule({ id, severity, kinds, check(element, model, report) })`. `element` is a frozen copy of the element's canonical JSON; `model` offers `get(id)`, `all(kind)` and `referencesTo(id)`, also frozen; `report(message, { pointer, severity })`. Rules run through a validation pool (§10) in parallel over elements.
+**JavaScript rules** live in `extensions/rules/*.js` and register with `maquettiste.rule({ id, severity, kinds, check(element, model, report) })`. `element` is a frozen copy of the element's canonical JSON; `model` offers `get(id)`, `all(kind)` and `referencesTo(id)`, and (next-phase-1-design.md section 5.7) `withStereotype(key)`, `withTag(tag)`, `withProperty(key)` and `byQualifiedName(name)` over per-snapshot indexes, also frozen; `report(message, { pointer, severity })`. Rules run through a validation pool (§10) in parallel over elements. A rule with `scope: "model"` runs `check(model, report)` once per whole-model validation (never in a validation of some elements, such as an element save), and its `report` names the `element` whose file each finding takes. Each validator keeps every element rule's raw results per element in memory and reuses them while the element file, the rule file, the limits and the hash of every key the call read (`e:`, `k:`, `ix:`, `rt:`) are unchanged; `validation.rules` applies after that cache.
 
 **Extension files (status: built 2026-10-01).** As built on 2026-10-01, a rule file that does not load (a syntax error, a `maquettiste.rule` call the sandbox refuses, a limit while loading) is MQ5002 (MQ5003 for a limit) on that file with the sandbox's line and column, and the validator creates the pool again without it, so the other rule files still run; while one is broken the rule ids are unknown and MQ2007 is not reported. `ModelStore` edits the folder for the editor's Extensions tab and the MCP extension file tools: `ListExtensionFilesAsync` (each file with its hash, its own diagnostics and, for a rule file, the rules it registers with their severity), `ReadExtensionFileAsync`, `WriteExtensionFileAsync` (a schema must pass `extension.json` and is written canonical; a rule file is written as sent and loaded alone in the sandbox, its MQ5002 returned), `DeleteExtensionFileAsync` and `MoveExtensionFileAsync` (within its kind). Paths are `<name>.json` and `rules/<name>.js` under `extensions/`, never through a link; every write takes the hash read, goes through `CheckEngineWrite(WriteTarget.Model, …)` under the store's gate, and reloads the snapshot before it returns.
 
@@ -636,14 +662,16 @@ public interface IResolvedObject { string Id { get; } string Kind { get; } IRead
 public sealed class RList<T> : IReadOnlyList<T> where T : IResolvedObject { public IReadOnlyList<string> MembershipKeys { get; } }  // every R-type list property
 public sealed class ResolvedModel { ModelSnapshot Source; ProjectSettings Settings; IReadOnlyList<RPackage> Packages; IReadOnlyList<REntity> Entities;
     IReadOnlyList<RValueObject> ValueObjects; IReadOnlyList<REnum> Enums; IReadOnlyList<RScalarType> ScalarTypes; IReadOnlyList<RRelation> Relations;
-    IReadOnlyList<RDatabase> Databases; IResolvedObject? Find(string id); IReadOnlyList<Diagnostic> Diagnostics; }   // get-only properties
+    IReadOnlyList<RDatabase> Databases; RList<RMigration> Migrations; IResolvedObject? Find(string id);
+    IReadOnlyList<Diagnostic> Diagnostics; }   // get-only properties; Migrations: every database's facts by (database name, Order)
     // Phase 3 (P5a) adds RList<RProcess> Processes, RList<RActor> Actors and RList<RScenario> Scenarios (section 7.1a).
 // Common to all conceptual R-types: Id, Name, DisplayName (fallback Name), PluralName (fallback inflector), Description (text, sidecar loaded),
 // Tags, Category (RCategory: Id, Name, Path), Stereotypes (RStereotype: Key, Name, Icon, Color), Properties (merged, plain CLR values),
 // Generation (IReadOnlyDictionary<string, GenerationHints>), Package (RPackage?), bool HasStereotype(string key), bool HasTag(string key).
-// All of these but Name and Package sit on RAnnotated, which RDatabase, RSchema, RTable, RColumn, RView and RSequence share (filled from their own
-// files or entries, no fallbacks; §7.0a).
-RPackage     : QualifiedName ("Billing.Invoicing"), Parent, Children, Entities, ValueObjects, Enums, Relations
+// All of these but Name sit on RAnnotated, which RDatabase, RSchema, RTable, RColumn, RView and RSequence share (filled from their own
+// files or entries, no fallbacks; §7.0a). Package is the file's (next-phase-1-design.md 4.3); a table without one falls back to its
+// entity's or relation's, a seed to its target's and a scenario to its process's.
+RPackage     : QualifiedName ("Billing.Invoicing"), Parent, DependsOn, Children, Entities, ValueObjects, Enums, Relations
 REntity      : IsAbstract, Base, Derived, Attributes (flattened, §7.2), OwnAttributes, Key (RKey: Attributes, Strategy, Sequences (db name → RSequence)), AlternateKeys,
                Navigations, Relations, Mappings (IReadOnlyDictionary<string /*db name*/, REntityMapping>), IsPromoted, PromotedFrom (RRelation?),
                Lifecycle (RProcess?, phase 3), Bindings (db name → REntityBinding; erratum E43)
@@ -659,16 +687,35 @@ REntityMapping : Database, Table, Inheritance ("tph"|"tpt"|"tpc"|null), Discrimi
 RJoinPath    : Steps (RJoinStep: FromTable, FromColumns, ToTable, ToColumns, ViaJunction)
 RDatabase    : Name, Dialect, Version, DefaultSchema, Schemas (RSchema: Name, IsDefault, IsDeclared, Tables, Views, Sequences, and the RAnnotated
                members), Tables, Views, Sequences, Quoting, MaxIdentifierLength, ByConvention ("all"|"packages"|"none", effective),
-               Packages (RConventionPackage: Package (RPackage?), PackageId, Schema (name?)), and the RAnnotated members
+               Packages (RConventionPackage: Package (RPackage?), PackageId, Schema (name?)), Migrations (RList<RMigration>, its open
+               migration facts in applied order, membership key k:migration), LedgerSchema (string?, the migration ledger's schema;
+               null outside PostgreSQL), and the RAnnotated members
 RTable       : Key, Name, Schema (string?), Database, Origin, Entity, Relation, Attribute (a child table's), Columns, PrimaryKey (Name, Columns,
                Clustered), Uniques (RUnique: Id, Name, Columns), ForeignKeys (RForeignKey: Id, Name, Columns, ReferencedTable, ReferencedColumns,
                OnDelete, OnUpdate, Relation, End), Checks (RCheck: Id, Name, Expression), Indexes (RIndex: Id, Name, Columns (Column, Descending),
-               Include, Where, Unique, Method), Comment, IsJunction, and the RAnnotated members; a constraint's Id is its file's, null when synthesized
+               Include, Where, Unique, Method), Comment, IsJunction, FormerNames, Since, and the RAnnotated members; a constraint's Id is
+               its file's, null when synthesized; RIndexColumn: Column, Descending, Nulls ("first"|"last"|null, PostgreSQL)
 RColumn      : Key, Name, Table, Type, Length, Precision, Scale, NativeType, Nullable, Default, DefaultSql (for the dialect), Identity, Sequence,
                Computed, ComputedStored, Collation, Comment, Attribute, AttributePath, IsPrimaryKey, IsForeignKey, IsDiscriminator, Position,
+               Subtype (a range or multirange column's), FormerNames, Conversion (RConversion?), Since,
                and the RAnnotated members (from the column's own entry: designed, extra or overlay; never the attribute's)
 RView        : Name, Schema, Database, Body (for the dialect), Columns, Comment;  RSequence: Name, Schema, Database, Type, NativeType, Start, Increment,
-               Min, Max, Cycle, Cache (both with the RAnnotated members)
+               Min, Max, Cycle, Cache (both with FormerNames, Since and the RAnnotated members)
+// Projection of the migration facts (next-phase-1-design.md 3.2) on RTable, RColumn, RView and RSequence: FormerNames (the names its
+// open rename facts gave up, their from and via names, oldest first, distinct, without the current name), Since (the id of its first
+// open fact in applied order, or null); RColumn.Conversion is how its last open change-type fact converts (FactId, Cast, Expression
+// for the dialect, else "*"), or null.
+RMigration   : RAnnotated (Kind "migration", Id the fact id, annotations from its file): Name ("" when recorded), Database, Fact
+               ("rename"|"rekey"|"change-type"|"drop"|"backfill"|"raw"|"adopt"|"baseline"|"value-map"|"state-map"), Order (1-based applied
+               order: after links first, then the ordinally smallest ready id), After (the facts it follows that exist; dangling links
+               left out, MQ4111), State ("pending"|"complete"|"held"|"released"), Missing (the intent MQ4101 names), Object and Objects
+               (RMigrationObject: Kind, Table, Key, Schema, TableName, Name, FormerNames, as recorded; CurrentKey, CurrentTable moved
+               through the rekey facts after it), From and To (RMigrationState: Name, Schema, Type, Length, Precision, Scale,
+               NativeType, Strategy, ReferenceTable, Nullable), Via, Keys (RMigrationRekey: Kind, Table, From, To, Name), Conversion,
+               DataCheck (RMigrationDataCheck: Query, Accept), Acknowledge, Value, Where, Sql, SkipWhen (each the dialect's entry, else
+               "*", else null), Phase, Environment, ReferenceType and Process (historical ids, not references), Values
+               (RMigrationValue: From, To), Held, Released, Hash (64 hex digits of SHA-256 over the canonical fact without annotations,
+               after, held and released: what a ledger row records)
 // Scaffold shapes: every R-type is a public sealed class with public getters and internal setters, so only the resolver fills it.
 // RObject (abstract: Id, Kind, Dependencies) is the base of every IResolvedObject; RAnnotated : RObject carries the annotations above
 // (DisplayName to Generation, HasStereotype, HasTag) and RElement : RAnnotated adds Name and Package. RDatabase, RSchema, RTable, RColumn,
@@ -718,6 +765,13 @@ creating a synthesized table's overlay with just the edited column on its first 
 
 **7.1 Ordering.** Packages by qualified name; entities, value objects, enums, scalars and relations by (package qualified name, name, id); databases by name; tables by (schema, name); columns by `Position`.
 
+ Within a table (next-phase-2-design.md section 3.1), own members come first (a synthesized table's attribute columns
+and an overlay's extra columns, a file's columns, keys, indexes and checks in file order), then the members it inherits
+from its stereotypes: stereotype by stereotype in effective-set order (schema defaults, package defaults from the
+outermost package in, then the table's own list, each layer's implied stereotypes first), each stereotype's members in
+its file order. `Position` follows that order; inherited checks continue the own checks' ordinal, and inherited indexes
+count as declared indexes.
+
 **7.1a Processes, actors and scenarios (phase-3-design.md sections 4.3 and 7.1, status: built 2026-09-30, P5a).**
 `ResolveRun.Processes.cs` resolves them after the conceptual layer (a lifecycle reads its subject's flattened attributes) into
 `ResolvedProcesses.cs`: `RProcess : RElement` (`Use`, `Subject`, `BoundAttribute`, `BoundEnum`, `Context`, `Events`, `Guards`,
@@ -730,8 +784,8 @@ creating a synthesized table's overlay with just the edited column on its first 
 `IsStub`, `UsedBy`; an action also `Raises`), `RInvoke` (`Name`, `Type`, `Process`, `Actors`, `State`), `RGate` (`Name`, `Transition`,
 `Required`, `Signers`, `RequiredActors`, `AllowRepeatSigner`, `ReasonRequired`, `Meanings`, `AuditAttributes`, `Audit`), `RMeaning`
 (`Name`); `RAuditField : RObject` (`Name`, `Type`, `Required`, `Description`, `Values`, `Attribute`); `RActor : RElement` (`Type`,
-`Processes`, `Events`, `Gates`; no package); `RScenario : RElement` (`Process`, `Start` (`RScenarioStart`: `Context`, `At`), `Steps`,
-`Outcome`; its package is its process's) with `RStep : RObject` (`Index`, `Input`, `Event`, `Invoke`, `After`, `AfterMs`,
+`Processes`, `Events`, `Gates`; its file's package); `RScenario : RElement` (`Process`, `Start` (`RScenarioStart`: `Context`, `At`), `Steps`,
+`Outcome`; its file's package, else its process's) with `RStep : RObject` (`Index`, `Input`, `Event`, `Invoke`, `After`, `AfterMs`,
 `AfterTicks`, `Actor`, `Signer`, `Meaning`, `Reason`, `Payload` (event payload and gate audit attributes by name), `Assume`, `Expect`
 (`RExpectation`: `Accepted`, `States`, `StatePaths`, `Context`), `Description`, `Trace` (`RStepTrace`: `Accepted`, `Refusal`, `Audit`
 outcomes, `StatePaths`, `Final`: the engine interpreter's replay of the scenario, run once per scenario on first read through a
@@ -756,6 +810,14 @@ key, so editing a scenario (a referrer of its process) re-renders only the units
 **7.2b Which schema a conventional table goes to (E26, status: built 2026-09-29, round 9).** `DatabaseScope.SchemaFor` answers for an entity's table: the entity's mapping `schema`, else the schema of the nearest `packages` entry (walking up from the entity's package) that names one, else none; `DatabaseRun.NewEntityTable` puts a table file's (overlay's) `schema` first and falls back to the database's default schema (`defaultSchema`, else the dialect's). A `packages` entry is a package id or `{ "package", "schema" }`; `ConventionPackageListConverter` reads both and writes the id when there is no schema, and the canonical writer does the same through the schema keyword `x-collapse`. Schema references are ids, so renaming a schema touches only its entry and, when it is the default, `defaultSchema`. The batch operations `add-schema`, `rename-schema`, `remove-schema` and `set-default-schema` (`ModelStore.Schemas.cs`) expand into element updates executed with the batch's other operations; `remove-schema` lists the tables, views, sequences, convention entries and mappings still in the schema (MQ4015) unless a `target` receives them. Validation revisits a database's mappings with a `schema` when the database changes (MQ4014).
 
 **7.3 Physical keys.** File-backed tables keep their ULID as `Key`. A synthesized table's key is `<entityId>@<databaseId>` (junction: `<relationId>@<databaseId>`; child table: `<entityId>.<attributeId>@<databaseId>`; the enum lookup table and its `enum` overlay are retired, MQ7012). A table overlay file targets exactly one of them (D9): `entity` (the entity table), `entity` + `attribute` (that entity's child table for the attribute, own, inherited or virtual, so TPC copies stay distinct) or `relation` (junction). A synthesized key sequence (§7.5) has the key `<entityId>.sequence@<databaseId>`. Column keys are attribute paths: `<attrId>`, `<attrId>.<memberAttrId>` for embedded value objects, `<endId>.<keyAttrId>` for FK columns, `discriminator`, `position`, `id` (surrogate). Overlay columns (`Column.Attribute`), constraint and index column lists, and snapshots all use these keys, which is what lets the schema diff see renames.
+
+ A member a table inherits from a stereotype (next-phase-2-design.md section 3.1: a column, primary key, unique, foreign
+key, index or check) has the id and key `<tableKey>.<memberId>`, where the table key is the file id of a designed or
+imported table and the synthesized key above otherwise; inside a member set every column a member names is keyed the
+same way. `ContributedMembers.TryParse` splits such a key at its last `.` when the rest is an id (a relation end's key
+column has the same shape, so a caller confirms the stereotype member). A redefinition changes facets and never the key,
+a bare member id never names an inherited member (MQ4008), and the index records a keyed value as references to the
+table and the member, so seeds, bindings, deletes, captures and facts treat an inherited member like an own one.
 
 As built on 2026-10-01, the physical side of a synthesized column is free: an overlay column entry may set `name`, `type`, `length`, `precision`, `scale`, `nativeType`, `nullable`, `default`, `comment` and `description` (and the other column members), and `DatabaseRun.AddColumn` applies each over what the attribute gives (`ApplyColumnFile` for the default, comment and annotations; a native type is computed from the resulting type and facets unless the entry sets one). The attribute keeps its own type and facets in the resolved model (`RColumn.Attribute.Length` stays 255 under a column the overlay makes `text` or `varchar(2056)`): the attribute's length is validation, the column's is storage, and no rule compares the two. A synthesized foreign key column (relation, junction, child table owner key, TPT derived key) copies the referenced column's type, facets and native type unless its own overlay entry pins any of type, length, precision, scale or native type. `DatabaseRun.CheckForeignKeyColumns` then runs MQ4005 over the resolved columns, after `FinishTables`: each foreign key column must have the referenced column's type and native type (ordinal, native type case-insensitive) and the facets its type uses (length for string, text and binary; precision for decimal and the time types; scale for decimal). A mismatch is reported on the file that pins it, with a pointer: the foreign key column's overlay entry or designed-table column, else the referenced column's, else the relation end (`/ends/<i>`) of the key, else the entity that declares the column's attribute. Validation's file-level MQ4005 still compares the declared types when both tables are files; the resolved check skips exactly that case (both columns declared in files with differing types), so a column is reported once. Every validate path reports these resolver findings, not only a generation run: `ModelStore.ValidateAsync` (the editor's validation loop and `POST /api/validate`, `maquettiste validate` with its JSON and SARIF, the MCP `validate` tool) adds the resolver's diagnostics once the whole-model validation, load diagnostics included, has no error, resolving once per snapshot (`ModelStore.ResolverFindingsAsync`, kept with the snapshot, positioned with `Positions`), filtered to a scope like the load diagnostics, and dropping an exact repeat or an unpointed finding whose rule validation already reports on the same element (`ModelStore.NewFindings`).
 
@@ -806,14 +868,16 @@ type of its base for a domain or of a string as long as the longest member for a
 SQLite). `BaseNativeType` and `SubtypeNativeType` render through the dialect map. A slot resolves to a built-in keyword
 (facet defaults from the conventions, then the map), to a database type of the same database (`DbType` set, the native type
 its `NativeName`) or to its own text, and an explicit `nativeType` wins. A routine's `Language` defaults to `plpgsql`,
-`tsql`, `plsql` or `sql` by dialect; `Body` is the dialect's (or `"*"`) text with `HasBody` saying whether there was one. A
-column whose file's `nativeType` names a database type of its database by id, by name or by schema-qualified name gets
-`RColumn.DbType` and that type's `NativeName` (designed, overlay and extra columns alike; a type with no native name leaves the
-column's computed type); a foreign key column that copies the key does not follow it. `DependsOn` holds the resolved objects
-(a table named by its overlay file's id resolves to the synthesized table); a composite's `DependsOn` is the database types
+`tsql`, `plsql` or `sql` by dialect; `Body` is the dialect's (or `"*"`) text with `HasBody` saying whether there was
+one. An `RSqlObject` also carries `Environments` (the file's order; empty means every environment), `Apply` (`converge`
+or `once`) and `ContentHash` (of `Body`, which a run-once object's ledger row records). A column whose file's
+`nativeType` names a database type of its database by id, by name or by schema-qualified name gets `RColumn.DbType` and
+that type's `NativeName` (designed, overlay and extra columns alike; a type with no native name leaves the column's
+computed type); a foreign key column that copies the key does not follow it. `DependsOn` holds the resolved objects (a
+table named by its overlay file's id resolves to the synthesized table); a composite's `DependsOn` is the database types
 its fields use. Dependency keys: each object's file, referrers, database, the type maps and conventions (types and
-routines), the database types its slots use, and each `dependsOn` id; a column using a type adds the type to its table's keys;
-the database lists add `k:routine`, `k:database-type` and `k:sql-object`.
+routines), the database types its slots use, and each `dependsOn` id; a column using a type adds the type to its table's
+keys; the database lists add `k:routine`, `k:database-type` and `k:sql-object`.
 
 *Validation* (`DatabaseObjectRules.cs`, `DatabaseObjectIndex`). MQ4017 (warning): a routine or SQL object without a body for
 the database's dialect and no `"*"` one, or a database type with neither its structured form (a domain's base, an enum's
@@ -1200,33 +1264,62 @@ them at its designed table. Constants are SQL literals in the statements, not pa
 - **Template cache**: `internal interface ITemplateCache { Template Get(LoadedPack pack, string path, Delimiters? delimiters); }` returns a parsed Scriban `Template`, keyed by (pack, path, file hash, delimiters), in a `ConcurrentDictionary` owned by the renderer instance for one run. Renderers are per run: `EngineServices.CreateRenderer()` builds one with a fresh `TemplateCache` for each run and each preview, so nothing accumulates in a long-lived host. Parse errors → MQ6003 with line and column.
 - **Delimiters**: Scriban 7.5 has no custom delimiter option, so `DelimiterTranslator` rewrites a template that uses `Open`/`Close` into `{{ }}` form before parsing. Code spans become `{{…}}`, and a text span containing `{{` or `}}` is wrapped in an escape block `{%{…}%}` with enough `%` that the text cannot close it. Line breaks are kept one for one, so error positions map back unchanged.
 - **Context** per unit: a fresh `TemplateContext` with `StrictVariables = true`, `EnableRelaxedMemberAccess = true`, `EnableRelaxedTargetAccess = false`, `LoopLimit` and `RecursiveLimit` from `SandboxLimits`, `NewLine = "\n"`, invariant culture, `MemberRenamer` = snake_case, and a `MemberFilter` that admits only public get-only properties of resolved-model types and helper result types. No `ScriptObject.Import` of arbitrary CLR types. `include` resolves through a `TemplateLoader` confined to the pack folder, which records `t:<pack>/<path>`. Builtins `date.now`, `math.random`, `object.eval` and `object.eval_template` are replaced by functions that fail with MQ6012.
-- **Tracking proxy**: `TrackingTemplateContext` overrides `GetMemberAccessorImpl`. For any `IResolvedObject`, the accessor records the object's `Dependencies` into the unit's `IReadRecorder` on every member read. Every list of resolved objects is an `RList<T>`; enumerating it, indexing it or reading `size` records its `MembershipKeys` (the kind-set and element keys that decide which items it holds, set by the resolver: `model.entities` → `k:entity`; `database.tables` → `k:entity`, `k:relation`, `k:enum`, `k:table`, `k:mapping`; and so on). `lookup` of a missing id records `e:<id>`, so creating that element later re-renders the unit. Helpers receive the same recorder. Reference data (reference-types-seeds-localization.md §1.5, §2.5): a row (`RRow`, `RSeedRow`) records its seed's keys (the seed's `e:` key and its target's); `reference_type.rows` records `k:seed`, `r:<type id>` and the `e:` key of each of the type's seeds, so editing one seed re-renders only the units that read that seed's rows; a storage choice (`RStorageChoice`) records `s:referenceData`, the type's `e:` key and the database's; `row <type> "<code>"` records the type, its rows' membership and the row; `row_uuid <row>` returns the row's ULID bits as a UUID. Localization helpers (reference-types-seeds-localization.md section 3.7): `display_name`, `plural_name`, `description_of`, `label_of` `<x> [locale]` and `translate <x> "<field>" [locale]` walk the locale's chain (`RLocale.chain`: the locale, its `fallbacks` or supported truncations, the default) down to the default-locale value; without a locale argument they use the unit's `locale` in an `each locale` unit, else the default; `has_translation <x> "<field>" <locale>` reads one locale. `model.locales` lists the `RLocale`s.
-- **Helpers** (`BuiltinHelpers`, all pure): `pascal camel snake kebab upper_snake` (split on non-alphanumerics, lower→upper and acronym→word boundaries; digits join the preceding word; words lowercased, then styled: `HTTPServer2Id` → `http_server2_id`); `pluralize singularize` (fixed English rules, `inflection` overrides, element `pluralName` wins); `type_of <attr|column|type> "<target>"` (pack type map or dialect); `sql_quote <name> "<dialect>"` (pg/sqlite/oracle `"x"`, sqlserver `[x]`, mysql `` `x` ``, by the database's `Quoting` and embedded reserved-word lists); `sql_literal <value> "<dialect>"` (strings single-quoted with `''`, sqlserver `N'…'`; booleans `true/false` on pg, `1/0` elsewhere; dates ISO 8601 quoted; null `NULL`); `indent <text> <n|string>`, `dedent`; `escape_md escape_xml escape_json`; `json <value>` (canonical, compact); `has_stereotype has_tag in_category`; `lookup <id>`; `banner "<comment prefix>"` → `<prefix> Generated by Maquettiste (<pack>/<unit id>). Do not edit; changes are overwritten.` (no timestamp, no version); `file <path> <content>`; `state_path <state>` (a process state's dotted path, `Fulfilment.Shipping.Packed`; a state id works too; records the state); `iso_duration_ms <text>` (the milliseconds of an ISO 8601 duration with the interpreter's fixed spans, a month 30 days and a year 365; a text that does not parse fails the unit with MQ6006 naming it); `query_sql`, `query_collection_sql` and `query_sql_parameters` (a query's or a collection's statement, and its parameter names in placeholder order; section 7, "Queries"). Pack helpers from JavaScript register under their own names and fail with MQ6013 on a collision.
+- **Tracking proxy**: `TrackingTemplateContext` overrides `GetMemberAccessorImpl`. For any `IResolvedObject`, the accessor records the object's `Dependencies` into the unit's `IReadRecorder` on every member read. Every list of resolved objects is an `RList<T>`; enumerating it, indexing it or reading `size` records its `MembershipKeys` (the kind-set and element keys that decide which items it holds, set by the resolver: `model.entities` → `k:entity`; `database.tables` → `k:entity`, `k:relation`, `k:enum`, `k:table`, `k:mapping`; and so on). `lookup` of a missing id records `e:<id>`, so creating that element later re-renders the unit. Helpers receive the same recorder. Reference data (reference-types-seeds-localization.md §1.5, §2.5): a row (`RRow`, `RSeedRow`) records its seed's keys (the seed's `e:` key and its target's); `reference_type.rows` records `k:seed`, `r:<type id>` and the `e:` key of each of the type's seeds, so editing one seed re-renders only the units that read that seed's rows; a storage choice (`RStorageChoice`) records `s:referenceData`, the type's `e:` key and the database's; `row <type> "<code>"` records the type, its rows' membership and the row; `row_uuid <row>` returns the row's ULID bits as a UUID; `seed_named "<form>"` (next-phase-1-design.md section 5.3) looks the form up in the snapshot's seed name index and records `n:seed:<form>` (hashed over the sorted ids the form finds, or `absent`) and the seed it finds, so renaming a seed into or out of the name re-renders the unit; `seed_row <seed> <key>` records the seed, its rows' membership, the target whose key it reads and the row. Localization helpers (reference-types-seeds-localization.md section 3.7): `display_name`, `plural_name`, `description_of`, `label_of` `<x> [locale]` and `translate <x> "<field>" [locale]` walk the locale's chain (`RLocale.chain`: the locale, its `fallbacks` or supported truncations, the default) down to the default-locale value; without a locale argument they use the unit's `locale` in an `each locale` unit, else the default; `has_translation <x> "<field>" <locale>` reads one locale. `model.locales` lists the `RLocale`s.
+- **Helpers** (`BuiltinHelpers`, all pure): `pascal camel snake kebab upper_snake` (split on non-alphanumerics,
+  lower→upper and acronym→word boundaries; digits join the preceding word; words lowercased, then styled:
+  `HTTPServer2Id` → `http_server2_id`); `pluralize singularize` (fixed English rules, `inflection` overrides, element
+  `pluralName` wins); `type_of <attr|column|type> "<target>"` (pack type map or dialect); `sql_quote <name> "<dialect>"`
+  (pg/sqlite/oracle `"x"`, sqlserver `[x]`, mysql `` `x` ``, by the database's `Quoting` and embedded reserved-word
+  lists); `sql_literal <value> "<dialect>"` (strings single-quoted with `''`, sqlserver `N'…'`; booleans `true/false` on
+  pg, `1/0` elsewhere; dates ISO 8601 quoted; null `NULL`); `indent <text> <n|string>`, `dedent`; `escape_md escape_xml
+  escape_json`; `json <value>` (canonical, compact); `has_stereotype has_tag in_category`; `lookup <id>`; `banner
+  "<comment prefix>"` → `<prefix> Generated by Maquettiste (<pack>/<unit id>). Do not edit; changes are overwritten.`
+  (no timestamp, no version); `file <path> <content>`; `state_path <state>` (a process state's dotted path,
+  `Fulfilment.Shipping.Packed`; a state id works too; records the state); `iso_duration_ms <text>` (the milliseconds of
+  an ISO 8601 duration with the interpreter's fixed spans, a month 30 days and a year 365; a text that does not parse
+  fails the unit with MQ6006 naming it); `query_sql`, `query_collection_sql` and `query_sql_parameters` (a query's or a
+  collection's statement, and its parameter names in placeholder order; section 7, "Queries"); `ledger_ddl <database>`
+  (the migration ledger's DDL for the database's `ledger_schema`, `LedgerContract.Ddl`, or `""` for a database without a
+  ledger, which is every dialect but PostgreSQL; records `s:migrations`; docs/ledger.md). Pack helpers from JavaScript
+  register under their own names and fail with MQ6013 on a collision.
 - **Output normalization**: rendered text is kept as a string; post-processing (§13) encodes it.
 
 ## 10. Script sandbox (W4)
 
 ```csharp
-namespace Maquettiste.Engine.Scripting;
-public interface IScriptSandboxFactory { IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct); }
-public interface IScriptSandboxPool : IDisposable { IReadOnlyList<ScriptRegistration> Registrations { get; } IScriptSandboxLease Rent(); }
-public interface IScriptSandboxLease : IDisposable { IScriptSandbox Sandbox { get; } }
-public sealed record ScriptRegistration(ScriptRegistrationKind Kind, string Name, string DeclaredIn);
-public enum ScriptRegistrationKind { Helper, Selector, Filter, Transform, Rule }
-public sealed record ScriptCallContext(IReadRecorder? Reads, string Seed, IReadOnlyDictionary<string, object?> Parameters, CancellationToken CancellationToken);
-public interface IScriptSandbox
-{
-    object? CallHelper(string name, IReadOnlyList<object?> args, ScriptCallContext ctx);
-    IReadOnlyList<string> Select(string name, ResolvedModel model, ScriptCallContext ctx);           // element ids
-    bool Filter(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx);
-    IReadOnlyDictionary<string, object?> Transform(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx);
-    IReadOnlyList<Diagnostic> RunRule(string ruleId, ElementDocument element, ModelSnapshot model, ScriptCallContext ctx);
-}
-public sealed class ScriptLimitException : Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
+namespace Maquettiste.Engine.Scripting; public interface IScriptSandboxFactory { IScriptSandboxPool
+CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct); } public
+interface IScriptSandboxPool : IDisposable { IReadOnlyList<ScriptRegistration> Registrations { get; }
+IReadOnlyList<Diagnostic> Warnings { get; } IScriptSandboxLease Rent(); } public interface IScriptSandboxLease :
+IDisposable { IScriptSandbox Sandbox { get; } } public sealed record ScriptRegistration(ScriptRegistrationKind Kind,
+string Name, string DeclaredIn) { public bool WholeModel { get; init; } }   // scope "model" public enum
+ScriptRegistrationKind { Helper, Selector, Filter, Transform, Rule, Rows }   // Rows: a seed's rows script, named by its
+path public sealed record ScriptCallContext(IReadRecorder? Reads, string Seed, IReadOnlyDictionary<string, object?>
+Parameters, CancellationToken CancellationToken); public interface IScriptSandbox { object? CallHelper(string name,
+IReadOnlyList<object?> args, ScriptCallContext ctx); IReadOnlyList<string> Select(string name, ResolvedModel model,
+ScriptCallContext ctx);           // element ids bool Filter(string name, IResolvedObject element, ResolvedModel model,
+ScriptCallContext ctx); IReadOnlyDictionary<string, object?> Transform(string name, IResolvedObject element,
+ResolvedModel model, ScriptCallContext ctx); IReadOnlyList<Diagnostic> RunRule(string ruleId, ElementDocument element,
+ModelSnapshot model, ScriptCallContext ctx); IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model,
+ScriptCallContext ctx);   // a whole-model rule, once JsonElement RunRows(string script, ElementDocument seed,
+ModelSnapshot model, ScriptCallContext ctx); // a rows script: its array } public sealed class ScriptLimitException :
+Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
 ```
 
-- **Engine options** (Jint 4.16.4): `Strict()`, `Interop.Enabled = false`, `AllowGetType = false`, `AllowSystemReflection = false`, `DisableStringCompilation()` (no `eval`, no `Function`), no modules, `Culture(CultureInfo.InvariantCulture)`, `LocalTimeZone(TimeZoneInfo.Utc)`, `TimeSystem` = a fixed clock at 2000-01-01T00:00:00Z (so `Date.now()` and `new Date()` are constant), `LimitRecursion`, `LimitMemory`, `TimeoutInterval`, `MaxStatements` from `SandboxLimits`, and `Options.CancellationToken(ct)` with the pool's run token, with `engine.Constraints.Reset()` before every top-level call. Pools live for one run (or one validation), so the run token fits; every call also checks `ScriptCallContext.CancellationToken` before it starts. A running script therefore stops within the one-second cancellation budget (host-contracts 26) although the script timeout (2 s by default) is longer. `Math.random` is replaced by xorshift128+ seeded from `ScriptCallContext.Seed` (the unit key or element id) at every top-level call.
-- **Registration**: each engine runs the pool's prepared scripts (`Engine.PrepareScript`, prepared once per pool) against a global `maquettiste` with `helper(name, fn)`, `selector(name, fn)`, `filter(name, fn)`, `transform(name, fn)`, `rule(spec)`, then deep-freezes `globalThis` and the registration object. Helpers must be pure; closure state cannot be frozen, and the `--jobs 1` versus `--jobs N` determinism test (§17) is what catches it (D12).
+- **Engine options** (Jint 4.16.4): `Strict()`, `Interop.Enabled = false`, `AllowGetType = false`, `AllowSystemReflection = false`, `DisableStringCompilation()` (no `eval`, no `Function`), no modules, `Culture(CultureInfo.InvariantCulture)`, `LocalTimeZone(TimeZoneInfo.Utc)`, `TimeSystem` = a fixed clock at 2000-01-01T00:00:00Z (so `Date.now()` and `new Date()` are constant), `LimitRecursion`, `LimitMemory`, `TimeoutInterval` (none when `scriptTimeoutMs` is 0: the wall clock is off and statements alone bound a call, so results do not depend on load), `MaxStatements` from `SandboxLimits` (clamped to 2,000,000,000, below `int.MaxValue`, which Jint reads as no limit), and `Options.CancellationToken(ct)` with the pool's run token, with `engine.Constraints.Reset()` before every top-level call. Pools live for one run (or one validation), so the run token fits; every call also checks `ScriptCallContext.CancellationToken` before it starts. A running script therefore stops within the one-second cancellation budget (host-contracts 26) although the script timeout (2 s by default) is longer. `Math.random` is replaced by xorshift128+ seeded from `ScriptCallContext.Seed` (the unit key or element id) at every top-level call.
+- **Registration**: each engine runs the pool's prepared scripts (`Engine.PrepareScript`, prepared once per pool) against a global `maquettiste` with `helper(name, fn)`, `selector(name, fn)`, `filter(name, fn)`, `transform(name, fn)`, `rule(spec)`, then deep-freezes `globalThis` and the registration object. Rule scripts each run in their own function scope, and a pool of rule scripts deep-freezes the globals before they run, so a rule file cannot publish anything for another; a top-level `let` or `var` in a rule file is MQ5005 (next-phase-1-design.md section 5.7). That makes a rule file's hash, with the shared setup, its behaviour, which is what lets the validator cache a rule's results per element; a file with MQ5005 is never cached. Helpers must be pure; closure state cannot be frozen, and the `--jobs 1` versus `--jobs N` determinism test (§17) is what catches it (D12).
+- **Rows scripts** (next-phase-2-design.md section 3.4): a file directly in `extensions/seeds/` calls
+  `maquettiste.rows(fn)` exactly once, registered under its path (`ScriptRegistrationKind.Rows`). It loads as a rule
+  file does (its own function scope, frozen globals, MQ5005 for a top-level `let` or `var`, the line and column of its
+  errors); a rows script that calls anything else, or a rule or pack script that calls `rows`, fails to load. `RunRows`
+  calls `fn(model, seed)` with the rule-script model view, whose reads go to `ScriptCallContext.Reads`, and a frozen
+  copy of the seed's canonical JSON; `Math.random` is seeded with the seed id. The result must be an array of plain
+  objects whose values are JSON values. `Resolution/SeedScripts.cs` runs one seed's script in a one-engine pool created
+  for the call, through the engine-wide `SeedRowsCache` (`EngineServices.SeedRows`, shared by the resolver and the
+  validator): an entry is reused while the seed's dependency hash, the script's path and hash, the limits and the hashes
+  of the keys the run read are unchanged, and only clean runs (no failure, no MQ5005) are stored. Load, the index and
+  extension writes never run a rows script; a write loads it alone and reports MQ7127 when it does not load or does not
+  register its rows once.
 - **Pool**: one Jint engine per worker (`size` = render parallelism), rented for a whole unit. A unit renders synchronously on its worker thread, which `LimitMemory`'s per-thread accounting requires.
 - **Model view**: `JsModelProxy : ObjectInstance` exposes an `IResolvedObject`'s template-visible properties in camelCase, read-only (`Set`, `DefineOwnProperty` and `Delete` refuse), records dependencies like the Scriban accessor, and wraps lists as frozen array-likes. Values cross as JSON-like data: string, number (integral → `long`), bool, null, arrays, plain objects, and resolved objects as proxies both ways. A returned function or symbol is an error.
 
@@ -1240,13 +1333,21 @@ public sealed class ScriptLimitException : Exception { public Diagnostic Diagnos
 | `k:<kind>` | `ModelSnapshot.KindSetHash(kind)` |
 | `r:<id>` | `ModelSnapshot.ReferrersHash(id)`: `H` over the sorted `(element id, DependencyHash)` of every file that references the id, except the file holding it and diagrams (D38) |
 | `s:conventions`, `s:typeMaps`, `s:inflection` | hash of that settings section in canonical form (`databases` counts with `conventions`) |
+| `s:migrations` | hash of `migrations.ledgerSchema` only (`migrations.record` changes no rendered byte); recorded by `ledger_ddl` and by a PostgreSQL database's membership (docs/ledger.md) |
 | `s:referenceData` | hash of `referenceData` (strategy declarations) with `conventions.referenceStorage` and every `databases.<name>.referenceStorage` |
 | `s:localization` | hash of the `localization` block; recorded by every localization helper call and every `each locale` unit (its `RLocale` depends on it) |
 | `s:project` | hash of the project's `name` and `properties` (keys in ordinal order); recorded when a template reads the `project` variable (2026-10-07) |
 | `l:<locale>:<ownerId>` | `LocalizationIndex.OwnerHash`: `H` over the owner's effective entries in that locale (every field of the owner and its sub-elements, ordinal by id, with their `src` fingerprints) and their description sidecars' hashes. A helper records one per consulted chain locale up to the one that answered, plus the owner's `e:` key when the default text answered (reference-types-seeds-localization.md section 3.8) |
 | `t:<pack>/<path>` | file hash of a template or partial |
 | `d:<databaseId>` | `SchemaDiffResult.Hash` |
+| `x:<path under extensions>` | the content hash of a file under `extensions/` (`seeds/audited-records.js`), or absent; recorded by a seed's scripted rows (next-phase-2-design.md section 3.4) |
+| `ix:<index>:<value>`, `rt:<id>` | as `RuleKeyHasher` hashes them for the rule cache: `ix:` the sorted ids a `withStereotype`, `withTag`, `withProperty` or `byQualifiedName` lookup returns, `rt:` every reference entry to the id; recorded by a scripted seed's rows through the reads of its script run |
 | any key that no longer resolves | `"absent"` |
+
+A seed's scripted rows carry, as their list's membership keys and each row's keys, the seed's keys, the script's `x:`
+key and the keys its run read (`e:`, `k:`, `ix:`, `rt:`), so a unit that read them renders again exactly when the
+script, the seed or something the script read changes; `PlanExplainer` words an `x:` key as "The extension file <path>",
+with the cause kind `inputs`.
 
 `StaticHash = H("mq-unit-1", EngineVersion.Value, pack name, canonical PackUnit JSON, ScriptsHash, canonical effective parameters, output base, formatter settings or "none", unit key)`. `InputHash = H(StaticHash, key₁, hash₁, key₂, hash₂, …)` over the unit's recorded read keys in ordinal order. A unit is **skipped** when not forced, not in check mode, its `UnitState` exists, the `InputHash` recomputed from the recorded keys equals the stored one, and every recorded output still has the same manifest hash and the same length and mtime on disk (a stat mismatch re-hashes the file). Owned outputs only need to exist. Skipped units keep their manifest entries and state. Because resolved objects carry `r:` keys (§7), a new file that starts contributing to an existing resolved object (a mapping, a table overlay, a relation) changes the recomputed `InputHash` of every unit that read that object, so incremental runs and `--force` runs agree. Rendered units store their new `UnitState` (read keys, hash, outputs with stat) in `CacheDirectory/units/<pack>.v1.bin` when their pack completes, and only in apply mode. A unit whose render fails keeps its previous outputs and state.
 
@@ -1285,11 +1386,24 @@ recorded path that cannot be checked) runs the full pipeline. Long-lived hosts n
 
 The hash is the content hash of the bytes written. An `r:` prefix marks a regions file hashed with every region body emptied (the skeleton), so edits inside regions are not hand edits; an `o:` prefix marks an owned file (`once`, companion), never checked for edits and never deleted. As built on 2026-10-02 (E42), `b:` marks a `block` entry, hashed over the block's lines only, and `bc:` one whose file the engine created (§12.3b); the schema's hash pattern is `^(r:|o:|b:|bc:)?[0-9a-f]{64}$`. The unit is `<unitId>` or `<unitId>:<elementId>`, plus `#companion` for companions.
 
-**12.3 Decision per output file** (`D` = disk bytes, `M` = manifest entry, `N` = new bytes), first match wins: no `D` → Added. `D` = `N` → Unchanged: no write, mtime untouched, entry written or refreshed (this also adopts an identical untracked file). `D` without `M` → HandEdited (an untracked file in the way). `D` ≠ `M` (skeletons for regions) → HandEdited. Otherwise → Modified. Owned: `D` exists → Kept, else Added. HandEdited follows the pack's policy: `fail` → Conflict (nothing written, exit 3), `overwrite` → write, `skip` → leave file and old entry. **Orphans**: entries of the run's packs produced by no rendered or skipped unit → Deleted (only if `D` = `M`, else HandEdited under the policy); owned orphans → OrphanedOwned (file kept, entry dropped). Without a `--pack` filter, manifests of packs that no longer exist are orphaned in full. Emptied directories under a root (never the root itself) are removed. Failed units are never orphaned. A `ContentOmitted` file (plan apply, §15) is produced like any other, so it is never an orphan; it is never written, and a disk hash other than its `ContentHash` is a Conflict. With `WriteContext.PlannedPaths` set, a write or delete outside it is refused (MQ6004).
+**12.3 Decision per output file** (`D` = disk bytes, `M` = manifest entry, `N` = new bytes), first match wins: no `D` →
+Added. `D` = `N` → Unchanged: no write, mtime untouched, entry written or refreshed (this also adopts an identical
+untracked file). `D` without `M` → HandEdited (an untracked file in the way). `D` ≠ `M` (skeletons for regions) →
+HandEdited. Otherwise → Modified. Owned: `D` exists → Kept, else Added. HandEdited follows the pack's policy: `fail` →
+Conflict (nothing written, exit 3), `overwrite` → write, `skip` → leave file and old entry. **Orphans**: entries of the
+run's packs produced by no rendered or skipped unit → Deleted (only if `D` = `M`, else HandEdited under the policy);
+owned orphans of a pack that still exists, outside a companion, whose file is on disk → Kept, entry kept (a `once` file
+stays owned while it exists, so earlier migrations stay owned and a check right after an apply is clean;
+next-phase-1-design.md 3.2, decision 10); other owned orphans (a companion no longer produced, an owned file of a
+removed pack or one gone from disk) → OrphanedOwned (file kept, entry dropped). Without a `--pack` filter, manifests of
+packs that no longer exist are orphaned in full. Emptied directories under a root (never the root itself) are removed.
+Failed units are never orphaned. A `ContentOmitted` file (plan apply, §15) is produced like any other, so it is never an
+orphan; it is never written, and a disk hash other than its `ContentHash` is a Conflict. With
+`WriteContext.PlannedPaths` set, a write or delete outside it is refused (MQ6004).
 
 *As built 2026-10-02 (spec-errata E42), written here.* Because the manifest now moves with the model (a pull brings a teammate's entries while ignored outputs stay as this checkout generated them), a file whose bytes the engine itself last wrote at that path in this checkout is not a hand edit: when `D` ≠ `M` (or `M` is missing) but the unit's recorded state in the cache (never shared) lists the path with a manifest hash `D` still matches, the decision is Modified, and an orphan in that state is Deleted. The state is loaded once per pack, and only when a file would otherwise be a hand edit.
 
-**12.3b Managed blocks (status: built 2026-10-02, spec-errata E42).** A unit with `mode: block` renders the lines of one block (normalized to LF, a final line end added; a body holding one of its own delimiter lines fails the unit, MQ6006; no formatter, no regions). The block sits in a file the team otherwise owns, between `<comment> maquettiste: begin <pack>/<unit id>` and `<comment> maquettiste: end <pack>/<unit id>`, where `<comment>` is `blockComment` (default `#`, a run of non-whitespace). A delimiter line matches whatever its comment (trimmed, one non-whitespace run, a space, then the keyword and marker), and a rewrite uses the unit's comment. The post-processor's `OutputFile.Content` is the block's lines and its manifest hash `b:` + their hash; the writer (`Writing/ManagedBlock`, `WriteRun.ProcessBlockAsync`) works on the file's bytes, so nothing outside the block changes. Decision per block file (`D` = disk file, `B` = its block's lines, `M` = manifest entry, `N` = new lines), first match wins:
+**12.3b Managed blocks (status: built 2026-10-02, spec-errata E42).** A unit with `mode: block` renders the lines of one block (normalized to LF, a final line end added; a body holding one of its own delimiter lines fails the unit, MQ6006; no formatter, no regions). The block sits in a file the team otherwise owns, between `<comment> maquettiste: begin <pack>/<unit id>` and `<comment> maquettiste: end <pack>/<unit id>`, where `<comment>` is `blockComment` (default `#`, a run of non-whitespace), each line followed by a space and `blockCommentEnd` when the unit sets it (for example `-->` after `<!--`; next-phase-1-design.md section 5.4). A delimiter line matches whatever its comment and closing text (trimmed, one non-whitespace run, a space, then the keyword and marker, then the line's end or one space and one non-whitespace run), so the orphan scan, which knows nothing of the unit, finds closed blocks too; a rewrite uses the unit's comment and closing text. The post-processor's `OutputFile.Content` is the block's lines and its manifest hash `b:` + their hash; the writer (`Writing/ManagedBlock`, `WriteRun.ProcessBlockAsync`) works on the file's bytes, so nothing outside the block changes. Decision per block file (`D` = disk file, `B` = its block's lines, `M` = manifest entry, `N` = new lines), first match wins:
 
 | Case | Decision |
 | --- | --- |
@@ -1627,7 +1741,29 @@ the API serves it as `GET /api/model/elements/{id}/delete-plan` and `POST /api/m
 the CLI as `model delete --dry-run`. A batch delete operation takes `resolution`, so the explorer's bulk delete is one change, and the
 editor reads every document the plan touches first so the whole cascade is one undo step.
 
-A plan persists to `CacheDirectory/plans/<id>/plan.json` (through `EnginePaths`), with post-processed bytes of each added or modified file in `blobs/<ContentHash>`; the 20 newest plans are kept. The plan stores the request it was made with (`GenerationPlan.Request`: packs, roots (removed 2026-10-02, E42), hand-edit policy, force, lock mode) and, per unit, every output file (`PlanUnit.Outputs`, unchanged files included, with mode, role, root and the disk hash seen at plan time), so apply needs no second render. `ApplyAsync` locks (with `Request.Lock`), reloads, validates, resolves, re-plans, recomputes each `PlanUnit.InputHash` from its read keys, and re-hashes every planned path on disk. Any input difference, any unit added or removed, or any planned path whose disk hash differs from `DiskHashAtPlan` (a hand edit, or an edit inside a protected region, since the plan's region bodies were merged at plan time) returns `Stale` with `StaleUnits` and `StalePaths` and writes nothing (30). Otherwise it feeds the writer one `ProcessedUnit` per planned unit: added and modified files from the blobs, unchanged ones as `ContentOmitted` files, skipped units as `SkippedUnit`s, with `WriteContext.PlannedPaths` = every path in `Outputs` and `Changes` so nothing outside the plan is touched (S19); then it saves unit state from the plan's read keys. A plan's `Changes` name **every file** its packs produce or remove, each with what Apply does to it (added 2026-10-02): the writer's decisions with identical files included (`Unchanged`, no diff), plus the outputs of the units the plan skipped, from their stored state (an owned `o:` output as `Kept`, any other as `NotRendered`, with its unit key and manifest hash). Entries carry no content and no diff, and `Counts`, `UnitsRendered` and `UnitsSkipped` summarize them so a client never has to count a large list (a job record keeps them when it drops the lists). Apply ignores `Unchanged`, `NotRendered` and `Kept` entries: it is fed from `Units`, and their paths are already among the units' outputs. A `Kept` file (an existing `once` file or companion) has no diff: `GetPlanDiffAsync` returns an empty one, so a migration unit's placeholder for an earlier revision is never shown against the real migration. On the reference application (867 files) the entries add about 70 KB to a 1.65 MB first plan and about 300 KB to a 1.47 MB incremental one; `Units` (read keys) stays the bulk of `plan.json`. Batches stage every file as `.<name>.mq-<batchId>.tmp` in the target folder and rename only after all staging succeeded; a rename failure rolls back the renamed files from copies staged beside them.
+A plan persists to `CacheDirectory/plans/<id>/plan.json` (through `EnginePaths`), with post-processed bytes of each
+added or modified file in `blobs/<ContentHash>`; the 20 newest plans are kept. The plan stores the request it was made
+with (`GenerationPlan.Request`: packs, roots (removed 2026-10-02, E42), hand-edit policy, force, lock mode) and, per
+unit, every output file (`PlanUnit.Outputs`, unchanged files included, with mode, role, root and the disk hash seen at
+plan time), so apply needs no second render. `ApplyAsync` locks (with `Request.Lock`), reloads, validates, resolves,
+re-plans, recomputes each `PlanUnit.InputHash` from its read keys, and re-hashes every planned path on disk. Any input
+difference, any unit added or removed, or any planned path whose disk hash differs from `DiskHashAtPlan` (a hand edit,
+or an edit inside a protected region, since the plan's region bodies were merged at plan time) returns `Stale` with
+`StaleUnits` and `StalePaths` and writes nothing (30). Otherwise it feeds the writer one `ProcessedUnit` per planned
+unit: added and modified files from the blobs, unchanged ones as `ContentOmitted` files, skipped units as
+`SkippedUnit`s, with `WriteContext.PlannedPaths` = every path in `Outputs` and `Changes` so nothing outside the plan is
+touched (S19); then it saves unit state from the plan's read keys. A plan's `Changes` name **every file** its packs
+produce or remove, each with what Apply does to it (added 2026-10-02): the writer's decisions with identical files
+included (`Unchanged`, no diff), plus the outputs of the units the plan skipped, from their stored state (an owned `o:`
+output as `Kept`, any other as `NotRendered`, with its unit key and manifest hash). Entries carry no content and no
+diff, and `Counts`, `UnitsRendered` and `UnitsSkipped` summarize them so a client never has to count a large list (a job
+record keeps them when it drops the lists). Apply ignores `Unchanged`, `NotRendered` and `Kept` entries: it is fed from
+`Units`, and their paths are already among the units' outputs. A `Kept` file (an existing `once` file or companion) has
+no diff: `GetPlanDiffAsync` returns an empty one, so an owned file is never shown against what a run rendered for it. On
+the reference application (867 files) the entries add about 70 KB to a 1.65 MB first plan and about 300 KB to a 1.47 MB
+incremental one; `Units` (read keys) stays the bulk of `plan.json`. Batches stage every file as
+`.<name>.mq-<batchId>.tmp` in the target folder and rename only after all staging succeeded; a rename failure rolls back
+the renamed files from copies staged beside them.
 
 **15.2 The shared tool catalog and the assistant (status: built 2026-10-03, erratum E44).** The read tools of `maquettiste mcp` and the
 editor's assistant come from one catalog in the engine, so the two cannot drift. `AgentTools` (`Agent/AgentTools.cs`) holds 24 read
@@ -1727,7 +1863,7 @@ Fixtures live in `tests/fixtures/<area>/` (for example `spec-examples/` (the SPE
 | D9 | Synthesized table files hold physical overlays (names, native types, extra columns, indexes, checks) and target exactly one synthesized table: `entity`, `entity` + `attribute` (child table) or `relation` (junction) (the `enum` lookup overlay is retired with the enum lookup-table option, MQ7012); designed and imported tables name none of these (the entity binding lives in `Mapping.Table` only). Mappings hold shapes and strategies | S9 "table files store only overrides"; no field has two homes; the schema enforces it |
 | D10 | File blocks are a `file path content` helper fed by `capture` | Scriban has no user-defined block statements |
 | D11 | Custom delimiters through a translator to `{{ }}` | Scriban 7.5.0 has no delimiter option |
-| D12 | Script helpers must be pure; globals are frozen; determinism tests enforce it | Closure state cannot be frozen by Jint |
+| D12 | Script helpers must be pure; globals are frozen; determinism tests enforce it. Rule files get a scope each and the globals freeze before they run, so a rule's results are cached by its file's hash and the keys it read (next-phase-1-design.md section 5.7) | Closure state cannot be frozen by Jint |
 | D13 | CLI index cache defaults to the OS user cache folder, not `.maquettiste/.cache` | S4: `.cache` holds the journal only; keeps the cache off bind mounts |
 | D14 | Manifest is JSON with one entry per line; `r:` and `o:` hash prefixes (E42 adds `b:` and `bc:` for blocks) | Valid JSON and line-level diffs; region edits and owned files need distinct checks |
 | D15 | Schema snapshots at `.maquettiste/snapshots/<db>.json`, kept only when a pack sets `usesSchemaDiff`; migrations use `once` | No surprise files; each migration is written once and kept |
@@ -1744,7 +1880,7 @@ Fixtures live in `tests/fixtures/<area>/` (for example `spec-examples/` (the SPE
 | D26 | Casing lowercases acronyms (`HTTPServer` → `HttpServer`, `http_server`) | One deterministic rule |
 | D27 | No file-system abstraction, logging package or command-line library | Fewer dependencies (host-contracts 2); real temp dirs test symlinks honestly |
 | D28 | `generate --roots` added to S17's options (removed 2026-10-02, E42) | S17's CI row runs built and committed roots separately |
-| D29 | `once` and companion files are never deleted; orphaned ones leave the manifest | The team owns them (S12) |
+| D29 | `once` and companion files are never deleted; a `once` file of a pack that still exists keeps its manifest entry while it is on disk, even when no run produces it (amended 2026-10-31, next-phase-1-design.md 3.2); other orphaned ones leave the manifest | The team owns them (S12); earlier migrations stay owned |
 | D30 | Bench uses a fanout pack to reach 100,000 files and stage barriers for per-stage timings | The two example packs alone emit about 40,000 files; overlapped stages have no clean per-stage wall time |
 | D31 | The `$schema` property is `SchemaPath` in C# on every document record | `Table`, `View` and `Sequence` already have a `Schema` reference; one name for both would collide in JSON |
 | D32 | The tag vocabulary's declared tags are `definitions`, not `tags` | `tags` is already the element's own tag list (S5) |

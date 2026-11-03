@@ -350,7 +350,7 @@ export class MockGeneration {
           for (const o of view.objects ?? [])
             units.push({ pack: ddl, unit: "sql-object", elementId: o.id, unitKey: `${ddl}/sql-object:${o.id}`, files: [renderSqlObject(view, o, root)] });
         }
-        // The seed script of every database (the unit is "select databases"), with the rows of the types stored as
+        // The seed script of every database (the unit is "each database"), with the rows of the types stored as
         // lookup tables there.
         units.push({
           pack: ddl,
@@ -398,10 +398,11 @@ export class MockGeneration {
     const errors = this.model.validate().diagnostics.filter((d) => d.severity === "error");
     if (errors.length) return { files: [], diagnostics: errors, readKeys: [], elapsedMs: 0 };
     const found = this.renderUnits([pack]).find((u) => u.unit === unit && u.elementId === elementId);
-    // An object's each-<kind> unit whose template writes nothing for the element (sql-ddl with objectScripts off).
+    // An each-<kind> unit whose template writes nothing here for the element: an object's script with sql-ddl's objectScripts
+    // off, or a database unit the mock does not model (sql-ddl's migration, seed-environments and object-environments).
     const scope = manifest.units.find((u) => u.id === unit)?.for ?? "";
     const kindOf = elementId ? this.model.docs().get(elementId)?.kind : undefined;
-    const objectScopes = ["each view", "each sequence", "each routine", "each database type", "each sql object"];
+    const objectScopes = ["each view", "each sequence", "each routine", "each database type", "each sql object", "each database"];
     if (!found && objectScopes.includes(scope) && String(kindOf ?? "").replace(/-/g, " ") === scope.slice(5))
       return { files: [], diagnostics: [], readKeys: [`e:${elementId}`], elapsedMs: 1 };
     if (!found) {
@@ -478,6 +479,10 @@ export class MockGeneration {
       includeDiffs: false,
       lock: "wait",
       stageBarriers: false,
+      against: input.against ?? null,
+      // Echoed as the server does; the editor sends neither filter, so the mock plans every unit.
+      units: input.units ?? null,
+      elements: input.elements ?? null,
     };
   }
 

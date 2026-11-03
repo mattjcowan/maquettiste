@@ -80,9 +80,12 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
 - Orphans are deferred to the end of the stream, because a later pack may still produce the path (a file moving from an earlier
   pack to a later one is then neither deleted nor rewritten, and dry run and apply agree). Once every pack is closed, an orphan
   that some pack produced, or that on a case-insensitive disk is the same file as a path produced under other case, is dropped
-  without touching the file; the others are deleted or kept per §12.3. In apply mode emptied folders are pruned, and each pack
-  that lost an entry saves its manifests again and appends a second `pack` line. A run stopped before this step leaves those
-  orphans listed in the manifest; the next run handles them.
+  without touching the file; the others are deleted or kept per §12.3. An owned orphan of a pack of the run, outside a
+  companion, whose file is on disk is `Kept` with its entry (a `once` file stays owned while it exists:
+  next-phase-1-design.md section 3.2, amending D29); other owned orphans are `OrphanedOwned` (entry dropped, file left).
+  In apply mode emptied folders are pruned, and each pack that lost an entry saves its manifests again and appends a
+  second `pack` line. A run stopped before this step leaves those orphans listed in the manifest; the next run handles
+  them.
 - Case-only renames (`db/Invoice.sql` becoming `db/invoice.sql`): when a produced path has no exact entry but the disk resolves
   it to the file of an entry of the same pack spelled with other case (checked by listing the folder, so only on a
   case-insensitive disk), that entry is `M` for the decision, so the file is not an untracked file in the way. In apply mode,
@@ -120,6 +123,8 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
   100 ms and observes cancellation.
 - Diff: GNU-style unified diff (`--- a/<path>`, `+++ b/<path>`, `\ No newline at end of file`); common prefix and suffix trimmed,
   Myers for the middle, and a middle needing more than 2,000 edits is shown as one replacement to bound memory.
+  When either side is not text (not strict UTF-8, or holding a NUL byte: a copy unit's binary file,
+  next-phase-1-design.md section 5.4), the diff is the one line `Binary file <path> differs`.
 
 ## Performance notes (WP, gate 1)
 

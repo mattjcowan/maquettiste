@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Tests.Loading;
 
@@ -22,11 +23,14 @@ internal sealed class BillingStore : IAsyncDisposable
 
     public ModelSnapshot Model => Store.Current!;
 
-    public static async Task<BillingStore> OpenAsync(bool load = true)
+    /// <summary>Opens a store over a temporary copy of billing.</summary>
+    /// <param name="load">Whether to load it.</param>
+    /// <param name="validate">Whether writes run the engine's real validator instead of the harness's fake one.</param>
+    public static async Task<BillingStore> OpenAsync(bool load = true, bool validate = false)
     {
         var harness = new LoaderHarness();
         harness.CopyFixture("models", "billing");
-        var store = harness.NewStore();
+        var store = validate ? new ModelStore(harness.Options, harness.Services() with { Validator = EngineServices.Create(harness.Options).Validator }) : harness.NewStore();
         var result = new BillingStore(harness, store);
         store.OnChanged((changes, _) =>
         {

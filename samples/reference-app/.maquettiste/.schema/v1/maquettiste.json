@@ -22,7 +22,8 @@
     "validation",
     "limits",
     "explorer",
-    "assistant"
+    "assistant",
+    "migrations"
   ],
   "properties": {
     "$schema": {
@@ -324,14 +325,17 @@
       ],
       "properties": {
         "scriptTimeoutMs": {
+          "description": "The wall-clock limit of one script call, in milliseconds. 0 turns the clock off, so results do not depend on the machine's load (use it in CI); the statement limit still bounds every call, and a regular expression match keeps a 250 ms bound.",
           "type": "integer",
           "default": 2000,
-          "minimum": 1
+          "minimum": 0
         },
         "scriptStatements": {
+          "description": "The statement limit of one script call, at most 2,000,000,000.",
           "type": "integer",
           "default": 5000000,
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 2000000000
         },
         "scriptRecursion": {
           "type": "integer",
@@ -459,6 +463,27 @@
           "type": "integer",
           "default": 2000000,
           "minimum": 1000
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "migrations": {
+      "description": "Migration facts (model/databases/<db>/migrations/open/): whether writes record them, and where each PostgreSQL database keeps its migration ledger.",
+      "type": "object",
+      "x-order": ["record", "ledgerSchema"],
+      "properties": {
+        "record": {
+          "description": "automatic: every write that reshapes a database records its facts. off: no write records facts; validate --against still checks.",
+          "enum": ["automatic", "off"],
+          "default": "automatic"
+        },
+        "ledgerSchema": {
+          "description": "Schema of the migration ledger tables (contract, applied_fact, applied_object) in each PostgreSQL database; quoted where it is a reserved word. MQ4067 when a database's modeled objects use it too.",
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "maxLength": 63,
+          "default": "migration_ledger"
         }
       },
       "additionalProperties": false,

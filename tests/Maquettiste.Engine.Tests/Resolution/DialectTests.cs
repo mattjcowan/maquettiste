@@ -50,8 +50,10 @@ public sealed class DialectTests
         {
             var map = DialectTypeMaps.Default(dialect);
             Assert.Equal(BuiltinTypes.All.Order(StringComparer.Ordinal), map.Keys.Where(k => !k.Contains(':', StringComparison.Ordinal)).Order(StringComparer.Ordinal));
-            // Variant entries: fixed-length strings and binaries, Unicode and single-byte strings and texts.
-            Assert.All(map.Keys.Where(k => k.Contains(':', StringComparison.Ordinal)), k => Assert.Contains(k, (string[])
+            // Variant entries: fixed-length strings and binaries, Unicode and single-byte strings and texts; and the range and
+            // multirange entries by subtype (DialectTypeMaps.RangeKey, section 3.4).
+            static bool Range(string k) => k.StartsWith("range:", StringComparison.Ordinal) || k.StartsWith("multirange:", StringComparison.Ordinal);
+            Assert.All(map.Keys.Where(k => k.Contains(':', StringComparison.Ordinal) && !Range(k)), k => Assert.Contains(k, (string[])
                 ["string:fixed", "string:unicode", "string:ansi", "string:fixed:unicode", "string:fixed:ansi", "text:unicode", "text:ansi", "binary:fixed"]));
             Assert.Contains("string:fixed", map.Keys);
             Assert.Contains("binary:fixed", map.Keys);

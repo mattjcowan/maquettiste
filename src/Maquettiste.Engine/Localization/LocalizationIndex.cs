@@ -1,8 +1,11 @@
 using System.Collections.Frozen;
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
@@ -64,8 +67,17 @@ public sealed record LocaleShardDocument(LocaleShard Shard, string Path, string 
 public sealed record LocalizableNode(string Id, string OwnerId, string Kind, string Scope, string? DisplayName, string? PluralName, string? Label,
     string? Description, bool HasPluralField, bool ExplicitPluralOnToOne)
 {
+    /// <summary>The node's own texts of its translatable custom properties, ordinal by name (next-phase-1-design.md section 4.4): the
+    /// non-empty strings its <c>properties</c> holds under a name that <see cref="TranslatableProperties"/> lists. A stereotype's
+    /// <c>defaultProperties</c> text is not the node's own and is not translated.</summary>
+    public IReadOnlyDictionary<string, string> PropertyTexts { get; init; } = ImmutableSortedDictionary.Create<string, string>(StringComparer.Ordinal);
+
+    /// <summary>The property names the schemas that apply to the node mark <c>x-translatable</c>; a translation of any other
+    /// property is an orphan.</summary>
+    public IReadOnlySet<string> TranslatableProperties { get; init; } = FrozenSet<string>.Empty;
+
     /// <summary>The source text of a field, or <see langword="null"/> when the node has no such field (or no default text).</summary>
-    /// <param name="field">The field name.</param>
+    /// <param name="field">The field name: a standard field or <c>properties/&lt;name&gt;</c>.</param>
     /// <returns>The text.</returns>
     public string? Source(string field) => field switch
     {
@@ -73,11 +85,11 @@ public sealed record LocalizableNode(string Id, string OwnerId, string Kind, str
         LocalizationIndex.PluralNameField => PluralName,
         LocalizationIndex.LabelField => Label,
         LocalizationIndex.DescriptionField => Description,
-        _ => null,
+        _ => LocalizationIndex.PropertyNameOf(field) is { } name ? PropertyTexts.GetValueOrDefault(name) : null,
     };
 
     /// <summary>Whether a translation of the field may exist for the node.</summary>
-    /// <param name="field">The field name.</param>
+    /// <param name="field">The field name: a standard field or <c>properties/&lt;name&gt;</c>.</param>
     /// <returns><see langword="true"/> when allowed.</returns>
     public bool Allows(string field) => field switch
     {
@@ -85,10 +97,11 @@ public sealed record LocalizableNode(string Id, string OwnerId, string Kind, str
         LocalizationIndex.PluralNameField => HasPluralField,
         LocalizationIndex.LabelField => Kind == "reference-row",
         LocalizationIndex.DescriptionField => true,
-        _ => false,
+        _ => LocalizationIndex.PropertyNameOf(field) is { } name && TranslatableProperties.Contains(name),
     };
 
-    /// <summary>The fields completeness expects: display name, plural (where marked), label (rows), description (when the default has one).</summary>
+    /// <summary>The fields completeness expects: display name, plural (where marked), label (rows), description (when the default has one),
+    /// then each property text the node has, ordinal by name.</summary>
     public IEnumerable<string> ExpectedFields()
     {
         if (DisplayName is not null)
@@ -99,6 +112,8 @@ public sealed record LocalizableNode(string Id, string OwnerId, string Kind, str
             yield return LocalizationIndex.LabelField;
         if (Description is not null)
             yield return LocalizationIndex.DescriptionField;
+        foreach (var name in PropertyTexts.Keys.Order(StringComparer.Ordinal))
+            yield return LocalizationIndex.PropertyFieldPrefix + name;
     }
 }
 
@@ -144,8 +159,125 @@ public sealed class LocalizationIndex
     /// <summary><c>description</c>.</summary>
     public const string DescriptionField = "description";
 
-    /// <summary>The translatable fields in canonical order.</summary>
+    /// <summary>The standard translatable fields in canonical order.</summary>
     public static readonly IReadOnlyList<string> Fields = [DisplayNameField, PluralNameField, LabelField, DescriptionField];
+
+    /// <summary>The prefix of a property text's field: <c>properties/&lt;name&gt;</c> (next-phase-1-design.md section 4.4).</summary>
+    public const string PropertyFieldPrefix = "properties/";
+
+    /// <summary>The fields of a node: its standard fields, then <c>properties/&lt;name&gt;</c> for each translatable property, ordinal.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>The fields <see cref="LocalizableNode.Allows"/> accepts.</returns>
+    public static IEnumerable<string> FieldsOf(LocalizableNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        foreach (var field in Fields)
+        {
+            if (node.Allows(field))
+                yield return field;
+        }
+
+        foreach (var name in node.TranslatableProperties.Order(StringComparer.Ordinal))
+            yield return PropertyFieldPrefix + name;
+    }
+
+    /// <summary>The fields an entry holds: its standard fields in canonical order, then its property texts, ordinal by name.</summary>
+    /// <param name="entry">The entry.</param>
+    /// <returns>The fields.</returns>
+    public static IEnumerable<string> FieldsIn(TranslationEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        foreach (var field in Fields)
+        {
+            if (Has(entry, field))
+                yield return field;
+        }
+
+        foreach (var (name, text) in entry.Properties.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            if (text is { Length: > 0 })
+                yield return PropertyFieldPrefix + name;
+        }
+    }
+
+    /// <summary>Whether a text is a translatable field: a standard field or <c>properties/&lt;identifier&gt;</c>.</summary>
+    /// <param name="field">The text.</param>
+    /// <returns><see langword="true"/> for a field.</returns>
+    public static bool IsField(string field) =>
+        field is not null && (Fields.Contains(field, StringComparer.Ordinal) || PropertyNameOf(field) is not null);
+
+    /// <summary>The property name of a <c>properties/&lt;identifier&gt;</c> field, or <see langword="null"/> for any other text.</summary>
+    /// <param name="field">The field.</param>
+    /// <returns>The name.</returns>
+    internal static string? PropertyNameOf(string field)
+    {
+        if (!field.StartsWith(PropertyFieldPrefix, StringComparison.Ordinal) || field.Length == PropertyFieldPrefix.Length)
+            return null;
+        var name = field.AsSpan(PropertyFieldPrefix.Length);
+        if (!(char.IsAsciiLetter(name[0]) || name[0] == '_'))
+            return null;
+        foreach (var c in name)
+        {
+            if (!(char.IsAsciiLetterOrDigit(c) || c == '_'))
+                return null;
+        }
+
+        return field[PropertyFieldPrefix.Length..];
+    }
+
+    /// <summary>The value of a field in an entry's JSON (a property text inside its <c>properties</c> object), or <see langword="null"/>.</summary>
+    /// <param name="entry">The entry object.</param>
+    /// <param name="field">The field.</param>
+    /// <returns>The value.</returns>
+    internal static JsonNode? FieldValue(JsonObject entry, string field) =>
+        PropertyNameOf(field) is { } name ? (entry["properties"] as JsonObject)?[name] : entry[field];
+
+    /// <summary>Sets a field's text in an entry's JSON, or removes it when <paramref name="value"/> is <see langword="null"/> (an emptied
+    /// <c>properties</c> object goes too).</summary>
+    /// <param name="entry">The entry object.</param>
+    /// <param name="field">The field.</param>
+    /// <param name="value">The text, or <see langword="null"/>.</param>
+    internal static void SetFieldValue(JsonObject entry, string field, string? value)
+    {
+        if (PropertyNameOf(field) is not { } name)
+        {
+            if (value is null)
+                entry.Remove(field);
+            else
+                entry[field] = value;
+            return;
+        }
+
+        var properties = entry["properties"] as JsonObject;
+        if (value is null)
+        {
+            properties?.Remove(name);
+            if (properties is { Count: 0 })
+                entry.Remove("properties");
+            return;
+        }
+
+        if (properties is null)
+            entry["properties"] = properties = new JsonObject();
+        properties[name] = value;
+    }
+
+    /// <summary>Removes a field and its source fingerprint from an entry's JSON.</summary>
+    /// <param name="entry">The entry object.</param>
+    /// <param name="field">The field.</param>
+    /// <returns><see langword="true"/> when the entry holds nothing but <c>src</c> afterwards (so it goes).</returns>
+    internal static bool RemoveField(JsonObject entry, string field)
+    {
+        SetFieldValue(entry, field, null);
+        if (entry["src"] is JsonObject src)
+        {
+            src.Remove(field);
+            if (src.Count == 0)
+                entry.Remove("src");
+        }
+
+        return !entry.Any(kv => kv.Key != "src");
+    }
 
     /// <summary>The scope of the elements with no package.</summary>
     public const string RootScope = "root";
@@ -163,10 +295,11 @@ public sealed class LocalizationIndex
     private readonly ConcurrentDictionary<(string, string), string> _ownerHashes = new();
     private readonly ConcurrentDictionary<(string Id, string Field), string> _sourceHashes = new();
 
-    // Set by BuildNodes before the node map is published: the nodes in map order and each node's source fingerprints (by field
-    // index in Fields, null where the field has no source), computed in parallel once per snapshot.
+    // Set by BuildNodes before the node map is published: the nodes in map order and each node's expected fields with their source
+    // fingerprints (the standard fields first, then property fields ordinal; null where the field has no source text), computed in
+    // parallel once per snapshot.
     private LocalizableNode[] _nodeList = [];
-    private string?[][] _nodeHashes = [];
+    private (string Field, string? Hash)[][] _nodeHashes = [];
 
     internal LocalizationIndex(ModelSnapshot model, IReadOnlyList<LocaleShardDocument> shards)
     {
@@ -301,7 +434,7 @@ public sealed class LocalizationIndex
             PluralNameField => entry.PluralName,
             LabelField => entry.Label,
             DescriptionField => entry.Description is { } d ? d.Text ?? (d.File is { } f && shard.Sidecars.TryGetValue(f, out var s) ? s.Text : null) : null,
-            _ => null,
+            _ => PropertyNameOf(field) is { } name && entry.Properties.TryGetValue(name, out var text) && text.Length > 0 ? text : null,
         };
     }
 
@@ -312,7 +445,7 @@ public sealed class LocalizationIndex
         PluralNameField => entry.PluralName is { Length: > 0 },
         LabelField => entry.Label is { Length: > 0 },
         DescriptionField => entry.Description is not null,
-        _ => false,
+        _ => PropertyNameOf(field) is { } name && entry.Properties.TryGetValue(name, out var text) && text is { Length: > 0 },
     };
 
     /// <summary>The state of a node's field in a locale (section 3.3): missing, stale (its <c>src</c> hash differs) or translated.</summary>
@@ -420,18 +553,13 @@ public sealed class LocalizationIndex
                 paths[node.Scope] = path = ShardPath(l, node.Scope);
             var c = counts.TryGetValue(path, out var known) ? known : new Counts(node.Scope, 0, 0, 0, 0);
             TranslationEntry? entry = map is not null && map.TryGetValue(node.Id, out var found) ? found.Entry : null;
-            var hashes = _nodeHashes[n];
-            for (var f = 0; f < Fields.Count; f++)
+            foreach (var (field, hash) in _nodeHashes[n])
             {
-                var source = f switch { 0 => node.DisplayName, 1 => node.HasPluralField ? node.PluralName ?? "" : null, 2 => node.Label, _ => node.Description };
-                if (source is null)
-                    continue; // not an expected field (ExpectedFields)
-                var field = Fields[f];
+                // The expected fields only (ExpectedFields), with the fingerprint of their source text when there is one.
                 var (expected, translated, missing, stale) = (c.Expected + 1, c.Translated, c.Missing, c.Stale);
                 if (entry is null || !Has(entry, field))
                     missing++;
-                else if (entry.Src.TryGetValue(field, out var src) && node.Source(field) is { } text
-                    && !string.Equals(src, hashes[f] ?? SourceHash(text), StringComparison.Ordinal))
+                else if (hash is not null && entry.Src.TryGetValue(field, out var src) && !string.Equals(src, hash, StringComparison.Ordinal))
                     stale++;
                 else
                     translated++;
@@ -463,6 +591,14 @@ public sealed class LocalizationIndex
                 hash.Add(shard.Sidecars.TryGetValue(file, out var sidecar) ? sidecar.Hash : "absent");
             foreach (var field in Fields)
                 hash.Add(entry.Src.GetValueOrDefault(field));
+
+            // Property texts (section 4.4), after the standard fields so an entry without any keeps its hash.
+            var properties = FieldsIn(entry).Where(f => PropertyNameOf(f) is not null).ToList();
+            if (properties.Count == 0)
+                continue;
+            hash.Add(PropertyFieldPrefix).Add(properties.Count.ToString(CultureInfo.InvariantCulture));
+            foreach (var field in properties)
+                hash.Add(field).Add(entry.Properties[PropertyNameOf(field)!]).Add(entry.Src.GetValueOrDefault(field));
         }
 
         return hash.Finish();
@@ -590,6 +726,9 @@ public sealed class LocalizationIndex
         // order, so the map (and its enumeration order) is the one a sequential pass builds.
         var documents = _model.Documents;
         var elementNodes = new LocalizableNode?[documents.Count];
+        // The translatable properties of each holder (section 4.4), per document, merged in document order below.
+        var schemas = _model.PropertySchemas;
+        var holderSlots = schemas.HasTranslatable ? new List<(string Id, PropertyTranslation Found)>?[documents.Count] : null;
         Parallel.For(0, documents.Count, i =>
         {
             var document = documents[i];
@@ -600,14 +739,32 @@ public sealed class LocalizationIndex
             var description = element.Description is { } d ? d.Text ?? document.SidecarText ?? "file:" + d.File : null;
             elementNodes[i] = new LocalizableNode(element.Id, element.Id, element.KindName, ScopeOf(element), display, element.PluralName ?? display, null,
                 description, true, false);
+            if (holderSlots is null)
+                return;
+            foreach (var host in PropertyHost.Of(element, _model.PropertyKeys(element)))
+            {
+                if (PropertyTranslation.Of(schemas, host) is { } found)
+                    (holderSlots[i] ??= []).Add((host.Id, found));
+            }
         });
+        var holders = new Dictionary<string, PropertyTranslation>(StringComparer.Ordinal);
+        foreach (var slot in holderSlots ?? [])
+        {
+            foreach (var (id, found) in slot ?? [])
+                holders.TryAdd(id, found);
+        }
+
+        LocalizableNode WithProperties(LocalizableNode node) => holders.TryGetValue(node.Id, out var found)
+            ? node with { PropertyTexts = found.Texts, TranslatableProperties = found.Names }
+            : node;
+
         var scopes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var node in elementNodes)
         {
             if (node is null)
                 continue;
             scopes[node.Id] = node.Scope;
-            nodes[node.Id] = node;
+            nodes[node.Id] = WithProperties(node);
         }
 
         var entries = _model.Index.Entries.Values.ToArray();
@@ -617,19 +774,16 @@ public sealed class LocalizationIndex
         foreach (var node in subNodes)
         {
             if (node is not null)
-                nodes[node.Id] = node;
+                nodes[node.Id] = WithProperties(node);
         }
 
-        // The source fingerprints every locale compares against, once per node and field.
+        // The source fingerprints every locale compares against, once per node and expected field.
         var list = nodes.Values.ToArray();
-        var hashes = new string?[list.Length][];
+        var hashes = new (string Field, string? Hash)[list.Length][];
         Parallel.For(0, list.Length, i =>
         {
             var node = list[i];
-            var row = new string?[Fields.Count];
-            for (var f = 0; f < Fields.Count; f++)
-                row[f] = node.Source(Fields[f]) is { } text ? SourceHash(text) : null;
-            hashes[i] = row;
+            hashes[i] = [.. node.ExpectedFields().Select(f => (f, node.Source(f) is { } text ? SourceHash(text) : null))];
         });
         _nodeList = list;
         _nodeHashes = hashes;
@@ -715,4 +869,31 @@ public sealed class LocalizationIndex
 
     private static string? String(JsonElement node, string property) =>
         node.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    /// <summary>A holder's translatable property names and its own texts of them (section 4.4).</summary>
+    private sealed record PropertyTranslation(IReadOnlyDictionary<string, string> Texts, IReadOnlySet<string> Names)
+    {
+        /// <summary>The names the schemas that apply to the holder mark <c>x-translatable</c> and the holder's own non-empty strings
+        /// under them, or <see langword="null"/> when no applicable schema marks one.</summary>
+        public static PropertyTranslation? Of(PropertySchemaSet schemas, PropertyHost host)
+        {
+            HashSet<string>? names = null;
+            foreach (var source in schemas.For(host))
+            {
+                foreach (var name in source.Translatable)
+                    (names ??= new HashSet<string>(StringComparer.Ordinal)).Add(name);
+            }
+
+            if (names is null)
+                return null;
+            var texts = ImmutableSortedDictionary.CreateBuilder<string, string>(StringComparer.Ordinal);
+            foreach (var name in names)
+            {
+                if (host.Properties.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text)
+                    texts[name] = text;
+            }
+
+            return new PropertyTranslation(texts.ToImmutable(), names.ToFrozenSet(StringComparer.Ordinal));
+        }
+    }
 }

@@ -16,10 +16,11 @@ For a database `main` (PostgreSQL, schema `billing`) with a table `invoices`:
 | Unit | Mode | For | Writes |
 | --- | --- | --- | --- |
 | `table` | `overwrite` | `each table` | `main/billing/tables/invoices.sql`: `CREATE TABLE` with columns, primary key, unique constraints, foreign keys and checks, then its indexes and comments |
-| `schema` | `overwrite` | `select databases` | `main/schema.sql`: schemas, SQL objects that run before the tables, database types, sequences, every table in foreign-key dependency order, then routines and views, then the other SQL objects (see DDL order) |
-| `migration` | `once` | `select databases` | `main/migrations/0001.sql`, `0002.sql`, …: one script per schema revision, from `schema_diff` |
-| `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of table seeds and of seeds of entities bound to a table, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
-| `seed-environments` | `overwrite` (file blocks) | `select databases` | `main/seed.<environment>.sql` for each environment the `environments` parameter names and some seed of the database belongs to: those seeds' rows, to run after `seed.sql` |
+| `schema` | `overwrite` | `each database` | `main/schema.sql`: schemas, SQL objects that run before the tables, database types, sequences, every table in foreign-key dependency order, then routines and views, then the other SQL objects (see DDL order) |
+| `migration` | `once` | `each database` | `main/migrations/0001-<key>.sql`, `0002-<key>.sql`, …: one script per schema revision, named by revision and content, from `schema_diff` and the migration facts that render with it (see Migration facts) |
+| `seed` | `regions` | `each database` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of table seeds, of seeds of entities bound to a table and of reference types bound to one, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
+| `seed-environments` | `overwrite` (file blocks) | `each database` | `main/seed.<environment>.sql` for each environment the `environments` parameter names and some seed of the database belongs to: those seeds' rows, to run after `seed.sql` |
+| `object-environments` | `overwrite` (file blocks) | `each database` | `main/objects.<environment>.sql` for each environment the `environments` parameter names and some SQL object of the database runs in: those objects' statements, to run on every deploy after `schema.sql` or the migrations and before the seed scripts (see SQL object environments and run-once) |
 | `process-tables` | file blocks | `each process` | `main/processes/purchase-approval.sql`: instance, history and gate audit tables of a process, one script per database; only when `processTables` is `true` (see Process tables) |
 | `view` | file blocks | `each view` | `main/billing/views/outstanding_invoices.sql`: the view's `CREATE VIEW`; only when `objectScripts` is `true` (see Object scripts) |
 | `sequence` | file blocks | `each sequence` | `main/billing/sequences/invoice_number_seq.sql`: the sequence's `CREATE SEQUENCE`; only when `objectScripts` is `true` |
@@ -43,7 +44,10 @@ Database folders are the kebab-case database name; the schema folder is left out
   `string:fixed:ansi`, `text:ansi`, `binary:fixed`...): `nvarchar`/`varchar`/`nchar`/`char` on SQL Server, `char` on PostgreSQL,
   `character set utf8mb4` on MySQL, `nvarchar2`/`nchar` on Oracle. SQL Server defaults are named constraints, the column's
   `defaultName` or `df_<table>_<column>`, so migrations can find them: a migration drops the default before it drops or alters
-  the column, and renames it with its column, its table or its `defaultName`.
+  the column, and renames it with its column, its table or its `defaultName`. A `range` or `multirange` column writes
+  the native type the resolver gives it from its `subtype`: PostgreSQL's `int4range`, `int8range`, `numrange`,
+  `daterange`, `tsrange`, `tstzrange` or their multiranges, and the dialect's text type elsewhere (MQ4056); its default
+  is the range's text form as a literal (`DEFAULT '[1,10)'`).
 - **Constraints**: `CONSTRAINT <name> PRIMARY KEY` (SQL Server `CLUSTERED` or `NONCLUSTERED` from the key's `clustered`),
   `UNIQUE` (`UNIQUE NULLS NOT DISTINCT` on PostgreSQL 15 and later for a constraint with `nullsNotDistinct`; MQ4056 elsewhere),
   `FOREIGN KEY … REFERENCES … ON DELETE/ON UPDATE` (SQL Server has no `RESTRICT`, `NO ACTION` behaves the same there; Oracle has
@@ -52,13 +56,15 @@ Database folders are the kebab-case database name; the schema folder is left out
   left out elsewhere, MQ4056) with `DEFERRABLE INITIALLY DEFERRED|IMMEDIATE` on PostgreSQL,
   SQLite and Oracle, and `CHECK` with the dialect's expression (a check's `column` marks it as a column check; it is written in
   the table like any other).
-- **Indexes**: unique, descending columns, expressions (an index column's `expression`, per dialect, written in parentheses:
-  PostgreSQL, SQLite, Oracle and MySQL 8.0.13 and later, not MariaDB; SQL Server indexes no expression, so it leaves the index
-  out, MQ4056), key prefix lengths (an index column's `length`, MySQL, which needs one on a text or blob column and otherwise
-  leaves the index out, MQ4056), `INCLUDE` (PostgreSQL, SQL Server), partial `WHERE` (PostgreSQL, SQL Server, SQLite), `USING
-  btree|hash|gin|gist` (PostgreSQL; MySQL `USING BTREE|HASH`) and clustered (SQL Server `CLUSTERED`, with the primary key made
-  `NONCLUSTERED` unless it says otherwise; PostgreSQL `CLUSTER … USING`). MySQL declares a table's indexes inside its `CREATE
-  TABLE`. What a dialect lacks is left out, and validation warns about it (MQ4056).
+- **Indexes**: unique, descending columns, expressions (an index column's `expression`, per dialect, written in
+  parentheses: PostgreSQL, SQLite, Oracle and MySQL 8.0.13 and later, not MariaDB; SQL Server indexes no expression, so
+  it leaves the index out, MQ4056), key prefix lengths (an index column's `length`, MySQL, which needs one on a text or
+  blob column and otherwise leaves the index out, MQ4056), `NULLS FIRST|LAST` after the direction (an index column's
+  `nulls`, PostgreSQL; the resolver keeps it only when it differs from the direction's default, and other dialects leave
+  it out, MQ4056), `INCLUDE` (PostgreSQL, SQL Server), partial `WHERE` (PostgreSQL, SQL Server, SQLite), `USING
+  btree|hash|gin|gist` (PostgreSQL; MySQL `USING BTREE|HASH`) and clustered (SQL Server `CLUSTERED`, with the primary
+  key made `NONCLUSTERED` unless it says otherwise; PostgreSQL `CLUSTER … USING`). MySQL declares a table's indexes
+  inside its `CREATE TABLE`. What a dialect lacks is left out, and validation warns about it (MQ4056).
 - **Comments**: `COMMENT ON` (PostgreSQL, Oracle), `sp_addextendedproperty` `MS_Description` (SQL Server), `COMMENT` in the
   column and table definitions (MySQL), `--` comments (SQLite: a table's after the script header, a column's on its own line
   above the column, newlines folded into spaces). Views get theirs too (`COMMENT ON VIEW` on PostgreSQL, `COMMENT ON TABLE` on
@@ -87,7 +93,9 @@ Database folders are the kebab-case database name; the schema folder is left out
   domain's `CHECK` becomes a comment: alias types have none). Where the dialect cannot create the type (SQLite; SQL Server for an
   enum, composite or range) the script says so and columns of the type use what the resolver gives them (a domain's base, an
   enum's string).
-- **SQL objects**: the statements of the dialect as written (a trigger, a grant, an extension), or a comment when there are none.
+- **SQL objects**: the statements of the dialect as written (a trigger, a grant, an extension), or a comment when there
+  are none. An object with `environments` runs only in its environment scripts, and a run-once object (`apply: once`)
+  inside a ledger guard (see SQL object environments and run-once).
 
 Identifiers are quoted with `sql_quote` according to the database's `quoting` setting (or the `quoting` parameter).
 
@@ -119,6 +127,7 @@ later migrations). "note" means the script says what to do by hand.
 | Column: add, drop, rename | yes | yes | yes | yes (rebuild when ADD cannot) | yes |
 | Column: type, length, precision, scale, collation | `ALTER COLUMN TYPE` (`USING` when the logical or native type changes; computed columns that read it dropped and added back) | `ALTER COLUMN` (dependents dropped and added back: defaults, uniques, checks, indexes, computed columns, the primary key, foreign keys both ways) | `MODIFY COLUMN` (foreign keys on and to it dropped and added back) | rebuild | `MODIFY` |
 | Column: narrowing (shorter, fewer digits, Unicode to single-byte, new native type) | TODO with a data-check query | TODO with a data-check query | TODO with a data-check query | not enforced | TODO with a data-check query |
+| Column: range and multirange types | `USING col::text::<type>` between ranges or multiranges, `USING col::<type>` to the multirange of the same subtype, otherwise a TODO and no ALTER | text (MQ4056) | text (MQ4056) | text (MQ4056) | text (MQ4056) |
 | Column or table drop | "Data loss" note | "Data loss" note | "Data loss" note | "Data loss" note | "Data loss" note |
 | Column: nullability | yes | yes | yes | rebuild | yes |
 | Column: default (literal, SQL, sequence, expression) | yes | named constraint (dropped and added on its own when only the default changes) | yes (`('x')` on text) | rebuild | yes |
@@ -154,19 +163,20 @@ Truncating a table is data, not schema, so the pack writes no `TRUNCATE`. Readin
 constraints and indexes) is an importer's job, not a template's: the pack only writes DDL from the model.
 ## Migrations
 
-The pack sets `usesSchemaDiff`, so the engine keeps `.maquettiste/snapshots/<database>.json` and gives templates the difference
-between that snapshot and the current model as `schema_diff.<database>`. A generate that changes the physical model writes
-`migrations/<revision>.sql` once (mode `once`) and advances the snapshot. The first migration creates everything; later ones hold
-the changes of every object kind (see Dialect coverage): schemas added, renamed and dropped; tables added, dropped, renamed, moved
-to another schema and recommented; columns added, dropped, renamed, retyped, made nullable or not, given a new default, default
-name, collation, identity or comment; primary keys, unique constraints, checks and foreign keys added, dropped, renamed and
-changed (actions, deferral); indexes added, dropped, renamed and changed; views added, dropped, renamed, recommented and given
-new bodies; sequences added, dropped, renamed, moved and altered (`INCREMENT BY`, `MINVALUE`, `MAXVALUE`, `CYCLE`, `CACHE`, and
-on PostgreSQL `AS` and `START WITH`), in one transaction (Oracle commits each statement). Statements run in phases so nothing is
-used before it exists: schema renames and new schemas, view drops, table renames and moves, then constraint and index drops and
-renames (foreign keys first), then dropped tables, then column changes, then new tables, then new and changed constraints and
-indexes (foreign keys last), then views, sequences and dropped schemas. A changed constraint or index is dropped in the first
-phase and created again in the last; MySQL, which cannot rename a foreign key or a check, drops and adds it.
+The pack sets `usesSchemaDiff`, so the engine keeps `.maquettiste/snapshots/<database>.json` and gives templates the
+difference between that snapshot and the current model as `schema_diff.<database>`. A generate that changes the physical
+model writes `migrations/<revision>-<key>.sql` once (mode `once`) and advances the snapshot. The first migration creates
+everything; later ones hold the changes of every object kind (see Dialect coverage): schemas added, renamed and dropped;
+tables added, dropped, renamed, moved to another schema and recommented; columns added, dropped, renamed, retyped, made
+nullable or not, given a new default, default name, collation, identity or comment; primary keys, unique constraints,
+checks and foreign keys added, dropped, renamed and changed (actions, deferral); indexes added, dropped, renamed and
+changed; views added, dropped, renamed, recommented and given new bodies; sequences added, dropped, renamed, moved and
+altered (`INCREMENT BY`, `MINVALUE`, `MAXVALUE`, `CYCLE`, `CACHE`, and on PostgreSQL `AS` and `START WITH`), in one
+transaction (Oracle commits each statement). Statements run in phases so nothing is used before it exists: schema
+renames and new schemas, view drops, table renames and moves, then constraint and index drops and renames (foreign keys
+first), then dropped tables, then column changes, then new tables, then new and changed constraints and indexes (foreign
+keys last), then views, sequences and dropped schemas. A changed constraint or index is dropped in the first phase and
+created again in the last; MySQL, which cannot rename a foreign key or a check, drops and adds it.
 
 Each dialect's limits are handled where it has them:
 
@@ -220,6 +230,16 @@ type, since the cast keeps each value as it is, so integer ids that become codes
 `NOT NULL` column without a default, a changed sequence start or type where the dialect cannot alter it, a changed identity or
 computed column on SQL Server, the narrowing changes above.
 
+Range columns convert with the casts PostgreSQL has (`range_using` in `_migration.scriban`): a range or multirange of
+another subtype through its text form (`USING seats::text::int8range`: no direct cast exists, and the text forms match),
+a range to the multirange of its own subtype with PostgreSQL's cast (`USING stay::datemultirange`). A multirange to a
+range, or a range to a multirange of another subtype, has no cast (`range_merge` keeps only the outer bounds), so the
+migration writes a TODO naming the change and no ALTER: give a `change-type` migration fact the conversion expression. A
+fact's plain `cast` between range types goes through the same `range_using`, and one with no cast is not applied. A
+column that moves between the older idiom, `string` with `nativeType: tstzrange`, and a range keyword of the same native
+type keeps its native type, so the migration writes nothing for it (the diff still reports the keyword, length and
+subtype).
+
 **Run each migration so it stops at its first error.** A migration is one transaction, but a client that carries on after a failed
 statement reaches the `COMMIT` with the statements before and after it applied: run PostgreSQL migrations with `psql -v
 ON_ERROR_STOP=1`, SQL Server ones with `sqlcmd -b`, and SQLite ones with `sqlite3 -bail` (or set `sqliteBail`, which writes the
@@ -228,20 +248,87 @@ and each SQLite migration says how to run it instead). MySQL commits each DDL st
 (`mysql` stops at the first error unless given `--force`). The SQLite foreign key check after a rebuild and SQL Server's checks
 roll back on their own.
 
-Migrations are yours once written: review them, edit them and commit them; the engine never overwrites them. Each run also
-re-emits every earlier revision as a short placeholder; because an existing `once` file is always kept, the placeholder is only
-written if you delete a migration, and it keeps the committed migrations owned by the pack, so `generate --check` does not report
-them as orphaned after the snapshot has moved on.
+Migrations are yours once written: review them, edit them and commit them; the engine never overwrites them. Nothing
+renders while the diff is empty, and the migrations written earlier stay owned by the pack while they are on disk (a
+`once` file is kept whether or not a run produces it), so `generate --check` reports them neither as drift nor as
+orphaned after the snapshot has moved on. Migrations named `0001.sql`, `0002.sql`, … by earlier versions of the pack
+stay owned the same way.
 
 A dropped or moved table, view or sequence is named with the schema it had (the diff records it).
 
-Routines, database types and SQL objects are part of the diff too (`schema_diff.<database>.routines`, `.types`, `.objects`, each
-change with its old and new kind). A changed or dropped routine is dropped (`DROP FUNCTION` or `DROP PROCEDURE IF EXISTS`) before
-the table changes and created again after them; a new database type is created before the tables, a renamed one is renamed
-(PostgreSQL `ALTER DOMAIN|TYPE ... RENAME TO`, SQL Server `sp_rename ... 'USERDATATYPE'`), a changed one gets a `-- TODO` with its
-new definition (a type in use cannot simply be replaced), and a dropped one is dropped last, once no table uses it. A SQL object's
-statements are opaque: a new or changed one runs again in its phase, and a changed or dropped one gets a `-- TODO` asking the
-reviewer to drop the old object by hand.
+Routines, database types and SQL objects are part of the diff too (`schema_diff.<database>.routines`, `.types`,
+`.objects`, each change with its old and new kind). A changed or dropped routine is dropped (`DROP FUNCTION` or `DROP
+PROCEDURE IF EXISTS`) before the table changes and created again after them; a new database type is created before the
+tables, a renamed one is renamed (PostgreSQL `ALTER DOMAIN|TYPE ... RENAME TO`, SQL Server `sp_rename ...
+'USERDATATYPE'`), a changed one gets a `-- TODO` with its new definition (a type in use cannot simply be replaced), and
+a dropped one is dropped last, once no table uses it. A SQL object's statements are opaque: a new or changed one runs
+again in its phase, and a changed or dropped one gets a `-- TODO` asking the reviewer to drop the old object by hand. A
+changed object with `environments` gets no statements (its environment scripts apply it) and a TODO naming its
+environments; a changed run-once object runs inside its guard, so it does not run again where the ledger records it, and
+a comment says so. An object switched from `converge` to `once` has no ledger row yet, so it runs one more time in every
+database, also where it exists already: it gets a TODO instead. A SQL object that depends on a view or routine the
+migration drops and creates again runs again after it, except a run-once object, which gets a TODO instead.
+
+### File names and states
+
+A migration from the committed snapshot is `<database>/migrations/<NNNN>-<key>.sql`: `NNNN` is the schema revision it
+reaches (a database without a snapshot starts at revision 0), so name order is apply order on one line of history. With
+`generate --against`, where nothing counts revisions, it is `<database>/migrations/<key>.sql`. `key` is the first 12 hex
+digits of the SHA-256 of these lines, each ended by a line feed: `mq-migration-1`, the diff's from state, the diff's
+hash, then one line per migration fact that renders, `<id> <content hash>`, in applied order. Two copies of a project
+that diverge from one revision write distinct names that sort side by side. Each migration opens with three comment
+lines after its title:
+
+```sql
+-- From state: none
+-- To state: 1ef0b1088dca
+-- Facts: none
+```
+
+The states are 12 hex digits that hash the physical model before and after the migration (`none` for a database built
+from nothing); `Facts` lists the ids of the facts the migration renders. A migration follows the one whose to state is
+its from state, which is how a migrator orders migrations from copies that diverged.
+
+### Migration facts
+
+`schema_diff.<database>.facts` lists the migration facts that render with the diff: the complete and released facts of
+the database that the baseline lacks, in applied order (pending facts and held facts that are not released never
+render). On PostgreSQL each one writes a step, followed by its ledger row:
+
+- A step takes the place of its change in the diff. A rename is the diff's own `RENAME` (a schema rename, its `ALTER
+  SCHEMA`). A `change-type` writes its data check as a guard, a `DO` block that raises when the check's query returns a
+  row, then `ALTER COLUMN ... TYPE ... USING` its conversion (a cast to the new type, `range_using`'s between range
+  types, or its expression), instead of the TODO lines and the plain cast. A `backfill` writes its `UPDATE` (the rows of
+  its `where`, by default those where the column `IS NULL`) and its data check before `SET NOT NULL`. A drop is the
+  diff's drop. `{table}` and `{column}` in a fact's texts expand to the quoted names.
+- A fact whose change the diff does not hold writes its own step first, guarded by its end state, so it does nothing
+  where an earlier migration reached it: a released drop of an object that left the model while the fact was held (`DROP
+  ... IF EXISTS`), a rename or a type change completed after an earlier migration wrote its TODO (inside a `DO` block
+  that checks the catalog first), a stand-alone `backfill` (its `where` is the guard).
+- A `raw` fact runs its statements in its phase, before or after the schema statements, unless its `skipWhen` query
+  returns a row. A `rekey` writes no DDL, only its row and, for each `sql-object` key it lists, an `UPDATE` that moves
+  the object row of a run-once SQL object to its new id, so the object does not run again. A `value-map` writes the
+  data step of Reference data below. `adopt`, `baseline` and `state-map` write a TODO line and no row: the pack writes
+  no step for them yet.
+- A held fact that is not released writes a note where its change would go and no row: a held drop keeps the object, and
+  the next migration after its release drops it. A held table or column rename leaves the later statements of that
+  migration (indexes, constraints, views), which name the object by its new name, to the reviewer, and a held sequence
+  rename keeps the sequence's old name and schema in the statements after its note.
+- A fact whose texts lack the dialect's entry (MQ4108: its conversion, value, statements or guard, or its data check's
+  query) writes the diff's statements and TODO lines instead of its step, and no row. So does a cast between range
+  types that PostgreSQL cannot convert (a multirange to a range), which writes a TODO line naming the fact and leaves
+  the column as it is.
+- With the `idempotent` parameter, a type change runs only while the column's type differs from the new one (compared in
+  the catalog with a temporary column of the new type), so a migration run twice converts nothing twice.
+
+A migration from nothing (a database without a baseline) builds the database at the model's shape: it writes no fact
+steps except `raw` ones behind their guards, and after them one ledger row per fact a build reaches, as `schema.sql`
+writes them (see Migration ledger). Outside PostgreSQL the diff's statements and TODO lines are written as before, and
+no ledger rows (MQ4056 reports such facts); the header still names the states and the facts. A held drop or rename that
+is not released writes its note there too, never the diff's `DROP` or rename (a held type change or backfill writes the
+change as before): a SQLite table that needs a rebuild, which would drop or rename the held column, gets the notes and a
+TODO to rebuild it by hand instead. Once released, such a fact gets a TODO line, since those dialects have no fact
+steps. A `value-map` gets a TODO line there too, naming its codes and the columns that hold them.
 
 ## DDL order
 
@@ -252,6 +339,66 @@ comes after the views its `dependsOn` names, which the resolver completes with t
 (a best-effort reading of the text). Inside each
 group an object follows what its `dependsOn` names in the same group (a composite type follows the types of its fields), through
 the same `ddl_order` helper as the tables; anything else it names (a table, say) is already there because of the group order.
+
+## Migration ledger
+
+On PostgreSQL the pack records in each database which migration facts it has reached, in the migration ledger: three
+tables (`contract`, `applied_fact`, `applied_object`) in the schema `migrations.ledgerSchema` names (default
+`migration_ledger`, quoted where it is a reserved word). The `ledger_ddl` helper writes their DDL, which is idempotent
+and holds no transaction control; `_ledger.scriban` wraps it (`ledger_prelude`) and writes one row per fact
+(`ledger_fact_row`, `INSERT ... ON CONFLICT (fact_id) DO NOTHING`, `applied_by` `sql-ddl`; the time is the database's).
+
+`schema.sql` builds the database at the model's shape, so it reaches every open fact except pending ones (their intent
+is not complete), `raw` ones (their `skipWhen` guard decides when a migrator runs them) and `adopt` ones (their end
+state is object rows, which the pack does not write yet); held facts are included, since the model already shows their
+change. When it reaches at least one, the script runs in one transaction: `BEGIN;` after its header, the ledger DDL
+after the schemas, then the DDL as usual, and one ledger row per fact in applied order before `COMMIT;`, so a failed run
+records nothing. A model without such facts, and every other dialect, gets the same script as before (MQ4056 reports
+facts outside PostgreSQL). A changed `migrations.ledgerSchema` renders the scripts that write ledger rows again;
+`migrations.record` changes no output.
+
+A migration that reaches a fact writes the ledger DDL right after its `BEGIN;` and follows each fact's step with its row
+(see Migration facts), all inside its one transaction, so a migration that fails records nothing. A held fact gets its
+row in the migration that applies it after its release; a fact that a build reached already keeps its first row (`ON
+CONFLICT DO NOTHING`). Migrations are written once, so their rows are fixed.
+
+Run-once SQL objects write object rows (`applied_object`) through their guards; every script that holds one writes the
+ledger DDL first, and `schema.sql` and a migration that hold one run in one transaction as above (see SQL object
+environments and run-once).
+
+## SQL object environments and run-once
+
+A SQL object's `environments` (free names; empty, the default, means every environment) and `apply` (`converge`, the
+default, or `once`) decide where its statements run:
+
+- Without environments it runs where it always did: `schema.sql`, the migrations and its object script.
+- With environments it runs only in `<db>/objects.<environment>.sql` (unit `object-environments`), one per name in the
+  `environments` parameter that some object of the database names, and none when nothing matches, as
+  `seed.<environment>.sql` does. Objects with phase `before` come first, then the others, each phase in dependency order
+  (MQ4070 warns that the phase orders an environment object only within its script; MQ4069 that a dependency must run in
+  every environment its dependent runs in). The script runs on every deploy, after `schema.sql` or the migrations and
+  before the seed scripts, so every statement in it must be safe to run again: `CREATE OR REPLACE`, `IF NOT EXISTS`, or
+  `DROP ... IF EXISTS` first. No SQL is parsed. A changed environment object takes effect at the next run of its script;
+  a removed one stays in the database until it is dropped by hand.
+- A run-once object (`apply: once`, PostgreSQL) runs inside a ledger guard in every script that holds it, after the
+  ledger DDL (`ledger_once_sql` in `_ledger.scriban`):
+
+  ```sql
+  DO $once$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM migration_ledger.applied_object WHERE element_id = '01K9MGR0000000000000000002') THEN
+          EXECUTE 'CREATE TABLE billing.invoice_audit (id bigint NOT NULL);
+  INSERT INTO billing.invoice_audit (id) VALUES (1);';
+          INSERT INTO migration_ledger.applied_object (element_id, kind, schema_name, name, content_hash)
+          VALUES ('01K9MGR0000000000000000002', 'sql-object', 'billing', 'invoice_audit', '<statements hash>');
+      END IF;
+  END $once$;
+  ```
+
+  So it runs one time per database, in whichever script reaches it first, and a changed run-once object does not run
+  again, as a seed row applied once is never updated. The tag is the first of `$once$`, `$once1$`, ... that the
+  statements do not hold. Statements that cannot run inside a function (transaction control, `CREATE INDEX
+  CONCURRENTLY`) cannot run once. Outside PostgreSQL there is no ledger: a run-once object is left out of every script
+  (MQ4056) and its object script says so.
 
 ## Reference data
 
@@ -292,17 +439,89 @@ add or drop constraints on an existing table, so there the check and the foreign
 before the tables that use them. A lookup table's shape follows the type when the table is created; a field added later needs an
 `ALTER TABLE` by hand.
 
+**A type stored in a table of your own** (2026-10-12). A reference type bound to a table file of the database (its `bindings`)
+is realized as `table` there, whatever its strategy: no lookup table, CHECK or enum type. Its rows go into the bound table with
+the table's seed rows (below, first in the table, by each of the type's seeds' `apply`), and each column holding its codes, and
+each junction table of a collection, gets `fk_<table>_<column>_ref` to the bound table's code column (on SQLite, the triggers),
+when that column alone is the table's primary key or a unique constraint; `seed.sql` adds these after the table rows, since a
+column that already holds codes needs the rows there, and before the entity seeds. When the key also holds constant columns (several types
+sharing one table), a single code column cannot name a row, so it gets no foreign key and a comment says so; model the foreign key
+on the table file. On PostgreSQL a column of a type stored as `native` becomes the code's type once the type is bound, and the
+next migration retypes it (the snapshot records the bound table as `referenceTable`).
+
+**A column of your own table typed by a reference type** (0.12.0). A column of a table file whose `typeRef` names a
+reference type holds its codes as a projected column does (`column.reference_type` is set; `column.type` stays the type
+the column states), so it gets the same objects: a foreign key into the lookup table or the bound table, or a CHECK. On
+PostgreSQL a type stored as `native` gives such a column a CHECK instead of the enum type, since the enum type would
+replace the type the column states; the type is still created for the projected columns that use it. When the table
+declares a foreign key that includes the column, that key is the link (validation, MQ4084, has made it point at the
+bound table's code column), and the column gets no `fk_<table>_<column>_ref` of its own. A column typed by an enum or a
+scalar type gets nothing more here: its physical type is the one the table states.
+
+**Codes that change: the value-map step** (0.12.0). The refactors `rename-code`, `retire-code`,
+`merge-reference-types` and `rename-reference-type` record a `value-map` fact in each database that stores the type's
+codes. On PostgreSQL its migration writes a data step before the schema statements and the native types, in this
+order, and every part can run twice:
+
+1. A renamed type: its lookup table is renamed from the old plural name to the new one, or its enum type from
+   `<old>_t` to `<new>_t`, while only the old one exists (a `DO` block over `to_regclass` or `to_regtype`). A
+   `tableName` option keeps the table's name, so nothing is written.
+2. The rows of the type that holds the codes now are made to exist, since the migration runs before `seed.sql`: the
+   lookup table is created when missing and the rows the codes map to upserted (every row after a merge, which keeps
+   the codes it does not map), the enum type created when missing, or a bound type's missing rows inserted into its
+   table as a seed applied `once` would. A row whose reference field names a row of another lookup table brings that
+   row along, its table created and upserted first, and every lookup table a created table's reference fields name is
+   created before it, whether or not a row names one of its codes, so the foreign keys between lookup tables hold even
+   for types and codes new in this generation. Each table and row is written once per migration, however many facts
+   and columns need it.
+3. On an enum type that was not merged, each mapped code that is a label of the type, while its replacement is not, is
+   renamed in place (`ALTER TYPE ... RENAME VALUE`, inside a `DO` block that checks `pg_enum`): every column of the type
+   follows its labels.
+4. Each column that holds the codes, named as the database knows it before the migration, has its check and foreign key
+   dropped by name, its codes mapped (`UPDATE <t> SET <c> = CASE <c> WHEN 'net30' THEN 'net-30' ELSE <c> END WHERE <c>
+   IN ('net30')`), then its objects created again for the type that holds the codes now. A column of an enum type is
+   mapped through text, and a `DO` block first stops the migration, naming the codes, when a mapped value is not a label
+   of the enum type: PostgreSQL cannot use an enum value in the transaction that adds it, so add such labels in an
+   earlier migration (a `raw` fact with `ALTER TYPE ... ADD VALUE`). After a merge, a column of the merged type's enum
+   type is retyped to the target's (`ALTER COLUMN ... TYPE <new>_t USING (CASE <c>::text WHEN ... ELSE <c>::text
+   END)::<new>_t`, its default dropped and set again). PostgreSQL refuses to retype a column a view reads, and the model
+   does not say which views read which columns, so before the first such retype the step drops every view of the model
+   and every view the migration removes (each before the views it reads, by the name the database knows it by) and the
+   migration creates the model's views again at its end, after the schema statements. A view the model does not know
+   about cannot be handled this way and still stops the retype (`cannot alter type of a column used by a view or rule`):
+   record a `raw` fact of phase `before` that drops it, listed in the value map's `after` so it runs first, and one of
+   phase `after` that creates it again; or model the view.
+5. Each collection: a junction table first deletes the rows the map would make twice for one owner, then maps its code
+   column between the same drop and reconcile of its objects; an array column keeps the first position of each mapped
+   code. Each runs only where `seed.sql` created the junction table or the array column.
+6. The fact's ledger row.
+
+A value map whose type the model no longer has is a TODO line. The merged-away type's lookup table or enum type stays,
+as a deleted type's does. `seed.sql`'s guard on a native type leaves out the type's former codes, which may stay labels
+after a map, and the retire step deletes a former code's lookup row once no column stores it. A column whose reference
+type changes without a value map gets the same drop and reconcile in its column step (and, of an enum type, is retyped
+to the new type's enum type through text) instead of a TODO line; outside PostgreSQL the change stays a TODO line.
+
 **Seed rows.** The rows of entity and relation seeds follow as inserts, targets of referenced rows first: `ON CONFLICT DO
 NOTHING` on PostgreSQL and SQLite, `WHERE NOT EXISTS` on the primary key on SQL Server, so a second run skips them. An end column
 fills the foreign key with the referenced row's key; collection cells become junction rows or an array. Value-object cells, and
 seeds of relations stored as a foreign key (set the end on the entity's seed instead), are left to the `seed-data` region.
 
 **Table seeds and bound entities' seeds** (2026-10-07) come before them, tables in foreign key order: the rows of a seed whose
-target is a table, in column terms, and the rows of an entity's seed that reach the table its binding writes (the field map, with
-the binding's constants). A seed applied `once` (the default) inserts the rows whose row key is missing; a `converge` seed upserts
+target is a table, in column terms, the rows of an entity's seed that reach the table its binding writes (the field map, with
+the binding's constants), and the rows of a reference type bound to the table (first in it, through the type's binding). A seed applied `once` (the default) inserts the rows whose row key is missing; a `converge` seed upserts
 on the row key (the primary key, or the unique constraint the seed names), and with `delete` also deletes the table's rows it does
 not hold. A seed whose `environments` are set goes to `seed.<environment>.sql` instead, for each environment the `environments`
 parameter names.
+
+**Natural keys and stable ids.** A table seed may name a foreign key in its `columns` and give, in each row, the
+referenced row's key (an email, an invoice number; a list for a composite key) instead of the referenced value. The
+engine fills the key's columns with that row's values, and a `stableId` column with the UUID it derives from the table
+and the row key, so the script holds literals. Where the database fills the referenced value (an identity, a sequence, a
+default), the column is written as a lookup of that row by its key on PostgreSQL: `(SELECT id FROM sales.customers WHERE
+email = 'ada@example.com')`. Rows of one table that look up rows of the same table go in one `INSERT` per level, parents
+first, so each lookup finds the rows inserted before it. On other dialects such a cell is `NULL` with a TODO comment
+naming the row and the key, and validation warns (MQ4056).
 
 ## Seed data and protected regions
 
@@ -323,7 +542,8 @@ the region bodies live only in the file: commit `db/` so a fresh clone keeps the
 the pack also writes one script per view (`<db>/[<schema>/]views/<view>.sql`), per sequence (`<db>/[<schema>/]sequences/<sequence>.sql`,
 the sequences the resolver creates for keys included), per routine (`routines/<routine>.sql`), per database type
 (`types/<type>.sql`) and per SQL object (`objects/<object>.sql`), each holding the statement the schema script writes for it, so a
-review or a deployment tool can take them one at a time. The units run once per object (`each view`, `each sequence`, `each
+review or a deployment tool can take them one at a time. A SQL object with `environments` gets its script too, holding the
+statements its environment scripts write, and a run-once object's script writes the ledger DDL before its guard. The units run once per object (`each view`, `each sequence`, `each
 routine`, `each database type`, `each sql object`); a copy of the unit in your own pack can filter them with `where` on tags,
 stereotypes, categories and the database, read from the object's own file. They are off by default so that turning the pack on adds no files a project did not ask for. A view's
 `comment` follows its header when `comments` is on; a sequence on SQLite, which has none, gets a script that says so.
@@ -351,7 +571,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `comments` | `true` | Emit table and column comments: explicit comments, and descriptions under the project's `comments` convention (see Comments above). |
-| `environments` | `[]` | The environments to write a seed script for (`seed.<environment>.sql`, unit `seed-environments`): the rows of the seeds whose `environments` name it. `seed.sql` holds the rows of the seeds of every environment (`environments` empty). |
+| `environments` | `[]` | The environments to write a seed script for (`seed.<environment>.sql`, unit `seed-environments`): the rows of the seeds whose `environments` name it. `seed.sql` holds the rows of the seeds of every environment (`environments` empty). Also the environments to write a SQL object script for (`objects.<environment>.sql`, unit `object-environments`): the SQL objects whose `environments` name it. |
 | `idempotent` | `false` | Write DDL that can run again on a database that has its objects: `IF NOT EXISTS` / `IF EXISTS` and the dialect's guards (see Idempotent scripts). Off keeps the scripts plain DDL. |
 | `objectScripts` | `false` | Write one script per view, sequence, routine, database type and SQL object under `<db>/[<schema>/]views/`, `sequences/`, `routines/`, `types/` and `objects/` (see Object scripts). |
 | `referenceStrategy` | `"lookup-table"` | The strategy key for reference types whose storage the project leaves to the template (see Reference data). |
@@ -366,14 +586,15 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | File | Holds |
 | --- | --- |
 | `pack.json` | Units and parameter defaults. |
-| `helpers.js` | The `databases` selector, the `ddl_order` / `ddl_cycle_breaks` helpers (foreign-key dependency order) and `reference_realization` (the `strategyMap` lookup). |
+| `helpers.js` | The `ddl_order` / `ddl_cycle_breaks` helpers (foreign-key dependency order) and `reference_realization` (the `strategyMap` lookup). |
 | `_sql.scriban` | Shared functions: quoting, qualified names, column definitions, foreign keys, indexes, comments. |
 | `_table.scriban` | The `CREATE TABLE` block of one table, used by `table`, `schema` and `migration`. |
 | `_objects.scriban` | Sequences, views, routines, database types, SQL objects, schemas, include directives and the dependency specs for `ddl_order` (foreign keys, and `dependsOn` for the DDL order). |
-| `_migration.scriban` | Statement builders over the schema diff. |
+| `_migration.scriban` | Statement builders over the schema diff, and the steps of migration facts (`fact_steps`, `change_type_statements`, `backfill_statements`, `raw_step`). |
 | `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
-| `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. |
-| `table.scriban`, `view.scriban`, `sequence.scriban`, `routine.scriban`, `database-type.scriban`, `sql-object.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `seed-environments.scriban`, `process-tables.scriban` | The unit templates. |
+| `_ledger.scriban` | The migration ledger: its DDL through `ledger_ddl` (`ledger_prelude`), one fact row (`ledger_fact_row`), the facts a script that builds the database reaches (`ledger_build_facts`), a run-once SQL object's guard (`ledger_once_sql`), the object rows a rekey moves (`ledger_rekey_rows`) and the header line (`ledger_header`); used by `schema`, `migration`, `object-environments` and `sql-object`. |
+| `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. A reference type bound to a table writes its rows here too (source `list`). A foreign-key column whose referenced value the database fills (a row's `refs`, `unknown`) is a lookup subquery on PostgreSQL, one `INSERT` per level of rows that look up their own table, else `NULL` with a TODO comment. |
+| `table.scriban`, `view.scriban`, `sequence.scriban`, `routine.scriban`, `database-type.scriban`, `sql-object.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `seed-environments.scriban`, `object-environments.scriban`, `process-tables.scriban` | The unit templates. |
 
 ## Notes
 

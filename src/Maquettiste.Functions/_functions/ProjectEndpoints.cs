@@ -13,7 +13,7 @@ namespace Maquettiste.Functions;
 /// <param name="ProductVersion">The release running (<see cref="Engine.EngineVersion.Product"/>), such as <c>0.5.3</c>.</param>
 /// <param name="Build">The build of that release (<see cref="Engine.EngineVersion.Build"/>).</param>
 /// <param name="Workspace">What the checkout is called: <c>MAQUETTISTE_WORKSPACE</c>, else the git branch, else the short commit of a
-/// detached head, else the linked worktree's name (<see cref="WorkspaceInfo"/>).</param>
+/// detached head, else the linked worktree's name (<see cref="WorkspaceDetection"/>).</param>
 /// <param name="Branch">The git branch, when it can be read from <c>.git</c>.</param>
 /// <param name="Worktree">The linked worktree's name, or <see langword="null"/> for a main checkout.</param>
 /// <param name="Repository">The main checkout's folder name, for a linked worktree.</param>
@@ -60,7 +60,7 @@ public static class ProjectEndpoints
         var icon = await store.ReadBrandingIconAsync(ct).ConfigureAwait(false);
         var name = snapshot.Settings.Name is { Length: > 0 } n ? n : Path.GetFileName(settings.Engine.RepoRoot);
         var variables = auth.VariablesFor(context);
-        var where = WorkspaceInfo.Detect(settings.Engine.RepoRoot, variables.Get(EditorSettings.WorkspaceVariable));
+        var where = WorkspaceDetection.Detect(settings.Engine.RepoRoot, variables.Get(EditorSettings.WorkspaceVariable));
         return Api.Json(new ProjectInfo(name, snapshot.Settings.FormatVersion, Engine.EngineVersion.Value, Engine.EngineVersion.Product,
             Engine.EngineVersion.Build, where.Workspace, where.Branch, where.Worktree, where.Repository, EditorSettings.ModeOf(variables),
             snapshot.Settings, snapshot.SettingsHash, [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics,

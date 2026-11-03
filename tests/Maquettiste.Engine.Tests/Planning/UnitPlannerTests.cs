@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -6,6 +7,7 @@ using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
 using Maquettiste.Testing;
 using static Maquettiste.Engine.Tests.Planning.PlanningKit;
+using Defaults = Maquettiste.Engine.Tests.Model.StereotypeDefaultsTests;
 
 namespace Maquettiste.Engine.Tests.Planning;
 
@@ -151,8 +153,12 @@ public sealed class UnitPlannerTests
                 null => formatters.Length == 0 ? "none" : CanonicalForm.Json(formatters),
                 var name => CanonicalForm.Json(formatters.First(f => f.Name == name)),
             };
-            var templates = HashBuilder.Of(u.Template, PackFiles.Hash(pack.RootPath, u.Template) ?? DependencyHasher.Absent, null, null);
-            var expected = HashBuilder.Of("mq-unit-1", EngineVersion.Value, pack.Name, pack.Manifest.Version, CanonicalForm.Json(u), pack.ScriptsHash,
+            var templates = HashBuilder.Of(u.Template, PackFiles.Hash(pack.RootPath, u.Template!) ?? DependencyHasher.Absent, null, null);
+            // A unit outside mode copy hashes as it did before copy units: its empty 'sources' and 'tokens' are left out.
+            var unitJson = JsonSerializer.SerializeToNode(u, EngineJson.Options)!.AsObject();
+            Assert.True(unitJson.Remove("sources") && unitJson.Remove("tokens"));
+            var expected = HashBuilder.Of("mq-unit-1", EngineVersion.Value, pack.Name, pack.Manifest.Version,
+                CanonicalForm.Json(JsonSerializer.SerializeToElement(unitJson, EngineJson.Options)), pack.ScriptsHash,
                 CanonicalForm.Json(pack.Parameters), pack.Settings.Output, formatterField, templates, "p/u:é" + new string('x', 2000));
             Assert.Equal(expected, UnitPlanner.StaticHash(pack, u, formatters, "p/u:é" + new string('x', 2000)));
         }
@@ -187,6 +193,65 @@ public sealed class UnitPlannerTests
         // "*" drops the designed table for every pack; "p" drops the overlaid synthesized table for pack p only.
         Assert.Equal(["orders"], plan.Units.Where(u => u.Pack.Name == "p").Select(u => ((RTable)u.Element!).Name));
         Assert.Equal(["clients", "orders"], plan.Units.Where(u => u.Pack.Name == "q").Select(u => ((RTable)u.Element!).Name).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_table_file_package_wins_over_its_entitys()
+    {
+        // next-phase-1-design.md section 4.3: a table's own package wins; a table without one is in its entity's.
+        var b = new ModelBuilder(seed: 6);
+        var sales = b.Package("Sales");
+        var catalog = b.Package("Catalog");
+        var customer = b.Entity("Customer", sales).Key("id", "uuid");
+        b.Entity("Order", sales).Key("id", "uuid");
+        var main = b.Database("main", Dialect.PostgreSql);
+        b.Add(new Table { Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = customer.Id, Name = "clients", Package = catalog.Id });
+        b.Add(new Table { Id = b.NewId(), Name = "legacy", Database = main.Id, Package = catalog.Id, Columns = [new Column { Id = b.NewId(), Name = "id", Type = "int" }] });
+        b.Add(new Table { Id = b.NewId(), Name = "loose", Database = main.Id, Columns = [new Column { Id = b.NewId(), Name = "id", Type = "int" }] });
+        var model = Resolve(b.Build());
+        var packages = model.Databases.Single().Tables.ToDictionary(t => t.Name, t => t.Package?.Name, StringComparer.Ordinal);
+        Assert.Equal("Catalog", packages["clients"]);
+        Assert.Equal("Sales", packages["orders"]);
+        Assert.Equal("Catalog", packages["legacy"]);
+        Assert.Null(packages["loose"]);
+
+        var packs = new PackSet([Pack("p", [Unit("c", "each table", new UnitWhere { Packages = ["Catalog"] }),
+            Unit("s", "each table", new UnitWhere { Packages = ["Sales"] }), Unit("n", "each table", new UnitWhere { NotPackages = ["Sales", "Catalog"] })])], []);
+        var plan = await new UnitPlanner(Options).PlanAsync(model, packs, new ScriptSandboxFactory(), null, Ct);
+
+        Assert.Empty(plan.Diagnostics);
+        string[] Tables(string unit) => [.. plan.Units.Where(u => u.Unit.Id == unit).Select(u => ((RTable)u.Element!).Name).Order(StringComparer.Ordinal)];
+        Assert.Equal(["clients", "legacy"], Tables("c"));
+        Assert.Equal(["orders"], Tables("s"));
+        Assert.Equal(["loose"], Tables("n"));
+    }
+
+    [Fact]
+    public async Task Where_stereotypes_matches_a_table_that_a_schema_default_reaches()
+    {
+        // next-phase-2-design.md section 3.1: the filter reads the resolved table's stereotypes, so a synthesized table without a file
+        // that a schema default reaches is selected, and a table the default does not reach is not.
+        var b = new ModelBuilder(seed: 7);
+        b.Stereotype("audited").AppliesTo("table");
+        var billing = b.Package("Billing");
+        b.Entity("Invoice", billing).Key("id", "uuid");
+        var customer = b.Entity("Customer", billing).Key("id", "uuid");
+        var main = b.Database("main", Dialect.PostgreSql);
+        var sales = main.Schema("sales");
+        var common = main.Schema("public");
+        main.Package(billing, sales);
+        b.Mapping(main, customer).Schema(common);
+        b.Table("ledger", main).Column("id", "uuid").Edit(t => t with { Schema = sales });
+        var model = Resolve(Defaults.Rebuild(b, e => Defaults.SchemaDefaults(e, sales, "audited")));
+
+        var packs = new PackSet([Pack("p", [Unit("a", "each table", new UnitWhere { Stereotypes = ["audited"] }),
+            Unit("n", "each table", new UnitWhere { NotStereotypes = ["audited"] })])], []);
+        var plan = await new UnitPlanner(Options).PlanAsync(model, packs, new ScriptSandboxFactory(), null, Ct);
+
+        Assert.Empty(plan.Diagnostics);
+        string[] Tables(string unit) => [.. plan.Units.Where(u => u.Unit.Id == unit).Select(u => ((RTable)u.Element!).Name).Order(StringComparer.Ordinal)];
+        Assert.Equal(["invoices", "ledger"], Tables("a"));
+        Assert.Equal(["customers"], Tables("n"));
     }
 
     [Fact]

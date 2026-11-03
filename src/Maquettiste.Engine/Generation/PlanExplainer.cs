@@ -248,8 +248,27 @@ internal static class PlanExplainer
         "template" => "Template " + key[2..],
         "schema-diff" => "The schema diff of " + key[2..],
         "translation" => "Texts " + key[2..],
-        _ => "Input " + key,
+        _ => NamedInput(key) ?? ExtensionFile(key) ?? "Input " + key,
     };
+
+    /// <summary>
+    /// An <c>x:&lt;path under extensions&gt;</c> key's words (next-phase-2-design.md section 3.4): "The extension file seeds/audited-records.js".
+    /// Its cause kind stays <c>inputs</c>.
+    /// </summary>
+    private static string? ExtensionFile(string key) =>
+        key.StartsWith("x:", StringComparison.Ordinal) && key.Length > 2 ? "The extension file " + key[2..] : null;
+
+    /// <summary>
+    /// An <c>n:&lt;kind&gt;:&lt;form&gt;</c> key's words (next-phase-1-design.md sections 5.3 and 5.5): "The seeds named currencies",
+    /// "The tables named billing.invoices".
+    /// </summary>
+    private static string? NamedInput(string key)
+    {
+        if (!key.StartsWith("n:", StringComparison.Ordinal))
+            return null;
+        var colon = key.IndexOf(':', 2);
+        return colon <= 2 ? null : "The " + key[2..colon] + "s named " + key[(colon + 1)..];
+    }
 
     /// <summary>The display label of a resolved object: <c>Name (kind)</c>, or <see langword="null"/> when it has no name.</summary>
     public static string? LabelOf(Maquettiste.Engine.Resolution.IResolvedObject? obj)

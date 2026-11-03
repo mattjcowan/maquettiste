@@ -14,9 +14,12 @@ else if has_repository(entity)
   db = m.database
   d = db.dialect
   table_sql = (t.schema && d != "sqlite") ? (sql_quote t.schema db) + "." + (sql_quote t) : (sql_quote t)
+  # On PostgreSQL a range or multirange column is read as its text form and written by casting the text to its type, as the
+  # row holds it as a string (range_type).
+  range_cast = d == "postgresql"
   select_parts = []
   for c in t.columns
-    select_parts[select_parts.size] = ((sql_quote c) + " AS " + (sql_quote (pascal c.name) db))
+    select_parts[select_parts.size] = ((sql_quote c) + (range_cast && range_type(c.type) ? "::text" : "") + " AS " + (sql_quote (pascal c.name) db))
   end
   key_where = []
   key_params = []
@@ -41,13 +44,13 @@ else if has_repository(entity)
       end
     else
       insert_cols[insert_cols.size] = (sql_quote c)
-      insert_vals[insert_vals.size] = ("@" + (pascal c.name))
+      insert_vals[insert_vals.size] = (range_cast && range_type(c.type) ? "CAST(@" + (pascal c.name) + " AS " + c.native_type + ")" : "@" + (pascal c.name))
     end
   end
   set_parts = []
   for c in t.columns
     if !c.is_primary_key && !generated_on_insert(c) && !c.is_discriminator && !(c.attribute && c.attribute.immutable)
-      set_parts[set_parts.size] = ((sql_quote c) + " = @" + (pascal c.name))
+      set_parts[set_parts.size] = ((sql_quote c) + " = " + (range_cast && range_type(c.type) ? "CAST(@" + (pascal c.name) + " AS " + c.native_type + ")" : "@" + (pascal c.name)))
     end
   end
   order_by = []

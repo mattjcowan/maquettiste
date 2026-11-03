@@ -22,17 +22,21 @@ public static class GenerateEndpoints
 {
     /// <summary>
     /// Queues a plan job and returns it at once. The request is forced to <c>includeDiffs: false</c>, <c>stageBarriers: false</c> and
-    /// <c>lock: wait</c>; its mode is ignored (a plan is always a dry run, applied later in apply mode).
+    /// <c>lock: wait</c>; its mode is ignored (a plan is always a dry run, applied later in apply mode). <c>against</c> diffs the schema
+    /// from a model snapshot for this plan (next-phase-1-design.md section 3.1); this host takes snapshot ids only, so a folder, or an
+    /// id that names no snapshot, is 400.
     /// </summary>
     /// <param name="context">The request.</param>
     /// <param name="queue">The job queue.</param>
+    /// <param name="snapshots">The model snapshots, which <c>against</c> must name.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>202 with the job, 503 when sixteen jobs are queued, or 400.</returns>
     [HttpPost("/api/generate/plan")]
-    public static Task<IResult> Plan(HttpContext context, JobQueue queue, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Plan(HttpContext context, JobQueue queue, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(queue);
+        ArgumentNullException.ThrowIfNull(snapshots);
         if (Api.Require(context, "maintainer") is { } forbidden)
             return forbidden;
         var (request, error) = await Api.ReadJsonAsync(context.Request, new GenerationRequest(), ct).ConfigureAwait(false);
@@ -40,6 +44,15 @@ public static class GenerateEndpoints
             return error;
         if (request!.Jobs is < 1)
             return Api.BadRequest("jobs must be at least 1.");
+        if (request.Against is { } against)
+        {
+            // Checked here, since the plan runs as a job: no path (a snapshot id never holds a separator or starts with a dot).
+            if (!SnapshotLibrary.IsValidId(against))
+                return Api.BadRequest($"against takes a model snapshot id; '{against}' is not one (this host compares with model snapshots only).");
+            if (await snapshots.GetAsync(against, ct).ConfigureAwait(false) is null)
+                return Api.BadRequest($"against: '{against}' names no model snapshot.");
+        }
+
         var plan = request with { Mode = GenerationMode.Apply, IncludeDiffs = false, StageBarriers = false, Lock = LockMode.Wait };
         return Enqueue(context, queue, new JobRequest(JobKind.Plan, plan, null));
     });

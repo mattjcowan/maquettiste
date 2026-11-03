@@ -28,8 +28,14 @@ public sealed record IndexEntry(string Id, string OwnerId, string Kind, string J
 /// <param name="Owning">Whether the referrer belongs to the referenced element (a seed's <c>target</c>): an owning reference never
 /// refuses the target's delete, which deletes the referrer with it (reference-types-seeds-localization.md section 2.7). Left out of
 /// the JSON when false.</param>
+/// <param name="Optional">For a value an <c>x-ref</c> types (next-phase-1-design.md section 4.1): whether every schema that types it
+/// says <c>optional</c>, so <c>remove-references</c> may clear it. Left out of the JSON when false.</param>
+/// <param name="Schema">For a value an <c>x-ref</c> types: the schema that types it, <c>extension:&lt;name&gt;</c> or
+/// <c>stereotype:&lt;key&gt;</c>; <see langword="null"/> (and left out of the JSON) for every other reference.</param>
 public sealed record ReferenceInfo(string FromElementId, string FromId, string JsonPointer, string Field, string ToId,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Owning = false);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Owning = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Optional = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Schema = null);
 
 /// <summary>A summary of one element, for explorers and indexes.</summary>
 /// <param name="Id">The element id.</param>
@@ -42,7 +48,7 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Category">The id of the element's category-tree node, when it has one (E4: the explorer's category filter).</param>
 /// <param name="Stereotypes">The element's stereotype keys, in application order (E4: the explorer's stereotype filter).</param>
 /// <param name="DisplayName">The element's display name, when it has one (E5: search and the explorer's label).</param>
-/// <param name="Database">The owning database's id, on table, view, sequence and mapping rows (E5).</param>
+/// <param name="Database">The owning database's id, on table, view, sequence and mapping rows (E5), and on the rows of the other database objects and migration facts.</param>
 /// <param name="Entity">The entity a mapping maps or a table overlay applies to, when it has one (E5).</param>
 /// <param name="MemberCount">The number of members, on diagram rows (E5).</param>
 /// <param name="Ends">The relation's ends in document order, on relation rows (E5).</param>

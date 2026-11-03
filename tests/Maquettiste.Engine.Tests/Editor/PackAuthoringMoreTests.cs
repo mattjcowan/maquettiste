@@ -217,7 +217,8 @@ public sealed class PackAuthoringMoreTests
         var context = await repo.Service.GetTemplateContextAsync("sql-ddl", "table", Ct);
         Assert.NotNull(context);
         Assert.Contains("ddl_order", context.Helpers);
-        Assert.Contains(context.Registrations, r => r is { Kind: ScriptRegistrationKind.Selector, Name: "databases", DeclaredIn: var path } && path.EndsWith("helpers.js", StringComparison.Ordinal));
+        Assert.Contains(context.Registrations, r => r is { Kind: ScriptRegistrationKind.Helper, Name: "ddl_order", DeclaredIn: var path } && path.EndsWith("helpers.js", StringComparison.Ordinal));
+        Assert.DoesNotContain(context.Registrations, r => r.Kind == ScriptRegistrationKind.Selector); // the database units are `each database`
         Assert.Equal(context.Registrations.OrderBy(r => r.Kind).ThenBy(r => r.Name, StringComparer.Ordinal), context.Registrations);
 
         // A script edit shows at the next read: a filter and a transform are listed with their kinds.

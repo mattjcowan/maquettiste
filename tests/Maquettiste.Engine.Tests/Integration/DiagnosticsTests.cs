@@ -58,7 +58,9 @@ public sealed class DiagnosticsTests
         E2ERepo.AssertOutcome(RunOutcome.Invalid, result);
         Assert.Contains(result.Diagnostics, d => d.Rule == "MQ4001" && d.FilePath == ".maquettiste/model/entities/customer.json"
             && d.Message.Contains("Table name 'customers_with_an_extremely_long", StringComparison.Ordinal));
-        Assert.All(result.Diagnostics, d => Assert.Equal("MQ4001", d.Rule));
+        // PostgreSQL keeps the first 63 bytes of a name, so the over-long foreign key names of one table also collide (MQ4068).
+        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ4068" && d.Message.Contains("first 63 bytes", StringComparison.Ordinal));
+        Assert.All(result.Diagnostics, d => Assert.Contains(d.Rule, (string[])["MQ4001", "MQ4068"]));
         Assert.Empty(repo.Outputs());
     }
 

@@ -128,11 +128,15 @@ public sealed class GenerationTests
 
         var badPlan = await host.SendJsonAsync("POST", "/api/generate/plan", "{ \"handEdits\": \"sometimes\" }");
         var badJobs = await host.SendJsonAsync("POST", "/api/generate/plan", "{ \"jobs\": 0 }");
+        // against takes model snapshot ids only on this host: a folder, or an id that names no snapshot, is refused before queueing.
+        var folder = await host.SendJsonAsync("POST", "/api/generate/plan", "{ \"against\": \"../base\" }");
+        var noSnapshot = await host.SendJsonAsync("POST", "/api/generate/plan", "{ \"against\": \"no-such-snapshot\" }");
         var noPlanId = await host.SendJsonAsync("POST", "/api/generate/apply", "{}");
         var badPlanId = await host.SendJsonAsync("POST", "/api/generate/apply", "{ \"planId\": \"plan-1\" }");
         var empty = await host.SendAsync(TestRequest.Local("POST", "/api/generate/apply").With(r => r.ContentType = "application/json"));
 
-        foreach (var (response, template) in new[] { (badPlan, "/api/generate/plan"), (badJobs, "/api/generate/plan"), (noPlanId, "/api/generate/apply"),
+        foreach (var (response, template) in new[] { (badPlan, "/api/generate/plan"), (badJobs, "/api/generate/plan"), (folder, "/api/generate/plan"),
+                     (noSnapshot, "/api/generate/plan"), (noPlanId, "/api/generate/apply"),
                      (badPlanId, "/api/generate/apply"), (empty, "/api/generate/apply") })
         {
             Assert.Equal(400, response.Status);

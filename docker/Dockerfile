@@ -49,6 +49,8 @@ COPY packs/sql-ddl packs/sql-ddl
 COPY packs/csharp-dapper packs/csharp-dapper
 COPY skills/maquettiste-modeling skills/maquettiste-modeling
 COPY src/Maquettiste.Cli src/Maquettiste.Cli
+# The CLI compiles the editor host's workspace detection through a linked Compile item (one copy of it, next-phase-1-design.md 3.1).
+COPY src/Maquettiste.Functions/_functions/WorkspaceDetection.cs src/Maquettiste.Functions/_functions/WorkspaceDetection.cs
 # The image's engine version (PD24), so `maquettiste --version` and the MCP server's get_project name the same build as the editor.
 RUN dotnet publish src/Maquettiste.Cli -c Release -o /cli -p:UseAppHost=false -p:Version="$(cat /engine.version)" \
  && rm -f /cli/*.pdb \
@@ -103,7 +105,7 @@ ENTRYPOINT ["/opt/maquettiste/entrypoint.sh"]
 # The image's own OCI labels, replacing the base image's (last, so a new revision leaves every layer above cached). The version is
 # the release: the VersionPrefix of Directory.Build.props by default (BundleTests keeps the two in step), the tag's version when
 # publish-image.yml builds it; the revision is the commit and the creation time the commit's, passed by the workflows (empty here).
-ARG MAQUETTISTE_VERSION=0.10.1
+ARG MAQUETTISTE_VERSION=0.11.0-preview.2
 ARG MAQUETTISTE_REVISION=
 ARG MAQUETTISTE_CREATED=
 LABEL org.opencontainers.image.title="Maquettiste" \

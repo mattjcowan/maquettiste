@@ -7,7 +7,7 @@ namespace Maquettiste.Engine.Tests.Model;
 /// A snapshot built after a previous one patches the previous indexes when few documents changed
 /// (<see cref="ModelSnapshot.CreateAfter"/>); it must equal a snapshot built from scratch, map by map and in order. Checked over
 /// chains of seeded random edits: changed, renamed, added and removed documents, moved sub-elements, stereotype and id collisions
-/// (which fall back to a full build).
+/// and extension changes (which fall back to a full build).
 /// </summary>
 public sealed class ModelIndexerPatchTests
 {
@@ -20,8 +20,10 @@ public sealed class ModelIndexerPatchTests
     {
         var random = new Random(seed);
         var (documents, ids) = Model(seed);
-        var previous = Full(documents);
+        IReadOnlyList<ExtensionDocument> extensions = [Typed];
+        var previous = Full(documents, extensions);
         var patchedCount = 0;
+        var patchedWithRetired = 0;
         for (var step = 0; step < 60; step++)
         {
             // A duplicate id from the previous step is removed again (it forces full builds while it stays).
@@ -29,15 +31,24 @@ public sealed class ModelIndexerPatchTests
             var edits = 1 + random.Next(random.Next(4) == 0 ? 12 : 3);
             for (var e = 0; e < edits; e++)
                 documents = Edit(documents, random, ids);
-            var full = Full(documents);
-            var after = ModelSnapshot.CreateAfter(previous, documents, previous.Settings, "", [], [], step + 2, null, 1 + (step % 3), TestContext.Current.CancellationToken);
+            if (random.Next(8) == 0) // an extension changes: the x-ref sites of every document may change (full build)
+                extensions = extensions.Count == 0 ? [Typed] : random.Next(2) == 0 ? [] : extensions[0] == Typed ? [Optional] : [Typed];
+            var full = Full(documents, extensions);
+            var after = ModelSnapshot.CreateAfter(previous, documents, previous.Settings, "", extensions, [], step + 2, null, 1 + (step % 3),
+                TestContext.Current.CancellationToken);
             AssertSameIndex(full, after, $"seed {seed} step {step}");
             if (after.Index.Patched)
+            {
                 patchedCount++;
+                if (after.Index.Retired.Count > 0)
+                    patchedWithRetired++;
+            }
+
             previous = after; // chains: each patch builds on the last one
         }
 
         Assert.True(patchedCount > 25, "patched " + patchedCount + " of 60");
+        Assert.True(patchedWithRetired > 0, "no patch kept retired ids");
     }
 
     [Fact]
@@ -50,8 +61,86 @@ public sealed class ModelIndexerPatchTests
         Assert.Same(previous.Index.Entries, after.Index.Entries);
     }
 
-    private static ModelSnapshot Full(IReadOnlyList<ElementDocument> documents) =>
-        ModelSnapshot.Create(documents, new ProjectSettings { FormatVersion = EngineVersion.FormatVersion }, "", [], [], 1);
+    [Fact]
+    public void Changing_only_an_extension_rebuilds_the_index()
+    {
+        // next-phase-1-design.md section 4.1: the walks of x-ref sites depend on the extensions, so a snapshot whose extensions
+        // changed rebuilds in full even when no document changed; the same files keep the set and patch.
+        var (documents, _) = Model(10);
+        var thing = documents.Select(d => d.Element).OfType<Entity>().Single(e => e.Name == "Thing0");
+        var plain = PropertySchemaSetTests.Extension("""{ "partner": { "type": "string" } }""");
+        var previous = Full(documents, [plain]);
+        Assert.DoesNotContain(previous.ReferencesTo(thing.Id), r => r.Schema is not null);
+
+        var typed = ModelSnapshot.CreateAfter(previous, documents, previous.Settings, "", [Typed], [], 2, null, 2, TestContext.Current.CancellationToken);
+        Assert.False(typed.Index.Patched);
+        AssertSameIndex(Full(documents, [Typed]), typed, "typed");
+        Assert.Contains(typed.ReferencesTo(thing.Id), r => r is { Field: "partner", Schema: "extension:links", Optional: false });
+
+        var optional = ModelSnapshot.CreateAfter(typed, documents, typed.Settings, "", [Optional], [], 3, null, 2, TestContext.Current.CancellationToken);
+        Assert.False(optional.Index.Patched);
+        Assert.All(optional.ReferencesTo(thing.Id).Where(r => r.Field == "partner"), r => Assert.True(r.Optional));
+
+        var same = ModelSnapshot.CreateAfter(optional, documents, optional.Settings, "", [PropertySchemaSetTests.Extension(OptionalLinks)], [], 4, null, 2,
+            TestContext.Current.CancellationToken);
+        Assert.True(same.Index.Patched);
+        Assert.Same(optional.PropertySchemas, same.PropertySchemas);
+        AssertSameIndex(Full(documents, [Optional]), same, "same");
+    }
+
+    [Fact]
+    public void A_package_default_change_builds_the_index_in_full_and_matches_a_full_build()
+    {
+        // next-phase-2-design.md section 3.1: the walks type properties by each element's effective keys, defaults included, so a
+        // package that gains a default list, or an entity whose package moves the holder of a document the patch would keep (its
+        // overlay), builds in full; a change that moves no holder still patches. Each result equals a full build.
+        var b = new ModelBuilder(31);
+        b.Stereotype("owned").Parameters("""{ "partner": { "type": "string", "x-ref": { "kind": "entity" } } }""");
+        var billing = b.Package("Billing");
+        var stock = b.Package("Stock");
+        var customer = b.Entity("Customer", stock).Key("id", "uuid");
+        var invoice = b.Entity("Invoice", billing).Key("id", "uuid").Property("partner", customer.Id);
+        var main = b.Database("main", Dialect.PostgreSql);
+        var overlay = b.Table("invoices", main).OverlayFor(invoice).Property("partner", customer.Id);
+        var documents = b.BuildDocuments().OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
+        var previous = Full(documents);
+        Assert.DoesNotContain(previous.ReferencesTo(customer.Id), r => r.Field == "partner");
+
+        documents = Change(documents, billing.Id, e => ((Package)e) with { DefaultStereotypes = ["owned"] });
+        var withDefault = After(previous, documents, 2);
+        Assert.False(withDefault.Index.Patched);
+        AssertSameIndex(Full(documents), withDefault, "default added");
+        Assert.Equal(new[] { invoice.Id, overlay.Id }.Order(StringComparer.Ordinal),
+            withDefault.ReferencesTo(customer.Id).Where(r => r.Field == "partner").Select(r => r.FromElementId).Order(StringComparer.Ordinal));
+
+        documents = Change(documents, invoice.Id, e => e with { Name = "Bill" });
+        var renamed = After(withDefault, documents, 3);
+        Assert.True(renamed.Index.Patched);
+        AssertSameIndex(Full(documents), renamed, "renamed");
+
+        documents = Change(documents, invoice.Id, e => ((Entity)e) with { Package = stock.Id });
+        var moved = After(renamed, documents, 4);
+        Assert.False(moved.Index.Patched);
+        AssertSameIndex(Full(documents), moved, "moved");
+        Assert.DoesNotContain(moved.ReferencesTo(customer.Id), r => r.Field == "partner");
+
+        static List<ElementDocument> Change(List<ElementDocument> documents, string id, Func<Element, Element> edit) =>
+            [.. documents.Select(d => d.Element.Id == id ? d with { Element = edit(d.Element), Hash = d.Hash + "1" } : d)];
+
+        static ModelSnapshot After(ModelSnapshot previous, List<ElementDocument> documents, long version) =>
+            ModelSnapshot.CreateAfter(previous, documents, previous.Settings, "", [], [], version, null, 2, TestContext.Current.CancellationToken);
+    }
+
+    private const string TypedLinks = """{ "partner": { "type": "string", "x-ref": { "kind": "entity" } } }""";
+
+    private const string OptionalLinks = """{ "partner": { "type": "string", "x-ref": { "kind": "entity", "optional": true } } }""";
+
+    private static readonly ExtensionDocument Typed = PropertySchemaSetTests.Extension(TypedLinks);
+
+    private static readonly ExtensionDocument Optional = PropertySchemaSetTests.Extension(OptionalLinks);
+
+    private static ModelSnapshot Full(IReadOnlyList<ElementDocument> documents, IReadOnlyList<ExtensionDocument>? extensions = null) =>
+        ModelSnapshot.Create(documents, new ProjectSettings { FormatVersion = EngineVersion.FormatVersion }, "", extensions ?? [], [], 1);
 
     private static (IReadOnlyList<ElementDocument> Documents, List<string> Ids) Model(int seed)
     {
@@ -66,6 +155,8 @@ public sealed class ModelIndexerPatchTests
         {
             var e = b.Entity("Thing" + i, packages[i % 3]).Key("id", "uuid", IdentityStrategy.UuidV7).Attr("name", "string", a => a.Length(40))
                 .Attr("status", status);
+            if (i > 0) // a custom property the extension types as a link to another entity (x-ref)
+                e.Property("partner", entities[i - 1].Id);
             if (i % 3 == 0)
                 e.Stereotype("audited");
             if (i % 5 == 0)
@@ -96,15 +187,19 @@ public sealed class ModelIndexerPatchTests
         var doc = list[index];
         switch (random.Next(9))
         {
-            case 0: // content change, same path (a new document instance)
-                list[index] = doc with { Element = doc.Element with { Name = doc.Element.Name + "x" }, Hash = doc.Hash + "1" };
+            case 0: // content change, same path (a new document instance); the element's status toggles retired (MQ2022's index)
+                list[index] = doc with
+                {
+                    Element = doc.Element with { Name = doc.Element.Name + "x", Status = doc.Element.Status is null ? ElementStatus.Retired : null },
+                    Hash = doc.Hash + "1",
+                };
                 break;
             case 1 when doc.Element is Entity entity && list.Count > 4: // move an attribute to another entity (sub-element ids move)
             {
                 var other = list.FindIndex(d => d.Element is Entity && !ReferenceEquals(d, doc));
                 if (other < 0 || entity.Attributes.Count < 2)
                     break;
-                var moved = entity.Attributes[^1];
+                var moved = entity.Attributes[^1] with { Status = ElementStatus.Retired }; // a retired sub-element moves with its id
                 var target = (Entity)list[other].Element;
                 list[index] = doc with { Element = entity with { Attributes = [.. entity.Attributes.Take(entity.Attributes.Count - 1)] } };
                 list[other] = list[other] with { Element = target with { Attributes = [.. target.Attributes, moved] } };
@@ -197,6 +292,8 @@ public sealed class ModelIndexerPatchTests
         Assert.Same(e.Tags, a.Tags);
         Assert.Same(e.Categories, a.Categories);
         Assert.Equal(e.Diagnostics, a.Diagnostics);
+        Assert.True(e.Retired.SetEquals(a.Retired), label + ": retired ids");
+        Assert.Equal(e.PropertySchemasHash, a.PropertySchemasHash);
         Assert.Equal(expected.Documents, actual.Documents);
 
         // And through the public surface.

@@ -61,9 +61,11 @@ public sealed class TableSeedSqlTests
     }
 
     /// <summary>The repo with the seed-data pack installed, writing under data/ in the given format.</summary>
-    internal static PackRepo DataRepo(string format)
+    internal static PackRepo DataRepo(string format) => WithSeedData(Repo(), format);
+
+    /// <summary>Installs the seed-data pack, writing under data/ in the given format.</summary>
+    internal static PackRepo WithSeedData(PackRepo repo, string format)
     {
-        var repo = Repo();
         PackRepo.CopyTree(Path.Combine(Maquettiste.Testing.Fixtures.RepoRoot, "packs", "seed-data"), Path.Combine(repo.Repo.ModelRoot, "templates", "seed-data"));
         repo.EditJson(".maquettiste/maquettiste.json", settings =>
         {
@@ -71,6 +73,198 @@ public sealed class TableSeedSqlTests
             settings["packs"]!["seed-data"] = new JsonObject { ["output"] = "data", ["parameters"] = new JsonObject { ["format"] = format } };
         });
         return repo;
+    }
+
+    // Foreign keys by natural key and stable ids (next-phase-2-design.md section 3.4).
+    private const string Natural = "01K6TSQN0000000000000000";
+
+    internal static string N(int n) => Natural + n.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Billing with schema sales in main (billing projects its own customers and invoices into schema billing), holding customers
+    /// (id, name, email unique as uq_customers_email) and invoices (id, number unique as uq_invoices_number, issued_on, customer_id
+    /// with fk_invoices_customer to customers(id)); a seed of Ada and Grace keyed by email, and one of INV-1 and INV-3 for Ada and
+    /// INV-2 for Grace keyed by number whose customer is the foreign-key entry. The ids take stable ids, or with
+    /// <paramref name="identity"/> customers.id is a bigint identity and invoices.customer_id a bigint.
+    /// </summary>
+    internal static PackRepo NaturalKeyRepo(bool identity, bool sqlite = false)
+    {
+        // With sqlite, the tables go in billing's SQLite database local instead.
+        var repo = sqlite ? PackRepo.BillingDialects() : PackRepo.Billing();
+        var database = sqlite ? LocalId : MainId;
+        var schema = sqlite ? "" : $",\"schema\":\"{N(99)}\"";
+        var (folder, prefix) = sqlite ? ("local", "sl_") : ("main", ""); // billing projects customers and invoices into local too
+        if (!sqlite)
+            repo.EditJson(".maquettiste/model/databases/main/database.json", db => db["schemas"]!.AsArray().Add(new JsonObject { ["id"] = N(99), ["name"] = "sales" }));
+        var customerId = identity ? "\"type\":\"int64\",\"nullable\":false,\"generated\":\"identity\"" : "\"type\":\"uuid\",\"nullable\":false,\"stableId\":true";
+        repo.Write($".maquettiste/model/databases/{folder}/tables/{prefix}customers.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{N(1)}}","name":"{{prefix}}customers","database":"{{database}}"{{schema}},"columns":[
+              {"id":"{{N(2)}}","name":"id",{{customerId}}},
+              {"id":"{{N(3)}}","name":"name","type":"string","nullable":false},
+              {"id":"{{N(4)}}","name":"email","type":"string","length":254,"nullable":false}],
+             "primaryKey":{"columns":["{{N(2)}}"]},"uniques":[{"id":"{{N(5)}}","name":"uq_customers_email","columns":["{{N(4)}}"]}]}
+            """);
+        repo.Write($".maquettiste/model/databases/{folder}/tables/{prefix}invoices.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{N(10)}}","name":"{{prefix}}invoices","database":"{{database}}"{{schema}},"columns":[
+              {"id":"{{N(11)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
+              {"id":"{{N(12)}}","name":"number","type":"string","length":32,"nullable":false},
+              {"id":"{{N(13)}}","name":"issued_on","type":"date"},
+              {"id":"{{N(14)}}","name":"customer_id","type":"{{(identity ? "int64" : "uuid")}}","nullable":false}],
+             "primaryKey":{"columns":["{{N(11)}}"]},"uniques":[{"id":"{{N(15)}}","name":"uq_invoices_number","columns":["{{N(12)}}"]}],
+             "foreignKeys":[{"id":"{{N(16)}}","name":"fk_invoices_customer","columns":["{{N(14)}}"],"referencesTable":"{{N(1)}}"}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/sales-customers/customers.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{N(20)}}","name":"customers","target":"{{N(1)}}","key":"{{N(5)}}",
+             "columns":["{{N(3)}}","{{N(4)}}"],
+             "rows":[{"id":"{{N(21)}}","values":["Ada","ada@example.com"]},{"id":"{{N(22)}}","values":["Grace","grace@example.com"]}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/sales-invoices/invoices.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{N(30)}}","name":"invoices","target":"{{N(10)}}","key":"{{N(15)}}",
+             "columns":["{{N(12)}}","{{N(13)}}","{{N(16)}}"],
+             "rows":[{"id":"{{N(31)}}","values":["INV-1","2026-01-05","ada@example.com"]},{"id":"{{N(32)}}","values":["INV-2","2026-01-06","grace@example.com"]},
+               {"id":"{{N(33)}}","values":["INV-3","2026-01-07","ada@example.com"]}]}
+            """);
+        return repo;
+    }
+
+    /// <summary>Runs a script on the PostgreSQL container, or skips the test without one.</summary>
+    private static async Task<string?> PostgresAsync(string script)
+    {
+        var container = Environment.GetEnvironmentVariable("MAQUETTISTE_TEST_POSTGRES_CONTAINER");
+        var docker = ProcessRunner.FindOnPath("docker");
+        if (string.IsNullOrEmpty(container) || docker is null)
+        {
+            Assert.Skip("Set MAQUETTISTE_TEST_POSTGRES_CONTAINER to run the seed scripts on PostgreSQL.");
+            return null;
+        }
+
+        var (code, output) = await ReferenceDataTests.PsqlAsync(docker, container, script);
+        Assert.True(code == 0, output);
+        return output;
+    }
+
+    private const string AdaInvoices = "\nSELECT 'ada=' || count(*) FROM sales.invoices i JOIN sales.customers c ON c.id = i.customer_id WHERE c.email = 'ada@example.com';\n";
+
+    [Fact]
+    public async Task Natural_keys_and_stable_ids_apply_twice_with_no_change()
+    {
+        using var repo = NaturalKeyRepo(identity: false);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+
+        var seed = repo.Read("db/main/seed.sql");
+        var ada = Maquettiste.Engine.Model.StableIds.Of(N(1), ["ada@example.com"]);
+        Assert.Contains($"INSERT INTO sales.customers (id, name, email) VALUES\n    ('{ada}', 'Ada', 'ada@example.com'),", seed, StringComparison.Ordinal);
+        Assert.Contains($"('{Maquettiste.Engine.Model.StableIds.Of(N(10), ["INV-1"])}', 'INV-1', '2026-01-05', '{ada}')", seed, StringComparison.Ordinal);
+        Assert.True(seed.IndexOf("INTO sales.customers", StringComparison.Ordinal) < seed.IndexOf("INTO sales.invoices", StringComparison.Ordinal));
+
+        // The second run of the seed changes no row: every row keeps its version.
+        const string Versions = "\nSELECT 'rows=' || string_agg(id::text || '@' || xmin::text, ',' ORDER BY id) FROM (SELECT id, xmin FROM sales.customers UNION ALL SELECT id, xmin FROM sales.invoices) x;\n";
+        if (await PostgresAsync(repo.Read("db/main/schema.sql") + seed + Versions + seed + Versions + AdaInvoices) is not { } output)
+            return;
+        var versions = output.Split('\n').Where(l => l.Trim().StartsWith("rows=", StringComparison.Ordinal)).Select(l => l.Trim()).ToList();
+        Assert.Equal(2, versions.Count);
+        Assert.Equal(versions[0], versions[1]);
+        Assert.Contains("ada=2", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_lookup_subquery_names_an_identity_keyed_row()
+    {
+        using var repo = NaturalKeyRepo(identity: true);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+
+        var seed = repo.Read("db/main/seed.sql");
+        Assert.Contains("INSERT INTO sales.customers (name, email) VALUES", seed, StringComparison.Ordinal);
+        Assert.Contains($"('{Maquettiste.Engine.Model.StableIds.Of(N(10), ["INV-1"])}', 'INV-1', '2026-01-05', (SELECT id FROM sales.customers WHERE email = 'ada@example.com'))",
+            seed, StringComparison.Ordinal);
+
+        // Outside PostgreSQL the cell is NULL with a TODO comment naming the row and its key (MQ4056 warns).
+        using (var local = NaturalKeyRepo(identity: true, sqlite: true))
+        {
+            var result = await local.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+            Assert.True(result.Diagnostics.Any(d => d.Rule == "MQ4056" && d.Message.Contains("oreign key 'fk_invoices_customer'", StringComparison.Ordinal)), PackRepo.Describe(result));
+            Assert.Contains($"'INV-1', '2026-01-05', NULL /* TODO: row {N(31)} names sl_customers.id WHERE email = 'ada@example.com' */)",
+                local.Read("db/local/seed.sql"), StringComparison.Ordinal);
+        }
+
+        if (await PostgresAsync(repo.Read("db/main/schema.sql") + seed + seed + AdaInvoices) is not { } output)
+            return;
+        Assert.Contains("ada=2", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Outside_PostgreSQL_a_nested_lookup_stays_inside_one_comment()
+    {
+        using var repo = NaturalKeyRepo(identity: true, sqlite: true);
+        // Invoices take their ids from the database and are found by (customer, number), so a line naming an invoice looks up a row
+        // whose key holds a lookup itself. Outside PostgreSQL both lookups are TODOs: the inner one, and a key value, may hold comment
+        // markers, which must not open or close the outer comment (SQL Server nests block comments).
+        repo.EditJson(".maquettiste/model/databases/local/tables/sl_invoices.json", t =>
+        {
+            t["columns"]![0] = new JsonObject { ["id"] = N(11), ["name"] = "id", ["type"] = "int64", ["nullable"] = false, ["generated"] = "identity" };
+            t["uniques"]!.AsArray().Add(new JsonObject { ["id"] = N(17), ["name"] = "uq_invoices_customer_number", ["columns"] = new JsonArray(N(14), N(12)) });
+        });
+        repo.EditJson(".maquettiste/model/seeds/sales-invoices/invoices.json", s =>
+        {
+            s["key"] = N(17);
+            s["rows"]![0]!["values"]![0] = "INV/*1*/";
+        });
+        repo.Write(".maquettiste/model/databases/local/tables/sl_invoice_lines.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{N(60)}}","name":"sl_invoice_lines","database":"{{LocalId}}","columns":[
+              {"id":"{{N(61)}}","name":"line","type":"string","length":16,"nullable":false},
+              {"id":"{{N(62)}}","name":"invoice_id","type":"int64","nullable":false}],
+             "primaryKey":{"columns":["{{N(61)}}"]},
+             "foreignKeys":[{"id":"{{N(63)}}","name":"fk_invoice_lines_invoice","columns":["{{N(62)}}"],"referencesTable":"{{N(10)}}"}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/sales-invoice-lines/invoice-lines.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{N(64)}}","name":"invoiceLines","target":"{{N(60)}}","columns":["{{N(61)}}","{{N(63)}}"],
+             "rows":[{"id":"{{N(65)}}","values":["L-1",["ada@example.com","INV/*1*/"]]}]}
+            """);
+        var result = await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ4056" && d.Message.Contains("oreign key 'fk_invoice_lines_invoice'", StringComparison.Ordinal));
+
+        var seed = repo.Read("db/local/seed.sql");
+        Assert.Contains($"('L-1', NULL /* TODO: row {N(65)} names sl_invoices.id WHERE customer_id = NULL / * TODO: row {N(31)} names sl_customers.id"
+            + " WHERE email = 'ada@example.com' * / AND number = 'INV/ *1* /' */)", seed, StringComparison.Ordinal);
+        var line = seed[seed.IndexOf("('L-1', ", StringComparison.Ordinal)..];
+        line = line[..line.IndexOf('\n', StringComparison.Ordinal)];
+        Assert.Equal(1, line.Split("/*").Length - 1);
+        Assert.Equal(1, line.Split("*/").Length - 1);
+    }
+
+    [Fact]
+    public async Task Rows_that_name_rows_of_their_own_table_insert_by_level()
+    {
+        using var repo = NaturalKeyRepo(identity: true);
+        // A category names its parent by code; the database fills the ids, so each level looks up the one before.
+        repo.Write(".maquettiste/model/databases/main/tables/categories.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{N(40)}}","name":"categories","database":"{{MainId}}","schema":"{{N(99)}}","columns":[
+              {"id":"{{N(41)}}","name":"id","type":"int64","nullable":false,"generated":"identity"},
+              {"id":"{{N(42)}}","name":"code","type":"string","length":16,"nullable":false},
+              {"id":"{{N(43)}}","name":"parent_id","type":"int64"}],
+             "primaryKey":{"columns":["{{N(41)}}"]},"uniques":[{"id":"{{N(44)}}","name":"uq_categories_code","columns":["{{N(42)}}"]}],
+             "foreignKeys":[{"id":"{{N(45)}}","name":"fk_categories_parent","columns":["{{N(43)}}"],"referencesTable":"{{N(40)}}"}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/sales-categories/categories.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{N(50)}}","name":"categories","target":"{{N(40)}}","key":"{{N(44)}}",
+             "columns":["{{N(42)}}","{{N(45)}}"],
+             "rows":[{"id":"{{N(51)}}","values":["grandchild","child"]},{"id":"{{N(52)}}","values":["child","root"]},{"id":"{{N(53)}}","values":["root"]},
+               {"id":"{{N(54)}}","values":["other","root"]}]}
+            """);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+
+        var seed = repo.Read("db/main/seed.sql");
+        var statements = seed.Split("INSERT INTO sales.categories (code, parent_id) VALUES\n", StringSplitOptions.None);
+        Assert.Equal(4, statements.Length); // one statement per level
+        Assert.StartsWith("    ('root', NULL)\nON CONFLICT (code) DO NOTHING;", statements[1], StringComparison.Ordinal);
+        Assert.StartsWith("    ('child', (SELECT id FROM sales.categories WHERE code = 'root')),\n    ('other', (SELECT id FROM sales.categories WHERE code = 'root'))\n",
+            statements[2], StringComparison.Ordinal);
+        Assert.StartsWith("    ('grandchild', (SELECT id FROM sales.categories WHERE code = 'child'))\n", statements[3], StringComparison.Ordinal);
+
+        const string Tree = "\nSELECT 'tree=' || string_agg(c.code || '<' || coalesce(p.code, '-'), ',' ORDER BY c.code) FROM sales.categories c LEFT JOIN sales.categories p ON p.id = c.parent_id;\n";
+        if (await PostgresAsync(repo.Read("db/main/schema.sql") + seed + seed + Tree) is not { } output)
+            return;
+        Assert.Contains("tree=child<root,grandchild<child,other<root,root<-", output, StringComparison.Ordinal);
     }
 
     [Fact]

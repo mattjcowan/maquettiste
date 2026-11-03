@@ -190,9 +190,16 @@ public sealed record SkipResult(IReadOnlyList<PlannedUnit> ToRender, IReadOnlyLi
 
 /// <summary>One rendered file.</summary>
 /// <param name="Path">The repo-relative path with <c>/</c> separators.</param>
-/// <param name="Text">The rendered text.</param>
+/// <param name="Text">The rendered text; a copy unit's text file carries its output text, a binary one <c>""</c>.</param>
 /// <param name="Role">The file's role.</param>
-public sealed record RenderedFile(string Path, string Text, FileRole Role);
+public sealed record RenderedFile(string Path, string Text, FileRole Role)
+{
+    /// <summary>A copy unit's output bytes, written as they are; null for rendered text. Never serialized.</summary>
+    [JsonIgnore] public byte[]? Bytes { get; init; }
+
+    /// <summary>A copy unit's file that is not text (not strict UTF-8, or holding a NUL); its Text is empty.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool Binary { get; init; }
+}
 
 /// <summary>The result of rendering one unit.</summary>
 /// <param name="Unit">The unit.</param>
@@ -270,10 +277,16 @@ public enum FileChangeKind
     /// <summary>Disk content differs from the manifest: <c>hand-edited</c> (H).</summary>
     [JsonStringEnumMemberName("hand-edited")] HandEdited,
 
-    /// <summary>An owned file that exists and is kept: <c>kept</c> (K).</summary>
+    /// <summary>
+    /// An owned file that exists and is kept: <c>kept</c> (K). A <c>once</c> file no run produces any more, of a pack that still
+    /// exists, is kept too, with its manifest entry, while it is on disk (an earlier migration stays owned).
+    /// </summary>
     [JsonStringEnumMemberName("kept")] Kept,
 
-    /// <summary>An owned file no longer produced; kept on disk, dropped from the manifest: <c>orphaned-owned</c> (O).</summary>
+    /// <summary>
+    /// An owned file no longer tracked: a companion no longer produced, an owned file of a removed pack, or an owned file gone from
+    /// disk; whatever is on disk stays, the manifest entry is dropped: <c>orphaned-owned</c> (O).
+    /// </summary>
     [JsonStringEnumMemberName("orphaned-owned")] OrphanedOwned,
 
     /// <summary>A hand edit under the <c>fail</c> policy, or a lost region: <c>conflict</c>.</summary>

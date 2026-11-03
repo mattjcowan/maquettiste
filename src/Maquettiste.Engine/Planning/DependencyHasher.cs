@@ -15,7 +15,11 @@ namespace Maquettiste.Engine.Planning;
 /// <param name="resolved">The resolved model.</param>
 /// <param name="packs">The packs (template hashes).</param>
 /// <param name="schemaDiffs">Schema diffs by database name.</param>
-internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolved, PackSet packs, IReadOnlyDictionary<string, SchemaDiffResult> schemaDiffs)
+/// <param name="baselineHash">The model hash of the baseline the run diffs from (<see cref="GenerationRequest.Against"/>), folded into
+/// every <c>d:</c> key, so a plan made against a baseline is stale once the baseline changes; <see langword="null"/> for the committed
+/// physical snapshots.</param>
+internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolved, PackSet packs, IReadOnlyDictionary<string, SchemaDiffResult> schemaDiffs,
+    string? baselineHash = null)
     : IDependencyHasher
 {
     /// <summary>The hash of a key that no longer resolves.</summary>
@@ -203,9 +207,83 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "s" => SettingsHash(rest),
             "l" => LocaleHash(rest),
             "t" => TemplateHash(rest),
-            "d" => resolved.Find(rest) is RDatabase database && schemaDiffs.TryGetValue(database.Name, out var diff) ? diff.Hash : Absent,
+            "d" => resolved.Find(rest) is RDatabase database && schemaDiffs.TryGetValue(database.Name, out var diff) ? DiffHash(diff) : Absent,
+            "n" => NameHash(rest),
+            "x" => ExtensionFileHash(rest),
+            // The rule view's index and reference reads (rows scripts, next-phase-2-design.md section 3.4) hash as the rule cache hashes
+            // them, so a unit that read scripted rows renders again exactly when one of those reads changes.
+            "ix" or "rt" => Validation.RuleKeyHasher.Of(model).CurrentHash(key),
             _ => Absent,
         };
+    }
+
+    /// <summary>
+    /// <c>x:&lt;path under extensions&gt;</c> (next-phase-2-design.md section 3.4): the content hash of a file under <c>extensions/</c> (a
+    /// rows script, a rule script or an extension schema), or absent when the model has none there.
+    /// </summary>
+    private string ExtensionFileHash(string path)
+    {
+        var suffix = "extensions/" + path;
+        bool At(string repoPath) => string.Equals(repoPath, suffix, StringComparison.Ordinal) || repoPath.EndsWith("/" + suffix, StringComparison.Ordinal);
+        foreach (var script in model.SeedScripts)
+        {
+            if (At(script.Path))
+                return script.Hash;
+        }
+
+        foreach (var script in model.RuleScripts)
+        {
+            if (At(script.Path))
+                return script.Hash;
+        }
+
+        foreach (var extension in model.Extensions)
+        {
+            if (At(extension.Path))
+                return extension.Hash;
+        }
+
+        return Absent;
+    }
+
+    /// <summary>
+    /// <c>n:&lt;kind&gt;:&lt;form&gt;</c> (next-phase-1-design.md section 5.3; <c>seed_named</c> records <c>n:seed:</c>): the sorted ids the
+    /// kind's name index finds under the canonical form, or absent when it finds none, so renaming an element into or out of the name
+    /// changes the hash. <c>n:table:&lt;text&gt;</c> (section 5.5; <c>table_named</c>) matches resolved table names instead.
+    /// </summary>
+    private string NameHash(string kindAndForm)
+    {
+        var colon = kindAndForm.IndexOf(':', StringComparison.Ordinal);
+        if (colon > 0 && string.Equals(kindAndForm[..colon], "table", StringComparison.Ordinal))
+            return TableNameHash(kindAndForm[(colon + 1)..]);
+        if (colon <= 0 || !Loading.NameIndex.NamedKinds.Contains(kindAndForm[..colon]))
+            return Absent;
+        var kind = kindAndForm[..colon];
+        var ids = model.Names(kind).Find(kindAndForm[(colon + 1)..]).Select(e => e.Id).Order(StringComparer.Ordinal).ToList();
+        return ids.Count == 0 ? Absent : HashBuilder.Of(["n:" + kind, .. ids]);
+    }
+
+    /// <summary>
+    /// <c>n:table:&lt;text&gt;</c>: the sorted keys (database id and table key) of every resolved table <c>table_named</c> matches with the
+    /// text in any database, or absent when none, so a table renamed into or out of the name, or moved to another database, changes
+    /// the hash. A synthesized table has no stored name, so the resolved names are matched, not the name index.
+    /// </summary>
+    private string TableNameHash(string text)
+    {
+        if (!Rendering.BuiltinHelpers.TryParseTableName(text, out var schema, out var name, out _))
+            return Absent;
+        var keys = Rendering.BuiltinHelpers.TablesNamed(resolved.Databases, schema, name)
+            .Select(t => t.Database.Id + "/" + t.Key).Order(StringComparer.Ordinal).ToList();
+        return keys.Count == 0 ? Absent : HashBuilder.Of(["n:table", .. keys]);
+    }
+
+    /// <summary>A schema diff's hash, with the baseline's model hash when the run diffs from a baseline model.</summary>
+    private string DiffHash(SchemaDiffResult diff)
+    {
+        if (baselineHash is null)
+            return diff.Hash;
+        using var hash = new HashBuilder();
+        return hash.Add("mq-baseline-diff-1").Add(diff.Hash).Add(baselineHash).Finish();
     }
 
     private string SettingsHash(string section)
@@ -218,6 +296,8 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "typeMaps" => CanonicalForm.Hash("s:typeMaps", settings.TypeMaps),
             "inflection" => CanonicalForm.Hash("s:inflection", settings.Inflection),
             "localization" => CanonicalForm.Hash("s:localization", settings.Localization),
+            // The migration ledger's schema only (next-phase-1-design.md section 3.3): migrations.record changes no rendered byte.
+            "migrations" => CanonicalForm.Hash("s:migrations", settings.Migrations.LedgerSchema),
             // The project variable of templates: the name and the properties, keys in ordinal order.
             "project" => CanonicalForm.Hash("s:project", new
             {

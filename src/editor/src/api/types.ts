@@ -49,7 +49,8 @@ export type DeletePlanRemove = S["DeletePlanRemove"];
 export type DeletePlanRefusal = S["DeletePlanRefusal"];
 export type BatchResult = S["BatchResult"];
 export type BatchParseResult = S["BatchParseResult"];
-export type BatchRequest = S["batch"];
+/** A batch body. batch.json's `$defs` (its name grammar) is schema text that openapi-typescript renders as a member; no body carries it. */
+export type BatchRequest = Omit<S["batch"], "$defs">;
 export type BatchOperationRequest = S["batch"]["operations"][number];
 export type Diagnostic = S["Diagnostic"];
 export type RuleCatalogEntry = S["RuleCatalogEntry"];

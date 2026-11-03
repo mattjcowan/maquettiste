@@ -14,6 +14,9 @@ public sealed class RPackage : RElement
     /// <summary>The parent package.</summary>
     public RPackage? Parent { get; internal set; }
 
+    /// <summary>The packages its <c>dependsOn</c> names, in file order (dangling ids left out); empty when it declares none.</summary>
+    public IReadOnlyList<RPackage> DependsOn { get; internal set; } = [];
+
     /// <summary>Child packages.</summary>
     public RList<RPackage> Children { get; internal set; } = RList<RPackage>.Empty;
 
@@ -75,7 +78,7 @@ public sealed class REntity : RElement
     /// <summary>The relation this entity was promoted from.</summary>
     public RRelation? PromotedFrom { get; internal set; }
 
-    /// <summary>The seeds whose target is the entity, by (name, id).</summary>
+    /// <summary>The seeds whose target is the entity, in merge order (package qualified name with none first, name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 
     /// <summary>The lifecycle process the entity names, or <see langword="null"/>.</summary>
@@ -162,8 +165,18 @@ public sealed class RAttribute : RElement
     /// <summary>The derivation, when derived.</summary>
     public RDerived? Derived { get; internal set; }
 
-    /// <summary><c>pii</c>, <c>secret</c> or <see langword="null"/>.</summary>
+    /// <summary>
+    /// <c>pii</c>, <c>secret</c> or <see langword="null"/>: its own; else the strongest own value of the columns its entity's bindings map it
+    /// to (next-phase-2-design.md section 3.2, decision 9).
+    /// </summary>
     public string? Sensitive { get; internal set; }
+
+    /// <summary>
+    /// The column whose comment <see cref="RAnnotated.Description"/> shows, when the attribute has no description of its own; otherwise
+    /// <see langword="null"/> (next-phase-2-design.md section 3.3, decision 12): the first commented column its entity's bindings map
+    /// it to, bindings in database name order.
+    /// </summary>
+    public RColumn? DescriptionColumn { get; internal set; }
 
     /// <summary>Validation constraints (scalar type constraints merged).</summary>
     public RValidation? Validation { get; internal set; }
@@ -341,7 +354,7 @@ public sealed class RRelation : RElement
     /// <summary>Mappings by database name.</summary>
     public IReadOnlyDictionary<string, RRelationMapping> Mappings { get; internal set; } = FrozenDictionary<string, RRelationMapping>.Empty;
 
-    /// <summary>The seeds whose target is the relation, by (name, id).</summary>
+    /// <summary>The seeds whose target is the relation, in merge order (package qualified name with none first, name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 }
 

@@ -13,13 +13,14 @@ One model repo per rule family. Each folder holds `.maquettiste/` (a `maquettist
 | `cycles` | MQ3002, MQ3003, MQ3004, MQ3015 |
 | `names-keys` | MQ3001, MQ3005, MQ3006, MQ3007 |
 | `relations` | MQ3001, MQ3008 to MQ3011, MQ3016 |
-| `values` | MQ3012, MQ3013, MQ3017, MQ3019 |
+| `values` | MQ3012, MQ3013, MQ3017, MQ3019 (attribute defaults, and column defaults against the resolved length, a native type, json and range) |
 | `physical` | MQ2001, MQ4001 to MQ4008, MQ4010 |
 | `mappings` | MQ4004, MQ4009, MQ4011 |
 | `extensions` | MQ5001, MQ5004 |
 | `scripts` | MQ2007, MQ5002, MQ5003, `x/no-draft` (with the test's fake sandbox) |
 | `reference-data` | MQ2001 and MQ2002 (storage keys), MQ3019 (default codes), MQ7001, MQ7002, MQ7006 to MQ7008, MQ7010, MQ7011 (settings findings land on `maquettiste.json`) |
 | `seeds` | MQ7002 to MQ7005, MQ7009, MQ7101 to MQ7103, MQ7105, MQ7106 |
+| `migrations` | MQ4101, MQ4104 to MQ4108, MQ4111, MQ4056 (a fact in a SQL Server database) |
 
 Rules the schemas already block in files (MQ3014 scalar base, MQ3018 names, MQ3010 `min`) and MQ3020 (a save rule) are tested
 with `ModelBuilder` in `ModelValidatorTests` and `RuleHelperTests`. The schemas also block a reference type's code type (MQ7010)

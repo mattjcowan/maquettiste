@@ -1,7 +1,8 @@
 // The Translations section of the inspector and the element editors' headers (reference-types-seeds-localization.md
 // 3.10): collapsed by default and remembered per user, one compact row per translated locale with the display name,
-// plural and description, the fallback text as a muted italic placeholder, and a stale marker with Confirm when the
-// default text changed since the translation. Nothing renders while the project declares fewer than two locales.
+// plural and description (and the texts of x-translatable custom properties, labelled by property name), the
+// fallback text as a muted italic placeholder, and a stale marker with Confirm when the default text changed since the
+// translation. Nothing renders while the project declares fewer than two locales.
 // FieldTranslations is the same for an element's fields (a reference type's code, label and user fields): per locale,
 // one compact line per field with its display name and description.
 import { useEffect, useState } from "react";
@@ -14,11 +15,11 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
 import { local } from "@/lib/storage";
 import { cn } from "@/lib/cn";
-import { localeName } from "./model";
+import { fieldLabel, localeName } from "./model";
 import { useLocalization, useOwnerTranslations, writeTranslations } from "./queries";
 
 const OPEN_KEY = "maquettiste.translationsOpen";
-const FIELD_LABELS: Record<TranslationField, string> = { displayName: "Display name", pluralName: "Plural name", label: "Label", description: "Description" };
+const FIELD_LABELS: Readonly<Record<string, string>> = { displayName: "Display name", pluralName: "Plural name", label: "Label", description: "Description" };
 /** Standard-field localization covers the domain model only (RT 3.1): not databases, tables, mappings or diagrams. */
 const LOCALIZED_KINDS = new Set(["package", "entity", "value-object", "scalar-type", "enum", "relation", "reference-type", "seed", "category"]);
 
@@ -85,7 +86,7 @@ function TranslationInput({
   const { store } = useServices();
   const [value, setValue] = useState(entry.translation ?? "");
   useEffect(() => setValue(entry.translation ?? ""), [entry.translation]);
-  const label = subject ? `${FIELD_LABELS[entry.field]} of ${subject} (${locale})` : `${FIELD_LABELS[entry.field]} (${locale})`;
+  const label = subject ? `${fieldLabel(entry.field, FIELD_LABELS)} of ${subject} (${locale})` : `${fieldLabel(entry.field, FIELD_LABELS)} (${locale})`;
   const inputId = `tr-${locale}-${entry.id}-${entry.field}`;
   const write = async (confirm = false) => {
     if (!confirm && value === (entry.translation ?? "")) return;
@@ -127,7 +128,7 @@ function TranslationInput({
   return (
     <div className="grid grid-cols-[7rem_1fr] items-start gap-2">
       <label htmlFor={inputId} className="pt-1 text-12 text-secondary">
-        {FIELD_LABELS[entry.field]}
+        {fieldLabel(entry.field, FIELD_LABELS)}
         {entry.state === "stale" ? (
           <Badge tone="warning" className="ml-1" title="The default text changed since this was translated">
             stale
@@ -221,7 +222,7 @@ function FieldTranslationTables({ owner, fields, locales }: { owner: string; fie
                   return entry ? (
                     <TranslationInput locale={locale} entry={entry} all={entries} subject={f.name} compact />
                   ) : (
-                    <span className="text-11 text-secondary">no {FIELD_LABELS[field].toLowerCase()} to translate</span>
+                    <span className="text-11 text-secondary">no {fieldLabel(field, FIELD_LABELS).toLowerCase()} to translate</span>
                   );
                 };
                 return (

@@ -48,13 +48,26 @@ internal static class Outcomes
     public static bool IsInvalid(Diagnostic diagnostic) =>
         diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Rule is not (HandEdit or RegionLost or StaleSnapshot);
 
+    /// <summary>A migration fact that lacks its intent (MQ4101).</summary>
+    public const string PendingFact = "MQ4101";
+
     /// <summary>
-    /// Whether a planning error is unit-level: it skipped one unit, and the pack's other units still render (MQ6019, generation-ui.md
-    /// section 5.3). The run's outcome is still <see cref="RunOutcome.Invalid"/>.
+    /// Whether a validation diagnostic keeps the shared resolution from running (next-phase-1-design.md section 3.2, decision 9): every
+    /// error that makes a run invalid except a pending migration fact (MQ4101), which stops generation (<see cref="IsInvalid"/>) but not
+    /// template previews, path listings, the resolved model or the resolver's findings while the fact waits for its intent.
     /// </summary>
     /// <param name="diagnostic">The diagnostic.</param>
-    /// <returns><see langword="true"/> for MQ6019.</returns>
-    public static bool IsUnitLevel(Diagnostic diagnostic) => diagnostic.Rule == "MQ6019";
+    /// <returns><see langword="true"/> for an invalid error other than MQ4101.</returns>
+    public static bool BlocksResolution(Diagnostic diagnostic) => IsInvalid(diagnostic) && diagnostic.Rule != PendingFact;
+
+    /// <summary>
+    /// Whether a planning error is unit-level: it skipped one unit, and the pack's other units still render (MQ6019, generation-ui.md
+    /// section 5.3; MQ6030 and MQ6031, a copy unit's sources and tokens, next-phase-1-design.md section 5.4). The run's outcome is still
+    /// <see cref="RunOutcome.Invalid"/>.
+    /// </summary>
+    /// <param name="diagnostic">The diagnostic.</param>
+    /// <returns><see langword="true"/> for MQ6019, MQ6030 and MQ6031.</returns>
+    public static bool IsUnitLevel(Diagnostic diagnostic) => diagnostic.Rule is "MQ6019" or "MQ6030" or "MQ6031";
 
     /// <summary>Sorts diagnostics: path, line, column, rule, message, element.</summary>
     /// <param name="diagnostics">The diagnostics.</param>

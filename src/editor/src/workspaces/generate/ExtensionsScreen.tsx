@@ -423,7 +423,7 @@ export function ExtensionsScreen() {
             <div className="min-h-0 flex-1">
               {buffer ? (
                 <CodeView
-                  language={kind === "rule" ? "javascript" : "json"}
+                  language={kind === "schema" ? "json" : "javascript"}
                   path={`extensions/${path}`}
                   value={buffer.text}
                   revision={revisions[path] ?? 0}

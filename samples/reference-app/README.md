@@ -25,7 +25,9 @@ tools/empty-editor.sh    starts the editor image on an empty project for seed.mj
                          manifest/<pack>.json and snapshots/main.json are written by maquettiste generate
 tools/db-apply.sh        applies db/main to postgres:16 (schema, migrations, seed twice) and asserts the object counts
 tools/gate2.sh           the gate 2 check, step by step (also what .github/workflows/gate2.yml runs)
-db/main/                 committed sql-ddl output: schema.sql, tables/views/sequences, migrations/0001.sql, seed.sql
+db/main/                 committed sql-ddl output: schema.sql, tables/views/sequences, migrations/, seed.sql; the
+                         migrations 0001.sql to 0005.sql keep the names earlier versions gave them and stay owned;
+                         a new one is <revision>-<key>.sql, named by its content
 src/ReferenceApp.Data/   ReferenceApp.Data.csproj (net10.0, Dapper, Npgsql); Generated/ is generated and not committed:
                          .gitignore there carries the csharp-dapper pack's managed block that ignores it;
                          Custom/ holds hand-written partial halves of generated types
@@ -81,10 +83,11 @@ docker compose -f docker/compose.yaml --project-directory tmp/nw-seed down -v
 `empty-editor.sh` exports `MAQUETTISTE_UID` and `MAQUETTISTE_GID` (your own ids unless you set them) so the editor writes
 the copy as you, with no ACLs or `chmod` (docker/README.md explains the image's user rule).
 
-`seed.mjs` saves `maquettiste.json` through `PUT /api/project/settings`, then posts 31 batches to `POST /api/model/batch`
-(vocabularies, packages, types, database objects, entities per package, relations per package, table overlays, mappings,
-diagrams), checks `POST /api/validate` reports nothing and, with `--compare`, that every file equals `build-model.mjs`'s and that
-`.maquettiste/model` holds no other file.
+`seed.mjs` saves `maquettiste.json` through `PUT /api/project/settings` with `migrations.record` set to `off`, then posts 31
+batches to `POST /api/model/batch` (vocabularies, packages, types, database objects, entities per package, relations per package,
+table overlays, mappings, diagrams) and saves the real settings. The batches reshape a database that was never deployed, so
+they record no migration facts. It then checks `POST /api/validate` reports nothing and, with `--compare`, that every file equals
+`build-model.mjs`'s and that `.maquettiste/model` holds no other file.
 `--dry-run` lists the batches without sending anything.
 
 ## Gate 2 check

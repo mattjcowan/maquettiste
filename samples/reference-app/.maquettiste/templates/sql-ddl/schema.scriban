@@ -6,9 +6,13 @@
 # Foreign keys that close a cycle cannot be created inline on PostgreSQL or SQL Server; they are left out of their CREATE TABLE
 # and added with ALTER TABLE after the last table. In include mode a table holding such a key is written inline instead, because
 # its table script declares every foreign key.
+# On PostgreSQL, a script that reaches migration facts or runs a run-once SQL object (see _ledger.scriban) runs in one transaction:
+# BEGIN after the header, the ledger DDL after the schemas, each run-once object inside its ledger guard, one ledger row per fact it
+# reaches before COMMIT. Without ledger rows nothing changes. SQL objects with environments run only in objects.<env>.sql.
 include "_sql.scriban"
 include "_objects.scriban"
 include "_reference.scriban"
+include "_ledger.scriban"
 db = database
 natives = []
 native_type_prelude(db, natives)
@@ -25,6 +29,18 @@ before_objects = objects_in_phase(db, "before")
 after_objects = objects_in_phase(db, "after")
 types_in_order = in_dependency_order(db.types)
 programmables = routines_and_views(db)
+ledger_rows = []
+for f in ledger_build_facts(db)
+  ledger_rows[ledger_rows.size] = ledger_fact_row(db, f)
+end
+once_objects = 0
+schema_objects = before_objects | array.concat after_objects
+for o in schema_objects
+  if object_writes_ledger(o, db)
+    once_objects = once_objects + 1
+  end
+end
+ledger = ledger_rows.size > 0 || once_objects > 0
 -}}
 {{ banner "--" }}
 -- Schema of database {{ db.name }} ({{ dialect_title(db) }}): tables {{ tables.size }}, views {{ db.views.size }}, sequences {{ db.sequences.size }}{{ object_counts(db) }}.
@@ -36,6 +52,9 @@ programmables = routines_and_views(db)
 --   {{ tables[pair[0] | string.to_int].name }}.{{ tables[pair[0] | string.to_int].foreign_keys[pair[1] | string.to_int].name }}
 {{- end }}
 {{- end }}
+{{- if ledger }}
+{{ ledger_header(ledger_rows.size, once_objects, "script") }}
+{{- end }}
 {{- if db.dialect == "sqlite" }}
 
 PRAGMA foreign_keys = ON;
@@ -44,13 +63,21 @@ PRAGMA foreign_keys = ON;
 SET QUOTED_IDENTIFIER ON;
 GO
 {{- end }}
+{{- if ledger }}
+
+BEGIN;
+{{- end }}
 {{- for s in schemas_to_create(db) }}
 
 {{ schema_sql(s, db) }}{{ go }}
 {{- end }}
+{{- if ledger }}
+
+{{ ledger_prelude(db) }}
+{{- end }}
 {{- for o in before_objects }}
 
-{{ object_sql(o, db) }}{{ go }}
+{{ object_run_sql(o, db) }}{{ go }}
 {{- end }}
 {{- for t in types_in_order }}
 
@@ -84,5 +111,13 @@ GO
 {{- end }}
 {{- for o in after_objects }}
 
-{{ object_sql(o, db) }}{{ go }}
+{{ object_run_sql(o, db) }}{{ go }}
+{{- end }}
+{{- if ledger_rows.size > 0 }}
+
+{{ ledger_rows | array.join "\n" }}
+{{- end }}
+{{- if ledger }}
+
+COMMIT;
 {{- end }}

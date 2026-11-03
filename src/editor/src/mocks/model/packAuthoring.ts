@@ -369,11 +369,24 @@ export class MockPackAuthoring {
       };
     }
     const tableKey = elementId?.includes("@");
-    if (elementId && !tableKey && !this.model.docs().has(elementId))
-      return answer("unknown-element", `'${elementId}' is not in the resolved model (deleted, renamed or never defined).`);
+    const doc = elementId && !tableKey ? this.model.docs().get(elementId) : undefined;
+    if (elementId && !tableKey && !doc) return answer("unknown-element", `'${elementId}' is not in the resolved model (deleted, renamed or never defined).`);
+    // As the planner (UnitPlanner.WhyNot): an `each <kind>` unit covers the elements of its kind (each database the databases),
+    // unless a generation.skip hint drops one; a covered element the mock does not render (sql-ddl's migration and environment
+    // scripts, which write nothing here) is planned as the engine plans it.
+    const kind = doc ? String(doc.kind) : null;
+    if (doc && found.for.startsWith("each ") && kind!.replace(/-/g, " ") === found.for.slice(5)) {
+      const hints = (doc.generation ?? {}) as Record<string, { skip?: boolean } | undefined>;
+      if (hints["*"]?.skip || hints[pack]?.skip) return answer("skip-hint", `'${elementId}' has generation.skip for this pack (or for every pack).`);
+      return { ...answer("new", "No recorded state to compare with; the unit renders."), planned: true };
+    }
+    // The mock runs no pack script: a selector unit it does not render is one whose selector did not return the element.
+    if (elementId && found.for.startsWith("select ")) return answer("selector", `The selector '${found.for.slice(7).trim()}' did not return '${elementId}'.`);
     return answer(
       "scope",
-      elementId ? `Unit '${unit}' is '${found.for}', which does not cover '${elementId}'.` : `Unit '${unit}' is '${found.for}': name an element.`,
+      elementId
+        ? `Unit '${unit}' is '${found.for}', which does not cover '${elementId}'${kind ? ` (${kind})` : ""}.`
+        : `Unit '${unit}' is '${found.for}': name an element.`,
     );
   }
 

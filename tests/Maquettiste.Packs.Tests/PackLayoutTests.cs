@@ -57,4 +57,33 @@ public sealed class PackLayoutTests
             }
         }
     }
+
+    [Fact]
+    public async Task Unresolved_cells_are_listed_in_the_manifest()
+    {
+        // next-phase-2-design.md section 3.4: an invoice names its customer by email, and the database fills customers.id.
+        using var repo = TableSeedSqlTests.WithSeedData(TableSeedSqlTests.NaturalKeyRepo(identity: true), "csv");
+        await repo.GenerateCleanlyAsync(packs: ["seed-data"]);
+
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(repo.Read("data/main/manifest.json"))!;
+        var unresolved = manifest["unresolved"]!.AsArray();
+        Assert.Equal(3, unresolved.Count);
+        var first = unresolved[0]!;
+        Assert.Equal(("invoices", "sales", TableSeedSqlTests.N(31), 0, "customer_id"),
+            ((string)first["table"]!, (string)first["schema"]!, (string)first["row"]!, (int)first["index"]!, (string)first["column"]!));
+        Assert.Equal(("customers", "sales", "id"), ((string)first["referencedTable"]!, (string)first["referencedSchema"]!, (string)first["referencedColumn"]!));
+        Assert.Equal(["email"], first["keyColumns"]!.AsArray().Select(k => (string)k!));
+        Assert.Equal(["ada@example.com"], first["key"]!.AsArray().Select(k => (string)k!));
+        Assert.Equal("grace@example.com", (string)unresolved[1]!["key"]![0]!);
+
+        // The cell itself is left empty.
+        var invoices = repo.Read("data/main/sales.invoices.csv").ReplaceLineEndings("\n").Split('\n');
+        Assert.Equal("id,number,issued_on,customer_id", invoices[0]);
+        Assert.EndsWith(",INV-1,2026-01-05,", invoices[1], StringComparison.Ordinal);
+
+        // Known values leave no list.
+        using var known = TableSeedSqlTests.WithSeedData(TableSeedSqlTests.NaturalKeyRepo(identity: false), "json");
+        await known.GenerateCleanlyAsync(packs: ["seed-data"]);
+        Assert.Null(System.Text.Json.Nodes.JsonNode.Parse(known.Read("data/main/seed-data.json"))!["unresolved"]);
+    }
 }

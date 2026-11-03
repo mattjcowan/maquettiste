@@ -22,7 +22,8 @@ public sealed record TranslationPruneResult(SaveOutcome Outcome, IReadOnlyList<O
 public sealed partial class ModelStore
 {
     /// <summary>
-    /// Finds the orphan translations (MQ7203: an entry whose id names no localizable node, or a field its node does not have) of every
+    /// Finds the orphan translations (MQ7203: an entry whose id names no localizable node, or a field its node does not have, such as the
+    /// text of a property no schema marks <c>x-translatable</c> any more) of every
     /// translated locale and, unless <paramref name="dryRun"/>, removes them in one atomic save checked against the shards as loaded.
     /// </summary>
     /// <param name="dryRun">Only report.</param>
@@ -63,7 +64,7 @@ public sealed partial class ModelStore
                     continue;
                 }
 
-                foreach (var field in LocalizationIndex.Fields.Where(f => LocalizationIndex.Has(entry, f) && !node.Allows(f)))
+                foreach (var field in LocalizationIndex.FieldsIn(entry).Where(f => !node.Allows(f)))
                 {
                     if (field == LocalizationIndex.PluralNameField && node.Kind == "end")
                         continue; // MQ7211, not an orphan.
@@ -100,15 +101,7 @@ public sealed partial class ModelStore
 
             if (entries[orphan.Id] is not JsonObject entry)
                 continue;
-            entry.Remove(orphan.Field);
-            if (entry["src"] is JsonObject src)
-            {
-                src.Remove(orphan.Field);
-                if (src.Count == 0)
-                    entry.Remove("src");
-            }
-
-            if (!entry.Any(kv => kv.Key != "src"))
+            if (LocalizationIndex.RemoveField(entry, orphan.Field))
                 entries.Remove(orphan.Id);
         }
 

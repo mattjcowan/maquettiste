@@ -29,8 +29,8 @@ public sealed class DdlCoverageTests
 
         Golden.AssertMatches(Path.Combine(golden, "final"), repo.PathOf("db"));
         // Steps 4 and 5 change schemas only, which the MySQL, SQLite and Oracle databases do not declare.
-        Assert.True(File.Exists(repo.PathOf("db/postgres/migrations/0005.sql")));
-        Assert.False(File.Exists(repo.PathOf("db/mysql/migrations/0004.sql")));
+        Assert.True(MigrationFiles.Exists(repo, "postgres", 5));
+        Assert.False(MigrationFiles.Exists(repo, "mysql", 4));
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public sealed class DdlCoverageTests
         var sqlite3 = ProcessRunner.FindOnPath("sqlite3");
         using var repo = DdlCoverage.Create(idempotent: false);
         await repo.GenerateCleanlyAsync();
-        var first = repo.Read("db/sqlite/migrations/0001.sql");
+        var first = MigrationFiles.Read(repo, "sqlite", 1);
         // Step 1 again, with a NOT NULL column without a default added to the SQLite customers: a rebuild.
         DdlCoverage.Write(repo, 1, (db, path, node) =>
         {
@@ -123,7 +123,7 @@ public sealed class DdlCoverageTests
                 node["columns"]!.AsArray().Add(DdlCoverage.NewColumn(db, 33, "rating", "int32", c => c["nullable"] = false));
         });
         await repo.GenerateCleanlyAsync();
-        var second = repo.Read("db/sqlite/migrations/0002.sql");
+        var second = MigrationFiles.Read(repo, "sqlite", 2);
 
         Assert.Contains("-- TODO: rating is NOT NULL without a default: replace the NULL placeholder below with each row's value", second, StringComparison.Ordinal);
         Assert.Contains(", NULL /* TODO: rating */ FROM customers;", second, StringComparison.Ordinal);
@@ -177,8 +177,8 @@ public sealed class DdlCoverageTests
         DdlCoverage.Write(repo, 2);
         await repo.GenerateCleanlyAsync();
 
-        Assert.StartsWith(".bail on\n-- Migration 0002", repo.Read("db/sqlite/migrations/0002.sql"), StringComparison.Ordinal);
-        Assert.DoesNotContain(".bail", repo.Read("db/postgres/migrations/0002.sql"), StringComparison.Ordinal);
+        Assert.StartsWith(".bail on\n-- Migration 0002", MigrationFiles.Read(repo, "sqlite", 2), StringComparison.Ordinal);
+        Assert.DoesNotContain(".bail", MigrationFiles.Read(repo, "postgres", 2), StringComparison.Ordinal);
         Assert.DoesNotContain(".bail", repo.Read("db/sqlite/schema.sql"), StringComparison.Ordinal);
     }
 
@@ -230,7 +230,7 @@ public sealed class DdlCoverageTests
         DdlCoverage.Write(repo, 1, DdlCoverage.ViewBody);
         await repo.GenerateCleanlyAsync();
         return DdlCoverage.Databases.ToDictionary(d => d.Name,
-            d => new[] { repo.Read($"db/{d.Name}/migrations/0001.sql"), repo.Read($"db/{d.Name}/migrations/0002.sql") }, StringComparer.Ordinal);
+            d => new[] { MigrationFiles.Read(repo, d.Name, 1), MigrationFiles.Read(repo, d.Name, 2) }, StringComparer.Ordinal);
     }
 
     [Fact]

@@ -21,20 +21,22 @@ public sealed class LifecycleTests
         var forced = await repo.GenerateCleanlyAsync(force: true);
         Assert.DoesNotContain(forced.Changes, c => Writes.Contains(c.Kind));
 
-        // Check mode renders every unit against the saved snapshots: the migration unit re-emits revision 1 as a placeholder,
-        // which the owned-file rule keeps, so the committed migration is neither drift nor an orphan.
+        // Check mode renders every unit against the saved snapshots: the diffs are empty, so the migration unit renders nothing, and
+        // the owned-file rule keeps the committed migration (a once file on disk), so it is neither drift nor an orphan.
         var check = await repo.GenerateAsync(GenerationMode.Check);
         Assert.True(check.Outcome == RunOutcome.Succeeded, PackRepo.Describe(check));
     }
 
     [Fact]
-    public async Task A_plan_lists_a_migration_written_once_as_kept_with_no_diff()
+    public async Task A_plan_after_a_migration_renders_nothing_for_it_and_the_apply_keeps_it_owned()
     {
         using var repo = PackRepo.Billing();
         await repo.GenerateCleanlyAsync();
-        // The snapshot is at revision 1 now: the migration unit emits a short placeholder for 0001, never written over the file.
+        // The snapshot is at revision 1 now: the diff is empty, so the migration unit renders nothing, and the migration written
+        // once stays owned while it is on disk (no placeholder keeps it).
         await repo.GenerateCleanlyAsync();
-        var real = repo.Read("db/main/migrations/0001.sql");
+        var path = MigrationFiles.Of(repo, "main", 1);
+        var real = repo.Read(path);
         await using var store = new ModelStore(repo.Repo.Options);
         var service = new GenerationService(store, repo.Repo.Options);
 
@@ -42,27 +44,19 @@ public sealed class LifecycleTests
         {
             var plan = (await service.PlanAsync(new GenerationRequest { Force = force }, null, TestContext.Current.CancellationToken)).Plan!;
 
-            var migration = Assert.Single(plan.Changes, c => c.Path == "db/main/migrations/0001.sql");
-            Assert.Equal(FileChangeKind.Kept, migration.Kind);
-            Assert.Equal("", await service.GetPlanDiffAsync(plan.Id, migration.Path, TestContext.Current.CancellationToken));
+            Assert.DoesNotContain(plan.Units.SelectMany(u => u.Outputs), o => o.Path.StartsWith("db/main/migrations/", StringComparison.Ordinal));
+            Assert.DoesNotContain(plan.Changes, c => c.Path == path && c.Kind != FileChangeKind.Kept);
             Assert.Equal(0, plan.Counts["added"] + plan.Counts["modified"] + plan.Counts["deleted"] + plan.Counts["conflict"]);
-            Assert.Equal(plan.Units.SelectMany(u => u.Outputs).Count(), plan.Changes.Count);
             if (force)
-            {
-                // The forced plan rendered the placeholder: other bytes than the migration on disk, still nothing to do.
-                var output = plan.Units.SelectMany(u => u.Outputs).Single(o => o.Path == migration.Path);
-                Assert.NotEqual(output.DiskHashAtPlan, output.ContentHash);
                 Assert.Equal(0, plan.Counts["not-rendered"]);
-            }
             else
-            {
                 Assert.True(plan.Counts["not-rendered"] > 0);
-            }
 
             var applied = await service.ApplyAsync(plan.Id, null, TestContext.Current.CancellationToken);
             Assert.Equal(RunOutcome.Succeeded, applied.Outcome);
             Assert.Equal(0, applied.Result!.FilesWritten);
-            Assert.Equal(real, repo.Read("db/main/migrations/0001.sql"));
+            Assert.Equal(real, repo.Read(path));
+            Assert.Contains("\"" + path + "\"", repo.Read(".maquettiste/manifest/sql-ddl.json"), StringComparison.Ordinal);
         }
     }
 
@@ -80,9 +74,9 @@ public sealed class LifecycleTests
         });
         await repo.GenerateCleanlyAsync();
 
-        var pg = repo.Read("db/main/migrations/0002.sql");
+        var pg = MigrationFiles.Read(repo, "main", 2);
         AssertBefore(pg, "ALTER TABLE billing.customers ALTER COLUMN customer_since TYPE varchar(10)", "-- TODO: convert existing values of customers.customer_since (type: ");
-        Assert.Contains("-- TODO: convert existing values of customers.customer_since (type: ", repo.Read("db/reporting/migrations/0002.sql"), StringComparison.Ordinal);
+        Assert.Contains("-- TODO: convert existing values of customers.customer_since (type: ", MigrationFiles.Read(repo, "reporting", 2), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -100,7 +94,7 @@ public sealed class LifecycleTests
         });
         await repo.GenerateCleanlyAsync();
 
-        var pg = repo.Read("db/main/migrations/0002.sql");
+        var pg = MigrationFiles.Read(repo, "main", 2);
         AssertBefore(pg, "ALTER TABLE billing.customers DROP COLUMN customer_since;", "ALTER TABLE billing.customers ADD COLUMN customer_since ");
     }
 
@@ -109,7 +103,7 @@ public sealed class LifecycleTests
     {
         using var repo = PackRepo.BillingDialects();
         await repo.GenerateCleanlyAsync();
-        var first = repo.Read("db/main/migrations/0001.sql");
+        var first = MigrationFiles.Read(repo, "main", 1);
         Assert.Contains("CREATE TABLE billing.invoices (", first, StringComparison.Ordinal);
 
         ModelChanges.ChangeCustomer(repo);
@@ -118,8 +112,8 @@ public sealed class LifecycleTests
         ModelChanges.AddVoucherMethod(repo);
         await repo.GenerateCleanlyAsync();
 
-        Assert.Equal(first, repo.Read("db/main/migrations/0001.sql"));
-        var pg = repo.Read("db/main/migrations/0002.sql");
+        Assert.Equal(first, MigrationFiles.Read(repo, "main", 1));
+        var pg = MigrationFiles.Read(repo, "main", 2);
         Assert.Contains("schema revision 1 to 2", pg, StringComparison.Ordinal);
         Assert.Contains("ALTER TABLE billing.customers ADD COLUMN phone varchar(30) NULL;", pg, StringComparison.Ordinal);
         Assert.Contains("ALTER TABLE billing.customers RENAME COLUMN name TO full_name;", pg, StringComparison.Ordinal);
@@ -133,7 +127,7 @@ public sealed class LifecycleTests
         AssertBefore(pg, "ALTER TABLE billing.invoice_lines DROP CONSTRAINT fk_invoice_lines_product_id;", "ALTER TABLE billing.customers ADD COLUMN phone");
         AssertBefore(pg, "ALTER TABLE billing.customers DROP COLUMN customer_since;", "ALTER TABLE billing.invoice_lines ADD CONSTRAINT fk_invoice_lines_product_id");
 
-        var sqlServer = repo.Read("db/reporting/migrations/0002.sql");
+        var sqlServer = MigrationFiles.Read(repo, "reporting", 2);
         AssertBefore(sqlServer, "ALTER TABLE dbo.customers ADD region nvarchar(40) NULL;", "CREATE INDEX ix_customers_region ON dbo.customers (region);");
         AssertBefore(sqlServer, "ALTER TABLE dbo.customers ADD featured_invoice_id uniqueidentifier NULL;", "ADD CONSTRAINT fk_customers_featured_invoice_id");
         Assert.Contains("ALTER TABLE dbo.customers ADD priority int NOT NULL CONSTRAINT df_customers_priority DEFAULT 0;", sqlServer, StringComparison.Ordinal);
@@ -141,7 +135,7 @@ public sealed class LifecycleTests
         Assert.Matches(@"BEGIN DECLARE (@mq_rc\d+) int; EXEC \1 = sp_rename N'dbo\.customers\.name', N'full_name', N'COLUMN'; IF \1 <> 0 THROW 50000, N'sp_rename failed: the migration stops here\.', 1; END;", sqlServer);
         Assert.Contains("ALTER TABLE dbo.customers ADD phone nvarchar(30) NULL;", sqlServer, StringComparison.Ordinal);
 
-        var sqlite = repo.Read("db/local/migrations/0002.sql");
+        var sqlite = MigrationFiles.Read(repo, "local", 2);
         // customers gains a foreign key, so it is rebuilt too; its renamed column is copied from its old name.
         Assert.Contains("INSERT INTO \"_mq_new_customers\" (id, full_name, email, created_at, updated_at)\nSELECT id, name, email, created_at, updated_at FROM customers;", sqlite, StringComparison.Ordinal);
         // SQLite cannot change a foreign key in place: invoice_lines is rebuilt (new table, rows copied, old dropped, new renamed).
@@ -159,16 +153,16 @@ public sealed class LifecycleTests
         // Dropping a column with a default: SQL Server needs its default constraint dropped first.
         ModelChanges.RemovePriority(repo);
         await repo.GenerateCleanlyAsync();
-        AssertBefore(repo.Read("db/reporting/migrations/0003.sql"),
+        AssertBefore(MigrationFiles.Read(repo, "reporting", 3),
             "IF OBJECT_ID(N'dbo.df_customers_priority', 'D') IS NOT NULL ALTER TABLE dbo.customers DROP CONSTRAINT df_customers_priority;",
             "ALTER TABLE dbo.customers DROP COLUMN priority;");
-        Assert.Contains("ALTER TABLE billing.customers DROP COLUMN priority;", repo.Read("db/main/migrations/0003.sql"), StringComparison.Ordinal);
+        Assert.Contains("ALTER TABLE billing.customers DROP COLUMN priority;", MigrationFiles.Read(repo, "main", 3), StringComparison.Ordinal);
 
         // The SQLite chain runs: every migration, then the seed twice (its lookup rows are upserts).
         var sqlite3 = ProcessRunner.FindOnPath("sqlite3");
         if (sqlite3 is not null)
         {
-            var chain = string.Concat(new[] { "0001", "0002", "0003" }.Select(r => repo.Read($"db/local/migrations/{r}.sql")))
+            var chain = string.Concat(new[] { 1, 2, 3 }.Select(r => MigrationFiles.Read(repo, "local", r)))
                 + repo.Read("db/local/seed.sql") + repo.Read("db/local/seed.sql")
                 + "\nSELECT 'methods=' || count(*) FROM payment_methods;\nSELECT 'region=' || count(*) FROM pragma_table_info('customers') WHERE name = 'region';\n";
             var run = await ProcessRunner.RunAsync(sqlite3, ["-bail", ":memory:"], repo.PathOf("db/local"), TimeSpan.FromMinutes(1), chain);
@@ -196,7 +190,7 @@ public sealed class LifecycleTests
 
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
 
-        var migration = repo.Read("db/main/migrations/0002.sql");
+        var migration = MigrationFiles.Read(repo, "main", 2);
         Assert.Contains("CREATE TABLE billing.notes (", migration, StringComparison.Ordinal);
         Assert.Contains("CREATE INDEX ix_notes_entity_type_entity_id ON billing.notes (entity_type, entity_id);", migration, StringComparison.Ordinal);
     }
@@ -208,8 +202,8 @@ public sealed class LifecycleTests
         await repo.GenerateCleanlyAsync();
 
         // once: the migration belongs to the team after the first write.
-        var migration = repo.Read("db/main/migrations/0001.sql") + "-- reviewed\n";
-        repo.Write("db/main/migrations/0001.sql", migration);
+        var migration = MigrationFiles.Read(repo, "main", 1) + "-- reviewed\n";
+        repo.Write(MigrationFiles.Of(repo, "main", 1), migration);
         // pair: the companion half of an entity likewise.
         var companion = repo.Read("src/Generated/Billing/Customer.cs").Replace("{\n}", "{\n    public override string ToString() => Name;\n}", StringComparison.Ordinal);
         repo.Write("src/Generated/Billing/Customer.cs", companion);
@@ -218,7 +212,7 @@ public sealed class LifecycleTests
         repo.Write("db/main/seed.sql", seed);
 
         await repo.GenerateCleanlyAsync(force: true);
-        Assert.Equal(migration, repo.Read("db/main/migrations/0001.sql"));
+        Assert.Equal(migration, MigrationFiles.Read(repo, "main", 1));
         Assert.Equal(companion, repo.Read("src/Generated/Billing/Customer.cs"));
         Assert.Equal(seed, repo.Read("db/main/seed.sql"));
         var check = await repo.GenerateAsync(GenerationMode.Check);
@@ -286,14 +280,14 @@ public sealed class LifecycleTests
         File.Delete(repo.PathOf(".maquettiste/model/databases/local/objects/invoices-keep-number.json"));
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
 
-        var sqlServer = repo.Read("db/reporting/migrations/0002.sql");
+        var sqlServer = MigrationFiles.Read(repo, "reporting", 2);
         AssertBefore(sqlServer, "DROP FUNCTION IF EXISTS dbo.invoice_total;", "CREATE FUNCTION dbo.invoice_total(@invoice_id uniqueidentifier)");
         Assert.Contains("    RETURN 0;", sqlServer, StringComparison.Ordinal);
-        var pg = repo.Read("db/main/migrations/0002.sql");
+        var pg = MigrationFiles.Read(repo, "main", 2);
         Assert.Contains("ALTER DOMAIN billing.email_address RENAME TO contact_email;", pg, StringComparison.Ordinal);
         Assert.DoesNotContain("TODO: database type", pg, StringComparison.Ordinal); // a rename is not a change of definition
         Assert.Contains("billing.contact_email", repo.Read("db/main/schema.sql"), StringComparison.Ordinal);
-        Assert.Contains("-- TODO: trigger invoices_keep_number left the model; drop it by hand.", repo.Read("db/local/migrations/0002.sql"), StringComparison.Ordinal);
+        Assert.Contains("-- TODO: trigger invoices_keep_number left the model; drop it by hand.", MigrationFiles.Read(repo, "local", 2), StringComparison.Ordinal);
     }
 
     private static void EditJson(PackRepo repo, string path, Action<JsonNode> edit) => repo.EditJson(path, edit);
@@ -352,7 +346,7 @@ public sealed class LifecycleTests
 
         repo.Write(tables + "tenant-documents.json", Documents(""));
         await repo.GenerateCleanlyAsync();
-        var pg = repo.Read("db/main/migrations/0002.sql");
+        var pg = MigrationFiles.Read(repo, "main", 2);
         AssertBefore(pg, "ALTER TABLE billing.tenant_documents DROP CONSTRAINT fk_tenant_documents_folder;",
             "ALTER TABLE billing.tenant_documents ADD CONSTRAINT fk_tenant_documents_folder FOREIGN KEY (tenant_id, folder_id) REFERENCES billing.tenant_folders (tenant_id, id) ON DELETE SET NULL;");
     }

@@ -42,7 +42,12 @@ public sealed record TranslationEntry
     /// <summary>The translated description (text or a Markdown sidecar).</summary>
     public Description? Description { get; init; }
 
-    /// <summary>Field name to the first 8 hex digits of SHA-256 over the default-locale text it was translated from.</summary>
+    /// <summary>The translated texts of translatable custom properties (<c>x-translatable</c>), by property name
+    /// (next-phase-1-design.md section 4.4).</summary>
+    public IReadOnlyDictionary<string, string> Properties { get; init; } = ImmutableDictionary<string, string>.Empty;
+
+    /// <summary>Field name to the first 8 hex digits of SHA-256 over the default-locale text it was translated from; a property text's
+    /// field is <c>properties/&lt;name&gt;</c>.</summary>
     public IReadOnlyDictionary<string, string> Src { get; init; } = ImmutableDictionary<string, string>.Empty;
 }
 

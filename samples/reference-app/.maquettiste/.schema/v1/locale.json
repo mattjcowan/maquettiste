@@ -40,7 +40,7 @@
       "additionalProperties": {
         "title": "Translation entry",
         "type": "object",
-        "x-order": ["displayName", "pluralName", "label", "description", "src"],
+        "x-order": ["displayName", "pluralName", "label", "description", "properties", "src"],
         "properties": {
           "displayName": {
             "type": "string",
@@ -57,8 +57,20 @@
           "description": {
             "$ref": "common.json#/$defs/description"
           },
+          "properties": {
+            "description": "The translated texts of translatable custom properties (x-translatable), by property name.",
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": {}
+          },
           "src": {
-            "description": "Each translated field's 8-hex SHA-256 prefix of the default-locale text it was translated from.",
+            "description": "Each translated field's 8-hex SHA-256 prefix of the default-locale text it was translated from; a property text's field is properties/<name>, after the standard fields.",
             "type": "object",
             "x-order": ["displayName", "pluralName", "label", "description"],
             "properties": {
@@ -75,7 +87,12 @@
                 "$ref": "#/$defs/hash"
               }
             },
-            "additionalProperties": false,
+            "propertyNames": {
+              "pattern": "^(displayName|pluralName|label|description|properties/[A-Za-z_][A-Za-z0-9_]*)$"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/hash"
+            },
             "default": {}
           }
         },

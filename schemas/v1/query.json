@@ -10,9 +10,14 @@
     "name",
     "displayName",
     "pluralName",
+    "package",
     "database",
     "description",
+    "rationale",
+    "decision",
+    "status",
     "stereotypes",
+    "excludeStereotypes",
     "tags",
     "category",
     "entity",
@@ -51,15 +56,37 @@
     "pluralName": {
       "type": "string"
     },
+    "package": {
+      "description": "The owning package. Membership only: the database still decides where the object goes.",
+      "$ref": "common.json#/$defs/id"
+    },
     "database": {
       "$ref": "common.json#/$defs/id"
     },
     "description": {
       "$ref": "common.json#/$defs/description"
     },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
+    },
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",
       "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
     },
     "tags": {
       "$ref": "common.json#/$defs/tagList",

@@ -9,12 +9,22 @@ namespace Maquettiste.Testing;
 public sealed class PackageBuilder : ElementBuilder<PackageBuilder>
 {
     private readonly string? _parent;
+    private List<string>? _dependsOn;
 
     internal PackageBuilder(ModelBuilder model, string name, string? parent)
         : base(model, name) => _parent = parent;
 
+    /// <summary>Declares the packages this one may reference (layering); an empty call declares <c>dependsOn: []</c>.</summary>
+    /// <param name="packages">The packages.</param>
+    /// <returns>This builder.</returns>
+    public PackageBuilder DependsOn(params PackageBuilder[] packages)
+    {
+        (_dependsOn ??= []).AddRange(packages.Select(p => p.Id));
+        return this;
+    }
+
     /// <inheritdoc/>
-    protected override Element CreateElement() => new Package { Id = Id, Name = Name, Parent = _parent };
+    protected override Element CreateElement() => new Package { Id = Id, Name = Name, Parent = _parent, DependsOn = _dependsOn is null ? null : [.. _dependsOn] };
 }
 
 /// <summary>Builds one attribute.</summary>
@@ -854,9 +864,71 @@ public sealed class StereotypeBuilder : ElementBuilder<StereotypeBuilder>
     private readonly AttributeList _attributes;
     private readonly List<string> _appliesTo = [];
     private readonly Dictionary<string, JsonElement> _defaults = new(StringComparer.Ordinal);
+    private readonly List<string> _requires = [];
+    private readonly List<string> _conflicts = [];
+    private readonly List<string> _implies = [];
+    private string? _group;
+    private string? _package;
+    private StereotypeParameters? _parameters;
 
     internal StereotypeBuilder(ModelBuilder model, string key)
         : base(model, key) => _attributes = new AttributeList(model);
+
+    /// <summary>Puts the stereotype in a package (membership).</summary>
+    /// <param name="package">The package.</param>
+    /// <returns>This builder.</returns>
+    public StereotypeBuilder InPackage(PackageBuilder package)
+    {
+        _package = package.Id;
+        return this;
+    }
+
+    /// <summary>Puts the stereotype in a group (at most one stereotype of a group per element).</summary>
+    /// <param name="group">The group label.</param>
+    /// <returns>This builder.</returns>
+    public StereotypeBuilder Group(string group)
+    {
+        _group = group;
+        return this;
+    }
+
+    /// <summary>Adds stereotype keys an element that carries this one must also carry.</summary>
+    /// <param name="keys">The keys.</param>
+    /// <returns>This builder.</returns>
+    public StereotypeBuilder Requires(params string[] keys)
+    {
+        _requires.AddRange(keys);
+        return this;
+    }
+
+    /// <summary>Adds stereotype keys an element that carries this one must not carry.</summary>
+    /// <param name="keys">The keys.</param>
+    /// <returns>This builder.</returns>
+    public StereotypeBuilder Conflicts(params string[] keys)
+    {
+        _conflicts.AddRange(keys);
+        return this;
+    }
+
+    /// <summary>Adds stereotype keys applied with this one (one level).</summary>
+    /// <param name="keys">The keys.</param>
+    /// <returns>This builder.</returns>
+    public StereotypeBuilder Implies(params string[] keys)
+    {
+        _implies.AddRange(keys);
+        return this;
+    }
+
+    /// <summary>Sets the typed parameters.</summary>
+    /// <param name="properties">A JSON Schema <c>properties</c> object, as JSON text.</param>
+    /// <param name="required">The required parameter names.</param>
+    /// <returns>This builder.</returns>
+    public StereotypeBuilder Parameters(string properties, params string[] required)
+    {
+        using var document = JsonDocument.Parse(properties);
+        _parameters = new StereotypeParameters { Properties = document.RootElement.Clone(), Required = [.. required] };
+        return this;
+    }
 
     /// <summary>Restricts the stereotype to kinds.</summary>
     /// <param name="kinds">Kind names.</param>
@@ -894,8 +966,14 @@ public sealed class StereotypeBuilder : ElementBuilder<StereotypeBuilder>
         Id = Id,
         Key = Name,
         Name = Name,
+        Package = _package,
         AppliesTo = [.. _appliesTo],
+        Group = _group,
+        Requires = [.. _requires],
+        Conflicts = [.. _conflicts],
+        Implies = [.. _implies],
         Attributes = _attributes.Build(),
+        Parameters = _parameters,
         DefaultProperties = _defaults.ToImmutableDictionary(StringComparer.Ordinal),
     };
 }

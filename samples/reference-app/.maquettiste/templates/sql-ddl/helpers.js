@@ -1,9 +1,6 @@
 // Helpers for the sql-ddl pack. They run in the Maquettiste sandbox: no CLR, no files, no clock. Every helper is a pure function
 // of its arguments (D12): nothing is kept between calls, so output does not depend on the order units render in.
 
-// One unit per database: the schema, migration and seed units use "for": "select databases".
-maquettiste.selector("databases", (model) => model.databases);
-
 // The foreign-key graph arrives as plain text built by dependency_spec in _objects.scriban (walking thousands of model objects
 // from JavaScript is much slower than from the template): one entry per table in input order, separated by ";", each a
 // comma-separated list with one item per foreign key: the referenced table's index, or "x" when it is outside the list or the

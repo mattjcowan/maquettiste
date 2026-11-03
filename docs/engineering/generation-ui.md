@@ -34,10 +34,10 @@ The owner's scenario sizes the design: a monorepo with `.maquettiste` at the roo
 **What `sql-ddl` does, as the explorer shows it** (the path summary of §2.2):
 
 ```
-table      each table      → table.scriban      → <database>/[<schema>/]tables/<table>.sql
-schema     select databases → schema.scriban    → <database>/schema.sql
-migration  select databases → migration.scriban → (files the template writes)       Create only if missing
-seed       select databases → seed.scriban      → <database>/seed.sql               Protected regions
+table      each table    → table.scriban     → <database>/[<schema>/]tables/<table>.sql
+schema     each database → schema.scriban    → <database>/schema.sql
+migration  each database → migration.scriban → (files the template writes)       Create only if missing
+seed       each database → seed.scriban      → <database>/seed.sql               Protected regions
 ```
 
 ## 2. The Generate explorer (rail)
@@ -50,7 +50,7 @@ The Generate explorer replaces today's pack list with a tree, built with the exp
 ▾ sql-ddl                         4 units · 3 roots        ⋯
   ▾ Units
       table · each table → table.scriban → <database>/[<schema>/]tables/<table>.sql      412
-      schema · select databases → schema.scriban → <database>/schema.sql                    3
+      schema · each database → schema.scriban → <database>/schema.sql                       3
   ▸ Templates                     10 files
   ▸ Parameters                    5 · 2 set
   ▾ Outputs                       last run 2026-09-29 14:02
@@ -212,7 +212,7 @@ Parameter causes name the parameter (per-name hashes), so "quoting changed" does
 
 `time-preview` in the bench app (`bench/README.md`) builds that model and measures it.
 
-**Deadline.** Template text being typed can loop without end (the Scriban limits are per loop and per recursion, so two nested loops of a million run until cancelled). Preview and paths therefore pass `HttpContext.RequestAborted` linked to a deadline of `limits.scriptTimeoutMs` × 4 (8 s by default) into the render; a deadline hit fails the unit with MQ6007. One preview is in flight per client: a request that sends `X-Maquettiste-Client` (the editor's live preview sends one key per tab) cancels an older request of the same kind and key on the server, not only in the browser, and the older one answers 409 `superseded`. The key is opt-in because one tab sends several path listings at once and HTTP/2 multiplexes them on one connection. The preview session is reused while the model version, the settings hash, the pack folder (paths, sizes, write times) and the service's write epoch (bumped when a run takes and releases the run lock) and the committed schema snapshots (sizes, write times) are unchanged, with no time limit (2026-10-05; it was at most 2 s, which made every preview on a large model prepare again): the stamps see what a command-line run in the same repository writes that a preview reads. Overlay scripts get a pool from `scripts.CreatePool(scripts, model.Settings.Limits, …)` exactly as `UnitPlanner` does, so the sandbox limits apply. Step 3 adds a fixture with a nested-loop template that must end with MQ6007 within the deadline.
+**Deadline.** Template text being typed can loop without end (the Scriban limits are per loop and per recursion, so two nested loops of a million run until cancelled). Preview and paths therefore pass `HttpContext.RequestAborted` linked to a deadline of `limits.scriptTimeoutMs` × 4 (8 s by default, and 8 s when it is 0, which turns the scripts' wall clock off; next-phase-1-design.md section 5.7) into the render; a deadline hit fails the unit with MQ6007. One preview is in flight per client: a request that sends `X-Maquettiste-Client` (the editor's live preview sends one key per tab) cancels an older request of the same kind and key on the server, not only in the browser, and the older one answers 409 `superseded`. The key is opt-in because one tab sends several path listings at once and HTTP/2 multiplexes them on one connection. The preview session is reused while the model version, the settings hash, the pack folder (paths, sizes, write times) and the service's write epoch (bumped when a run takes and releases the run lock) and the committed schema snapshots (sizes, write times) are unchanged, with no time limit (2026-10-05; it was at most 2 s, which made every preview on a large model prepare again): the stamps see what a command-line run in the same repository writes that a preview reads. Overlay scripts get a pool from `scripts.CreatePool(scripts, model.Settings.Limits, …)` exactly as `UnitPlanner` does, so the sandbox limits apply. Step 3 adds a fixture with a nested-loop template that must end with MQ6007 within the deadline.
 
 **Paths.** The engine renders a unit's output pattern in the same context as the template, after it, so a pattern can read variables the template assigned. `paths` plans the unit alone over its scope after the filter and after `generation.skip` hints (`UnitPlanner.SkippedByHints`), as the planner counts them, and renders nothing for that: it reports the count, the planned elements with names and kinds (`elements`, what an element picker lists), `wide`, MQ6019, and MQ6020 for an output pattern with no code span over a scope of several elements. Paths are rendered only for `elementIds` (at most 20), each fully, so a pattern that reads a variable the template assigned gets its real value; the count and `elements` are then those of the listed elements the unit plans, and two of them on one path are MQ6020 with both names. A `wide` unit's paths come with a preview the user asks for.
 

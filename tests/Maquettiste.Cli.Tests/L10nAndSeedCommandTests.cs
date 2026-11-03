@@ -271,6 +271,133 @@ public sealed class L10nAndSeedCommandTests
     }
 
     [Fact]
+    public async Task Seed_export_heads_a_foreign_key_entry_with_its_name()
+    {
+        // next-phase-2-design.md section 3.4: invoices name their customer by email through fk_invoices_customer, and their branch by
+        // (company, region) through an unnamed foreign key; the tables sit in schema sales (billing projects its own customers).
+        using var repo = CliRepo.Billing();
+        static string Id(int n) => "01K9SEX000000000000000" + n.ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
+        repo.Replace(".maquettiste/model/databases/main/database.json", "\"name\": \"billing\"\n    }",
+            $"\"name\": \"billing\"\n    }},\n    {{ \"id\": \"{Id(99)}\", \"name\": \"sales\" }}");
+        repo.Write(".maquettiste/model/databases/main/tables/customers.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(1)}}","name":"customers","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
+             "columns":[{"id":"{{Id(2)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
+               {"id":"{{Id(3)}}","name":"email","type":"string","length":254,"nullable":false}],
+             "primaryKey":{"columns":["{{Id(2)}}"]},"uniques":[{"id":"{{Id(4)}}","name":"uq_customers_email","columns":["{{Id(3)}}"]}]}
+            """);
+        repo.Write(".maquettiste/model/databases/main/tables/branches.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(5)}}","name":"branches","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
+             "columns":[{"id":"{{Id(6)}}","name":"company","type":"string","length":8,"nullable":false},
+               {"id":"{{Id(7)}}","name":"region","type":"string","length":8,"nullable":false}],
+             "primaryKey":{"columns":["{{Id(6)}}","{{Id(7)}}"]} }
+            """);
+        repo.Write(".maquettiste/model/databases/main/tables/invoices.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(10)}}","name":"invoices","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
+             "columns":[{"id":"{{Id(11)}}","name":"number","type":"string","length":32,"nullable":false},
+               {"id":"{{Id(12)}}","name":"customer_id","type":"uuid","nullable":false},
+               {"id":"{{Id(13)}}","name":"branch_company","type":"string","length":8},
+               {"id":"{{Id(14)}}","name":"branch_region","type":"string","length":8}],
+             "primaryKey":{"columns":["{{Id(11)}}"]},
+             "foreignKeys":[{"id":"{{Id(15)}}","name":"fk_invoices_customer","columns":["{{Id(12)}}"],"referencesTable":"{{Id(1)}}"},
+               {"id":"{{Id(16)}}","columns":["{{Id(13)}}","{{Id(14)}}"],"referencesTable":"{{Id(5)}}"}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/customers/customers.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{Id(20)}}","name":"salesCustomers","target":"{{Id(1)}}","key":"{{Id(4)}}","columns":["{{Id(3)}}"],
+             "rows":[{"id":"{{Id(21)}}","values":["ada@example.com"]}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/branches/branches.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{Id(25)}}","name":"salesBranches","target":"{{Id(5)}}","columns":["{{Id(6)}}","{{Id(7)}}"],
+             "rows":[{"id":"{{Id(26)}}","values":["ACME","EU"]}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/invoices/invoices.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{Id(30)}}","name":"salesInvoices","target":"{{Id(10)}}","columns":["{{Id(11)}}","{{Id(15)}}","{{Id(16)}}"],
+             "rows":[{"id":"{{Id(31)}}","values":["INV-1","ada@example.com",["ACME","EU"]]}]}
+            """);
+        Assert.Equal(0, (await repo.RunAsync("validate")).ExitCode);
+
+        var exported = await repo.RunAsync("seed", "export", Id(30), "--out", "invoices.csv");
+        Assert.True(exported.ExitCode == 0, exported.ToString());
+        Assert.Equal($"@id,number,fk_invoices_customer,{Id(16)}\n{Id(31)},INV-1,ada@example.com,\"[\"\"ACME\"\",\"\"EU\"\"]\"\n",
+            repo.Read("invoices.csv").ReplaceLineEndings("\n"));
+
+        // Importing the file back changes nothing: the natural keys read as they were written.
+        var again = await repo.RunAsync("seed", "import", Id(30), "invoices.csv", "--check");
+        Assert.True(again.ExitCode == 0, again.ToString());
+    }
+
+    [Fact]
+    public async Task Seed_preview_prints_one_line_per_row()
+    {
+        // next-phase-2-design.md section 3.4 (D44): invoices name their customer by email; customers and invoices take stable ids. The
+        // preview prints the rows as written, or as main receives them with --database; a scripted seed prints its derived ids and takes
+        // no import.
+        using var repo = CliRepo.Billing();
+        static string Id(int n) => "01K9SPC000000000000000" + n.ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
+        repo.Replace(".maquettiste/model/databases/main/database.json", "\"name\": \"billing\"\n    }",
+            $"\"name\": \"billing\"\n    }},\n    {{ \"id\": \"{Id(99)}\", \"name\": \"sales\" }}");
+        repo.Write(".maquettiste/model/databases/main/tables/customers.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(1)}}","name":"customers","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
+             "columns":[{"id":"{{Id(2)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
+               {"id":"{{Id(3)}}","name":"email","type":"string","length":254,"nullable":false}],
+             "primaryKey":{"columns":["{{Id(2)}}"]},"uniques":[{"id":"{{Id(4)}}","name":"uq_customers_email","columns":["{{Id(3)}}"]}]}
+            """);
+        repo.Write(".maquettiste/model/databases/main/tables/invoices.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(10)}}","name":"invoices","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
+             "columns":[{"id":"{{Id(11)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
+               {"id":"{{Id(12)}}","name":"number","type":"string","length":32,"nullable":false},
+               {"id":"{{Id(13)}}","name":"customer_id","type":"uuid","nullable":false}],
+             "primaryKey":{"columns":["{{Id(11)}}"]},"uniques":[{"id":"{{Id(14)}}","name":"uq_invoices_number","columns":["{{Id(12)}}"]}],
+             "foreignKeys":[{"id":"{{Id(15)}}","name":"fk_invoices_customer","columns":["{{Id(13)}}"],"referencesTable":"{{Id(1)}}"}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/customers/customers.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{Id(20)}}","name":"salesCustomers","target":"{{Id(1)}}","key":"{{Id(4)}}","columns":["{{Id(3)}}"],
+             "rows":[{"id":"{{Id(21)}}","values":["ada@example.com"]}]}
+            """);
+        repo.Write(".maquettiste/model/seeds/invoices/invoices.json", $$"""
+            {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"{{Id(30)}}","name":"salesInvoices","target":"{{Id(10)}}","key":"{{Id(14)}}","columns":["{{Id(12)}}","{{Id(15)}}"],
+             "rows":[{"id":"{{Id(31)}}","values":["INV-1","ada@example.com"]},{"id":"{{Id(32)}}","values":["INV-2","ada@example.com"]}]}
+            """);
+        Assert.Equal(0, (await repo.RunAsync("validate")).ExitCode);
+
+        var written = await repo.RunAsync("seed", "preview", "salesInvoices");
+        Assert.True(written.ExitCode == 0, written.ToString());
+        Assert.Equal($"INV-1 {Id(31)}: number=INV-1 fk_invoices_customer=ada@example.com\nINV-2 {Id(32)}: number=INV-2 fk_invoices_customer=ada@example.com\n",
+            written.Out.ReplaceLineEndings("\n"));
+
+        var main = await repo.RunAsync("seed", "preview", Id(30), "--database", "main");
+        Assert.True(main.ExitCode == 0, main.ToString());
+        var ada = Engine.Model.StableIds.Of(Id(1), ["ada@example.com"]);
+        Assert.Equal(
+            $"INV-1 {Id(31)}: customer_id={ada} id={Engine.Model.StableIds.Of(Id(10), ["INV-1"])} number=INV-1\n" +
+            $"INV-2 {Id(32)}: customer_id={ada} id={Engine.Model.StableIds.Of(Id(10), ["INV-2"])} number=INV-2\n",
+            main.Out.ReplaceLineEndings("\n"));
+        var json = JsonNode.Parse((await repo.RunAsync("seed", "preview", Id(30), "--database", "01J92P0V1QRN2181XM2ZWE02W4", "--format", "json")).Out)!;
+        Assert.Equal((2, "sales.customers"), ((int)json["total"]!, (string)json["rows"]![0]!["refs"]![0]!["table"]!));
+        Assert.Equal(4, (await repo.RunAsync("seed", "preview", Id(30), "--database", "nowhere")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("seed", "preview", "noSuchSeed")).ExitCode);
+
+        // A scripted seed: its rows with ids derived from the seed and the code; no import.
+        repo.Write(".maquettiste/model/reference-types/channel.json", $$"""
+            {"kind":"reference-type","id":"{{Id(40)}}","name":"Channel","code":{"id":"{{Id(41)}}","length":8},"label":{"id":"{{Id(42)}}","length":40} }
+            """);
+        repo.Write(".maquettiste/model/seeds/channels.json", $$"""
+            {"kind":"seed","id":"{{Id(43)}}","name":"Channels","target":"{{Id(40)}}","columns":["code","label"],"rowsFrom":{"script":"seeds/channels.js"} }
+            """);
+        repo.Write(".maquettiste/extensions/seeds/channels.js", "maquettiste.rows(() => [{ code: \"web\", label: \"Web\" }, { code: \"shop\", label: \"Shop\" }]);\n");
+        var scripted = await repo.RunAsync("seed", "preview", "Channels");
+        Assert.True(scripted.ExitCode == 0, scripted.ToString());
+        Assert.Equal($"web {Engine.Model.StableIds.RowId(Id(43), ["web"])}: code=web label=Web\nshop {Engine.Model.StableIds.RowId(Id(43), ["shop"])}: code=shop label=Shop\n",
+            scripted.Out.ReplaceLineEndings("\n"));
+        var exported = await repo.RunAsync("seed", "export", "Channels");
+        Assert.Equal($"@id,@code,@label\n{Engine.Model.StableIds.RowId(Id(43), ["web"])},web,Web\n{Engine.Model.StableIds.RowId(Id(43), ["shop"])},shop,Shop\n",
+            exported.Out.ReplaceLineEndings("\n"));
+        repo.Write("channels.csv", "@code,@label\nmail,Mail\n");
+        var import = await repo.RunAsync("seed", "import", "Channels", "channels.csv");
+        Assert.Equal(4, import.ExitCode);
+        Assert.Contains("rows script seeds/channels.js", import.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Seed_import_previews_merge_and_replace_then_applies_with_apply()
     {
         using var repo = CliRepo.ReferenceData();

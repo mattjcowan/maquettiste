@@ -23,6 +23,7 @@ const EACH: Record<string, { label: string; indexKind: ElementKind | null; varia
   relation: { label: "relation", indexKind: "relation", variable: "relation" },
   enum: { label: "enum", indexKind: "enum", variable: "enum" },
   "value object": { label: "value object", indexKind: "value-object", variable: "value_object" },
+  database: { label: "database", indexKind: "database", variable: "database" },
   table: { label: "table", indexKind: null, variable: "table" },
   view: { label: "view", indexKind: "view", variable: "view" },
   sequence: { label: "sequence", indexKind: "sequence", variable: "sequence" },

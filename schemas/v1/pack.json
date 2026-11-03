@@ -38,7 +38,7 @@
       "default": {}
     },
     "parameterSchema": {
-      "description": "The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters.",
+      "description": "The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters. On a string, or an array's items, x-ref types the value as the id of an element or sub-element (MQ2009).",
       "type": "object",
       "x-order": [
         "properties",
@@ -84,7 +84,10 @@
           "where",
           "output",
           "mode",
+          "sources",
+          "tokens",
           "blockComment",
+          "blockCommentEnd",
           "createFile",
           "formatter",
           "delimiters",
@@ -97,12 +100,13 @@
             "pattern": "^[a-z][a-z0-9-]*$"
           },
           "template": {
+            "description": "The pack-relative template path. Required unless mode is copy; a copy unit takes none.",
             "type": "string",
             "minLength": 1
           },
           "for": {
             "type": "string",
-            "pattern": "^(model|each (package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
+            "pattern": "^(model|each (package|entity|attribute|relation|enum|value object|database|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
           },
           "where": {
             "title": "Unit filters",
@@ -178,21 +182,49 @@
             "minLength": 1
           },
           "mode": {
-            "description": "overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs.",
+            "description": "overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' (each followed by blockCommentEnd when set) are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs. copy: the pack files that sources match are copied as they are, with tokens replaced, into the folder output names (the pack's output base when absent); a copy unit takes no template. Copied files are managed like overwrite files.",
             "enum": [
               "overwrite",
               "once",
               "regions",
               "pair",
-              "block"
+              "block",
+              "copy"
             ],
             "default": "overwrite"
+          },
+          "sources": {
+            "description": "Mode copy, required there: pack-relative glob patterns of the files to copy. * and ? match within one path segment, ** across segments; matching is case-sensitive and skips dot files and folders. A pattern that matches no pack file is MQ6030. Each file lands at the output folder plus its path after the pattern's literal base. Matched files are copied, never run or parsed: a matched *.js is not a pack script unless scripts names it, and a matched types/*.json is not a type map.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "default": []
+          },
+          "tokens": {
+            "description": "Mode copy: literal text replaced in copied text files and their output paths, mapped to the name of a pack parameter whose value is a string (MQ6031). Files that are not UTF-8 text are copied byte for byte.",
+            "type": "object",
+            "propertyNames": {
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": {}
           },
           "blockComment": {
             "description": "Mode block: the comment marker that starts the block's delimiter lines, for example // or ;.",
             "type": "string",
             "pattern": "^[^\\s]+$",
             "default": "#"
+          },
+          "blockCommentEnd": {
+            "description": "Mode block: the text that closes each delimiter line, for example --> after <!-- in XML or HTML. A closed delimiter line is recognized whatever closing text it has, and other closing text is rewritten.",
+            "type": "string",
+            "pattern": "^[^\\s]+$"
           },
           "createFile": {
             "description": "Mode block: create the target file (holding just the block) when it does not exist. When false and the file is missing, the unit writes nothing and is listed as skipped (target-missing). A file the engine created is deleted when its block is removed and nothing but whitespace is left; any other file is kept.",
@@ -257,25 +289,69 @@
         },
         "required": [
           "id",
-          "template",
           "for"
         ],
         "additionalProperties": false,
-        "if": {
-          "properties": {
-            "mode": {
-              "const": "pair"
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "pair"
+                }
+              },
+              "required": [
+                "mode"
+              ]
+            },
+            "then": {
+              "required": [
+                "companion"
+              ]
             }
           },
-          "required": [
-            "mode"
-          ]
-        },
-        "then": {
-          "required": [
-            "companion"
-          ]
-        }
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "copy"
+                }
+              },
+              "required": [
+                "mode"
+              ]
+            },
+            "then": {
+              "required": [
+                "sources"
+              ],
+              "not": {
+                "required": [
+                  "template"
+                ]
+              }
+            },
+            "else": {
+              "required": [
+                "template"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "sources"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "tokens"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
       },
       "minItems": 1
     }

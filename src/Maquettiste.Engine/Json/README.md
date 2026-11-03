@@ -4,7 +4,7 @@
 
 JSON Schema registry and key layouts (`ISchemaRegistry`, `SchemaRegistry`, `ObjectLayout`), the canonical writer (`ICanonicalJson`, `CanonicalJson`), the element reader (`ElementReader`), `JsonPositionLocator` and RFC 6901 pointer helpers (`JsonPointer`).
 
-- Implements: `ISchemaRegistry`, `ICanonicalJson` (complete: key order from `x-order`, `x-sort` arrays stable-sorted, defaults and nulls omitted with `x-default-unless` gates, `$schema` computed, LF, trailing newline, no BOM); `JsonPositionLocator` (complete).
+- Implements: `ISchemaRegistry`, `ICanonicalJson` (complete: key order from `x-order`, `x-sort` arrays stable-sorted (integer keys, then string keys ordinally, `"."` by the items themselves, keys joined by commas such as `"table,attribute"` by each in turn), defaults and nulls omitted with `x-default-unless` gates, `$schema` computed, LF, trailing newline, no BOM); `JsonPositionLocator` (complete).
 - Consumes: the embedded `schemas/v1/*.json` (see `schemas/README.md`), `Model.EngineJson`.
 
 `SchemaFolder` compares `<ModelRoot>/.schema/v1/*.json` with the embedded schemas byte for byte (`Status`: missing, stale and extra names) and refreshes it (`RefreshAsync`: deletes the extra files first, then stages and renames each missing or stale file, every path through `WriteTarget.Model`). `init`, the editor's start and `mcp` refresh; `SchemaFolder.Findings` builds MQ1008 for `validate` and `generate`.

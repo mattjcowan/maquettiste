@@ -233,6 +233,56 @@ public sealed class BulkReadTests
         Recorder.Json("getResolvedModel.json", all);
     }
 
+    /// <summary>
+    /// Scope <c>migrations</c>: one record per open migration fact, as the contract's <c>MigrationRecord</c> describes it, with null
+    /// for what the fact does not record.
+    /// </summary>
+    [Fact]
+    public async Task Resolved_migrations_are_one_record_per_open_fact()
+    {
+        await using var host = EditorHost.Create();
+        const string fact = "01JFCT00000000000000000001";
+        var path = host.PathOf(".maquettiste/model/databases/main/migrations/open/" + fact.ToLowerInvariant() + ".json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, $$"""
+            {
+              "$schema": "../../../../../.schema/v1/migration.json",
+              "kind": "migration",
+              "id": "{{fact}}",
+              "database": "{{EditorHost.MainDatabaseId}}",
+              "fact": "rename",
+              "object": {
+                "kind": "column",
+                "table": "01J92P0V0FJ23CGSNKM7P1W5V7@{{EditorHost.MainDatabaseId}}",
+                "key": "01J92P0V0R3VSP7D5238DTNZX1",
+                "schema": "billing",
+                "tableName": "invoices",
+                "name": "number"
+              },
+              "from": {
+                "name": "invoice_no"
+              },
+              "to": {
+                "name": "number"
+              }
+            }
+
+            """);
+
+        var response = await host.GetAsync("/api/model/resolved?scope=migrations");
+
+        Assert.Equal(200, response.Status);
+        Contract.AssertResponse(response, "/api/model/resolved");
+        var record = Assert.Single(response.Json["items"]!.AsArray())!;
+        Assert.Equal("migration", record["kind"]!.GetValue<string>());
+        Assert.Equal(fact, record["id"]!.GetValue<string>());
+        Assert.Equal("rename", record["fact"]!.GetValue<string>());
+        Assert.Equal(1, record["order"]!.GetValue<int>());
+        Assert.Equal("number", record["to"]!["name"]!.GetValue<string>());
+        Assert.Null(record["to"]!["schema"]);
+        Assert.Matches("^[0-9a-f]{64}$", record["hash"]!.GetValue<string>());
+    }
+
     [Fact]
     public async Task Resolved_scopes_page_and_narrow_to_a_database()
     {

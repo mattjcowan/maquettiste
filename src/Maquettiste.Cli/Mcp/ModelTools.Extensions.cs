@@ -6,22 +6,24 @@ using ModelContextProtocol.Server;
 namespace Maquettiste.Cli.Mcp;
 
 /// <summary>
-/// The extension file tools, mirroring the pack file tools: the model's custom property schemas (<c>extensions/&lt;name&gt;.json</c>) and
-/// script rules (<c>extensions/rules/&lt;name&gt;.js</c>), read and written in place through the engine's write guard. Every write takes the
-/// hash it read. A rule's findings (<c>x/&lt;id&gt;</c>) come from <c>validate</c>, which runs script rules by default.
+/// The extension file tools, mirroring the pack file tools: the model's custom property schemas (<c>extensions/&lt;name&gt;.json</c>),
+/// script rules (<c>extensions/rules/&lt;name&gt;.js</c>) and seeds' rows scripts (<c>extensions/seeds/&lt;name&gt;.js</c>,
+/// next-phase-2-design.md section 3.4), read and written in place through the engine's write guard. Every write takes the hash it read.
+/// A rule's findings (<c>x/&lt;id&gt;</c>) come from <c>validate</c>, which runs script rules by default; a rows script's rows come from
+/// <c>preview_seed_rows</c>.
 /// </summary>
 internal sealed partial class ModelTools
 {
     /// <summary>The extension files (listExtensionFiles).</summary>
     [McpServerTool(Name = "list_extension_files", Title = "Extension files", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The files of .maquettiste/extensions/: custom property schemas (<name>.json, kind schema) and script rules (rules/<name>.js, kind rule), each with size, hash (the expectedHash for write_extension_file, move_extension_file and delete_extension_file) and what is wrong with it on its own: MQ5004 for an invalid schema, MQ5002 or MQ5003 for a rule script that does not load (a syntax error, a rule without an id), with line and column.")]
+    [Description("The files of .maquettiste/extensions/: custom property schemas (<name>.json, kind schema), script rules (rules/<name>.js, kind rule) and seeds' rows scripts (seeds/<name>.js, kind seed-rows), each with size, hash (the expectedHash for write_extension_file, move_extension_file and delete_extension_file) and what is wrong with it on its own: MQ5004 for an invalid schema, MQ5002 or MQ5003 for a rule script that does not load (a syntax error, a rule without an id), with line and column, MQ7127 for a rows script that does not load or does not call maquettiste.rows exactly once, MQ5005 (a warning) for a script that declares let or var at its top level. Listing never runs a rows script. A rule script lists its rules: id, severity and wholeModel (true for a rule registered with scope \"model\", which runs once per whole-model validate).")]
     public Task<CallToolResult> ListExtensionFiles(CancellationToken ct = default) => GuardAsync(async () =>
         Ok(await _store.ListExtensionFilesAsync(ct).ConfigureAwait(false)), ct);
 
     /// <summary>Reads one extension file (getExtensionFile).</summary>
     [McpServerTool(Name = "read_extension_file", Title = "Read extension file", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The text and hash of one extension file by its path under extensions/: <name>.json (a custom property schema) or rules/<name>.js (a script rule).")]
-    public Task<CallToolResult> ReadExtensionFile([Description("The path under extensions/, such as retention.json or rules/naming.js; required.")] string? path = null,
+    [Description("The text and hash of one extension file by its path under extensions/: <name>.json (a custom property schema), rules/<name>.js (a script rule) or seeds/<name>.js (a seed's rows script).")]
+    public Task<CallToolResult> ReadExtensionFile([Description("The path under extensions/, such as retention.json, rules/naming.js or seeds/audited-records.js; required.")] string? path = null,
         CancellationToken ct = default) => GuardAsync(() => ExtensionAsync(async () =>
     {
         if (string.IsNullOrEmpty(path))
@@ -31,7 +33,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Writes one extension file (putExtensionFile).</summary>
     [McpServerTool(Name = "write_extension_file", Title = "Write extension file", Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Writes one extension file if it still has expectedHash; expectedHash 'new' creates a file that must not exist. UTF-8 text, no NUL, at most 1 MB. A schema (<name>.json: name, description, appliesTo { kinds, stereotypes }, properties, required) must pass get_schema's extension schema, else invalid with MQ5004 and nothing written; it is written in canonical form and text returns what was written. A script rule (rules/<name>.js, registering maquettiste.rule({ id, severity, kinds, check(element, model, report) })) is written as sent and loaded alone in the sandbox: a syntax error or a rule without an id comes back in diagnostics (MQ5002 with line and column). Run validate for the rule's x/<id> findings.")]
+    [Description("Writes one extension file if it still has expectedHash; expectedHash 'new' creates a file that must not exist. UTF-8 text, no NUL, at most 1 MB. A schema (<name>.json: name, description, appliesTo { kinds, stereotypes }, properties, required) must pass get_schema's extension schema, else invalid with MQ5004 and nothing written; it is written in canonical form and text returns what was written. A script rule (rules/<name>.js, registering maquettiste.rule({ id, severity, kinds, check(element, model, report) })) is written as sent and loaded alone in the sandbox: a syntax error or a rule without an id comes back in diagnostics (MQ5002 with line and column), as does the warning MQ5005 for a top-level let or var. Run validate for the rule's x/<id> findings. A rows script (seeds/<name>.js, calling maquettiste.rows((model, seed) => [ { <column name>: value, ... } ]) exactly once; a seed names it with rowsFrom: { script: \"seeds/<name>.js\" }) is written as sent and loaded alone, never run: a script that does not load or does not register its rows exactly once comes back as MQ7127 with line and column, and MQ5005 for a top-level let or var. Read its rows with preview_seed_rows.")]
     public Task<CallToolResult> WriteExtensionFile(
         [Description("The path under extensions/; required.")] string? path = null,
         [Description("The whole file text; required.")] string? text = null,
@@ -48,7 +50,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Deletes one extension file (deleteExtensionFile).</summary>
     [McpServerTool(Name = "delete_extension_file", Title = "Delete extension file", Destructive = true, OpenWorld = false)]
-    [Description("Deletes one extension file if it still has expectedHash. A deleted schema's custom properties stay in the elements' properties, unchecked; a deleted rule stops running.")]
+    [Description("Deletes one extension file if it still has expectedHash. A deleted schema's custom properties stay in the elements' properties, unchecked; a deleted rule stops running; a seed whose rows script is deleted reports it missing (MQ7116).")]
     public Task<CallToolResult> DeleteExtensionFile(
         [Description("The path under extensions/; required.")] string? path = null,
         [Description("The file's hash; required.")] string? expectedHash = null,
@@ -64,7 +66,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Renames one extension file (moveExtensionFile).</summary>
     [McpServerTool(Name = "move_extension_file", Title = "Move extension file", Destructive = true, OpenWorld = false)]
-    [Description("Renames one extension file if it still has expectedHash. The target must not exist and must be of the same kind: a schema stays <name>.json, a rule rules/<name>.js. Nothing refers to an extension file by its path.")]
+    [Description("Renames one extension file if it still has expectedHash. The target must not exist and must be of the same kind: a schema stays <name>.json, a rule rules/<name>.js, a rows script seeds/<name>.js. Only a seed's rowsFrom.script names a file by its path: a seed whose rows script moved reports it missing (MQ7116) until the seed names the new path.")]
     public Task<CallToolResult> MoveExtensionFile(
         [Description("The source path under extensions/; required.")] string? from = null,
         [Description("The target path under extensions/; required.")] string? to = null,

@@ -194,8 +194,11 @@ internal sealed class SeededRandom
     }
 }
 
-/// <summary>A script failed (MQ6016 while rendering, MQ5002 for validation rule scripts) and the call produced no result.</summary>
-internal sealed class ScriptErrorException : Exception
+/// <summary>
+/// A script failed (MQ6016 while rendering, MQ5002 for validation rule scripts, MQ7127 for a seed's rows script) and the call produced
+/// no result. Public because public calls throw it, such as <see cref="ModelStore.ExportSeedCsvAsync"/>.
+/// </summary>
+public sealed class ScriptErrorException : Exception
 {
     /// <summary>Creates the exception.</summary>
     /// <param name="diagnostic">The diagnostic, with the script path and line when known.</param>

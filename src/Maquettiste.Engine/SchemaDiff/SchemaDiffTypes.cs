@@ -118,13 +118,15 @@ public sealed record TableChange(
 
 /// <summary>
 /// The structured diff of one database, as templates see it in <c>schema_diff</c>. <see cref="Tables"/> lists added tables in
-/// foreign key dependency order, then renamed, then altered, then dropped in reverse dependency order.
+/// foreign key dependency order, then renamed, then altered, then dropped in reverse dependency order. <see cref="Facts"/> lists the
+/// migration facts that render with it (next-phase-1-design.md section 3.2, "Facts in the schema diff").
 /// </summary>
 /// <param name="Database">The database name.</param>
 /// <param name="FromRevision">The snapshot's revision.</param>
 /// <param name="ToRevision"><paramref name="FromRevision"/> + 1 when the diff is non-empty, else equal.</param>
-/// <param name="IsEmpty">Whether nothing changed.</param>
-/// <param name="Hash">The diff's hash (the <c>d:&lt;databaseId&gt;</c> dependency key).</param>
+/// <param name="IsEmpty">Whether nothing changed and no migration fact renders (<see cref="Facts"/> is empty).</param>
+/// <param name="Hash">The diff's hash (the <c>d:&lt;databaseId&gt;</c> dependency key); it covers the ids and content hashes of
+/// <see cref="Facts"/> when there are some.</param>
 /// <param name="Tables">Table changes.</param>
 /// <param name="Views">View changes.</param>
 /// <param name="Sequences">Sequence changes.</param>
@@ -152,6 +154,94 @@ public sealed record SchemaDiffResult(
 
     /// <summary>SQL object changes, as <see cref="Types"/>.</summary>
     public IReadOnlyList<DefinitionChange> Objects { get; init; } = [];
+
+    /// <summary>
+    /// The migration facts that render with this diff, in applied order: the database's complete and released facts that the baseline
+    /// lacks (with the committed snapshot, those its <see cref="Model.PhysicalSnapshot.Facts"/> does not list; with a baseline model,
+    /// those that model lacks or holds as held and not released). Pending facts, and held facts not released, are never listed.
+    /// </summary>
+    public IReadOnlyList<RMigration> Facts { get; init; } = [];
+
+    /// <summary>
+    /// Whether the diff runs from a baseline model (<c>generate --against</c>) rather than the committed snapshot: nothing counts
+    /// revisions then, so a migration is named by its content alone (next-phase-1-design.md section 3.2, decision 40).
+    /// </summary>
+    public bool FromBaseline { get; init; }
+
+    /// <summary>
+    /// The state the diff starts from: 12 lowercase hex digits of SHA-256 over the canonical form of the baseline's capture as stored
+    /// (before the alias and <c>rekey</c> steps), without its revision, aliases and facts, so it equals the <see cref="ToState"/> of
+    /// the diff that produced that baseline; empty when there is no baseline (a diff from nothing). Computed on first read.
+    /// </summary>
+    public string FromState
+    {
+        get => _fromState.Value;
+        init => _fromState = LazyState.Of(value);
+    }
+
+    /// <summary>
+    /// The state the diff ends at: as <see cref="FromState"/>, over the capture of the current model. Computed on first read.
+    /// </summary>
+    public string ToState
+    {
+        get => _toState.Value;
+        init => _toState = LazyState.Of(value);
+    }
+
+    private readonly LazyState _fromState = LazyState.Empty;
+    private readonly LazyState _toState = LazyState.Empty;
+
+    private LazyState FromStateValue
+    {
+        get => _fromState;
+        init => _fromState = value;
+    }
+
+    private LazyState ToStateValue
+    {
+        get => _toState;
+        init => _toState = value;
+    }
+
+    /// <summary>
+    /// The diff with <see cref="FromState"/> and <see cref="ToState"/> computed on first read: the canonical form of a large capture is
+    /// costly, and an empty diff renders nothing, so a run that never reads them pays nothing.
+    /// </summary>
+    /// <param name="from">Computes <see cref="FromState"/>.</param>
+    /// <param name="to">Computes <see cref="ToState"/>.</param>
+    /// <returns>The diff.</returns>
+    internal SchemaDiffResult WithStates(Func<string> from, Func<string> to) =>
+        this with { FromStateValue = LazyState.Of(from), ToStateValue = LazyState.Of(to) };
+
+    /// <summary>A state hash given, or computed once on first read (thread-safe); equal when the values are equal.</summary>
+    private sealed class LazyState : IEquatable<LazyState>
+    {
+        private readonly Lazy<string> _value;
+
+        private LazyState(Lazy<string> value) => _value = value;
+
+        public static LazyState Empty { get; } = Of("");
+
+        public string Value => _value.Value;
+
+        public static LazyState Of(string value)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            return new LazyState(new Lazy<string>(() => value, LazyThreadSafetyMode.PublicationOnly));
+        }
+
+        public static LazyState Of(Func<string> factory)
+        {
+            ArgumentNullException.ThrowIfNull(factory);
+            return new LazyState(new Lazy<string>(factory, LazyThreadSafetyMode.ExecutionAndPublication));
+        }
+
+        public bool Equals(LazyState? other) => other is not null && string.Equals(Value, other.Value, StringComparison.Ordinal);
+
+        public override bool Equals(object? obj) => Equals(obj as LazyState);
+
+        public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Value);
+    }
 }
 
 /// <summary>A change to a routine, database type or SQL object.</summary>

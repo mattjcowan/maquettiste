@@ -351,7 +351,7 @@ function project(query: RQuery, file: Json, stereotypes: ReadonlyMap<string, Jso
         sqlParameters: statement?.parameters ?? [],
       };
     }),
-    sql: rendered?.sql ?? "",
+    sql: rendered?.sql ?? null,
     sqlParameters: rendered?.parameters ?? [],
     uses: [...query.uses],
     displayName: annotations.displayName || null,
@@ -1330,7 +1330,7 @@ class Binder {
       const returns = routine.returns;
       const dbType = returns?.dbTypeId ? this.types.get(returns.dbTypeId) : undefined;
       result.type = returns?.type ?? null;
-      result.nativeType = returns && !returns.table && returns.nativeType.length > 0 ? returns.nativeType : null;
+      result.nativeType = returns && !returns.table && returns.nativeType ? returns.nativeType : null;
       result.codeType = returns?.type ?? (dbType?.typeKind === "domain" && dbType.base ? dbType.base : null);
       return result;
     }

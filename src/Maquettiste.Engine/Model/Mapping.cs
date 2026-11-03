@@ -7,11 +7,16 @@ namespace Maquettiste.Engine.Model;
 /// Binds one entity or relation to one database (<c>model/mappings/</c>; SPEC section 10). One per (database, entity or relation);
 /// duplicates are MQ4004. Exactly one of <see cref="Entity"/> and <see cref="Relation"/> is set.
 /// </summary>
-public sealed record Mapping : Element
+public sealed record Mapping : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Mapping;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the database.</summary>
     [ElementRef(ElementKind.Database)]

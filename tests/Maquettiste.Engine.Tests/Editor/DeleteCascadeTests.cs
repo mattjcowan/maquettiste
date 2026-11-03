@@ -1,7 +1,9 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Editor;
 
@@ -26,6 +28,11 @@ public sealed class DeleteCascadeTests
     private const string InvoiceNoteId = "01K6BND0000000000000000010";
     private const string CustomerNoteId = "01K6BND0000000000000000020";
     private const string RevenueMonthId = "01K6BND0000000000000000030";
+    private const string ReviewerId = "01K9XRF00000000000000000A1";
+    private const string ApproverId = "01K9XRF00000000000000000B1";
+    private const string RefundId = "01K9XRF00000000000000000C1";
+    private const string CurrencyId = "01K9XRF00000000000000000E1";
+    private const string PricedId = "01K9XRF00000000000000000F1";
 
     private static CancellationToken Ct => EditorRepo.Ct;
 
@@ -114,7 +121,7 @@ public sealed class DeleteCascadeTests
     [Fact]
     public async Task Delete_dependents_takes_an_entity_with_its_relations_overlay_and_mappings_in_one_change_that_a_batch_undoes()
     {
-        await using var r = EditorRepo.Create();
+        await using var r = WithoutFacts();
         var invoice = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
         var plan = await r.Store.GetDeletePlanAsync([EditorRepo.InvoiceId], DeleteResolution.DeleteDependents, Ct);
         var affected = plan.Deletes.Select(d => d.Id).Prepend(EditorRepo.InvoiceId).ToList();
@@ -171,7 +178,7 @@ public sealed class DeleteCascadeTests
     [Fact]
     public async Task Delete_dependents_removes_the_attributes_a_deleted_type_typed_and_what_named_them()
     {
-        await using var r = EditorRepo.Create();
+        await using var r = WithoutFacts();
         var money = (await r.Store.GetElementAsync(MoneyId, Ct))!;
 
         var plan = await r.Store.GetDeletePlanAsync([MoneyId], DeleteResolution.DeleteDependents, Ct);
@@ -217,7 +224,7 @@ public sealed class DeleteCascadeTests
     [Fact]
     public async Task A_batch_delete_takes_the_resolution_and_shares_one_cascade()
     {
-        await using var r = EditorRepo.Create();
+        await using var r = WithoutFacts();
         var product = (await r.Store.GetElementAsync(ProductId, Ct))!;
         var invoice = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
         var plan = await r.Store.GetDeletePlanAsync([ProductId, EditorRepo.InvoiceId], DeleteResolution.DeleteDependents, Ct);
@@ -254,5 +261,270 @@ public sealed class DeleteCascadeTests
         Assert.Equal(files, r.Files());
         Assert.Equal(SaveOutcome.NotFound, plan.Outcome);
         Assert.Equal("not-found", Assert.Single(plan.Refused).Rule);
+    }
+
+    [Fact]
+    public async Task An_optional_xref_is_cleared_and_a_required_one_refuses_remove_references()
+    {
+        // next-phase-1-design.md section 4.1: a value an x-ref types is a reference like any other; remove-references clears an
+        // optional one and keeps its holder, and refuses a required one.
+        await using var r = WithApprovals();
+
+        var plan = await r.Store.GetDeletePlanAsync([ReviewerId], DeleteResolution.RemoveReferences, Ct);
+        Assert.Equal(SaveOutcome.Saved, plan.Outcome);
+        var clear = Assert.Single(plan.Clears);
+        Assert.Equal((EditorRepo.InvoiceId, "/properties/reviewer", "reviewer", ReviewerId), (clear.Id, clear.Pointer, clear.Field, clear.Target));
+        Assert.Empty(plan.Deletes);
+
+        var reviewer = (await r.Store.GetElementAsync(ReviewerId, Ct))!;
+        var cleared = await r.Store.DeleteAsync(ReviewerId, reviewer.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, cleared.Outcome);
+        var properties = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!.Json.GetProperty("properties");
+        Assert.False(properties.TryGetProperty("reviewer", out _));
+        Assert.Equal(ApproverId, properties.GetProperty("approver").GetString());
+
+        var approver = (await r.Store.GetElementAsync(ApproverId, Ct))!;
+        var refused = await r.Store.DeleteAsync(ApproverId, approver.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        var d = Assert.Single(refused.Diagnostics, x => x.Rule == "MQ2001");
+        Assert.Equal((EditorRepo.InvoiceId, "/properties/approver"), (d.ElementId, d.JsonPointer));
+        Assert.Contains("extension:approvals types the link without optional, so remove-references cannot clear it", d.Message, StringComparison.Ordinal);
+        Assert.NotNull(await r.Store.GetElementAsync(ApproverId, Ct));
+    }
+
+    [Fact]
+    public async Task Delete_dependents_removes_a_required_xref_value_and_keeps_its_holder()
+    {
+        await using var r = WithApprovals();
+
+        var plan = await r.Store.GetDeletePlanAsync([ApproverId], DeleteResolution.DeleteDependents, Ct);
+        Assert.Equal(SaveOutcome.Saved, plan.Outcome);
+        Assert.Empty(plan.Deletes);
+        var clear = Assert.Single(plan.Clears);
+        Assert.Equal((EditorRepo.InvoiceId, "/properties/approver"), (clear.Id, clear.Pointer));
+
+        var approver = (await r.Store.GetElementAsync(ApproverId, Ct))!;
+        var result = await r.Store.DeleteAsync(ApproverId, approver.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        var invoice = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
+        var properties = invoice.Json.GetProperty("properties");
+        Assert.False(properties.TryGetProperty("approver", out _));
+        Assert.Equal(ReviewerId, properties.GetProperty("reviewer").GetString());
+        Assert.Equal(3650, properties.GetProperty("retentionDays").GetInt32());
+        Assert.Null(await r.Store.GetElementAsync(ApproverId, Ct));
+    }
+
+    [Fact]
+    public async Task A_resolution_refuses_when_the_extension_requires_the_property()
+    {
+        // Either resolution refuses when the edited holder would fail a schema that declares the property: its required names the
+        // property, or an array drops below minItems. The refusal names the property and the schema.
+        await using var r = WithApprovals();
+        r.Repo.WriteFile(".maquettiste/extensions/sign-off.json", """
+            { "name": "sign-off", "appliesTo": { "kinds": ["entity"], "stereotypes": ["approved"] },
+              "properties": { "signedBy": { "type": "string", "x-ref": { "kind": "entity", "optional": true } },
+                              "signers": { "type": "array", "minItems": 1, "items": { "type": "string", "x-ref": { "kind": "entity", "optional": true } } } },
+              "required": ["signedBy"] }
+            """);
+        WriteElement(r, ".maquettiste/model/vocabularies/stereotypes/approved.json",
+            new JsonObject { ["kind"] = "stereotype", ["id"] = "01K9XRF00000000000000000D1", ["key"] = "approved", ["name"] = "Approved" });
+        WriteEntity(r, "Refund", RefundId, "01K9XRF00000000000000000C2", new JsonObject { ["signedBy"] = ApproverId, ["signers"] = new JsonArray(ApproverId) }, "approved");
+
+        foreach (var resolution in new[] { DeleteResolution.RemoveReferences, DeleteResolution.DeleteDependents })
+        {
+            var plan = await r.Store.GetDeletePlanAsync([ApproverId], resolution, Ct);
+            Assert.Equal(SaveOutcome.Invalid, plan.Outcome);
+            var refusals = plan.Refused.Where(x => x.Id == RefundId).ToList();
+            Assert.Equal(["/properties/signedBy", "/properties/signers/0"], refusals.Select(x => x.Pointer));
+            Assert.Contains("its property 'signedBy' (extension:sign-off) is required, so the link cannot be cleared", refusals[0].Why, StringComparison.Ordinal);
+            Assert.Contains("its property 'signers' (extension:sign-off) needs at least 1 item", refusals[1].Why, StringComparison.Ordinal);
+        }
+
+        var approver = (await r.Store.GetElementAsync(ApproverId, Ct))!;
+        var result = await r.Store.DeleteAsync(ApproverId, approver.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Invalid, result.Outcome);
+        var d = Assert.Single(result.Diagnostics, x => x.Rule == "MQ2001" && x.ElementId == RefundId);
+        Assert.Contains("'signedBy' (extension:sign-off) is required", d.Message, StringComparison.Ordinal);
+        Assert.NotNull(await r.Store.GetElementAsync(ApproverId, Ct));
+    }
+
+    [Fact]
+    public async Task A_stereotype_parameter_of_refuses_remove_references_and_delete_dependents_removes_it()
+    {
+        // next-phase-1-design.md section 4.2: a stereotype parameter's x-ref of is a reference that remove-references
+        // does not clear, since the parameter would then take a row of any list; delete-dependents removes the of key,
+        // and the plan says so.
+        await using var r = WithoutFacts();
+        WriteEntity(r, "Currency", CurrencyId, "01K9XRF00000000000000000E2");
+        const string Path = ".maquettiste/model/vocabularies/stereotypes/priced.json";
+        WriteElement(r, Path, new JsonObject
+        {
+            ["kind"] = "stereotype", ["id"] = PricedId, ["key"] = "priced", ["name"] = "Priced",
+            ["parameters"] = new JsonObject
+            {
+                ["properties"] = new JsonObject
+                {
+                    ["currency"] = new JsonObject { ["type"] = "string", ["x-ref"] = new JsonObject { ["kind"] = "row", ["of"] = CurrencyId } },
+                },
+            },
+        });
+        const string Of = "/parameters/properties/currency/x-ref/of";
+
+        var refuse = await r.Store.GetDeletePlanAsync([CurrencyId], DeleteResolution.RemoveReferences, Ct);
+        Assert.Equal(SaveOutcome.Invalid, refuse.Outcome);
+        var refusal = Assert.Single(refuse.Refused);
+        Assert.Equal((PricedId, Of), (refusal.Id, refusal.Pointer));
+        Assert.Contains("parameter 'currency' takes its values from it (x-ref of)", refusal.Why, StringComparison.Ordinal);
+        var currency = (await r.Store.GetElementAsync(CurrencyId, Ct))!;
+        var refused = await r.Store.DeleteAsync(CurrencyId, currency.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        Assert.Contains(refused.Diagnostics, d => d.ElementId == PricedId && d.JsonPointer == Of);
+        Assert.NotNull(await r.Store.GetElementAsync(CurrencyId, Ct));
+
+        var cascade = await r.Store.GetDeletePlanAsync([CurrencyId], DeleteResolution.DeleteDependents, Ct);
+        Assert.Equal(SaveOutcome.Saved, cascade.Outcome);
+        var clear = Assert.Single(cascade.Clears);
+        Assert.Equal((PricedId, Of, "of", CurrencyId), (clear.Id, clear.Pointer, clear.Field, clear.Target));
+        var result = await r.Store.DeleteAsync(CurrencyId, currency.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        Assert.Null(await r.Store.GetElementAsync(CurrencyId, Ct));
+        var xref = (await r.Store.GetElementAsync(PricedId, Ct))!.Json.GetProperty("parameters").GetProperty("properties").GetProperty("currency")
+            .GetProperty("x-ref");
+        Assert.Equal("""{"kind":"row"}""", JsonSerializer.Serialize(xref));
+        var report = await r.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.DoesNotContain(report.Diagnostics, d => d.ElementId == PricedId && d.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
+    public async Task Remove_references_clears_default_and_exclude_lists()
+    {
+        // next-phase-2-design.md section 3.1 (D10): remove-references on a stereotype clears its keys from stereotypes, defaultStereotypes
+        // and excludeStereotypes lists and the excludes entries naming its members, and drops the seed columns naming an inherited copy
+        // with their cells; the delete plan lists each.
+        await using var r = WithoutFacts();
+        WriteElement(r, ".maquettiste/model/vocabularies/stereotypes/stamped.json", new JsonObject
+        {
+            ["kind"] = "stereotype", ["id"] = StampedId, ["key"] = "stamped", ["name"] = "Stamped", ["appliesTo"] = new JsonArray("table"),
+            ["columns"] = new JsonArray(
+                new JsonObject { ["id"] = StampedAtId, ["name"] = "stamped_at", ["type"] = "datetimeoffset" },
+                new JsonObject { ["id"] = StampedById, ["name"] = "stamped_by", ["type"] = "string", ["length"] = 40 }),
+            ["indexes"] = new JsonArray(new JsonObject { ["id"] = StampedIndexId, ["columns"] = new JsonArray(new JsonObject { ["column"] = StampedById }) }),
+        });
+        Edit(r, ".maquettiste/model/databases/main/database.json", d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("stamped"));
+        Edit(r, ".maquettiste/model/packages/catalog.json", p => p["defaultStereotypes"] = new JsonArray("stamped"));
+        Edit(r, ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json", t => t["excludeStereotypes"] = new JsonArray("stamped"));
+        Edit(r, ".maquettiste/model/databases/main/tables/notes.json", t => t["excludes"] = new JsonArray(StampedIndexId));
+        WriteElement(r, ".maquettiste/model/seeds/notes/notes.json", new JsonObject
+        {
+            ["kind"] = "seed", ["id"] = NotesSeedId, ["name"] = "Notes", ["target"] = NotesTableId,
+            ["columns"] = new JsonArray("01K6BND0000000000000000002", "01K6BND0000000000000000003", "01K6BND0000000000000000004",
+                "01K6BND0000000000000000005", NotesTableId + "." + StampedById),
+            ["rows"] = new JsonArray(new JsonObject
+            {
+                ["id"] = "01K9XRF00000000000000000G2",
+                ["values"] = new JsonArray("0192f0c4-7f00-7000-8000-000000000001", "invoice", "0192f0c4-7f00-7000-8000-000000000002", "Call back.", "ann"),
+            }),
+        });
+
+        var plan = await r.Store.GetDeletePlanAsync([StampedId], DeleteResolution.RemoveReferences, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, plan.Outcome);
+        Assert.Empty(plan.Refused);
+        Assert.Equal(
+            new[]
+            {
+                (EditorRepo.MainDatabaseId, "/schemas/0/defaultStereotypes/0"), ("01J92P0V1T0J6RH4MY9H81NYB4", "/excludeStereotypes/0"),
+                (NotesTableId, "/excludes/0"),
+            }.Order(),
+            plan.Clears.Where(c => c.Id != CatalogId).Select(c => (c.Id, c.Pointer)).Order());
+        Assert.Contains(plan.Clears, c => c.Id == CatalogId && c.Pointer == "/defaultStereotypes/0" && c.Field == "defaultStereotypes");
+        var seedColumn = Assert.Single(plan.Removes);
+        Assert.Equal((NotesSeedId, "/columns/4", "column " + NotesTableId + "." + StampedById, "column"),
+            (seedColumn.Id, seedColumn.Pointer, seedColumn.What, seedColumn.SubKind));
+        Assert.Contains("column stamped_by of stereotype Stamped", seedColumn.Because, StringComparison.Ordinal);
+
+        var stamped = (await r.Store.GetElementAsync(StampedId, Ct))!;
+        var result = await r.Store.DeleteAsync(StampedId, stamped.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        var model = r.Store.Current!;
+        Assert.All(model.Get<Database>(EditorRepo.MainDatabaseId)!.Schemas, schema => Assert.Empty(schema.DefaultStereotypes));
+        Assert.Empty(model.Get<Package>(CatalogId)!.DefaultStereotypes);
+        Assert.Empty(model.Get<Table>("01J92P0V1T0J6RH4MY9H81NYB4")!.ExcludeStereotypes ?? []);
+        Assert.Empty(model.Get<Table>(NotesTableId)!.Excludes);
+        var seed = model.Get<Seed>(NotesSeedId)!;
+        Assert.Equal(4, seed.Columns.Count);
+        Assert.Equal(4, Assert.Single(seed.Rows).Values.Count);
+        var report = await r.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.DoesNotContain(report.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+    }
+
+    private const string StampedId = "01K9XRF00000000000000000G0";
+    private const string StampedAtId = "01K9XRF00000000000000000G4";
+    private const string StampedById = "01K9XRF00000000000000000G5";
+    private const string StampedIndexId = "01K9XRF00000000000000000G6";
+    private const string NotesSeedId = "01K9XRF00000000000000000G1";
+    private const string CatalogId = "01J92P0V025DRFTXKMS240G2NG";
+
+    private static void Edit(EditorRepo r, string path, Action<JsonObject> change)
+    {
+        var node = JsonNode.Parse(r.Repo.ReadFile(path))!.AsObject();
+        change(node);
+        WriteElement(r, path, node);
+    }
+
+    /// <summary>
+    /// The billing repo (no facts) with two entities, Reviewer and Approver, that Invoice names in custom properties an extension types:
+    /// <c>reviewer</c> optional, <c>approver</c> required.
+    /// </summary>
+    private static EditorRepo WithApprovals()
+    {
+        var r = WithoutFacts();
+        r.Repo.WriteFile(".maquettiste/extensions/approvals.json", """
+            { "name": "approvals", "appliesTo": { "kinds": ["entity"] },
+              "properties": { "reviewer": { "type": "string", "x-ref": { "kind": "entity", "optional": true } },
+                              "approver": { "type": "string", "x-ref": { "kind": "entity" } } } }
+            """);
+        WriteEntity(r, "Reviewer", ReviewerId, "01K9XRF00000000000000000A2");
+        WriteEntity(r, "Approver", ApproverId, "01K9XRF00000000000000000B2");
+        var path = ".maquettiste/model/entities/invoice.json";
+        var invoice = JsonNode.Parse(r.Repo.ReadFile(path))!.AsObject();
+        invoice["properties"]!["reviewer"] = ReviewerId;
+        invoice["properties"]!["approver"] = ApproverId;
+        WriteElement(r, path, invoice);
+        return r;
+    }
+
+    private static void WriteEntity(EditorRepo r, string name, string id, string keyId, JsonObject? properties = null, string? stereotype = null)
+    {
+        var node = new JsonObject
+        {
+            ["kind"] = "entity", ["id"] = id, ["name"] = name,
+            ["key"] = new JsonObject { ["attributes"] = new JsonArray(keyId) },
+            ["attributes"] = new JsonArray(new JsonObject { ["id"] = keyId, ["name"] = "id", ["type"] = "uuid", ["required"] = true }),
+        };
+        if (stereotype is not null)
+            node["stereotypes"] = new JsonArray(stereotype);
+        if (properties is not null)
+            node["properties"] = properties;
+        WriteElement(r, ".maquettiste/model/entities/" + ModelBuilder.Kebab(name) + ".json", node);
+    }
+
+    private static void WriteElement(EditorRepo r, string path, JsonObject node)
+    {
+        var schema = KindInfo.TryGet(node["kind"]!.GetValue<string>(), out var info) ? info.SchemaFile : throw new InvalidOperationException();
+        r.Repo.WriteBytes(path, TestServices.Json.Write(node, schema, path));
+    }
+
+    /// <summary>
+    /// The billing repo without the recording of migration facts: these tests check what a cascade deletes and changes, and the drops
+    /// it causes would add fact files (pending until acknowledged) to every change set and to validation.
+    /// </summary>
+    private static EditorRepo WithoutFacts()
+    {
+        var r = EditorRepo.Create();
+        r.EditSettingsOnDisk(s => s["migrations"] = new JsonObject { ["record"] = "off" });
+        return r;
     }
 }

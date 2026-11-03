@@ -8,11 +8,16 @@ namespace Maquettiste.Engine.Model;
 /// sources, joins, a select list, predicates, grouping, ordering, paging and collections. Its result shape is <see cref="Entity"/>,
 /// or the select list when no entity is named. A query creates nothing in the database: packs turn it into a repository method.
 /// </summary>
-public sealed record Query : Element
+public sealed record Query : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Query;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the database.</summary>
     [ElementRef(ElementKind.Database)]

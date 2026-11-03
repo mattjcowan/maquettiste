@@ -18,14 +18,20 @@ public static class ValidationEndpoints
         return Task.FromResult(Api.Json(RuleCatalog.Describe()));
     });
 
-    /// <summary>Validates the whole model (an empty body or <c>{}</c>) or a scope; load diagnostics included, never truncated.</summary>
+    /// <summary>
+    /// Validates the whole model (an empty body or <c>{}</c>) or a scope; load diagnostics included, never truncated. With
+    /// <c>?against=&lt;snapshot id&gt;</c> the whole model is also compared with that model snapshot (MQ4102, MQ4103, MQ4109;
+    /// next-phase-1-design.md section 3.2); this host takes snapshot ids only, so a folder, or an id that names no snapshot, is 400.
+    /// </summary>
     /// <param name="context">The request.</param>
+    /// <param name="against">The baseline: a model snapshot id, or <see langword="null"/>.</param>
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the report, or 400.</returns>
-    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model.</param>
+    /// <param name="snapshots">The snapshots: <c>?snapshot=&lt;id&gt;</c> reads one, read-only, instead of the working model; they also
+    /// hold the baselines, so a snapshot compared with again stays loaded.</param>
     [HttpPost("/api/validate")]
-    public static Task<IResult> Validate(HttpContext context, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Validate(HttpContext context, string? against, ModelStore store, SnapshotLibrary snapshots, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
         var asOf = await SnapshotEndpoints.AsOfAsync(context, snapshots, ct).ConfigureAwait(false);
         if (asOf.Problem is { } missing)
@@ -38,7 +44,22 @@ public static class ValidationEndpoints
             return error;
         if (scope!.ElementIds is { } ids && ids.Any(id => !Api.IsUlid(id)))
             return Api.BadRequest("elementIds must be element ids (uppercase ULIDs).");
-        return Api.Json(await store.ValidateAsync(scope, ct).ConfigureAwait(false));
+        if (against is null)
+            return Api.Json(await store.ValidateAsync(scope, ct).ConfigureAwait(false));
+        if (scope.ElementIds is not null)
+            return Api.BadRequest("against compares the whole model with a baseline; leave elementIds out.");
+        ModelBaseline baseline;
+        try
+        {
+            baseline = await ModelBaseline.OpenAsync(store, against, Environment.CurrentDirectory, allowFolders: false, snapshots, ct).ConfigureAwait(false);
+        }
+        catch (ArgumentException ex)
+        {
+            return Api.BadRequest(ex.Message);
+        }
+
+        using (baseline)
+            return Api.Json(await store.ValidateAgainstAsync(baseline, ct).ConfigureAwait(false));
     });
 }
 

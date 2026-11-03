@@ -83,7 +83,7 @@ internal sealed partial class DatabaseRun
                     used.Add(dbType);
                 return new RDatabaseTypeField
                 {
-                    Name = f.Name, Type = keyword, DbType = dbType, Length = f.Length, Precision = f.Precision, Scale = f.Scale, NativeType = native,
+                    Name = f.Name, Type = keyword, DbType = dbType, Length = f.Length, Precision = f.Precision, Scale = f.Scale, NativeType = native ?? "",
                 };
             })];
             type.DependsOn = used;
@@ -101,7 +101,7 @@ internal sealed partial class DatabaseRun
                 Database = _rdb,
                 RoutineKind = ResolutionValues.Kebab(file.RoutineKind),
                 Language = file.Language ?? DefaultLanguage,
-                Body = body ?? "",
+                Body = body,
                 HasBody = body is not null,
                 Deterministic = file.Deterministic,
                 Volatility = file.Volatility is { } volatility ? ResolutionValues.Kebab(volatility) : file.Deterministic ? "immutable" : "volatile",
@@ -114,7 +114,7 @@ internal sealed partial class DatabaseRun
                 var (keyword, dbType, native) = Slot(p.Type, p.Length, p.Precision, p.Scale, p.NativeType, deps);
                 return new RRoutineParameter
                 {
-                    Name = p.Name, Type = keyword, DbType = dbType, Length = p.Length, Precision = p.Precision, Scale = p.Scale, NativeType = native,
+                    Name = p.Name, Type = keyword, DbType = dbType, Length = p.Length, Precision = p.Precision, Scale = p.Scale, NativeType = native ?? "",
                     Mode = ResolutionValues.Kebab(p.Mode), Default = p.Default,
                 };
             })];
@@ -128,7 +128,7 @@ internal sealed partial class DatabaseRun
                         var (keyword, dbType, native) = Slot(c.Type, c.Length, c.Precision, c.Scale, c.NativeType, deps);
                         return new RRoutineColumn
                         {
-                            Name = c.Name, Type = keyword, DbType = dbType, Length = c.Length, Precision = c.Precision, Scale = c.Scale, NativeType = native,
+                            Name = c.Name, Type = keyword, DbType = dbType, Length = c.Length, Precision = c.Precision, Scale = c.Scale, NativeType = native ?? "",
                             Nullable = c.Nullable,
                         };
                     })];
@@ -158,8 +158,11 @@ internal sealed partial class DatabaseRun
                 Database = _rdb,
                 ObjectKind = file.ObjectKind,
                 Phase = ResolutionValues.Kebab(file.Phase),
-                Body = body ?? "",
+                Body = body,
                 HasBody = body is not null,
+                Environments = file.Environments,
+                Apply = ResolutionValues.Kebab(file.Apply),
+                ContentHash = Hashing.ContentHash.Of(body ?? ""),
             };
             _run.FillPhysicalAnnotations(r, file, deps);
             _objects.Add((r, file, deps));
@@ -172,22 +175,22 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// The native type a dialect without the type's kind stores a value of it as: a domain's base, an enum's string (as long as its
-    /// longest label), else the empty string.
+    /// longest label), else <see langword="null"/> (a composite or range).
     /// </summary>
-    private string FallbackNativeType(DatabaseType file) => file.TypeKind switch
+    private string? FallbackNativeType(DatabaseType file) => file.TypeKind switch
     {
         DatabaseTypeKind.Domain when file.Base is { } baseType => NativeType(baseType, file.Length, file.Precision, file.Scale),
         DatabaseTypeKind.Enum when file.Members.Count > 0 => NativeType("string", file.Members.Max(m => m.Length), null, null),
-        _ => "",
+        _ => null,
     };
 
     /// <summary>
     /// Resolves a typed slot (a parameter, a result, a column of a table result, a composite field): the built-in keyword (or
     /// <see langword="null"/>), the database type the type names (or <see langword="null"/>) and the native type for the dialect (the
-    /// slot's own, else the database type's native name, else the type map's). A type that is neither resolves to its text, which
-    /// validation reports (MQ4018).
+    /// slot's own, else the database type's native name, else the type map's; <see langword="null"/> when the database type has no
+    /// native name there). A type that is neither resolves to its text, which validation reports (MQ4018).
     /// </summary>
-    private (string? Keyword, RDatabaseType? DbType, string Native) Slot(string? type, int? length, int? precision, int? scale, string? nativeType,
+    private (string? Keyword, RDatabaseType? DbType, string? Native) Slot(string? type, int? length, int? precision, int? scale, string? nativeType,
         DependencySet deps)
     {
         if (type is not null && _dbTypes.TryGetValue(type, out var dbType))
@@ -203,7 +206,7 @@ internal sealed partial class DatabaseRun
             return (type, null, nativeType ?? NativeType(type, withDefaults.Length, withDefaults.Precision, withDefaults.Scale));
         }
 
-        return (null, null, nativeType ?? type ?? "");
+        return (null, null, nativeType ?? type);
     }
 
     /// <summary>
@@ -227,7 +230,7 @@ internal sealed partial class DatabaseRun
         if (DbTypeOf(nativeType, t) is { } type)
         {
             c.DbType = type;
-            c.NativeType = type.NativeName.Length > 0 ? type.NativeName : computed();
+            c.NativeType = type.NativeName ?? computed();
             return;
         }
 
@@ -309,7 +312,7 @@ internal sealed partial class DatabaseRun
             if (_viewFiles.Count > 1)
             {
                 var inferred = new List<RView>();
-                foreach (var token in Identifiers(view.Body))
+                foreach (var token in view.Body is { } body ? Identifiers(body) : [])
                 {
                     if (!byName.TryGetValue(token, out var named))
                         continue;

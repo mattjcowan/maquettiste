@@ -96,8 +96,8 @@ public sealed class SnapshotTests
             foreach (var path in Directory.EnumerateFiles(f.Repo.ModelRoot, "*", SearchOption.AllDirectories)
                 .Select(p => Path.GetRelativePath(f.Repo.ModelRoot, p).Replace('\\', '/')).Where(SnapshotLayout.IsContentPath))
             {
-                if (path is "model/entities/client.json")
-                    continue;
+                if (path is "model/entities/client.json" || path.Contains("/migrations/open/", StringComparison.Ordinal))
+                    continue; // the rename and the migration fact it recorded came after the snapshot
                 var expected = path == "maquettiste.json" ? settingsBefore : File.ReadAllBytes(Path.Combine(f.Repo.ModelRoot, path));
                 Assert.Equal(expected, await documents.ReadAsync(path, Ct));
             }
@@ -198,7 +198,7 @@ public sealed class SnapshotTests
         Assert.Equal("before-restore-20261005-120500", result.Safety!.Id);
         Assert.Equal(("before-restore", "ada"), (result.Safety.Origin, result.Safety.Author));
         Assert.Contains(result.Safety.Id, result.Undo, StringComparison.Ordinal);
-        Assert.Equal((1, 2), (result.Written, result.Deleted)); // customer.json back; client.json and stray.md gone
+        Assert.Equal((1, 3), (result.Written, result.Deleted)); // customer.json back; client.json, the rename's migration fact and stray.md gone
         Assert.False(File.Exists(Path.Combine(f.Repo.ModelRoot, "model", "entities", "client.json")));
         var same = await f.Library.CompareAsync(before.Id, SnapshotLibrary.Working, 0, 10, Ct);
         Assert.Equal((0, 0, 0, 0), (same!.Added, same.Removed, same.Changed, same.Files.Count));

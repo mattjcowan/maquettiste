@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Loading;
 
 namespace Maquettiste.Engine;
 
@@ -47,20 +48,27 @@ public static class AssistantProposals
         + "user as a diff with Apply and Discard. Operations are the batch shapes: {\"op\":\"create\",\"element\":{...}}, "
         + "{\"op\":\"update\",\"id\":...,\"element\":{whole document}} (expectedHash optional: the hash you read, else the current one), "
         + "{\"op\":\"delete\",\"id\":...,\"resolution\":\"refuse|remove-references|delete-dependents\"}, and the schema, materialize and process "
-        + "operations. An element appears in one operation only. Missing ids of new elements and sub-elements (attributes, members, ends...) are added "
-        + "for you. To refer to an element created in the same proposal, give it an id "
-        + "yourself: 26 characters, Crockford base 32 uppercase (no I, L, O or U), first character 0 to 7. Read get_schema for a kind before "
+        + "operations. An element appears in one operation only. Send no ids for new elements and sub-elements (attributes, members, ends, "
+        + "rows...): the engine mints them. Every id field (id, database, package, schema, target, the references inside an element) takes an "
+        + "id or a qualified name, @kind:path with the name as stored (@entity:Billing.Invoice, @table:billing.notes, @column:billing.notes.body, "
+        + "@attribute:Invoice.total); to refer to an element created in the same proposal, name it with \"as\":\"$name\" on its operation and "
+        + "write $name where its id goes. When you re-send a document, keep the ids of its sub-elements. Read get_schema for a kind before "
         + "building its document. An invalid proposal is an error naming each failing operation and its diagnostics: fix them and call "
         + "again. Propose one coherent change per call and never repeat a proposal the user has not answered.",
         Schema);
 
     /// <summary>
-    /// Checks the model's arguments and runs the batch as a dry run: a create without an id gets one, an update or delete without an
-    /// expected hash gets the current one, and each created or updated element is replaced by the document the dry run would write (so
-    /// sub-element ids are pinned too).
+    /// Checks the model's arguments and runs the batch as a dry run (next-phase-1-design.md section 5.1): an update's
+    /// or delete's target given as a qualified name is resolved on the model as loaded and pinned to its id, an update
+    /// or delete without an expected hash gets the current one, and the engine mints every missing id. After the dry
+    /// run, an update's or delete's <c>id</c> stays the target pinned before it, and a create's becomes its element's
+    /// id, else the operation's, else the root id the dry run minted for that operation (decision 15: the items do not
+    /// line up with expanded operations, so the pin never reads them). Its other id fields are pinned to the ids the
+    /// names resolved to, its element to the document the dry run would write (so minted ids are pinned too), and
+    /// <c>as</c> is dropped: applying the proposal writes exactly what was previewed.
     /// </summary>
     /// <param name="store">The model store.</param>
-    /// <param name="ids">The id generator (the store's).</param>
+    /// <param name="ids">The id generator (the store's); the store mints with its own.</param>
     /// <param name="arguments">The tool call's arguments.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The draft, or the error text to return to the model as the tool's result.</returns>
@@ -84,15 +92,22 @@ public static class AssistantProposals
             return (null, Error($"A proposal holds at most {MaxOperations} operations; split the change."));
 
         var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        foreach (var node in operations)
+        // Update and delete targets given by name resolve on the model as loaded and are pinned before their hashes are read; a name
+        // that does not resolve fails like a parse failure, with its MQ1012 to MQ1015 diagnostics.
+        var targets = BatchNames.ResolveTargets(snapshot, new ModelBatch([.. operations.Select(TargetOf)]));
+        var unresolved = targets.Diagnostics.SelectMany(d => d).ToList();
+        if (unresolved.Count > 0)
         {
-            if (node is not JsonObject op)
+            return (null, Error("The operations name an element that cannot be found; nothing was proposed.",
+                new JsonObject { ["diagnostics"] = Diagnostics(unresolved) }));
+        }
+
+        for (var i = 0; i < operations.Count; i++)
+        {
+            if (operations[i] is not JsonObject op || OpName(op) is not ("update" or "delete") || targets.Targets[i] is not { } target)
                 continue;
-            var kind = op["op"]?.GetValueKind() == JsonValueKind.String ? op["op"]!.GetValue<string>() : null;
-            if (kind == "create" && op["element"] is JsonObject element && element["id"] is null)
-                element["id"] = ids.NewId();
-            if (kind is "update" or "delete" && op["expectedHash"] is null && op["id"]?.GetValueKind() == JsonValueKind.String
-                && snapshot.GetDocument(op["id"]!.GetValue<string>()) is { } current)
+            op["id"] = target;
+            if (op["expectedHash"] is null && snapshot.GetDocument(target) is { } current)
                 op["expectedHash"] = current.Hash;
         }
 
@@ -104,21 +119,6 @@ public static class AssistantProposals
         }
 
         var preview = await store.PreviewBatchAsync(parsed.Batch, ct).ConfigureAwait(false);
-        // Sub-elements (attributes, members, ends, states...) need ids the model rarely has: add the ones the schemas ask for and try again.
-        for (var round = 0; round < 4 && preview.Outcome == SaveOutcome.Invalid && FillMissingIds(operations, preview.Items, ids); round++)
-        {
-            parsed = store.ParseBatch(Encoding.UTF8.GetBytes(new JsonObject { ["operations"] = operations.DeepClone() }.ToJsonString()));
-            if (parsed.Batch is null)
-                break;
-            preview = await store.PreviewBatchAsync(parsed.Batch, ct).ConfigureAwait(false);
-        }
-
-        if (parsed.Batch is null)
-        {
-            return (null, Error("The operations do not form a valid batch; nothing was proposed.",
-                new JsonObject { ["diagnostics"] = Diagnostics(parsed.Diagnostics) }));
-        }
-
         if (preview.Outcome != SaveOutcome.Saved)
         {
             var failures = new JsonArray();
@@ -145,15 +145,22 @@ public static class AssistantProposals
                 new JsonObject { ["failures"] = failures }));
         }
 
-        // Pin what was previewed: the documents the dry run would write, ids of new sub-elements included.
+        // Pin what was previewed: each operation's ids, and the documents the dry run would write with the ids it minted.
         var written = preview.Files.Where(f => f.Action != "deleted" && f.Id is not null && f.After is not null && f.Path.EndsWith(".json", StringComparison.Ordinal))
             .GroupBy(f => f.Id!, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().After!, StringComparer.Ordinal);
-        foreach (var node in operations)
+        for (var i = 0; i < operations.Count; i++)
         {
-            if (node is not JsonObject op || op["element"] is not JsonObject element || op["op"]?.GetValueKind() != JsonValueKind.String)
+            if (operations[i] is not JsonObject op)
                 continue;
-            var id = op["op"]!.GetValue<string>() == "update" ? op["id"]?.GetValue<string>() : element["id"]?.GetValue<string>();
-            if (id is not null && written.TryGetValue(id, out var after) && JsonNode.Parse(after) is JsonObject document)
+            op.Remove("as");
+            var kind = OpName(op);
+            PinNames(op, preview.Ids.Names);
+            if (kind == "create" && CreatedId(op, i, preview.Ids) is { } created)
+                op["id"] = created;
+            if (kind is not ("create" or "update") || op["element"] is not JsonObject)
+                continue;
+            if (op["id"]?.GetValueKind() == JsonValueKind.String && written.TryGetValue(op["id"]!.GetValue<string>(), out var after)
+                && JsonNode.Parse(after) is JsonObject document)
             {
                 document.Remove("$schema");
                 op["element"] = document;
@@ -163,52 +170,70 @@ public static class AssistantProposals
         return (new AssistantProposalDraft(summary, operations, preview.Files), null);
     }
 
+    /// <summary>The operation's <c>op</c>, when it is a string.</summary>
+    private static string? OpName(JsonObject op) => op["op"]?.GetValueKind() == JsonValueKind.String ? op["op"]!.GetValue<string>() : null;
+
     /// <summary>
-    /// Gives an id to each sub-element a failed item's diagnostics say lacks one (MQ1002 "Required properties ["id"]" at a pointer into
-    /// the operation's element); returns whether any was added.
+    /// What <see cref="BatchNames.ResolveTargets"/> reads of an operation: an update's or delete's <c>id</c>; anything else stands in as
+    /// a create with no id, which it skips. The batch is not parsed yet, because an update without its expected hash does not parse.
     /// </summary>
-    private static bool FillMissingIds(JsonArray operations, IReadOnlyList<SaveResult> items, IIdGenerator ids)
+    private static BatchOperation TargetOf(JsonNode? node)
     {
-        var added = false;
-        for (var i = 0; i < items.Count && i < operations.Count; i++)
+        var op = node as JsonObject;
+        var kind = op is null ? null : OpName(op);
+        var id = op?["id"]?.GetValueKind() == JsonValueKind.String ? op["id"]!.GetValue<string>() : null;
+        return kind switch
         {
-            if (operations[i] is not JsonObject { } op || op["element"] is not JsonObject element)
+            "update" => new BatchOperation(BatchOp.Update, id, null, null),
+            "delete" => new BatchOperation(BatchOp.Delete, id, null, null),
+            _ => new BatchOperation(BatchOp.Create, null, null, null),
+        };
+    }
+
+    /// <summary>
+    /// The id of a create's element: the element's own id, else the operation's, else the root id the dry run minted for it. Read from
+    /// the operation rather than from the items, which do not line up with the operations when the batch holds expanded operations.
+    /// </summary>
+    private static string? CreatedId(JsonObject op, int index, BatchIds ids)
+    {
+        if (op["element"] is JsonObject element && element["id"] is JsonValue own && own.TryGetValue<string>(out var given))
+            return given;
+        if (op["id"] is JsonValue opId && opId.TryGetValue<string>(out var operation))
+            return operation;
+        return ids.Minted.FirstOrDefault(m => m.Operation == index && m.Pointer.Length == 0)?.Id;
+    }
+
+    /// <summary>Replaces each name or placeholder in an operation's <c>batch.json</c> id fields by the id the dry run resolved it to.</summary>
+    private static void PinNames(JsonObject op, IReadOnlyDictionary<string, string> names)
+    {
+        if (names.Count == 0)
+            return;
+        foreach (var field in new[] { "id", "database", "package", "schema", "target", "default" })
+        {
+            if (op[field] is JsonValue value && value.TryGetValue<string>(out var text) && names.TryGetValue(text, out var id))
+                op[field] = id;
+        }
+
+        foreach (var field in new[] { "entities", "tables", "attributes" })
+        {
+            if (op[field] is not JsonArray items)
                 continue;
-            foreach (var d in items[i].Diagnostics)
+            for (var j = 0; j < items.Count; j++)
             {
-                if (d.Rule != "MQ1002" || !d.Message.Contains("Required properties [\"id\"]", StringComparison.Ordinal) || d.JsonPointer is null)
-                    continue;
-                var pointer = d.JsonPointer;
-                var prefix = "/operations/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) + "/element";
-                if (pointer.StartsWith(prefix, StringComparison.Ordinal))
-                    pointer = pointer[prefix.Length..];
-                if (Resolve(element, pointer) is JsonObject target && target["id"] is null)
-                {
-                    target["id"] = ids.NewId();
-                    added = true;
-                }
+                if (items[j] is JsonValue item && item.TryGetValue<string>(out var text) && names.TryGetValue(text, out var id))
+                    items[j] = id;
             }
         }
 
-        return added;
-
-        static JsonNode? Resolve(JsonNode root, string pointer)
+        if (op["expectedHashes"] is JsonObject hashes)
         {
-            var node = (JsonNode?)root;
-            foreach (var raw in pointer.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var (key, hash) in hashes.ToList())
             {
-                var segment = raw.Replace("~1", "/", StringComparison.Ordinal).Replace("~0", "~", StringComparison.Ordinal);
-                node = node switch
-                {
-                    JsonObject o => o[segment],
-                    JsonArray a when int.TryParse(segment, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var index) && index < a.Count => a[index],
-                    _ => null,
-                };
-                if (node is null)
-                    return null;
+                if (!names.TryGetValue(key, out var id) || hashes.ContainsKey(id))
+                    continue;
+                hashes.Remove(key);
+                hashes[id] = hash;
             }
-
-            return node;
         }
     }
 

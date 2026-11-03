@@ -347,11 +347,28 @@ test("Storage explains strategies in plain words and previews a pack's database 
   await page.getByTestId("strategies-hint").getByRole("button", { name: "Declare the standard storage strategies" }).click();
   await expect(page.getByTestId("strategies-hint")).toBeHidden();
   await seedModel(page);
+  // A copy of sql-ddl from before its database units became `each database` still has seed-environments on the
+  // `databases` selector, which its scripts no longer register.
+  const repacked = await page.evaluate(async () => {
+    const pack = (await (await fetch("/api/packs/sql-ddl")).json()) as { hash: string; document: { units: { id: string; for: string }[] } };
+    const units = pack.document.units.map((u) => (u.id === "seed-environments" ? { ...u, for: "select databases" } : u));
+    const res = await fetch("/api/packs/sql-ddl", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "If-Match": `"${pack.hash}"` },
+      body: JSON.stringify({ ...pack.document, units }),
+    });
+    return res.status;
+  });
+  expect(repacked).toBe(200);
   await openType(page, "Car Models");
   await page.getByRole("tab", { name: "Storage" }).click();
   const storage = page.getByTestId("reference-storage");
   await expect(page.getByTestId("storage-explanation")).toContainText("A storage strategy says how the packs store this type");
-  await expect(storage.getByRole("columnheader")).toHaveText(["Database", "Strategy in use", "Set for this type"]);
+  await expect(storage.getByRole("table", { name: "Storage per database" }).getByRole("columnheader")).toHaveText([
+    "Database",
+    "Strategy in use",
+    "Set for this type",
+  ]);
   const all = storage.getByLabel("Storage for All databases");
   await expect(all.locator("option")).toHaveText(["Use the default (the packs decide)", "Let the packs decide", "lookup-table", "check", "native"]);
   await expect(storage.getByTestId("storage-main").getByTestId("strategy-in-use")).toHaveText("The packs decide, nothing is set");
@@ -362,7 +379,13 @@ test("Storage explains strategies in plain words and previews a pack's database 
 
   // The preview lists the packs' database-scoped units, names the one it renders, and shows this type's statements.
   const unit = page.getByTestId("storage-preview-unit");
-  await expect(unit.locator("option")).toHaveText(["schema (sql-ddl)", "migration (sql-ddl)", "seed (sql-ddl)", "seed-environments (sql-ddl)"]);
+  await expect(unit.locator("option")).toHaveText([
+    "schema (sql-ddl)",
+    "migration (sql-ddl)",
+    "seed (sql-ddl)",
+    "seed-environments (sql-ddl)",
+    "object-environments (sql-ddl)",
+  ]);
   await expect(unit.locator("option:checked")).toHaveText("seed (sql-ddl)");
   await expect(page.getByTestId("storage-preview-note")).toHaveText(
     "Renders the seed (sql-ddl) unit for main without writing it, and shows the statements for this type.",
@@ -374,12 +397,16 @@ test("Storage explains strategies in plain words and previews a pack's database 
   await expect(storage.getByTestId("storage-main").getByTestId("strategy-in-use")).toHaveText("lookup-table, from this type");
   await storage.getByRole("button", { name: "Preview output" }).click();
   await expect(page.getByTestId("storage-preview")).toContainText("'c3'");
-  // A unit that does not render for the database: the engine's reason, the preview's message under Details.
+  // The migration unit is `each database`: it renders for main and writes nothing for the type.
   await unit.selectOption({ label: "migration (sql-ddl)" });
   await storage.getByRole("button", { name: "Preview output" }).click();
+  await expect(page.getByTestId("storage-preview")).toHaveText("The migration unit of sql-ddl has no statement for this type in this database.");
+  // A unit whose selector does not return the database: the engine's reason, the preview's message under Details.
+  await unit.selectOption({ label: "seed-environments (sql-ddl)" });
+  await storage.getByRole("button", { name: "Preview output" }).click();
   const failure = page.getByTestId("storage-preview-error");
-  await expect(failure).toContainText("The migration unit of sql-ddl does not render for main:");
-  await expect(failure).toContainText("Unit 'migration' is 'select databases'");
+  await expect(failure).toContainText("The seed-environments unit of sql-ddl does not render for main:");
+  await expect(failure).toContainText("The selector 'databases' did not return");
   await expect(failure.getByText("Message from the preview")).toBeVisible();
 });
 

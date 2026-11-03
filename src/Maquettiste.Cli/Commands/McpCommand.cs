@@ -33,9 +33,11 @@ internal static class McpCommand
         await using (store.ConfigureAwait(false))
         {
             await store.LoadAsync(ct).ConfigureAwait(false);
-            var generation = new GenerationService(store, options);
+            // plan's against may name a folder here (the server runs on the user's machine); the library keeps a snapshot baseline
+            // loaded for the server's life, and is the server's one library: the snapshot tools and the catalog's use it too.
+            var generation = new GenerationService(store, options) { Baselines = new SnapshotLibrary(store), AllowFolderBaselines = true };
             var tools = new ModelTools(store, generation, repo, TextWriter.Synchronized(context.Error),
-                context.Environment.GetEnvironmentVariable(WorkspaceInfo.Variable));
+                Functions.WorkspaceDetection.Detect(repo, context.Environment.GetEnvironmentVariable(WorkspaceInfo.Variable)));
             var serverOptions = McpServerSetup.CreateOptions(tools, repo);
             context.Info($"maquettiste: serving {repo} over MCP (stdio).");
 

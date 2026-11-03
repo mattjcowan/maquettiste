@@ -17,7 +17,7 @@ internal static class ShardCache
     /// <summary>The folder under the cache directory.</summary>
     public const string Folder = "shards";
 
-    private const int Format = 1;
+    private const int Format = 2; // 2: property texts (next-phase-1-design.md section 4.4)
     private static ReadOnlySpan<byte> Magic => "MQSH"u8;
 
     /// <summary>The cache file of a shard's content hash.</summary>
@@ -92,7 +92,17 @@ internal static class ShardCache
                 src = map;
             }
 
-            entries[key] = new TranslationEntry { DisplayName = display, PluralName = plural, Label = label, Description = description, Src = src };
+            var propertyCount = reader.ReadInt32();
+            IReadOnlyDictionary<string, string> properties = ImmutableDictionary<string, string>.Empty;
+            if (propertyCount > 0)
+            {
+                var map = new Dictionary<string, string>(propertyCount, StringComparer.Ordinal);
+                for (var j = 0; j < propertyCount; j++)
+                    map[reader.ReadString()] = reader.ReadString();
+                properties = map;
+            }
+
+            entries[key] = new TranslationEntry { DisplayName = display, PluralName = plural, Label = label, Description = description, Properties = properties, Src = src };
         }
 
         return new LocaleShard { SchemaPath = schema, Kind = kind, Locale = locale, Scope = scope, Entries = entries };
@@ -137,6 +147,13 @@ internal static class ShardCache
                 {
                     writer.Write(field);
                     writer.Write(fingerprint);
+                }
+
+                writer.Write(entry.Properties.Count);
+                foreach (var (property, text) in entry.Properties.OrderBy(p => p.Key, StringComparer.Ordinal))
+                {
+                    writer.Write(property);
+                    writer.Write(text);
                 }
             }
         }

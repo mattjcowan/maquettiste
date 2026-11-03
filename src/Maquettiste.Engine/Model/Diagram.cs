@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 namespace Maquettiste.Engine.Model;
 
 /// <summary>A saved canvas: membership, positions and view state only (<c>model/diagrams/</c>). Never visible to templates.</summary>
-public sealed record Diagram : Element
+public sealed record Diagram : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]

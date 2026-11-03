@@ -1,17 +1,25 @@
 {{-
 # One script per SQL object, <db>/[<schema>/]objects/<object>.sql: its statements as written. Off unless the parameter objectScripts
-# is true; schema.sql and the migrations run every SQL object either way, before the database types and tables (phase "before") or
-# after the routines and views (phase "after").
+# is true; schema.sql and the migrations run every SQL object without environments either way, before the database types and tables
+# (phase "before") or after the routines and views (phase "after"), and objects.<env>.sql runs the others. A run-once object runs
+# inside its ledger guard, after the ledger DDL (PostgreSQL; elsewhere it is left out, MQ4056).
 include "_sql.scriban"
 include "_objects.scriban"
+include "_ledger.scriban"
 if pack.params.objectScripts
   db = sql_object.database
 -}}
 {{- capture content -}}
 {{ banner "--" }}
--- {{ sql_object.object_kind | string.capitalize }} {{ sql_object.name }} of database {{ db.name }} ({{ dialect_title(db) }}), run {{ sql_object.phase }} the tables.
+-- {{ sql_object.object_kind | string.capitalize }} {{ sql_object.name }} of database {{ db.name }} ({{ dialect_title(db) }}), run {{ sql_object.phase }} the tables
+{{- if sql_object.environments.size > 0 }} in environments {{ sql_object.environments | array.join ", " }}{{ end }}
+{{- if object_writes_ledger(sql_object, db) }}, once per database (the migration ledger records it){{ end }}.
 
-{{ object_sql(sql_object, db) }}
+{{ if object_writes_ledger(sql_object, db) -}}
+{{ ledger_prelude(db) }}
+
+{{ end -}}
+{{ object_run_sql(sql_object, db) }}
 {{ end -}}
 {{- file ((kebab db.name) + "/" + (sql_object.schema ? sql_object.schema + "/" : "") + "objects/" + sql_object.name + ".sql") content -}}
 {{- end -}}

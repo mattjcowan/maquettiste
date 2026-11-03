@@ -3,13 +3,15 @@ using System.Text.Json.Serialization;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine;
 
 /// <summary>
 /// Materialize, both directions (erratum E43; engine-design.md section 7, "Bindings and materialize"): the batch operations
-/// <c>materialize-tables</c>, <c>materialize-entities</c>, <c>materialize-attributes</c> and <c>materialize-columns</c>, which expand into creates, updates and deletes applied with the batch's
-/// other operations, all or nothing; the preview of either (<see cref="PlanMaterializeAsync"/>, nothing written); and the status of a
+/// <c>materialize-tables</c>, <c>materialize-entities</c>, <c>materialize-attributes</c> and <c>materialize-columns</c>, and the binding
+/// operations <c>map-by-name</c> and <c>resync-binding</c> (next-phase-2-design.md section 3.3), which expand into creates, updates and
+/// deletes applied with the batch's other operations, all or nothing; the preview of either (<see cref="PlanMaterializeAsync"/>, nothing written); and the status of a
 /// database (<see cref="GetMaterializeStatusAsync"/>): which entities have no binding to it, and which of its tables and views the
 /// entities bind.
 /// </summary>
@@ -18,6 +20,16 @@ public sealed partial class ModelStore
     /// <summary>Whether an operation is a materialize operation.</summary>
     /// <param name="op">The operation kind.</param>
     public static bool IsMaterializeOperation(BatchOp op) => op is BatchOp.MaterializeTables or BatchOp.MaterializeEntities or BatchOp.MaterializeAttributes or BatchOp.MaterializeColumns;
+
+    /// <summary>
+    /// Whether an operation is a binding operation (next-phase-2-design.md section 3.3): <c>map-by-name</c> or <c>resync-binding</c>. Like
+    /// the materialize operations they expand into updates planned against the saved model, but they read files only and never resolve it.
+    /// </summary>
+    /// <param name="op">The operation kind.</param>
+    public static bool IsBindingOperation(BatchOp op) => op is BatchOp.MapByName or BatchOp.ResyncBinding;
+
+    /// <summary>Whether a materialize request names a binding operation (<see cref="IsBindingOperation"/>).</summary>
+    private static bool IsBindingRequest(MaterializeRequest request) => request.Operation is "map-by-name" or "resync-binding";
 
     private async Task<string?> MaterializeAsync(ModelSnapshot snapshot, BatchOperation o, List<PlannedChange> changes, List<MaterializeResult> results, CancellationToken ct)
     {
@@ -55,6 +67,8 @@ public sealed partial class ModelStore
         BatchOp.MaterializeTables => new MaterializeRequest("materialize-tables", o.Database ?? o.Id ?? "", o.Entities ?? [], o.Schema),
         BatchOp.MaterializeAttributes => new MaterializeRequest("materialize-attributes", o.Database ?? o.Id ?? "", o.Entities ?? [], Columns: o.Columns),
         BatchOp.MaterializeColumns => new MaterializeRequest("materialize-columns", o.Database ?? o.Id ?? "", o.Entities ?? [], Attributes: o.Attributes),
+        BatchOp.MapByName => new MaterializeRequest("map-by-name", o.Database ?? o.Id ?? "", o.Entities ?? []),
+        BatchOp.ResyncBinding => new MaterializeRequest("resync-binding", o.Database ?? o.Id ?? "", o.Entities ?? [], Columns: o.Columns, KeepNames: o.KeepNames ?? false),
         _ => new MaterializeRequest("materialize-entities", o.Database ?? o.Id ?? "", o.Tables ?? [], null, o.Package),
     };
 
@@ -74,7 +88,9 @@ public sealed partial class ModelStore
             "materialize-entities" => await materializer.EntitiesAsync(request.Database, request.Ids, request.Package, ct).ConfigureAwait(false),
             "materialize-attributes" => await materializer.AttributesAsync(request.Database, request.Ids, request.Columns, ct).ConfigureAwait(false),
             "materialize-columns" => await materializer.ColumnsAsync(request.Database, request.Ids, request.Attributes, ct).ConfigureAwait(false),
-            _ => new MaterializeResult($"'{request.Operation}' is not materialize-tables, materialize-entities, materialize-attributes or materialize-columns.", [], []),
+            "map-by-name" => await materializer.MapByNameAsync(request.Database, request.Ids, ct).ConfigureAwait(false),
+            "resync-binding" => await materializer.ResyncAsync(request.Database, request.Ids, request.Columns, request.KeepNames, ct).ConfigureAwait(false),
+            _ => new MaterializeResult($"'{request.Operation}' is not materialize-tables, materialize-entities, materialize-attributes, materialize-columns, map-by-name or resync-binding.", [], []),
         };
     }
 
@@ -89,9 +105,11 @@ public sealed partial class ModelStore
             op.Node?.DeepClone(), DeleteResolution.Refuse));
 
     /// <summary>
-    /// What a materialize operation would do, planned and validated like the batch operation without writing anything: the elements it
-    /// creates, updates and deletes (with the documents it would write), what it leaves as it is, and the diagnostics the change would
-    /// have (a refusal is MQ4055; the binding rules MQ4044 to MQ4054 come from resolving the model after the change).
+    /// What a materialize or binding operation would do, planned and validated like the batch operation without writing anything: the
+    /// elements it creates, updates and deletes (with the documents it would write), what it leaves as it is, and the diagnostics the
+    /// change would have. A materialize refusal is MQ4055, and the binding rules MQ4044 to MQ4054 come from resolving the model after the
+    /// change. A binding operation's refusal is MQ4089, and its binding rules (MQ4044 to MQ4054, MQ4087 and MQ4088) come from resolving
+    /// the conceptual layer and the named database only, never the whole model (next-phase-2-design.md section 3.3, decision 10).
     /// </summary>
     /// <param name="request">The operation.</param>
     /// <param name="ct">Cancellation.</param>
@@ -100,9 +118,10 @@ public sealed partial class ModelStore
     {
         ArgumentNullException.ThrowIfNull(request);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
+        var binding = IsBindingRequest(request);
         var result = await RunMaterializerAsync(snapshot, request, ct).ConfigureAwait(false);
         if (result.Refusal is not null)
-            return new MaterializePlan(request.Operation, request.Database, false, [], [], [], [], [RuleCatalog.Create("MQ4055", result.Refusal, null, null, null)]);
+            return new MaterializePlan(request.Operation, request.Database, false, [], [], [], [], [RuleCatalog.Create(binding ? "MQ4089" : "MQ4055", result.Refusal, null, null, null)]);
 
         var plan = Plan(snapshot, [.. ToChanges(result)], ct);
         if (!plan.Failed)
@@ -111,9 +130,12 @@ public sealed partial class ModelStore
         if (!plan.Failed && plan.Candidate is { } candidate)
         {
             var touched = result.Ops.Select(o => o.Id).ToHashSet(StringComparer.Ordinal);
-            var resolved = await _services.Resolver.ResolveAsync(candidate, null, ct).ConfigureAwait(false);
-            diagnostics.AddRange(resolved.Diagnostics.Where(d => d.ElementId is { } id && touched.Contains(id) && string.CompareOrdinal(d.Rule, "MQ4044") >= 0
-                && string.CompareOrdinal(d.Rule, "MQ4054") <= 0));
+            IEnumerable<Diagnostic> found = binding
+                ? await ResolveBindingDatabaseAsync(candidate, request.Database, ct).ConfigureAwait(false)
+                : (await _services.Resolver.ResolveAsync(candidate, null, ct).ConfigureAwait(false)).Diagnostics;
+            diagnostics.AddRange(found.Where(d => d.ElementId is { } id && touched.Contains(id)
+                && ((string.CompareOrdinal(d.Rule, "MQ4044") >= 0 && string.CompareOrdinal(d.Rule, "MQ4054") <= 0)
+                    || (binding && d.Rule is "MQ4087" or "MQ4088"))));
         }
 
         MaterializeChange Change(MaterializeOp op)
@@ -129,6 +151,25 @@ public sealed partial class ModelStore
             [.. result.Ops.Where(o => o.Op == BatchOp.Delete).Select(Change)],
             result.Notes,
             [.. diagnostics.Distinct().Order(Diagnostic.Order)]);
+    }
+
+    /// <summary>
+    /// The diagnostics of a resolution of the conceptual layer and one database (<see cref="IDatabaseResolver"/>), the scope fact
+    /// recording uses; a resolver that cannot resolve one database answers from a whole-model resolve. A shape the resolver cannot take
+    /// answers none, as fact recording does.
+    /// </summary>
+    private async Task<IReadOnlyList<Diagnostic>> ResolveBindingDatabaseAsync(ModelSnapshot candidate, string databaseId, CancellationToken ct)
+    {
+        try
+        {
+            if (_services.Resolver is IDatabaseResolver partial)
+                return (await partial.ResolveDatabasesAsync(candidate, [databaseId], freeze: false, ct).ConfigureAwait(false)).Diagnostics;
+            return (await _services.Resolver.ResolveAsync(candidate, null, ct).ConfigureAwait(false)).Diagnostics;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return [];
+        }
     }
 
     /// <summary>
@@ -167,16 +208,19 @@ public sealed partial class ModelStore
     }
 }
 
-/// <summary>A materialize operation to plan (<see cref="ModelStore.PlanMaterializeAsync"/>).</summary>
-/// <param name="Operation"><c>materialize-tables</c>, <c>materialize-entities</c>, <c>materialize-attributes</c> or <c>materialize-columns</c>.</param>
+/// <summary>A materialize or binding operation to plan (<see cref="ModelStore.PlanMaterializeAsync"/>).</summary>
+/// <param name="Operation"><c>materialize-tables</c>, <c>materialize-entities</c>, <c>materialize-attributes</c>, <c>materialize-columns</c>,
+/// <c>map-by-name</c> or <c>resync-binding</c>.</param>
 /// <param name="Database">The database id.</param>
-/// <param name="Ids">The entities (tables, attributes, columns) or the tables and views (entities).</param>
+/// <param name="Ids">The entities (tables, attributes, columns, map by name, re-sync) or the tables and views (entities).</param>
 /// <param name="Schema">For tables: the schema id of the database the tables go to; absent keeps the projected tables' schema.</param>
 /// <param name="Package">For entities: the package id the entities go to.</param>
-/// <param name="Columns">For attributes: the source columns (one entity), or <see langword="null"/> for every column nothing in the binding names.</param>
+/// <param name="Columns">For attributes: the source columns (one entity), or <see langword="null"/> for every column nothing in the binding
+/// names; for re-sync: the columns to bring into step (one entity), or <see langword="null"/> for every column of the source.</param>
 /// <param name="Attributes">For columns: the binding field references (one entity), or <see langword="null"/> for every unmapped attribute.</param>
+/// <param name="KeepNames">For re-sync: keep every attribute's name, even one that followed its column's name.</param>
 public sealed record MaterializeRequest(string Operation, string Database, IReadOnlyList<string> Ids, string? Schema = null, string? Package = null,
-    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null);
+    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null, bool KeepNames = false);
 
 /// <summary>What a materialize operation would do.</summary>
 /// <param name="Operation">The operation.</param>

@@ -39,6 +39,43 @@ public sealed class ModelStoreBatchTests
     }
 
     [Fact]
+    public async Task ParseBatch_reads_as_and_names()
+    {
+        await using var s = await BillingStore.OpenAsync(load: false);
+        var json = """
+            {
+              "operations": [
+                { "op": "create", "as": "$pm", "element": { "kind": "table", "name": "payment_method", "database": "@database:main", "schema": "@schema:billing" } },
+                { "op": "update", "id": "@entity:Billing.Invoice", "expectedHash": "0000000000000000000000000000000000000000000000000000000000000000", "as": "$invoice", "element": { "kind": "entity", "name": "Invoice" } },
+                { "op": "materialize-columns", "database": "@database:main", "entities": ["$type", "@entity:\"Billing\".Invoice"], "attributes": ["@attribute:Invoice.total"], "expectedHashes": { "@entity:Invoice": "0000000000000000000000000000000000000000000000000000000000000000" } },
+                { "op": "remove-schema", "id": "@database:main", "schema": "@schema:billing", "target": "$other", "default": "01J92P0V0FJ23CGSNKM7P1W5V7" }
+              ]
+            }
+            """u8;
+        var malformed = s.Store.ParseBatch("""{ "operations": [ { "op": "create", "as": "pm", "element": { "kind": "table" } } ] }"""u8);
+        var notAName = s.Store.ParseBatch("""{ "operations": [ { "op": "delete", "id": "Invoice", "expectedHash": "0000000000000000000000000000000000000000000000000000000000000000" } ] }"""u8);
+
+        var result = s.Store.ParseBatch(json);
+
+        Assert.Empty(result.Diagnostics);
+        var operations = result.Batch!.Operations;
+        Assert.Equal(["$pm", "$invoice", null, null], operations.Select(o => o.As));
+        Assert.Equal("@entity:Billing.Invoice", operations[1].Id);
+        Assert.Equal("@database:main", operations[2].Database);
+        Assert.Equal(["$type", "@entity:\"Billing\".Invoice"], operations[2].Entities!);
+        Assert.Equal(["@attribute:Invoice.total"], operations[2].Attributes!);
+        Assert.Equal("@entity:Invoice", Assert.Single(operations[2].ExpectedHashes!).Key);
+        Assert.Equal(("@database:main", "@schema:billing", "$other", "01J92P0V0FJ23CGSNKM7P1W5V7"),
+            (operations[3].Id, operations[3].Schema, operations[3].Target, operations[3].Default));
+        Assert.Equal("@database:main", operations[0].Element!.Value.GetProperty("database").GetString());
+        Assert.Null(malformed.Batch);
+        Assert.Contains(malformed.Diagnostics, d => d.Rule == "MQ1002" && d.JsonPointer == "/operations/0/as");
+        Assert.Null(notAName.Batch);
+        Assert.Contains(notAName.Diagnostics, d => d.Rule == "MQ1002" && d.JsonPointer == "/operations/0/id");
+        Assert.Null(s.Store.Current);
+    }
+
+    [Fact]
     public async Task ParseBatch_reports_json_and_schema_errors_with_positions()
     {
         await using var s = await BillingStore.OpenAsync(load: false);

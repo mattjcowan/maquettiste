@@ -374,10 +374,36 @@ internal static partial class AttributeRules
                 if (value.ValueKind != JsonValueKind.String)
                     return "expected an ISO 8601 " + keyword + " string";
                 return IsTemporal(keyword, value.GetString()!) ? null : "not an ISO 8601 " + keyword;
+            case "range" or "multirange":
+                // A range column's value is its text form, such as [1,10) or {[1,5),[8,9)}; the database parses it.
+                return value.ValueKind == JsonValueKind.String ? null : "expected a string (the " + keyword + "'s text form)";
             default:
                 return null;
         }
     }
+
+    /// <summary>
+    /// Returns why a JSON value is not the kind of value a built-in keyword implies (a boolean, a number or a string), or
+    /// <see langword="null"/> when it is: the only check on the literal default of a column whose <c>nativeType</c> or database
+    /// type, not its facets, sets the storage (next-phase-1-design.md section 3.5). A <c>json</c> column takes a string of JSON
+    /// text: an object or array has no SQL literal, and a number or boolean renders as a literal the database refuses.
+    /// </summary>
+    /// <param name="keyword">The keyword.</param>
+    /// <param name="value">The value.</param>
+    /// <returns>The reason.</returns>
+    internal static string? FitsKind(string keyword, JsonElement value) => keyword switch
+    {
+        "bool" => value.ValueKind is JsonValueKind.True or JsonValueKind.False ? null : "expected true or false",
+        "int16" or "int32" or "int64" or "decimal" or "float" or "double" => value.ValueKind == JsonValueKind.Number ? null : "expected a number",
+        "json" => value.ValueKind == JsonValueKind.String ? null : JsonTextOnly,
+        "string" or "text" or "uuid" or "ulid" or "binary" or "date" or "time" or "datetime" or "datetimeoffset" or "duration" or "range" or "multirange" =>
+            value.ValueKind == JsonValueKind.String ? null : "expected a string",
+        _ => null,
+    };
+
+    /// <summary>Why a json column's default that is not a string fails (MQ3019).</summary>
+    internal const string JsonTextOnly =
+        "a json column takes a string of JSON text; an object, array, number or boolean has no literal for it (write the JSON as a string, or use defaultSql)";
 
     private static (int Integer, int Fraction) DecimalDigits(string raw)
     {
@@ -443,9 +469,10 @@ internal static partial class Credentials
     /// <summary>Returns why a default looks like a credential, or <see langword="null"/>.</summary>
     /// <param name="name">The attribute or column name.</param>
     /// <param name="value">The default literal.</param>
-    /// <param name="sensitivity">The attribute's sensitivity, when known.</param>
+    /// <param name="sensitivity">The attribute's or column's own sensitivity, when known (a column's since next-phase-2-design.md section 3.2).</param>
+    /// <param name="column">Whether the default is a column's, for the wording.</param>
     /// <returns>The reason.</returns>
-    public static string? LooksLikeCredential(string name, JsonElement value, Sensitivity? sensitivity)
+    public static string? LooksLikeCredential(string name, JsonElement value, Sensitivity? sensitivity, bool column = false)
     {
         if (value.ValueKind != JsonValueKind.String || value.GetString() is not { Length: > 0 } text)
             return null;
@@ -462,9 +489,9 @@ internal static partial class Credentials
         if (UrlCredentials().IsMatch(text))
             return "a URL with a user name and password";
         if (sensitivity == Sensitivity.Secret)
-            return "a non-empty default on a secret attribute";
+            return column ? "a non-empty default on a secret column" : "a non-empty default on a secret attribute";
         if (SecretName().IsMatch(name) && !Placeholder().IsMatch(text))
-            return "a non-empty default on an attribute named like a secret";
+            return column ? "a non-empty default on a column named like a secret" : "a non-empty default on an attribute named like a secret";
         return null;
     }
 

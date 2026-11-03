@@ -10,16 +10,16 @@ namespace Maquettiste.Packs.Tests;
 public sealed partial class CycleTests
 {
     [Theory]
-    [InlineData("db/main/schema.sql", "ALTER TABLE billing.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES billing.customers (id)")]
-    [InlineData("db/main/migrations/0001.sql", "ALTER TABLE billing.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES billing.customers (id)")]
-    [InlineData("db/reporting/schema.sql", "ALTER TABLE dbo.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)")]
-    [InlineData("db/reporting/migrations/0001.sql", "ALTER TABLE dbo.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)")]
-    public async Task Every_referenced_table_exists_before_the_foreign_key_that_names_it(string path, string deferred)
+    [InlineData("main", false, "ALTER TABLE billing.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES billing.customers (id)")]
+    [InlineData("main", true, "ALTER TABLE billing.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES billing.customers (id)")]
+    [InlineData("reporting", false, "ALTER TABLE dbo.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)")]
+    [InlineData("reporting", true, "ALTER TABLE dbo.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)")]
+    public async Task Every_referenced_table_exists_before_the_foreign_key_that_names_it(string database, bool migration, string deferred)
     {
         using var repo = PackRepo.BillingDialects();
         ModelChanges.AddFeaturedInvoice(repo);
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
-        var script = repo.Read(path);
+        var script = migration ? MigrationFiles.Read(repo, database, 1) : repo.Read($"db/{database}/schema.sql");
 
         Assert.Contains(deferred, script, StringComparison.Ordinal);
         AssertReferencesResolve(script);
@@ -55,7 +55,7 @@ public sealed partial class CycleTests
         var sqlite3 = ProcessRunner.FindOnPath("sqlite3");
         if (sqlite3 is null)
             return;
-        foreach (var script in new[] { schema, repo.Read("db/local/migrations/0001.sql") })
+        foreach (var script in new[] { schema, MigrationFiles.Read(repo, "local", 1) })
         {
             var run = await ProcessRunner.RunAsync(sqlite3, ["-bail", ":memory:"], repo.PathOf("db/local"), TimeSpan.FromMinutes(1), script);
             Assert.True(run.ExitCode == 0, run.Output);

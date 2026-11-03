@@ -44,6 +44,66 @@ func has_change(changes, names)
   ret false
 end
 
+# The changes whose property is not one of the names.
+func changes_except(changes, names)
+  $kept = []
+  for ch in changes
+    if !has_change([ch], names)
+      $kept[$kept.size] = ch
+    end
+  end
+  ret $kept
+end
+
+# Whether a type keyword is range or multirange (section 3.4).
+func range_keyword(type)
+  ret type == "range" || type == "multirange"
+end
+
+# How PostgreSQL converts a column between two range types (section 3.4). from and to are the sides (each with type, the keyword,
+# and native_type), col the quoted column. Between two ranges, or two multiranges, of other subtypes no direct cast exists but the
+# text forms match: {using: <col>::text::<native>}. A range becomes the multirange of its own subtype through PostgreSQL's cast:
+# {using: <col>::<native>}. No cast exists from a multirange to a range, nor from a range to a multirange of another subtype:
+# {todo: why}, and the caller writes no ALTER. null when a side's keyword is not range or multirange: the caller keeps its own cast.
+func range_using(from, to, col)
+  if !from || !to || !range_keyword(from.type) || !range_keyword(to.type)
+    ret null
+  end
+  if from.type == to.type
+    ret { using: col + "::text::" + to.native_type }
+  end
+  if from.type == "range" && from.native_type && to.native_type && (from.native_type | string.replace "range" "multirange") == to.native_type
+    ret { using: col + "::" + to.native_type }
+  end
+  $why = from.type == "multirange" ? "no cast exists from a multirange to a range, and range_merge keeps only the outer bounds of its ranges" : "no cast exists from a range to a multirange of another subtype"
+  $change = "changes from " + (from.native_type ?? from.type) + " to " + (to.native_type ?? to.type) + ", which PostgreSQL cannot convert (" + $why + ")"
+  ret { todo: $change + "; give a change-type migration fact the conversion expression. This migration leaves the column as it is.", change: $change }
+end
+
+# The side of a range_using conversion a column change starts from: the keyword and native type before the change.
+func range_side_before(cc, c)
+  $side = { type: c.type, native_type: c.native_type }
+  for ch in cc.changes
+    if ch.property == "type"
+      $side.type = ch.old
+    else if ch.property == "nativeType"
+      $side.native_type = ch.old
+    end
+  end
+  ret $side
+end
+
+# Whether a column change keeps its native type though its keyword or facets changed, with range or multirange on a side: the old
+# idiom (string with nativeType tstzrange) moving to a range keyword of the same native type and back, or a range column's subtype
+# change that a dialect without range types stores as the same text type. Such a change needs no ALTER and no type TODO; the
+# differ still reports it, because the snapshot holds the keyword and facets (section 3.4).
+func range_same_native(cc, c)
+  if has_change(cc.changes, ["nativeType", "strategy", "referenceTable", "codeType", "collation"]) || !has_change(cc.changes, ["type", "length", "precision", "scale", "subtype"])
+    ret false
+  end
+  ret range_keyword(c.type) || range_keyword(range_side_before(cc, c).type)
+end
+
 func find_named(list, name)
   for item in list
     if item.name == name
@@ -118,8 +178,13 @@ func sqlite_rebuild_reason(tc)
   for cc in tc.columns
     if cc.kind == "added" && !sqlite_can_add(cc.column)
       $why = $why + (($why == "") ? "" : ", ") + "add " + cc.column.name
-    else if (cc.kind == "renamed" || cc.kind == "altered") && has_change(cc.changes, ["type", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "strategy", "codeType"])
-      $why = $why + (($why == "") ? "" : ", ") + cc.new_name + " " + change_list(cc.changes)
+    else if cc.kind == "renamed" || cc.kind == "altered"
+      # A range column change that keeps the native type changes nothing in the database (range_same_native), as
+      # column_change_statements reads it: only its other changes can need a rebuild.
+      $changes = range_same_native(cc, cc.column) ? changes_except(cc.changes, ["type", "subtype", "length", "precision", "scale"]) : cc.changes
+      if has_change($changes, ["type", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "strategy", "referenceTable", "codeType"])
+        $why = $why + (($why == "") ? "" : ", ") + cc.new_name + " " + change_list($changes)
+      end
     end
   end
   if tc.primary_key.size + tc.uniques.size + tc.foreign_keys.size + tc.checks.size > 0
@@ -172,10 +237,11 @@ func sqlite_rebuild(tc, reason, out)
     emit(out, index_sql(ix, $t))
   end
   # SQLite drops a table's triggers with the table: the triggers the model holds as SQL objects that depend on it are created again
-  # (unless this migration creates them anyway, as new or changed objects); others are the reviewer's.
+  # (unless this migration creates them anyway, as new or changed objects); others are the reviewer's. A trigger with environments
+  # is objects.<env>.sql's, which runs after the migration.
   $again = 0
   for o in $db.objects
-    if (o.object_kind | string.downcase) == "trigger" && !find_change(diff.objects, o.id)
+    if (o.object_kind | string.downcase) == "trigger" && !find_change(diff.objects, o.id) && object_in_schema(o, $db)
       for dep in o.depends_on
         if dep.kind == "table" && dep.key == $t.key
           emit(out, object_sql(o, $db))
@@ -272,7 +338,7 @@ func narrowing_notes(t, cc, out)
       if ($d == "sqlserver" || $d == "oracle") && national_type(ch.old) && !national_type(ch.new)
         $back = $d == "sqlserver" ? "CAST(CAST(" + $col + " AS " + ch.new + ") AS " + ch.old + ")" : "TO_NCHAR(TO_CHAR(" + $col + "))"
         emit(out, "-- TODO: " + $where + " switches from Unicode to single-byte text (" + ch.old + " -> " + ch.new + "); characters outside the code page become '?'. Check first: SELECT count(*) FROM " + qt(t) + " WHERE " + $back + " <> " + $col + ";")
-      else if !$facets && !has_change(cc.changes, ["type", "length", "precision", "scale", "strategy", "codeType"])
+      else if !$facets && !has_change(cc.changes, ["type", "length", "precision", "scale", "strategy", "referenceTable", "codeType"])
         emit(out, "-- TODO: " + $where + " changes its native type (" + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + "); check that every value converts before running this.")
       end
     end
@@ -591,10 +657,21 @@ func identity_statements(t, cc, c, col, out)
   end
 end
 
-# One added, dropped, renamed or altered column of a table change. Not called for a SQLite table that is rebuilt (sqlite_rebuild
-# covers its columns).
+# One added, dropped, renamed or altered column of a table change, then the ledger rows of the migration facts whose steps it wrote
+# (PostgreSQL). Not called for a SQLite table that is rebuilt (sqlite_rebuild covers its columns).
 func column_statements(tc, cc, out)
+  column_change_statements(tc, cc, out)
+  if cc.kind != "added"
+    fact_rows("column:" + tc.key + "|" + cc.key, ["rename", "change-type", "backfill", "drop"], out)
+  end
+end
+
+# The statements of one column change (column_statements). On PostgreSQL a migration fact's step takes the place of its change: a
+# type change's data check and conversion replace the TODO lines and the plain cast, a backfill's UPDATE comes before SET NOT NULL;
+# a held fact's note replaces its change.
+func column_change_statements(tc, cc, out)
   $t = tc.table
+  $fk = "column:" + tc.key + "|" + cc.key
   $old_table = tc.old_name
   $db = $t.database
   $d = $db.dialect
@@ -610,6 +687,11 @@ func column_statements(tc, cc, out)
   end
   if cc.kind == "dropped"
     $old_col = cc.old_name ?? cc.key
+    $held = fact_at(mq_held, $fk, "drop")
+    if $held
+      emit(out, held_note($held, "column " + $t.name + "." + $old_col))
+      ret
+    end
     emit(out, data_loss_note($t.name, $old_col))
     if $d == "sqlserver"
       if cc.old_default_name
@@ -630,7 +712,14 @@ func column_statements(tc, cc, out)
   $df_now = cc.old_default_name ?? df_name($t.name, cc.old_name ?? $name)
   $df = default_name($c, $t.name)
   if cc.old_name && cc.old_name != $name
-    emit(out, rename_column_sql($t, cc.old_name, $name))
+    $held = fact_at(mq_held, $fk, "rename")
+    if $held
+      # The column keeps its old name, so the statements below name it so.
+      emit(out, held_note($held, "column " + $t.name + "." + cc.old_name + ", " + $name + " in the model"))
+      $name = cc.old_name
+    else
+      emit(out, rename_column_sql($t, cc.old_name, $name))
+    end
   end
   if $d == "sqlserver" && $df_now != $df && (default_sql($c, $db) != "" || has_change(cc.changes, ["default", "defaultSql", "defaultName"]))
     emit(out, rename_default_sql($t, $df_now, $df))
@@ -646,9 +735,36 @@ func column_statements(tc, cc, out)
     end
     ret
   end
-  $retype = has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType", "strategy", "codeType", "collation"])
-  narrowing_notes($t, cc, out)
-  $physical = ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "comment", "strategy", "codeType"]
+  $retype = has_change(cc.changes, ["type", "subtype", "length", "precision", "scale", "nativeType", "strategy", "referenceTable", "codeType", "collation"])
+  # A range column change that keeps the native type changes nothing in the database (range_same_native): no ALTER, no type TODO.
+  $range_same = range_same_native(cc, $c)
+  $changes = $range_same ? changes_except(cc.changes, ["type", "subtype", "length", "precision", "scale"]) : cc.changes
+  if $range_same
+    $retype = false
+  end
+  # A type change a complete migration fact describes (PostgreSQL): its step replaces the TODO lines and the plain cast. A held one
+  # waits: its note replaces the change.
+  $type_fact = $retype ? fact_at(mq_matched, $fk, "change-type") : null
+  $type_todo = false
+  if $type_fact && !fact_usable($type_fact)
+    # A cast between range types PostgreSQL cannot convert: the fact's TODO replaces the diff's, and the column stays as it is.
+    $note = fact_range_todo($type_fact, $t.name + "." + $name)
+    if $note != ""
+      emit(out, $note)
+      $type_todo = true
+      $retype = false
+    end
+    $type_fact = null
+  end
+  $type_held = $retype ? fact_at(mq_held, $fk, "change-type") : null
+  if $type_held
+    emit(out, held_note($type_held, "column " + $t.name + "." + $name))
+    $retype = false
+  end
+  if !$type_fact && !$type_held && !$type_todo && !$range_same
+    narrowing_notes($t, cc, out)
+  end
+  $physical = ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "identity", "sequence", "computed", "computedStored", "collation", "comment", "strategy", "referenceTable", "codeType"]
   if $d == "mysql"
     # MySQL redefines the whole column; its comment is part of the definition. A key and the columns that reference it must agree on
     # the type, so the foreign keys on the column and those that reference it are dropped first and added back after every column.
@@ -662,13 +778,18 @@ func column_statements(tc, cc, out)
         end
       end
     end
-    if has_change(cc.changes, $physical)
-      emit(out, alter_prefix($t) + " MODIFY COLUMN " + column_def($c) + ";")
+    if has_change($changes, $physical)
+      # The definition names the column as the model does; while a held rename waits, by its old name.
+      $def = column_def($c)
+      if $name != $c.name
+        $def = q($name, $db) + ($def | string.slice (string.size q($c.name, $db)))
+      end
+      emit(out, alter_prefix($t) + " MODIFY COLUMN " + $def + ";")
     end
     if has_change(cc.changes, ["identitySeed"]) && $c.identity && $c.identity_seed != null
       emit(out, alter_prefix($t) + " AUTO_INCREMENT = " + $c.identity_seed + ";")
     end
-    for ch in cc.changes
+    for ch in $changes
       if ch.property == "type"
         emit(out, "-- TODO: convert existing values of " + $t.name + "." + $name + " (type: " + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + "); MODIFY COLUMN converts each value as it can.")
       end
@@ -676,6 +797,12 @@ func column_statements(tc, cc, out)
     ret
   end
   $native = column_type($c)
+  # A PostgreSQL retype between range types takes its USING from range_using; one PostgreSQL cannot convert is a TODO, not an ALTER.
+  $range = ($d == "postgresql" && $retype && !$type_fact) ? range_using(range_side_before(cc, $c), { type: $c.type, native_type: $native }, $col) : null
+  if $range && $range.todo
+    emit(out, "-- TODO: " + $t.name + "." + $name + " " + $range.todo)
+    $retype = false
+  end
   $renull = has_change(cc.changes, ["nullable"])
   $redefault = has_change(cc.changes, ["default", "defaultSql"])
   $dflt = default_sql($c, $db)
@@ -683,6 +810,34 @@ func column_statements(tc, cc, out)
   $collate = ""
   if $c.collation
     $collate = " COLLATE " + collation_sql($c.collation, $db)
+  end
+  # PostgreSQL: a column that holds the codes of another reference type (next-phase-2-design.md section 3.5), with no value map of the
+  # migration covering it, gets its strategy objects dropped here and created again for the new type at the end; a column of an enum
+  # type is retyped to the new type's enum type through text, which no plain cast between two enum types allows.
+  $ref_change = $d == "postgresql" && has_change(cc.changes, ["referenceType"]) && !value_map_covers(tc.key, cc.key)
+  $ref_objects = $ref_change && !($c.type_ref && $c.is_foreign_key)
+  if $ref_change
+    $rt = $c.reference_type
+    if $rt
+      emit(out, "-- " + $t.name + "." + $name + " now holds codes of " + $rt.name + " (" + realization_words($rt, $db) + "): its reference objects are dropped and created again.")
+      $rows = ref_rows_exist_sql($rt, $db, null)
+      if $rows != ""
+        emit(out, $rows)
+      end
+    else
+      emit(out, "-- " + $t.name + "." + $name + " no longer holds codes of a reference type: its reference objects are dropped.")
+    end
+    if $ref_objects
+      emit(out, column_objects_drop_sql($t, $name, $db))
+    end
+    if $rt && $c.type == "reference" && column_realization($c, $db) == "native" && !$type_fact
+      emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " DROP DEFAULT;")
+      emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " TYPE " + $native + " USING " + $col + "::text::" + $native + ";")
+      if $dflt != "" && !$redefault
+        emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " SET DEFAULT " + $dflt + ";")
+      end
+      $retype = false
+    end
   end
   if $d == "oracle"
     if $retype
@@ -713,16 +868,32 @@ func column_statements(tc, cc, out)
       $readd = $dflt != ""
     end
     if $retype
-      if $d == "postgresql"
+      if $d == "postgresql" && $type_fact
+        change_type_statements($type_fact, qt($t), $col, $name, $native, $collate, idem(), $db, out)
+      else if $d == "postgresql" && $range
+        emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " TYPE " + $native + $collate + " USING " + $range.using + ";")
+      else if $d == "postgresql"
         # USING casts explicitly when the logical type or the native type itself changes; a new length, precision or scale needs none.
-        $using = has_change(cc.changes, ["type", "strategy", "codeType"]) || (has_change(cc.changes, ["nativeType"]) && !has_change(cc.changes, ["length", "precision", "scale"]))
+        $using = has_change(cc.changes, ["type", "strategy", "referenceTable", "codeType"]) || (has_change(cc.changes, ["nativeType"]) && !has_change(cc.changes, ["length", "precision", "scale"]))
         emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " TYPE " + $native + $collate + ($using ? " USING " + $col + "::" + $native : "") + ";")
       else
         emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " " + $native + $collate + ($c.nullable ? " NULL" : " NOT NULL") + ";")
       end
-    else if $renull
+    end
+    # PostgreSQL's ALTER COLUMN ... TYPE keeps the nullability, so a new one follows it; SQL Server's ALTER COLUMN above states it.
+    if $renull && ($d == "postgresql" || !$retype)
       if $d == "postgresql"
-        emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + ($c.nullable ? " DROP NOT NULL;" : " SET NOT NULL;"))
+        # A backfill a complete migration fact describes fills the rows before SET NOT NULL; a held one waits, and so does the change.
+        $fill = $c.nullable ? null : fact_at(mq_matched, $fk, "backfill")
+        $fill_held = $c.nullable ? null : fact_at(mq_held, $fk, "backfill")
+        if $fill_held
+          emit(out, held_note($fill_held, "column " + $t.name + "." + $name))
+        else
+          if $fill && fact_usable($fill)
+            backfill_statements($fill, qt($t), $col, $db, out)
+          end
+          emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + ($c.nullable ? " DROP NOT NULL;" : " SET NOT NULL;"))
+        end
       else
         emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " " + $native + $collate + ($c.nullable ? " NULL" : " NOT NULL") + ";")
       end
@@ -737,10 +908,17 @@ func column_statements(tc, cc, out)
       emit(out, x.add)
     end
     identity_statements($t, cc, $c, $col, out)
+    if $ref_objects && $c.reference_type
+      $add = column_objects_add_sql($t, $name, $c.reference_type, $db, column_realization($c, $db))
+      if $add != ""
+        emit(out, $add)
+      end
+    end
   end
   # A change of logical type keeps each stored value as the cast leaves it; the reviewer decides whether values change
-  # meaning (for example integer ids that become codes) and converts them before dropping anything they depend on.
-  if $retype
+  # meaning (for example integer ids that become codes) and converts them before dropping anything they depend on. A migration
+  # fact's conversion has decided it.
+  if $retype && !$type_fact
     for ch in cc.changes
       if ch.property == "type"
         emit(out, "-- TODO: convert existing values of " + $t.name + "." + $name + " (type: " + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + "); the cast keeps each value as it is.")
@@ -750,7 +928,10 @@ func column_statements(tc, cc, out)
   if has_change(cc.changes, ["comment"]) && pack.params.comments
     column_comment_statement($t, $c, $name, out)
   end
-  $handled = ["type", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "defaultName", "comment", "collation", "strategy", "codeType", "identity", "identitySeed", "identityIncrement", "identityAlways"]
+  $handled = ["type", "subtype", "length", "precision", "scale", "nativeType", "nullable", "default", "defaultSql", "defaultName", "comment", "collation", "strategy", "referenceTable", "codeType", "identity", "identitySeed", "identityIncrement", "identityAlways"]
+  if $d == "postgresql"
+    $handled[$handled.size] = "referenceType"
+  end
   $rest = []
   for ch in cc.changes
     if !has_change([ch], $handled)
@@ -1111,12 +1292,41 @@ func table_phase_statements(tc, phase, groups, out)
   end
 end
 
+# How many columns of a table a SQLite rebuild would drop or rename while a held fact keeps them; such a table is not rebuilt.
+func sqlite_rebuild_held(tc)
+  $n = 0
+  for cc in tc.columns
+    $fk = "column:" + tc.key + "|" + cc.key
+    if cc.kind == "dropped" && fact_at(mq_held, $fk, "drop")
+      $n = $n + 1
+    else if (cc.kind == "renamed" || cc.kind == "altered") && cc.old_name && cc.old_name != (cc.new_name ?? cc.column.name) && fact_at(mq_held, $fk, "rename")
+      $n = $n + 1
+    end
+  end
+  ret $n
+end
+
 # The column statements of a renamed or altered table: drops first, so a column that is replaced by one of the same name (a
 # new identity, such as a relation whose id changed) is dropped before it is added again. A SQLite table that cannot take its
 # changes in place is rebuilt instead.
 func table_column_statements(tc, out)
   $reason = sqlite_rebuild_reason(tc)
   if $reason != ""
+    # A rebuild copies only the model's columns under their model names, so it would drop or rename a column a held fact keeps:
+    # the held notes stand where the rebuild would go, and the rebuild is the reviewer's once the facts are released.
+    $held = sqlite_rebuild_held(tc)
+    if $held > 0
+      for cc in tc.columns
+        $fk = "column:" + tc.key + "|" + cc.key
+        if cc.kind == "dropped" && fact_at(mq_held, $fk, "drop")
+          emit(out, held_note(fact_at(mq_held, $fk, "drop"), "column " + tc.table.name + "." + (cc.old_name ?? cc.key)))
+        else if (cc.kind == "renamed" || cc.kind == "altered") && cc.old_name && cc.old_name != (cc.new_name ?? cc.column.name) && fact_at(mq_held, $fk, "rename")
+          emit(out, held_note(fact_at(mq_held, $fk, "rename"), "column " + tc.table.name + "." + cc.old_name + ", " + (cc.new_name ?? cc.column.name) + " in the model"))
+        end
+      end
+      emit(out, "-- TODO: " + tc.table.name + " needs a rebuild (SQLite cannot change it in place: " + $reason + "), which would drop or rename the held column" + ($held > 1 ? "s" : "") + "; rebuild it by hand once the held facts are released.")
+      ret
+    end
     sqlite_rebuild(tc, $reason, out)
     ret
   end
@@ -1143,9 +1353,11 @@ func view_recreates(oc)
 end
 
 # DROP VIEW, or DROP MATERIALIZED VIEW for one that was materialized (PostgreSQL, Oracle), of a view by its schema and name.
+# IF EXISTS when idempotent, and on PostgreSQL once a value map dropped the views before its retype (value_map_drop_views).
 func view_drop_sql(db, schema, name, was_materialized)
   $mat = was_materialized && (db.dialect == "postgresql" || db.dialect == "oracle")
-  ret "DROP " + ($mat ? "MATERIALIZED VIEW" : "VIEW") + (idem() && db.dialect != "oracle" ? " IF EXISTS" : "") + " " + qn(schema, name, db) + ";"
+  $exists = (idem() || (mq_vm_views && mq_vm_views.dropped)) && db.dialect != "oracle"
+  ret "DROP " + ($mat ? "MATERIALIZED VIEW" : "VIEW") + ($exists ? " IF EXISTS" : "") + " " + qn(schema, name, db) + ";"
 end
 
 func view_drop(db, oc)
@@ -1231,13 +1443,29 @@ func sequence_statements(db, oc, out)
     ret
   end
   $from = moved_schema(oc.old_schema)
+  $fk = "sequence:" + oc.key
   if oc.kind == "dropped"
+    $held = fact_at(mq_held, $fk, "drop")
+    if $held
+      emit(out, held_note($held, "sequence " + $old))
+      ret
+    end
     emit(out, "DROP SEQUENCE" + (idem() && $d != "oracle" ? " IF EXISTS" : "") + " " + qn($from, $old, db) + ";")
+    fact_rows($fk, ["drop"], out)
     ret
+  end
+  # The schema the sequence is in after this migration: the model's, or its old one while a held rename waits (the sequence keeps
+  # its old name and schema then, so every statement below names it so).
+  $at = $s.schema
+  $held = fact_at(mq_held, $fk, "rename")
+  if $held
+    emit(out, held_note($held, "sequence " + $old + ", " + $name + " in the model"))
+    $name = $old
+    $at = $from
   end
   # SQL Server cannot rename or move a sequence a default constraint uses: those defaults are dropped first and added back after.
   $users = []
-  if $d == "sqlserver" && ($old != $name || $from != $s.schema)
+  if $d == "sqlserver" && ($old != $name || $from != $at)
     for t in db.tables
       for c in t.columns
         if c.sequence && c.sequence.id == oc.key && !c.identity
@@ -1257,7 +1485,7 @@ func sequence_statements(db, oc, out)
       emit(out, idem() ? "IF OBJECT_ID(" + ms_object($from, $old, db) + ", N'SO') IS NOT NULL " + $r : $r)
     end
   end
-  if $from != $s.schema
+  if $from != $at
     if $d == "postgresql"
       emit(out, "ALTER SEQUENCE" + alter_if_exists(db) + " " + qn($from, $name, db) + " SET SCHEMA " + q($s.schema, db) + ";")
     else if $d == "sqlserver"
@@ -1303,11 +1531,12 @@ func sequence_statements(db, oc, out)
     end
   end
   if $options != ""
-    emit(out, "ALTER SEQUENCE " + qn($s.schema, $name, db) + $options + ";")
+    emit(out, "ALTER SEQUENCE " + qn($at, $name, db) + $options + ";")
   end
   for n in $notes
     emit(out, "-- TODO: sequence " + $name + " " + n)
   end
+  fact_rows($fk, ["rename"], out)
 end
 
 # The statements of the schema changes that run first: PostgreSQL renames a schema in place; SQL Server and MySQL cannot, so the new
@@ -1317,8 +1546,14 @@ func schema_first_statements(db, diff, out)
     if sc.kind == "added" || sc.kind == "renamed"
       $new = sc.new_name
       if sc.kind == "renamed" && db.dialect == "postgresql"
+        $held = fact_at(mq_held, "schema:" + sc.key, "rename")
+        if $held
+          emit(out, held_note($held, "schema " + sc.old_name + ", " + $new + " in the model"))
+          continue
+        end
         $s = "ALTER SCHEMA " + q(sc.old_name, db) + " RENAME TO " + q($new, db) + ";"
         emit(out, idem() ? pg_do_if("EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = " + lit(sc.old_name, db) + ")", $s) : $s)
+        fact_rows("schema:" + sc.key, ["rename"], out)
       else if creates_schemas(db) && !builtin_schema($new, db)
         emit(out, schema_sql($new, db))
       else if db.dialect == "oracle"
@@ -1422,12 +1657,11 @@ func type_drop(db, tc, out)
   end
 end
 
-# The statements of the SQL objects of one phase that were added or changed, in dependency order (a changed one was flagged for the
-# reviewer to drop first, see object_drop_notes).
 # The unchanged SQL objects with phase "after" that depend on a view or routine the migration drops and creates again (recreated, by
 # id), in dependency order: what was granted on the view or routine, or created on it, went with it, so they run again. A changed
-# object runs anyway (object_change_statements).
-func reapplied_objects(db, diff, recreated)
+# object runs anyway (object_change_statements). A run-once object does not run again: notes gets a TODO naming it instead.
+# Objects with environments are objects.<env>.sql's, which runs after the migration (objects_in_phase leaves them out).
+func reapplied_objects(db, diff, recreated, notes)
   $result = []
   for o in objects_in_phase(db, "after")
     if find_change(diff.objects, o.id)
@@ -1435,7 +1669,11 @@ func reapplied_objects(db, diff, recreated)
     end
     for dep in o.depends_on
       if recreated[dep.id]
-        $result[$result.size] = o
+        if o.apply == "once"
+          emit(notes, "-- TODO: run-once SQL object " + o.name + " depends on " + dep.name + ", which this migration drops and creates again, and does not run again where the ledger records it; reapply what it did by hand.")
+        else
+          $result[$result.size] = o
+        end
         break
       end
     end
@@ -1443,22 +1681,847 @@ func reapplied_objects(db, diff, recreated)
   ret $result
 end
 
+# The statements of the SQL objects of one phase that were added or changed, in dependency order (a changed one was flagged for the
+# reviewer, see object_drop_notes): a run-once object inside its ledger guard (object_run_sql), counted in mq_ledger_state.once so
+# the migration writes the ledger DDL first. Objects with environments get no statements here (objects_in_phase leaves them out).
 func object_change_statements(db, diff, phase, out)
   for o in objects_in_phase(db, phase)
     if find_change(diff.objects, o.id)
-      emit(out, own_batch(object_sql(o, db), db))
+      if object_writes_ledger(o, db)
+        mq_ledger_state.once = mq_ledger_state.once + 1
+      end
+      emit(out, own_batch(object_run_sql(o, db), db))
     end
   end
 end
 
+# Whether a changed SQL object converged before the change, so no ledger row records it: the definition text of its old snapshot
+# holds no apply line ahead of its body (SnapshotCapture writes the line only for once). Without a definition change its apply
+# mode did not change.
+func object_was_converge(oc)
+  for ch in oc.changes
+    if ch.property == "definition"
+      ret !((ch.old | string.split "\nbody: ")[0] | string.contains "\napply: once")
+    end
+  end
+  ret false
+end
+
 # A TODO for every SQL object that changed or left the model: its statements are opaque, so only the reviewer knows how to undo
-# them (DROP TRIGGER, REVOKE...).
-func object_drop_notes(diff, out)
+# them (DROP TRIGGER, REVOKE...). A changed object with environments is applied by objects.<env>.sql, not here, and a changed
+# run-once object does not run again where the ledger records it, so each gets its own line; a left-out one (object_left_out) is
+# never created. An object that converged before and runs once now has no ledger row, so its guard runs it one more time in every
+# database: it gets a TODO instead. A dropped object leaves no model object to tell, so it keeps the plain TODO.
+func object_drop_notes(db, diff, out)
   for oc in diff.objects
     if oc.kind == "dropped"
       emit(out, "-- TODO: " + oc.old_kind + " " + oc.old_name + " left the model; drop it by hand.")
     else if oc.kind != "added"
-      emit(out, "-- TODO: " + oc.old_kind + " " + oc.old_name + " changed; drop it by hand before its new statements below run.")
+      $o = null
+      for x in db.objects
+        if x.id == oc.key
+          $o = x
+          break
+        end
+      end
+      if $o && object_left_out($o, db)
+        emit(out, "-- TODO: SQL object " + $o.name + " changed and runs once, which needs the migration ledger; " + db.dialect + " has none, so it is not created. Drop it by hand where it exists.")
+      else if $o && ($o.environments.size > 0 || $o.apply == "once")
+        if $o.environments.size > 0
+          emit(out, "-- TODO: SQL object " + $o.name + " changed and runs in environments " + ($o.environments | array.join ", ") + " (objects.<env>.sql applies it there); drop it by hand where it should no longer run.")
+        end
+        if $o.apply == "once" && object_was_converge(oc)
+          emit(out, "-- TODO: SQL object " + $o.name + " changed to run once and the ledger has no row for it yet, so it runs one more time in every database, also where it exists already; drop it by hand before it runs, or make its statements safe to run again.")
+        else if $o.apply == "once"
+          emit(out, "-- Run-once SQL object " + $o.name + " changed; it does not run again where the ledger records it.")
+        end
+      else
+        emit(out, "-- TODO: " + oc.old_kind + " " + oc.old_name + " changed; drop it by hand before its new statements below run.")
+      end
+    end
+  end
+end
+
+# Migration facts (next-phase-1-design.md section 3.2, sql-ddl). On PostgreSQL migration.scriban fills mq_matched with the listed
+# facts (schema_diff.<db>.facts: the complete and released facts the baseline lacks) whose change the diff holds, and mq_held with the
+# held facts not released whose change it holds, both by object key (fact_key); elsewhere both stay empty, so every builder writes
+# what it always wrote. A listed fact's step takes its change's place and is followed by its migration ledger row (fact_rows); a held
+# fact writes a note where its change would go and no row; the other listed facts write their own steps first (fact_steps).
+
+# The object key of a fact, by its object's keys as they read today: "<kind>:<key>", a column "column:<table key>|<column key>"; null
+# for a fact without an object.
+func fact_key(f)
+  $o = f.object
+  if !$o
+    ret null
+  end
+  if $o.kind == "column"
+    ret "column:" + $o.current_table + "|" + $o.current_key
+  end
+  ret $o.kind + ":" + $o.current_key
+end
+
+# The diff's change of a fact's object when it is the change the fact describes (a rename: a new name or schema; a type change: a new
+# type; a backfill: the column made NOT NULL; a drop: dropped), else null.
+func fact_change(diff, f)
+  $o = f.object
+  if !$o
+    ret null
+  end
+  $c = null
+  if $o.kind == "schema"
+    $c = find_change(diff.schemas, $o.current_key)
+  else if $o.kind == "table"
+    $c = find_change(diff.tables, $o.current_key)
+  else if $o.kind == "view"
+    $c = find_change(diff.views, $o.current_key)
+  else if $o.kind == "sequence"
+    $c = find_change(diff.sequences, $o.current_key)
+  else if $o.kind == "column"
+    $tc = find_change(diff.tables, $o.current_table)
+    if $tc && ($tc.kind == "renamed" || $tc.kind == "altered")
+      $c = column_change($tc, $o.current_key)
+    end
+  end
+  if !$c || $c.kind == "added"
+    ret null
+  end
+  if f.fact == "drop"
+    ret $c.kind == "dropped" ? $c : null
+  end
+  if $c.kind == "dropped"
+    ret null
+  end
+  if f.fact == "rename"
+    if $c.kind == "renamed"
+      ret $c
+    end
+    if $o.kind == "table"
+      ret $c.old_schema != $c.table.schema ? $c : null
+    end
+    ret ($o.kind == "view" || $o.kind == "sequence") && has_change($c.changes, ["schema"]) ? $c : null
+  end
+  if $o.kind != "column"
+    ret null
+  end
+  if f.fact == "change-type"
+    ret has_change($c.changes, ["type", "subtype", "length", "precision", "scale", "nativeType", "strategy", "referenceTable", "codeType", "collation"]) ? $c : null
+  else if f.fact == "backfill"
+    ret has_change($c.changes, ["nullable"]) && !$c.column.nullable ? $c : null
+  end
+  ret null
+end
+
+# Adds a fact to the list a map holds under its object key.
+func fact_add(by_key, f)
+  $k = fact_key(f)
+  if !by_key[$k]
+    by_key[$k] = []
+  end
+  $list = by_key[$k]
+  $list[$list.size] = f
+end
+
+# The fact of a type a map holds for an object key, or null.
+func fact_at(by_key, k, type)
+  if by_key[k]
+    for f in by_key[k]
+      if f.fact == type
+        ret f
+      end
+    end
+  end
+  ret null
+end
+
+# Whether a fact has what its step needs in the database's dialect; a fact whose texts lack the dialect's entry (MQ4108: its
+# conversion, value, statements or guard, or its data check's query) gets the diff's statements and TODO lines instead, and no row.
+# So does a cast between range types PostgreSQL cannot convert (range_using; fact_range_todo says so).
+func fact_usable(f)
+  if f.data_check != null && f.data_check.query == null && f.data_check.accept == null
+    ret false
+  end
+  if f.fact == "change-type"
+    if f.conversion != null && f.conversion.expression == null && f.conversion.cast
+      $range = range_using(f.from, f.to, "")
+      ret !($range && $range.todo)
+    end
+    ret f.conversion != null && (f.conversion.cast || f.conversion.expression != null)
+  else if f.fact == "backfill"
+    ret f.value != null || (f.data_check != null && (f.data_check.query != null || f.data_check.accept != null))
+  else if f.fact == "raw"
+    ret f.sql != null && f.skip_when != null
+  end
+  ret true
+end
+
+# The TODO line of a cast fact between range types PostgreSQL cannot convert (fact_usable refuses it; what names the column), or ""
+# for any other fact: the migration leaves the column as it is and records no row for the fact, and the line says which fact waits
+# for a conversion expression.
+func fact_range_todo(f, what)
+  if f.fact != "change-type" || f.conversion == null || f.conversion.expression != null || !f.conversion.cast
+    ret ""
+  end
+  $range = range_using(f.from, f.to, "")
+  if !$range || !$range.todo
+    ret ""
+  end
+  ret "-- TODO: migration fact " + f.id + " (change-type of column " + what + ") casts between range types: the column " + $range.change + "; give the fact a conversion expression. This migration leaves the column as it is and records nothing for the fact."
+end
+
+# The ledger row of a fact whose end state the migration reached, once (ledger_fact_row: none for an adopt fact).
+func fact_row(f, out)
+  if mq_rows_done[f.id]
+    ret
+  end
+  $row = ledger_fact_row(f.database, f)
+  if $row != ""
+    emit(out, $row)
+    mq_rows_done[f.id] = true
+    mq_ledger_state.rows = mq_ledger_state.rows + 1
+  end
+end
+
+# The ledger rows of the listed facts of the given types on an object (fact_key k), written right after the statements of its change.
+func fact_rows(k, types, out)
+  if !mq_matched[k]
+    ret
+  end
+  for f in mq_matched[k]
+    if (array.contains types f.fact) && fact_usable(f)
+      fact_row(f, out)
+    end
+  end
+end
+
+# Whether a held fact that is not released writes its note in place of its change in the database's dialect: every one on
+# PostgreSQL; elsewhere, where no fact writes a step, a drop or a rename, so the diff never drops or renames what a held fact keeps.
+# A schema rename outside PostgreSQL is left out (those dialects create the new schema, move each object and drop the old one), and
+# so is a sequence where the dialect has none (its change writes nothing).
+func held_waits(db, f)
+  if db.dialect == "postgresql"
+    ret true
+  end
+  $kind = f.object ? f.object.kind : ""
+  if $kind == "sequence" && (db.dialect == "sqlite" || db.dialect == "mysql")
+    ret false
+  end
+  ret f.fact == "drop" || (f.fact == "rename" && $kind != "schema")
+end
+
+# Outside PostgreSQL: a TODO line for each listed held fact (so released) that held_waits holds and whose change the diff does not
+# hold: an earlier migration wrote its held note, and no fact writes a step in this dialect, so the reviewer reaches its end state.
+func held_release_todos(db, diff, out)
+  for f in diff.facts
+    if f.held && f.object && held_waits(db, f) && !fact_change(diff, f)
+      $o = f.object
+      emit(out, "-- TODO: migration fact " + f.id + " (" + f.fact + " of " + $o.kind + " " + ($o.table_name ? $o.table_name + "." : "") + ($o.name ?? $o.key) + ") was released after an earlier migration wrote its held note; " + dialect_title(db) + " has no fact steps, so reach its end state by hand.")
+    end
+  end
+end
+
+# The note a held fact that is not released writes where its change would go: the change waits (a held drop keeps the object), and
+# the migration records no row for it.
+func held_note(f, what)
+  ret "-- Held: migration fact " + f.id + " (" + f.fact + " of " + what + ") waits until it is released; this migration leaves the database as it is there and records nothing for it."
+end
+
+# SQL text without its trailing semicolons and spaces, so it can stand inside another statement.
+func sql_trimmed(text)
+  $s = text | string.rstrip
+  while $s | string.ends_with ";"
+    $s = string.slice $s 0 ((string.size $s) - 1) | string.rstrip
+  end
+  ret $s
+end
+
+# A fact's SQL text (a query or an expression) with {table} and {column} expanded to the quoted names given.
+func fact_sql(text, table, column)
+  ret sql_trimmed(text | string.replace "{table}" table | string.replace "{column}" column)
+end
+
+# A fact's data check as PL/pgSQL, for a DO block: it raises, stopping the migration, when the query returns a row; "" without a query.
+func data_check_plpgsql(f, table, column, db)
+  if !f.data_check || !f.data_check.query
+    ret ""
+  end
+  ret "IF EXISTS (" + fact_sql(f.data_check.query, table, column) + ") THEN RAISE EXCEPTION " + lit("migration fact " + f.id + ": the data check found rows the step must not find", db) + "; END IF;"
+end
+
+# A fact's data check before its step: a DO block that raises when the query returns a row, a note when the check was accepted
+# without a query, a TODO when the query has no PostgreSQL entry.
+func data_check_statements(f, table, column, db, out)
+  $dc = f.data_check
+  if !$dc
+    ret
+  end
+  if $dc.query
+    emit(out, "DO $mq$ BEGIN " + data_check_plpgsql(f, table, column, db) + " END $mq$;")
+  else if $dc.accept
+    emit(out, "-- Migration fact " + f.id + " needs no data check: " + ($dc.accept | string.replace "\n" " "))
+  else
+    emit(out, "-- TODO: the data check of migration fact " + f.id + " has no PostgreSQL query; check the rows by hand before running this.")
+  end
+end
+
+# A complete type change: its data check, then ALTER COLUMN ... TYPE ... USING its conversion (a cast to the new type, through
+# range_using between range types, or its expression). Guarded (the idempotent parameter, or an own step: an earlier migration may have changed the type already), it runs
+# only while the column's type differs from the new one, compared in the catalog with a temporary probe column of the new type, so a
+# second run converts nothing.
+func change_type_statements(f, table, column, column_name, native, collate, guarded, db, out)
+  $cv = f.conversion
+  $using = column + "::" + native
+  if $cv.expression
+    $using = fact_sql($cv.expression, table, column)
+  else
+    # A cast between range types goes through range_using, as the diff's own retype does (fact_usable refused one it cannot write).
+    $range = range_using(f.from, f.to ? { type: f.to.type, native_type: native } : null, column)
+    if $range && $range.using
+      $using = $range.using
+    end
+  end
+  $alter = "ALTER TABLE " + table + " ALTER COLUMN " + column + " TYPE " + native + collate + " USING " + $using + ";"
+  if !guarded || (f.data_check && !f.data_check.query)
+    data_check_statements(f, table, column, db, out)
+  end
+  if !guarded
+    emit(out, $alter)
+    ret
+  end
+  $check = data_check_plpgsql(f, table, column, db)
+  emit(out, "DO $mq$ BEGIN\nCREATE TEMP TABLE mq_type_probe (probe " + native + ") ON COMMIT DROP;\nIF EXISTS (SELECT 1 FROM pg_attribute a JOIN pg_attribute p ON p.attrelid = 'mq_type_probe'::regclass AND p.attname = 'probe' WHERE a.attrelid = to_regclass(" + lit(table, db) + ") AND a.attname = " + lit(column_name, db) + " AND NOT a.attisdropped AND (a.atttypid, a.atttypmod) IS DISTINCT FROM (p.atttypid, p.atttypmod)) THEN\n" + ($check == "" ? "" : $check + "\n") + $alter + "\nEND IF;\nDROP TABLE mq_type_probe;\nEND $mq$;")
+end
+
+# A complete backfill, before SET NOT NULL: UPDATE the rows its where names (by default those where the column IS NULL) to its value,
+# then its data check.
+func backfill_statements(f, table, column, db, out)
+  if f.value
+    $where = f.where ? fact_sql(f.where, table, column) : column + " IS NULL"
+    emit(out, "UPDATE " + table + " SET " + column + " = " + fact_sql(f.value, table, column) + " WHERE " + $where + ";")
+  end
+  data_check_statements(f, table, column, db, out)
+end
+
+# A raw fact's statements behind its guard (EXECUTE, so any statement may stand there): they run unless its skipWhen query returns a
+# row, that is unless its end state holds; then its row.
+func raw_step(db, f, out)
+  if !fact_usable(f)
+    emit(out, "-- TODO: migration fact " + f.id + " (raw) has no PostgreSQL statements or guard; run its step by hand.")
+    ret
+  end
+  emit(out, "-- Migration fact " + f.id + " (raw, phase " + f.phase + "): runs unless its guard finds a row.\nDO $mq$ BEGIN\nIF NOT EXISTS (" + sql_trimmed(f.skip_when) + ") THEN\nEXECUTE $mq_sql$\n" + (f.sql | string.rstrip) + "\n$mq_sql$;\nEND IF;\nEND $mq$;")
+  fact_row(f, out)
+end
+
+# The objects of a fact, by the names it recorded: "table.column" for a column.
+func fact_objects(f)
+  $text = ""
+  for o in f.objects
+    $text = $text + (for.first ? "" : ", ") + (o.table_name ? o.table_name + "." : "") + (o.name ?? o.key)
+  end
+  ret $text == "" ? "(no objects)" : $text
+end
+
+# The TODO line of a fact type this pack writes no step for yet (adopt, baseline, state-map; value-map outside PostgreSQL, see
+# value_map_todo); the migration does not reach its end state, so it records no row.
+func fact_todo(f)
+  if f.fact == "adopt"
+    ret "-- TODO: migration fact " + f.id + " adopts " + fact_objects(f) + " (environment " + (f.environment ?? "none") + "); this pack writes no adopt step or object rows yet."
+  else if f.fact == "baseline"
+    ret "-- TODO: migration fact " + f.id + " is a baseline (the database is at the model's shape as of this fact); this pack writes no baseline step yet."
+  end
+  $pairs = ""
+  for v in f.values
+    $pairs = $pairs + (for.first ? "" : ", ") + v.from + " -> " + v.to
+  end
+  ret "-- TODO: migration fact " + f.id + " replaces stored " + (f.fact == "state-map" ? "states" : "values") + " of " + fact_objects(f) + " (" + $pairs + "); this pack writes no " + f.fact + " step yet: update them by hand."
+end
+
+# The schema and name a table has before the migration's statements run (own steps run first): from the diff's change, else the
+# model, else as the fact recorded them.
+func pre_table(db, diff, key, schema, name)
+  $tc = find_change(diff.tables, key)
+  if $tc && $tc.kind != "added"
+    ret { schema: $tc.old_schema, name: $tc.old_name ?? name }
+  end
+  for t in db.tables
+    if t.key == key
+      ret { schema: t.schema, name: t.name }
+    end
+  end
+  ret { schema: schema, name: name }
+end
+
+# The model's column a fact names (by its current keys), or null.
+func model_column(db, o)
+  for t in db.tables
+    if t.key == o.current_table
+      for c in t.columns
+        if c.key == o.current_key
+          ret c
+        end
+      end
+    end
+  end
+  ret null
+end
+
+# The name a fact's column has before the migration's statements run: from the diff's change, else the model, else as recorded.
+func pre_column_name(diff, o, c)
+  $tc = find_change(diff.tables, o.current_table)
+  if $tc && ($tc.kind == "renamed" || $tc.kind == "altered")
+    $cc = column_change($tc, o.current_key)
+    if $cc && $cc.kind != "added" && $cc.old_name
+      ret $cc.old_name
+    end
+  end
+  ret c ? c.name : o.name
+end
+
+# PostgreSQL: EXISTS test for a column of a table given by schema and name.
+func pg_column_exists(t, name, db)
+  ret "EXISTS (SELECT 1 FROM information_schema.columns WHERE " + pg_schema(t.schema, db) + " AND table_name = " + lit(t.name, db) + " AND column_name = " + lit(name, db) + ")"
+end
+
+# The own step of a listed fact whose change the diff does not hold (a held fact released after an earlier migration wrote its note,
+# a fact completed after an earlier migration wrote its TODO), guarded by its end state so it does nothing where an earlier migration
+# reached it; then its row. Names are those the objects have before the migration's statements, which run after the own steps.
+func own_step(db, diff, f, out)
+  $o = f.object
+  if !$o
+    ret
+  end
+  if f.fact == "rename"
+    $old = f.from.name
+    $new = f.to.name
+    if $o.kind == "schema"
+      emit(out, pg_do_if("EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = " + lit($old, db) + ") AND NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = " + lit($new, db) + ")", "ALTER SCHEMA " + q($old, db) + " RENAME TO " + q($new, db) + ";"))
+    else if $o.kind == "column"
+      $t = pre_table(db, diff, $o.current_table, $o.schema, $o.table_name)
+      emit(out, pg_do_if(pg_column_exists($t, $old, db) + " AND NOT " + pg_column_exists($t, $new, db), "ALTER TABLE " + qn($t.schema, $t.name, db) + " RENAME COLUMN " + q($old, db) + " TO " + q($new, db) + ";"))
+    else
+      $from = f.from.schema ?? $o.schema
+      $to = f.to.schema ?? $o.schema
+      if $old != $new
+        emit(out, pg_do_if("to_regclass(" + lit(qn($from, $old, db), db) + ") IS NOT NULL AND to_regclass(" + lit(qn($from, $new, db), db) + ") IS NULL", "ALTER TABLE " + qn($from, $old, db) + " RENAME TO " + q($new, db) + ";"))
+      end
+      if $from != $to && $to
+        emit(out, pg_do_if("to_regclass(" + lit(qn($from, $new, db), db) + ") IS NOT NULL AND to_regclass(" + lit(qn($to, $new, db), db) + ") IS NULL", "ALTER TABLE " + qn($from, $new, db) + " SET SCHEMA " + q($to, db) + ";"))
+      end
+    end
+  else if f.fact == "drop"
+    if $o.kind == "table"
+      $name = $o.name ?? $o.table_name ?? $o.key
+      emit(out, data_loss_note($name, null))
+      emit(out, "DROP TABLE IF EXISTS " + qn($o.schema, $name, db) + ";")
+    else if $o.kind == "column"
+      $t = pre_table(db, diff, $o.current_table, $o.schema, $o.table_name)
+      emit(out, data_loss_note($t.name, $o.name))
+      emit(out, "ALTER TABLE IF EXISTS " + qn($t.schema, $t.name, db) + " DROP COLUMN IF EXISTS " + q($o.name, db) + ";")
+    else if $o.kind == "sequence"
+      emit(out, "DROP SEQUENCE IF EXISTS " + qn($o.schema, $o.name, db) + ";")
+    end
+  else
+    $t = pre_table(db, diff, $o.current_table, $o.schema, $o.table_name)
+    $tq = qn($t.schema, $t.name, db)
+    $c = model_column(db, $o)
+    $name = pre_column_name(diff, $o, $c)
+    if f.fact == "change-type"
+      $native = (f.to && f.to.native_type) ? f.to.native_type : ($c ? column_type($c) : null)
+      if !$native
+        emit(out, "-- TODO: migration fact " + f.id + " changes the type of " + $t.name + "." + $name + ", but its new native type is unknown; change it by hand.")
+        ret
+      end
+      change_type_statements(f, $tq, q($name, db), $name, $native, "", true, db, out)
+    else
+      backfill_statements(f, $tq, q($name, db), db, out)
+      if $c && !$c.nullable
+        emit(out, "ALTER TABLE " + $tq + " ALTER COLUMN " + q($name, db) + " SET NOT NULL;")
+      end
+    end
+  end
+  fact_row(f, out)
+end
+
+# ---------------------------------------------------------------- value maps (next-phase-2-design.md section 3.5)
+
+# The CASE that maps a value map's codes: CASE <expr> WHEN 'a' THEN 'b' ... ELSE <otherwise> END (the ELSE gives the CASE its type);
+# otherwise alone when the map has no values (a merge whose codes all match).
+func value_map_case(f, expr, otherwise, db)
+  if f.values.size == 0
+    ret otherwise
+  end
+  $s = "CASE " + expr
+  for v in f.values
+    $s = $s + " WHEN " + lit(v.from, db) + " THEN " + lit(v.to, db)
+  end
+  ret $s + " ELSE " + otherwise + " END"
+end
+
+# The codes a value map maps away, as SQL literals separated by commas.
+func value_map_froms(f, db)
+  $s = ""
+  for v in f.values
+    $s = $s + (for.first ? "" : ", ") + lit(v.from, db)
+  end
+  ret $s
+end
+
+# What a value map does, in words: "maps PaymentTerm codes net30 -> net-30", "... into PaymentTerm" for a merge ("merges CreditTerm
+# into PaymentTerm" when every code matches), or "renames reference type PaymentTerm to PaymentCondition".
+func value_map_words(f)
+  $from = f.from ? f.from.name : null
+  $to = f.to ? f.to.name : null
+  if f.values.size == 0 && f.from_reference_type
+    ret "merges " + ($from ?? "?") + " into " + ($to ?? "?")
+  end
+  if f.values.size == 0 && $from == $to && f.from && f.to && f.from.plural_name != f.to.plural_name
+    ret "renames reference type " + ($from ?? "?") + " plural " + (f.from.plural_name ?? "(default)") + " to " + (f.to.plural_name ?? "(default)")
+  end
+  if f.values.size == 0
+    ret "renames reference type " + ($from ?? "?") + " to " + ($to ?? "?")
+  end
+  $pairs = ""
+  for v in f.values
+    $pairs = $pairs + (for.first ? "" : ", ") + v.from + " -> " + v.to
+  end
+  ret "maps " + ($from ?? "") + " codes " + $pairs + ((f.from_reference_type && $to) ? " into " + $to : "")
+end
+
+# Outside PostgreSQL: the TODO line of a value map, which this pack writes no step for in the dialect (MQ4056); no row is written.
+func value_map_todo(db, f)
+  $where = fact_objects(f)
+  for x in f.collections
+    $where = ($where == "(no objects)" ? "" : $where + ", ") + (x.table_name ? x.table_name + "." : "") + (x.name ?? x.attribute)
+  end
+  ret "-- TODO: migration fact " + f.id + " " + value_map_words(f) + " in " + $where + "; " + dialect_title(db) + " has no value-map step in this pack: update the stored codes, and rename what is named after the type, by hand."
+end
+
+# Outside PostgreSQL: the TODO lines of the value maps the migration lists.
+func value_map_todos(db, diff, out)
+  for f in diff.facts
+    if f.fact == "value-map"
+      emit(out, value_map_todo(db, f))
+    end
+  end
+end
+
+# Whether a value map the migration lists holds a column (by its current keys): its step maps the column's codes and reconciles its
+# strategy objects, so the column step leaves the column's reference type change to it.
+func value_map_covers(table_key, column_key)
+  for f in diff.facts
+    if f.fact == "value-map"
+      for o in f.objects
+        if o.current_table == table_key && o.current_key == column_key
+          ret true
+        end
+      end
+    end
+  end
+  ret false
+end
+
+# A value map's type rename (names that differ, no merge): the lookup table named after the type's plural name, or the enum type named
+# after its name, is renamed to the current name while only the old one exists. A tableName option keeps the lookup table's name.
+func value_map_rename_type(db, f, rt, out)
+  if f.from_reference_type || !f.from || !f.to
+    ret
+  end
+  $r = type_realization(rt, db)
+  if $r == "lookup-table" && !storage_option(rt, db, "tableName")
+    $old = snake (f.from.plural_name ?? (pluralize f.from.name))
+    $new = lookup_name(rt, db)
+    $schema = lookup_schema(rt, db)
+    if $old != $new
+      emit(out, "DO $mq$ BEGIN IF to_regclass(" + lit(qn($schema, $old, db), db) + ") IS NOT NULL AND to_regclass(" + lit(qn($schema, $new, db), db) + ") IS NULL THEN ALTER TABLE " + qn($schema, $old, db) + " RENAME TO " + q($new, db) + "; END IF; END $mq$;")
+    end
+  else if $r == "native"
+    $old = (snake f.from.name) + "_t"
+    $new = native_type_name(rt)
+    if $old != $new
+      emit(out, "DO $mq$ BEGIN IF " + pg_enum_type($old, db) + " IS NOT NULL AND " + pg_enum_type($new, db) + " IS NULL THEN ALTER TYPE " + q($old, db) + " RENAME TO " + q($new, db) + "; END IF; END $mq$;")
+    end
+  end
+end
+
+# The realization a holder column had before the migration: its strategy or bound table as the diff's change of it says they were,
+# else the one it has now (after). A projected column only is stored as the enum type.
+func value_map_before(diff, o, c, after)
+  $tc = find_change(diff.tables, o.current_table)
+  $cc = $tc ? column_change($tc, o.current_key) : null
+  if !$cc || !c.reference_type
+    ret after
+  end
+  $changed = false
+  $strategy = null
+  for ch in $cc.changes
+    if ch.property == "referenceTable" && ch.old
+      ret "table"
+    end
+    if ch.property == "strategy"
+      $changed = true
+      $strategy = ch.old
+    end
+  end
+  if !$changed
+    ret after
+  end
+  $r = ref_realization($strategy)
+  ret ($r == "native" && c.type != "reference") ? "check" : $r
+end
+
+# The PL/pgSQL that stops the migration, naming the codes, when a mapped value the query yields (column m of the rows of from) is not
+# a label of an enum type: PostgreSQL cannot use an enum value in the transaction that adds it.
+func value_map_enum_guard(f, enum, from, db)
+  $message = "migration fact " + f.id + ": the enum type " + enum + " has no value for the codes %; add them in an earlier migration (PostgreSQL cannot use an enum value in the transaction that adds it)"
+  ret "SELECT string_agg(DISTINCT v.m, ', ' ORDER BY v.m) INTO missing FROM (" + from + ") AS v WHERE v.m IS NOT NULL AND NOT " + pg_enum_has(enum, "v.m", db) + ";\nIF missing IS NOT NULL THEN RAISE EXCEPTION " + lit($message, db) + ", missing; END IF;"
+end
+
+# The schema a view or table was in before the migration's schema renames: the old name of the schema renamed to it, else the same.
+func pre_schema(diff, schema)
+  for sc in diff.schemas
+    if sc.kind == "renamed" && sc.new_name == schema
+      ret sc.old_name
+    end
+  end
+  ret schema
+end
+
+# PostgreSQL cannot retype a column a view reads, and the model does not say which views read which columns: before the first
+# retype of a value map (value_map_column, value_map_collection), every view of the model that exists before the migration is
+# dropped, by the name the database knows it by, each before the views it reads. mq_vm_views.dropped then makes the migration drop
+# (IF EXISTS) and create every view again at its end (mq_all_views, see migration.scriban), after the schema statements, so a view
+# is created for the shape the model gives it. A view the model does not know about still stops the retype (see the README).
+func value_map_drop_views(db, diff, out)
+  if !mq_vm_views || mq_vm_views.dropped || (db.views.size == 0 && diff.views.size == 0)
+    ret
+  end
+  mq_vm_views.dropped = true
+  $items = []
+  for oc in diff.views
+    if oc.kind != "added"
+      $deps = oc.old_depends_on
+      if $deps.size == 0 && oc.kind != "dropped"
+        $deps = view_dependency_keys(find_named(db.views, oc.new_name ?? oc.old_name))
+      end
+      $items[$items.size] = { key: oc.key, deps: $deps, sql: view_drop_sql(db, oc.old_schema, oc.old_name ?? oc.key, oc.old_materialized) }
+    end
+  end
+  for v in db.views
+    if !find_change(diff.views, v.id)
+      $items[$items.size] = { key: v.id, deps: view_dependency_keys(v), sql: view_drop_sql(db, pre_schema(diff, v.schema), v.name, v.materialized) }
+    end
+  end
+  emit(out, "-- PostgreSQL cannot retype a column a view reads: the model's views are dropped here and created again at the end of the migration.")
+  for x in views_in_drop_order($items)
+    emit(out, x.sql)
+  end
+end
+
+# One column of a value map, named as the database knows it before the migration's statements: its strategy objects dropped by name,
+# its stored codes mapped, then its objects created again for the type that holds the codes now. A column of an enum type is mapped
+# through text: in place while it keeps the enum type, else retyped (a merge's other enum type, or a type that is no enum).
+func value_map_column(db, diff, f, rt, o, out)
+  $c = model_column(db, o)
+  $t = pre_table(db, diff, o.current_table, o.schema, o.table_name)
+  $name = pre_column_name(diff, o, $c)
+  if !$c
+    emit(out, "-- " + $t.name + "." + $name + " leaves the model in this migration, so its codes are not mapped.")
+    ret
+  end
+  $pt = { name: $t.name, schema: $t.schema, database: db }
+  $tq = qt($pt)
+  $col = q($name, db)
+  $crt = $c.reference_type
+  $objects = $crt && !($c.type_ref && $c.is_foreign_key)
+  $after = $crt ? column_realization($c, db) : null
+  $before = value_map_before(diff, o, $c, $after)
+  $enum_before = $before == "native" ? (f.from_reference_type ? (snake f.from.name) + "_t" : native_type_name(rt)) : null
+  $enum_after = $after == "native" ? native_type_name($crt) : null
+  $froms = value_map_froms(f, db)
+  if $objects
+    emit(out, column_objects_drop_sql($pt, $name, db))
+  end
+  if $enum_before && $enum_before != $enum_after
+    # Retyped through text: a USING expression cannot hold a subquery, so the guard reads the mapped values first.
+    value_map_drop_views(db, diff, out)
+    $type = $enum_after ? q($enum_after, db) : column_type($c)
+    $mapped = value_map_case(f, $col + "::text", $col + "::text", db)
+    $s = "DO $mq$ DECLARE missing text; BEGIN\nIF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(" + lit($tq, db) + ") AND attname = " + lit($name, db) + " AND atttypid = " + pg_enum_type($enum_before, db) + ") THEN\n"
+    if $enum_after
+      $s = $s + value_map_enum_guard(f, $enum_after, "SELECT " + $mapped + " AS m FROM " + $tq, db) + "\n"
+    end
+    $s = $s + "ALTER TABLE " + $tq + " ALTER COLUMN " + $col + " DROP DEFAULT;\nALTER TABLE " + $tq + " ALTER COLUMN " + $col + " TYPE " + $type + " USING (" + $mapped + ")::" + $type + ";\n"
+    $default = default_sql($c, db)
+    if $default != ""
+      $s = $s + "ALTER TABLE " + $tq + " ALTER COLUMN " + $col + " SET DEFAULT " + $default + ";\n"
+    end
+    emit(out, $s + "END IF;\nEND $mq$;")
+  else if f.values.size == 0
+    # A merge whose codes all match: the stored codes stay as they are.
+  else if $enum_before
+    $enum = q($enum_before, db)
+    $mapped = value_map_case(f, $col + "::text", $col + "::text", db)
+    emit(out, "DO $mq$ DECLARE missing text; BEGIN\n" + value_map_enum_guard(f, $enum_before, "SELECT " + $mapped + " AS m FROM " + $tq + " WHERE " + $col + "::text IN (" + $froms + ")", db) + "\nUPDATE " + $tq + " SET " + $col + " = (" + $mapped + ")::" + $enum + " WHERE " + $col + "::text IN (" + $froms + ");\nEND $mq$;")
+  else
+    emit(out, "UPDATE " + $tq + " SET " + $col + " = " + value_map_case(f, $col, $col, db) + " WHERE " + $col + " IN (" + $froms + ");")
+  end
+  if $objects
+    $add = column_objects_add_sql($pt, $name, $crt, db, $after)
+    if $add != ""
+      emit(out, $add)
+    end
+  end
+end
+
+# One collection of a value map, its owner table named as the database knows it before the migration's statements. A junction table
+# (lookup-table, check) drops the rows the map would make twice for one owner, then maps its code column between a drop and a
+# reconcile of its strategy objects; an array of the enum type ("native") keeps the first position of each mapped code, retyped
+# through text when a merge moves it to another enum type. Each runs only where seed.sql created the junction table or the column.
+func value_map_collection(db, diff, f, rt, x, out)
+  $found = null
+  for y in ref_collections(db)
+    if y[0].key == x.current_table && y[1].id == x.attribute
+      $found = y
+      break
+    end
+  end
+  $t = pre_table(db, diff, x.current_table, x.schema, x.table_name)
+  if !$found
+    emit(out, "-- The collection " + $t.name + "." + (x.name ?? x.attribute) + " leaves the model in this migration, so its codes are not mapped.")
+    ret
+  end
+  $a = $found[1]
+  $crt = $a.type.reference_type
+  $pt = { name: $t.name, schema: $t.schema, database: db }
+  $tq = qt($pt)
+  $froms = value_map_froms(f, db)
+  if type_realization($crt, db) == "native"
+    $name = snake $a.name
+    $col = q($name, db)
+    $enum_before = f.from_reference_type ? (snake f.from.name) + "_t" : native_type_name(rt)
+    $enum_after = native_type_name($crt)
+    $mapped = value_map_case(f, "u.x::text", "u.x::text", db)
+    if $enum_before == $enum_after
+      if f.values.size == 0
+        ret
+      end
+      $enum = q($enum_after, db)
+      $kept = "ARRAY(SELECT (k.m)::" + $enum + " FROM (SELECT " + $mapped + " AS m, min(u.o) AS o FROM unnest(" + $col + ") WITH ORDINALITY AS u(x, o) GROUP BY 1) AS k ORDER BY k.o)"
+      emit(out, "DO $mq$ DECLARE missing text; BEGIN\nIF " + pg_column_exists($t, $name, db) + " THEN\n" + value_map_enum_guard(f, $enum_after, "SELECT " + $mapped + " AS m FROM " + $tq + ", unnest(" + $col + ") AS u(x) WHERE u.x::text IN (" + $froms + ")", db) + "\nUPDATE " + $tq + " SET " + $col + " = " + $kept + " WHERE " + $col + "::text[] && ARRAY[" + $froms + "]::text[];\nEND IF;\nEND $mq$;")
+    else
+      value_map_drop_views(db, diff, out)
+      $enum = q($enum_after, db)
+      $kept = "ARRAY(SELECT k.m FROM (SELECT " + value_map_case(f, "u.x", "u.x", db) + " AS m, min(u.o) AS o FROM unnest(" + $col + ") WITH ORDINALITY AS u(x, o) GROUP BY 1) AS k ORDER BY k.o)"
+      $s = "DO $mq$ DECLARE missing text; BEGIN\nIF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(" + lit($tq, db) + ") AND attname = " + lit($name, db) + " AND atttypid = to_regtype(" + lit(q($enum_before, db) + "[]", db) + ")) THEN\n"
+      $s = $s + value_map_enum_guard(f, $enum_after, "SELECT " + $mapped + " AS m FROM " + $tq + ", unnest(" + $col + ") AS u(x)", db) + "\n"
+      $s = $s + "ALTER TABLE " + $tq + " ALTER COLUMN " + $col + " DROP DEFAULT;\nALTER TABLE " + $tq + " ALTER COLUMN " + $col + " TYPE text[] USING " + $col + "::text[];\n"
+      if f.values.size > 0
+        $s = $s + "UPDATE " + $tq + " SET " + $col + " = " + $kept + " WHERE " + $col + " && ARRAY[" + $froms + "]::text[];\n"
+      end
+      $s = $s + "ALTER TABLE " + $tq + " ALTER COLUMN " + $col + " TYPE " + $enum + "[] USING " + $col + "::" + $enum + "[];\nALTER TABLE " + $tq + " ALTER COLUMN " + $col + " SET DEFAULT '{}';\nEND IF;\nEND $mq$;"
+      emit(out, $s)
+    end
+    ret
+  end
+  $jt = { name: junction_name($pt, $a), schema: $t.schema, database: db }
+  $jq = qt($jt)
+  $code = q(junction_code_column($a), db)
+  $same = ""
+  for pk in $found[0].primary_key.columns
+    $owner = q(junction_owner_column($found[2], pk), db)
+    $same = $same + "k." + $owner + " = d." + $owner + " AND "
+  end
+  $s = "DO $mq$ BEGIN\nIF to_regclass(" + lit($jq, db) + ") IS NOT NULL THEN\n" + column_objects_drop_sql($jt, junction_code_column($a), db) + "\n"
+  if f.values.size > 0
+    $s = $s + "DELETE FROM " + $jq + " AS d WHERE d." + $code + " IN (" + $froms + ") AND EXISTS (SELECT 1 FROM " + $jq + " AS k WHERE " + $same + "k." + $code + " <> d." + $code + " AND " + value_map_case(f, "k." + $code, "k." + $code, db) + " = " + value_map_case(f, "d." + $code, "d." + $code, db) + " AND (k." + $code + " NOT IN (" + $froms + ") OR k." + $code + " < d." + $code + "));\n"
+    $s = $s + "UPDATE " + $jq + " SET " + $code + " = " + value_map_case(f, $code, $code, db) + " WHERE " + $code + " IN (" + $froms + ");\n"
+  end
+  $add = column_objects_add_sql($jt, junction_code_column($a), $crt, db, type_realization($crt, db))
+  emit(out, $s + ($add == "" ? "" : $add + "\n") + "END IF;\nEND $mq$;")
+end
+
+# A value-map fact's data step on PostgreSQL (next-phase-2-design.md section 3.5), in the fact's applied order before the schema
+# statements and the native type prelude: a type rename renames the lookup table or enum type named after the type; with codes to map,
+# the rows of the type that holds them that the codes map to (every row for a merge) are made to exist (ref_rows_exist_sql), each
+# code of an enum type that was not merged is renamed in place where it is a label and its replacement is not, and each holder column
+# and collection has its stored codes mapped, the model's views dropped first when one is retyped (value_map_drop_views); then the
+# fact's row. Every part can run twice. A value map whose type the model no longer has is a TODO line.
+func value_map_step(db, diff, f, out)
+  $rt = reference_type_by_id(f.reference_type)
+  if !$rt
+    emit(out, "-- TODO: migration fact " + f.id + " " + value_map_words(f) + ", a reference type the model no longer has; update the stored codes by hand.")
+    ret
+  end
+  emit(out, "-- Migration fact " + f.id + " (value-map): " + value_map_words(f) + ".")
+  value_map_rename_type(db, f, $rt, out)
+  if (f.values.size > 0 || f.from_reference_type) && (f.objects.size > 0 || f.collections.size > 0)
+    # The codes the map moves stored codes to; a merge also keeps the codes it does not map, which the model no longer lists.
+    $codes = null
+    if !f.from_reference_type
+      $codes = []
+      for v in f.values
+        $codes[$codes.size] = v.to
+      end
+    end
+    $rows = ref_rows_exist_sql($rt, db, $codes)
+    if $rows != ""
+      emit(out, $rows)
+    end
+    if type_realization($rt, db) == "native" && !f.from_reference_type && f.values.size > 0
+      $enum = native_type_name($rt)
+      $s = "DO $mq$ BEGIN"
+      for v in f.values
+        $s = $s + "\nIF " + pg_enum_has($enum, lit(v.from, db), db) + " AND NOT " + pg_enum_has($enum, lit(v.to, db), db) + " THEN ALTER TYPE " + q($enum, db) + " RENAME VALUE " + lit(v.from, db) + " TO " + lit(v.to, db) + "; END IF;"
+      end
+      emit(out, $s + "\nEND $mq$;")
+    end
+    for o in f.objects
+      if o.kind == "column"
+        value_map_column(db, diff, f, $rt, o, out)
+      end
+    end
+    for x in f.collections
+      value_map_collection(db, diff, f, $rt, x, out)
+    end
+  end
+  fact_row(f, out)
+end
+
+# The fact steps no change of the diff carries, on PostgreSQL, in applied order: raw steps (phase before into out, after into after),
+# the rows of rekey facts (a rekey writes no DDL; ledger_rekey_rows moves the object rows of the SQL objects it lists), the data steps
+# of value maps (value_map_step), TODO lines for the fact types this pack writes no step for, and the own steps of listed facts whose
+# change the diff does not hold. A
+# migration from nothing builds the database at the model's shape, so it writes only the raw steps, and after them one row per fact
+# a build reaches (ledger_build_facts, as schema.sql writes them).
+func fact_steps(db, diff, out, after)
+  for f in diff.facts
+    if f.fact == "raw"
+      raw_step(db, f, f.phase == "before" ? out : after)
+    else if mq_from_nothing
+      continue
+    else if f.fact == "rekey"
+      $moves = ledger_rekey_rows(db, f)
+      if $moves != ""
+        emit(out, $moves)
+      end
+      fact_row(f, out)
+    else if f.fact == "value-map"
+      value_map_step(db, diff, f, out)
+    else if f.fact == "adopt" || f.fact == "baseline" || f.fact == "state-map"
+      emit(out, fact_todo(f))
+    else if !fact_change(diff, f)
+      if fact_usable(f)
+        own_step(db, diff, f, out)
+      else
+        $note = f.object ? fact_range_todo(f, (f.object.table_name ? f.object.table_name + "." : "") + (f.object.name ?? f.object.key)) : ""
+        emit(out, $note != "" ? $note : "-- TODO: migration fact " + f.id + " (" + f.fact + ") has no PostgreSQL text for its step; reach its end state by hand.")
+      end
+    end
+  end
+  if mq_from_nothing
+    for f in ledger_build_facts(db)
+      fact_row(f, after)
     end
   end
 end

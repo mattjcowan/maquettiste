@@ -260,15 +260,18 @@ export interface paths {
          *       indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
          *       for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
          *       `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.
+         *     - `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its
+         *       state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.
          *     - `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which
          *       `databases` holds.
          *
-         *     `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to
-         *     it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
+         *     `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and
+         *     migration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
          *     is null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change
          *     between pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors
-         *     returns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export
-         *     --resolved` answer the same.
+         *     returns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent
+         *     (MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer
+         *     the same.
          */
         get: operations["getResolvedModel"];
         put?: never;
@@ -492,7 +495,7 @@ export interface paths {
         put?: never;
         /**
          * Validate the whole model or a scope
-         * @description An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a validation reports what generation would.
+         * @description An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a validation reports what generation would. With `against`, the whole model is also compared with a model snapshot.
          */
         post: operations["validate"];
         delete?: never;
@@ -671,7 +674,12 @@ export interface paths {
          *     `{ "op": "materialize-columns", "entities": [...], "attributes"?: [...] }` (per bound entity reading a table file, a column of
          *     that table per attribute the binding leaves unmapped, shaped as the projection would make it, mapped to it). A refusal (an
          *     entity or table already bound; for attributes, an entity with no binding, a query source, a column already mapped; for
-         *     columns, a source that is not a table file, an attribute already mapped) is MQ4055 in `diagnostics`. The MCP tool `preview_materialize` answers the same.
+         *     columns, a source that is not a table file, an attribute already mapped) is MQ4055 in `diagnostics`. The binding
+         *     operations take the same route: `{ "op": "map-by-name", "entities": [...] }` (the attributes each binding leaves unmapped,
+         *     mapped to the free columns of the same loose name) and `{ "op": "resync-binding", "entities": [...], "columns"?: [...],
+         *     "keepNames"?: true }` (each binding whose source is a table file brought into step with it); both record provenance, read
+         *     files only, collect the binding rules (MQ4044 to MQ4054, MQ4087, MQ4088) from the conceptual layer and this database
+         *     alone, and a refusal is MQ4089. The MCP tool `preview_materialize` answers the same.
          */
         post: operations["previewMaterialize"];
         delete?: never;
@@ -700,8 +708,11 @@ export interface paths {
          *     every view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,
          *     view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
          *     properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
-         *     overlay entry, has none. The Database workspace draws table diagrams from it and an entity's Storage tab
-         *     reads its binding sources' columns from it. A model with errors returns `view: null` and the diagnostics.
+         *     overlay entry, has none, except the stereotypes a table's schema and package defaults give it. Columns, keys,
+         *     foreign keys and indexes a stereotype contributes follow the table's own, keyed `<tableKey>.<memberId>`, with
+         *     their `memberOrigin` (next-phase-2-design.md 3.1). The Database workspace draws table diagrams from it and an
+         *     entity's Storage tab reads its binding sources' columns from it. A model with errors returns `view: null` and
+         *     the diagnostics.
          */
         get: operations["getDatabaseView"];
         put?: never;
@@ -956,9 +967,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The attributes that use a reference type, with their effective storage
+         * The attributes and columns that use a reference type, with their effective storage
          * @description reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage
-         *     choice per database.
+         *     choice per database. `columns` lists the designed, imported, extra and inherited columns whose own `typeRef` names the
+         *     type (next-phase-2-design.md 3.2), with their table, database, domain, required, the effective storage choice in that
+         *     database and the bound table; projected columns are covered by their attributes.
          */
         get: operations["getReferenceTypeUsage"];
         put?: never;
@@ -981,7 +994,8 @@ export interface paths {
          * @description Every tag the tag vocabulary of `package` (the global one without it) declares, and every tag used inside that scope that no
          *     vocabulary on the element's domain chain declares, each with its uses there (the element's own tags and its sub-elements'),
          *     the ids of the elements holding them and up to five of their names. A domain that declares the same key keeps its own uses.
-         *     Remove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers the same.
+         *     Remove tags everywhere, or rename one, with the batch operation `retag`. The MCP tool `tag_usage` answers a summary of the
+         *     same, with pages and one tag's elements on request.
          */
         get: operations["getTagUsage"];
         put?: never;
@@ -1176,7 +1190,10 @@ export interface paths {
          * @description Queues a plan job and returns it at once. Join the realtime group `job:{id}` for `job.progress` and
          *     `job.completed`, then read `GET /api/jobs/{id}` once, so an event sent before the join is not missed. The
          *     functions force `includeDiffs: false`, `stageBarriers: false` and `lock: wait`; `mode` is ignored (a plan is
-         *     always a dry run).
+         *     always a dry run). `against` diffs the schema from a model snapshot for this plan instead of the committed
+         *     physical snapshots, which its apply leaves alone; the functions take snapshot ids only, so a folder, or an id
+         *     that names no snapshot, is 400 `bad-request`. `units` and `elements` limit the plan to some units (scoped
+         *     generation): it holds those units only, and its apply writes their files and leaves every other file alone.
          */
         post: operations["startPlan"];
         delete?: never;
@@ -1220,7 +1237,7 @@ export interface paths {
         };
         /**
          * Unified diff for one file in a plan
-         * @description From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders, such as a migration's placeholder); a deleted file diffs to nothing.
+         * @description From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders); a deleted file diffs to nothing.
          */
         get: operations["getPlanDiff"];
         put?: never;
@@ -1319,9 +1336,9 @@ export interface paths {
          *     element for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders
          *     (pointer `/units/<i>/for` of the pack's `pack.json`).
          *     With `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the
-         *     pack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4
-         *     (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below
-         *     it). Nothing is written.
+         *     pack loads even when disabled, the sandbox limits apply and the render has a deadline of 4 x `limits.scriptTimeoutMs`,
+         *     or 8000 ms when it is 0 (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the
+         *     maintainer role (403 below it). Nothing is written.
          *
          *     Bounds (generation-ui.md section 5.2): only this unit is rendered, for this element, and no unit is planned. The
          *     server keeps a preview session per pack (the model validated and resolved once per model version, shared with
@@ -1356,8 +1373,9 @@ export interface paths {
          *     whole model, a database or a locale (`for: model`, `each locale`, a selector that returns databases): its paths come
          *     with a preview the user asks for. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020
          *     (two of the rendered elements render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused
-         *     path, and MQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or
-         *     `parameters` it uses unsaved text, which needs the maintainer role (403 below it). Nothing is written.
+         *     path, and MQ6007 when the deadline (4 x `limits.scriptTimeoutMs`, or 8000 ms when it is 0) is hit. With
+         *     `unitOverride`, `overlay` or `parameters` it uses unsaved text, which needs the maintainer role (403 below it).
+         *     Nothing is written.
          */
         post: operations["unitPaths"];
         delete?: never;
@@ -1546,11 +1564,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The custom property schemas and script rules of the model
+         * The custom property schemas, script rules and rows scripts of the model
          * @description The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules
-         *     (`rules/<name>.js`), each ordinal by path, with size, hash and what is wrong with the file on its own: an invalid schema
-         *     (MQ5004) or a rule script that does not load alone in the sandbox (MQ5002 for a syntax error or a registration without an
-         *     id, MQ5003 for a limit), with line and column. Rule findings (`x/<id>`) come from `POST /api/validate`.
+         *     (`rules/<name>.js`), then the seeds' rows scripts (`seeds/<name>.js`, kind `seed-rows`), each ordinal by path, with size, hash
+         *     and what is wrong with the file on its own: an invalid schema (MQ5004), a rule script that does not load alone in the sandbox
+         *     (MQ5002 for a syntax error or a registration without an id, MQ5003 for a limit), a rows script that does not load or does not
+         *     call `maquettiste.rows` exactly once (MQ7127), with line and column, or a script that declares `let` or `var` at its top level
+         *     (MQ5005, a warning). No rows script runs. Rule findings (`x/<id>`) come from `POST /api/validate`.
          */
         get: operations["listExtensionFiles"];
         put?: never;
@@ -1579,9 +1599,11 @@ export interface paths {
          *     write goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its
          *     MQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is
          *     written as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in
-         *     `diagnostics` (MQ5002 with line and column). The model is refreshed before the answer, `project.changed` is published and a
-         *     validation follows, so the rule's `x/<id>` findings reach the Problems panel. A path other than `<name>.json` or
-         *     `rules/<name>.js`, or one through a link, is 400.
+         *     `diagnostics` (MQ5002 with line and column), as does the warning MQ5005 for a top-level `let` or `var`. The model is
+         *     refreshed before the answer, `project.changed` is published and a validation follows, so the rule's `x/<id>` findings
+         *     reach the Problems panel. A rows script (`seeds/<name>.js`) is written as sent and loaded alone, never run: one that does not
+         *     load or does not register its rows exactly once comes back as MQ7127. A path other than `<name>.json`, `rules/<name>.js` or
+         *     `seeds/<name>.js`, or one through a link, is 400.
          */
         put: operations["putExtensionFile"];
         post?: never;
@@ -1604,7 +1626,8 @@ export interface paths {
         /**
          * Rename one extension file within its kind
          * @description `If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a
-         *     `<name>.json`, a rule a `rules/<name>.js`), else 422. Nothing refers to an extension file by its path, so nothing else changes.
+         *     `<name>.json`, a rule a `rules/<name>.js`, a rows script a `seeds/<name>.js`), else 422. Nothing else changes: a seed whose
+         *     `rowsFrom.script` named the old path reports it missing (MQ7116) until it names the new one.
          */
         post: operations["moveExtensionFile"];
         delete?: never;
@@ -2326,6 +2349,8 @@ export interface components {
             hash: components["schemas"]["Hash"] | null;
             current: components["schemas"]["SettingsDocument"] | null;
             diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description When saved, the migration facts the save recorded: a change of `conventions`, `databases`, `typeMaps` or `inflection` classifies every database; other settings record none. `null` when nothing was written. */
+            facts?: components["schemas"]["RecordedFact"][] | null;
         };
         ProjectSettings: {
             $schema: string | null;
@@ -2401,6 +2426,12 @@ export interface components {
                 maxTurns: number;
                 tokenBudgetPerRequest: number;
                 tokenBudgetPerDayPerUser: number;
+            };
+            /** @description Migration facts (next-phase-1-design.md section 3.2); an older server leaves it out. `record` `off` makes no write record facts; `ledgerSchema` is the schema of the migration ledger tables in each PostgreSQL database (section 3.3). */
+            migrations?: {
+                /** @enum {string} */
+                record: "automatic" | "off";
+                ledgerSchema: string;
             };
         };
         /** @description The project's icon and primary color per theme in the editor (MQ8001 to MQ8003). An older server leaves it out. */
@@ -2568,7 +2599,8 @@ export interface components {
         };
         PackUnit: {
             id: string;
-            template: string;
+            /** @description The pack-relative template path; null only in mode `copy`, which takes none. */
+            template: string | null;
             /** @description `each <kind>`, `select <kinds>` or `model`. */
             for: string;
             /** @description The unit's filter (`UnitWhere`), as in `schemas/v1/pack.json`, every member written. */
@@ -2577,8 +2609,16 @@ export interface components {
             } | null;
             output: string | null;
             mode: components["schemas"]["OutputMode"];
+            /** @description Mode `copy`: pack-relative glob patterns of the files to copy, matched case-sensitively; empty otherwise. */
+            sources: string[];
+            /** @description Mode `copy`: literal text replaced in copied text files and output paths, mapped to a parameter name; empty otherwise. */
+            tokens: {
+                [key: string]: string;
+            };
             /** @description Mode `block`: the comment marker of the delimiter lines (`#` by default). */
             blockComment: string;
+            /** @description Mode `block`: the text closing each delimiter line (for example `-->`), or null. */
+            blockCommentEnd: string | null;
             /** @description Mode `block`: create the target file when it does not exist (otherwise the unit writes nothing: `target-missing`). */
             createFile: boolean;
             formatter: string | null;
@@ -2632,8 +2672,8 @@ export interface components {
                 owner?: components["schemas"]["Ulid"];
                 /** @description The text the fallback chain gives. */
                 effective?: string | null;
-                /** @enum {string} */
-                field: "displayName" | "pluralName" | "label" | "description";
+                /** @description A standard field, or `properties/<name>` for the text of an `x-translatable` custom property. */
+                field: string;
                 source: string | null;
                 translation: string | null;
                 /** @enum {string} */
@@ -2646,8 +2686,8 @@ export interface components {
         TranslationWrite: {
             entries: {
                 id: components["schemas"]["Ulid"];
-                /** @enum {string} */
-                field: "displayName" | "pluralName" | "label" | "description";
+                /** @description A standard field, or `properties/<name>` for the text of an `x-translatable` custom property. */
+                field: string;
                 /** @description The text, `{ "file": "<sidecar>" }`, or `null` to remove. */
                 value: unknown;
                 confirm?: boolean;
@@ -2723,9 +2763,31 @@ export interface components {
                     [key: string]: components["schemas"]["StorageChoice"];
                 };
             }[];
+            /**
+             * @description The designed, imported, extra and inherited columns whose own `typeRef` names the type (next-phase-2-design.md 3.2),
+             *     ordinal by table id then column id. Projected columns are covered by their attributes in `usages`.
+             */
+            columns: {
+                /**
+                 * @description The table id: the table file's id, or a synthesized table's key (`<entityId>@<databaseId>`) for an overlay's
+                 *     extra column or a column a synthesized table inherits.
+                 */
+                table: string;
+                /** @description The column id; a keyed id (`<tableKey>.<memberId>`) for an inherited column. */
+                column: string;
+                database: components["schemas"]["Ulid"];
+                /** @description The table's package (a synthesized table without one, its entity's or relation's); null at the root. */
+                domain?: components["schemas"]["Ulid"] | null;
+                /** @description Whether the column is not nullable. */
+                required: boolean;
+                /** @description The type's effective storage choice in the database; null for template-defined. */
+                storage?: components["schemas"]["StorageChoice"] | null;
+                /** @description The table of the type's binding in the database; null when the type has none there. */
+                boundTable?: components["schemas"]["Ulid"] | null;
+            }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -2748,7 +2810,7 @@ export interface components {
             path: components["schemas"]["RepoPath"];
             /** @description The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label. */
             displayName?: string;
-            /** @description The owning database's id, on table, view, sequence, routine, database-type, sql-object, query and mapping rows (E5). */
+            /** @description The owning database's id, on table, view, sequence, routine, database-type, sql-object, query, mapping and migration rows (E5). */
             database?: components["schemas"]["Ulid"];
             /** @description The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5). */
             entity?: components["schemas"]["Ulid"];
@@ -2798,7 +2860,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -2860,6 +2922,17 @@ export interface components {
              * @default false
              */
             owning?: boolean;
+            /**
+             * @description For a custom property value an `x-ref` types: every schema that types it says `optional`, so a delete with
+             *     `remove-references` may clear it. Left out when false.
+             * @default false
+             */
+            optional?: boolean;
+            /**
+             * @description For a custom property value an `x-ref` types: the schema that types it, `extension:<name>` (an extension file) or
+             *     `stereotype:<key>` (a stereotype's parameters). Left out for every other reference.
+             */
+            schema?: string;
         };
         ElementChange: {
             id: components["schemas"]["Ulid"];
@@ -2993,15 +3066,62 @@ export interface components {
             /** @description The references that blocked a delete. */
             referrers: components["schemas"]["ReferenceInfo"][];
             changes: components["schemas"]["ChangeSet"] | null;
+            /** @description The migration facts the write created or updated (next-phase-1-design.md section 3.2): a single-element create, save or delete lists every fact its write recorded, cascades included; `null` on an item of a batch (the batch carries them) and when nothing was written. A pending fact's MQ4101 is among `diagnostics`. */
+            facts?: components["schemas"]["RecordedFact"][] | null;
+            /** @description What a reference-type refactor rewrites (next-phase-2-design.md section 3.5): on the item of the type the operation names (for a merge, the merged-away type's delete), in a dry run and on apply; null on every other item. */
+            usage?: components["schemas"]["RefactorUsage"] | null;
+        };
+        /** @description What a reference-type refactor rewrites, found through the index, never a resolve. */
+        RefactorUsage: {
+            /** @description The number of uses rewritten: codes in defaults, `allowedValues` entries and cells, ids that name a removed row, and references to a merged-away type. */
+            useCount: number;
+            /** @description The first 200 uses, ordinal by element id, then pointer; `toId` is the row or type the use named before. */
+            uses: components["schemas"]["ReferenceInfo"][];
+            /** @description The rows a merge moves into the target type. */
+            rowsMoved: number;
+            /** @description The rows removed (a retired code's row, a merged-away type's rows whose codes the target holds). */
+            rowsRemoved: number;
+            /** @description The translation entries removed with them, one per locale and node. */
+            translationsRemoved: number;
+        };
+        /** @description A migration fact a write created or updated, in `model/databases/<db>/migrations/open/`. */
+        RecordedFact: {
+            id: string;
+            /** @description The id of the fact's database. */
+            database: string;
+            /** @enum {string} */
+            fact: "rename" | "rekey" | "change-type" | "drop" | "adopt" | "baseline" | "backfill" | "raw" | "value-map" | "state-map";
+            /**
+             * @description `pending` while the fact lacks the intent its change needs (MQ4101), else `complete`.
+             * @enum {string}
+             */
+            state: "complete" | "pending";
+            /** @description The intent fields MQ4101 names; empty unless pending. */
+            missing: string[];
+            /** @description One line by the names the fact records, such as `rename column billing.notes.text to body`. */
+            summary: string;
+            /** @description The repo-relative path of the fact's file. */
+            path: string;
         };
         /**
-         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`.
+         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`. `tags-to-property` (next-phase-1-design.md section 4.4) moves the tags that start with `prefix` into the custom property `name` of each element and sub-element with properties that holds them, in the scope `retag` would change, limited to `elementIds`: the schema that declares the property converts the suffixes (a string takes one, a string array all of them in list order, an integer, number or boolean one parsed with the invariant culture, an `enum` one member, an `x-ref` the one id the suffix finds as `names-to-ids` resolves it); the tags leave their holders and, without `elementIds`, their declarations leave the vocabulary, except a tag that something without properties (a relation end, for example) still uses, whose declaration stays. It expands the same way and takes `expectedHashes`; no matching tag is MQ1002 at `/operations/<n>`, and each holder whose property no schema declares, whose suffix does not fit or that already holds another value is one MQ5001 at its file and `/properties/<name>`. `names-to-ids` (section 4.1) turns every custom property value an `x-ref` types that is a name, not an id, into the one id it finds among the in-scope candidates of the keyword's kinds (elements by their qualified-name forms, stereotypes by key; within `of` sub-elements by name, columns by physical name, rows by code), in the elements `elementIds` lists or in every document with `x-ref` sites, stereotype defaults included. It expands the same way and takes `expectedHashes`; each value that finds nothing or several is one MQ2010 at its file and pointer, and nothing to convert writes nothing. `fold-into-stereotype` (next-phase-2-design.md section 3.1) makes the stereotype `id`'s members replace the matching own members of `tables`, or of every designed and imported table of `schema`; `redefine` and `excludeMissing` keep the database unchanged where a member differs or is missing, and a refusal is MQ4077. The binding operations (next-phase-2-design.md section 3.3) act on `database` and `entities`, read files only and never resolve the model: `map-by-name` maps every attribute a binding leaves unmapped to a free column of its source with the same loose name (case and every character that is not an ASCII letter or digit ignored; a member as `attributeMember`, a to-one navigation key with or without `Id`), fields naming a table file's columns by id and a view's by name; `resync-binding` brings a binding whose source is a table file into step with the table: it renames an own attribute that followed its column's name (unless `keepNames`), retypes an own attribute whose column was retyped, maps by name, adds an attribute per added column still free and removes the fields of removed columns, keeping every attribute; for one entity, `columns` (keys or physical names) limits it to those columns. Both record the binding's `provenance` (each column's name and type hashes) for a table file, expand the same way, take `expectedHashes`, and a refusal (an entity with no binding to the database, a source they cannot read, `columns` misused, nothing to map, or every binding named in step) is MQ4089 at `/operations/<n>`. The reference-type refactors (next-phase-2-design.md section 3.5) read the model as it was before the batch and find every use through the index: `rename-code` (`id` a reference type, `code`, `to`) gives the row the new code and rewrites every default, `allowedValues` entry, seed cell, typed column default, table seed cell and binding constant that named the old one; `retire-code` (`id`, `code`, `to` another live code) removes the code's row with its translations, rewrites its uses to `to` and the ids that named the row (`x-ref` values, former codes) to the row of `to`; `merge-reference-types` (`id` the type merged away, `target` the type merged into, optional `codes`) maps each code the target holds to it, `codes` maps others to live target codes, moves every other row into the target with its id, values and translations, retargets the seeds (one with the name of a target seed joins it), points every reference to the type at the target and deletes it; `rename-reference-type` (`id`, `name`) renames the type, its file and its seed folder following. Each keeps the old code as a former code of the type and answers `usage` on the item of the type it names (the merged-away type's delete for a merge). They expand the same way, take `expectedHashes`, refactor a type once per batch, and a refusal (an unknown or scripted code, a code taken or former, a code that does not fit, mismatched code types, a binding or scripted rows on the merged type, a field the target lacks, seeds of one name that differ in environments or apply, a second refactor of a type) is MQ7020 at `/operations/<n>`.
          * @enum {string}
          */
-        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag";
+        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag" | "tags-to-property" | "names-to-ids" | "fold-into-stereotype" | "map-by-name" | "resync-binding" | "rename-code" | "retire-code" | "merge-reference-types" | "rename-reference-type";
+        /**
+         * @description One batch operation. Every id field (`id`, `database`, `package`, `schema`, `target`, `default`, the items of
+         *     `entities`, `tables` and `elementIds`, an `attributes` item that starts with `@` or `$`, the keys of
+         *     `expectedHashes`) and every reference inside `element` takes an id, a qualified name (`@kind:path`, the name as
+         *     stored: `@table:billing.notes`) or a placeholder (`$name`, declared with `as`); the engine resolves them to ids before
+         *     the batch is planned and mints every missing id (next-phase-1-design.md section 5.1). A name that finds nothing is
+         *     MQ1012, several MQ1013; a misused identity is MQ1014 and a malformed or misplaced name MQ1015.
+         */
         BatchOperation: {
             op: components["schemas"]["BatchOp"];
+            /** @description An id, a qualified name or a placeholder. A create's `id` must be an id; an update's or delete's names an element that exists before the batch, never a placeholder. For a reference-type refactor, the reference type (for `merge-reference-types`, the one merged away). */
             id: string | null;
+            /** @description Create and update: the placeholder (`$name`) that names the operation's element for the whole batch, so other operations write it where the element's id goes. An object inside `element` whose schema requires an `id` may carry `as` too, naming that sub-element. */
+            as?: string | null;
             expectedHash: string | null;
             element: {
                 [key: string]: unknown;
@@ -3012,32 +3132,51 @@ export interface components {
             field?: ("displayName" | "pluralName" | "label" | "description") | null;
             /** @description The translated text, `{ "file": "<sidecar>" }`, or `null` to remove the translation (`translate`). */
             value?: unknown;
-            /** @description The database schema id (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`). */
+            /** @description The database schema (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`) as an id, a qualified name or a placeholder. */
             schema?: string | null;
-            /** @description The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`). */
+            /** @description The schema name (`add-schema`, `rename-schema`); the new tag key (`retag`); the custom property the tags move to (`tags-to-property`); the reference type's new name (`rename-reference-type`). */
             name?: string | null;
-            /** @description The schema id that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`). */
+            /** @description The code a refactor renames (`rename-code`) or retires (`retire-code`), as the code's canonical text (an integer in decimal digits, a uuid in lowercase). */
+            code?: string | null;
+            /** @description The new code (`rename-code`); the live code whose row takes over the retired code's uses (`retire-code`). */
+            to?: string | null;
+            /** @description `merge-reference-types`: codes of the merged-away type mapped to live codes of the target, for codes the target does not hold itself; every other code moves into the target as a row. */
+            codes?: {
+                [key: string]: string;
+            } | null;
+            /** @description The schema that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`); the reference type merged into (`merge-reference-types`). An id, a qualified name or a placeholder. */
             target?: string | null;
-            /** @description The schema id that becomes the default when the removed schema is the default (`remove-schema`). */
+            /** @description The schema that becomes the default when the removed schema is the default (`remove-schema`). An id, a qualified name or a placeholder. */
             default?: string | null;
-            /** @description The database id (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`). */
+            /** @description The database (`materialize-tables`, `materialize-entities`, `materialize-attributes`, `materialize-columns`, `map-by-name`, `resync-binding`). An id, a qualified name or a placeholder. */
             database?: string | null;
-            /** @description The entity ids (`materialize-tables`, `materialize-attributes`, `materialize-columns`). */
+            /** @description The entities (`materialize-tables`, `materialize-attributes`, `materialize-columns`, `map-by-name`, `resync-binding`), each an id, a qualified name or a placeholder. */
             entities?: string[] | null;
-            /** @description The table and view ids (`materialize-entities`). */
+            /** @description The tables and views (`materialize-entities`), each an id, a qualified name or a placeholder. */
             tables?: string[] | null;
-            /** @description The package id the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, absent for the global one). */
+            /** @description The package the new entities go to (`materialize-entities`); the domain whose tag vocabulary it is (`retag`, `tags-to-property`; absent for the global one). An id, a qualified name or a placeholder. */
             package?: string | null;
-            /** @description The source columns, as keys or physical names (`materialize-attributes`, one entity); absent means every column nothing in the binding names. */
+            /** @description The source columns, as keys or physical names (`materialize-attributes` and `resync-binding`, one entity); absent means every column nothing in the binding names (`materialize-attributes`) or every column of the source (`resync-binding`). */
             columns?: string[] | null;
-            /** @description The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped. */
+            /** @description The binding field references, attribute ids among them (`materialize-columns`, one entity); absent means every attribute the binding leaves unmapped. An item that starts with `@` or `$` is one attribute or end by name or placeholder; the composite `attributeId.memberId` stays ids. */
             attributes?: string[] | null;
             /** @description The tag keys (`retag`). */
             tags?: string[] | null;
+            /** @description The elements `names-to-ids` and `tags-to-property` act on, each an id, a qualified name or a placeholder; absent means every element they apply to. */
+            elementIds?: string[] | null;
+            /** @description The prefix of the tags that move into the property `name` (`tags-to-property`). */
+            prefix?: string | null;
+            /** @description `fold-into-stereotype`: write a `redefines` entry with the table's value where an own member differs from the stereotype's in a redefinable facet, instead of refusing the table. */
+            redefine?: boolean | null;
+            /** @description `fold-into-stereotype`: exclude each member of the stereotype a table lacks, instead of refusing the table. */
+            excludeMissing?: boolean | null;
+            /** @description `resync-binding`: keep every attribute's name, even one that followed its column's name; the provenance entry still takes the column's new name. */
+            keepNames?: boolean | null;
             /**
-             * @description Materialize: the hash the caller read of each element it expects the operation to change or delete (the preview's
+             * @description Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids` and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete (the preview's
              *     updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
-             *     a conflict and nothing is written.
+             *     a conflict and nothing is written. A key may be an id or a qualified name; a placeholder key is MQ1015, two keys for
+             *     one element are MQ1014.
              */
             expectedHashes?: {
                 [key: string]: string;
@@ -3054,6 +3193,33 @@ export interface components {
             outcome: components["schemas"]["SaveOutcome"];
             items: components["schemas"]["SaveResult"][];
             changes: components["schemas"]["ChangeSet"] | null;
+            /** @description The migration facts the batch created or updated (its items carry none); `null` when nothing was written. */
+            facts?: components["schemas"]["RecordedFact"][] | null;
+            /** @description When saved, the names the batch resolved, the placeholders it declared and the ids it minted; empty otherwise. */
+            ids?: components["schemas"]["BatchIds"];
+        };
+        /** @description The names a batch resolved and the ids it minted (next-phase-1-design.md section 5.1). */
+        BatchIds: {
+            /** @description Each placeholder declared and each qualified name used, to its id, ordinal by key. */
+            names: {
+                [key: string]: string;
+            };
+            /** @description The ids the engine minted, in operation and document order. */
+            minted: components["schemas"]["MintedId"][];
+        };
+        /** @description An id the engine minted for a batch. */
+        MintedId: {
+            /** @description The operation's index in the batch. */
+            operation: number;
+            /** @description The JSON pointer into the operation's element (`""` for its root). */
+            pointer: string;
+            /** @description The element kind, else the index kind of the sub-element, else `sub-element`. */
+            kind: string;
+            id: string;
+            /** @description The longest qualified form (`@column:main.billing.payment_method.code`) when the kind has names. */
+            name: string | null;
+            /** @description The placeholder the batch declared on the object with `as`, if any. */
+            placeholder: string | null;
         };
         /** @enum {string} */
         DiagnosticSeverity: "error" | "warning" | "info";
@@ -3147,7 +3313,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty. */
@@ -3257,8 +3423,10 @@ export interface components {
             /** @description The key of the stereotype that adds it. */
             fromStereotype: string | null;
             reference: components["schemas"]["ReferenceUsageRecord"] | null;
+            /** @description The key of the column whose comment `description` shows, when the attribute has no description of its own: the first commented column its entity's bindings map it to, bindings in database name order. */
+            descriptionColumn: string | null;
         };
-        /** @description An attribute's resolved type; the named type by id. */
+        /** @description An attribute's resolved type, or a column's `typeRef`; the named type by id. */
         TypeRecord: {
             /** @enum {string} */
             kind: "builtin" | "enum" | "value-object" | "scalar" | "reference";
@@ -3455,6 +3623,15 @@ export interface components {
             /** @description The ids of the attributes typed by it. */
             usedBy: string[];
             storage: components["schemas"]["StorageChoiceRecord"][];
+            /** @description The codes its rows used to have, ordinal by code, each with the row that replaced it. */
+            formerCodes: components["schemas"]["FormerCodeRecord"][];
+        };
+        /** @description A code a row of a reference type used to have, and the row that holds its value now. */
+        FormerCodeRecord: {
+            /** @description The former code; an integer for an integer code type. */
+            code: unknown;
+            /** @description The id of the row that replaced it. */
+            replacedBy: string;
         };
         /** @description The code or label field of a reference type. */
         ReferenceFieldRecord: {
@@ -3746,6 +3923,62 @@ export interface components {
             database: components["schemas"]["Ulid"];
             query: components["schemas"]["QueryView"];
         };
+        /** @description One open migration fact (scope `migrations`, next-phase-1-design.md section 3.2), sorted by database name, then applied order. */
+        MigrationRecord: {
+            id: components["schemas"]["Ulid"];
+            /** @constant */
+            kind: "migration";
+            /** @description The fact's name; the empty string for a recorded fact. */
+            name: string;
+            database: components["schemas"]["Ulid"];
+            /** @description The fact's place in its database's applied order, from 1. */
+            order: number;
+            /** @enum {string} */
+            fact: "rename" | "rekey" | "change-type" | "drop" | "adopt" | "baseline" | "backfill" | "raw" | "value-map" | "state-map";
+            /** @enum {string} */
+            state: "pending" | "complete" | "held" | "released";
+            /** @description The intent fields MQ4101 names; empty unless the fact is pending. */
+            missing: string[];
+            /** @description The ids of the facts it follows that exist in its database. */
+            after: components["schemas"]["Ulid"][];
+            /** @description Its object as recorded, or null. */
+            object: components["schemas"]["MigrationRecordObject"] | null;
+            /** @description The object's key moved through the rekey facts after it; null without an object. */
+            currentKey: string | null;
+            /** @description The state before, as recorded, or null. */
+            from: components["schemas"]["MigrationRecordState"] | null;
+            /** @description The state after, as recorded, or null. */
+            to: components["schemas"]["MigrationRecordState"] | null;
+            /** @description The fact content hash (what a migration ledger row records). */
+            hash: string;
+        };
+        /** @description A migration fact's object by physical key and by its physical names at the time (`migrationObject` of `schemas/v1/migration.json`, with null for what is not recorded). */
+        MigrationRecordObject: {
+            /** @enum {string} */
+            kind: "table" | "column" | "view" | "sequence" | "index" | "unique" | "foreign-key" | "check" | "routine" | "database-type" | "sql-object" | "schema";
+            /** @description The key of the table a member (a column, index or constraint) belongs to. */
+            table: string | null;
+            key: string;
+            schema: string | null;
+            tableName: string | null;
+            name: string | null;
+            formerNames: string[];
+        };
+        /** @description A side of a migration fact (`migrationState` of `schemas/v1/migration.json`, with null for what is not recorded). */
+        MigrationRecordState: {
+            name: string | null;
+            /** @description A value map's reference type plural name, so a pack finds the objects it named after the type. */
+            pluralName: string | null;
+            schema: string | null;
+            type: string | null;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            nativeType: string | null;
+            strategy: string | null;
+            referenceTable: string | null;
+            nullable: boolean | null;
+        };
         DatabaseViewResult: {
             view: components["schemas"]["DatabaseView"] | null;
             diagnostics: components["schemas"]["Diagnostic"][];
@@ -3879,8 +4112,10 @@ export interface components {
         };
         /**
          * @description One resolved table. The annotation members (`displayName` to `generation`) come from the table's own file: the
-         *     designed or imported table, or a synthesized table's overlay. A synthesized table without an overlay has none;
-         *     it never takes its entity's, which `entityId` leads to.
+         *     designed or imported table, or a synthesized table's overlay. A synthesized table without an overlay has none but
+         *     the stereotypes its schema and package defaults give it, with their default properties; it never takes its
+         *     entity's annotations, which `entityId` leads to. Members a stereotype contributes (next-phase-2-design.md 3.1)
+         *     follow the own ones, keyed `<tableKey>.<memberId>`, each with its `memberOrigin`.
          */
         TableView: {
             /** @description A table file's id, or a synthesized key such as `<entityId>@<databaseId>` (engine-design.md 7.3); the `elementId` for `sql-ddl`/`table` previews. */
@@ -3909,7 +4144,7 @@ export interface components {
             pluralName: string | null;
             /** @description The description text, a sidecar file's content loaded. */
             description: string | null;
-            /** @description The stereotype keys, in application order. */
+            /** @description The stereotype keys, in application order (the effective set, with schema and package defaults). */
             stereotypes: string[];
             tags: string[];
             /** @description The id of the category-tree node. */
@@ -3924,14 +4159,16 @@ export interface components {
             };
             /** @description The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before. */
             boundBy?: components["schemas"]["BoundByView"][];
+            /** @description The reference types whose rows it holds (their bindings), by type name; absent in recordings made before. */
+            referenceBindings?: components["schemas"]["ReferenceBindingView"][];
         };
         /** @description One resolved view, with the annotations of its file (as `TableView`). */
         ViewView: {
             id: components["schemas"]["Ulid"];
             name: string;
             schema: string | null;
-            /** @description The body for the database's dialect. */
-            body: string;
+            /** @description The body for the database's dialect (or the `*` body); null when the file has none for it. */
+            body: string | null;
             columns: components["schemas"]["ViewColumnView"][];
             comment: string | null;
             displayName: string | null;
@@ -4040,8 +4277,8 @@ export interface components {
             returns: components["schemas"]["RoutineReturnsView"] | null;
             /** @description The file's language, else the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere). */
             language: string;
-            /** @description The body for the database's dialect (or the `*` body); empty when the file has none for it. */
-            body: string;
+            /** @description The body for the database's dialect (or the `*` body); null when the file has none for it. */
+            body: string | null;
             hasBody: boolean;
             deterministic: boolean;
             /** @enum {string} */
@@ -4088,8 +4325,8 @@ export interface components {
             length: number | null;
             precision: number | null;
             scale: number | null;
-            /** @description The native type of a single value; empty for a table result. */
-            nativeType: string;
+            /** @description The native type of a single value; null for a table result. */
+            nativeType: string | null;
             /** @description The columns of a table result, or null for a single value. */
             table: components["schemas"]["RoutineColumnView"][] | null;
         };
@@ -4160,7 +4397,8 @@ export interface components {
             /** @description The definition for the dialect (the text after the type's name), or null to build it from the structured form. */
             definition: string | null;
             isCreated: boolean;
-            nativeName: string;
+            /** @description What a column or parameter typed by it writes; null when the dialect has none for it (a composite or range outside PostgreSQL). */
+            nativeName: string | null;
             /** @description The ids of the database types its fields use. */
             dependsOn: string[];
             comment: string | null;
@@ -4225,8 +4463,8 @@ export interface components {
              */
             phase: "before" | "after";
             dependsOn: string[];
-            /** @description The statements for the database's dialect (or the `*` ones); empty when the file has none for it. */
-            body: string;
+            /** @description The statements for the database's dialect (or the `*` ones); null when the file has none for it. */
+            body: string | null;
             hasBody: boolean;
             displayName: string | null;
             pluralName: string | null;
@@ -4263,8 +4501,8 @@ export interface components {
             distinct: boolean;
             paging: components["schemas"]["paging"] | null;
             collections: components["schemas"]["QueryCollectionView"][];
-            /** @description The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need. */
-            sql: string;
+            /** @description The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need; null when it cannot be rendered there (MQ4029). */
+            sql: string | null;
             /** @description The parameters the SQL names, in first-appearance order. */
             sqlParameters: string[];
             /** @description The ids (a synthesized table's key) of the tables, views, routines and database types the query reads. */
@@ -4363,6 +4601,23 @@ export interface components {
             writes: boolean;
             constants: components["schemas"]["BindingConstantView"][];
         };
+        /** @description A reference type whose rows a table holds (its binding to the table's database). */
+        ReferenceBindingView: {
+            typeId: components["schemas"]["Ulid"];
+            typeName: string;
+            bindingId: components["schemas"]["Ulid"];
+            /** @description The physical name of the column the code fills, or null when none does. */
+            codeColumn: string | null;
+            fields: components["schemas"]["ReferenceBindingFieldView"][];
+            constants: components["schemas"]["BindingConstantView"][];
+        };
+        /** @description One entry of a reference type binding's field map. */
+        ReferenceBindingFieldView: {
+            /** @description code, label, description, or a user field's name. */
+            field: string;
+            /** @description The column's physical name. */
+            column: string;
+        };
         /** @description A constant column of a binding (a filter on every read, a value on every insert). */
         BindingConstantView: {
             column: string;
@@ -4432,16 +4687,18 @@ export interface components {
             sql: string;
             parameters: string[];
         };
-        /** @description A materialize batch operation without its database. */
+        /** @description A materialize or binding batch operation without its database. */
         MaterializeBody: {
             /** @enum {string} */
-            op: "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns";
+            op: "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "map-by-name" | "resync-binding";
             entities?: string[];
             tables?: string[];
             schema?: string | null;
             package?: string | null;
             columns?: string[] | null;
             attributes?: string[] | null;
+            /** @description `resync-binding`: keep every attribute's name, even one that followed its column's name. */
+            keepNames?: boolean | null;
         };
         MaterializePlan: {
             operation: string;
@@ -4617,11 +4874,46 @@ export interface components {
             generation: {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
+            /** @description Where an inherited column comes from; null for the table's own. Always sent by this engine; absent in recordings made before. */
+            memberOrigin?: components["schemas"]["MemberOriginView"] | null;
+            /**
+             * @description The enum, reference type or scalar type the column's own entry names (its `typeRef`), or null. A projected column has
+             *     none: its attribute (`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in
+             *     recordings made before.
+             */
+            typeRef?: components["schemas"]["TypeRecord"] | null;
+            /**
+             * @description `pii` or `secret`: the column's own; else a projected column's attribute's own; else the strongest own value of the
+             *     attributes bindings map to it; null when none says. Always sent by this engine; absent in recordings made before.
+             * @enum {string|null}
+             */
+            sensitive?: "pii" | "secret" | null;
+        };
+        /**
+         * @description Where a member of a table comes from when a stereotype of the table's effective set contributes it
+         *     (next-phase-2-design.md 3.1). The member's key in the table is `<tableKey>.<memberId>`, the keyed id that seeds,
+         *     indexes, bindings and queries write; change the member on the stereotype, or with the table's `redefines` and
+         *     `excludes`, never by copying it as an own column.
+         */
+        MemberOriginView: {
+            /**
+             * @description A stereotype the table lists (or one it implies), or one a database schema's or a package's `defaultStereotypes` gives it.
+             * @enum {string}
+             */
+            source: "stereotype" | "schema-default" | "package-default";
+            /** @description The contributing stereotype's key. */
+            stereotype: string | null;
+            /** @description The stereotype member's id. */
+            memberId: components["schemas"]["Ulid"] | null;
+            /** @description The facets the table's `redefines` entry states for the member (JSON names, ordinal); empty when none. */
+            redefined: string[];
         };
         KeyView: {
             name: string;
             /** @description Column keys, in key order. */
             columns: string[];
+            /** @description Where an inherited key comes from; null for the table's own. Always sent by this engine; absent in recordings made before. */
+            memberOrigin?: components["schemas"]["MemberOriginView"] | null;
         };
         ForeignKeyView: {
             name: string;
@@ -4633,6 +4925,8 @@ export interface components {
             onUpdate: string;
             relationId: string | null;
             endId: string | null;
+            /** @description Where an inherited foreign key comes from; null for the table's own. Always sent by this engine; absent in recordings made before. */
+            memberOrigin?: components["schemas"]["MemberOriginView"] | null;
         };
         IndexView: {
             name: string;
@@ -4642,6 +4936,8 @@ export interface components {
             }[];
             unique: boolean;
             where: string | null;
+            /** @description Where an inherited index comes from; null for the table's own. Always sent by this engine; absent in recordings made before. */
+            memberOrigin?: components["schemas"]["MemberOriginView"] | null;
         };
         /** @enum {string} */
         GenerationMode: "apply" | "dry-run" | "check";
@@ -4654,7 +4950,7 @@ export interface components {
         /** @enum {string} */
         FileRole: "main" | "block" | "companion";
         /** @enum {string} */
-        OutputMode: "overwrite" | "once" | "regions" | "pair" | "block";
+        OutputMode: "overwrite" | "once" | "regions" | "pair" | "block" | "copy";
         /**
          * @description What Apply does to a file. `added`, `modified` and `deleted` are written or removed. `unchanged` (rendered, identical to the disk), `not-rendered` (plans only: its unit was skipped because nothing it read changed; listed from the unit's stored state) and `kept` (a `once` file or companion that exists: the team's, never overwritten) are left alone. `hand-edited`, `conflict` and `orphaned-owned` follow the hand-edit policy and the owned-file rule.
          * @enum {string}
@@ -4690,6 +4986,21 @@ export interface components {
             lock?: components["schemas"]["LockMode"];
             /** @default false */
             stageBarriers?: boolean;
+            /**
+             * @description The baseline the schema diff runs from for this run: a model snapshot id (the CLI and its MCP server also take a folder, stored as its full path). `null`: the committed physical snapshots. A run against a baseline never writes those; applying its plan opens the baseline again, and a baseline changed in between makes the plan stale.
+             * @default null
+             */
+            against?: string | null;
+            /**
+             * @description Scoped generation: only these units, each `<pack>/<unit>` or a unit id that exactly one pack of the run has (values OR, and AND with `elements`). `null` or an empty list: every unit. A unit no run pack has, a pack the run lacks or a unit id several run packs have is MQ6032. A scoped run writes only the selected units' files (and deletes the files they no longer produce), keeps every other output and unit state, never advances the schema snapshots (a selected unit that reads the schema diff is MQ6033) and, as a plan, stores the filters that its apply plans again with.
+             * @default null
+             */
+            units?: string[] | null;
+            /**
+             * @description Scoped generation: only the units of these elements, by id, never by name (a synthesized table's id is `<entityId>@<databaseId>`); units that run once for the whole model never match. Values OR, and AND with `units`. `null` or an empty list: every element. A filter that selects no unit and no earlier output is the warning MQ6034.
+             * @default null
+             */
+            elements?: string[] | null;
         };
         ApplyRequest: {
             planId: components["schemas"]["Ulid"];
@@ -4839,8 +5150,11 @@ export interface components {
         };
         RenderedFile: {
             path: components["schemas"]["RepoPath"];
+            /** @description The rendered text; a copy unit's binary file carries "". */
             text: string;
             role: components["schemas"]["FileRole"];
+            /** @description A copy unit's file that is not text (not strict UTF-8, or holding a NUL byte); written only when true. Its text is empty. */
+            binary?: boolean;
         };
         PreviewResult: {
             files: components["schemas"]["RenderedFile"][];
@@ -4873,8 +5187,11 @@ export interface components {
             path: string;
             size: number;
             hash: components["schemas"]["Hash"];
-            /** @enum {string} */
-            role: "manifest" | "template" | "partial" | "script" | "type-map" | "other";
+            /**
+             * @description `copy-source`: a copy unit's sources match the file, which is copied as it is and never parsed.
+             * @enum {string}
+             */
+            role: "manifest" | "template" | "partial" | "script" | "type-map" | "copy-source" | "other";
             /** @description `unit:<id>`, `companion:<id>` and `include:<path>`, ordinal. */
             usedBy: string[];
         };
@@ -4923,8 +5240,11 @@ export interface components {
             path: string;
             /** @description For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); empty for a schema. */
             rules: components["schemas"]["ExtensionRuleInfo"][];
-            /** @enum {string} */
-            kind: "schema" | "rule";
+            /**
+             * @description `schema` (custom properties, `<name>.json`), `rule` (a script rule, `rules/<name>.js`) or `seed-rows` (a seed's rows script, `seeds/<name>.js`).
+             * @enum {string}
+             */
+            kind: "schema" | "rule" | "seed-rows";
             size: number;
             hash: components["schemas"]["Hash"];
             diagnostics: components["schemas"]["Diagnostic"][];
@@ -4932,11 +5252,13 @@ export interface components {
         ExtensionRuleInfo: {
             id: string;
             severity: components["schemas"]["DiagnosticSeverity"];
+            /** @description The rule was registered with scope "model": check(model, report) runs once per whole-model validation (validate, generation), not per element, and a validation of some elements (a save) skips it. */
+            wholeModel: boolean;
         };
         ExtensionFileContent: {
             path: string;
             /** @enum {string} */
-            kind: "schema" | "rule";
+            kind: "schema" | "rule" | "seed-rows";
             hash: components["schemas"]["Hash"];
             text: string;
         };
@@ -5591,7 +5913,7 @@ export interface components {
             message: string;
             context?: null | components["schemas"]["AssistContext"];
         };
-        /** @description A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files). */
+        /** @description A file the proposal would create, change or delete, with its text before and after (canonical JSON for element files) and the change as a unified diff. */
         AssistProposalFile: {
             path: string;
             /** @enum {string} */
@@ -5602,6 +5924,8 @@ export interface components {
             beforeHash: string | null;
             before: string | null;
             after: string | null;
+            /** @description The change as a unified diff with three lines of context (`--- a/<path>`, `+++ b/<path>`, then hunks). */
+            diff: string | null;
         };
         /**
          * @description A model change the assistant proposed (`propose_changes`), checked by a dry run and pinned: created and updated
@@ -6107,9 +6431,15 @@ export interface components {
             };
             /** @default {} */
             limits?: {
-                /** @default 2000 */
+                /**
+                 * @description The wall-clock limit of one script call, in milliseconds. 0 turns the clock off, so results do not depend on the machine's load (use it in CI); the statement limit still bounds every call, and a regular expression match keeps a 250 ms bound.
+                 * @default 2000
+                 */
                 scriptTimeoutMs?: number;
-                /** @default 5000000 */
+                /**
+                 * @description The statement limit of one script call, at most 2,000,000,000.
+                 * @default 5000000
+                 */
                 scriptStatements?: number;
                 /** @default 256 */
                 scriptRecursion?: number;
@@ -6199,6 +6529,23 @@ export interface components {
                  */
                 tokenBudgetPerDayPerUser?: number;
             };
+            /**
+             * @description Migration facts (model/databases/<db>/migrations/open/): whether writes record them, and where each PostgreSQL database keeps its migration ledger.
+             * @default {}
+             */
+            migrations?: {
+                /**
+                 * @description automatic: every write that reshapes a database records its facts. off: no write records facts; validate --against still checks.
+                 * @default automatic
+                 * @enum {unknown}
+                 */
+                record?: "automatic" | "off";
+                /**
+                 * @description Schema of the migration ledger tables (contract, applied_fact, applied_object) in each PostgreSQL database; quoted where it is a reserved word. MQ4067 when a database's modeled objects use it too.
+                 * @default migration_ledger
+                 */
+                ledgerSchema?: string;
+            };
             $defs: {
                 strategyDeclaration: {
                     description?: string;
@@ -6266,13 +6613,19 @@ export interface components {
         id: string;
         /** @description A conceptual name: letters, digits and underscores, not starting with a digit. */
         identifier: string;
+        idList: components["schemas"]["id"][];
+        /** @description A kebab-case key (stereotype keys). */
+        key: string;
+        keyList: components["schemas"]["key"][];
         /** @description Markdown text, or a sidecar Markdown file beside the element's file. */
         description: string | {
             file: string;
         };
-        /** @description A kebab-case key (stereotype keys). */
-        key: string;
-        keyList: components["schemas"]["key"][];
+        /**
+         * @description The status of an element or sub-element: proposed, approved, deprecated or retired. It has no default. A reference to a retired element warns (MQ2022).
+         * @enum {unknown}
+         */
+        status: "proposed" | "approved" | "deprecated" | "retired";
         /** @description A tag: a free-form label (SPEC section 5) of 1 to 64 characters without whitespace or control characters. */
         tagLabel: string;
         tagList: components["schemas"]["tagLabel"][];
@@ -6318,9 +6671,23 @@ export interface components {
             displayName?: string;
             pluralName?: string;
             parent?: components["schemas"]["id"];
+            /** @description The packages this package's elements may reference. Declared, even as [], it makes the package and the packages under it checked; absent, the package is unchecked unless a parent declares it. */
+            dependsOn?: components["schemas"]["idList"];
+            /**
+             * @description Stereotype keys every element of the package and of the packages under it carries, applied before their own stereotypes, outermost package first. A default skips an element whose kind it does not apply to; an element leaves one out with excludeStereotypes.
+             * @default []
+             */
+            defaultStereotypes?: components["schemas"]["keyList"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -6330,7 +6697,6 @@ export interface components {
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
         };
-        idList: components["schemas"]["id"][];
         /**
          * @description A built-in scalar type keyword.
          * @enum {unknown}
@@ -6348,6 +6714,11 @@ export interface components {
             /** @default false */
             stored?: boolean;
         };
+        /**
+         * @description Whether a value is personal data (pii) or a secret.
+         * @enum {unknown}
+         */
+        sensitivity: "pii" | "secret";
         /** @description Validation constraints. */
         validation: {
             min?: number | string;
@@ -6384,11 +6755,15 @@ export interface components {
             /** @default false */
             immutable?: boolean;
             derived?: components["schemas"]["derived"];
-            /** @enum {unknown} */
-            sensitive?: "pii" | "secret";
+            sensitive?: components["schemas"]["sensitivity"];
             validation?: components["schemas"]["validation"];
             order?: number;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
             /** @default [] */
@@ -6420,8 +6795,15 @@ export interface components {
             /** @description The process that is this entity's lifecycle. */
             lifecycle?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -6495,6 +6877,16 @@ export interface components {
                         value?: string | number | boolean | null;
                     };
                 };
+                /**
+                 * Binding provenance
+                 * @description The columns of a table-file source as the last by-name operation (materialize, map-by-name, resync-binding) recorded them, for the drift report and MQ4087. Written by the engine only; a save leaves it as it is, and removing it stops drift reports for the binding. Its keys are records, not references: a column delete never sees them.
+                 */
+                provenance?: {
+                    /** @description Column id (an inherited column by its keyed id, <tableId>.<memberId>) to "<name part>:<type part>": two short hashes of the column's name, compared loosely, and of its type, facets and nullability. */
+                    columns: {
+                        [key: string]: string;
+                    };
+                };
                 description?: components["schemas"]["description"];
                 /** @default [] */
                 tags?: components["schemas"]["tagList"];
@@ -6522,8 +6914,15 @@ export interface components {
             pluralName?: string;
             package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -6550,8 +6949,15 @@ export interface components {
             pluralName?: string;
             package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -6590,8 +6996,15 @@ export interface components {
             /** @default false */
             flags?: boolean;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -6605,6 +7018,11 @@ export interface components {
                 value?: number;
                 code?: string;
                 description?: components["schemas"]["description"];
+                /** @description Markdown text: why the element is shaped this way. */
+                rationale?: string;
+                /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                decision?: string;
+                status?: components["schemas"]["status"];
                 /** @default [] */
                 stereotypes?: components["schemas"]["keyList"];
                 /** @default [] */
@@ -6645,8 +7063,15 @@ export interface components {
              */
             relationKind?: "association" | "aggregation" | "composition" | "n-ary";
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -6703,14 +7128,23 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: packages routes the tables. */
+            package?: components["schemas"]["id"];
             /** @enum {unknown} */
             dialect: "postgresql" | "sqlserver" | "mysql" | "sqlite" | "oracle";
             version?: string;
             /** @description The name of the schema that tables, views and sequences without a schema go to; absent means the dialect's (PostgreSQL public, SQL Server dbo). */
             defaultSchema?: string;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -6722,8 +7156,18 @@ export interface components {
                 displayName?: string;
                 pluralName?: string;
                 description?: components["schemas"]["description"];
+                /** @description Markdown text: why the element is shaped this way. */
+                rationale?: string;
+                /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                decision?: string;
+                status?: components["schemas"]["status"];
                 /** @default [] */
                 stereotypes?: components["schemas"]["keyList"];
+                /**
+                 * @description Stereotype keys every table, view, sequence, routine, database type and SQL object of the schema carries, applied before package defaults and their own stereotypes. A default skips an object whose kind it does not apply to; an object leaves one out with excludeStereotypes.
+                 * @default []
+                 */
+                defaultStereotypes?: components["schemas"]["keyList"];
                 /** @default [] */
                 tags?: components["schemas"]["tagList"];
                 category?: components["schemas"]["id"];
@@ -6758,9 +7202,166 @@ export interface components {
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
         };
+        /** @description A column's type keyword: a built-in scalar type, or range or multirange (PostgreSQL's built-in range types, with a subtype; multirange needs PostgreSQL 14 or later). Elsewhere a range column is stored as the dialect's text type (MQ4056). */
+        columnType: components["schemas"]["builtinType"] | ("range" | "multirange");
+        /** @description The logical type of a column: an enum, a reference type or a scalar type, beside the column's physical type keyword. */
+        columnTypeRef: {
+            ref: components["schemas"]["id"];
+        };
+        /**
+         * @description The type of a range or multirange column's bounds: one of the keywords PostgreSQL has a built-in range for (int4range, int8range, numrange, daterange, tsrange, tstzrange).
+         * @enum {unknown}
+         */
+        rangeSubtype: "int32" | "int64" | "decimal" | "date" | "datetime" | "datetimeoffset";
         /** @description Dialect name (postgresql, sqlserver, mysql, sqlite, oracle) or "*" to SQL text. */
         dialectMap: {
             [key: string]: string;
+        };
+        /** Column */
+        tableColumn: {
+            id: components["schemas"]["id"];
+            /** @default  */
+            name?: components["schemas"]["label"];
+            displayName?: string;
+            pluralName?: string;
+            /** @description Overlay: the synthesized column key this column overrides. */
+            attribute?: string;
+            type?: components["schemas"]["columnType"];
+            /** @description Designed, imported, extra and contributed columns: the enum, reference type or scalar type whose values the column holds. Not on an overlay entry of a projected column, whose attribute types it, nor on a column a reference type's binding fills with a field (MQ4082). */
+            typeRef?: components["schemas"]["columnTypeRef"];
+            /** @description The bound type of a range or multirange column, and only of one (MQ4057). A range column takes no length, precision or scale (MQ3013). */
+            subtype?: components["schemas"]["rangeSubtype"];
+            length?: components["schemas"]["length"];
+            precision?: components["schemas"]["precision"];
+            scale?: components["schemas"]["scale"];
+            nativeType?: string;
+            /** @description String and text columns: true stores Unicode text (SQL Server nvarchar and nchar, Oracle nvarchar2 and nchar, MySQL the utf8mb4 character set), false single-byte text (SQL Server varchar and char, Oracle varchar2 and char); absent takes the dialect's default, which is Unicode on SQL Server. PostgreSQL and SQLite keep every text in the database's encoding, so it changes nothing there. The type map's string:unicode, string:ansi and text:unicode entries decide the native types. */
+            unicode?: boolean;
+            /**
+             * @description String and binary columns: a fixed-length type of the column's length (char, nchar, binary) instead of a varying one; the type map's string:fixed and binary:fixed entries decide the native types.
+             * @default false
+             */
+            fixedLength?: boolean;
+            /**
+             * @description Designed or extra column: true (the default) or false. Overlay (with attribute): omitted keeps the synthesized value.
+             * @default true
+             */
+            nullable?: boolean;
+            default?: unknown;
+            /** @default {} */
+            defaultSql?: components["schemas"]["dialectMap"];
+            /** @description The name of the column's default constraint, where the dialect names defaults (SQL Server); absent names it df_<table>_<column>. Other dialects keep defaults in the column and ignore it. */
+            defaultName?: components["schemas"]["label"];
+            /** @enum {unknown} */
+            generated?: "identity" | "sequence";
+            /** @description With generated identity: the identity's first value (seed), its step (increment) and whether the database always generates the value and refuses one an insert gives (always, GENERATED ALWAYS) instead of generating it only when none is given (GENERATED BY DEFAULT). PostgreSQL and Oracle write all three; SQL Server writes IDENTITY(seed, increment) and always generates; MySQL writes the seed as the table's AUTO_INCREMENT; what a dialect lacks is left out (MQ4056). */
+            identity?: {
+                seed?: number;
+                increment?: number;
+                /** @default false */
+                always?: boolean;
+            };
+            sequence?: components["schemas"]["id"];
+            computed?: string;
+            /** @default false */
+            computedStored?: boolean;
+            /**
+             * @description A uuid column the database does not fill (no identity, sequence, generation or computation; MQ7124): every row a database receives into the table gets a stable id there, RFC 9562 UUID version 5 with the table id as namespace and the row key's values as name, unless the row's source writes the column (a binding's field or constant). The row key may hold neither this column nor a value the database fills (MQ7125). A table seed gives no cell for it (MQ7108).
+             * @default false
+             */
+            stableId?: boolean;
+            collation?: string;
+            comment?: string;
+            /** @description Whether the column holds personal data or a secret. An overlay entry states it for its projected column. */
+            sensitive?: components["schemas"]["sensitivity"];
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /** Primary key */
+        primaryKey: {
+            /** @description The key's id. Optional on a table; a key with an id is a sub-element that other elements can name. */
+            id?: components["schemas"]["id"];
+            name?: components["schemas"]["label"];
+            columns: string[];
+            clustered?: boolean;
+            /**
+             * @description Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.
+             * @default false
+             */
+            withoutOverlaps?: boolean;
+        };
+        /** Unique constraint */
+        uniqueConstraint: {
+            id: components["schemas"]["id"];
+            name?: components["schemas"]["label"];
+            columns: string[];
+            /**
+             * @description Whether two rows with nulls in the columns conflict (NULLS NOT DISTINCT, PostgreSQL 15 and later); the other dialects leave it out (MQ4056).
+             * @default false
+             */
+            nullsNotDistinct?: boolean;
+            /**
+             * @description Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.
+             * @default false
+             */
+            withoutOverlaps?: boolean;
+        };
+        /** Foreign key */
+        foreignKey: {
+            id: components["schemas"]["id"];
+            name?: components["schemas"]["label"];
+            columns: string[];
+            referencesTable: string;
+            /** @default [] */
+            referencesColumns?: string[];
+            /**
+             * @description Whether the last column pair is a period (PERIOD): each referencing row's period must be covered by referenced rows' periods, which a temporal key (withoutOverlaps) of the referenced table holds. PostgreSQL 18 and later; MQ4056 elsewhere.
+             * @default false
+             */
+            period?: boolean;
+            /**
+             * @default no-action
+             * @enum {unknown}
+             */
+            onDelete?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
+            /**
+             * @description With onDelete set-null or set-default: the key's columns the action sets, a subset of columns (ON DELETE SET NULL (column, ...)). Empty sets every column of the key. Only PostgreSQL has a column list (MQ4056); on the other dialects the action sets every column.
+             * @default []
+             */
+            onDeleteColumns?: string[];
+            /**
+             * @default no-action
+             * @enum {unknown}
+             */
+            onUpdate?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
+            /**
+             * @description When the key is checked: not-deferrable (every statement), initially-immediate (every statement unless a transaction defers it with SET CONSTRAINTS) or initially-deferred (at commit). PostgreSQL, SQLite and Oracle have deferrable keys; SQL Server and MySQL check every statement and leave it out (MQ4056).
+             * @default not-deferrable
+             * @enum {unknown}
+             */
+            deferrable?: "not-deferrable" | "initially-immediate" | "initially-deferred";
+        };
+        /** Check constraint */
+        checkConstraint: {
+            id: components["schemas"]["id"];
+            name?: components["schemas"]["label"];
+            /** @description A column check: the id or key of the column it constrains. The constraint is written in the table like any other check; a migration that drops the column drops the check first. */
+            column?: string;
+            expression: components["schemas"]["dialectMap"];
         };
         /**
          * @description Storage parameters per dialect name (postgresql, sqlserver, mysql, oracle): each a map of parameter name to value, written in the DDL of a database of that dialect only (PostgreSQL and SQL Server WITH (name = value), MySQL table options, Oracle physical attributes). A number or boolean is written as the dialect writes it; a string is written as SQL as it is.
@@ -6770,6 +7371,40 @@ export interface components {
             [key: string]: {
                 [key: string]: string | number | boolean;
             };
+        };
+        /** Index */
+        tableIndex: {
+            id: components["schemas"]["id"];
+            name?: components["schemas"]["label"];
+            columns: ({
+                column?: string;
+                /** @description An expression indexed instead of a column (a functional index), per dialect name or "*": written in parentheses. A dialect without an entry leaves the index out; SQL Server indexes no expression (MQ4056: index a computed column instead), MySQL from 8.0.13 (not MariaDB). */
+                expression?: components["schemas"]["dialectMap"];
+                /** @description The operator class the column or expression is indexed with (PostgreSQL), such as gin_trgm_ops for a trigram index or vector_cosine_ops for a vector index; written after it as it is, so it may carry parameters (gist_trgm_ops (siglen = 32)). MQ4056 elsewhere. */
+                operatorClass?: string;
+                /** @default false */
+                descending?: boolean;
+                /**
+                 * @description Where nulls sort: PostgreSQL's NULLS FIRST or NULLS LAST. Unset keeps the direction's default (last ascending, first descending), and a value equal to it changes nothing. MQ4056 elsewhere.
+                 * @enum {unknown}
+                 */
+                nulls?: "first" | "last";
+                /** @description A key prefix length: only the first characters or bytes of the column are indexed (MySQL, which needs one for a text or blob column; the other dialects leave it out, MQ4056). */
+                length?: number;
+            } & (unknown | unknown))[];
+            /** @default [] */
+            include?: string[];
+            where?: string;
+            /** @default false */
+            unique?: boolean;
+            /**
+             * @description The index method: btree and hash (PostgreSQL, MySQL); gin, gist, spgist and brin (PostgreSQL); hnsw and ivfflat (PostgreSQL with the vector extension, which a SQL object with phase before creates); clustered (SQL Server, and PostgreSQL CLUSTER). MQ4056 where the dialect lacks it.
+             * @default default
+             * @enum {unknown}
+             */
+            method?: "default" | "btree" | "hash" | "gin" | "gist" | "spgist" | "brin" | "hnsw" | "ivfflat" | "clustered";
+            /** @description Index storage parameters per dialect (PostgreSQL and SQL Server WITH (...), such as fillfactor, pages_per_range for brin, m and ef_construction for hnsw, lists for ivfflat). MySQL and Oracle leave them out (MQ4056). */
+            storage?: components["schemas"]["storage"];
         };
         /**
          * Table
@@ -6784,6 +7419,8 @@ export interface components {
             name?: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             /**
@@ -6798,139 +7435,27 @@ export interface components {
             /** @description Synthesized junction table: the relation. */
             relation?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @default [] */
-            columns?: {
-                id: components["schemas"]["id"];
-                /** @default  */
-                name?: components["schemas"]["label"];
-                displayName?: string;
-                pluralName?: string;
-                /** @description Overlay: the synthesized column key this column overrides. */
-                attribute?: string;
-                type?: components["schemas"]["builtinType"];
-                length?: components["schemas"]["length"];
-                precision?: components["schemas"]["precision"];
-                scale?: components["schemas"]["scale"];
-                nativeType?: string;
-                /** @description String and text columns: true stores Unicode text (SQL Server nvarchar and nchar, Oracle nvarchar2 and nchar, MySQL the utf8mb4 character set), false single-byte text (SQL Server varchar and char, Oracle varchar2 and char); absent takes the dialect's default, which is Unicode on SQL Server. PostgreSQL and SQLite keep every text in the database's encoding, so it changes nothing there. The type map's string:unicode, string:ansi and text:unicode entries decide the native types. */
-                unicode?: boolean;
-                /**
-                 * @description String and binary columns: a fixed-length type of the column's length (char, nchar, binary) instead of a varying one; the type map's string:fixed and binary:fixed entries decide the native types.
-                 * @default false
-                 */
-                fixedLength?: boolean;
-                /**
-                 * @description Designed or extra column: true (the default) or false. Overlay (with attribute): omitted keeps the synthesized value.
-                 * @default true
-                 */
-                nullable?: boolean;
-                default?: unknown;
-                /** @default {} */
-                defaultSql?: components["schemas"]["dialectMap"];
-                /** @description The name of the column's default constraint, where the dialect names defaults (SQL Server); absent names it df_<table>_<column>. Other dialects keep defaults in the column and ignore it. */
-                defaultName?: components["schemas"]["label"];
-                /** @enum {unknown} */
-                generated?: "identity" | "sequence";
-                /** @description With generated identity: the identity's first value (seed), its step (increment) and whether the database always generates the value and refuses one an insert gives (always, GENERATED ALWAYS) instead of generating it only when none is given (GENERATED BY DEFAULT). PostgreSQL and Oracle write all three; SQL Server writes IDENTITY(seed, increment) and always generates; MySQL writes the seed as the table's AUTO_INCREMENT; what a dialect lacks is left out (MQ4056). */
-                identity?: {
-                    seed?: number;
-                    increment?: number;
-                    /** @default false */
-                    always?: boolean;
-                };
-                sequence?: components["schemas"]["id"];
-                computed?: string;
-                /** @default false */
-                computedStored?: boolean;
-                collation?: string;
-                comment?: string;
-                description?: components["schemas"]["description"];
-                /** @default [] */
-                stereotypes?: components["schemas"]["keyList"];
-                /** @default [] */
-                tags?: components["schemas"]["tagList"];
-                category?: components["schemas"]["id"];
-                /** @default {} */
-                properties?: components["schemas"]["properties"];
-                /** @default {} */
-                generation?: components["schemas"]["generation"];
-                source?: components["schemas"]["source"];
-            }[];
-            /** Primary key */
-            primaryKey?: {
-                name?: components["schemas"]["label"];
-                columns: string[];
-                clustered?: boolean;
-                /**
-                 * @description Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.
-                 * @default false
-                 */
-                withoutOverlaps?: boolean;
-            };
+            columns?: components["schemas"]["tableColumn"][];
+            primaryKey?: components["schemas"]["primaryKey"];
             /** @default [] */
-            uniques?: {
-                id: components["schemas"]["id"];
-                name?: components["schemas"]["label"];
-                columns: string[];
-                /**
-                 * @description Whether two rows with nulls in the columns conflict (NULLS NOT DISTINCT, PostgreSQL 15 and later); the other dialects leave it out (MQ4056).
-                 * @default false
-                 */
-                nullsNotDistinct?: boolean;
-                /**
-                 * @description Whether the key's last column is a period (a range or multirange column) that may repeat a value of the other columns as long as the periods do not overlap: a temporal key (WITHOUT OVERLAPS, PostgreSQL 18 and later; MQ4056 elsewhere). Needs a column before it, and the btree_gist extension for its other columns.
-                 * @default false
-                 */
-                withoutOverlaps?: boolean;
-            }[];
+            uniques?: components["schemas"]["uniqueConstraint"][];
             /** @default [] */
-            foreignKeys?: {
-                id: components["schemas"]["id"];
-                name?: components["schemas"]["label"];
-                columns: string[];
-                referencesTable: string;
-                /** @default [] */
-                referencesColumns?: string[];
-                /**
-                 * @description Whether the last column pair is a period (PERIOD): each referencing row's period must be covered by referenced rows' periods, which a temporal key (withoutOverlaps) of the referenced table holds. PostgreSQL 18 and later; MQ4056 elsewhere.
-                 * @default false
-                 */
-                period?: boolean;
-                /**
-                 * @default no-action
-                 * @enum {unknown}
-                 */
-                onDelete?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
-                /**
-                 * @description With onDelete set-null or set-default: the key's columns the action sets, a subset of columns (ON DELETE SET NULL (column, ...)). Empty sets every column of the key. Only PostgreSQL has a column list (MQ4056); on the other dialects the action sets every column.
-                 * @default []
-                 */
-                onDeleteColumns?: string[];
-                /**
-                 * @default no-action
-                 * @enum {unknown}
-                 */
-                onUpdate?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
-                /**
-                 * @description When the key is checked: not-deferrable (every statement), initially-immediate (every statement unless a transaction defers it with SET CONSTRAINTS) or initially-deferred (at commit). PostgreSQL, SQLite and Oracle have deferrable keys; SQL Server and MySQL check every statement and leave it out (MQ4056).
-                 * @default not-deferrable
-                 * @enum {unknown}
-                 */
-                deferrable?: "not-deferrable" | "initially-immediate" | "initially-deferred";
-            }[];
+            foreignKeys?: components["schemas"]["foreignKey"][];
             /** @default [] */
-            checks?: {
-                id: components["schemas"]["id"];
-                name?: components["schemas"]["label"];
-                /** @description A column check: the id or key of the column it constrains. The constraint is written in the table like any other check; a migration that drops the column drops the check first. */
-                column?: string;
-                expression: components["schemas"]["dialectMap"];
-            }[];
+            checks?: components["schemas"]["checkConstraint"][];
             /**
              * @description Exclusion constraints (PostgreSQL EXCLUDE): no two rows may match on every element, each compared with its operator, such as a room (=) and a period (&&) for no overlapping bookings. The other dialects leave them out (MQ4056).
              * @default []
@@ -6962,34 +7487,43 @@ export interface components {
                 deferrable?: "not-deferrable" | "initially-immediate" | "initially-deferred";
             }[];
             /** @default [] */
-            indexes?: {
-                id: components["schemas"]["id"];
+            indexes?: components["schemas"]["tableIndex"][];
+            /**
+             * @description Per-table exceptions to members (columns, keys, indexes and checks) the table inherits from its stereotypes: each entry names a stereotype member by its id and states only the facets it changes. The member keeps its keyed id (<table key>.<member id>). A column takes nullable, default, defaultSql, defaultName, comment and collation (default or defaultSql replaces the inherited default of either form); a primary key columns, name and clustered; a unique columns, name and nullsNotDistinct (columns lists the whole new list: own column ids and inherited keyed ids); a foreign key name, onDelete, onDeleteColumns, onUpdate and deferrable; an index name, where, method and storage (which replaces the inherited map); a check name. Type facets and a column's name are not redefinable: exclude the member and declare an own column (MQ2027).
+             * @default []
+             */
+            redefines?: {
+                /** @description The id of the stereotype member the entry redefines. */
+                member: components["schemas"]["id"];
+                /** @description A key's, index's or check's constraint name for this table, instead of the naming convention's. */
                 name?: components["schemas"]["label"];
-                columns: ({
-                    column?: string;
-                    /** @description An expression indexed instead of a column (a functional index), per dialect name or "*": written in parentheses. A dialect without an entry leaves the index out; SQL Server indexes no expression (MQ4056: index a computed column instead), MySQL from 8.0.13 (not MariaDB). */
-                    expression?: components["schemas"]["dialectMap"];
-                    /** @description The operator class the column or expression is indexed with (PostgreSQL), such as gin_trgm_ops for a trigram index or vector_cosine_ops for a vector index; written after it as it is, so it may carry parameters (gist_trgm_ops (siglen = 32)). MQ4056 elsewhere. */
-                    operatorClass?: string;
-                    /** @default false */
-                    descending?: boolean;
-                    /** @description A key prefix length: only the first characters or bytes of the column are indexed (MySQL, which needs one for a text or blob column; the other dialects leave it out, MQ4056). */
-                    length?: number;
-                } & (unknown | unknown))[];
-                /** @default [] */
-                include?: string[];
+                nullable?: boolean;
+                default?: unknown;
+                defaultSql?: components["schemas"]["dialectMap"];
+                defaultName?: components["schemas"]["label"];
+                comment?: string;
+                collation?: string;
+                columns?: string[];
+                clustered?: boolean;
+                nullsNotDistinct?: boolean;
+                /** @enum {unknown} */
+                onDelete?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
+                onDeleteColumns?: string[];
+                /** @enum {unknown} */
+                onUpdate?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
+                /** @enum {unknown} */
+                deferrable?: "not-deferrable" | "initially-immediate" | "initially-deferred";
                 where?: string;
-                /** @default false */
-                unique?: boolean;
-                /**
-                 * @description The index method: btree and hash (PostgreSQL, MySQL); gin, gist, spgist and brin (PostgreSQL); hnsw and ivfflat (PostgreSQL with the vector extension, which a SQL object with phase before creates); clustered (SQL Server, and PostgreSQL CLUSTER). MQ4056 where the dialect lacks it.
-                 * @default default
-                 * @enum {unknown}
-                 */
+                /** @enum {unknown} */
                 method?: "default" | "btree" | "hash" | "gin" | "gist" | "spgist" | "brin" | "hnsw" | "ivfflat" | "clustered";
-                /** @description Index storage parameters per dialect (PostgreSQL and SQL Server WITH (...), such as fillfactor, pages_per_range for brin, m and ef_construction for hnsw, lists for ivfflat). MySQL and Oracle leave them out (MQ4056). */
+                /** @description Index storage parameters per dialect for this table: they replace the inherited map whole, and an empty map removes them. */
                 storage?: components["schemas"]["storage"];
             }[];
+            /**
+             * @description Ids of stereotype members (columns, keys, indexes and checks) the table does not inherit. A column that an inherited key, index or check the table keeps uses cannot be excluded alone (MQ2028).
+             * @default []
+             */
+            excludes?: components["schemas"]["idList"];
             /** @description Declarative partitioning (PostgreSQL PARTITION BY): the table holds no rows itself, its partitions do. Every primary or unique key includes the partition columns. The other dialects leave it out (MQ4056). */
             partitionBy?: {
                 /**
@@ -7036,11 +7570,20 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7102,11 +7645,20 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7145,11 +7697,20 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7248,11 +7809,20 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7314,11 +7884,20 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7330,6 +7909,17 @@ export interface components {
              * @enum {unknown}
              */
             phase?: "before" | "after";
+            /**
+             * @description The environments the object runs in (free names such as dev, test, staging); empty means every environment. Otherwise only the environment scripts (objects.<env>.sql) run it, on every deploy, so a converge body must be safe to run again.
+             * @default []
+             */
+            environments?: components["schemas"]["tagLabel"][];
+            /**
+             * @description How the statements are applied: converge runs them wherever the scripts run the object, again when it changes; once runs them one time per database and records the object in the migration ledger (PostgreSQL only).
+             * @default converge
+             * @enum {unknown}
+             */
+            apply?: "converge" | "once";
             /**
              * @description Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.
              * @default []
@@ -7497,10 +8087,19 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7691,6 +8290,8 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            /** @description The owning package. Membership only: the database still decides where the object goes. */
+            package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             entity?: components["schemas"]["id"];
             relation?: components["schemas"]["id"];
@@ -7698,8 +8299,15 @@ export interface components {
             /** @description For an entity mapping: the id of the database schema the entity's conventional table goes to; it wins over the database's convention package entry and its default schema. */
             schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7762,8 +8370,15 @@ export interface components {
              */
             membership?: "explicit" | "package";
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7809,8 +8424,15 @@ export interface components {
             displayName?: string;
             pluralName?: string;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7844,8 +8466,15 @@ export interface components {
             displayName?: string;
             pluralName?: string;
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7859,6 +8488,11 @@ export interface components {
                 parent?: components["schemas"]["id"];
                 order?: number;
                 description?: components["schemas"]["description"];
+                /** @description Markdown text: why the element is shaped this way. */
+                rationale?: string;
+                /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+                decision?: string;
+                status?: components["schemas"]["status"];
                 /** @default [] */
                 stereotypes?: components["schemas"]["keyList"];
                 /** @default [] */
@@ -7878,7 +8512,7 @@ export interface components {
         };
         /**
          * Stereotype
-         * @description A typed marker that adds virtual attributes and default property values.
+         * @description A typed marker that adds virtual attributes, default property values and, for tables, inherited columns, keys, indexes and checks.
          */
         stereotype: {
             $schema?: components["schemas"]["schemaPath"];
@@ -7891,20 +8525,117 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @default [] */
             appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event")[];
+            /** @description A label, not a link: an element carries at most one stereotype of a group, its own and implied ones together (MQ2013). */
+            group?: components["schemas"]["key"];
+            /**
+             * @description Stereotype keys an element that carries this one must also carry (MQ2014).
+             * @default []
+             */
+            requires?: components["schemas"]["keyList"];
+            /**
+             * @description Stereotype keys an element that carries this one must not carry (MQ2015).
+             * @default []
+             */
+            conflicts?: components["schemas"]["keyList"];
+            /**
+             * @description Stereotype keys applied with this one, one level deep: an element that carries it carries them too, before its own stereotypes (MQ2017 refuses a stereotype that implies one that implies others).
+             * @default []
+             */
+            implies?: components["schemas"]["keyList"];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
-            /** @default {} */
+            /** @description Typed parameters, shaped like an extension file: a JSON Schema per property name (x-ref and x-translatable included) and the names each carrier must have. Values stay in the element's properties; defaults live in defaultProperties (MQ2018, MQ2019). */
+            parameters?: {
+                /** @description A JSON Schema properties object: one schema per parameter name. */
+                properties: Record<string, never>;
+                /**
+                 * @description The parameters each carrier must have, judged on its merged values (the stereotype's defaults count).
+                 * @default []
+                 */
+                required?: string[];
+            };
+            /**
+             * @description Default property values, merged under each carrier's own properties; each is checked against its own schema in parameters, without required (MQ2018).
+             * @default {}
+             */
             defaultProperties?: Record<string, never>;
             /** @description Table storage parameters the stereotype gives every table that carries it (a reusable tuning profile such as high-churn), per dialect; a table's own storage overrides a parameter, and a later stereotype overrides an earlier one. */
             storage?: components["schemas"]["storage"];
+            /**
+             * @description Columns every table that carries the stereotype inherits (its members, with the keys, indexes and checks below), keyed <table key>.<member id> in each table. A synthesized table that already stores the stereotype's attributes as columns inherits no member. A contributed column takes no attribute or sequence (MQ2024).
+             * @default []
+             */
+            columns?: components["schemas"]["tableColumn"][];
+            /** @description A primary key every carrier inherits, over the stereotype's own columns; no name, since every carrier would share it (MQ2024). A table with another primary key reports MQ4076. */
+            primaryKey?: components["schemas"]["primaryKey"];
+            /**
+             * @description Unique constraints every carrier inherits, over the stereotype's own columns (MQ2025), without a name (MQ2024).
+             * @default []
+             */
+            uniques?: components["schemas"]["uniqueConstraint"][];
+            /**
+             * @description Foreign keys every carrier inherits, from the stereotype's own columns. The target is one fixed table (referencesTable) or the table each carrier names in a parameter (referencesParameter: a required string parameter typed x-ref kind table with sameDatabase), never both (MQ2026).
+             * @default []
+             */
+            foreignKeys?: {
+                id: components["schemas"]["id"];
+                /** @description Ids of the stereotype's columns, in key order. */
+                columns: string[];
+                /** @description The id of the one table every carrier references. */
+                referencesTable?: string;
+                /** @description The name of the stereotype parameter in which each carrier names the table it references (a table of its own database). */
+                referencesParameter?: string;
+                /**
+                 * @description With referencesTable: the referenced column ids; empty means the referenced primary key. Not with referencesParameter (MQ2026).
+                 * @default []
+                 */
+                referencesColumns?: string[];
+                /** @default false */
+                period?: boolean;
+                /**
+                 * @default no-action
+                 * @enum {unknown}
+                 */
+                onDelete?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
+                /** @default [] */
+                onDeleteColumns?: string[];
+                /**
+                 * @default no-action
+                 * @enum {unknown}
+                 */
+                onUpdate?: "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
+                /**
+                 * @default not-deferrable
+                 * @enum {unknown}
+                 */
+                deferrable?: "not-deferrable" | "initially-immediate" | "initially-deferred";
+            }[];
+            /**
+             * @description Check constraints every carrier inherits, without a name (MQ2024). Their SQL names the stereotype's columns by their physical names, which a table cannot redefine.
+             * @default []
+             */
+            checks?: components["schemas"]["checkConstraint"][];
+            /**
+             * @description Indexes every carrier inherits, over the stereotype's own columns (MQ2025), without a name (MQ2024).
+             * @default []
+             */
+            indexes?: components["schemas"]["tableIndex"][];
             icon?: string;
             color?: string;
             /** @default {} */
@@ -7926,9 +8657,17 @@ export interface components {
             name: components["schemas"]["identifier"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -7967,6 +8706,48 @@ export interface components {
             storage?: {
                 [key: string]: components["schemas"]["storageChoice"];
             };
+            /**
+             * @description The table files that hold the rows, at most one per database (optional). A binding wins over the storage choice in its database.
+             * @default []
+             */
+            bindings?: {
+                id: components["schemas"]["id"];
+                /** @description The id of the database. */
+                database: components["schemas"]["id"];
+                /** @description The id of a table file of the database. */
+                table: components["schemas"]["id"];
+                /**
+                 * @description Columns with a fixed value on every row of the type.
+                 * @default []
+                 */
+                constants?: {
+                    /** @description A column of the table: its id or physical name. */
+                    column: string;
+                    /** @description The value; absent or null is SQL NULL. */
+                    value?: string | number | boolean | null;
+                }[];
+                /**
+                 * @description The field map: code, label, description or a user field's id, and the table column it fills.
+                 * @default []
+                 */
+                fields?: {
+                    /** @description code, label, description, or the id of a user field of the type. */
+                    attribute: string;
+                    /** @description A column of the table: its id or physical name. */
+                    column: string;
+                }[];
+                description?: components["schemas"]["description"];
+            }[];
+            /**
+             * @description Codes the type's rows used to have, each with the row that holds its value now. A former code is never a live code again; imports, validation, names-to-ids and generated code still understand it. Remove an entry once no database stores the code.
+             * @default []
+             */
+            formerCodes?: {
+                /** @description The former code, as the code's canonical text: a string code as written, an integer code in decimal digits, a uuid code in lowercase. */
+                code: string;
+                /** @description The id of the row of this type that holds the code's value now. */
+                replacedBy: components["schemas"]["id"];
+            }[];
             /** @default {} */
             properties?: components["schemas"]["properties"];
             /** @default {} */
@@ -7986,18 +8767,26 @@ export interface components {
             name: components["schemas"]["identifier"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @description The entity, relation or reference type the rows are for; the seed belongs to it. */
             target: components["schemas"]["id"];
-            /** @description Built-in keywords (code, label, description) for a reference type, column ids for a table, else attribute or relation-end ids. */
-            columns: (components["schemas"]["id"] | ("code" | "label" | "description"))[];
-            /** @description A table seed's row key: the id of the unique constraint whose columns find a row again on the next run; absent, the primary key. */
-            key?: components["schemas"]["id"];
+            /** @description Built-in keywords (code, label, description) for a reference type; column ids and foreign-key ids for a table (an inherited column or foreign key by its keyed id, <tableId>.<memberId>); else attribute or relation-end ids. A foreign-key entry stands for the key's own columns, which are then not listed: its cell names the referenced row by that table's row key, a value for a one-column key and an array in key order for a composite key. */
+            columns: (components["schemas"]["id"] | ("code" | "label" | "description") | string)[];
+            /** @description A table seed's row key: the id of the unique constraint whose columns find a row again on the next run (an inherited one by its keyed id, <tableId>.<memberId>); absent, the primary key. */
+            key?: components["schemas"]["id"] | string;
             /**
              * @description The environments the rows belong to (free names such as dev, test, staging); empty means every environment.
              * @default []
@@ -8014,9 +8803,12 @@ export interface components {
              * @default false
              */
             delete?: boolean;
-            /** @description A CSV file beside the seed file that holds the rows instead of rows: a header of @id and the column ids, one row per line. */
+            /** @description Where the rows come from instead of rows: a CSV file beside the seed file (file: a header of @id and the column ids, one row per line), or a rows script under extensions/ (script: seeds/<name>.js, which calls maquettiste.rows(fn) once and computes the rows from the model when something reads them). */
             rowsFrom?: {
                 file: string;
+            } | {
+                /** @description The rows script, a path under extensions/: seeds/<name>.js. */
+                script: string;
             };
             /** @default [] */
             rows?: {
@@ -8271,8 +9063,15 @@ export interface components {
             /** @description An enum-typed attribute of the subject that holds the state (lifecycle only). */
             boundAttribute?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -8531,11 +9330,19 @@ export interface components {
             name: components["schemas"]["identifier"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             /** @enum {unknown} */
             type: "person" | "role" | "external-system";
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -8614,11 +9421,19 @@ export interface components {
             name: components["schemas"]["identifier"];
             displayName?: string;
             pluralName?: string;
+            package?: components["schemas"]["id"];
             /** @description The process; the scenario belongs to it. */
             process: components["schemas"]["id"];
             description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
@@ -8709,54 +9524,386 @@ export interface components {
                 };
             };
         };
+        /** @enum {unknown} */
+        objectKind: "table" | "column" | "view" | "sequence" | "index" | "unique" | "foreign-key" | "check" | "routine" | "database-type" | "sql-object" | "schema";
+        /** @description A historical physical key, as the schema diff matches objects: plain text that is not walked, never a name (it does not start with @ or $). */
+        factKey: string;
+        /** @description An object by physical key and by its physical names at the time. */
+        migrationObject: {
+            kind: components["schemas"]["objectKind"];
+            /** @description The key of the table a member (a column, index or constraint) belongs to. */
+            table?: components["schemas"]["factKey"];
+            /** @description The object's physical key. */
+            key: components["schemas"]["factKey"];
+            /** @description The database schema name at the time. */
+            schema?: string;
+            /** @description A member's table name at the time. */
+            tableName?: string;
+            /** @description The object's name at the time. */
+            name?: string;
+            /**
+             * @description The names the object had before: a baseline's objects, and a drop that migration fold joined with the renames before it.
+             * @default []
+             */
+            formerNames?: string[];
+        };
+        /** @description A template-defined collection of a value map: the codes it holds, by its owner table and attribute. */
+        "$defs-collection": {
+            /** @description The owner table's key at the time. */
+            table: components["schemas"]["factKey"];
+            /** @description The owner table's database schema name at the time. */
+            schema?: string;
+            /** @description The owner table's name at the time. */
+            tableName?: string;
+            /** @description The id of the collection attribute: a historical id, not a reference. */
+            attribute: components["schemas"]["id"];
+            /** @description The attribute's name at the time. */
+            name?: string;
+        };
+        /** @description A side of a fact: names, or a column's type facets and, for a reference column, how its codes are stored. A value map's sides carry its reference type's name and plural name. */
+        migrationState: {
+            name?: string;
+            /** @description A value map's reference type's plural name, so a pack finds the objects it named after the type. */
+            pluralName?: string;
+            schema?: string;
+            /** @description The built-in type keyword. */
+            type?: string;
+            length?: number;
+            precision?: number;
+            scale?: number;
+            /** @description The effective native type. */
+            nativeType?: string;
+            /** @description A reference column's effective storage strategy. */
+            strategy?: string;
+            /** @description The key of the table a reference column's reference type is bound to, at the time. */
+            referenceTable?: components["schemas"]["factKey"];
+            nullable?: boolean;
+        };
+        /** @description One key a rekey moved. */
+        rekey: {
+            kind: components["schemas"]["objectKind"];
+            /** @description A column, index, unique, foreign-key or check entry's table key before the fact. An index, unique, foreign-key or check entry moves the constraint's id (a fold into a stereotype); capture keys follow columns. */
+            table?: components["schemas"]["factKey"];
+            from: components["schemas"]["factKey"];
+            to: components["schemas"]["factKey"];
+            /** @description The object's name at the time. */
+            name?: string;
+        };
+        /** @description A stored value and its replacement. */
+        value: {
+            from: string;
+            to: string;
+        };
+        /**
+         * Migration fact
+         * @description One change of a database's physical shape that its data must follow, with the intent a migration needs to apply it (model/databases/<db>/migrations/open/). A recorded fact has no name, so its file is <lowercase id>.json. Object keys are historical physical keys, not references; a later rekey fact moves them forward. The fact belongs to its database.
+         */
+        migration: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "migration";
+            id: components["schemas"]["id"];
+            /**
+             * @description An optional label; a recorded fact has none.
+             * @default
+             */
+            name?: components["schemas"]["label"];
+            displayName?: string;
+            pluralName?: string;
+            /** @description The database whose shape the fact changes; the fact belongs to it. */
+            database: components["schemas"]["id"];
+            /**
+             * @description What the fact records.
+             * @enum {unknown}
+             */
+            fact: "rename" | "rekey" | "change-type" | "drop" | "adopt" | "baseline" | "backfill" | "raw" | "value-map" | "state-map";
+            /**
+             * @description Ids of the facts this one follows, set by the write path: an ordering hint, not a reference. A link to a fact that no longer exists is a warning (MQ4111).
+             * @default []
+             */
+            after?: components["schemas"]["idList"];
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @description The object of a rename, change-type, drop or backfill. */
+            object?: components["schemas"]["migrationObject"];
+            /**
+             * @description The objects of an adopt, baseline, value-map or state-map; context for raw. A value map's objects are the columns that hold the codes.
+             * @default []
+             */
+            objects?: components["schemas"]["migrationObject"][];
+            /**
+             * @description A value map's template-defined collections that hold the codes: each by its owner table's key and attribute, both historical.
+             * @default []
+             */
+            collections?: components["schemas"]["$defs-collection"][];
+            /** @description The state before: a rename's name and schema, a change-type's type facets. */
+            from?: components["schemas"]["migrationState"];
+            /** @description The state after. */
+            to?: components["schemas"]["migrationState"];
+            /**
+             * @description The intermediate names of a folded rename, oldest first.
+             * @default []
+             */
+            via?: string[];
+            /**
+             * @description Every key a rekey moved; a column, index, unique, foreign-key or check entry's table is its table's key before the fact.
+             * @default []
+             */
+            keys?: components["schemas"]["rekey"][];
+            /** @description How a change-type converts stored values: a cast, or an expression per dialect where {table} and {column} expand to quoted names. */
+            conversion?: {
+                /**
+                 * @description A plain cast converts the values.
+                 * @default false
+                 */
+                cast?: boolean;
+                /**
+                 * @description The conversion per dialect.
+                 * @default {}
+                 */
+                expression?: components["schemas"]["dialectMap"];
+            };
+            /** @description The rows the step must not find (a query per dialect; a row stops the step), or why no check is needed. */
+            dataCheck?: {
+                /**
+                 * @description The query per dialect; {table} and {column} expand to quoted names.
+                 * @default {}
+                 */
+                query?: components["schemas"]["dialectMap"];
+                /** @description Why no check is needed. */
+                accept?: string;
+            };
+            /** @description A drop's reason why the data may go. */
+            acknowledge?: string;
+            /**
+             * @description A backfill's value per dialect.
+             * @default {}
+             */
+            value?: components["schemas"]["dialectMap"];
+            /**
+             * @description A backfill's rows per dialect; without one, the rows where {column} IS NULL.
+             * @default {}
+             */
+            where?: components["schemas"]["dialectMap"];
+            /**
+             * @description A raw fact's statements per dialect.
+             * @default {}
+             */
+            sql?: components["schemas"]["dialectMap"];
+            /**
+             * @description A raw fact's guard per dialect: a query whose row means the end state already holds.
+             * @default {}
+             */
+            skipWhen?: components["schemas"]["dialectMap"];
+            /**
+             * @description Whether a raw fact runs before or after the schema statements.
+             * @default after
+             * @enum {unknown}
+             */
+            phase?: "before" | "after";
+            /** @description An adopt's environment. */
+            environment?: components["schemas"]["tagLabel"];
+            /** @description A value-map's reference type, the one that holds the codes after the fact: a historical id, not a reference. */
+            referenceType?: components["schemas"]["id"];
+            /** @description A value-map of a merge: the reference type merged away, whose codes the fact maps: a historical id, not a reference. */
+            fromReferenceType?: components["schemas"]["id"];
+            /** @description A state-map's process: a historical id, not a reference. */
+            process?: components["schemas"]["id"];
+            /**
+             * @description Stored codes (or state codes) and their replacements.
+             * @default []
+             */
+            values?: components["schemas"]["value"][];
+            /**
+             * @description The fact waits: migrators skip it until it is released.
+             * @default false
+             */
+            held?: boolean;
+            /**
+             * @description A held fact may now run.
+             * @default false
+             */
+            released?: boolean;
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+            $defs: {
+                /** @description A historical physical key, as the schema diff matches objects: plain text that is not walked, never a name (it does not start with @ or $). */
+                factKey: string;
+                /** @enum {unknown} */
+                objectKind: "table" | "column" | "view" | "sequence" | "index" | "unique" | "foreign-key" | "check" | "routine" | "database-type" | "sql-object" | "schema";
+                /** @description An object by physical key and by its physical names at the time. */
+                migrationObject: {
+                    kind: components["schemas"]["objectKind"];
+                    /** @description The key of the table a member (a column, index or constraint) belongs to. */
+                    table?: components["schemas"]["factKey"];
+                    /** @description The object's physical key. */
+                    key: components["schemas"]["factKey"];
+                    /** @description The database schema name at the time. */
+                    schema?: string;
+                    /** @description A member's table name at the time. */
+                    tableName?: string;
+                    /** @description The object's name at the time. */
+                    name?: string;
+                    /**
+                     * @description The names the object had before: a baseline's objects, and a drop that migration fold joined with the renames before it.
+                     * @default []
+                     */
+                    formerNames?: string[];
+                };
+                /** @description A side of a fact: names, or a column's type facets and, for a reference column, how its codes are stored. A value map's sides carry its reference type's name and plural name. */
+                migrationState: {
+                    name?: string;
+                    /** @description A value map's reference type's plural name, so a pack finds the objects it named after the type. */
+                    pluralName?: string;
+                    schema?: string;
+                    /** @description The built-in type keyword. */
+                    type?: string;
+                    length?: number;
+                    precision?: number;
+                    scale?: number;
+                    /** @description The effective native type. */
+                    nativeType?: string;
+                    /** @description A reference column's effective storage strategy. */
+                    strategy?: string;
+                    /** @description The key of the table a reference column's reference type is bound to, at the time. */
+                    referenceTable?: components["schemas"]["factKey"];
+                    nullable?: boolean;
+                };
+                /** @description A template-defined collection of a value map: the codes it holds, by its owner table and attribute. */
+                collection: {
+                    /** @description The owner table's key at the time. */
+                    table: components["schemas"]["factKey"];
+                    /** @description The owner table's database schema name at the time. */
+                    schema?: string;
+                    /** @description The owner table's name at the time. */
+                    tableName?: string;
+                    /** @description The id of the collection attribute: a historical id, not a reference. */
+                    attribute: components["schemas"]["id"];
+                    /** @description The attribute's name at the time. */
+                    name?: string;
+                };
+                /** @description One key a rekey moved. */
+                rekey: {
+                    kind: components["schemas"]["objectKind"];
+                    /** @description A column, index, unique, foreign-key or check entry's table key before the fact. An index, unique, foreign-key or check entry moves the constraint's id (a fold into a stereotype); capture keys follow columns. */
+                    table?: components["schemas"]["factKey"];
+                    from: components["schemas"]["factKey"];
+                    to: components["schemas"]["factKey"];
+                    /** @description The object's name at the time. */
+                    name?: string;
+                };
+                /** @description A stored value and its replacement. */
+                value: {
+                    from: string;
+                    to: string;
+                };
+            };
+        } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown);
+        /** @description A name a batch declares with as and uses anywhere in the batch. */
+        placeholder: string;
+        /** @description An element or sub-element by kind and stored name: @kind:path, its segments separated by dots, a segment with a dot, quote or white space written in double quotes. */
+        qualifiedName: string;
+        /** @description An id, a qualified name or a placeholder. */
+        idOrName: components["schemas"]["id"] | components["schemas"]["placeholder"] | components["schemas"]["qualifiedName"];
         /**
          * Model batch
-         * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations and process operations, from the editor, a refactoring or an AI proposal.
+         * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the fold into a stereotype and the reference-type refactors, from the editor, a refactoring or an AI proposal.
          */
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag";
-                id?: components["schemas"]["id"];
+                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "retag" | "tags-to-property" | "names-to-ids" | "fold-into-stereotype" | "map-by-name" | "resync-binding" | "rename-code" | "retire-code" | "merge-reference-types" | "rename-reference-type";
+                /** @description The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder. For fold-into-stereotype, the stereotype whose members the tables adopt; for rename-code, retire-code and rename-reference-type, the reference type; for merge-reference-types, the reference type merged away. */
+                id?: components["schemas"]["idOrName"];
+                /** @description Create and update: a placeholder that names the operation's element for the whole batch. */
+                as?: components["schemas"]["placeholder"];
                 expectedHash?: string;
                 /**
                  * @description What a delete does with references to the element: refuse (the default) while anything references it, remove-references to clear optional references, or delete-dependents to also remove or delete what cannot exist without it (delete only).
                  * @enum {unknown}
                  */
                 resolution?: "refuse" | "remove-references" | "delete-dependents";
+                /** @description The element document. Its references may be qualified names or placeholders, and an object whose schema requires an id may carry as; the engine mints every missing id below the root. */
                 element?: Record<string, never>;
                 locale?: components["schemas"]["locale"];
                 /** @enum {unknown} */
                 field?: "displayName" | "pluralName" | "label" | "description";
                 /** @description The translated text, a sidecar reference, or null to remove the translation. */
                 value?: components["schemas"]["description"] | null;
-                /** @description The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns). */
-                database?: components["schemas"]["id"];
-                /** @description The entities that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns). */
-                entities?: components["schemas"]["idList"];
-                /** @description The designed or imported tables and the views that get an entity and a binding (materialize-entities). */
-                tables?: components["schemas"]["idList"];
-                /** @description The package the new entities go to (materialize-entities); the domain whose tag vocabulary it is (retag; absent for the global one). */
-                package?: components["schemas"]["id"];
-                /** @description The columns of the source, as keys or physical names, that get an attribute mapped to them (materialize-attributes, one entity only); absent means every column nothing in the binding names. */
+                /** @description The database: an id, a qualified name or a placeholder (materialize-tables, materialize-entities, materialize-attributes, materialize-columns, map-by-name, resync-binding). */
+                database?: components["schemas"]["idOrName"];
+                /** @description The entities, each an id, a qualified name or a placeholder, that get a designed table and a binding (materialize-tables), or that get an attribute per column of the source of their binding to the database (materialize-attributes), or a column of their table per attribute their binding leaves unmapped (materialize-columns), or whose binding to the database is mapped by name (map-by-name) or brought into step with its table (resync-binding). */
+                entities?: components["schemas"]["idOrName"][];
+                /** @description The designed or imported tables and the views, each an id, a qualified name or a placeholder, that get an entity and a binding (materialize-entities); the designed or imported tables whose own members the stereotype's replace (fold-into-stereotype). */
+                tables?: components["schemas"]["idOrName"][];
+                /** @description The package the new entities go to (materialize-entities); the domain whose tag vocabulary it is (retag, tags-to-property; absent for the global one). An id, a qualified name or a placeholder. */
+                package?: components["schemas"]["idOrName"];
+                /** @description The columns of the source, as keys or physical names, that get an attribute mapped to them (materialize-attributes, one entity only; absent means every column nothing in the binding names), or that a re-sync brings into step, updating only their provenance entries (resync-binding, one entity only; absent means every column of the source). */
                 columns?: string[];
-                /** @description The binding field references (attribute ids, attributeId.memberId for a value object member, to-one end ids) that get a column of the entity's table mapped to them (materialize-columns, one entity only); absent means every attribute the binding leaves unmapped. */
+                /** @description The binding field references (attribute ids, attributeId.memberId for a value object member, to-one end ids) that get a column of the entity's table mapped to them (materialize-columns, one entity only); absent means every attribute the binding leaves unmapped. An item that starts with @ or $ names one attribute or end; the composite attributeId.memberId stays ids. */
                 attributes?: string[];
+                /** @description The elements names-to-ids and tags-to-property act on, each an id, a qualified name or a placeholder; absent means every element they apply to (names-to-ids: every document with x-ref sites; tags-to-property: every holder the vocabulary governs, and the moved tags' declarations leave the vocabulary). */
+                elementIds?: components["schemas"]["idOrName"][];
                 /** @description The tag keys to remove, or the one to rename (retag). */
                 tags?: components["schemas"]["tagList"];
-                /** @description Materialize and retag: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. */
+                /** @description The prefix of the tags that move into the property name (tags-to-property): each tag that starts with it and leaves a non-empty suffix. */
+                prefix?: string;
+                /** @description Materialize, map-by-name, resync-binding, retag, tags-to-property, names-to-ids, fold-into-stereotype and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. A key may be a qualified name, never a placeholder. */
                 expectedHashes?: {
                     [key: string]: string;
                 };
-                /** @description The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own). */
-                schema?: components["schemas"]["id"];
-                /** @description The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags). */
+                /** @description The database schema: an id, a qualified name or a placeholder (rename-schema, remove-schema, set-default-schema; optional for add-schema; for materialize-tables, the schema the tables go to, else each projected table's own; for fold-into-stereotype, the schema whose designed and imported tables are folded: those that state it, or state none when it is the default). */
+                schema?: components["schemas"]["idOrName"];
+                /** @description The schema name (add-schema, rename-schema); the new key of the one tag (retag; absent removes the tags); the custom property the tags move to (tags-to-property); the reference type's new name (rename-reference-type). */
                 name?: string;
-                /** @description The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial). */
-                target?: components["schemas"]["id"];
-                /** @description The schema id that becomes the default when the removed schema is the default (remove-schema). */
-                default?: components["schemas"]["id"];
-            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
+                /** @description The code a refactor acts on, as the code's canonical text (an integer in decimal digits, a uuid in lowercase): the code to rename (rename-code) or to retire (retire-code). */
+                code?: string;
+                /** @description The code's new text (rename-code), or the live code whose row takes over the retired code's uses (retire-code). */
+                to?: string;
+                /** @description merge-reference-types: codes of the merged-away type mapped to live codes of the target, for codes the target does not hold itself; every other code moves into the target as a row. */
+                codes?: {
+                    [key: string]: string;
+                };
+                /** @description The schema that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial); the reference type merged into (merge-reference-types). An id, a qualified name or a placeholder. */
+                target?: components["schemas"]["idOrName"];
+                /** @description The schema that becomes the default when the removed schema is the default (remove-schema): an id, a qualified name or a placeholder. */
+                default?: components["schemas"]["idOrName"];
+                /**
+                 * @description fold-into-stereotype: where an own member differs from the stereotype's in a facet a redefinition may state, write a redefines entry with the table's value instead of refusing the table.
+                 * @default false
+                 */
+                redefine?: boolean;
+                /**
+                 * @description fold-into-stereotype: exclude each member of the stereotype a table lacks instead of refusing the table, so the fold adds nothing to the database.
+                 * @default false
+                 */
+                excludeMissing?: boolean;
+                /**
+                 * @description resync-binding: keep every attribute's name, even one that followed its column's name; the provenance entry still takes the column's new name.
+                 * @default false
+                 */
+                keepNames?: boolean;
+            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
+            $defs: {
+                /** @description A name a batch declares with as and uses anywhere in the batch. */
+                placeholder: string;
+                /** @description An element or sub-element by kind and stored name: @kind:path, its segments separated by dots, a segment with a dot, quote or white space written in double quotes. */
+                qualifiedName: string;
+                /** @description An id, a qualified name or a placeholder. */
+                idOrName: components["schemas"]["id"] | components["schemas"]["placeholder"] | components["schemas"]["qualifiedName"];
+            };
         };
         /**
          * Template pack
@@ -8770,7 +9917,7 @@ export interface components {
             description?: string;
             /** @default {} */
             parameters?: Record<string, never>;
-            /** @description The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters. */
+            /** @description The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters. On a string, or an array's items, x-ref types the value as the id of an element or sub-element (MQ2009). */
             parameterSchema?: {
                 properties?: {
                     [key: string]: Record<string, never>;
@@ -8781,9 +9928,10 @@ export interface components {
             scripts?: string[];
             /** @default false */
             usesSchemaDiff?: boolean;
-            units: {
+            units: ({
                 id: string;
-                template: string;
+                /** @description The pack-relative template path. Required unless mode is copy; a copy unit takes none. */
+                template?: string;
                 for: string;
                 /** Unit filters */
                 where?: {
@@ -8807,16 +9955,30 @@ export interface components {
                 };
                 output?: string;
                 /**
-                 * @description overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs.
+                 * @description overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' (each followed by blockCommentEnd when set) are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs. copy: the pack files that sources match are copied as they are, with tokens replaced, into the folder output names (the pack's output base when absent); a copy unit takes no template. Copied files are managed like overwrite files.
                  * @default overwrite
                  * @enum {unknown}
                  */
-                mode?: "overwrite" | "once" | "regions" | "pair" | "block";
+                mode?: "overwrite" | "once" | "regions" | "pair" | "block" | "copy";
+                /**
+                 * @description Mode copy, required there: pack-relative glob patterns of the files to copy. * and ? match within one path segment, ** across segments; matching is case-sensitive and skips dot files and folders. A pattern that matches no pack file is MQ6030. Each file lands at the output folder plus its path after the pattern's literal base. Matched files are copied, never run or parsed: a matched *.js is not a pack script unless scripts names it, and a matched types/*.json is not a type map.
+                 * @default []
+                 */
+                sources?: string[];
+                /**
+                 * @description Mode copy: literal text replaced in copied text files and their output paths, mapped to the name of a pack parameter whose value is a string (MQ6031). Files that are not UTF-8 text are copied byte for byte.
+                 * @default {}
+                 */
+                tokens?: {
+                    [key: string]: string;
+                };
                 /**
                  * @description Mode block: the comment marker that starts the block's delimiter lines, for example // or ;.
                  * @default #
                  */
                 blockComment?: string;
+                /** @description Mode block: the text that closes each delimiter line, for example --> after <!-- in XML or HTML. A closed delimiter line is recognized whatever closing text it has, and other closing text is rewritten. */
+                blockCommentEnd?: string;
                 /**
                  * @description Mode block: create the target file (holding just the block) when it does not exist. When false and the file is missing, the unit writes nothing and is listed as skipped (target-missing). A file the engine created is deleted when its block is removed and nothing but whitespace is left; any other file is kept.
                  * @default false
@@ -8833,7 +9995,7 @@ export interface components {
                 };
                 /** @default [] */
                 transforms?: components["schemas"]["identifier"][];
-            }[];
+            } & (unknown & unknown))[];
         };
     };
     responses: {
@@ -9583,7 +10745,7 @@ export interface operations {
                  */
                 snapshot?: components["parameters"]["SnapshotQuery"];
                 /** @description What to read. */
-                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries";
+                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries" | "migrations";
                 /** @description A database id; only what is mapped to it. */
                 database?: components["schemas"]["Ulid"];
                 /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
@@ -10102,6 +11264,8 @@ export interface operations {
                  *     `snapshot-unsupported`, and any write with 409 `snapshot-read-only`.
                  */
                 snapshot?: components["parameters"]["SnapshotQuery"];
+                /** @description A model snapshot id to compare the whole model with (`ModelStore.ValidateAgainstAsync`): a change since the snapshot that a migration must follow (a rename or moved key, a type change that is not a widening, a dropped table, column or sequence, a column made not null) and that no migration fact the snapshot lacks explains is MQ4102; a fact whose combined effect the model no longer shows is MQ4103; snapshot objects whose owners have errors are skipped with MQ4109. This host compares with snapshots only: a folder, an id that names no snapshot, or a body with `elementIds` is 400 `bad-request`. */
+                against?: string;
             };
             header?: never;
             path?: never;
@@ -10780,6 +11944,15 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            /** @description The seed's rows script (`rowsFrom.script`) fails, so there are no rows to export; the report holds its MQ7127. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationReport"];
+                };
+            };
         };
     };
     importSeedCsv: {
@@ -10927,7 +12100,8 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "usages": []
+                     *       "usages": [],
+                     *       "columns": []
                      *     }
                      */
                     "application/json": components["schemas"]["ReferenceTypeUsage"];

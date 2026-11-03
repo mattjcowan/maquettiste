@@ -158,7 +158,7 @@ public sealed class ModelStoreTests
         Assert.Equal(".maquettiste/model/entities/line-item.json", renamed.Current!.Path);
         Assert.False(s.Harness.Exists("model/entities/invoice-line.json"));
         Assert.True(s.Harness.Exists("model/entities/line-item.json"));
-        Assert.Equal(".maquettiste/model/entities/line-item.json", Assert.Single(renamed.Changes!.Changed).Path);
+        Assert.Equal(".maquettiste/model/entities/line-item.json", Assert.Single(renamed.Changes!.Changed, c => c.Kind == "entity").Path);
 
         var payment = s.Doc("entity", "Payment");
         var collided = await s.Store.SaveAsync(payment.Element.Id, BillingStore.Edit(payment, n => n["name"] = "Product"), payment.Hash, ChangeSource.Editor, Ct);
@@ -212,6 +212,106 @@ public sealed class ModelStoreTests
         Assert.Equal("MQ3020", Assert.Single(key.Diagnostics).Rule);
         Assert.Equal(before, s.Files());
         Assert.Empty(s.Notifications);
+    }
+
+    [Fact]
+    public async Task A_save_that_puts_an_implied_stereotype_in_a_taken_group_is_refused_on_its_carriers()
+    {
+        await using var s = await BillingStore.OpenAsync();
+        // The real validator, with its scope: the carriers are not referrers of the saved stereotype, only its conflict peers.
+        var validator = Validation.ValidationFixture.Validator();
+        s.Harness.Validator.Rule = (model, scope) => validator.ValidateAsync(model, scope, null, Ct).GetAwaiter().GetResult().Diagnostics;
+        async Task<SaveResult> SaveAsync(string kind, string name, Action<JsonObject> edit)
+        {
+            var document = s.Doc(kind, name);
+            return await s.Store.SaveAsync(document.Element.Id, BillingStore.Edit(document, edit), document.Hash, ChangeSource.Editor, Ct);
+        }
+
+        // Customer and Invoice carry aggregate-root and audited, and soft-delete only through aggregate-root once it implies it.
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync("entity", "Invoice", n => n["stereotypes"] = new JsonArray("aggregate-root", "audited"))).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync("stereotype", "Audited", n => n["group"] = "lifecycle")).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync("stereotype", "Aggregate root", n => n["implies"] = new JsonArray("soft-delete"))).Outcome);
+        var before = s.Files();
+
+        // Neither carrier references soft-delete, yet the group it joins is judged on them.
+        var refused = await SaveAsync("stereotype", "Soft delete", n => n["group"] = "lifecycle");
+
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        Assert.Equal(
+            [(s.Id("entity", "Customer"), "/stereotypes/1"), (s.Id("entity", "Invoice"), "/stereotypes/1")],
+            refused.Diagnostics.Where(d => d.Rule == "MQ2013").Select(d => (d.ElementId!, d.JsonPointer!)).Order());
+        Assert.Contains("'soft-delete' (implied by 'aggregate-root')", refused.Diagnostics.First(d => d.Rule == "MQ2013").Message, StringComparison.Ordinal);
+        Assert.Equal(before, s.Files());
+    }
+
+    [Fact]
+    public async Task A_save_that_drops_a_dependsOn_entry_is_refused_with_MQ2020_on_a_grandchilds_element()
+    {
+        await using var s = await BillingStore.OpenAsync();
+        // The real validator, with its scope: the grandchild package's members do not reference Billing, they are its layer peers.
+        var validator = Validation.ValidationFixture.Validator();
+        s.Harness.Validator.Rule = (model, scope) => validator.ValidateAsync(model, scope, null, Ct).GetAwaiter().GetResult().Diagnostics;
+        Task<SaveResult> CreateAsync(string json) => s.Store.CreateAsync(Encoding.UTF8.GetBytes(json), ChangeSource.Editor, Ct);
+        Task<SaveResult> SaveAsync(string id, Action<JsonObject> edit)
+        {
+            var document = s.Model.GetDocument(id)!;
+            return s.Store.SaveAsync(id, BillingStore.Edit(document, edit), document.Hash, ChangeSource.Editor, Ct);
+        }
+
+        const string Shared = "01K9PKG0000000000000000001", Percent = "01K9PKG0000000000000000002", Pricing = "01K9PKG0000000000000000003";
+        const string PriceList = "01K9PKG0000000000000000004", PriceListId = "01K9PKG0000000000000000005", Discount = "01K9PKG0000000000000000006";
+        var billing = s.Id("package", "Billing");
+        var catalog = s.Id("package", "Catalog");
+        Assert.Equal(SaveOutcome.Saved, (await CreateAsync($$"""{"kind":"package","id":"{{Shared}}","name":"Shared"}""")).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await CreateAsync($$"""{"kind":"scalar-type","id":"{{Percent}}","name":"Percent","package":"{{Shared}}","base":"decimal"}""")).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await CreateAsync($$"""{"kind":"package","id":"{{Pricing}}","name":"Pricing","parent":"{{catalog}}"}""")).Outcome);
+        // Catalog reaches its parent through its own dependsOn; Billing lends Shared to its whole subtree, Pricing included.
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync(catalog, n => n["dependsOn"] = new JsonArray(billing))).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync(billing, n => n["dependsOn"] = new JsonArray(Shared))).Outcome);
+        var created = await CreateAsync($$$"""
+            {"kind":"entity","id":"{{{PriceList}}}","name":"PriceList","package":"{{{Pricing}}}","key":{"attributes":["{{{PriceListId}}}"],"strategy":"uuid-v7"},
+             "attributes":[{"id":"{{{PriceListId}}}","name":"id","type":"uuid","required":true},{"id":"{{{Discount}}}","name":"discount","type":{"ref":"{{{Percent}}}"}}]}
+            """);
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        var before = s.Files();
+
+        var refused = await SaveAsync(billing, n => n["dependsOn"] = new JsonArray());
+
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        var d = Assert.Single(refused.Diagnostics, d => d.Rule == "MQ2020");
+        Assert.Equal((Discount, "/attributes/1/type/ref"), (d.ElementId, d.JsonPointer));
+        Assert.Contains("in package 'Shared', which package 'Billing.Catalog.Pricing' does not depend on", d.Message, StringComparison.Ordinal);
+        Assert.Equal(before, s.Files());
+    }
+
+    [Fact]
+    public async Task A_save_that_adds_a_package_default_judges_its_members()
+    {
+        await using var s = await BillingStore.OpenAsync();
+        // The real validator, with its scope: a child package's members and an overlay whose entity is in Billing do not reference
+        // Billing, they are its conflict peers (next-phase-2-design.md section 3.1, D4).
+        var validator = Validation.ValidationFixture.Validator();
+        s.Harness.Validator.Rule = (model, scope) => validator.ValidateAsync(model, scope, null, Ct).GetAwaiter().GetResult().Diagnostics;
+        const string Owned = "01K9PKG0000000000000000011";
+        var created = await s.Store.CreateAsync(Encoding.UTF8.GetBytes($$$"""
+            {"kind":"stereotype","id":"{{{Owned}}}","key":"owned","name":"Owned","appliesTo":["entity","table"],
+             "parameters":{"properties":{"owner":{"type":"string"}},"required":["owner"]}}
+            """), ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        var billing = s.Doc("package", "Billing");
+        var before = s.Files();
+
+        var refused = await s.Store.SaveAsync(billing.Element.Id, BillingStore.Edit(billing, n => n["defaultStereotypes"] = new JsonArray("owned")),
+            billing.Hash, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        var judged = refused.Diagnostics.Where(d => d.Rule == "MQ2018").Select(d => (d.ElementId!, d.JsonPointer!)).ToList();
+        // Product is in Catalog, a child of Billing; the invoices overlay takes its entity's package; both list stereotypes, so the
+        // finding points at the list, not at an entry.
+        Assert.Contains((s.Id("entity", "Product"), "/stereotypes"), judged);
+        Assert.Contains(("01J92P0V1T0J6RH4MY9H81NYB4", "/stereotypes"), judged);
+        Assert.Contains((s.Id("entity", "Customer"), "/stereotypes"), judged);
+        Assert.Equal(before, s.Files());
     }
 
     [Fact]

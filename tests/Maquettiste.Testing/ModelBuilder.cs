@@ -301,6 +301,7 @@ public sealed class ModelBuilder
             View v => v.Database,
             Sequence s => s.Database,
             Query q => q.Database,
+            Migration m => m.Database,
             _ => null,
         };
         var folder = info.Folder.Replace("{db}", database is not null && databaseFolders.TryGetValue(database, out var db) ? db : "unknown", StringComparison.Ordinal);

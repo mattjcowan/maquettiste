@@ -304,6 +304,27 @@ public sealed class LastRunTests
     }
 
     [Fact]
+    public async Task Generate_against_never_replays_or_writes_the_last_run_record()
+    {
+        await using var repo = E2ERepo.Create();
+        await OneShotAsync(repo);
+        await AssertReplayedAsync(repo);
+        var baseline = (await new SnapshotLibrary(repo.Store).CreateAsync(new SnapshotCreateRequest("Base"), Ct)).Id;
+
+        // A one-shot run against a baseline loads the model (the record's key holds no baseline), forgets the record before it
+        // applies, and writes none.
+        var (against, replayed) = await OneShotAsync(repo, new GenerationRequest { Jobs = 2, Against = baseline });
+        E2ERepo.AssertOutcome(RunOutcome.Succeeded, against);
+        Assert.False(replayed, "a run against a baseline is never answered from the record");
+        Assert.False(File.Exists(RecordPath(repo)), "a run against a baseline forgets the record and writes none");
+
+        // The next plain run is a full one, which records again.
+        await AssertFullAsync(repo);
+        Assert.True(File.Exists(RecordPath(repo)));
+        await AssertReplayedAsync(repo);
+    }
+
+    [Fact]
     public async Task A_long_lived_host_neither_writes_nor_reads_the_record()
     {
         await using var repo = E2ERepo.Create();

@@ -126,6 +126,20 @@ public sealed class ConsoleProgressTests
         Assert.Equal(0, progress.FilesCompared);
     }
 
+    /// <summary>The summary counts a kept file as produced only when the writer reported it this run; each watch run starts empty.</summary>
+    [Fact]
+    public void Compared_paths_are_the_writer_s_and_a_take_starts_empty()
+    {
+        var progress = new ConsoleProgress(ProgressStyle.None, new SharedWriter());
+        progress.Report(new ProgressUpdate(PipelineStage.Render, 1, 1, "db/render-only.sql", "sql-ddl"));
+        progress.Report(new ProgressUpdate(PipelineStage.Write, 1, 1, "db/main/migrations/001.sql", "sql-ddl"));
+        Assert.True(progress.Compared("db/main/migrations/001.sql"));
+        Assert.False(progress.Compared("db/render-only.sql"));
+        var taken = progress.TakeCompared();
+        Assert.True(taken("db/main/migrations/001.sql"));
+        Assert.False(progress.Compared("db/main/migrations/001.sql"));
+    }
+
     [Fact]
     public void Json_style_throttles_but_keeps_first_and_last_updates()
     {

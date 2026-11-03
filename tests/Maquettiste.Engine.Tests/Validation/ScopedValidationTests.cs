@@ -168,4 +168,102 @@ public sealed class ScopedValidationTests
 
         await AssertEveryParticipantSees(b.Build(), "MQ3007", root.Id);
     }
+
+    [Fact]
+    public async Task Removing_a_code_from_a_seed_rejudges_a_typed_column_default()
+    {
+        // A column typed by a reference type defaults to the code I; no reference reaches the seed's row from the default
+        // (next-phase-2-design.md section 3.2), so the seed's save brings the table as a peer.
+        static ModelSnapshot Build(bool withIssued)
+        {
+            var b = new ModelBuilder(seed: 3301);
+            var db = b.Database("main", Dialect.PostgreSql);
+            var state = new ReferenceType
+            {
+                Id = "01K9X3S0000000000000000001", Name = "InvoiceState",
+                Code = new ReferenceCode { Id = "01K9X3S0000000000000000002", Length = 1 },
+                Label = new ReferenceLabel { Id = "01K9X3S0000000000000000003", Length = 40 },
+            };
+            b.Add(state);
+            List<SeedRow> rows = [new SeedRow { Id = "01K9X3S0000000000000000011", Values = [Json("D"), Json("Draft")] }];
+            if (withIssued)
+                rows.Add(new SeedRow { Id = "01K9X3S0000000000000000012", Values = [Json("I"), Json("Issued")] });
+            b.Add(new Seed { Id = "01K9X3S0000000000000000010", Name = "invoiceStates", Target = state.Id, Columns = ["code", "label"], Rows = rows });
+            b.Table("invoice_events", db).Column("id", "uuid", nullable: false).Column("state", "string", nullable: false, length: 1).PrimaryKey("id")
+                .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { TypeRef = new TypeRef { Ref = state.Id }, Default = Json("I") }] });
+            return b.Build();
+        }
+
+        Assert.DoesNotContain((await Validate(Build(withIssued: true))).Diagnostics, d => d.Rule == "MQ7014");
+        var model = Build(withIssued: false);
+        var finding = Assert.Single((await Validate(model)).Diagnostics, d => d.Rule == "MQ7014");
+        Assert.Equal("/columns/1/default", finding.JsonPointer);
+        await AssertEveryParticipantSees(model, "MQ7014", "01K9X3S0000000000000000010", "01K9X3S0000000000000000001");
+    }
+
+    [Fact]
+    public async Task Removing_an_enum_member_rejudges_the_table_seed_cells()
+    {
+        // A table seed's cells hold an enum's stored values; the seed names its table, not the enum, so the enum's save brings it.
+        static (ModelSnapshot Model, string EnumId, string SeedId) Build(bool withVoid)
+        {
+            var b = new ModelBuilder(seed: 3302);
+            var db = b.Database("main", Dialect.PostgreSql);
+            var status = b.Enum("Status").Member("Draft", 0).Member("Issued", 1);
+            if (withVoid)
+                status.Member("Void", 2);
+            var events = b.Table("invoice_events", db).Column("id", "int32", nullable: false).Column("status", "int32", nullable: false).PrimaryKey("id")
+                .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { TypeRef = new TypeRef { Ref = status.Id } }] });
+            var seed = new Seed
+            {
+                Id = "01K9X3S0000000000000000020", Name = "events", Target = events.Id, Columns = [events.ColumnId("id"), events.ColumnId("status")],
+                Rows = [new SeedRow { Id = "01K9X3S0000000000000000021", Values = [Json(1), Json(2)] }],
+            };
+            b.Add(seed);
+            return (b.Build(), status.Id, seed.Id);
+        }
+
+        Assert.DoesNotContain((await Validate(Build(withVoid: true).Model)).Diagnostics, d => d.Rule == "MQ7014");
+        var (model, enumId, seedId) = Build(withVoid: false);
+        var finding = Assert.Single((await Validate(model)).Diagnostics, d => d.Rule == "MQ7014");
+        Assert.Equal(("/rows/0/values/1", model.GetDocument(seedId)!.Path), (finding.JsonPointer, finding.FilePath));
+        await AssertEveryParticipantSees(model, "MQ7014", enumId, seedId);
+    }
+
+    [Fact]
+    public async Task Removing_an_enum_member_rejudges_a_table_that_gets_the_typed_column_through_an_implied_stereotype()
+    {
+        // The table lists lifecycle, which implies stateful, whose column is typed by the enum; the enum's save brings the table seed.
+        static (ModelSnapshot Model, string EnumId, string SeedId) Build(bool withVoid)
+        {
+            const string statusColumn = "01K9X3S0000000000000000031";
+            var b = new ModelBuilder(seed: 3303);
+            var db = b.Database("main", Dialect.PostgreSql);
+            var status = b.Enum("Status").Member("Draft", 0).Member("Issued", 1);
+            if (withVoid)
+                status.Member("Void", 2);
+            b.Add(new Stereotype
+            {
+                Id = b.NewId(), Key = "stateful", Name = "Stateful", AppliesTo = ["table"],
+                Columns = [new Column { Id = statusColumn, Name = "status", Type = "int32", Nullable = false, TypeRef = new TypeRef { Ref = status.Id } }],
+            });
+            b.Stereotype("lifecycle").AppliesTo("table").Implies("stateful");
+            var events = b.Table("invoice_events", db).Column("id", "int32", nullable: false).PrimaryKey("id").Stereotype("lifecycle");
+            var seed = new Seed
+            {
+                Id = "01K9X3S0000000000000000030", Name = "events", Target = events.Id, Columns = [events.ColumnId("id"), events.Id + "." + statusColumn],
+                Rows = [new SeedRow { Id = "01K9X3S0000000000000000032", Values = [Json(1), Json(2)] }],
+            };
+            b.Add(seed);
+            return (b.Build(), status.Id, seed.Id);
+        }
+
+        Assert.DoesNotContain((await Validate(Build(withVoid: true).Model)).Diagnostics, d => d.Rule == "MQ7014");
+        var (model, enumId, seedId) = Build(withVoid: false);
+        var finding = Assert.Single((await Validate(model)).Diagnostics, d => d.Rule == "MQ7014");
+        Assert.Equal(("/rows/0/values/1", model.GetDocument(seedId)!.Path), (finding.JsonPointer, finding.FilePath));
+        await AssertEveryParticipantSees(model, "MQ7014", enumId, seedId);
+    }
+
+    private static System.Text.Json.JsonElement Json(object value) => System.Text.Json.JsonSerializer.SerializeToElement(value);
 }

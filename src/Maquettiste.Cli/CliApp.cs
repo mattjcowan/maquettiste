@@ -139,13 +139,28 @@ public sealed class CliApp(CliEnvironment environment)
                                   --runtime docker|podman (the container command for --docker, default docker),
                                   --name <project name> (default: package.json name, git remote, folder)
           validate              Validate the model and packs
+                                  --against <snapshot id | folder> (also compare with a baseline: changes
+                                  that need a migration fact and have none are MQ4102),
                                   --format text|json|sarif, --output <file>
           generate              Incremental generation
                                   --pack <name> (repeatable), --force,
                                   --hand-edits fail|overwrite|skip, --watch, --dry-run, --diff,
                                   --check (render every root in memory; exit 2 when a file would change),
+                                  --against <snapshot id | folder> (diff the schema from a baseline model
+                                  for this run; the committed snapshots stay as they are),
+                                  --unit <pack/unit | unit> and --element <id> (repeatable: only those units
+                                  run, values of one option OR, the two AND; every other file stays as it is),
                                   --format text|json, --no-wait
           migrate               Upgrade the model format (format 1 is current)
+          migration list        The open migration facts in applied order: order, id, fact, state and the intent
+                                  it lacks, stale, summary; --database <name|id>, --format text|json
+          migration fold        Remove stale facts and join consecutive facts on one object into the last one:
+                                  --database <name|id>, --against <snapshot id | folder> (its facts stay; default:
+                                  the facts the committed snapshot rendered, else pending facts only), --dry-run,
+                                  --format text|json
+          migration ledger      Print the migration ledger's DDL for a PostgreSQL database (contract version 1):
+                                  --database <name|id> (default: the only PostgreSQL database), --grant-read <role>
+                                  (also print the read grant), --format text|json, --output <file>
           format                Rewrite every model file in canonical form and report the count
                                   --check (write nothing; exit 2 when a file would change)
           pack new <name>       Scaffold a template pack under .maquettiste/templates/<name>/
@@ -169,10 +184,15 @@ public sealed class CliApp(CliEnvironment environment)
           l10n set-default <locale>
                                 Preview making a locale the default (texts swap between files and shards); --apply
           seed new <type>       Create a reference type's seed with the code, label and description columns
-          seed export <seed>    A seed's rows as CSV (seed id or name, or the id or name of the element it seeds)
+          seed export <seed>    A seed's rows as CSV (seed id or name, or the id or name of the element it seeds), a
+                                  scripted seed's rows as its script returns them
                                   --locale <tag> (repeatable: its label and description columns), --out <file>
           seed import <seed> <file>
-                                Preview a CSV import: --mode merge|replace; --apply writes it, --check, --format text|json
+                                Preview a CSV import: --mode merge|replace; --apply writes it, --check, --format text|json;
+                                  a seed whose rows a script computes takes none
+          seed preview <seed>   A seed's rows, written or scripted, one line per row (key, id, cells); --database
+                                  <name|id> gives them as that database receives them (stable ids, foreign-key values),
+                                  --format text|json
           process simulate <process>
                                 Run a process through inputs: --inputs <file|-> (an array of steps, or { start, steps }),
                                   --scenario <id|name> (its steps first), --from <index>, --format text|json
@@ -195,6 +215,12 @@ public sealed class CliApp(CliEnvironment environment)
                                 Delete an element: --resolution refuse|remove-references|delete-dependents (default refuse;
                                   delete-dependents also deletes what cannot exist without it), --dry-run (print what the
                                   delete would do and write nothing), --format text|json
+          model apply <batch.json>
+                                Apply a batch all or nothing ({ "operations": [...] } or the bare array, as apply_batch
+                                  takes it): id fields take ids, qualified names (@table:billing.notes) or placeholders ($t,
+                                  declared with "as"), and missing ids are minted; prints the paths written and the names
+                                  with their ids; --dry-run (print the diffs and the diagnostics added and removed, write
+                                  nothing), --format text|json
           model materialize tables --database <id|name> <entity...>
                                 Write a designed table per entity with its projection's shape and bind the entity to it:
                                   --schema <id|name>, --dry-run (print the plan and write nothing), --format text|json
@@ -209,6 +235,18 @@ public sealed class CliApp(CliEnvironment environment)
                                 Add to each bound entity's table a column per attribute its binding leaves unmapped, shaped
                                   as the projection would make it, mapped to it: --attribute <id|name> (repeatable, one
                                   entity: those attributes), --dry-run, --format text|json
+          binding drift [<entity>...]
+                                What changed in each binding's table since its provenance was recorded (added, renamed,
+                                  retyped and removed columns): --database <id|name>, --all (also the bindings in step),
+                                  --check (exit 2 when a listed binding drifts), --format text|json
+          binding map --database <id|name> <entity...>
+                                Map every attribute a binding leaves unmapped to the free column of the same loose name and
+                                  record the binding's provenance: --dry-run, --format text|json
+          binding resync --database <id|name> <entity...>
+                                Bring each binding into step with its table in one batch: rename the attributes that followed
+                                  their column (--keep-names keeps every name), retype, map by name, add attributes for added
+                                  columns, drop the fields of removed ones: --column <key|name> (repeatable, one entity),
+                                  --dry-run, --format text|json
           snapshot create <name>
                                 Take a snapshot of the model (a zip under .maquettiste/model-snapshots/): --description,
                                   --packs (hold the template packs too), --format text|json
@@ -271,6 +309,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "validate" => await ValidateCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "generate" => await GenerateCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "migrate" => await MigrateCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "migration" => await MigrationCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "format" => await FormatCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "pack" => await PackNewCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "bench" => await BenchCommand.RunAsync(context, ct).ConfigureAwait(false),
@@ -278,6 +317,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "seed" => await SeedCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "process" => await ProcessCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "model" => await ModelCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "binding" => await BindingCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "snapshot" => await SnapshotCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "mcp" => await McpCommand.RunAsync(context, ct).ConfigureAwait(false),
                 _ => throw new UsageException($"Unknown command '{command}'. Run 'maquettiste --help'."),

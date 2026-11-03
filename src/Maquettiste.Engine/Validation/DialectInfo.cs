@@ -103,6 +103,95 @@ internal static partial class DialectInfo
         ? Encoding.UTF8.GetByteCount(identifier)
         : identifier.EnumerateRunes().Count();
 
+    /// <summary>The unit <see cref="IdentifierLength"/> counts in: <c>bytes</c> on PostgreSQL and Oracle, <c>characters</c> elsewhere.</summary>
+    /// <param name="dialect">The dialect.</param>
+    /// <returns>The unit, plural.</returns>
+    public static string IdentifierUnit(Dialect dialect) => dialect is Dialect.PostgreSql or Dialect.Oracle ? "bytes" : "characters";
+
+    /// <summary>
+    /// An identifier as a database keeps it: cut to the limit in the dialect's unit (<see cref="IdentifierLength"/>), never inside a
+    /// character, as PostgreSQL truncates a longer name and only raises a notice. Without a limit the identifier is unchanged.
+    /// </summary>
+    /// <param name="dialect">The dialect.</param>
+    /// <param name="identifier">The identifier.</param>
+    /// <param name="limit">The limit, or <see langword="null"/> for none.</param>
+    /// <returns>The identifier, cut.</returns>
+    public static string CutIdentifier(Dialect dialect, string identifier, int? limit)
+    {
+        if (limit is not { } max || IdentifierLength(dialect, identifier) <= max)
+            return identifier;
+        var bytes = dialect is Dialect.PostgreSql or Dialect.Oracle;
+        var used = 0;
+        var end = 0;
+        foreach (var rune in identifier.EnumerateRunes())
+        {
+            var size = bytes ? rune.Utf8SequenceLength : 1;
+            if (used + size > max)
+                break;
+            used += size;
+            end += rune.Utf16SequenceLength;
+        }
+
+        return identifier[..end];
+    }
+
+    /// <summary>
+    /// The namespaces a dialect keeps index and constraint names in (MQ4068, next-phase-1-design.md section 3.5), in the order the
+    /// rule tries them. SQL objects are opaque text and join none; MQ4002 checks tables, views and sequences against each other.
+    /// </summary>
+    /// <param name="dialect">The dialect.</param>
+    /// <returns>The namespaces.</returns>
+    public static ImmutableArray<NameSpace> NameSpaces(Dialect dialect) => dialect switch
+    {
+        Dialect.PostgreSql => PostgreSqlNameSpaces,
+        Dialect.SqlServer => SqlServerNameSpaces,
+        Dialect.MySql => MySqlNameSpaces,
+        Dialect.Oracle => OracleNameSpaces,
+        _ => SqliteNameSpaces,
+    };
+
+    private static readonly ImmutableArray<NameSpace> PostgreSqlNameSpaces =
+    [
+        new(NameScope.Schema, SchemaObjects.Tables | SchemaObjects.Views | SchemaObjects.Sequences,
+            NameHolders.Index | NameHolders.PrimaryKey | NameHolders.UniqueKey | NameHolders.Exclusion,
+            "index and key names in one namespace per schema, shared with its tables, views and sequences"),
+        new(NameScope.Table, SchemaObjects.None,
+            NameHolders.PrimaryKey | NameHolders.UniqueKey | NameHolders.ForeignKey | NameHolders.Check | NameHolders.Exclusion,
+            "constraint names in one namespace per table"),
+    ];
+
+    private static readonly ImmutableArray<NameSpace> SqlServerNameSpaces =
+    [
+        new(NameScope.Schema, SchemaObjects.Tables | SchemaObjects.Views | SchemaObjects.Sequences | SchemaObjects.Routines,
+            NameHolders.PrimaryKey | NameHolders.UniqueKey | NameHolders.ForeignKey | NameHolders.Check | NameHolders.DefaultConstraint,
+            "constraint names in one namespace per schema, shared with its tables, views, sequences and routines"),
+        new(NameScope.Table, SchemaObjects.None, NameHolders.Index | NameHolders.PrimaryKey | NameHolders.UniqueKey,
+            "index names, the primary and unique keys' indexes included, in one namespace per table"),
+    ];
+
+    private static readonly ImmutableArray<NameSpace> MySqlNameSpaces =
+    [
+        new(NameScope.Schema, SchemaObjects.None, NameHolders.ForeignKey, "foreign key names in one namespace per schema"),
+        new(NameScope.Schema, SchemaObjects.None, NameHolders.Check, "check constraint names in one namespace per schema"),
+        new(NameScope.Table, SchemaObjects.None, NameHolders.Index | NameHolders.UniqueKey,
+            "index and unique key names in one namespace per table (the primary key is always PRIMARY)"),
+    ];
+
+    private static readonly ImmutableArray<NameSpace> OracleNameSpaces =
+    [
+        new(NameScope.Schema, SchemaObjects.None, NameHolders.Index | NameHolders.PrimaryKey | NameHolders.UniqueKey,
+            "index names, the keys' indexes included, in one namespace per schema"),
+        new(NameScope.Schema, SchemaObjects.None,
+            NameHolders.PrimaryKey | NameHolders.UniqueKey | NameHolders.ForeignKey | NameHolders.Check,
+            "constraint names in one namespace per schema"),
+    ];
+
+    private static readonly ImmutableArray<NameSpace> SqliteNameSpaces =
+    [
+        new(NameScope.Schema, SchemaObjects.Tables | SchemaObjects.Views, NameHolders.Index,
+            "index names in one namespace per schema, shared with its tables and views"),
+    ];
+
     /// <summary>
     /// Whether a native type is known to a dialect: its base name (see <see cref="Parse"/>) is a native type of the dialect, the base
     /// of a value of the dialect's embedded type map (<c>Resolution/Dialects/*.json</c>) or the base of a <c>typeMaps</c> value.
@@ -242,3 +331,69 @@ internal static partial class DialectInfo
 /// <param name="Parts">The dot-separated parts without quotes, lower-cased; the last is the type name.</param>
 /// <param name="IsQuotedOrQualified">Whether the type was written with identifier quotes or a prefix such as a schema.</param>
 internal sealed record NativeTypeName(string BaseName, ImmutableArray<string> Parts, bool IsQuotedOrQualified);
+
+/// <summary>Where a namespace of <see cref="DialectInfo.NameSpaces"/> is kept: one per schema, or one per table.</summary>
+internal enum NameScope
+{
+    /// <summary>One namespace per schema (per database where the dialect has no schemas).</summary>
+    Schema,
+
+    /// <summary>One namespace per table.</summary>
+    Table,
+}
+
+/// <summary>The schema objects whose names a schema namespace shares with indexes and constraints.</summary>
+[Flags]
+internal enum SchemaObjects
+{
+    /// <summary>None: the namespace holds index or constraint names only.</summary>
+    None = 0,
+
+    /// <summary>Tables.</summary>
+    Tables = 1,
+
+    /// <summary>Views.</summary>
+    Views = 2,
+
+    /// <summary>Sequences.</summary>
+    Sequences = 4,
+
+    /// <summary>Routines.</summary>
+    Routines = 8,
+}
+
+/// <summary>The indexes and constraints that hold a name in a namespace of <see cref="DialectInfo.NameSpaces"/>.</summary>
+[Flags]
+internal enum NameHolders
+{
+    /// <summary>None.</summary>
+    None = 0,
+
+    /// <summary>The primary key (or, where the namespace holds index names, the index it creates).</summary>
+    PrimaryKey = 1,
+
+    /// <summary>Unique keys (or the indexes they create).</summary>
+    UniqueKey = 2,
+
+    /// <summary>Foreign keys.</summary>
+    ForeignKey = 4,
+
+    /// <summary>Check constraints.</summary>
+    Check = 8,
+
+    /// <summary>Exclusion constraints (or the indexes they create).</summary>
+    Exclusion = 16,
+
+    /// <summary>Default constraints, by a column's <c>defaultName</c>.</summary>
+    DefaultConstraint = 32,
+
+    /// <summary>Indexes.</summary>
+    Index = 64,
+}
+
+/// <summary>A namespace a dialect keeps index and constraint names in (MQ4068).</summary>
+/// <param name="Scope">Whether one is kept per schema or per table.</param>
+/// <param name="Objects">The schema objects whose names it shares, so an index or constraint may not take them.</param>
+/// <param name="Holders">The indexes and constraints whose names it holds.</param>
+/// <param name="Text">How the dialect keeps it, for messages ("constraint names in one namespace per table").</param>
+internal sealed record NameSpace(NameScope Scope, SchemaObjects Objects, NameHolders Holders, string Text);

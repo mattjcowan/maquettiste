@@ -13,6 +13,7 @@ internal sealed partial class DatabaseRun
     private const string Conventions = "s:conventions";
     private const string TypeMaps = "s:typeMaps";
     private const string InflectionKey = "s:inflection";
+    private const string MigrationsKey = "s:migrations";
 
     private readonly ResolveRun _run;
     private readonly Database _db;
@@ -106,6 +107,7 @@ internal sealed partial class DatabaseRun
         BuildEntityMappings();
         BuildJoins();
         CheckIdentifiers();
+        CheckNames();
         return Publish();
     }
 
@@ -144,7 +146,7 @@ internal sealed partial class DatabaseRun
                 Name = view.Name,
                 Schema = SchemaName(view.Schema),
                 Database = _rdb,
-                Body = ForDialect(view.Body) ?? "",
+                Body = ForDialect(view.Body),
                 Columns = [.. view.Columns.Select(c => new RViewColumn
                 {
                     Name = c.Name,
@@ -211,14 +213,16 @@ internal sealed partial class DatabaseRun
                 Name = column.Name,
                 Table = r,
                 Type = column.Type ?? "string",
+                Subtype = BuiltinTypes.IsRange(column.Type) ? column.Subtype : null,
                 Length = column.Length,
                 Precision = column.Precision,
                 Scale = column.Scale,
                 Nullable = column.Nullable ?? true,
             };
             ApplyColumnFile(t, c, column);
+            var scalar = TypeColumn(t, c, column);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale, null, c.FixedLength, c.Unicode));
+            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c, scalar));
             t.Columns.Add(c);
             t.ByKey.TryAdd(column.Id, c);
             _run.Register(c);
@@ -243,6 +247,7 @@ internal sealed partial class DatabaseRun
             if (pk.Clustered is not null)
                 t.PrimaryKeyClustered = pk.Clustered;
             t.PrimaryKeyWithoutOverlaps = pk.WithoutOverlaps;
+            t.PrimaryKeyId = pk.Id;
         }
 
         foreach (var unique in table.Uniques)
@@ -274,14 +279,25 @@ internal sealed partial class DatabaseRun
         {
             // An expression without a text for the dialect leaves the index out, as a check without one is left out.
             var columns = index.Columns.Select(c => c.Column is null
-                ? new IndexColumnSpec(null, c.Descending, c.Expression is null ? null : ForDialect(c.Expression), c.Length, c.OperatorClass)
-                : new IndexColumnSpec(c.Column, c.Descending, null, c.Length, c.OperatorClass)).ToList();
+                ? new IndexColumnSpec(null, c.Descending, c.Expression is null ? null : ForDialect(c.Expression), c.Length, c.OperatorClass, NullsOrder(c))
+                : new IndexColumnSpec(c.Column, c.Descending, null, c.Length, c.OperatorClass, NullsOrder(c))).ToList();
             if (columns.Any(c => c.Column is null && c.Expression is null))
                 continue;
             t.Indexes.Add(new IndexSpec(columns, index.Include, index.Where, index.Unique,
                 ResolutionValues.Kebab(index.Method), index.Name, FromFile: true, Id: index.Id, Storage: Storage([index.Storage])));
         }
     }
+
+    /// <summary>
+    /// Where an index column's nulls sort as the DDL writes it: <c>first</c> or <c>last</c> on PostgreSQL, and only when it differs
+    /// from the direction's default (last ascending, first descending), so the DDL, the snapshot and the index key change only
+    /// when the order does. Other dialects have no such clause (validation's MQ4056 says so).
+    /// </summary>
+    private string? NullsOrder(IndexColumn column) =>
+        _db.Dialect != Dialect.PostgreSql || column.Nulls is not { } nulls ? null
+        : nulls == IndexNulls.First && !column.Descending ? "first"
+        : nulls == IndexNulls.Last && column.Descending ? "last"
+        : null;
 
     /// <summary>
     /// Applies the physical properties and the annotations a column file sets (designed column, extra column or overlay entry) to a
@@ -320,16 +336,71 @@ internal sealed partial class DatabaseRun
             c.ComputedStored = column.ComputedStored;
         }
 
+        c.StableId |= column.StableId; // next-phase-2-design.md section 3.4
         c.Collation = column.Collation ?? c.Collation;
         c.Comment = column.Comment ?? c.Comment;
+        if (column.Sensitive is { } sensitive)
+            c.Sensitive = c.OwnSensitive = ResolutionValues.Kebab(sensitive);
         c.Unicode = column.Unicode ?? c.Unicode;
         c.FixedLength |= column.FixedLength;
         c.DefaultName = column.DefaultName ?? c.DefaultName;
     }
 
+    /// <summary>
+    /// Types a designed, imported, extra or inherited column by the enum, reference type or scalar type its own entry's <c>typeRef</c>
+    /// names (next-phase-2-design.md section 3.2), before <see cref="ApplyFacetDefaults"/>: sets <see cref="RColumn.TypeRef"/>, fills
+    /// the facets the column leaves out from the type (a reference type's code length and an enum's longest stored code in a string
+    /// column; a scalar type's length, precision and scale in a column of its base), and for a reference type sets
+    /// <see cref="RColumn.ReferenceType"/>, <see cref="RColumn.CodeType"/> and <see cref="RColumn.Strategy"/>, as a projected
+    /// reference column has them. The column keeps its own physical type. The table depends on the type as a projected column's does.
+    /// A type that is none of the three (a value object, MQ4082; a dangling id, MQ2001) types nothing.
+    /// </summary>
+    /// <returns>The scalar type whose native type for the dialect applies when the column sets no <c>nativeType</c> (its base is the
+    /// column's type), else <see langword="null"/>.</returns>
+    private RScalarType? TypeColumn(TableBuild t, RColumn c, Column column)
+    {
+        if (column.TypeRef is not { Ref: not null } typeRef)
+            return null;
+        var type = _run.TypeOf(typeRef, t.Deps, out _);
+        switch (type)
+        {
+            case { Enum: { } e }:
+                t.Deps.AddRange(_run.DepsOf(e).ToList());
+                c.TypeRef = type;
+                if (c.Type == "string")
+                    c.Length ??= StringLength(e);
+                return null;
+            case { ReferenceType: { } reference }:
+                t.Deps.Element(reference.Id).Add(ResolveRun.ReferenceDataKey);
+                c.TypeRef = type;
+                c.ReferenceType = reference;
+                c.CodeType = reference.Code.Type;
+                c.Strategy = _run.StorageChoice(reference.Id, _db.Id)?.Strategy;
+                if (c.Type == "string")
+                    c.Length ??= reference.Code.Length;
+                return null;
+            case { Scalar: { } scalar }:
+                t.Deps.AddRange(_run.DepsOf(scalar).ToList());
+                c.TypeRef = type;
+                if (!string.Equals(c.Type, scalar.Base, StringComparison.Ordinal))
+                    return null;
+                c.Length ??= scalar.Length;
+                c.Precision ??= scalar.Precision;
+                c.Scale ??= scalar.Scale;
+                _columnScalars[c] = scalar;
+                return scalar;
+            default:
+                return null;
+        }
+    }
+
     /// <summary>The logical type that decides a column's native type: a reference column's code type, else the column's type.</summary>
     private static string PhysicalType(RColumn c) => c.Type == "reference" && c.CodeType is { } code ? code : c.Type;
 
+    /// <summary>
+    /// Fills a column's missing facets with the conventions' defaults; a range or multirange column takes no facets, so it gets none
+    /// (no length 255).
+    /// </summary>
     private void ApplyFacetDefaults(RColumn c)
     {
         switch (PhysicalType(c))
@@ -374,19 +445,61 @@ internal sealed partial class DatabaseRun
     private string? SchemaName(string? schemaId) =>
         schemaId is not null && _schemaNames.TryGetValue(schemaId, out var name) ? name : _rdb.DefaultSchema;
 
-    private void AddTable(TableBuild t)
+    /// <summary>
+    /// Registers a table: its holder and effective stereotype set (next-phase-2-design.md section 3.1), annotations and storage from its
+    /// file, or for a table without a file the stereotypes, merged default properties and storage its schema and package defaults give.
+    /// </summary>
+    /// <param name="t">The table.</param>
+    /// <param name="holder">The holder of a table without a file when the caller knows it (a child table's, from its owner's), else
+    /// <see langword="null"/>.</param>
+    private void AddTable(TableBuild t, StereotypeHolder? holder = null)
     {
-        _run.FillPhysicalAnnotations(t.Table, t.Source ?? t.Overlay, t.Deps);
-        if ((t.Source ?? t.Overlay) is { } storageFile)
-            t.Table.Storage = Storage([.. _run.StereotypesOf(storageFile).Select(s => s.Storage), storageFile.Storage]);
+        var file = t.Source ?? t.Overlay;
+        t.Holder = file is not null ? _run.Model.HolderOf(file) : holder ?? HolderWithoutFile(t.Table);
+        t.Effective = _run.Model.EffectiveStereotypes(t.Holder);
+        if (file is not null)
+        {
+            _run.FillPhysicalAnnotations(t.Table, file, t.Deps);
+            t.Table.Storage = Storage([.. t.Effective.Select(s => s.Stereotype.Storage), file.Storage]);
+        }
+        else
+        {
+            _run.FillDefaultAnnotations(t.Table, t.Effective, t.Holder.Package, t.Deps);
+            if (t.Effective.Count > 0)
+                t.Table.Storage = Storage([.. t.Effective.Select(s => s.Stereotype.Storage)]);
+        }
+
         AddBinderKeys(t.Deps, t.Table.Key);
         if (t.Source is { } designedFile)
+        {
             AddBinderKeys(t.Deps, designedFile.Id);
+            var entries = new DependencySet(_run.Keys).Element(designedFile.Id).Element(_db.Id);
+            foreach (var applied in t.Effective)
+                entries.Element(applied.Stereotype.Id);
+            _run.AddPackageChain(entries, t.Holder.Package);
+            t.Table.EntryKeys = entries.ToList();
+        }
+
         if (t.Overlay is { } overlayFile)
             AddBinderKeys(t.Deps, overlayFile.Id);
         _tables.TryAdd(t.Table.Key, t);
         _tableOrder.Add(t);
         _run.Register(t.Table);
+    }
+
+    /// <summary>
+    /// The holder of a synthesized entity or relation table without an overlay, by ids, by the rule validation uses
+    /// (<see cref="StereotypeDefaults.SchemaOf"/>): its relation's or entity's package, and the schema its entity is routed to (a relation's
+    /// table is in the default schema's entry). A child table takes its owner's holder instead (<see cref="CreateChildTable"/>).
+    /// </summary>
+    private StereotypeHolder HolderWithoutFile(RTable table)
+    {
+        var defaults = _run.Model.StereotypeDefaults;
+        if (table.Relation is { } relation)
+            return new StereotypeHolder(ElementKind.Table, [], [], _run.RelationSource(relation.Id)?.Package, defaults.SchemaOf(_db.Id, null));
+        var entityId = table.Entity?.Id;
+        return new StereotypeHolder(ElementKind.Table, [], [], entityId is null ? null : _run.EntitySource(entityId)?.Package,
+            entityId is null ? defaults.SchemaOf(_db.Id, null) : defaults.SchemaOf(_db.Id, null, entityId));
     }
 
     private void AddSequence(RSequence sequence, string sourceId, DependencySet deps)
@@ -603,6 +716,17 @@ internal sealed partial class DatabaseRun
 
         return name;
     }
+
+    /// <summary>
+    /// The native type the type map gives a designed or extra column: a range or multirange column's comes from the map's
+    /// <c>&lt;keyword&gt;:&lt;subtype&gt;</c> entry (<see cref="DialectTypeMaps.RangeKey"/>), else its <c>text</c> entry, as a dialect
+    /// without range types stores the text form (MQ4056); any other column's from its keyword, or from the scalar type its
+    /// <c>typeRef</c> names when <see cref="TypeColumn"/> found the scalar's native type applies (next-phase-2-design.md section 3.2).
+    /// </summary>
+    private string ColumnNativeType(RColumn c, RScalarType? scalar = null) =>
+        !BuiltinTypes.IsRange(c.Type) ? NativeType(c.Type, c.Length, c.Precision, c.Scale, scalar, c.FixedLength, c.Unicode)
+        : _typeMap.TryGetValue(DialectTypeMaps.RangeKey(c.Type, c.Subtype), out var range) ? range
+        : NativeType("text", null, null, null);
 
     /// <summary>
     /// The native type of a logical type with its facets: the custom type's native type for the dialect when the value is of a custom

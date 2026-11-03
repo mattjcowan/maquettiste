@@ -90,6 +90,34 @@ describe("mock localization (locales scenario)", () => {
     expect(csvSame.json.changed).toEqual([]);
   });
 
+  it("lists typed columns with their domain, storage and bound table, null when missing, as the server does", async () => {
+    const model = mock.backend.model;
+    const tables = [...model.docs()].filter(([, json]) => json.kind === "table" && Array.isArray(json.columns));
+    const [tableId, table] = tables.find(([, json]) => (json.columns as Json[]).length >= 2)!;
+    const [boundId] = tables.find(([id]) => id !== tableId)!;
+    const database = table.database as string;
+    const type = (id: string, name: string, extra: Json) => {
+      const created = model.create({ id, kind: "reference-type", name, code: { id: `${id.slice(0, 25)}B` }, label: { id: `${id.slice(0, 25)}C` }, ...extra });
+      expect(created.outcome, JSON.stringify(created.diagnostics)).toBe("saved");
+    };
+    const plain = "01J92P0V3KTERMS0000000000A";
+    const stored = "01J92P0V3KSTATES000000000A";
+    type(plain, "PaymentTerm", {});
+    type(stored, "InvoiceState", {
+      storage: { [database]: { strategy: "lookup-table" } },
+      bindings: [{ id: "01J92P0V3KSTATES000000000D", database, table: boundId }],
+    });
+    const typed = (table.columns as Json[]).map((c, i) => (i === 0 ? { ...c, typeRef: { ref: plain } } : i === 1 ? { ...c, typeRef: { ref: stored } } : c));
+    expect(model.save(tableId, { ...table, columns: typed }, model.get(tableId)!.hash).outcome).toBe("saved");
+    const rowOf = async (typeId: string) => {
+      const usage = await call("GET", `/api/reference-types/${typeId}/usage`, "/api/reference-types/{id}/usage");
+      return (usage.json.columns as Json[]).find((c) => c.table === tableId)!;
+    };
+    const domain = (table.package as string | undefined) ?? null;
+    expect(await rowOf(plain)).toMatchObject({ domain, storage: null, boundTable: null });
+    expect(await rowOf(stored)).toMatchObject({ domain, storage: { strategy: "lookup-table" }, boundTable: boundId });
+  });
+
   it("answers 404 for seed CSV and usage of ids that are not seeds or reference types", async () => {
     expect((await call("GET", `/api/seeds/${IDS.invoice}/csv`)).status).toBe(404);
     expect((await call("POST", `/api/seeds/${IDS.invoice}/csv`, undefined, { content: "@id\n" })).status).toBe(404);

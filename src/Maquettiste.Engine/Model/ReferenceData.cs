@@ -9,11 +9,16 @@ namespace Maquettiste.Engine.Model;
 /// section 1). Two built-in fields, <see cref="Code"/> and <see cref="Label"/>, the row description every row may carry, any number
 /// of user fields, and rows held in seeds.
 /// </summary>
-public sealed record ReferenceType : Element
+public sealed record ReferenceType : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.ReferenceType;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The built-in code field: the row's business key, unique in the type.</summary>
     public required ReferenceCode Code { get; init; }
@@ -26,6 +31,31 @@ public sealed record ReferenceType : Element
 
     /// <summary>Storage choices keyed by database id, or <c>*</c> for every database.</summary>
     public IReadOnlyDictionary<string, StorageChoice> Storage { get; init; } = ImmutableDictionary<string, StorageChoice>.Empty;
+
+    /// <summary>
+    /// The table files that hold the rows, at most one per database (2026-10-11, optional): a binding wins over the storage choice
+    /// in its database. A type without one is stored as its storage choice says.
+    /// </summary>
+    public IReadOnlyList<ReferenceTypeBinding> Bindings { get; init; } = [];
+
+    /// <summary>
+    /// Codes the type's rows used to have (next-phase-2-design.md section 3.5), sorted by code: each names the row that holds its value
+    /// now. A rename lists the old code with the row itself; a retire and a merge list it with the row that took over. A former code is
+    /// never a live code of the type again (MQ7017); a default, <c>allowedValues</c> entry or seed cell naming one is MQ7019.
+    /// </summary>
+    public IReadOnlyList<FormerCode> FormerCodes { get; init; } = [];
+}
+
+/// <summary>A code a row of a reference type used to have, and the row that replaced it (next-phase-2-design.md section 3.5).</summary>
+public sealed record FormerCode
+{
+    /// <summary>The former code as the code's canonical text: a string code as written, an integer code in decimal digits, a uuid
+    /// code in lowercase.</summary>
+    public required string Code { get; init; }
+
+    /// <summary>The id of the row of the type that holds the code's value now; indexed as a reference (field <c>replacedBy</c>).</summary>
+    [ElementRef(IndexKinds = ["row"])]
+    public required string ReplacedBy { get; init; }
 }
 
 /// <summary>The built-in code field of a reference type.</summary>
@@ -81,19 +111,26 @@ public sealed record StorageChoice
 /// Rows of data for one target: an entity, a relation or a reference type (<c>model/seeds/&lt;target&gt;/</c>;
 /// reference-types-seeds-localization.md section 2). A seed belongs to its target and is deleted with it.
 /// </summary>
-public sealed record Seed : Element
+public sealed record Seed : Element, IPackaged
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Seed;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it never changes
+    /// where the element goes in a database.</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>The id of the entity, relation, reference type or table (a table file of a database) the rows are for.</summary>
     [ElementRef(ElementKind.Entity, ElementKind.Relation, ElementKind.ReferenceType, ElementKind.Table, Owning = true)]
     public required string Target { get; init; }
 
     /// <summary>
-    /// The columns: <c>code</c>, <c>label</c> or <c>description</c> for a reference type, column ids for a table, else attribute or
-    /// relation-end ids.
+    /// The columns: <c>code</c>, <c>label</c> or <c>description</c> for a reference type, column ids and foreign-key ids for a table,
+    /// else attribute or relation-end ids. A foreign-key entry (next-phase-2-design.md section 3.4) stands for the key's own columns,
+    /// which the seed then does not list: its cell names the referenced row by that table's row key in seed terms, a value for a
+    /// one-column key and an array in key order for a composite one, and the resolver fills the key's columns from that row.
     /// </summary>
     [ElementRef(Keyed = true)]
     public required IReadOnlyList<string> Columns { get; init; }
@@ -117,8 +154,10 @@ public sealed record Seed : Element
     public IReadOnlyList<SeedRow> Rows { get; init; } = [];
 
     /// <summary>
-    /// A CSV sidecar beside the seed file that holds the rows instead of <see cref="Rows"/> (a header of <c>@id</c> and the column
-    /// ids, one row per line). The loader reads its rows into <see cref="Rows"/> and the document's JSON; a save writes them back.
+    /// Where the rows come from instead of <see cref="Rows"/>: a CSV sidecar beside the seed file (<see cref="SeedRowsFile.File"/>, a
+    /// header of <c>@id</c> and the column ids, one row per line), which the loader reads into <see cref="Rows"/> and the document's
+    /// JSON and a save writes back; or a rows script under <c>extensions/</c> (<see cref="SeedRowsFile.Script"/>, next-phase-2-design.md
+    /// section 3.4), which computes the rows from the model when something reads them, so <see cref="Rows"/> stays empty.
     /// </summary>
     public SeedRowsFile? RowsFrom { get; init; }
 
@@ -127,11 +166,17 @@ public sealed record Seed : Element
     public string? RowsProblem { get; init; }
 }
 
-/// <summary>Where a seed's rows are kept when not in the seed file.</summary>
+/// <summary>Where a seed's rows are kept when not in the seed file: exactly one of <see cref="File"/> and <see cref="Script"/>.</summary>
 public sealed record SeedRowsFile
 {
-    /// <summary>The CSV file name, relative to the seed file's folder.</summary>
-    public required string File { get; init; }
+    /// <summary>The CSV file name, relative to the seed file's folder, or <see langword="null"/> for a rows script.</summary>
+    public string? File { get; init; }
+
+    /// <summary>
+    /// The rows script, a path under <c>extensions/</c> such as <c>seeds/audited-records.js</c> (next-phase-2-design.md section 3.4), or
+    /// <see langword="null"/> for a CSV file. The script calls <c>maquettiste.rows(fn)</c> once; <c>fn(model, seed)</c> returns the rows.
+    /// </summary>
+    public string? Script { get; init; }
 }
 
 /// <summary>How a seed's rows are applied to a database.</summary>
@@ -151,6 +196,9 @@ public sealed record SeedRow
     /// <summary>The row's id.</summary>
     public required string Id { get; init; }
 
-    /// <summary>The cells, in column order; a JSON null is no value.</summary>
+    /// <summary>
+    /// The cells, in column order; a JSON null is no value. A foreign-key entry's cell is the referenced row's key in seed terms (a
+    /// value, or an array for a composite key), never the referenced column's value.
+    /// </summary>
     public IReadOnlyList<JsonElement> Values { get; init; } = [];
 }

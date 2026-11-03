@@ -30,5 +30,7 @@ internal static class ShippedSkills
         ("0.8.0", "8fbc0e3c5b3dfe91b96c9d691e6fae475dfd412c5535dc950d765abf55ed1492"),
         ("0.9.0", "2564453093b01b56dd0b4a7681ed0c9df7548577f5583ff95632e05e97efb89b"),
         ("0.10.0", "a44e67074d8f00898378c841b99a804294d10e95d97998e1bd9f6261d69ad189"),
+        ("0.10.1", "842843be3666af21d3eea5eedb60271ca789bf445fa35c035a12e457e4b96d80"),
+        ("0.11.0-preview.1", "32d35a4244bdee483417ed9be8a2dfb10e6693e4804f1ae80bfe21165244f5b6"),
     ];
 }

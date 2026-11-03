@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization.Metadata;
 using Maquettiste.Engine.Model;
 
@@ -13,8 +14,10 @@ namespace Maquettiste.Engine.Validation;
 /// <param name="DeclaringType">The CLR type that declares the property.</param>
 /// <param name="PropertyName">The CLR property name.</param>
 /// <param name="Value">The referenced id or key.</param>
+/// <param name="XRef">For a custom property value an <c>x-ref</c> types (next-phase-1-design.md section 4.1): the site, with its
+/// keyword and the schema that declares it; <see langword="null"/> for every other reference.</param>
 internal readonly record struct ReferenceSite(
-    string Pointer, string FromId, ElementRefAttribute Reference, Type DeclaringType, string PropertyName, string Value);
+    string Pointer, string FromId, ElementRefAttribute Reference, Type DeclaringType, string PropertyName, string Value, XRefSite? XRef = null);
 
 /// <summary>
 /// Walks an element's records the way <see cref="ModelSnapshot"/>'s indexer does (property metadata from
@@ -32,15 +35,25 @@ internal sealed class ReferenceWalker
 
     private readonly ConcurrentDictionary<Type, PropertyMeta[]> _meta = new();
 
+    // Keyed by keyword identity and held weakly: the walker lives as long as its validator, and a replaced schema set's
+    // keywords must stay collectable.
+    private readonly ConditionalWeakTable<XRef, ElementRefAttribute> _xrefTargets = new();
+
     private enum Role { Reference, TypeRef, Record, RecordList }
 
     private sealed record PropertyMeta(string Name, Func<object, object?> Get, Role Role, ElementRefAttribute? Reference, Type DeclaringType, string ClrName);
 
-    /// <summary>Returns every reference in an element, in record walk order.</summary>
+    /// <summary>
+    /// Returns every reference in an element, in record walk order, then the values its custom properties' <c>x-ref</c> keywords
+    /// type (one site per schema that types a value, so the validator judges each), in <see cref="PropertySchemaSet.Sites"/> order.
+    /// </summary>
     /// <param name="element">The element.</param>
+    /// <param name="schemas">The custom property schemas of the model.</param>
+    /// <param name="effectiveKeys">The element's keys with defaults (<see cref="ModelSnapshot.PropertyKeys"/>), or <see langword="null"/>.</param>
     /// <returns>The references.</returns>
-    public List<ReferenceSite> Walk(Element element)
+    public List<ReferenceSite> Walk(Element element, PropertySchemaSet schemas, IReadOnlyList<string>? effectiveKeys)
     {
+        ArgumentNullException.ThrowIfNull(schemas);
         var sites = new List<ReferenceSite>();
         WalkProperties(element, "", element.Id, sites);
         if (element is ReferenceType type)
@@ -53,8 +66,20 @@ internal sealed class ReferenceWalker
             }
         }
 
+        // Custom property values an x-ref types (section 4.1): each carries a synthesized attribute, like the storage keys, and its keyword.
+        foreach (var site in schemas.Sites(element, effectiveKeys))
+            sites.Add(new ReferenceSite(site.Pointer, site.Host.Id, TargetOf(site.Ref), typeof(PropertyHost), site.Field, site.Value, site));
+
         return sites;
     }
+
+    /// <summary>The attribute an <c>x-ref</c> stands for: its element kinds as targets and its sub-element kinds as index kinds
+    /// (reserved kinds have neither yet, so a value typed only by them matches nothing).</summary>
+    private ElementRefAttribute TargetOf(XRef xref) => _xrefTargets.GetValue(xref, static x =>
+    {
+        var targets = x.Kinds.Select(k => KindInfo.TryGet(k, out var info) ? info.Kind : (ElementKind?)null).OfType<ElementKind>().ToArray();
+        return new ElementRefAttribute(targets) { IndexKinds = [.. x.Kinds.Where(ModelIndexer.SubElementKinds.Contains)] };
+    });
 
     private void WalkProperties(object value, string pointer, string fromId, List<ReferenceSite> sites)
     {

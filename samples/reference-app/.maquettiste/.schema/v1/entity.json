@@ -15,7 +15,11 @@
     "base",
     "lifecycle",
     "description",
+    "rationale",
+    "decision",
+    "status",
     "stereotypes",
+    "excludeStereotypes",
     "tags",
     "category",
     "key",
@@ -63,9 +67,27 @@
     "description": {
       "$ref": "common.json#/$defs/description"
     },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
+    },
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",
       "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
     },
     "tags": {
       "$ref": "common.json#/$defs/tagList",
@@ -136,6 +158,7 @@
           "columns",
           "write",
           "delete",
+          "provenance",
           "description",
           "tags",
           "properties"
@@ -277,6 +300,27 @@
                 "additionalProperties": false
               }
             ]
+          },
+          "provenance": {
+            "title": "Binding provenance",
+            "description": "The columns of a table-file source as the last by-name operation (materialize, map-by-name, resync-binding) recorded them, for the drift report and MQ4087. Written by the engine only; a save leaves it as it is, and removing it stops drift reports for the binding. Its keys are records, not references: a column delete never sees them.",
+            "type": "object",
+            "x-order": ["columns"],
+            "properties": {
+              "columns": {
+                "description": "Column id (an inherited column by its keyed id, <tableId>.<memberId>) to \"<name part>:<type part>\": two short hashes of the column's name, compared loosely, and of its type, facets and nullability.",
+                "type": "object",
+                "propertyNames": {
+                  "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}(\\.[0-7][0-9A-HJKMNP-TV-Z]{25})?$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}:[0-9a-f]{8}$"
+                }
+              }
+            },
+            "required": ["columns"],
+            "additionalProperties": false
           },
           "description": {
             "$ref": "common.json#/$defs/description"

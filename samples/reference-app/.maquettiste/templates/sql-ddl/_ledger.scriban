@@ -1,0 +1,101 @@
+{{-
+# The migration ledger (contract version 1): the bookkeeping tables in each PostgreSQL database that record which migration
+# facts a database reached. A script writes the ledger only when it also writes a ledger row, inside the one transaction that
+# holds its DDL, so a failed run records nothing; outside PostgreSQL ledger_ddl answers "" and no script writes the ledger.
+# Run-once SQL objects (apply "once", next-phase-1-design.md section 3.4) run inside a guard that reads the ledger's object rows and
+# record themselves there, so they run one time per database in whichever script reaches them first.
+# Needs _sql.scriban (lit writes the literals).
+
+# The ledger DDL (idempotent, no transaction control) for the database's ledger schema, without its last line feed; "" when the
+# dialect has no ledger. Every script that writes a ledger row writes it first, through ledger_ddl, so the script follows the
+# migrations.ledgerSchema setting.
+func ledger_prelude(db)
+  ret ledger_ddl db | string.rstrip
+end
+
+# The ledger schema as the ledger DDL writes it (the engine's LedgerContract, whatever the quoting settings say): as is when it is
+# a plain lower-case name, a leading underscore included, that is not a reserved word; else in double quotes. sql_quote's
+# "reserved" mode also quotes a leading underscore, so only the other names go through it.
+func ledger_schema_sql(db)
+  $name = db.ledger_schema
+  if (regex.match $name `^_[a-z0-9_]*$`).size > 0
+    ret $name
+  end
+  ret sql_quote $name db ((regex.match $name `^[a-z][a-z0-9_]*$`).size > 0 ? "reserved" : "always")
+end
+
+# The fact row of one fact the script reaches the end state of: inserted once, never updated. "" for an adopt fact (its end
+# state is object rows, which no writer of this pack fills) and for a database without a ledger. The schema is quoted as the
+# ledger DDL quotes it (ledger_schema_sql), so the row names the table the DDL created.
+func ledger_fact_row(db, fact)
+  if db.ledger_schema == null || fact.fact == "adopt"
+    ret ""
+  end
+  ret "INSERT INTO " + ledger_schema_sql(db) + ".applied_fact (fact_id, content_hash, applied_by) VALUES (" + lit(fact.id, db) + ", " + lit(fact.hash, db) + ", 'sql-ddl') ON CONFLICT (fact_id) DO NOTHING;"
+end
+
+# A run-once SQL object inside its ledger guard: one DO block that runs the statements (EXECUTE, so a body of several statements runs
+# as one) and inserts the object row, unless the ledger already records the object's id; a changed object therefore does not run
+# again where it ran. The dollar-quote tag is the first of $once$, $once1$, ... that the body does not hold. A body that cannot run
+# inside a function (transaction control, CONCURRENTLY) cannot run once; no SQL is parsed. The schema is quoted as the DDL quotes it.
+func ledger_once_sql(o, db)
+  $schema = ledger_schema_sql(db)
+  $body = o.body | string.rstrip
+  $text = $body + "\n" + o.name + "\n" + (o.schema ?? "")
+  $tag = "$once$"
+  $n = 0
+  while $text | string.contains $tag
+    $n = $n + 1
+    $tag = "$once" + $n + "$"
+  end
+  $id = lit(o.id, db)
+  ret "DO " + $tag + " BEGIN\n    IF NOT EXISTS (SELECT 1 FROM " + $schema + ".applied_object WHERE element_id = " + $id + ") THEN\n        EXECUTE " + lit($body, db) + ";\n        INSERT INTO " + $schema + ".applied_object (element_id, kind, schema_name, name, content_hash) VALUES (" + $id + ", 'sql-object', " + lit(o.schema, db) + ", " + lit(o.name, db) + ", " + lit(o.content_hash, db) + ");\n    END IF;\nEND " + $tag + ";"
+end
+
+# The object rows a rekey fact moves (rule 6 of the ledger contract): for each sql-object key it lists, the row of the old id takes
+# the new id unless a row of the new id exists already, so a run-once object whose id moved does not run again. One statement per
+# line, or "" when the fact moves no SQL object or the database has no ledger.
+func ledger_rekey_rows(db, fact)
+  if db.ledger_schema == null
+    ret ""
+  end
+  $schema = ledger_schema_sql(db)
+  $rows = []
+  for k in fact.keys
+    if k.kind == "sql-object"
+      $to = lit(k.to, db)
+      $rows[$rows.size] = "UPDATE " + $schema + ".applied_object SET element_id = " + $to + " WHERE element_id = " + lit(k.from, db) + " AND NOT EXISTS (SELECT 1 FROM " + $schema + ".applied_object WHERE element_id = " + $to + ");"
+    end
+  end
+  ret $rows | array.join "\n"
+end
+
+# The header line of a script that writes the ledger: what its one transaction records (facts, the fact rows it writes; once, the
+# run-once SQL objects it runs; what, "script" or "migration").
+func ledger_header(facts, once, what)
+  $parts = []
+  if facts > 0
+    $parts[$parts.size] = "a migration ledger row for each migration fact the " + what + " reaches (" + facts + ")"
+  end
+  if once > 0
+    $parts[$parts.size] = (facts > 0 ? "" : "a migration ledger row ") + "for each run-once SQL object, which runs only where the ledger does not record it yet (" + once + ")"
+  end
+  ret "-- One transaction: the DDL and " + ($parts | array.join " and ") + "."
+end
+
+# The facts a script that builds the database at the model's shape reaches (schema.sql, a migration from nothing): every open
+# fact in applied order except pending ones, raw ones (their skipWhen guard decides when a migrator runs them) and adopt ones;
+# held facts are in it, since the model already shows their change. Empty for a database without a ledger.
+func ledger_build_facts(db)
+  $result = []
+  if db.ledger_schema == null
+    ret $result
+  end
+  for m in db.migrations
+    if m.state != "pending" && m.fact != "raw" && m.fact != "adopt"
+      $result[$result.size] = m
+    end
+  end
+  ret $result
+end
+-}}

@@ -155,10 +155,57 @@ public sealed class ExtensionFilesTests
         Assert.Null(await repo.Store.ReadExtensionFileAsync("rules/naming.js", Ct));
     }
 
+    [Fact]
+    public async Task A_rows_script_is_listed_written_and_checked_as_seed_rows()
+    {
+        // next-phase-2-design.md section 3.4: seeds/<name>.js is a seed's rows script (kind seed-rows); a write loads it alone, never
+        // runs its rows, and reports a script that does not load or does not register its rows exactly once as MQ7127.
+        await using var repo = E2ERepo.Create(demo: false);
+        const string Rows = "maquettiste.rows((model, seed) => model.all(\"entity\").map(e => ({ code: e.name })));\n";
+
+        var created = await repo.Store.WriteExtensionFileAsync("seeds/entities.js", Rows, null, Ct);
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        Assert.Empty(created.Diagnostics);
+        Assert.Equal(Rows, repo.Repo.ReadFile(".maquettiste/extensions/seeds/entities.js"));
+        Assert.Equal([".maquettiste/extensions/seeds/entities.js"], (await repo.Store.GetSnapshotAsync(Ct)).SeedScripts.Select(s => s.Path));
+        await repo.Store.WriteExtensionFileAsync("rules/naming.js", LongNames, null, Ct);
+
+        // Listed after the schemas and the rules, with no rules of its own.
+        var files = (await repo.Store.ListExtensionFilesAsync(Ct)).Files;
+        Assert.Equal([("retention.json", "schema"), ("rules/naming.js", "rule"), ("seeds/entities.js", "seed-rows")], files.Select(f => (f.Path, f.Kind)));
+        Assert.Empty(files[2].Rules);
+        Assert.Empty(files[2].Diagnostics);
+        Assert.Equal("seed-rows", (await repo.Store.ReadExtensionFileAsync("seeds/entities.js", Ct))!.Kind);
+
+        // Rows registered twice, or not at all, or a registration of another kind: saved, and reported with the line.
+        var twice = await repo.Store.WriteExtensionFileAsync("seeds/entities.js", Rows + "maquettiste.rows(() => []);\n", created.Hash, Ct);
+        Assert.Equal(SaveOutcome.Saved, twice.Outcome);
+        Assert.Equal(("MQ7127", ".maquettiste/extensions/seeds/entities.js", 2), (twice.Diagnostics[0].Rule, twice.Diagnostics[0].FilePath, twice.Diagnostics[0].Line));
+        var none = await repo.Store.WriteExtensionFileAsync("seeds/none.js", "const rows = [];\n", null, Ct);
+        Assert.Contains("registers no rows", Assert.Single(none.Diagnostics, d => d.Rule == "MQ7127").Message, StringComparison.Ordinal);
+        var helper = await repo.Store.WriteExtensionFileAsync("seeds/helper.js", "maquettiste.helper('x', () => 1);\n", null, Ct);
+        Assert.Equal("MQ7127", Assert.Single(helper.Diagnostics).Rule);
+        Assert.Contains(Assert.Single((await repo.Store.ListExtensionFilesAsync(Ct)).Files, f => f.Path == "seeds/none.js").Diagnostics,
+            d => d.Rule == "MQ7127");
+
+        // A top-level let is a warning, as in a rule file.
+        var state = await repo.Store.WriteExtensionFileAsync("seeds/state.js", "let n = 0;\nmaquettiste.rows(() => []);\n", null, Ct);
+        Assert.Equal(("MQ5005", DiagnosticSeverity.Warning), (Assert.Single(state.Diagnostics).Rule, state.Diagnostics[0].Severity));
+
+        // A rows script moves within its kind only.
+        Assert.Equal(SaveOutcome.Invalid, (await repo.Store.MoveExtensionFileAsync(new ExtensionFileMove("seeds/state.js", "rules/state.js"), state.Hash!, Ct)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.Store.MoveExtensionFileAsync(new ExtensionFileMove("seeds/state.js", "seeds/counter.js"), state.Hash!, Ct)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.Store.DeleteExtensionFileAsync("seeds/counter.js", state.Hash!, Ct)).Outcome);
+        Assert.DoesNotContain((await repo.Store.GetSnapshotAsync(Ct)).SeedScripts, s => s.Path.EndsWith("counter.js", StringComparison.Ordinal));
+        await Assert.ThrowsAsync<ExtensionPathException>(() => repo.Store.WriteExtensionFileAsync("seeds/nested/a.js", Rows, null, Ct));
+    }
+
     [Theory]
     [InlineData("../maquettiste.json")]
     [InlineData("rules/nested/a.js")]
     [InlineData("rules/a.json")]
+    [InlineData("seeds/a.json")]
+    [InlineData("seeds/nested/a.js")]
     [InlineData("notes.txt")]
     [InlineData(".hidden.json")]
     [InlineData("a.js")]

@@ -171,7 +171,7 @@ public sealed class QueryRulesTests
 
         Assert.Equal([("MQ4032", "/collections/0/query/where")], Store.Findings(model, hidden));
         Assert.Equal(DiagnosticSeverity.Error, model.Diagnostics.Single(d => d.ElementId == hidden).Severity);
-        Assert.Empty(model.Db("main").Queries.Single(q => q.Id == hidden).Sql);
+        Assert.Null(model.Db("main").Queries.Single(q => q.Id == hidden).Sql);
         Assert.Empty(Store.Findings(model, selected));
         Assert.Empty(Store.Findings(model, grouped));
     }
@@ -205,7 +205,7 @@ public sealed class QueryRulesTests
         Assert.Equal(
             $"SELECT CAST(i.number AS CHAR) AS a, CAST(i.total AS SIGNED) AS b, CAST(i.number AS {decimalType}) AS c, CAST(i.number AS DATETIME) AS d, "
             + "CAST(i.total AS DOUBLE) AS e, CAST(i.id AS CHAR) AS f, CAST(i.number AS SIGNED) AS g, CAST(i.number AS JSON) AS h\nFROM invoices i",
-            query.Sql.Replace("main.", "", StringComparison.Ordinal));
+            query.Sql!.Replace("main.", "", StringComparison.Ordinal));
         Assert.Equal(["CHAR", "SIGNED", decimalType, "DATETIME", "DOUBLE", "CHAR", "SIGNED", "JSON"], query.Select.Select(f => f.NativeType));
 
         // The same query rendered for MySQL from another dialect's database takes the table too.
@@ -256,7 +256,7 @@ public sealed class QueryRulesTests
         Assert.Equal("string", typed.Select[3].CodeType); // an sql text: the attribute's type
         Assert.Equal([("MQ4033", "/select/2/expression")], Store.Findings(model, wrong));
         Assert.Equal(DiagnosticSeverity.Warning, model.Diagnostics.Single(d => d.ElementId == wrong).Severity);
-        Assert.NotEmpty(model.Db("main").Queries.Single(q => q.Id == wrong).Sql);
+        Assert.NotEmpty(model.Db("main").Queries.Single(q => q.Id == wrong).Sql!);
     }
 
     [Fact]
@@ -324,7 +324,7 @@ public sealed class QueryRulesTests
         var model = s.Resolve();
 
         Assert.Equal([("MQ4034", "/select/0/expression/call"), ("MQ4034", "/select/2/expression/call")], Store.Findings(model, id).OrderBy(f => f.Pointer, StringComparer.Ordinal));
-        Assert.Empty(model.Db("main").Queries.Single().Sql);
+        Assert.Null(model.Db("main").Queries.Single().Sql);
     }
 
     [Fact]
@@ -457,7 +457,7 @@ public sealed class QueryRulesTests
                 ("MQ4040", "/parameters/2/name"), ("MQ4040", "/select/1/name"), ("MQ4040", "/select/2/name"),
             ],
             Store.Findings(model, id).OrderBy(f => f.Rule, StringComparer.Ordinal).ThenBy(f => f.Pointer, StringComparer.Ordinal));
-        Assert.NotEmpty(model.Db("main").Queries.Single(q => q.Id == id).Sql); // names do not stop the SQL
+        Assert.NotEmpty(model.Db("main").Queries.Single(q => q.Id == id).Sql!); // names do not stop the SQL
         Assert.Equal([("MQ4040", "/name")], Store.Findings(model, first).Concat(Store.Findings(model, second)));
         Assert.Empty(Store.Findings(model, digits));
         Assert.Equal("Q2024Report", DatabaseRun.QueryClassName("2024 report"));

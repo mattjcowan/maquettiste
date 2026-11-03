@@ -62,15 +62,58 @@ Ask in plain words, for example:
 
 The skill tells the agent to use the server's tools. A typical run reads the project and the model index, reads the
 schema of the kind it writes, saves the new element with the hash it read, and runs `validate`. You see the result in the
-editor, which reads the same files.
+editor, which reads the same files. The first reads answer short summaries, so a large model does not fill the agent's
+context, and a small change to a large element can go as a patch (`patch_element`) with the same hash.
 
 Questions work too: "Which entities reference `Bike`?", or "Why does MQ4047 fire on `Rental`?"
 
+A change that spans several elements goes in one batch, written by name: the agent does not look up or invent ids. Ask
+for a list of tool kinds the workshop can pick from, and the agent can send one `apply_batch` that creates the table
+`workshop.tool_kinds`, the reference type `ToolKind` bound to it and its seed:
+
+```json
+{ "operations": [
+  { "op": "create", "as": "$table", "element": { "kind": "table", "name": "tool_kinds",
+      "database": "@database:main", "schema": "@schema:workshop",
+      "columns": [ { "name": "code", "type": "string", "length": 16, "nullable": false },
+                   { "name": "label", "type": "string", "length": 64, "nullable": false } ],
+      "primaryKey": { "columns": [ "@column:workshop.tool_kinds.code" ] } } },
+  { "op": "create", "as": "$type", "element": { "kind": "reference-type", "name": "ToolKind",
+      "package": "@package:Workshop", "code": { "length": 16 }, "label": { "length": 64 },
+      "bindings": [ { "database": "@database:main", "table": "$table",
+                      "fields": [ { "attribute": "code", "column": "code" },
+                                  { "attribute": "label", "column": "label" } ] } ] } },
+  { "op": "create", "element": { "kind": "seed", "name": "ToolKinds", "package": "@package:Workshop",
+      "target": "$type", "columns": [ "code", "label" ],
+      "rows": [ { "values": [ "wrench", "Wrench" ] }, { "values": [ "truing-stand", "Truing stand" ] } ] } }
+] }
+```
+
+1. `@database:main`, `@schema:workshop` and `@package:Workshop` name existing elements as their files name them;
+   `@column:workshop.tool_kinds.code` names a column the same operation creates.
+2. `"as": "$table"` names the new table for the whole batch, so the reference type's binding writes `$table` where the
+   table's id goes; `$type` does the same for the seed's target.
+3. The engine mints the ten ids the batch needs (the table, its columns, the reference type's fields and binding, the
+   seed and its rows) and writes only ids into the files. The answer's `ids` lists each name with the id it found.
+4. With `dryRun: true` nothing is written: the answer shows each file as a diff and the diagnostics the change would add
+   or remove. Ask the agent to show you that first.
+
+Without an agent, save the same batch as `tool-kinds.json` and run `maquettiste model apply tool-kinds.json --dry-run`,
+then without `--dry-run`. When an update sends a document back, the agent keeps the ids of the parts it does not change:
+an attribute or column sent without its id is a new one, and replacing one with a same-named copy is refused (MQ1014).
+
 ## 5. Let the agent generate
 
-The agent can plan and apply generation as you would on the Generate screen. It runs a plan, reads the diff of the files
-it cares about, then applies that plan by its id. A plan whose inputs changed since is refused as stale, and nothing is
-written. Ask it to show you the plan's diff before it applies.
+The agent can generate in one call with the `generate` tool, as `maquettiste generate` does: it renders what changed,
+writes it and answers a short summary per pack (how many files were added, changed or deleted, and their first paths),
+with the errors first when something is wrong. No plan is stored.
+
+When you want to read the files before they are written, ask the agent to plan first, as you would on the Generate
+screen. It runs a plan, reads the diff of the files it cares about, then applies that plan by its id. A plan whose
+inputs changed since is refused as stale, and nothing is written.
+
+Both take `units` and `elements` to regenerate only part of the model: for example, only the schema script of the
+`main` database, with `units: ["sql-ddl/schema"]` and the database's id. Every other file stays as it is.
 
 ## 6. Use the assistant in the editor
 
@@ -98,7 +141,7 @@ Assistant** says whether the site has one, and holds the house rules and token b
 | --- | --- | --- |
 | Read the model, references, database views, validation, SQL previews, plans | Yes | Yes, with the same read tools |
 | Change the model | Yes, through the element and batch tools | Only as proposals you apply |
-| Run and apply generation | Yes (plan, then apply by plan id) | No |
+| Run and apply generation | Yes (in one call, or plan, then apply by plan id) | No |
 | Write packs, extension files, settings, translations | Yes, through their tools | No |
 | Overwrite a file changed since it read it | No: the save is refused as a conflict, with both versions | No: Apply is refused |
 | Save a change that introduces model errors | No: refused as invalid, with the diagnostics | No: proposals are checked first |
@@ -115,8 +158,8 @@ references to be cleared or the dependents removed, and a dry run shows that pla
 ## See also
 
 - [Maquettiste over MCP](../mcp.md): [Running it](../mcp.md#running-it), every [tool](../mcp.md#tools), the
-  [semantics](../mcp.md#semantics) of hashes, conflicts and batches, and the
-  [conventions resource and prompt](../mcp.md#conventions-resource-and-prompt).
+  [semantics](../mcp.md#semantics) of hashes, conflicts and batches, [batches by name](../mcp.md#batches-by-name), and
+  the [conventions resource and prompt](../mcp.md#conventions-resource-and-prompt).
 - [The assistant](../user-guide.md#the-assistant): provider setup, house rules, budgets and privacy.
 - [The command line](../user-guide.md#the-command-line), for `init --mcp`, `--skill` and `--agent-setup`.
 - [Snapshots](../user-guide.md#snapshots).

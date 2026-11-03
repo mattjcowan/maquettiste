@@ -10,14 +10,21 @@
     "name",
     "displayName",
     "pluralName",
+    "package",
     "database",
     "schema",
     "description",
+    "rationale",
+    "decision",
+    "status",
     "stereotypes",
+    "excludeStereotypes",
     "tags",
     "category",
     "objectKind",
     "phase",
+    "environments",
+    "apply",
     "dependsOn",
     "body",
     "properties",
@@ -44,6 +51,10 @@
     "pluralName": {
       "type": "string"
     },
+    "package": {
+      "description": "The owning package. Membership only: the database still decides where the object goes.",
+      "$ref": "common.json#/$defs/id"
+    },
     "database": {
       "$ref": "common.json#/$defs/id"
     },
@@ -53,9 +64,27 @@
     "description": {
       "$ref": "common.json#/$defs/description"
     },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
+    },
     "stereotypes": {
       "$ref": "common.json#/$defs/keyList",
       "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
     },
     "tags": {
       "$ref": "common.json#/$defs/tagList",
@@ -73,6 +102,20 @@
       "description": "Whether the statements run before the database types and tables (an extension) or after the routines and views (a trigger, a grant).",
       "enum": ["before", "after"],
       "default": "after"
+    },
+    "environments": {
+      "description": "The environments the object runs in (free names such as dev, test, staging); empty means every environment. Otherwise only the environment scripts (objects.<env>.sql) run it, on every deploy, so a converge body must be safe to run again.",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/tagLabel"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "apply": {
+      "description": "How the statements are applied: converge runs them wherever the scripts run the object, again when it changes; once runs them one time per database and records the object in the migration ledger (PostgreSQL only).",
+      "enum": ["converge", "once"],
+      "default": "converge"
     },
     "dependsOn": {
       "description": "Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.",

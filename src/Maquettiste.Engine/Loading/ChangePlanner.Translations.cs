@@ -70,7 +70,17 @@ internal sealed partial class ChangePlanner
             }
         }
 
-        // 4. Deletes: the entries of deleted elements and removed sub-elements, with their sidecars.
+        // 4. Deletes: the entries of deleted elements and removed sub-elements, with their sidecars. A sub-element that moved to another
+        // element of the plan (a reference row a merge moves, next-phase-2-design.md section 3.5) keeps its entries.
+        if (_removedIds.Count > 0)
+        {
+            foreach (var working in _working.Values)
+            {
+                foreach (var (subId, _) in DocumentReader.Scan(working.Json).Ids)
+                    _removedIds.Remove(subId);
+            }
+        }
+
         if (_removedIds.Count > 0)
             RemoveEntries();
     }

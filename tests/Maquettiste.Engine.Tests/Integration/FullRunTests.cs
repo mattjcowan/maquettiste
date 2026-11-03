@@ -130,33 +130,27 @@ public sealed class FullRunTests
     }
 
     [Fact]
-    public async Task Migrations_are_written_once_per_revision_and_the_snapshot_advances_only_on_apply()
+    public async Task Migrations_are_written_once_and_a_check_after_the_apply_is_clean()
     {
         await using var repo = E2ERepo.Create(demo: false, migrations: true);
         await repo.ApplyAsync();
         Assert.Equal(1, Revision(repo));
 
-        // Nothing changed, yet the repository is not stable after the apply that wrote migration 1: the migration unit renders
-        // nothing against the advanced (empty) diff, so migration 1 is an owned orphan. Check reports it as drift (design section 16,
-        // SPEC section 17: any orphaned file), since the next apply drops its `o:` line from the committed manifest (D29). Known gap,
-        // raised as a design request (keep an owned orphan's entry while its file exists); this test records today's behaviour.
+        // The apply that wrote migration 1 advanced the snapshot, so the migration unit renders nothing against the (empty) diff and
+        // migration 1 is an owned orphan. A once file stays owned while it exists (next-phase-1-design.md section 3.2, amending D29):
+        // check is clean right after the apply, and the next apply keeps its entry and changes nothing.
         var manifestAfterWrite = repo.Manifest("migrations");
         Assert.StartsWith("o:", ManifestEntries(manifestAfterWrite)["db/migrations/1.sql"], StringComparison.Ordinal);
         var check = await repo.RunAsync(GenerationMode.Check);
-        E2ERepo.AssertOutcome(RunOutcome.Drift, check);
-        Assert.Equal(("db/migrations/1.sql", FileChangeKind.OrphanedOwned), check.Changes
-            .Where(c => c.Kind is not (FileChangeKind.Unchanged or FileChangeKind.Kept)).Select(c => (c.Path, c.Kind)).Single());
-        Assert.Equal(manifestAfterWrite, repo.Manifest("migrations")); // check writes nothing
-        var again = await repo.ApplyAsync();
-        Assert.Equal(("db/migrations/1.sql", FileChangeKind.OrphanedOwned), again.Changes.Select(c => (c.Path, c.Kind)).Single());
-        Assert.Equal(0, again.FilesWritten + again.FilesDeleted);
-        Assert.True(repo.Repo.Exists("db/migrations/1.sql"));
-        Assert.False(repo.Repo.Exists(".maquettiste/manifest/migrations.json")); // the only entry is gone, so the manifest is deleted
-
-        // From here on the repository is stable: check is clean and a further apply leaves the committed tree byte-identical.
-        E2ERepo.AssertOutcome(RunOutcome.Succeeded, await repo.RunAsync(GenerationMode.Check));
+        E2ERepo.AssertOutcome(RunOutcome.Succeeded, check);
+        Assert.Contains(check.Changes, c => c.Path == "db/migrations/1.sql" && c.Kind == FileChangeKind.Kept);
+        Assert.DoesNotContain(check.Changes, c => c.Kind is FileChangeKind.OrphanedOwned or FileChangeKind.Deleted);
+        Assert.Equal(manifestAfterWrite, repo.Manifest("migrations"));
         var stable = repo.Tree();
-        Assert.Empty((await repo.ApplyAsync()).Changes);
+        var again = await repo.ApplyAsync();
+        Assert.All(again.Changes, c => Assert.Equal(("db/migrations/1.sql", FileChangeKind.Kept), (c.Path, c.Kind)));
+        Assert.Equal(0, again.FilesWritten + again.FilesDeleted);
+        Assert.Equal(manifestAfterWrite, repo.Manifest("migrations"));
         AssertSameBytes(stable, repo.Tree());
 
         // A physical change: check reports the pending diff as drift (MQ6018) and saves nothing; apply writes migration 2.
@@ -175,9 +169,18 @@ public sealed class FullRunTests
         Assert.Equal(2, Revision(repo));
         Assert.StartsWith("-- migration 1 -> 2 of main\n-- altered", repo.Repo.ReadFile("db/migrations/2.sql"), StringComparison.Ordinal);
         Assert.True(repo.Repo.Exists("db/migrations/1.sql"));
-        // Same gap for migration 2: drift until a second apply drops its entry.
-        E2ERepo.AssertOutcome(RunOutcome.Drift, await repo.RunAsync(GenerationMode.Check));
-        await repo.ApplyAsync();
+        // Both migrations stay owned, so the check right after this apply is clean too.
+        var entries = ManifestEntries(repo.Manifest("migrations"));
+        Assert.Equal(["db/migrations/1.sql", "db/migrations/2.sql"], entries.Keys);
+        Assert.All(entries.Values, hash => Assert.StartsWith("o:", hash, StringComparison.Ordinal));
+        E2ERepo.AssertOutcome(RunOutcome.Succeeded, await repo.RunAsync(GenerationMode.Check));
+
+        // Deleting a migration file is the team's call: the next apply drops its entry and writes nothing in its place.
+        File.Delete(repo.Repo.PathOf("db/migrations/1.sql"));
+        var deleted = await repo.ApplyAsync();
+        Assert.Contains(deleted.Changes, c => c.Path == "db/migrations/1.sql" && c.Kind == FileChangeKind.OrphanedOwned);
+        Assert.False(repo.Repo.Exists("db/migrations/1.sql"));
+        Assert.Equal(["db/migrations/2.sql"], ManifestEntries(repo.Manifest("migrations")).Keys);
         E2ERepo.AssertOutcome(RunOutcome.Succeeded, await repo.RunAsync(GenerationMode.Check));
     }
 

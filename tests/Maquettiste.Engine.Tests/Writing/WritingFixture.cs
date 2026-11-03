@@ -105,9 +105,9 @@ internal sealed class WritingFixture : IDisposable
     }
 
     /// <summary>A <c>block</c> unit with one block file (its lines are <paramref name="lines"/>).</summary>
-    public static ProcessedUnit BlockUnit(string key, string path, string lines, bool createFile = false, string? comment = null)
+    public static ProcessedUnit BlockUnit(string key, string path, string lines, bool createFile = false, string? comment = null, string? commentEnd = null)
     {
-        var planned = Planned(key, u => u with { Mode = OutputMode.Block, CreateFile = createFile, BlockComment = comment ?? "#" });
+        var planned = Planned(key, u => u with { Mode = OutputMode.Block, CreateFile = createFile, BlockComment = comment ?? "#", BlockCommentEnd = commentEnd });
         var rendered = new RenderedUnit(planned, [], ["e:b", "e:a"], "input-" + key, [], false);
         return new ProcessedUnit(rendered, [Out(path, lines, OutputMode.Block)], [], false);
     }

@@ -1,5 +1,6 @@
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Scripting;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Scripting;
 
@@ -97,6 +98,75 @@ public sealed class SandboxRestrictionTests
 
         Assert.Equal("MQ6007", error.Diagnostic.Rule);
         Assert.Contains("time limit (200 ms)", error.Diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_zero_timeout_lets_a_long_rule_finish_under_the_statement_limit()
+    {
+        var builder = new ModelBuilder(seed: 5);
+        var invoice = builder.Entity("Invoice").Key("id", "uuid");
+        var model = builder.Build();
+        const string Rule = """
+            maquettiste.rule({ id: 'long', check(element, model, report) {
+              let total = 0;
+              for (let i = 0; i < 1000000; i++) { total = (total + i) % 1000003; }
+              report('total ' + total);
+            } });
+            """;
+        var expected = 0L;
+        for (var i = 0L; i < 1_000_000; i++)
+            expected = (expected + i) % 1_000_003;
+
+        // A million rounds run far past one millisecond, which a timeout of 0 meant before it turned the clock off.
+        using var pool = Scripts.Pool(Rule, Scripts.Limits with { ScriptTimeoutMs = 0, ScriptStatements = 5_000_000 }, path: Scripts.RuleScript);
+        using var lease = pool.Rent();
+        var diagnostics = lease.Sandbox.RunRule("long", model.GetDocument(invoice.Id)!, model, Scripts.Ctx());
+
+        var finding = Assert.Single(diagnostics);
+        Assert.Equal("x/long", finding.Rule);
+        Assert.Equal($"total {expected}", finding.Message);
+
+        // The same rule under a 1 ms clock breaks the time limit: the clock is what 0 turned off.
+        using var clocked = Scripts.Pool(Rule, Scripts.Limits with { ScriptTimeoutMs = 1, ScriptStatements = 5_000_000 }, path: Scripts.RuleScript);
+        using var clockedLease = clocked.Rent();
+        var error = Assert.Throws<ScriptLimitException>(() => clockedLease.Sandbox.RunRule("long", model.GetDocument(invoice.Id)!, model, Scripts.Ctx()));
+        Assert.Equal("MQ5003", error.Diagnostic.Rule);
+        Assert.Contains("time limit (1 ms)", error.Diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_statement_cap_still_stops_an_infinite_loop()
+    {
+        // int.MaxValue means no limit to the JavaScript engine, so the statement limit is clamped below it.
+        Assert.Equal(2_000_000_000, ScriptSandbox.StatementCap);
+        Assert.Equal(ScriptSandbox.StatementCap, ScriptSandbox.StatementLimit(Scripts.Limits with { ScriptStatements = long.MaxValue }));
+        Assert.Equal(ScriptSandbox.StatementCap, ScriptSandbox.StatementLimit(Scripts.Limits with { ScriptStatements = int.MaxValue }));
+        Assert.Equal(1, ScriptSandbox.StatementLimit(Scripts.Limits with { ScriptStatements = 0 }));
+
+        using var pool = Scripts.Pool("maquettiste.helper('spin', () => { while (true) {} });",
+            Scripts.Limits with { ScriptTimeoutMs = 0, ScriptStatements = 100_000 });
+
+        var error = LimitError(pool, "spin");
+
+        Assert.Equal("MQ6007", error.Diagnostic.Rule);
+        Assert.Contains("statement limit (100000)", error.Diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("/(a+)+$/.test(input)")]
+    [InlineData("new RegExp('(a+)+$').test(input)")]
+    public void Regex_matches_keep_their_bound_with_the_clock_off(string expression)
+    {
+        var limits = Scripts.Limits with { ScriptTimeoutMs = 0 };
+        Assert.Equal(TimeSpan.FromMilliseconds(250), ScriptSandbox.RegexTimeout(limits));
+        using var pool = Scripts.Pool($"maquettiste.helper('regex', () => {{ const input = 'a'.repeat(40) + '!'; return {expression}; }});", limits);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var error = LimitError(pool, "regex");
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"stopped after {clock.ElapsedMilliseconds} ms");
+        Assert.Equal("MQ6007", error.Diagnostic.Rule);
+        Assert.Contains("regular expression", error.Diagnostic.Message, StringComparison.Ordinal);
     }
 
     [Fact]

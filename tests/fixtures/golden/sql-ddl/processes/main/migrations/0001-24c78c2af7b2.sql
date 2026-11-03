@@ -1,0 +1,63 @@
+-- Migration 0001 of database main (PostgreSQL 16): schema revision 0 to 1.
+-- From state: none
+-- To state: 7eaae7161f59
+-- Facts: none
+-- Written once by Maquettiste (sql-ddl/migration) from the schema diff. It is yours now: review it, adjust it and commit it.
+-- Lines marked TODO need a decision the diff cannot make (data conversions, sequence restarts).
+
+BEGIN;
+
+CREATE TABLE public.sales_orders (
+    id uuid NOT NULL,
+    status integer NOT NULL DEFAULT 0,
+    configuration jsonb NULL,
+    total numeric(18,2) NOT NULL,
+    credit_limit numeric(18,2) NOT NULL,
+    CONSTRAINT pk_sales_orders PRIMARY KEY (id)
+);
+COMMENT ON COLUMN public.sales_orders.configuration IS 'The active states of the lifecycle, for the nested states the status cannot hold.';
+
+CREATE TABLE public.sales_order_histories (
+    id uuid NOT NULL,
+    sales_order_id uuid NOT NULL,
+    from_state varchar(255) NULL,
+    to_state varchar(255) NOT NULL,
+    at timestamptz(6) NOT NULL,
+    CONSTRAINT pk_sales_order_histories PRIMARY KEY (id)
+);
+COMMENT ON TABLE public.sales_order_histories IS 'One row per status change of a sales order.';
+
+CREATE TABLE public.purchase_requests (
+    id uuid NOT NULL,
+    amount numeric(18,2) NOT NULL,
+    cost_centre varchar(255) NULL,
+    CONSTRAINT pk_purchase_requests PRIMARY KEY (id)
+);
+
+CREATE TABLE public.process_instances (
+    id uuid NOT NULL,
+    process varchar(255) NOT NULL,
+    subject uuid NULL,
+    configuration jsonb NOT NULL,
+    context jsonb NULL,
+    updated_at timestamptz(6) NOT NULL,
+    CONSTRAINT pk_process_instances PRIMARY KEY (id)
+);
+COMMENT ON TABLE public.process_instances IS 'A running orchestration: its active states and context.';
+
+CREATE TABLE public.gate_signatures (
+    id uuid NOT NULL,
+    instance varchar(255) NOT NULL,
+    gate varchar(255) NOT NULL,
+    sequence bigint NOT NULL,
+    signer varchar(255) NOT NULL,
+    actor varchar(255) NOT NULL,
+    meaning varchar(255) NULL,
+    reason text NULL,
+    outcome varchar(255) NOT NULL,
+    at timestamptz(6) NOT NULL,
+    CONSTRAINT pk_gate_signatures PRIMARY KEY (id)
+);
+COMMENT ON TABLE public.gate_signatures IS 'The audit record of a gate: one row per signature attempt and outcome.';
+
+COMMIT;

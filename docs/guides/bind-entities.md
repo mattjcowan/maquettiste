@@ -93,7 +93,72 @@ left for you to map. A to-one navigation's column gets no foreign key; add it in
 When a column has a name of its own, pick it in the attribute's **Column** cell. **Map by name…** lists the attributes
 without a field whose name matches a free column; untick the ones you do not want, then **Map**.
 
-## 7. Name the relationship's foreign key
+## 7. Keep a binding in step with its table
+
+Tables you bind to keep changing: a migration adds a column, someone renames one, a type widens. The binding keeps
+working, because it names columns by id, but the entity stops following the table. To tell what changed, a binding
+records its **provenance**: what each column of its table looked like when an operation last followed it, as two short
+hashes per column (its name and its type), never a copy of the table and never a date.
+
+The engine's operations record it: creating a table for the entity (step 2), adding attributes or columns (steps 4
+and 5), and map by name and re-sync from a terminal or an agent. A binding you edit by hand keeps what it had; the
+editor's Auto-map and **Map by name…** do not record it yet, so run a re-sync once to start. Only a designed or imported
+table has provenance: a view, a query or a table the database makes from an entity has no column ids to record.
+
+Say a migration adds `returned_by` to `rentals` and renames `deposit_cents` to `deposit_amount_cents`:
+
+```sh
+maquettiste binding drift --database main Rental
+```
+
+```text
+Rental in main (rentals)
+  added returned_by (unaccounted)
+  renamed deposit_amount_cents (attribute depositCents)
+```
+
+- **added**: a column not recorded that nothing in the binding names, with what fills it (`unaccounted`, `identity`,
+  `default`, `computed`).
+- **renamed** and **retyped**: a column a field maps whose name or type changed. A change of case or underscores is
+  not a rename.
+- **removed**: a recorded column the table no longer has.
+- A binding without provenance lists only the columns nothing accounts for.
+
+Validation says the same. MQ4047 reports a column nothing accounts for on every binding, new or old. MQ4087 reports a
+mapped column renamed or retyped since the provenance was recorded, and MQ4088 provenance that does not describe the
+source (the binding was pointed at another table by hand). All three are warnings; set them to `error` under
+`validation.rules` in `maquettiste.json` to fail validation and stop generation, or run `binding drift --check`, which
+exits 2 when a listed binding drifts.
+
+Catch up in one reviewed step:
+
+```sh
+maquettiste binding resync --database main Rental --dry-run
+maquettiste binding resync --database main Rental
+```
+
+A re-sync is one batch, all or nothing:
+
+1. An attribute whose name followed its column's old name takes the new one: `depositCents` becomes
+   `depositAmountCents`. It keeps its id, so every link holds. `--keep-names` keeps every name.
+2. An attribute whose column's type changed is retyped, unless its reference type, enum or scalar type still fits.
+3. Attributes the binding leaves unmapped are mapped to free columns of the same name.
+4. Each added column gets an attribute, mapped to it: `returnedBy`.
+5. The field of a removed column goes; its attribute stays.
+6. The provenance is recorded again.
+
+`--column returned_by` (a name or a column id, for one entity) brings only that column into step. Attributes from a base
+entity or a stereotype are never renamed or retyped; a note names them. A re-sync never deletes an attribute and never
+changes the table. Renaming an attribute renames what is generated from it, so read the dry run first.
+
+**Map by name** alone maps the unmapped attributes to free columns of the same name and records provenance:
+`maquettiste binding map --database main Rental`.
+
+The table's comments document the entity too: an attribute with no description of its own shows the comment of the
+column its binding maps it to, in the resolved model and in generated code. Write a description on the attribute to
+replace it; the comment stays on the table.
+
+## 8. Name the relationship's foreign key
 
 1. Open the relationship **MemberRentals** and pick its **Storage** tab.
 2. Both ends are bound in `main`, so **Foreign key** lists the keys that can realize it: the keys of `rentals` that
@@ -103,7 +168,7 @@ without a field whose name matches a free column; untick the ones you do not wan
 
 While only one end is bound, the section says "Bind both ends to a table to name the foreign key".
 
-## 8. Check the SQL
+## 9. Check the SQL
 
 Open the **SQL** section of the `Rental` binding. Each statement is the text a repository runs: parameters named after the
 fields, constants as literals, and the columns the database fills left out of inserts and updates. Switch the dialect to
@@ -124,6 +189,9 @@ The editor's actions have command-line twins, each with a dry run:
 maquettiste model materialize tables --database main Member --dry-run
 maquettiste model materialize attributes --database main Rental        # every unmapped column
 maquettiste model materialize columns --database main Rental           # a column per unmapped attribute
+maquettiste binding drift --database main --check                       # exit 2 when a binding drifts
+maquettiste binding map --database main Rental --dry-run                # unmapped attributes to columns by name
+maquettiste binding resync --database main Rental --keep-names          # catch up, keeping attribute names
 ```
 
 ## See also
@@ -135,5 +203,7 @@ maquettiste model materialize columns --database main Rental           # a colum
   [Relationship storage](../user-guide.md#relationship-storage).
 - [Binding entities to tables, views and queries](../user-guide.md#binding-entities-to-tables-views-and-queries): the
   file shape, several entities over one table, and a read-only entity over a query.
-- [Materialize, both ways](../user-guide.md#materialize-both-ways) and
-  [The rules for bindings](../user-guide.md#the-rules-for-bindings) (MQ4044 to MQ4055).
+- [Materialize, both ways](../user-guide.md#materialize-both-ways),
+  [Provenance and drift](../user-guide.md#provenance-and-drift),
+  [Column comments as descriptions](../user-guide.md#column-comments-as-descriptions) and
+  [The rules for bindings](../user-guide.md#the-rules-for-bindings) (MQ4044 to MQ4055, MQ4087 to MQ4089).

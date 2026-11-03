@@ -7,11 +7,13 @@ using Maquettiste.Engine;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste model export|stats|delete</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
+/// <c>maquettiste model export|stats|delete|materialize|apply</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
 /// canonical documents (or, with <c>--resolved</c>, the resolved model's flat records) as one JSON array or as one JSON value per line;
 /// <c>stats</c> counts the kinds present, per package with <c>--by package</c>. Both read the same pages the editor API and the MCP
 /// server serve (<c>GET /api/model/elements</c>, <c>/api/model/resolved</c>, <c>/api/model/kinds</c>). <c>delete</c> deletes one element
 /// with a resolution, or with <c>--dry-run</c> prints what the delete would do (<c>GET /api/model/elements/{id}/delete-plan</c>).
+/// <c>apply</c> applies a batch file all or nothing, by name or by id, as the MCP tool <c>apply_batch</c> does (next-phase-1-design.md
+/// section 5.1).
 /// </summary>
 internal static class ModelCommand
 {
@@ -25,7 +27,7 @@ internal static class ModelCommand
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
         var line = context.Line;
-        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export, stats, delete or materialize.");
+        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export, stats, delete, materialize or apply.");
         switch (verb)
         {
             case "export":
@@ -37,6 +39,9 @@ internal static class ModelCommand
                 break;
             case "delete":
                 line.Expect("model delete", 3, "--resolution", "--dry-run", "--format");
+                break;
+            case "apply":
+                line.Expect("model apply", 3, "--dry-run", "--format");
                 break;
             case "materialize":
                 var what = line.Positionals.Count > 2 ? line.Positionals[2] : throw new UsageException("'model materialize' needs tables, entities, attributes or columns.");
@@ -53,7 +58,7 @@ internal static class ModelCommand
                 });
                 break;
             default:
-                throw new UsageException($"Unknown model verb '{verb}': use export, stats, delete or materialize.");
+                throw new UsageException($"Unknown model verb '{verb}': use export, stats, delete, materialize or apply.");
         }
 
         if (await ProjectGuard.RepoAsync(context).ConfigureAwait(false) is not { } repo)
@@ -65,6 +70,8 @@ internal static class ModelCommand
             var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
             if (verb == "delete")
                 return await DeleteAsync(context, store, snapshot, ct).ConfigureAwait(false);
+            if (verb == "apply")
+                return await ApplyAsync(context, store, snapshot, ct).ConfigureAwait(false);
             if (verb == "materialize")
                 return await MaterializeAsync(context, store, snapshot, ct).ConfigureAwait(false);
             if (verb == "stats")
@@ -202,8 +209,15 @@ internal static class ModelCommand
             return outcome == SaveOutcome.Saved ? Program.ExitCodes.Success : Program.ExitCodes.Invalid;
         if (outcome == SaveOutcome.Saved)
         {
+            // The migration facts the delete recorded are new files of the same change: counted apart from the elements it changed.
+            var facts = result.Facts ?? [];
+            var recorded = facts.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+            var changed = result.Changes?.Changed.Count(c => !recorded.Contains(c.Id)) ?? 0;
+            var pending = facts.Count(f => f.State == "pending");
+            var factText = facts.Count == 0 ? "" : string.Create(CultureInfo.InvariantCulture,
+                $"; recorded {facts.Count} migration {(facts.Count == 1 ? "fact" : "facts")}{(pending > 0 ? " (" + pending.ToString(CultureInfo.InvariantCulture) + " pending: maquettiste validate names what each needs)" : "")}");
             context.Info(string.Create(CultureInfo.InvariantCulture,
-                $"Deleted {result.Changes?.Deleted.Count ?? 0} {(result.Changes?.Deleted.Count == 1 ? "element" : "elements")} and changed {result.Changes?.Changed.Count ?? 0}."));
+                $"Deleted {result.Changes?.Deleted.Count ?? 0} {(result.Changes?.Deleted.Count == 1 ? "element" : "elements")} and changed {changed}{factText}."));
             return Program.ExitCodes.Success;
         }
 
@@ -214,6 +228,79 @@ internal static class ModelCommand
             _ => "maquettiste: nothing was deleted.",
         }).ConfigureAwait(false);
         return outcome == SaveOutcome.Conflict ? Program.ExitCodes.Conflicts : Program.ExitCodes.Invalid;
+    }
+
+    /// <summary>
+    /// <c>model apply &lt;batch.json&gt;</c>: reads <c>{ "operations": [...] }</c> or the bare array, then applies it all or nothing, or with
+    /// <c>--dry-run</c> previews it. Text on stdout: a usage line per reference-type refactor, the written and deleted paths (with
+    /// <c>--dry-run</c>, the diffs), the names and
+    /// placeholders with their ids, and with <c>--dry-run</c> a <c>+ </c> or <c>- </c> line per diagnostic the change adds or removes;
+    /// <c>--format json</c> prints the <c>apply_batch</c> answer. Exit 0 when saved, 3 on a conflict, 1 for anything else.
+    /// </summary>
+    private static async Task<int> ApplyAsync(GlobalContext context, ModelStore store, Engine.Model.ModelSnapshot snapshot, CancellationToken ct)
+    {
+        var line = context.Line;
+        var json = line.Choice("--format", "text", "text", "json") == "json";
+        var dryRun = line.Has("--dry-run");
+        var file = line.Positionals[2];
+        if (await CliFiles.ReadAsync(context, file, ct).ConfigureAwait(false) is not { } text)
+            return Program.ExitCodes.Invalid;
+
+        var parsed = store.ParseBatch(BatchOutput.Document(text));
+        if (parsed.Batch is null)
+        {
+            if (json)
+                await context.Out.WriteLineAsync(JsonSerializer.Serialize(new { outcome = SaveOutcome.Invalid, diagnostics = parsed.Diagnostics }, Options)).ConfigureAwait(false);
+            foreach (var d in parsed.Diagnostics)
+                await context.Error.WriteLineAsync(DiagnosticOutput.Line(d)).ConfigureAwait(false);
+            await context.Error.WriteLineAsync($"maquettiste: {file} is not a valid batch; nothing was written.").ConfigureAwait(false);
+            return Program.ExitCodes.Invalid;
+        }
+
+        SaveOutcome outcome;
+        IReadOnlyList<SaveResult> items;
+        if (dryRun)
+        {
+            var preview = await store.PreviewBatchAsync(parsed.Batch, ct).ConfigureAwait(false);
+            (outcome, items) = (preview.Outcome, preview.Items);
+            await context.Out.WriteAsync(json ? JsonSerializer.Serialize(BatchOutput.Preview(preview), Options) + "\n"
+                : outcome == SaveOutcome.Saved ? BatchOutput.PreviewText(preview, snapshot, parsed.Batch) : "").ConfigureAwait(false);
+            if (outcome == SaveOutcome.Saved)
+            {
+                context.Info(string.Create(CultureInfo.InvariantCulture,
+                    $"Dry run: {preview.Files.Count} {(preview.Files.Count == 1 ? "file" : "files")} would change, {preview.Ids.Minted.Count} {(preview.Ids.Minted.Count == 1 ? "id" : "ids")} would be minted (new ones on apply), {preview.DiagnosticsAdded.Count} {(preview.DiagnosticsAdded.Count == 1 ? "diagnostic" : "diagnostics")} added and {preview.DiagnosticsRemoved.Count} removed; nothing was written."));
+            }
+        }
+        else
+        {
+            var result = await store.ApplyBatchAsync(parsed.Batch, ChangeSource.Cli, ct).ConfigureAwait(false);
+            (outcome, items) = (result.Outcome, result.Items);
+            await context.Out.WriteAsync(json ? JsonSerializer.Serialize(result, Options) + "\n"
+                : outcome == SaveOutcome.Saved ? BatchOutput.AppliedText(result, snapshot, parsed.Batch) : "").ConfigureAwait(false);
+            if (outcome == SaveOutcome.Saved)
+            {
+                var facts = result.Facts ?? [];
+                var pending = facts.Count(f => f.State == "pending");
+                var factText = facts.Count == 0 ? "" : string.Create(CultureInfo.InvariantCulture,
+                    $"; recorded {facts.Count} migration {(facts.Count == 1 ? "fact" : "facts")}{(pending > 0 ? " (" + pending.ToString(CultureInfo.InvariantCulture) + " pending: maquettiste validate names what each needs)" : "")}");
+                context.Info(string.Create(CultureInfo.InvariantCulture,
+                    $"Applied {parsed.Batch.Operations.Count} {(parsed.Batch.Operations.Count == 1 ? "operation" : "operations")}: {result.Changes?.Changed.Count ?? 0} written, {result.Changes?.Deleted.Count ?? 0} deleted, {result.Ids.Minted.Count} {(result.Ids.Minted.Count == 1 ? "id" : "ids")} minted{factText}."));
+            }
+        }
+
+        await context.Out.FlushAsync(ct).ConfigureAwait(false);
+        if (outcome == SaveOutcome.Saved)
+            return Program.ExitCodes.Success;
+        foreach (var failure in BatchOutput.FailureLines(items))
+            await context.Error.WriteLineAsync(failure).ConfigureAwait(false);
+        await context.Error.WriteLineAsync(outcome switch
+        {
+            SaveOutcome.Conflict => "maquettiste: nothing was written: a file changed since it was read; read it again and update expectedHash.",
+            SaveOutcome.Referenced => "maquettiste: nothing was written: other elements reference an element the batch deletes; give the delete a resolution (remove-references or delete-dependents).",
+            SaveOutcome.NotFound => "maquettiste: nothing was written: an element the batch names does not exist.",
+            _ => "maquettiste: nothing was written: the batch is not valid.",
+        }).ConfigureAwait(false);
+        return BatchOutput.ExitCode(outcome);
     }
 
     /// <summary>
@@ -303,7 +390,7 @@ internal static class ModelCommand
     }
 
     /// <summary>The one element of a kind an id or name names (a table or view: of the database); a usage error otherwise.</summary>
-    private static string One(Engine.Model.ModelSnapshot snapshot, string kind, string wanted, string? database)
+    internal static string One(Engine.Model.ModelSnapshot snapshot, string kind, string wanted, string? database)
     {
         bool Fits(Engine.Model.Element e) => kind switch
         {
@@ -319,7 +406,7 @@ internal static class ModelCommand
     }
 
     /// <summary>A materialize plan as lines: what is created, changed and deleted, the notes, and what blocks it.</summary>
-    private static string MaterializeText(MaterializePlan plan, bool dryRun)
+    internal static string MaterializeText(MaterializePlan plan, bool dryRun)
     {
         var text = new StringBuilder();
         text.Append(plan.Operation).Append(plan.Valid ? (dryRun ? " would:\n" : ":\n") : " cannot go ahead:\n");

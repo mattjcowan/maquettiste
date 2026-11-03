@@ -145,7 +145,7 @@ internal sealed partial class DatabaseRun
             }
 
             // A query with errors has none: they are reported above, and generation stops on them before any template reads it.
-            query.Sql = _failed ? "" : QuerySql.Render(query).Sql;
+            query.Sql = _failed ? null : QuerySql.Render(query).Sql;
         }
 
         private void Report(string rule, string message, string pointer)
@@ -261,7 +261,7 @@ internal sealed partial class DatabaseRun
                     Length = p.Length,
                     Precision = p.Precision,
                     Scale = p.Scale,
-                    NativeType = native,
+                    NativeType = native ?? "",
                     CodeType = keyword ?? (dbType is { TypeKind: "domain", Base: { } baseType } ? baseType : "string"),
                     Collection = p.Collection,
                     Description = p.Description,
@@ -877,7 +877,7 @@ internal sealed partial class DatabaseRun
                 result.Routine = routine;
                 Use(routine);
                 result.Type = routine.Returns?.Type;
-                result.NativeType = routine.Returns is { Table: null } returns && returns.NativeType.Length > 0 ? returns.NativeType : null;
+                result.NativeType = routine.Returns is { Table: null } returns ? returns.NativeType : null;
                 result.CodeType = routine.Returns?.Type ?? (routine.Returns?.DbType is { TypeKind: "domain", Base: { } baseType } ? baseType : null);
                 return result;
             }

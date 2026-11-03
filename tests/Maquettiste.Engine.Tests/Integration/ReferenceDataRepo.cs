@@ -119,6 +119,13 @@ internal sealed class ReferenceDataRepo : IAsyncDisposable
         return result.Plan!;
     }
 
+    /// <summary>Creates an element through the store.</summary>
+    public async Task CreateAsync(string json)
+    {
+        var result = await Store.CreateAsync(Encoding.UTF8.GetBytes(JsonNode.Parse(json)!.ToJsonString()), ChangeSource.Editor, Ct);
+        Assert.True(result.Outcome == SaveOutcome.Saved, result.Outcome + ": " + string.Join("; ", result.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+    }
+
     /// <summary>Edits an element through the store with its current hash.</summary>
     public async Task EditAsync(string id, Action<JsonObject> edit)
     {

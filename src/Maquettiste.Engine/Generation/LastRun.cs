@@ -311,11 +311,23 @@ internal sealed record OutputChunk(int Count, byte[] Bytes)
 /// same key in a fresh process, whose input files, engine files and outputs all still have the recorded stats or content, is answered by
 /// <see cref="TryReplayAsync"/> with the result a full run would give (every planned unit skipped, nothing written, the same
 /// diagnostics) without loading, validating, resolving or planning. Any difference, a missing or damaged record, or an unfinished
-/// journal falls back to the full run.
+/// journal falls back to the full run. Only a run of every unit of its packs against the committed snapshots uses the record
+/// (<see cref="Serves"/>): one against a baseline or limited by unit or element only forgets it before it applies.
 /// </summary>
 /// <param name="services">The generation service's services.</param>
 internal sealed class LastRun(EngineServices services)
 {
+    /// <summary>
+    /// Whether a request may be answered from the record and may write one: not one against a baseline
+    /// (<see cref="GenerationRequest.Against"/>, next-phase-1-design.md section 3.1) and not one limited by unit or element
+    /// (<see cref="GenerationRequest.Units"/>, <see cref="GenerationRequest.Elements"/>, section 5.6). The key holds neither, and a
+    /// record such a run wrote would describe a partial run; such a run only calls <see cref="Forget"/> before it applies, so a later
+    /// full run cannot replay a record the run made stale.
+    /// </summary>
+    /// <param name="request">The request.</param>
+    /// <returns><see langword="true"/> when the record serves the request.</returns>
+    public static bool Serves(GenerationRequest request) => request.Against is null && !UnitSelection.IsScoped(request);
+
     /// <summary>
     /// Rules whose diagnostics mean a following run may not be a no-op although its inputs are unchanged (a refused path, a
     /// duplicate claim, hand edits, a lost region, a block file that holds its block twice, a block whose target file is missing):
@@ -357,7 +369,8 @@ internal sealed class LastRun(EngineServices services)
 
     /// <summary>
     /// The key of a run: engine build (<see cref="RunRecord.CurrentBuild"/>), repo, model, journal and cache folders, and the
-    /// request's packs and hand-edit override. A record answers only a run with the same key.
+    /// request's packs and hand-edit override. A record answers only a run with the same key. A baseline and the unit and element
+    /// filters are not part of it: requests that set them never use the record (<see cref="Serves"/>).
     /// </summary>
     /// <param name="request">The request.</param>
     /// <returns>The key.</returns>

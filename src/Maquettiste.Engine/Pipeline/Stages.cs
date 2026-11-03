@@ -132,7 +132,14 @@ public sealed record RenderContext(
     IReadOnlyDictionary<string, SchemaDiffResult> SchemaDiffs,
     IScriptSandboxFactory Scripts,
     IDependencyHasher Hasher,
-    int MaxDegreeOfParallelism);
+    int MaxDegreeOfParallelism)
+{
+    /// <summary>
+    /// Whether the run is limited by unit or element (next-phase-1-design.md section 5.6): a unit whose render reads a schema diff
+    /// (a <c>d:</c> key) then fails with MQ6033 and keeps its outputs, since a scoped run never advances schema snapshots.
+    /// </summary>
+    internal bool Scoped { get; init; }
+}
 
 /// <summary>Stage 7: normalizes, formats and merges regions (W8).</summary>
 public interface IPostProcessor
@@ -197,4 +204,11 @@ public sealed record WriteContext(
     /// every file it renders); off for runs, whose results list only what they changed.
     /// </summary>
     internal bool ListUnchanged { get; init; }
+
+    /// <summary>
+    /// The filters of a scoped run (next-phase-1-design.md section 5.6), or <see langword="null"/>. The writer keeps every manifest
+    /// entry and unit state of the units it does not select, and still deletes the orphans of the ones it does; a keep rule over
+    /// manifest entries, since an unselected unit may have entries but no state.
+    /// </summary>
+    internal Generation.UnitSelection? Selection { get; init; }
 }

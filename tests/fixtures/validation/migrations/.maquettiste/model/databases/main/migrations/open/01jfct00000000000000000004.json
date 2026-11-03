@@ -1,0 +1,29 @@
+{
+  "$schema": "../../../../../.schema/v1/migration.json",
+  "kind": "migration",
+  "id": "01JFCT00000000000000000004",
+  "database": "01JDBS00000000000000000001",
+  "fact": "change-type",
+  "object": {
+    "kind": "column",
+    "table": "01JENT00000000000000000001@01JDBS00000000000000000001",
+    "key": "01JATT00000000000000000003",
+    "schema": "billing",
+    "tableName": "invoices",
+    "name": "lines"
+  },
+  "from": {
+    "type": "int32",
+    "nativeType": "integer"
+  },
+  "to": {
+    "type": "int64",
+    "nativeType": "bigint"
+  },
+  "conversion": {
+    "cast": true,
+    "expression": {
+      "*": "{column}::bigint"
+    }
+  }
+}

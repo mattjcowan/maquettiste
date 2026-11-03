@@ -40,7 +40,9 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   columns, PK name, uniques, foreign keys, checks, indexes) merged over entity, child, junction, promoted and lookup tables;
   designed and imported tables, views (body for the dialect, else `*`) and sequences passed through; constraint names from the
   patterns; entity mappings (column mappings across TPT tables and child tables) and join paths per navigation; MQ4001 for every
-  identifier over `MaxIdentifierLength` (dialect default: pg 63, sqlserver 128, mysql 64, oracle 128, sqlite none), honouring
+  identifier over `MaxIdentifierLength` (dialect default: pg 63, sqlserver 128, mysql 64, oracle 128, sqlite none),
+  measured as `DialectInfo.IdentifierLength` does (UTF-8 bytes on pg and oracle, characters elsewhere), and MQ4068 for
+  index and constraint names that collide in a namespace of `DialectInfo.NameSpaces` (`CheckNames`), honouring
   `validation.rules`.
 - Dialect maps for PostgreSQL, SQL Server, MySQL/MariaDB (`mysql`), SQLite and Oracle; `typeMaps.<dialect>` overrides single
   entries; a custom type's `nativeTypes.<dialect>` wins over both for the columns that store it (applied once, in
@@ -52,6 +54,12 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   a column whose file's `nativeType` names a database type (id, name or schema-qualified name) gets `RColumn.DbType` and the
   type's native name; `dependsOn` resolves to the database's objects once every one exists (engine-design.md section 7,
   "Routines, database types and SQL objects").
+- Definitions (`ResolveRun.cs` `ResolveDefinitions`, `ResolvedVocabularies.cs`, next-phase-1-design.md section 5.5):
+  `model.stereotypes` (one `RStereotypeDefinition` per key, by key, with its virtual attributes owned by the definition),
+  `model.tag_vocabularies` and `model.category_trees` (the global one first, then by package qualified name and id), each
+  depending on its own file, with membership keys `k:stereotype`, `k:tag-vocabulary` and `k:category-tree`. A tree lists
+  the same `RCategory` instances annotated objects carry; the run completes their `Parent`, `Children` (by order, none
+  counting as 0, then file order), `Order` and `Description`.
 - Dependency keys (section 11, D38): `e:` of every contributing file, `s:conventions`, `s:typeMaps`, `s:inflection` when used, and
   `r:<id>` for every entity and relation an object derives from (lookup tables: `r:<enumId>`; designed tables: `r:<tableId>`).
   A foreign-key relation also lists what its resolved `RForeignKey`'s name and actions come from (the host table's designed or
@@ -79,7 +87,8 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
 - `RRelationMapping.ForeignKey` is chosen after foreign keys resolve: the resolved key in the dependent's table, else another
   resolved key of the relation, else `null` (never a half-filled key).
 - `DefaultExpression` is not translated into `DefaultSql`; templates read it from the attribute.
-- Diagnostics the resolver adds (validation rules otherwise stay with W2): MQ4001 (identifier limits); MQ4008 for every foreign
+- Diagnostics the resolver adds (validation rules otherwise stay with W2): MQ4001 (identifier limits); MQ4068 (name
+  namespaces); MQ4008 for every foreign
   key that cannot be resolved (synthesized, designed or overlay: missing referenced table or columns, a referenced table without
   a primary key, a column count mismatch), which is left out of its table (a designed or overlay key may also be reported by W2's
   MQ4008 when that rule runs as a warning); MQ4011 when a relation's dependent end is bound to a designed table and either the
@@ -104,7 +113,12 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   entity mapping, no `RTable.Entity`, no attribute columns). After the queries each binding resolves into `REntityBinding` on
   `REntity.Bindings` and on the `BoundBy` of the tables, views and queries it uses, and reports MQ4044 to MQ4053 with the
   pointer of its entry; the objects it names list the entity's file among their dependency keys (engine-design.md section 7,
-  "Bindings and materialize").
+  "Bindings and materialize"). After MQ4047, `ReportDrift` reads a binding's provenance through `Model/BindingDrift.cs`
+  (next-phase-2-design.md section 3.3): MQ4088 at `/bindings/<i>/provenance` when the source is not a table file or none
+  of the recorded ids is one of its columns, else one MQ4087 at `/bindings/<i>` naming every mapped column renamed or
+  retyped since it was recorded. All three take the severity `validation.rules` gives them.
+- `IDatabaseResolver` (`ModelResolver.cs`) resolves the conceptual layer and some databases only: fact recording and the
+  plans of the binding operations use it, and a resolver without it answers from a whole-model resolve.
 
 Tests: `tests/Maquettiste.Engine.Tests/Resolution/` (golden billing model in `Golden/billing/resolved.txt`, rewritten with
 `MAQUETTISTE_UPDATE_GOLDEN=1`; bindings in `BindingTests.cs`).
@@ -183,10 +197,20 @@ benchmark model is byte-identical before and after these changes (331,184 object
   (template-defined, the default); no lookup table, CHECK, FK or native type is ever synthesized.
 - Effective choice per (type, database): the type's entry for the database id, its `*` entry, `databases.<name>.referenceStorage`,
   `conventions.referenceStorage`, else none; `RStorageChoice.Source` is `type`, `database`, `project` or null.
+- Former codes (next-phase-2-design.md section 3.5): `RReferenceType.FormerCodes`, ordinal by code text, each an
+  `RFormerCode` (`Kind` `former-code`, id `<type id>:<code>`) whose `ReplacedBy` is the row of the type its `replacedBy`
+  names; an entry naming no row of the type is left out. It depends on the type's document and the row. A type with a
+  scripted seed builds them with its rows, on first read. `RowOf` finds live codes only.
 - A single-valued reference attribute maps to one column of type `reference` (`RColumn.ReferenceType`, `CodeType`, `Strategy`; the
   code's length rides along and the native type is the code's); a collection maps to no column and no child table and is listed in
   `REntityMapping.TemplateDefined` / `RRelationMapping.TemplateDefined` (an attribute mapping with `ignore` leaves it out). Only
   direct attributes are listed: a reference collection inside an embedded value object is skipped silently (no column either).
+- A designed, imported, extra or inherited column whose `typeRef` names an enum, a reference type or a scalar type
+  (next-phase-2-design.md section 3.2) keeps its own physical `type`; `DatabaseRun.TypeColumn` sets `RColumn.TypeRef`,
+  fills the facets the column leaves out from the type (the code's length and an enum's longest stored code in a string
+  column, a scalar's facets in a column of its base, whose native type then applies), and for a reference type sets
+  `ReferenceType`, `CodeType` and `Strategy` as on a projected reference column. The table gains the type's keys
+  (`s:referenceData` for a reference type).
 - Dependency keys (deviation from the design's wording "a reference type's `e:` key plus the `e:` keys of its seeds"): the
   `RReferenceType` object carries its own element keys only; the seeds' keys sit on the objects that expose rows (`rows`
   membership, each `RRow` and `RSeedRow`, `RReferenceUsage`), so a unit that reads only a type's name or code facets does not
@@ -199,12 +223,23 @@ benchmark model is byte-identical before and after these changes (331,184 object
 
 ## One database at a time (explorer step 13, E5c and E5f)
 
-`ResolveRun.RunOneDatabase` (`ModelResolver.ResolveDatabaseAsync`, internal) resolves the conceptual layer and one database's run
-only, for the editor's table summaries and table detail (`Editor/DatabaseTables.cs`). A database run reads the conceptual layer and its
-own files; what earlier database runs add (relation dependency keys in `FinishRelationMappings`) and what runs after the databases
-(`FinishConceptual`, seeds, usages, the dependency freeze) shape no table, so they are skipped and dependency lists stay unset. The
-tables are those of `Run` (tests compare every `TableView` on the fixture model and the bench's synthetic model). Generation always
-uses the whole-model `Run`. Numbers: explorer-redesign.md section 4.5 (`bench time-tables`).
+`ResolveRun.RunOneDatabase` (`ModelResolver.ResolveDatabaseAsync`, internal) resolves the conceptual layer and one
+database's run only, for the editor's table summaries and table detail (`Editor/DatabaseTables.cs`). A database run
+reads the conceptual layer and its own files; what earlier database runs add (relation dependency keys in
+`FinishRelationMappings`) and what runs after the databases (`FinishConceptual`, seeds, usages, the dependency freeze)
+shape no table, so they are skipped and dependency lists stay unset. The reference type bindings into its tables are the
+exception: a reference column's bound table is part of its shape and its physical snapshot, so `LinkReferenceBindings`
+links them as `Run` does after every database (next-phase-2-design.md section 3.2). The tables are those of `Run` (tests
+compare every `TableView` on the fixture model and the bench's synthetic model). Generation always uses the whole-model
+`Run`. Numbers: explorer-redesign.md section 4.5 (`bench time-tables`).
+
+`ResolveRun.RunDatabases` (`ModelResolver.ResolveDatabasesAsync`) resolves several databases after one conceptual run,
+and with `freeze` keeps the dependency keys of what it resolved: the store records migration facts this way
+(next-phase-1-design.md section 3.2), resolving only the databases a write can reshape and reading each one's footprint
+(the element ids of its objects' `e:` keys) from the frozen keys. The keys are those of the partial run, a subset of
+what `Run` would give. A partial run publishes no entity's or relation's mappings (`FinishConceptual` sets them), so
+each `RDatabase` also lists its mappings' template-defined collections with their owner table (`TemplateCollections`,
+internal, filled in both runs), which the value-map holders read (next-phase-2-design.md section 3.5).
 
 ## Processes (P5a: phase-3-design.md sections 4.3 and 7.1)
 
@@ -263,3 +298,107 @@ fixture, ordering, keys, the interpreter's chart, the duration rules), `Planning
   run). A seed whose columns name no other row (no end, no reference type) keeps file order without reading its cells, which is
   what the Kahn pass gave it. A reference type's rows stay eager: its codes, `RowsByCode` and every usage need them. Generation
   output is unchanged (the golden and determinism tests); a 100,000-row seed that no template reads is never converted.
+
+## Migration facts (next-phase-1-design.md section 3.2, task A8)
+
+- `ResolveRun.Migrations.cs` runs after each database run (`Run` and `RunOneDatabase`): the database's open facts in
+  applied order (`Migrations/FactKeys.Order`: a topological order over `after` that takes the ready fact with the
+  smallest id; links to facts outside the database are ignored, and a cycle, MQ4104, is broken by the smallest unplaced
+  id), their object keys moved through the `rekey` facts after them (`FactKeys.Moves`), then the projection: by current
+  key, a table, view, sequence or column takes the `from` and `via` names of its renames as `FormerNames` (oldest first,
+  distinct, without its current name) and the first fact that names it (as `object` or in `objects`) as `Since`; a
+  column takes the conversion of its last `change-type`. Facts never change a capture. A value map's `Collections`
+  (`RMigrationCollection`, next-phase-2-design.md section 3.5) move their owner table key as a table key into
+  `CurrentTable`; `FromReferenceType` and the states' `PluralName` are read as recorded.
+- Dependency keys: a fact carries its own `e:` key, its database's and those of the `rekey` facts after it (its keys
+  today depend on them), plus its annotations' keys. `RDatabase.Migrations` and `ResolvedModel.Migrations` carry
+  `k:migration` and every fact's `e:` key (one fact's `after` moves the others in the order; the model's list also
+  `k:database`). A projected table adds the
+  `e:` key of each fact projected onto it or its columns to the dependency list it shares with its columns (and to its
+  column list's membership); a projected view or sequence adds its own facts' keys.
+- `RMigration.Hash` (`Migrations/FactHash.cs`) is computed on first read, from the fact's document.
+
+Tests: `Resolution/MigrationResolutionTests.cs`, `Editor/ResolvedRecordsTests.cs` (the `migrations` scope),
+`Migrations/FactHashTests.cs`, the `migration` targets of `ResolvedCoverageTests`; the resolved goldens print every
+table's, column's, view's and sequence's `former_names` and `since`.
+
+## The null contract (next-phase-1-design.md section 5.5, task C24)
+
+- A member backed by a schema property with a default carries the default; an absent value is `null`, never `""` or
+  `false`. A physical object's `DisplayName` and `PluralName` are its file's or `null` (a conceptual object still falls
+  back to its name and the inflector); `RView.Body`, `RRoutine.Body` and `RSqlObject.Body` are `null` without text for
+  the dialect; `RRoutineReturns.NativeType` is `null` for a table result; `RDatabaseType.NativeName` is `null` where the
+  dialect stores the type as nothing (a composite or range outside PostgreSQL); `RQuery.Sql` is `null` when the query
+  cannot be rendered there (MQ4029) and on a nested query; `RAuditField.Description` is `null` for an attribute without
+  one.
+- Derived members (fallbacks, inferences) keep a value and document their rule: `ResolvedNullContractTests.Derived`
+  lists them (a column's key, type, native type and identity, constraint names, a routine's language and volatility, the
+  native type of a routine parameter, result column, composite field or query parameter, a query source's alias, a query
+  field's name and nullability, an attribute's order, the display name of an enum member or process node, a scenario's
+  start).
+- The physical snapshot keeps `""` for a view without a body, so captured snapshots stay byte-identical.
+
+Tests: `Resolution/ResolvedNullContractTests.cs` (every optional schema value without a default has a nullable member or
+a `Derived` entry; no `""` in a member of any fixture model, or of a built model holding what no fixture has, unless its
+schema default is `""` or `Derived` lists it).
+
+## Sensitivity on both sides (next-phase-2-design.md section 3.2, D23)
+
+A column's `Sensitive` is its entry's own (`ApplyColumnFile`, which also keeps it as the internal `OwnSensitive`), else
+a projected column's attribute's own (`AddColumn`), else, after the database's bindings resolve, the strongest own value
+of the attributes their fields map to it (`ShowBoundSensitivity`, for columns that store no attribute).
+`ResolveRun.Shared.cs` runs after `FinishConceptual`: an entity attribute that states none shows the strongest
+`OwnSensitive` of the columns its bindings read and write, and depends on what states those columns' entries
+(`RTable.EntryKeys`: a designed or imported table's file, database, stereotypes and package chain, not the other
+entities bound to it; a table without such a file, its whole dependency set). Attributes hold their own values during
+the database runs, so each side reads only the other's own value. A value object member is shared by every embedding and
+keeps its own. One-database runs skip the pass.
+
+## Descriptions from bound column comments (next-phase-2-design.md section 3.3, D34)
+
+The same pass gives an entity attribute with no description of its own the comment (`RColumn.Comment`, the text the
+database gets) of the first column its bindings map it to that has one: bindings in database name order (the order of
+`REntity.Bindings`), fields in file order, the read column before the write column. `RAttribute.DescriptionColumn`
+names that column, and `AttributeRecord.DescriptionColumn` its key. The attribute depends on the tables of every column
+its bindings map, commented or not, so a comment added later replans what reads it. A projected column's comment is set
+in its database run from its attribute's own description, before the pass, so nothing cycles. Value object members and
+relation keys take no fallback. The sensitivity and the description share one walk over the bindings.
+
+## Stereotype members and defaults (next-phase-2-design.md section 3.1)
+
+- A table's effective set comes from its holder (`TableBuild.Holder`, `TableBuild.Effective`), with its schema by
+  `StereotypeDefaults.SchemaOf`, so validation and resolution judge the same set. A table without a file takes its
+  entity's or relation's package and the stereotypes defaults give it (storage and annotations included); a child table
+  without an overlay takes its owner table's holder. `RStereotype.Source` says where an entry came from (`own`,
+  `implied`, `schema-default`, `package-default`).
+- `DatabaseRun.Members.cs` adds inherited members in `FinishTables`, after a table's own columns and overlay extras and
+  before positions and keys: columns as a designed column resolves, keys, indexes and checks as specs of the table's
+  `TableBuild`, so naming conventions and the key rules apply unchanged. `skip` holds each stereotype whose virtual
+  attributes the table stores as columns (decision 1). A member foreign key's target is its `referencesTable`, else the
+  carrier's merged `properties[referencesParameter]`; a carrier without the value gets no key and no second finding.
+  It also reports MQ4076, MQ4079, MQ4003 for synthesized tables, MQ2013 to MQ2015 for a table without a file (on its
+  entity or relation at `/stereotypes`), and an overlay's links: `TableMembers.CheckLinks` and MQ4008 for an overlay key
+  that names a member the table skips.
+- Every resolved column, primary key, unique, foreign key, check and index carries `MemberOrigin`; own members share
+  `RMemberOrigin.Own`. `RPrimaryKey.Id` is the key's id, keyed for an inherited one.
+- A resolved object whose holder has a package adds the `e:` key of every package on the chain, own first, so a package
+  that gains its first default list re-renders its members' units.
+- A relation mapping's `foreignKey` names a file's key only: relations resolve before a table's members are added.
+
+Tests: `Resolution/ResolverBehaviorTests.cs` (the stereotype member cases), `Model/StereotypeDefaultsTests.cs`,
+`Resolution/DependencyKeyTests.cs`, `Integration/StereotypeMembersTests.cs` (the acceptance lines on billing).
+
+## Scripted rows (next-phase-2-design.md section 3.4, D43)
+
+- A seed with `rowsFrom.script` gets `RSeed.RowsScript` and lazy `Rows`: the first read runs the script through
+  `SeedScripts.Evaluate` and the engine's `SeedRowsCache` (held by `EngineServices`, shared by the resolver and the
+  validator), never while resolving. Each row's id is `StableIds.RowId(seed id, row key in seed terms)`; the list and
+  every row carry the seed's keys, the script's `x:` key and the keys the run read. A script that fails makes the read
+  throw its MQ7127 (a `ScriptErrorException`), so the unit that read the rows fails with it; the resolved model's
+  records list no rows instead (`RSeed.RowsOrNone`).
+- A reference type with a scripted seed builds all its rows on first read, its stored seeds' rows too, so every row
+  keeps its place among the type's rows; none of them is registered for `ResolvedModel.Find`, as scripted rows are in no
+  index. Its usages' `Allowed` and `DefaultRow` are lazy too, and resolving reads only `RReferenceType.RowKeys`, the
+  membership keys known before any run.
+- Scripted rows are matched to columns by `SeedScripts.ColumnNames`, from the snapshot, so validation and the resolver
+  agree: a foreign-key entry is named by the foreign key's name in its file, else its id, as CSV files head it.

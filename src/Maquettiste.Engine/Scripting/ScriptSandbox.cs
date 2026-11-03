@@ -2,6 +2,7 @@ using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Acornima;
 using Jint;
@@ -16,6 +17,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
+using Acornima.Ast;
 using AstScript = Acornima.Ast.Script;
 
 namespace Maquettiste.Engine.Scripting;
@@ -25,7 +27,32 @@ namespace Maquettiste.Engine.Scripting;
 /// <param name="Program">The prepared program.</param>
 internal sealed record PreparedScript(ScriptSource Source, Prepared<AstScript> Program)
 {
-    /// <summary>Prepares scripts in load order; a syntax error is a <see cref="ScriptErrorException"/> with file, line and column.</summary>
+    /// <summary>
+    /// The text before a rule file's code: each rule file runs in its own function scope (next-phase-1-design.md section 5.7), so
+    /// it cannot publish anything for another. It is on the code's first line, so line numbers stay.
+    /// </summary>
+    internal const string ScopePrefix = "(function () {";
+
+    /// <summary>The text after a rule file's code, on a line of its own.</summary>
+    internal const string ScopeSuffix = "\n})();";
+
+    /// <summary>Whether the code runs inside its own function scope (<see cref="ScopePrefix"/>): every rule script does.</summary>
+    public bool Scoped { get; init; }
+
+    /// <summary>The number of lines of the script's own code.</summary>
+    public int LineCount { get; init; } = 1;
+
+    /// <summary>The length of the code's last line.</summary>
+    public int LastLineLength { get; init; }
+
+    /// <summary>MQ5005 at the rule script's first top-level <c>let</c> or <c>var</c>, or <see langword="null"/>.</summary>
+    public Diagnostic? Warning { get; init; }
+
+    /// <summary>
+    /// Prepares scripts in load order; a syntax error is a <see cref="ScriptErrorException"/> with file, line and column. A rule script
+    /// (<see cref="ScriptSandbox.IsRuleScript"/>) is wrapped in its own function scope and checked for top-level <c>let</c> and
+    /// <c>var</c> (<see cref="Warning"/>).
+    /// </summary>
     /// <param name="scripts">The scripts.</param>
     /// <param name="limits">The limits; they bound the match time of regular expression literals.</param>
     /// <returns>The prepared scripts.</returns>
@@ -39,23 +66,120 @@ internal sealed record PreparedScript(ScriptSource Source, Prepared<AstScript> P
         var prepared = new List<PreparedScript>(scripts.Count);
         foreach (var script in scripts)
         {
+            var rule = ScriptSandbox.IsRuleScript(script.Path);
+            var (lineCount, lastLineLength) = Measure(script.Code);
+            var shape = new PreparedScript(script, default) { Scoped = rule, LineCount = lineCount, LastLineLength = lastLineLength };
+            var code = rule ? ScopePrefix + script.Code + ScopeSuffix : script.Code;
+            Prepared<AstScript> program;
             try
             {
-                prepared.Add(new PreparedScript(script, JsEngine.PrepareScript(script.Code, script.Path, strict: true, options)));
+                program = JsEngine.PrepareScript(code, script.Path, strict: true, options);
             }
             catch (ScriptPreparationException ex)
             {
                 var parse = ex.InnerException as ParseErrorException;
-                var rule = ScriptSandbox.IsRuleScript(script.Path) ? "MQ5002" : "MQ6016";
+                var (line, column) = parse is null ? (null, null) : shape.Map(parse.LineNumber, parse.Column + 1);
                 throw new ScriptErrorException(
-                    new Diagnostic(rule, DiagnosticSeverity.Error,
+                    new Diagnostic(rule ? "MQ5002" : "MQ6016", DiagnosticSeverity.Error,
                         $"Script {script.Path} has a syntax error: {parse?.Description ?? ex.Message}",
-                        null, script.Path, null, parse?.LineNumber, parse is null ? null : parse.Column + 1),
+                        null, script.Path, null, line, column),
                     ex);
             }
+
+            prepared.Add(rule ? shape.Scope(program) : shape with { Program = program });
         }
 
         return prepared;
+    }
+
+    /// <summary>
+    /// Maps a position in the prepared text (1-based line and column) to the script's own code: a rule script's first line loses the
+    /// <see cref="ScopePrefix"/>, and a position past its last line (in the <see cref="ScopeSuffix"/>) goes to the end of the last line.
+    /// </summary>
+    /// <param name="line">The line, or <see langword="null"/>.</param>
+    /// <param name="column">The 1-based column, or <see langword="null"/>.</param>
+    /// <returns>The position in the script's code.</returns>
+    public (int? Line, int? Column) Map(int? line, int? column)
+    {
+        if (!Scoped || line is not { } at)
+            return (line, column);
+        if (at > LineCount)
+            return (LineCount, LastLineLength + 1);
+        if (at == 1 && column is { } c)
+            return (at, Math.Max(1, c - ScopePrefix.Length));
+        return (at, column);
+    }
+
+    /// <summary>The number of lines of a text and the length of its last one, with the line terminators of JavaScript.</summary>
+    private static (int Lines, int LastLength) Measure(string code)
+    {
+        var lines = 1;
+        var lastStart = 0;
+        for (var i = 0; i < code.Length; i++)
+        {
+            var ch = code[i];
+            if (ch is not ('\n' or '\r' or '\u2028' or '\u2029'))
+                continue;
+            if (ch == '\r' && i + 1 < code.Length && code[i + 1] == '\n')
+                i++;
+            lines++;
+            lastStart = i + 1;
+        }
+
+        return (lines, code.Length - lastStart);
+    }
+
+    /// <summary>
+    /// Checks a rule script's prepared program: the code must stay inside its scope (one statement, the call of the function the
+    /// prefix opens, whose body closes in the suffix), else a closing brace in the code would let it declare globals for other files.
+    /// Then finds its first top-level <c>let</c> or <c>var</c> (MQ5005).
+    /// </summary>
+    private PreparedScript Scope(Prepared<AstScript> program)
+    {
+        var body = program.Program!.Body;
+        var close = ScopePrefix.Length + Source.Code.Length + 1; // the suffix's closing brace
+        if (body.Count != 1 || body[0] is not ExpressionStatement { Expression: CallExpression { Arguments.Count: 0, Callee: FunctionExpression wrapper } }
+            || wrapper.Range.Start != 1 || wrapper.Body.Range.End != close + 1)
+        {
+            var (line, column) = body.Count > 0 && body[0] is ExpressionStatement { Expression: CallExpression { Callee: FunctionExpression f } }
+                ? Map(f.Body.Location.End.Line, f.Body.Location.End.Column)
+                : (null, null);
+            throw new ScriptErrorException(new Diagnostic("MQ5002", DiagnosticSeverity.Error,
+                $"Script {Source.Path} closes the function scope its code runs in: a closing brace has no opening one.",
+                null, Source.Path, null, line, column));
+        }
+
+        var found = FirstMutableBinding(wrapper.Body);
+        if (found is null)
+            return this with { Program = program };
+        var (at, col) = Map(found.Location.Start.Line, found.Location.Start.Column + 1);
+        var name = found.Declarations.Count > 0 && found.Declarations[0].Id is Identifier id ? $" '{id.Name}'" : "";
+        var keyword = found.Kind == VariableDeclarationKind.Var ? "var" : "let";
+        var (file, what) = ScriptSandbox.IsRowsScript(Source.Path) ? ("Rows script", "a rows script") : ("Rule file", "a rule");
+        var warning = RuleCatalog.Create("MQ5005",
+            $"{file} {Source.Path} declares{name} with {keyword} at its top level: {what} keeps no state between calls, so this file's " +
+            "results are never cached. Use const, or declare the variable inside the function that uses it.",
+            null, Source.Path) with { Line = at, Column = col };
+        return this with { Program = program, Warning = warning };
+    }
+
+    /// <summary>
+    /// The first <c>let</c> or <c>var</c> declaration in source order outside every function and class body: state that outlives a
+    /// call, which freezing cannot reach (a top-level block or loop head included, since a closure can capture it).
+    /// </summary>
+    private static VariableDeclaration? FirstMutableBinding(Node node)
+    {
+        foreach (var child in node.ChildNodes)
+        {
+            if (child is VariableDeclaration { Kind: VariableDeclarationKind.Let or VariableDeclarationKind.Var } declaration)
+                return declaration;
+            if (child is IFunction or ClassBody)
+                continue;
+            if (FirstMutableBinding(child) is { } found)
+                return found;
+        }
+
+        return null;
     }
 }
 
@@ -87,6 +211,7 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     private readonly Dictionary<(ScriptRegistrationKind Kind, string Name), Registered> _functions = [];
     private readonly Dictionary<string, RuleSpec> _rules = new(StringComparer.Ordinal);
     private readonly List<ScriptRegistration> _registrations = [];
+    private readonly Dictionary<string, PreparedScript> _scripts = new(StringComparer.Ordinal);
     private string? _loadingPath;
     private bool _inCall;
     private bool _disposed;
@@ -115,8 +240,10 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
             options.Temporal.TimeZoneProvider = UtcDefaultTimeZoneProvider.Instance;
             options.LimitRecursion(Math.Max(1, limits.ScriptRecursion));
             options.LimitMemory(Math.Max(1, limits.ScriptMemoryBytes));
-            options.TimeoutInterval(TimeSpan.FromMilliseconds(Math.Max(1, limits.ScriptTimeoutMs)));
-            options.MaxStatements((int)Math.Clamp(limits.ScriptStatements, 1, int.MaxValue));
+            // 0 turns the wall clock off (next-phase-1-design.md section 5.7): the statement limit then bounds every call alone.
+            if (limits.ScriptTimeoutMs > 0)
+                options.TimeoutInterval(TimeSpan.FromMilliseconds(limits.ScriptTimeoutMs));
+            options.MaxStatements(StatementLimit(limits));
             options.CancellationToken(runToken);
             options.Constraint(new CallCancellationConstraint(state));
             options.Constraints.StackOverflowGuard = true;
@@ -130,13 +257,16 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     public IReadOnlyList<ScriptRegistration> Registrations => _registrations;
 
     /// <summary>The rules the scripts registered, with the severity each one declared (the Extensions screen and Settings › Validation).</summary>
-    internal IReadOnlyList<(string Id, DiagnosticSeverity Severity)> Rules =>
-        [.. _rules.Values.OrderBy(r => r.Id, StringComparer.Ordinal).Select(r => (r.Id, r.Severity))];
+    internal IReadOnlyList<(string Id, DiagnosticSeverity Severity, bool WholeModel)> Rules =>
+        [.. _rules.Values.OrderBy(r => r.Id, StringComparer.Ordinal).Select(r => (r.Id, r.Severity, r.WholeModel))];
 
     /// <summary>Whether a limit breach, cancellation or host failure left the engine in a state the pool should not reuse.</summary>
     public bool Faulted { get; private set; }
 
-    /// <summary>Creates an engine and runs the pool's scripts in it, then freezes its globals.</summary>
+    /// <summary>
+    /// Creates an engine and runs the pool's scripts in it, then freezes its globals; when every script is a rule script, the globals
+    /// are frozen before the scripts run, so a rule file cannot publish anything for another (next-phase-1-design.md section 5.7).
+    /// </summary>
     /// <param name="scripts">The prepared scripts, in load order.</param>
     /// <param name="limits">The limits.</param>
     /// <param name="catalog">The pool's reflection catalog.</param>
@@ -159,14 +289,30 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     }
 
     /// <summary>
+    /// The largest statement limit (<c>limits.scriptStatements</c>): 2,000,000,000, below <see cref="int.MaxValue"/>, which the
+    /// JavaScript engine reads as no limit. With the wall clock off (<c>scriptTimeoutMs: 0</c>) statements always bound a call.
+    /// </summary>
+    public const int StatementCap = 2_000_000_000;
+
+    /// <summary>The longest a regular expression match may run when the wall clock is off, and the cap on the bound otherwise.</summary>
+    private const int MaxRegexMs = 250;
+
+    /// <summary>The statement limit of one call: <c>limits.scriptStatements</c> clamped to 1 to <see cref="StatementCap"/>.</summary>
+    /// <param name="limits">The limits.</param>
+    /// <returns>The limit passed to the engine.</returns>
+    public static int StatementLimit(SandboxLimits limits) => (int)Math.Clamp(limits.ScriptStatements, 1, StatementCap);
+
+    /// <summary>
     /// The longest a single regular expression match may run: the script time limit, capped at 250 ms so a catastrophic
-    /// pattern cannot hold the thread past the one-second cancellation budget (host-contracts 26). The bound is wall-clock
-    /// time, so a timed-out match is tried once more before it fails (<see cref="RegexRetry"/>); cancellation is checked
-    /// between the attempts, so the budget holds.
+    /// pattern cannot hold the thread past the one-second cancellation budget (host-contracts 26), and 250 ms when the wall
+    /// clock is off (<c>scriptTimeoutMs: 0</c>), since a match cannot be interrupted. The bound is wall-clock time, so a
+    /// timed-out match is tried once more before it fails (<see cref="RegexRetry"/>); cancellation is checked between the
+    /// attempts, so the budget holds.
     /// </summary>
     /// <param name="limits">The limits.</param>
     /// <returns>The match timeout.</returns>
-    public static TimeSpan RegexTimeout(SandboxLimits limits) => TimeSpan.FromMilliseconds(Math.Clamp(limits.ScriptTimeoutMs, 1, 250));
+    public static TimeSpan RegexTimeout(SandboxLimits limits) =>
+        TimeSpan.FromMilliseconds(limits.ScriptTimeoutMs <= 0 ? MaxRegexMs : Math.Min(limits.ScriptTimeoutMs, MaxRegexMs));
 
     /// <summary>The largest array a script may create, or return to the host: one element per 16 bytes of the memory limit.</summary>
     /// <param name="limits">The limits.</param>
@@ -174,14 +320,22 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     public static uint MaxArraySize(SandboxLimits limits) => (uint)Math.Clamp(limits.ScriptMemoryBytes / 16, 1024, uint.MaxValue);
 
     /// <summary>
-    /// Whether a script path is a validation rule script, which decides MQ5002/MQ5003 versus MQ6016/MQ6007. Rule scripts are
-    /// the files directly in the model's <c>extensions/rules/</c> folder (engine-design.md section 5): the path's folder is
-    /// <c>extensions/rules</c> or ends with <c>.maquettiste/extensions/rules</c>. A pack script in a folder of that name deeper
-    /// in its pack is not a rule script.
+    /// Whether a script path is a model script, which decides MQ5002/MQ5003 versus MQ6016/MQ6007 and runs in a function scope of its
+    /// own: the validation rule scripts directly in the model's <c>extensions/rules/</c> folder (engine-design.md section 5), and the
+    /// rows scripts directly in <c>extensions/seeds/</c> (next-phase-2-design.md section 3.4), whose failures the seed rules report as
+    /// MQ7127. The path's folder is <c>extensions/rules</c> (or <c>seeds</c>) or ends with <c>.maquettiste/extensions/rules</c> (or
+    /// <c>seeds</c>). A pack script in a folder of that name deeper in its pack is not one.
     /// </summary>
     /// <param name="path">The script path.</param>
-    /// <returns><see langword="true"/> for rule scripts.</returns>
-    public static bool IsRuleScript(string path)
+    /// <returns><see langword="true"/> for rule and rows scripts.</returns>
+    public static bool IsRuleScript(string path) => InModelFolder(path, "rules") || InModelFolder(path, "seeds");
+
+    /// <summary>Whether a script path is a rows script: a file directly in the model's <c>extensions/seeds/</c> folder.</summary>
+    /// <param name="path">The script path.</param>
+    /// <returns><see langword="true"/> for rows scripts.</returns>
+    public static bool IsRowsScript(string path) => InModelFolder(path, "seeds");
+
+    private static bool InModelFolder(string path, string name)
     {
         ArgumentNullException.ThrowIfNull(path);
         var normalized = path.Replace('\\', '/');
@@ -189,9 +343,9 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         if (slash < 0)
             return false;
         var folder = normalized[..slash];
-        return string.Equals(folder, "extensions/rules", StringComparison.Ordinal)
-            || string.Equals(folder, ".maquettiste/extensions/rules", StringComparison.Ordinal)
-            || folder.EndsWith("/.maquettiste/extensions/rules", StringComparison.Ordinal);
+        return string.Equals(folder, "extensions/" + name, StringComparison.Ordinal)
+            || string.Equals(folder, ".maquettiste/extensions/" + name, StringComparison.Ordinal)
+            || folder.EndsWith("/.maquettiste/extensions/" + name, StringComparison.Ordinal);
     }
 
     /// <inheritdoc/>
@@ -214,8 +368,14 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         DefaultIntlTimeZoneToUtc();
         global.FastSetProperty("maquettiste", new PropertyDescriptor(CreateApi(), PropertyFlag.Enumerable));
 
+        // Rule files each run in their own function scope; with the globals frozen first, a global or prototype member one of them
+        // sets is a TypeError while it loads. Pack scripts share their pack's globals until the freeze after loading.
+        var freezeFirst = scripts.Count > 0 && scripts.All(s => s.Scoped);
+        if (freezeFirst)
+            DeepFreeze(global);
         foreach (var script in scripts)
         {
+            _scripts.TryAdd(script.Source.Path, script);
             _loadingPath = script.Source.Path;
             _random.Seed(script.Source.Path);
             var program = script.Program;
@@ -236,7 +396,8 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         }
 
         _loadingPath = null;
-        DeepFreeze(global);
+        if (!freezeFirst)
+            DeepFreeze(global);
     }
 
     private void ReplaceRandom()
@@ -434,6 +595,8 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
 
         api.FastSetProperty("rule", new PropertyDescriptor(
             new ClrFunction(_engine, "rule", (_, args) => RegisterRule(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
+        api.FastSetProperty("rows", new PropertyDescriptor(
+            new ClrFunction(_engine, "rows", (_, args) => RegisterRows(args), 1, PropertyFlag.Configurable), PropertyFlag.Enumerable));
         var paramsGetter = new ClrFunction(_engine, "get params", (_, _) => CurrentParameters(), 0, PropertyFlag.Configurable);
         api.DefineOwnProperty("params", new GetSetPropertyDescriptor(paramsGetter, JsValue.Undefined, enumerable: true, configurable: false));
         return api;
@@ -459,23 +622,76 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     private JsValue Register(ScriptRegistrationKind kind, string api, JsValue[] args)
     {
         var path = _loadingPath ?? throw TypeError($"maquettiste.{api} can only be called while scripts load.");
+        RefuseInRowsScript(path, api);
         var name = args.Length > 0 && args[0] is JsString s ? s.ToString() : "";
         if (name.Length == 0)
             throw TypeError($"maquettiste.{api}(name, fn): name must be a non-empty string.");
         if (args.Length < 2 || args[1] is not Function fn)
             throw TypeError($"maquettiste.{api}('{name}', fn): fn must be a function.");
+        var plain = kind == ScriptRegistrationKind.Helper && HelperOptions(name, args.Length > 2 ? args[2] : JsValue.Undefined);
         if (_functions.TryGetValue((kind, name), out var existing))
             throw TypeError($"A {api} named '{name}' is already registered by {existing.DeclaredIn}.");
-        _functions.Add((kind, name), new Registered(kind, name, path, fn));
+        _functions.Add((kind, name), new Registered(kind, name, path, fn, plain));
         _registrations.Add(new ScriptRegistration(kind, name, path));
+        return JsValue.Undefined;
+    }
+
+    /// <summary>
+    /// Reads the options of <c>maquettiste.helper(name, fn, options)</c>: absent, or an object whose only key is <c>plain</c>, a
+    /// boolean (next-phase-1-design.md section 5.5). Anything else is a <c>TypeError</c>, so the script fails to load.
+    /// </summary>
+    /// <returns>Whether the helper takes plain copies of its arguments.</returns>
+    private bool HelperOptions(string name, JsValue options)
+    {
+        if (options.IsUndefined())
+            return false;
+        if (options is not ObjectInstance obj || options is Function || obj.IsArray())
+            throw TypeError($"maquettiste.helper('{name}', fn, options): options must be an object such as {{ plain: true }}.");
+        var plain = false;
+        foreach (var key in obj.GetOwnPropertyKeys(Types.String))
+        {
+            var value = obj.Get(key);
+            if (!string.Equals(key.ToString(), "plain", StringComparison.Ordinal))
+                throw TypeError($"maquettiste.helper('{name}', fn, options): unknown option '{key}'; the only option is plain.");
+            if (value is not JsBoolean flag)
+                throw TypeError($"maquettiste.helper('{name}', fn, options): plain must be true or false.");
+            plain = TypeConverter.ToBoolean(flag);
+        }
+
+        return plain;
+    }
+
+    /// <summary>A rows script registers its rows and nothing else (next-phase-2-design.md section 3.4): any other call fails its load.</summary>
+    private void RefuseInRowsScript(string path, string api)
+    {
+        if (IsRowsScript(path))
+            throw TypeError($"maquettiste.{api} cannot be called by a rows script ({path}): a rows script registers its rows once with maquettiste.rows(fn).");
+    }
+
+    /// <summary>
+    /// <c>maquettiste.rows(fn)</c>: a rows script's function, <c>fn(model, seed)</c>, registered under the script's path. Only a script in
+    /// <c>extensions/seeds/</c> may call it, once; a rule or pack script that calls it fails to load.
+    /// </summary>
+    private JsValue RegisterRows(JsValue[] args)
+    {
+        var path = _loadingPath ?? throw TypeError("maquettiste.rows can only be called while scripts load.");
+        if (!IsRowsScript(path))
+            throw TypeError($"maquettiste.rows can only be called by a rows script in extensions/seeds/, not by {path}.");
+        if (args.Length == 0 || args[0] is not Function fn)
+            throw TypeError("maquettiste.rows(fn): fn must be a function that takes (model, seed) and returns the rows.");
+        if (_functions.ContainsKey((ScriptRegistrationKind.Rows, path)))
+            throw TypeError($"maquettiste.rows is called more than once by {path}: a rows script registers its rows exactly once.");
+        _functions.Add((ScriptRegistrationKind.Rows, path), new Registered(ScriptRegistrationKind.Rows, path, path, fn));
+        _registrations.Add(new ScriptRegistration(ScriptRegistrationKind.Rows, path, path));
         return JsValue.Undefined;
     }
 
     private JsValue RegisterRule(JsValue[] args)
     {
         var path = _loadingPath ?? throw TypeError("maquettiste.rule can only be called while scripts load.");
+        RefuseInRowsScript(path, "rule");
         if (args.Length == 0 || args[0] is not ObjectInstance spec)
-            throw TypeError("maquettiste.rule({ id, severity, kinds, check }): the argument must be an object.");
+            throw TypeError("maquettiste.rule({ id, severity, kinds, scope, check }): the argument must be an object.");
         var id = spec.Get("id") is JsString idValue ? idValue.ToString() : "";
         if (id.Length == 0 || id.Any(char.IsWhiteSpace))
             throw TypeError("maquettiste.rule: id must be a non-empty string without whitespace.");
@@ -502,12 +718,27 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
             kinds = names.Count == 0 ? null : names.ToFrozenSet(StringComparer.Ordinal);
         }
 
+        // scope "element" (the default) checks each element of its kinds; "model" checks the whole model once (section 5.7).
+        var wholeModel = false;
+        var scopeValue = spec.Get("scope");
+        if (!scopeValue.IsUndefined())
+        {
+            wholeModel = (scopeValue is JsString scopeName ? scopeName.ToString() : null) switch
+            {
+                "element" => false,
+                "model" => true,
+                _ => throw TypeError($"maquettiste.rule '{id}': scope must be 'element' or 'model'."),
+            };
+        }
+
+        if (wholeModel && !kindsValue.IsUndefined() && !kindsValue.IsNull())
+            throw TypeError($"maquettiste.rule '{id}': a rule with scope 'model' checks the whole model once and takes no kinds.");
         if (spec.Get("check") is not Function check)
             throw TypeError($"maquettiste.rule '{id}': check must be a function.");
         if (_rules.TryGetValue(id, out var existing))
             throw TypeError($"A rule with id '{id}' is already registered by {existing.DeclaredIn}.");
-        _rules.Add(id, new RuleSpec(id, severity, kinds, check, path));
-        _registrations.Add(new ScriptRegistration(ScriptRegistrationKind.Rule, id, path));
+        _rules.Add(id, new RuleSpec(id, severity, kinds, check, path, wholeModel));
+        _registrations.Add(new ScriptRegistration(ScriptRegistrationKind.Rule, id, path) { WholeModel = wholeModel, Kinds = kinds });
         return JsValue.Undefined;
     }
 
@@ -537,9 +768,18 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         var fn = Lookup(ScriptRegistrationKind.Helper, name, "helper");
         return Run(new CallSite($"Helper '{name}'", fn.DeclaredIn, null, false), ctx, () =>
         {
-            var jsArgs = new JsValue[args.Count];
-            for (var i = 0; i < jsArgs.Length; i++)
-                jsArgs[i] = _values.ToJs(args[i]);
+            JsValue[] jsArgs;
+            if (fn.Plain)
+            {
+                jsArgs = _values.ToPlainJs(args);
+            }
+            else
+            {
+                jsArgs = new JsValue[args.Count];
+                for (var i = 0; i < jsArgs.Length; i++)
+                    jsArgs[i] = _values.ToJs(args[i]);
+            }
+
             var result = _engine.Call(fn.Function, JsValue.Undefined, jsArgs);
             return _values.FromJs(result, $"result of helper '{name}'");
         });
@@ -596,8 +836,8 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
                 $"No validation rule with id '{ruleId}' is registered.", element.Element.Id, element.Path, null, null, null));
         }
 
-        if (rule.Kinds is not null && !rule.Kinds.Contains(KindInfo.Get(element.Element.Kind).Name))
-            return [];
+        if (rule.WholeModel || (rule.Kinds is not null && !rule.Kinds.Contains(KindInfo.Get(element.Element.Kind).Name)))
+            return []; // a whole-model rule runs through RunModelRule only
 
         var diagnostics = new List<Diagnostic>();
         var open = true;
@@ -628,27 +868,195 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
         return diagnostics;
     }
 
+    /// <inheritdoc/>
+    public IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model, ScriptCallContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(ruleId);
+        ArgumentNullException.ThrowIfNull(model);
+        if (!_rules.TryGetValue(ruleId, out var rule) || !rule.WholeModel)
+        {
+            throw new ScriptErrorException(new Diagnostic("MQ5002", DiagnosticSeverity.Error,
+                $"No whole-model validation rule with id '{ruleId}' is registered.", null, rule?.DeclaredIn, null, null, null));
+        }
+
+        var diagnostics = new List<Diagnostic>();
+        var open = true;
+        var report = new ClrFunction(_engine, "report", (_, args) =>
+        {
+            if (!open)
+                throw TypeError($"report() of rule '{ruleId}' was called after the rule returned.");
+            diagnostics.Add(CreateModelReport(rule, model, args));
+            return JsValue.Undefined;
+        }, 2, PropertyFlag.Configurable);
+        try
+        {
+            Run(new CallSite($"Rule 'x/{ruleId}'", rule.DeclaredIn, null, true), ctx, () =>
+            {
+                _engine.Call(rule.Check, JsValue.Undefined, [RuleModel(model), report]);
+                return 0;
+            });
+        }
+        catch (ScriptErrorException ex)
+        {
+            diagnostics.Add(ex.Diagnostic);
+        }
+        finally
+        {
+            open = false;
+        }
+
+        return diagnostics;
+    }
+
+    /// <inheritdoc/>
+    public JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(script);
+        ArgumentNullException.ThrowIfNull(seed);
+        ArgumentNullException.ThrowIfNull(model);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_functions.TryGetValue((ScriptRegistrationKind.Rows, script), out var fn))
+        {
+            throw new ScriptErrorException(new Diagnostic("MQ5002", DiagnosticSeverity.Error,
+                $"Rows script {script} registers no rows: it calls maquettiste.rows(fn) exactly once.", seed.Element.Id, script, null, null, null));
+        }
+
+        return Run(new CallSite($"Rows script {script}", script, seed.Element.Id, true), ctx, () =>
+        {
+            var result = _engine.Call(fn.Function, JsValue.Undefined, [RuleModel(model), _values.FromJson(seed.Json)]);
+            return RowsJson(_values.FromJs(result, $"result of rows script {script}"), script);
+        });
+    }
+
+    private static readonly JsonWriterOptions RowsWriterOptions = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    /// <summary>
+    /// The value a rows function returned, as JSON: an array of plain objects whose values are JSON values (null, booleans, strings,
+    /// finite numbers, arrays and objects of them). Anything else is a <see cref="ScriptValueException"/>, which the call reports.
+    /// </summary>
+    private static JsonElement RowsJson(object? value, string script)
+    {
+        if (value is not IReadOnlyList<object?> rows || value is ScriptObjectMap)
+            throw new ScriptValueException($"Rows script {script} must return an array of row objects, not {Shape(value)}.");
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        // The model's canonical form (EngineJson): the raw text of a scripted cell is the text a stored cell of the same value has, so
+        // keys compared as raw JSON ('café', 'R&D') match.
+        using (var writer = new Utf8JsonWriter(buffer, RowsWriterOptions))
+        {
+            writer.WriteStartArray();
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (rows[i] is not ScriptObjectMap row)
+                    throw new ScriptValueException($"Rows script {script} returned {Shape(rows[i])} at index {i.ToString(CultureInfo.InvariantCulture)}; each row is a plain object.");
+                Write(writer, row, script, i);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        using var document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.Clone();
+
+        static void Write(Utf8JsonWriter writer, object? value, string script, int row)
+        {
+            switch (value)
+            {
+                case null:
+                    writer.WriteNullValue();
+                    break;
+                case bool b:
+                    writer.WriteBooleanValue(b);
+                    break;
+                case string s:
+                    writer.WriteStringValue(s);
+                    break;
+                case long l:
+                    writer.WriteNumberValue(l);
+                    break;
+                case double d when double.IsFinite(d):
+                    writer.WriteNumberValue(d);
+                    break;
+                case ScriptObjectMap map:
+                    writer.WriteStartObject();
+                    foreach (var (key, item) in map)
+                    {
+                        writer.WritePropertyName(key);
+                        Write(writer, item, script, row);
+                    }
+
+                    writer.WriteEndObject();
+                    break;
+                case IReadOnlyList<object?> list:
+                    writer.WriteStartArray();
+                    foreach (var item in list)
+                        Write(writer, item, script, row);
+                    writer.WriteEndArray();
+                    break;
+                default:
+                    throw new ScriptValueException(
+                        $"Rows script {script} returned {Shape(value)} in row {row.ToString(CultureInfo.InvariantCulture)}; a row holds JSON values only.");
+            }
+        }
+
+        static string Shape(object? value) => value switch
+        {
+            null => "nothing",
+            double => "a number that is not finite",
+            ScriptObjectMap => "an object",
+            IReadOnlyList<object?> => "an array",
+            string => "a string",
+            bool => "a boolean",
+            long => "a number",
+            IResolvedObject r => "a model object (" + r.Kind + ")",
+            _ => "a " + value.GetType().Name,
+        };
+    }
+
     private Diagnostic CreateReport(RuleSpec rule, ElementDocument element, JsValue[] args)
     {
         var message = args.Length > 0 && !args[0].IsUndefined() ? TypeConverter.ToString(args[0]) : "";
+        var (pointer, severity) = ReportOptions(rule, args.Length > 1 ? args[1] as ObjectInstance : null);
+        return new Diagnostic("x/" + rule.Id, severity, message, element.Element.Id, element.Path, pointer, null, null);
+    }
+
+    /// <summary>
+    /// A finding of a whole-model rule: <c>report(message, { element, pointer, severity })</c>, where <c>element</c> names a document
+    /// or sub-element, whose file the finding takes; the entry's pointer prefixes the given one. A missing or unknown <c>element</c> is a
+    /// <c>TypeError</c>, so the rule fails with MQ5002 on its file.
+    /// </summary>
+    private Diagnostic CreateModelReport(RuleSpec rule, ModelSnapshot model, JsValue[] args)
+    {
+        var message = args.Length > 0 && !args[0].IsUndefined() ? TypeConverter.ToString(args[0]) : "";
+        var options = args.Length > 1 ? args[1] as ObjectInstance : null;
+        var elementValue = options?.Get("element") ?? JsValue.Undefined;
+        if (elementValue is not JsString elementName || elementName.Length == 0)
+            throw TypeError("report(message, { element }): a whole-model rule names the element or sub-element of each finding by its id.");
+        var id = elementName.ToString();
+        if (!model.TryGetEntry(id, out var entry) || model.GetDocument(id) is not { } document)
+            throw TypeError($"report(message, {{ element }}): no element or sub-element has the id '{id}'.");
+        var (pointer, severity) = ReportOptions(rule, options);
+        return new Diagnostic("x/" + rule.Id, severity, message, id, document.Path, entry.JsonPointer + (pointer ?? ""), null, null);
+    }
+
+    /// <summary>The <c>pointer</c> and <c>severity</c> options of <c>report</c>; the rule's severity when none is given.</summary>
+    private (string? Pointer, DiagnosticSeverity Severity) ReportOptions(RuleSpec rule, ObjectInstance? options)
+    {
         var severity = rule.Severity;
         string? pointer = null;
-        if (args.Length > 1 && args[1] is ObjectInstance options)
+        if (options is null)
+            return (pointer, severity);
+        var pointerValue = options.Get("pointer");
+        if (!pointerValue.IsUndefined() && !pointerValue.IsNull())
         {
-            var pointerValue = options.Get("pointer");
-            if (!pointerValue.IsUndefined() && !pointerValue.IsNull())
-            {
-                pointer = pointerValue is JsString p && (p.Length == 0 || p.ToString()[0] == '/')
-                    ? p.ToString()
-                    : throw TypeError("report(message, { pointer }): pointer must be a JSON pointer string such as '/attributes/0/name'.");
-            }
-
-            var severityValue = options.Get("severity");
-            if (!severityValue.IsUndefined() && !TryParseSeverity(severityValue, out severity))
-                throw TypeError("report(message, { severity }): severity must be 'error', 'warning' or 'info'.");
+            pointer = pointerValue is JsString p && (p.Length == 0 || p.ToString()[0] == '/')
+                ? p.ToString()
+                : throw TypeError("report(message, { pointer }): pointer must be a JSON pointer string such as '/attributes/0/name'.");
         }
 
-        return new Diagnostic("x/" + rule.Id, severity, message, element.Element.Id, element.Path, pointer, null, null);
+        var severityValue = options.Get("severity");
+        if (!severityValue.IsUndefined() && !TryParseSeverity(severityValue, out severity))
+            throw TypeError("report(message, { severity }): severity must be 'error', 'warning' or 'info'.");
+        return (pointer, severity);
     }
 
     private Registered Lookup(ScriptRegistrationKind kind, string name, string label)

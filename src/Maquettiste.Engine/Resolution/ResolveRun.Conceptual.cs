@@ -140,6 +140,22 @@ internal sealed partial class ResolveRun
     {
         mapping.TemplateDefined = TemplateDefinedOf(entity.Attributes, database, entity.Id);
         Map(_entityMappings, entity.Id)[database] = mapping;
+        AddTemplateCollections(mapping.Database, mapping.Table, mapping.TemplateDefined);
+    }
+
+    /// <summary>
+    /// Lists a mapping's template-defined collections on its database with their owner table (<see cref="RDatabase.TemplateCollections"/>),
+    /// which a partial run publishes nowhere else.
+    /// </summary>
+    private static void AddTemplateCollections(RDatabase? database, RTable? owner, IReadOnlyList<RAttribute> attributes)
+    {
+        if (database is null || owner is null || attributes.Count == 0)
+            return;
+        lock (database.TemplateCollections)
+        {
+            foreach (var attribute in attributes)
+                database.TemplateCollections.Add((owner, attribute));
+        }
     }
 
     /// <summary>Records an entity's binding to a database (erratum E43).</summary>
@@ -150,6 +166,7 @@ internal sealed partial class ResolveRun
     {
         mapping.TemplateDefined = TemplateDefinedOf(relation.Attributes, database, relation.Id);
         Map(_relationMappings, relation.Id)[database] = mapping;
+        AddTemplateCollections(mapping.JunctionTable?.Database, mapping.JunctionTable, mapping.TemplateDefined);
     }
 
     /// <summary>Records a navigation's join path in a database.</summary>
@@ -313,6 +330,7 @@ internal sealed partial class ResolveRun
             FillCommon(r, package, deps);
             r.Parent = package.Parent is null ? null : _packages.GetValueOrDefault(package.Parent);
             r.Package = r.Parent;
+            r.DependsOn = package.DependsOn is { } dependsOn ? [.. dependsOn.Select(id => _packages.GetValueOrDefault(id)).OfType<RPackage>()] : [];
             var names = new List<string>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
             for (var current = package; current is not null && seen.Add(current.Id); current = current.Parent is null ? null : Model.Get<Package>(current.Parent))
@@ -362,7 +380,7 @@ internal sealed partial class ResolveRun
                 Description = member.Description?.Text,
                 Value = member.Value,
                 Code = member.Code,
-                Properties = MergedProperties(member),
+                Properties = MergedProperties(AppliedOf(member), member.Properties),
             };
             m.Dependencies = [Keys.Element(enumType.Id)];
             members.Add(m);
@@ -382,11 +400,11 @@ internal sealed partial class ResolveRun
         var deps = DepsOf(r);
         FillCommon(r, valueObject, deps);
         r.Package = PackageOf(valueObject.Package);
-        var raw = valueObject.Attributes.Select(a => (Attribute: a, Stereotype: (Stereotype?)null)).ToList();
-        foreach (var stereotype in StereotypesOf(valueObject))
-            raw.AddRange(stereotype.Attributes.Select(a => (Attribute: a, Stereotype: (Stereotype?)stereotype)));
+        var raw = valueObject.Attributes.Select(a => (Attribute: a, Applied: (AppliedStereotype?)null)).ToList();
+        foreach (var applied in AppliedOf(valueObject))
+            raw.AddRange(applied.Stereotype.Attributes.Select(a => (Attribute: a, Applied: (AppliedStereotype?)applied)));
         var attributes = StableByOrder(raw.DistinctBy(x => x.Attribute.Id, StringComparer.Ordinal), x => x.Attribute.Order)
-            .Select(x => MakeAttribute(x.Attribute, r, r.Package, null, false, x.Stereotype, x.Stereotype?.Id ?? valueObject.Id))
+            .Select(x => MakeAttribute(x.Attribute, r, r.Package, null, false, x.Applied?.Stereotype, x.Applied?.Stereotype.Id ?? valueObject.Id, x.Applied?.Source))
             .ToList();
         SetOrder(attributes);
         r.Attributes = new RList<RAttribute>(attributes, deps.ToList());
@@ -431,23 +449,24 @@ internal sealed partial class ResolveRun
 
         // Section 7.2: base attributes (root first), then own attributes, then stereotype virtual attributes, per level; one
         // stable sort by order at the end. A stereotype applied at two levels contributes its attributes once.
-        var raw = new List<(ModelAttribute Attribute, Entity Declaring, Stereotype? Stereotype)>();
+        var raw = new List<(ModelAttribute Attribute, Entity Declaring, AppliedStereotype? Applied)>();
         foreach (var level in chain)
         {
-            raw.AddRange(level.Attributes.Select(a => (a, level, (Stereotype?)null)));
-            foreach (var stereotype in StereotypesOf(level))
+            raw.AddRange(level.Attributes.Select(a => (a, level, (AppliedStereotype?)null)));
+            foreach (var applied in AppliedOf(level))
             {
-                deps.Element(stereotype.Id);
-                raw.AddRange(stereotype.Attributes.Select(a => (a, level, (Stereotype?)stereotype)));
+                deps.Element(applied.Stereotype.Id);
+                raw.AddRange(applied.Stereotype.Attributes.Select(a => (a, level, (AppliedStereotype?)applied)));
             }
         }
 
         var flattened = StableByOrder(raw.DistinctBy(x => x.Attribute.Id, StringComparer.Ordinal), x => x.Attribute.Order).ToList();
         var attributes = new List<RAttribute>();
-        foreach (var (attribute, declaring, stereotype) in flattened)
+        foreach (var (attribute, declaring, applied) in flattened)
         {
             var inherited = !string.Equals(declaring.Id, entity.Id, StringComparison.Ordinal);
-            var a = MakeAttribute(attribute, r, r.Package, _entities[declaring.Id], inherited, stereotype, stereotype?.Id ?? declaring.Id);
+            var stereotype = applied?.Stereotype;
+            var a = MakeAttribute(attribute, r, r.Package, _entities[declaring.Id], inherited, stereotype, stereotype?.Id ?? declaring.Id, applied?.Source);
             DepsOf(a).Element(entity.Id);
             attributes.Add(a);
             if (!inherited)
@@ -535,11 +554,11 @@ internal sealed partial class ResolveRun
 
         r.Ends = new RList<REnd>(ends, endDeps);
         r.Cardinality = CardinalityOf(relation);
-        var raw = relation.Attributes.Select(a => (Attribute: a, Stereotype: (Stereotype?)null)).ToList();
-        foreach (var stereotype in StereotypesOf(relation))
-            raw.AddRange(stereotype.Attributes.Select(a => (Attribute: a, Stereotype: (Stereotype?)stereotype)));
+        var raw = relation.Attributes.Select(a => (Attribute: a, Applied: (AppliedStereotype?)null)).ToList();
+        foreach (var applied in AppliedOf(relation))
+            raw.AddRange(applied.Stereotype.Attributes.Select(a => (Attribute: a, Applied: (AppliedStereotype?)applied)));
         var attributes = raw.Count == 0 ? [] : StableByOrder(raw.DistinctBy(x => x.Attribute.Id, StringComparer.Ordinal), x => x.Attribute.Order)
-            .Select(x => MakeAttribute(x.Attribute, r, r.Package, null, false, x.Stereotype, x.Stereotype?.Id ?? relation.Id))
+            .Select(x => MakeAttribute(x.Attribute, r, r.Package, null, false, x.Applied?.Stereotype, x.Applied?.Stereotype.Id ?? relation.Id, x.Applied?.Source))
             .ToList();
         SetOrder(attributes);
         r.Attributes = new RList<RAttribute>(attributes, deps.ToList());
@@ -738,13 +757,64 @@ internal sealed partial class ResolveRun
 
     internal RPackage? PackageOf(string? id) => id is null ? null : _packages.GetValueOrDefault(id);
 
-    internal IEnumerable<Stereotype> StereotypesOf(ElementBase element)
+    /// <summary>
+    /// The stereotypes an element carries, as resolution applies them: its effective set (<see cref="AppliedOf"/>), so implied and
+    /// default stereotypes give virtual attributes, storage and defaults as own ones do, and a later entry wins a merge.
+    /// </summary>
+    internal IEnumerable<Stereotype> StereotypesOf(ElementBase element) => AppliedOf(element).Select(s => s.Stereotype);
+
+    /// <summary>
+    /// The effective set of an element: for a top-level element <see cref="ModelSnapshot.EffectiveStereotypes(Element)"/> (its schema's
+    /// and packages' defaults, then implied, then own; next-phase-2-design.md section 3.1), for a sub-element
+    /// <see cref="ModelSnapshot.EffectiveStereotypes(IReadOnlyList{string})"/> of its own list (implied first, then own).
+    /// </summary>
+    internal IReadOnlyList<AppliedStereotype> AppliedOf(ElementBase element) =>
+        element is Element top ? Model.EffectiveStereotypes(top) : Model.EffectiveStereotypes(element.Stereotypes);
+
+    /// <summary>The effective set of a list of stereotype keys (a process node's).</summary>
+    internal IReadOnlyList<AppliedStereotype> StereotypesOf(IReadOnlyList<string> keys) => Model.EffectiveStereotypes(keys);
+
+    /// <summary>
+    /// Adds the <c>e:</c> key of every package on a package's chain, own first (a parent cycle stops at its first repeat): a package that
+    /// gains or changes a default list re-renders what its defaults reach (next-phase-2-design.md section 3.1).
+    /// </summary>
+    /// <param name="deps">The dependency keys.</param>
+    /// <param name="packageId">The innermost package, or <see langword="null"/>.</param>
+    internal void AddPackageChain(DependencySet deps, string? packageId)
     {
-        foreach (var key in element.Stereotypes)
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var id = packageId; id is not null && seen.Add(id);)
         {
-            if (Model.GetStereotype(key) is { } stereotype)
-                yield return stereotype;
+            var package = Model.Get<Package>(id);
+            if (package is null)
+                break;
+            deps.Element(id);
+            id = package.Parent;
         }
+    }
+
+    /// <summary>The resolved name of a stereotype's source (<see cref="RStereotype.Source"/>).</summary>
+    internal static string SourceName(StereotypeSource source) => source switch
+    {
+        StereotypeSource.Implied => "implied",
+        StereotypeSource.SchemaDefault => "schema-default",
+        StereotypeSource.PackageDefault => "package-default",
+        _ => "own",
+    };
+
+    /// <summary>The summary of an applied stereotype an annotated object or a process node carries.</summary>
+    internal static RStereotype Summary(AppliedStereotype applied)
+    {
+        var stereotype = applied.Stereotype;
+        return new RStereotype
+        {
+            Key = stereotype.Key,
+            Name = stereotype.DisplayName ?? (stereotype.Name.Length > 0 ? stereotype.Name : stereotype.Key),
+            Icon = stereotype.Icon,
+            Color = stereotype.Color,
+            ImpliedBy = applied.ImpliedBy,
+            Source = SourceName(applied.Source),
+        };
     }
 
     private static IEnumerable<T> StableByOrder<T>(IEnumerable<T> items, Func<T, int?> order) => items.OrderBy(x => order(x) ?? 0);
@@ -782,9 +852,9 @@ internal sealed partial class ResolveRun
 
     /// <summary>
     /// Fills the annotations of a physical object (database, table, view, sequence) from its own file: display and plural names as
-    /// written (empty when unset, with no fallback), then what <see cref="FillAnnotations(RAnnotated, ElementBase, string?, DependencySet)"/>
-    /// fills. Without a file (a synthesized table with no overlay, a key sequence) the annotations stay empty. The caller adds the
-    /// file's own <c>e:</c> key.
+    /// written (<see langword="null"/> when unset, with no fallback), then what <see cref="FillAnnotations(RAnnotated, ElementBase, string?, DependencySet)"/>
+    /// fills. Without a file (a key sequence) the annotations stay empty; a synthesized table with no overlay takes what its holder's
+    /// defaults give through <see cref="FillDefaultAnnotations"/>. The caller adds the file's own <c>e:</c> key.
     /// </summary>
     /// <param name="r">The resolved object.</param>
     /// <param name="file">The object's file, or <see langword="null"/>.</param>
@@ -794,6 +864,8 @@ internal sealed partial class ResolveRun
         if (file is null)
             return;
         FillPhysicalAnnotations(r, file, Model.GetDocument(file.Id)?.SidecarText, deps);
+        if (file is IPackaged { Package: { } package })
+            r.Package = PackageOf(package);
     }
 
     /// <summary>
@@ -808,15 +880,47 @@ internal sealed partial class ResolveRun
     {
         if (part is null)
             return;
-        r.DisplayName = part.DisplayName ?? "";
-        r.PluralName = part.PluralName ?? "";
+        r.DisplayName = part.DisplayName;
+        r.PluralName = part.PluralName;
         FillAnnotations(r, part, sidecar, deps);
     }
 
-    /// <summary>Fills description, tags, category, stereotypes, merged properties and generation hints from a file.</summary>
+    /// <summary>
+    /// Fills the annotations of a table without a file (next-phase-2-design.md section 3.1): the stereotypes its holder's schema and
+    /// package defaults give, their merged default properties, and the <c>e:</c> keys of the stereotypes and of the holder's package
+    /// chain. Nothing else: the other annotations come from a file.
+    /// </summary>
+    /// <param name="r">The resolved object.</param>
+    /// <param name="effective">The holder's effective set.</param>
+    /// <param name="packageId">The holder's package, or <see langword="null"/>.</param>
+    /// <param name="deps">The object's dependency keys.</param>
+    internal void FillDefaultAnnotations(RAnnotated r, IReadOnlyList<AppliedStereotype> effective, string? packageId, DependencySet deps)
+    {
+        AddPackageChain(deps, packageId);
+        if (effective.Count == 0)
+            return;
+        var stereotypes = new List<RStereotype>(effective.Count);
+        foreach (var applied in effective)
+        {
+            stereotypes.Add(Summary(applied));
+            deps.Element(applied.Stereotype.Id);
+        }
+
+        r.Stereotypes = stereotypes;
+        r.Properties = MergedProperties(effective, ImmutableSortedDictionary<string, System.Text.Json.JsonElement>.Empty);
+    }
+
+    /// <summary>
+    /// Fills description, rationale, decision, status, tags, category, stereotypes, merged properties and generation hints from a file.
+    /// A top-level element's stereotypes are its effective set, defaults included, and it depends on its holder's package chain
+    /// (next-phase-2-design.md section 3.1).
+    /// </summary>
     private void FillAnnotations(RAnnotated r, ElementBase element, string? sidecar, DependencySet deps)
     {
         r.Description = element.Description is { } description ? description.Text ?? (description.File is null ? null : sidecar) : null;
+        r.Rationale = element.Rationale;
+        r.Decision = element.Decision;
+        r.Status = StatusName(element.Status);
         r.Tags = [.. element.Tags];
         if (element.Category is { } category && _categories.TryGetValue(category, out var rc))
         {
@@ -825,44 +929,55 @@ internal sealed partial class ResolveRun
                 deps.Element(treeId);
         }
 
+        if (element is Element top)
+            AddPackageChain(deps, Model.HolderOf(top).Package);
+        var effective = AppliedOf(element);
         var stereotypes = new List<RStereotype>();
-        foreach (var stereotype in StereotypesOf(element))
+        foreach (var applied in effective)
         {
-            stereotypes.Add(new RStereotype
-            {
-                Key = stereotype.Key,
-                Name = stereotype.DisplayName ?? (stereotype.Name.Length > 0 ? stereotype.Name : stereotype.Key),
-                Icon = stereotype.Icon,
-                Color = stereotype.Color,
-            });
-            deps.Element(stereotype.Id);
+            stereotypes.Add(Summary(applied));
+            deps.Element(applied.Stereotype.Id);
         }
 
         r.Stereotypes = stereotypes;
-        r.Properties = MergedProperties(element);
+        r.Properties = MergedProperties(effective, element.Properties);
         r.Generation = element.Generation.Count == 0 ? ImmutableSortedDictionary<string, GenerationHints>.Empty : SortedMap(element.Generation);
     }
 
-    /// <summary>Stereotype default properties (stereotype order, later wins) under the element's own properties.</summary>
-    private IReadOnlyDictionary<string, object?> MergedProperties(ElementBase element)
+    /// <summary>The JSON value of a status (next-phase-1-design.md section 4.5), or <see langword="null"/>.</summary>
+    private static string? StatusName(ElementStatus? status) => status switch
     {
-        if (element.Properties.Count == 0 && element.Stereotypes.Count == 0)
+        ElementStatus.Proposed => "proposed",
+        ElementStatus.Approved => "approved",
+        ElementStatus.Deprecated => "deprecated",
+        ElementStatus.Retired => "retired",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Stereotype default properties (effective-set order, later wins) under the element's own properties. Empty when the element has
+    /// neither own properties nor an effective stereotype (defaults included).
+    /// </summary>
+    private static IReadOnlyDictionary<string, object?> MergedProperties(IReadOnlyList<AppliedStereotype> effective,
+        IReadOnlyDictionary<string, System.Text.Json.JsonElement> properties)
+    {
+        if (properties.Count == 0 && effective.Count == 0)
             return ImmutableSortedDictionary<string, object?>.Empty;
         var merged = new Dictionary<string, System.Text.Json.JsonElement>(StringComparer.Ordinal);
-        foreach (var stereotype in StereotypesOf(element))
+        foreach (var applied in effective)
         {
-            foreach (var pair in stereotype.DefaultProperties)
+            foreach (var pair in applied.Stereotype.DefaultProperties)
                 merged[pair.Key] = pair.Value;
         }
 
-        foreach (var pair in element.Properties)
+        foreach (var pair in properties)
             merged[pair.Key] = pair.Value;
         return ResolutionValues.PlainMap(merged);
     }
 
     /// <summary>Creates the resolved view of an attribute on an owner.</summary>
     private RAttribute MakeAttribute(ModelAttribute attribute, IResolvedObject owner, RPackage? package, REntity? declaring, bool inherited,
-        Stereotype? stereotype, string declaringFileId)
+        Stereotype? stereotype, string declaringFileId, StereotypeSource? source = null)
     {
         var a = new RAttribute();
         var deps = DepsOf(a);
@@ -894,11 +1009,16 @@ internal sealed partial class ResolveRun
             Name = stereotype.DisplayName ?? (stereotype.Name.Length > 0 ? stereotype.Name : stereotype.Key),
             Icon = stereotype.Icon,
             Color = stereotype.Color,
+            Source = SourceName(source ?? StereotypeSource.Own),
         };
         return a;
     }
 
-    private RType TypeOf(TypeRef type, DependencySet deps, out RScalarType? scalar)
+    /// <summary>
+    /// The resolved type a type reference names (an attribute's type, or a column's <c>typeRef</c>, next-phase-2-design.md section
+    /// 3.2); the named element joins <paramref name="deps"/>.
+    /// </summary>
+    internal RType TypeOf(TypeRef type, DependencySet deps, out RScalarType? scalar)
     {
         scalar = null;
         if (type.Ref is { } id)

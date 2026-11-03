@@ -214,7 +214,8 @@ internal sealed partial class DatabaseRun
             AddConstraintFiles(t, overlay);
         }
 
-        AddTable(t);
+        // Without an overlay, a child table is in its owner's schema and package (next-phase-2-design.md section 3.1).
+        AddTable(t, overlay is null ? new StereotypeHolder(ElementKind.Table, [], [], owner.Holder.Package, owner.Holder.Schema) : null);
         owner.Children.Add(t);
         var ownerKeys = new List<string>();
         foreach (var pkKey in owner.PrimaryKey)
@@ -315,6 +316,8 @@ internal sealed partial class DatabaseRun
             t.ByKey.TryAdd(overlay.Id, c);
         }
 
+        // An overlay entry's own sensitivity wins; else the column shows its attribute's own (next-phase-2-design.md section 3.2).
+        c.Sensitive ??= attribute?.Sensitive;
         ApplyFacetDefaults(c);
         if (scalar is not null)
         {
@@ -367,14 +370,16 @@ internal sealed partial class DatabaseRun
                 Name = column.Name,
                 Table = t.Table,
                 Type = column.Type ?? "string",
+                Subtype = BuiltinTypes.IsRange(column.Type) ? column.Subtype : null,
                 Length = column.Length,
                 Precision = column.Precision,
                 Scale = column.Scale,
                 Nullable = column.Nullable ?? true,
             };
             ApplyColumnFile(t, c, column);
+            var scalar = TypeColumn(t, c, column);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale, null, c.FixedLength, c.Unicode));
+            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c, scalar));
             t.Columns.Add(c);
             t.ByKey[column.Id] = c;
             _run.Register(c);

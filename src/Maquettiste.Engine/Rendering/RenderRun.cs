@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
@@ -285,6 +287,16 @@ internal sealed class UnitRun
         }
 
         var keys = Recorder.SortedKeys();
+        // A run limited by unit or element never advances schema snapshots, so a unit that read a schema diff fails and keeps its
+        // outputs (MQ6033, next-phase-1-design.md section 5.6): a later full run then renders it from the snapshot it diffs from.
+        if (!failed && Run.Context.Scoped && keys.Any(k => k.StartsWith("d:", StringComparison.Ordinal)))
+        {
+            failed = true;
+            diagnostics.Add(RuleCatalog.Create("MQ6033",
+                $"The unit '{Planned.Key}' reads the schema diff, so a run limited by unit or element does not render it: schema snapshots advance only in whole-pack runs. Generate without unit or element filters to render it.",
+                Planned.Element?.Id, _mainTemplatePath ?? _pack.PackJsonPath));
+        }
+
         var inputHash = Run.Context.Hasher.InputHash(Planned.StaticHash, keys);
         diagnostics.Sort(Diagnostic.Order);
         return new RenderedUnit(Planned, failed ? [] : files, keys, inputHash, diagnostics, failed)
@@ -302,7 +314,13 @@ internal sealed class UnitRun
             context.PushGlobal(_pack.Helpers);
         context.PushGlobal(CreateGlobals(context));
 
-        var main = Template(unit.Template);
+        if (unit.Mode == OutputMode.Copy)
+        {
+            CopyFiles(context, files);
+            return;
+        }
+
+        var main = Template(unit.Template ?? throw new RenderHelperException("MQ6006", $"The unit '{unit.Id}' names no template."));
         _mainTemplatePath = Run.Templates.Describe(main)?.RepoPath;
         var body = Renderer.NormalizeLineEndings(main.Render(context));
         if (unit.Output is not null)
@@ -326,6 +344,51 @@ internal sealed class UnitRun
         }
 
         files.AddRange(context.Blocks);
+    }
+
+    /// <summary>
+    /// A copy unit (next-phase-1-design.md section 5.4). Each file its sources match comes from the shared matcher
+    /// (<see cref="Planning.CopySources"/>), never from disk, and lands at the unit's output folder (rendered; the pack's output base
+    /// when absent) plus its path after the literal base of the first pattern that matched it. Tokens are replaced in that relative
+    /// path and in a text file's bytes in one left-to-right pass, longest token first; a file that is not text (not strict UTF-8, or
+    /// holding a NUL) is copied byte for byte. Nothing else changes: no line-ending normalization, formatter or regions. The
+    /// matcher's MQ6030 or MQ6031 fails the unit (only a preview gets here with one: a run's planner skips such a unit), and two
+    /// sources on one path are MQ6005. Sources record no read keys: the static hash covers them.
+    /// </summary>
+    private void CopyFiles(TrackingTemplateContext context, List<RenderedFile> files)
+    {
+        var unit = Planned.Unit;
+        _mainTemplatePath = _pack.PackJsonPath;
+        var sources = Planning.CopySources.Of(Planned.Pack, unit);
+        if (sources.Diagnostics.Count > 0)
+            throw new TemplateException(sources.Diagnostics);
+
+        var folder = unit.Output is null ? null : RenderPath(context, unit.Output, "output").TrimEnd('/');
+        var tokens = new CopyTokens(unit.Tokens, Planned.Pack.Parameters);
+        var claimed = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var source in sources.Files)
+        {
+            var relative = source.Path.StartsWith(source.Base, StringComparison.Ordinal) ? source.Path[source.Base.Length..] : source.Path;
+            relative = tokens.Replace(relative);
+            var path = folder is null ? OutputPath(relative) : folder.Length == 0 ? relative : folder + "/" + relative;
+            if (!claimed.TryAdd(path, source.Path))
+            {
+                var pointer = "/units/" + UnitIndex().ToString(System.Globalization.CultureInfo.InvariantCulture) + "/sources";
+                throw new TemplateException([RuleCatalog.Create("MQ6005",
+                    $"Copy unit '{unit.Id}' copies '{claimed[path]}' and '{source.Path}' to the same path, {path}.", Planned.Element?.Id,
+                    _pack.PackJsonPath, pointer)]);
+            }
+
+            if (Writing.DiffGenerator.IsText(source.Bytes))
+            {
+                var bytes = tokens.Replace(source.Bytes);
+                files.Add(new RenderedFile(path, Encoding.UTF8.GetString(bytes), FileRole.Main) { Bytes = bytes });
+            }
+            else
+            {
+                files.Add(new RenderedFile(path, "", FileRole.Main) { Bytes = source.Bytes, Binary = true });
+            }
+        }
     }
 
     /// <summary>
@@ -404,7 +467,7 @@ internal sealed class UnitRun
         {
             var alias = element.Kind.Replace('-', '_');
             if (!BuiltinHelpers.Variables.Contains(alias) || alias is "package" or "entity" or "relation" or "enum" or "value_object" or "table" or "view" or "sequence" or "routine" or "database_type" or "sql_object" or "query" or "reference_type" or "seed" or "locale"
-                or "process" or "actor" or "scenario")
+                or "process" or "actor" or "scenario" or "database" or "attribute")
                 globals.SetValue(alias, element, true);
         }
 
@@ -587,4 +650,89 @@ internal sealed class UnitRun
         || message.Contains("exceeds LoopLimit", StringComparison.Ordinal)
         || message.Contains("LimitToString", StringComparison.Ordinal)
         || message.Contains("OutputLimit", StringComparison.Ordinal);
+}
+
+/// <summary>
+/// A copy unit's tokens (next-phase-1-design.md section 5.4): each literal text and the string value of the pack parameter it names,
+/// as UTF-8 bytes, longest token first (ties ordinal). <see cref="Replace(byte[])"/> makes one left-to-right pass: at each position the
+/// longest token that starts there is replaced by its value and the pass resumes after it, so a value is never scanned again; every
+/// other byte stays.
+/// </summary>
+internal sealed class CopyTokens
+{
+    private readonly (byte[] Token, byte[] Value)[] _tokens;
+    private readonly SearchValues<byte> _firsts;
+
+    /// <summary>Builds the tokens of a unit.</summary>
+    /// <param name="tokens">Literal text → parameter name.</param>
+    /// <param name="parameters">The pack's effective parameters (the planner checked each named one is a string, MQ6031).</param>
+    public CopyTokens(IReadOnlyDictionary<string, string> tokens, IReadOnlyDictionary<string, JsonElement> parameters)
+    {
+        _tokens = [.. tokens
+            .Where(t => t.Key.Length > 0)
+            .Select(t => (Key: t.Key, Token: Encoding.UTF8.GetBytes(t.Key),
+                Value: Encoding.UTF8.GetBytes(parameters.TryGetValue(t.Value, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : t.Key)))
+            .OrderByDescending(t => t.Token.Length)
+            .ThenBy(t => t.Key, StringComparer.Ordinal)
+            .Select(t => (t.Token, t.Value))];
+        _firsts = SearchValues.Create([.. _tokens.Select(t => t.Token[0]).Distinct()]);
+    }
+
+    /// <summary>Replaces the tokens in a relative path.</summary>
+    /// <param name="path">The path.</param>
+    /// <returns>The path with each token replaced.</returns>
+    public string Replace(string path)
+    {
+        if (_tokens.Length == 0)
+            return path;
+        var bytes = Encoding.UTF8.GetBytes(path);
+        var replaced = Replace(bytes);
+        return ReferenceEquals(bytes, replaced) ? path : Encoding.UTF8.GetString(replaced);
+    }
+
+    /// <summary>Replaces the tokens in bytes.</summary>
+    /// <param name="input">The bytes (not changed).</param>
+    /// <returns>New bytes, or <paramref name="input"/> itself when no token occurs in it.</returns>
+    public byte[] Replace(byte[] input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (_tokens.Length == 0)
+            return input;
+        ReadOnlySpan<byte> span = input;
+        ArrayBufferWriter<byte>? output = null;
+        var start = 0; // the first byte not yet written
+        var at = 0; // where the search resumes
+        while (at < span.Length)
+        {
+            var offset = span[at..].IndexOfAny(_firsts);
+            if (offset < 0)
+                break;
+            var i = at + offset;
+            var hit = -1;
+            for (var k = 0; k < _tokens.Length; k++)
+            {
+                if (span[i..].StartsWith(_tokens[k].Token))
+                {
+                    hit = k;
+                    break;
+                }
+            }
+
+            if (hit < 0)
+            {
+                at = i + 1;
+                continue;
+            }
+
+            output ??= new ArrayBufferWriter<byte>(input.Length + 64);
+            output.Write(span[start..i]);
+            output.Write(_tokens[hit].Value);
+            at = start = i + _tokens[hit].Token.Length;
+        }
+
+        if (output is null)
+            return input;
+        output.Write(span[start..]);
+        return output.WrittenSpan.ToArray();
+    }
 }

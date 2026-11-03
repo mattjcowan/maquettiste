@@ -5,7 +5,8 @@ public sealed partial class AgentTools
 {
     private SnapshotLibrary? _snapshotLibrary;
 
-    private SnapshotLibrary Snapshots => _snapshotLibrary ??= new SnapshotLibrary(_store);
+    /// <summary>The host's library (the generation service's), so a snapshot is loaded once per host; else one of the catalog's own.</summary>
+    private SnapshotLibrary Snapshots => _generation.Baselines ?? (_snapshotLibrary ??= new SnapshotLibrary(_store));
 
     private async Task<AgentToolResult> CompareSnapshotsAsync(ToolArguments args, CancellationToken ct)
     {

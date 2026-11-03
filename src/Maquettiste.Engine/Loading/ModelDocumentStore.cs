@@ -13,8 +13,9 @@ internal readonly record struct DocumentStat(long Length, long LastWriteTicks);
 /// separators. Everything above it (validation, resolution, delete plans, batches, the live feed) is the same whatever the store.
 /// </summary>
 /// <remarks>
-/// Two providers: <see cref="FileDocumentStore"/>, the model folder (the live model, read and written), and
-/// <see cref="Snapshots.ZipDocumentStore"/>, a snapshot archive (read-only, never extracted to disk).
+/// Three providers: <see cref="FileDocumentStore"/>, the model folder (the live model, read and written);
+/// <see cref="Snapshots.ZipDocumentStore"/>, a snapshot archive (read-only, never extracted to disk); and
+/// <see cref="ReadOnlyFolderDocumentStore"/>, another copy of a project opened as a baseline (read-only).
 /// </remarks>
 internal interface IModelDocumentStore
 {
@@ -130,4 +131,40 @@ internal sealed class FileDocumentStore(ModelPaths paths, IOutputPathPolicy poli
     public Task<FileSetFailure?> ApplyAsync(IReadOnlyList<(string Path, byte[] Bytes)> writes, IReadOnlyList<string> deletes, string batchId, CancellationToken ct) =>
         new AtomicFileSet(policy, paths.ModelRoot).ApplyAsync(
             [.. writes.Select(w => (paths.FullPath(w.Path), w.Bytes))], [.. deletes.Select(paths.FullPath)], batchId, ct);
+}
+
+/// <summary>
+/// Another copy of a project's model folder as a read-only document store: a baseline folder (<see cref="ModelBaseline"/>,
+/// next-phase-1-design.md section 3.1). It reads as <see cref="FileDocumentStore"/> does, refuses every write with MQ6029 as a
+/// snapshot does, and keeps the loader away from the index cache, so neither the folder nor the user cache is written.
+/// </summary>
+/// <param name="paths">The model path conventions of the folder.</param>
+internal sealed class ReadOnlyFolderDocumentStore(ModelPaths paths) : IModelDocumentStore
+{
+    private readonly FileDocumentStore _files = new(paths, Snapshots.ReadOnlyPathPolicy.Instance);
+
+    /// <inheritdoc/>
+    public string Description => paths.ModelRoot;
+
+    /// <inheritdoc/>
+    public bool IsReadOnly => true;
+
+    /// <inheritdoc/>
+    public bool UsesIndexCache => false;
+
+    /// <inheritdoc/>
+    public DocumentStat? Stat(string modelPath) => _files.Stat(modelPath);
+
+    /// <inheritdoc/>
+    public bool FolderExists(string modelPath) => _files.FolderExists(modelPath);
+
+    /// <inheritdoc/>
+    public IReadOnlyList<string> List(string modelFolder, bool recursive) => _files.List(modelFolder, recursive);
+
+    /// <inheritdoc/>
+    public Task<byte[]?> ReadAsync(string modelPath, CancellationToken ct) => _files.ReadAsync(modelPath, ct);
+
+    /// <inheritdoc/>
+    public Task<FileSetFailure?> ApplyAsync(IReadOnlyList<(string Path, byte[] Bytes)> writes, IReadOnlyList<string> deletes, string batchId, CancellationToken ct) =>
+        Task.FromResult<FileSetFailure?>(new FileSetFailure(paths.ModelRoot, Snapshots.ReadOnlyPathPolicy.Reason, true));
 }

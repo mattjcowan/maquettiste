@@ -42,7 +42,7 @@ const files: ExtensionFile[] = [
     size: 10,
     hash: "b".repeat(64),
     diagnostics: [finding("MQ5002", ".maquettiste/extensions/rules/naming.js", { line: 2 })],
-    rules: [{ id: "x/entity-names", severity: "warning" }],
+    rules: [{ id: "x/entity-names", severity: "warning", wholeModel: false }],
   },
 ];
 
@@ -68,7 +68,9 @@ describe("extension files", () => {
     const written = backend.extensions.write("rules/my-rule.js", ruleTemplate("rules/my-rule.js"), null);
     expect(written.body.outcome).toBe("saved");
     expect(written.body.diagnostics).toEqual([]);
-    expect(backend.extensions.list().files.find((f) => f.path === "rules/my-rule.js")?.rules).toEqual([{ id: "x/my-rule", severity: "warning" }]);
+    expect(backend.extensions.list().files.find((f) => f.path === "rules/my-rule.js")?.rules).toEqual([
+      { id: "x/my-rule", severity: "warning", wholeModel: false },
+    ]);
     expect(backend.model.validate().diagnostics.filter((d) => d.rule === "x/my-rule")).toEqual([]);
   });
 
@@ -82,6 +84,23 @@ describe("extension files", () => {
       ["retention.json", "custom properties", 2],
       ["rules/naming.js", "x/entity-names", 2],
     ]);
+  });
+
+  it("knows a seed's rows script as the seed-rows kind under seeds/", () => {
+    // next-phase-2-design.md section 3.4: rows scripts live in extensions/seeds/ and keep their kind through a rename.
+    expect(kindOfPath("seeds/audited-records.js")).toBe("seed-rows");
+    expect(extensionPathProblem("seeds/audited-records.js", "seed-rows", [])).toBeNull();
+    expect(extensionPathProblem("rules/audited-records.js", "seed-rows", [])).toMatch(/stays under seeds\//);
+    expect(extensionPathProblem("seeds/deep/rows.js", "seed-rows", [])).toMatch(/seeds\/<name>\.js/);
+    expect(freePath("seed-rows", ["seeds/new-rows.js"])).toBe("seeds/new-rows-2.js");
+    expect(extensionPathOf(finding("MQ7127", ".maquettiste/extensions/seeds/audited-records.js"))).toBe("seeds/audited-records.js");
+    const withRows: ExtensionFile[] = [
+      ...files,
+      { path: "seeds/audited-records.js", kind: "seed-rows", size: 10, hash: "c".repeat(64), diagnostics: [], rules: [] },
+    ];
+    const rows = extensionRows(withRows, new Set([EXTENSIONS_KEY]), 3, 3);
+    expect(rows[0].detail).toBe("1 schema · 1 rule · 1 rows script");
+    expect(rows.at(-1)).toMatchObject({ label: "seeds/audited-records.js", detail: "rows script" });
   });
 
   it("lists a file's findings once, from the list, the save and the report", () => {

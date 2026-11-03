@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Collections.Immutable;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
@@ -8,8 +9,8 @@ namespace Maquettiste.Engine.Resolution;
 
 /// <summary>
 /// One resolution of one snapshot (engine-design.md section 7). Holds the working state of a run; nothing survives it. The
-/// conceptual layer is resolved first (<c>ResolveRun.Conceptual.cs</c>), then each database (<c>DatabaseRun</c>), then the
-/// dependency keys and list memberships are frozen.
+/// conceptual layer is resolved first (<c>ResolveRun.Conceptual.cs</c>), then each database (<c>DatabaseRun</c>) with its migration
+/// facts (<c>ResolveRun.Migrations.cs</c>), then the dependency keys and list memberships are frozen.
 /// </summary>
 internal sealed partial class ResolveRun
 {
@@ -47,6 +48,14 @@ internal sealed partial class ResolveRun
 
     public ProjectSettings Settings { get; }
 
+    /// <summary>The sandbox factory that runs seeds' rows scripts when their rows are first read (next-phase-2-design.md section 3.4).</summary>
+    public Scripting.IScriptSandboxFactory Scripts { get; init; } = DefaultScripts;
+
+    /// <summary>The rows cache those runs go through.</summary>
+    public SeedRowsCache SeedRows { get; init; } = new();
+
+    private static readonly Scripting.IScriptSandboxFactory DefaultScripts = new Scripting.ScriptSandboxFactory();
+
     public Inflector Inflector { get; }
 
     public CancellationToken Ct { get; }
@@ -75,30 +84,71 @@ internal sealed partial class ResolveRun
     /// Resolves the conceptual layer and one database only, for the explorer's table summaries and table detail (E5c, E5f;
     /// explorer-redesign.md section 4.1). The database's tables are those of <see cref="Run"/>: a database run reads the conceptual
     /// layer and its own files only; what an earlier database run adds (relation dependency keys, <c>FinishRelationMappings</c>) and
-    /// what runs after the databases (the conceptual finish, seeds, usages, the dependency freeze) do not shape tables and are
-    /// skipped, so dependency lists are not set. The diagnostics are the conceptual layer's and this database's.
+    /// what runs after the databases (the conceptual finish, the sensitivity bound attributes show, seeds, usages, the dependency freeze) do not shape tables and are
+    /// skipped, so dependency lists are not set; the reference type bindings into its tables are linked, since a reference column's
+    /// bound table is part of its shape. The diagnostics are the conceptual layer's and this database's.
     /// </summary>
     /// <param name="databaseId">The database element's id.</param>
     /// <returns>The resolved database, or <see langword="null"/> when no database has the id, and the sorted diagnostics.</returns>
     public (RDatabase? Database, IReadOnlyList<Diagnostic> Diagnostics) RunOneDatabase(string databaseId)
     {
+        var (databases, diagnostics) = RunDatabases([databaseId], freeze: false);
+        return (databases[0], diagnostics);
+    }
+
+    /// <summary>
+    /// Resolves the conceptual layer once and then each of the given databases, as <see cref="RunOneDatabase"/> does for one (the
+    /// recording of migration facts resolves the databases a write can reshape this way, next-phase-1-design.md section 3.2). With
+    /// <paramref name="freeze"/>, the dependency keys of every object resolved are frozen into <see cref="RObject.Dependencies"/>,
+    /// so a database's footprint (the element ids of its objects' <c>e:</c> keys) can be read; the keys are those of this partial run.
+    /// </summary>
+    /// <param name="databaseIds">The database element ids, in the order to resolve them.</param>
+    /// <param name="freeze">Whether to freeze the dependency keys.</param>
+    /// <returns>Per id, the resolved database or <see langword="null"/> when no database has it, and the sorted diagnostics.</returns>
+    public (IReadOnlyList<RDatabase?> Databases, IReadOnlyList<Diagnostic> Diagnostics) RunDatabases(IReadOnlyList<string> databaseIds, bool freeze)
+    {
+        ArgumentNullException.ThrowIfNull(databaseIds);
         try
         {
-            var database = Model.All<Database>().FirstOrDefault(d => string.Equals(d.Id, databaseId, StringComparison.Ordinal));
             ResolveConceptual();
-            RDatabase? result = null;
-            if (database is not null)
+            var results = new RDatabase?[databaseIds.Count];
+            for (var i = 0; i < databaseIds.Count; i++)
             {
+                var database = Model.Get<Database>(databaseIds[i]);
+                if (database is null)
+                    continue;
                 Ct.ThrowIfCancellationRequested();
-                result = new DatabaseRun(this, database).Run();
+                var resolved = new DatabaseRun(this, database).Run();
+                ResolveMigrations(resolved, database);
+                results[i] = resolved;
             }
 
-            return (result, [.. Diagnostics.Order(Diagnostic.Order)]);
+            LinkReferenceBindings(results);
+            if (freeze)
+                FreezeDependencies();
+            return (results, [.. Diagnostics.Order(Diagnostic.Order)]);
         }
         finally
         {
             _withDependencies.Clear();
         }
+    }
+
+    /// <summary>
+    /// Links the reference type bindings into the given databases' tables, as a full run does after every database: a reference
+    /// column's bound table (<see cref="RColumn.ReferenceBinding"/>) is part of its physical snapshot, so the databases a write records
+    /// facts for capture it as validate and generate do (next-phase-2-design.md section 3.2, decision 8).
+    /// </summary>
+    private void LinkReferenceBindings(IReadOnlyList<RDatabase?> databases)
+    {
+        var tablesByKey = new Dictionary<string, RTable>(StringComparer.Ordinal);
+        foreach (var database in databases)
+        {
+            foreach (var table in database?.Tables.Where(t => t.Origin != "synthesized") ?? [])
+                tablesByKey.TryAdd(table.Key, table);
+        }
+
+        ResolveReferenceBindings(tablesByKey);
     }
 
     private ResolvedModel RunCore()
@@ -114,13 +164,17 @@ internal sealed partial class ResolveRun
         {
             Ct.ThrowIfCancellationRequested();
             var run = new DatabaseRun(this, database);
-            resolvedDatabases.Add(run.Run());
+            var resolved = run.Run();
+            ResolveMigrations(resolved, database);
+            resolvedDatabases.Add(resolved);
             Report();
         }
 
         FinishConceptual();
+        ResolveShared();
         ResolveSeedsAndUsages(resolvedDatabases);
         ResolveProcesses();
+        var (stereotypes, vocabularies, trees) = ResolveDefinitions();
         var result = new ResolvedModel
         {
             Source = Model,
@@ -138,12 +192,135 @@ internal sealed partial class ResolveRun
             Actors = new RList<RActor>(_actorOrder, [ActorKind]),
             Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),
             Databases = new RList<RDatabase>(resolvedDatabases, ["k:database"]),
+            Migrations = new RList<RMigration>(_migrationOrder, MigrationMembership()),
             Locales = new RList<RLocale>(RLocale.Of(Settings.Localization), [RLocale.SettingsKey]),
+            Stereotypes = new RList<RStereotypeDefinition>(stereotypes, ["k:stereotype"]),
+            TagVocabularies = new RList<RTagVocabulary>(vocabularies, ["k:tag-vocabulary"]),
+            CategoryTrees = new RList<RCategoryTree>(trees, ["k:category-tree"]),
             Diagnostics = [.. Diagnostics.Order(Diagnostic.Order)],
             ById = _byId, // lookups only, never enumerated; freezing a few hundred thousand ids costs more than it saves
         };
         FreezeDependencies();
         return result;
+    }
+
+    /// <summary>
+    /// The definitions <c>model</c> lists (next-phase-1-design.md section 5.5): the stereotype of each key (the one
+    /// <see cref="ModelSnapshot.GetStereotype"/> gives, by key), and the tag vocabularies and category trees validation uses, one per
+    /// scope, the global one first, then by (package qualified name, id). Each depends on its own file; a tree also completes the
+    /// shared <see cref="RCategory"/> instances (parent, children, order, description) the conceptual pass created.
+    /// </summary>
+    private (List<RStereotypeDefinition> Stereotypes, List<RTagVocabulary> Vocabularies, List<RCategoryTree> Trees) ResolveDefinitions()
+    {
+        var stereotypes = new List<RStereotypeDefinition>();
+        foreach (var key in Model.All<Stereotype>().Select(s => s.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            if (Model.GetStereotype(key) is not { } stereotype)
+                continue;
+            var r = new RStereotypeDefinition();
+            var deps = DepsOf(r);
+            FillCommon(r, stereotype, deps);
+            r.Package = PackageOf(stereotype.Package);
+            r.Key = stereotype.Key;
+            r.AppliesTo = [.. stereotype.AppliesTo];
+            var attributes = StableByOrder(stereotype.Attributes.DistinctBy(a => a.Id, StringComparer.Ordinal), a => a.Order)
+                .Select(a => MakeAttribute(a, r, r.Package, null, false, stereotype, stereotype.Id))
+                .ToList();
+            SetOrder(attributes);
+            r.Attributes = new RList<RAttribute>(attributes, deps.ToList());
+            r.DefaultProperties = stereotype.DefaultProperties.Count == 0
+                ? FrozenDictionary<string, object?>.Empty
+                : ResolutionValues.PlainMap(stereotype.DefaultProperties);
+            r.Icon = stereotype.Icon;
+            r.Color = stereotype.Color;
+            Register(r);
+            stereotypes.Add(r);
+        }
+
+        var vocabularies = new List<RTagVocabulary>();
+        foreach (var vocabulary in Model.TagVocabularies)
+        {
+            var r = new RTagVocabulary();
+            FillCommon(r, vocabulary, DepsOf(r));
+            r.Package = PackageOf(vocabulary.Package);
+            r.Strict = vocabulary.Strict;
+            r.Definitions = [.. vocabulary.Definitions.Select(d => new RTagDefinition { Key = d.Key, Description = d.Description, Color = d.Color })];
+            Register(r);
+            vocabularies.Add(r);
+        }
+
+        var trees = new List<RCategoryTree>();
+        foreach (var tree in Model.CategoryTrees)
+        {
+            var r = new RCategoryTree();
+            FillCommon(r, tree, DepsOf(r));
+            r.Package = PackageOf(tree.Package);
+            (r.Roots, r.Categories) = CategoryTreeOf(tree);
+            Register(r);
+            trees.Add(r);
+        }
+
+        return (stereotypes, ScopeOrder(vocabularies), ScopeOrder(trees));
+    }
+
+    /// <summary>The global definition first (no <c>package</c>), then by (package qualified name, id), ordinal.</summary>
+    private static List<T> ScopeOrder<T>(List<T> values) where T : RElement =>
+        [.. values.OrderBy(v => v.Package is null ? 0 : 1).ThenBy(v => v.Package?.QualifiedName ?? "", StringComparer.Ordinal).ThenBy(v => v.Id, StringComparer.Ordinal)];
+
+    /// <summary>
+    /// A tree's roots and its categories depth-first, on the <see cref="RCategory"/> instances the conceptual pass registered for this
+    /// tree (the first entry of an id). Siblings go by order (none counts as 0), then file order; a parent the tree lacks, or the
+    /// category itself, makes a root; a category caught in a longer parent cycle is walked after the roots, in file order.
+    /// </summary>
+    private (IReadOnlyList<RCategory> Roots, IReadOnlyList<RCategory> Categories) CategoryTreeOf(CategoryTree tree)
+    {
+        var own = new List<(Category Source, RCategory Category)>();
+        var byId = new Dictionary<string, RCategory>(StringComparer.Ordinal);
+        foreach (var category in tree.Categories)
+        {
+            if (byId.ContainsKey(category.Id) || !_categories.TryGetValue(category.Id, out var rc)
+                || !string.Equals(_categoryTreeOf.GetValueOrDefault(category.Id), tree.Id, StringComparison.Ordinal))
+                continue;
+            byId.Add(category.Id, rc);
+            own.Add((category, rc));
+        }
+
+        var roots = new List<RCategory>();
+        var children = new Dictionary<RCategory, List<RCategory>>(ReferenceEqualityComparer.Instance);
+        foreach (var (source, rc) in StableByOrder(own, x => x.Source.Order))
+        {
+            rc.Order = source.Order;
+            rc.Description = source.Description?.Text;
+            rc.Parent = source.Parent is { } parentId && byId.TryGetValue(parentId, out var parent) && !ReferenceEquals(parent, rc) ? parent : null;
+            if (rc.Parent is null)
+                roots.Add(rc);
+            else if (children.TryGetValue(rc.Parent, out var siblings))
+                siblings.Add(rc);
+            else
+                children.Add(rc.Parent, [rc]);
+        }
+
+        foreach (var (_, rc) in own)
+            rc.Children = children.TryGetValue(rc, out var list) ? list : [];
+
+        var ordered = new List<RCategory>(own.Count);
+        var seen = new HashSet<RCategory>(ReferenceEqualityComparer.Instance);
+        var stack = new Stack<RCategory>();
+        foreach (var start in roots.Concat(own.Select(x => x.Category)))
+        {
+            stack.Push(start);
+            while (stack.Count > 0)
+            {
+                var current = stack.Pop();
+                if (!seen.Add(current))
+                    continue;
+                ordered.Add(current);
+                for (var i = current.Children.Count - 1; i >= 0; i--)
+                    stack.Push(current.Children[i]);
+            }
+        }
+
+        return (roots, ordered);
     }
 
     /// <summary>Registers an object for <see cref="ResolvedModel.Find"/>; the first registration of an id wins.</summary>

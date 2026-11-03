@@ -9,6 +9,7 @@ using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Loading;
+using Maquettiste.Engine.Migrations;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 
@@ -152,8 +153,10 @@ public sealed partial class ModelStore : IAsyncDisposable
         if (!TryParseRequest(json, null, out var node, out var invalid))
             return invalid;
         await DefaultSeedColumnsAsync(node, ct).ConfigureAwait(false);
+        if (await SeedInputAsync(node, null, ct).ConfigureAwait(false) is { } refused)
+            return refused;
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Create, null, null, node, DeleteResolution.Refuse)], source, ct).ConfigureAwait(false);
-        return result.Items[0];
+        return Single(result);
     }
 
     /// <summary>Saves an element if its file still has the expected hash (host-contracts requirement 12).</summary>
@@ -168,8 +171,28 @@ public sealed partial class ModelStore : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(id);
         if (!TryParseRequest(json, id, out var node, out var invalid))
             return invalid;
+        if (await SeedInputAsync(node, id, ct).ConfigureAwait(false) is { } refused)
+            return refused;
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Update, id, expectedHash, node, DeleteResolution.Refuse)], source, ct).ConfigureAwait(false);
-        return result.Items[0];
+        return Single(result);
+    }
+
+    /// <summary>
+    /// Seed input by name on a create's or a save's body (next-phase-1-design.md section 5.3): each row's <c>values</c> object becomes
+    /// its cells, then the bare names in <c>columns</c> and <c>key</c> become ids on the model as loaded.
+    /// </summary>
+    /// <returns><see langword="null"/> when the body is no seed or its input resolved; otherwise the invalid result (MQ1002).</returns>
+    private async Task<SaveResult?> SeedInputAsync(JsonNode? node, string? id, CancellationToken ct)
+    {
+        if (!SeedInput.IsSeed(node))
+            return null;
+        var seed = (JsonObject)node!;
+        var errors = new List<Diagnostic>();
+        SeedInput.Rows(seed, errors);
+        if (SeedInput.NeedsNames(seed))
+            SeedInput.Names(seed, new SeedTargets(await LoadedAsync(ct).ConfigureAwait(false)), errors);
+        return errors.Count == 0 ? null
+            : new SaveResult(SaveOutcome.Invalid, id ?? (seed["id"] as JsonValue)?.ToString(), null, null, [.. errors.Order(Diagnostic.Order)], [], null);
     }
 
     /// <summary>Deletes an element (host-contracts requirement 13).</summary>
@@ -183,8 +206,12 @@ public sealed partial class ModelStore : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(id);
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Delete, id, expectedHash, null, resolution)], source, ct).ConfigureAwait(false);
-        return result.Items[0];
+        return Single(result);
     }
+
+    /// <summary>A single-element call's result: its one item, carrying every fact the write recorded (cascades included).</summary>
+    private static SaveResult Single(BatchResult result) =>
+        result.Facts is { } facts && result.Items[0].Outcome == SaveOutcome.Saved ? result.Items[0] with { Facts = facts } : result.Items[0];
 
     /// <summary>Parses an untrusted batch, validated against <c>batch.json</c>, with no disk access (host-contracts requirement 16).</summary>
     /// <param name="json">The batch JSON.</param>
@@ -200,70 +227,175 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// Deletes in a batch refuse while anything that survives the batch still references the element. An element may appear in one
     /// operation only, and each expected hash is checked against the file as it was before the batch. When the batch fails, nothing
     /// is written: failed operations carry their outcome and diagnostics, and the others report <see cref="SaveOutcome.Saved"/>
-    /// with no hash and no changes.
+    /// with no hash and no changes. Id fields may hold qualified names (<c>@kind:path</c>) and placeholders (<c>$name</c>), and the
+    /// engine mints every missing id (next-phase-1-design.md section 5.1); a saved result's <see cref="BatchResult.Ids"/> lists both.
     /// </remarks>
     public Task<BatchResult> ApplyBatchAsync(ModelBatch batch, ChangeSource source, CancellationToken ct) => ApplyBatchCoreAsync(batch, source, null, ct);
 
     /// <summary>
-    /// Runs a batch as a dry run: the same parsing of hand-built elements, expansion of schema, process and materialize operations,
-    /// planning, expected-hash checks and validation as <see cref="ApplyBatchAsync"/>, but nothing is written. The result says what an
-    /// apply would answer and, when every operation would succeed, every file it would create, change or delete with the text before
-    /// and after (the assistant's proposals, erratum E44).
+    /// Runs a batch as a dry run: the same resolution of names, minting of ids, parsing of hand-built elements, expansion of schema,
+    /// process and materialize operations, planning, expected-hash checks and validation as <see cref="ApplyBatchAsync"/>, but nothing
+    /// is written. The result says what an apply would answer and, when every operation would succeed, every file it would create,
+    /// change or delete with the text before and after and a unified diff (the assistant's proposals, erratum E44), the ids it would
+    /// mint, the diagnostics the change would add and remove over its scope, and the migration facts it would record.
     /// </summary>
     /// <param name="batch">The batch.</param>
     /// <param name="ct">Cancellation.</param>
-    /// <returns>The outcome per operation and, when saved, the files.</returns>
+    /// <returns>The outcome per operation and, when saved, the files, ids, diagnostics delta and facts.</returns>
     public async Task<BatchPreview> PreviewBatchAsync(ModelBatch batch, CancellationToken ct)
     {
-        var files = new List<BatchPreviewFile>();
-        var result = await ApplyBatchCoreAsync(batch, ChangeSource.Editor, files, ct).ConfigureAwait(false);
-        return new BatchPreview(result.Outcome, result.Items, result.Outcome == SaveOutcome.Saved ? files : []);
+        var sink = new BatchPreviewSink();
+        var result = await ApplyBatchCoreAsync(batch, ChangeSource.Editor, sink, ct).ConfigureAwait(false);
+        if (result.Outcome != SaveOutcome.Saved)
+            return new BatchPreview(result.Outcome, result.Items, []);
+        return new BatchPreview(result.Outcome, result.Items, sink.Files)
+        {
+            Ids = result.Ids,
+            DiagnosticsAdded = sink.Added,
+            DiagnosticsRemoved = sink.Removed,
+            Facts = sink.Facts,
+        };
     }
 
-    private Task<BatchResult> ApplyBatchCoreAsync(ModelBatch batch, ChangeSource source, List<BatchPreviewFile>? preview, CancellationToken ct)
+    private async Task<BatchResult> ApplyBatchCoreAsync(ModelBatch batch, ChangeSource source, BatchPreviewSink? preview, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(batch);
-        var changes = new List<PlannedChange>(batch.Operations.Count);
+        var nodes = new JsonNode?[batch.Operations.Count];
         var invalid = new SaveResult?[batch.Operations.Count];
-        var schemaOps = false;
         for (var i = 0; i < batch.Operations.Count; i++)
         {
             var o = batch.Operations[i];
-            JsonNode? node = null;
             if (o.Op == BatchOp.Translate)
             {
                 var pointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/op";
                 invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null,
                     [RuleCatalog.Create("MQ1002", pointer + " The translate operation is declared in the contract; its handler lands in a later step.", o.Id, null, pointer)], [], null);
-                changes.Add(new PlannedChange(BatchOp.Update, o.Id, o.ExpectedHash, null, DeleteResolution.Refuse));
                 continue;
             }
 
-            if (IsSchemaOperation(o.Op) || IsProcessOperation(o.Op) || IsMaterializeOperation(o.Op) || IsTagOperation(o.Op))
+            // A hand-built operation may carry an element ParseBatch never saw: parse it as strictly as a request body.
+            if (!IsExpandedOperation(o.Op) && o.Element is { } e && !TryParseRequest(JsonMarshal.GetRawUtf8Value(e).ToArray(), o.Id, out nodes[i], out var failure))
+            {
+                invalid[i] = failure with { Diagnostics = [.. failure.Diagnostics.Select(d => d with { JsonPointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/element", Line = null, Column = null })] };
+                continue;
+            }
+
+            // A seed row's values object becomes its cells (section 5.3) before 5.1's resolver reads the element as a typed record.
+            if (o.Op is BatchOp.Create or BatchOp.Update && SeedInput.IsSeed(nodes[i]))
+            {
+                var errors = new List<Diagnostic>();
+                SeedInput.Rows((JsonObject)nodes[i]!, errors);
+                if (errors.Count > 0)
+                    invalid[i] = SeedRefusal(i, o.Id, errors);
+            }
+        }
+
+        if (invalid.Any(r => r is not null))
+            return Invalid(batch, invalid);
+
+        // Names, placeholders and minted ids (next-phase-1-design.md section 5.1): resolved on the snapshot as loaded, outside the gate,
+        // before anything is planned or expanded; a change in between is caught as for any write (hashes on disk, MQ2001).
+        var loaded = await LoadedAsync(ct).ConfigureAwait(false);
+        var resolved = BatchNames.Resolve(loaded, batch, nodes, _services.Schemas, _options.EffectiveIdGenerator);
+        if (resolved.Failed)
+        {
+            for (var i = 0; i < batch.Operations.Count; i++)
+            {
+                if (resolved.Diagnostics[i].Count > 0)
+                    invalid[i] = new SaveResult(SaveOutcome.Invalid, resolved.Batch.Operations[i].Id, null, null, [.. resolved.Diagnostics[i].Order(Diagnostic.Order)], [], null);
+            }
+
+            return Invalid(resolved.Batch, invalid);
+        }
+
+        batch = resolved.Batch;
+        if (SeedNames(loaded, batch, nodes, invalid))
+            return Invalid(batch, invalid);
+        var changes = new List<PlannedChange>(batch.Operations.Count);
+        var schemaOps = false;
+        for (var i = 0; i < batch.Operations.Count; i++)
+        {
+            var o = batch.Operations[i];
+            if (IsExpandedOperation(o.Op))
             {
                 schemaOps = true;
                 continue;
             }
 
-            // A hand-built operation may carry an element ParseBatch never saw: parse it as strictly as a request body.
-            if (o.Element is { } e && !TryParseRequest(JsonMarshal.GetRawUtf8Value(e).ToArray(), o.Id, out node, out var failure))
-                invalid[i] = failure with { Diagnostics = [.. failure.Diagnostics.Select(d => d with { JsonPointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/element", Line = null, Column = null })] };
-            changes.Add(new PlannedChange(o.Op, o.Id, o.ExpectedHash, node, o.Op == BatchOp.Delete ? o.Resolution ?? DeleteResolution.Refuse : DeleteResolution.Refuse));
+            changes.Add(new PlannedChange(o.Op, o.Id, o.ExpectedHash, nodes[i], o.Op == BatchOp.Delete ? o.Resolution ?? DeleteResolution.Refuse : DeleteResolution.Refuse,
+                resolved.Minted[i]));
         }
 
-        if (invalid.Any(r => r is not null))
-        {
-            var items = invalid.Select((r, i) => r ?? new SaveResult(SaveOutcome.Saved, batch.Operations[i].Id, null, null, [], [], null)).ToList();
-            return Task.FromResult(new BatchResult(SaveOutcome.Invalid, items, null));
-        }
+        var result = schemaOps ? await ApplyWithSchemasAsync(batch, changes, invalid, source, preview, ct).ConfigureAwait(false)
+            : changes.Count == 0 ? new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source)) { Facts = [] }
+            : await ExecuteAsync(changes, source, ct, preview).ConfigureAwait(false);
+        return result.Outcome == SaveOutcome.Saved ? result with { Ids = resolved.Ids } : result;
 
-        if (schemaOps)
-            return ApplyWithSchemasAsync(batch, changes, invalid, source, preview, ct);
-
-        if (changes.Count == 0)
-            return Task.FromResult(new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source)));
-        return ExecuteAsync(changes, source, ct, preview);
+        static BatchResult Invalid(ModelBatch batch, SaveResult?[] invalid) => new(SaveOutcome.Invalid,
+            [.. invalid.Select((r, i) => r ?? new SaveResult(SaveOutcome.Saved, batch.Operations[i].Id, null, null, [], [], null))], null);
     }
+
+    /// <summary>
+    /// Seed columns and keys by name in a batch (next-phase-1-design.md section 5.3), after 5.1's resolver: each seed create or update
+    /// turns its bare names into ids on the model as loaded with the batch's earlier creates, updates and deletes laid over it, so a
+    /// seed names the columns of a table an earlier operation creates. Reads elements only up to the last seed that has names.
+    /// </summary>
+    /// <returns><see langword="true"/> when a name failed; its operation's slot of <paramref name="invalid"/> says why.</returns>
+    private static bool SeedNames(ModelSnapshot loaded, ModelBatch batch, JsonNode?[] nodes, SaveResult?[] invalid)
+    {
+        var last = -1;
+        for (var i = 0; i < batch.Operations.Count; i++)
+        {
+            if (batch.Operations[i].Op is BatchOp.Create or BatchOp.Update && SeedInput.NeedsNames(nodes[i]))
+                last = i;
+        }
+
+        if (last < 0)
+            return false;
+        var view = new SeedTargets(loaded);
+        var failed = false;
+        for (var i = 0; i <= last; i++)
+        {
+            var o = batch.Operations[i];
+            if (o.Op is BatchOp.Create or BatchOp.Update && nodes[i] is JsonObject node)
+            {
+                if (SeedInput.NeedsNames(node))
+                {
+                    var errors = new List<Diagnostic>();
+                    SeedInput.Names(node, view, errors);
+                    if (errors.Count > 0)
+                    {
+                        invalid[i] = SeedRefusal(i, o.Id ?? (node["id"] as JsonValue)?.ToString(), errors);
+                        failed = true;
+                    }
+                }
+
+                if (i < last)
+                    view.Lay(node);
+            }
+            else if (o.Op == BatchOp.Delete && o.Id is { } id)
+            {
+                view.Remove(id);
+            }
+        }
+
+        return failed;
+    }
+
+    /// <summary>A batch operation refused by its seed input, the diagnostics' pointers under <c>/operations/&lt;i&gt;/element</c>.</summary>
+    private static SaveResult SeedRefusal(int i, string? id, List<Diagnostic> errors)
+    {
+        var prefix = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/element";
+        return new SaveResult(SaveOutcome.Invalid, id, null, null, [.. errors.Select(d => d with { JsonPointer = prefix + d.JsonPointer }).Order(Diagnostic.Order)], [], null);
+    }
+
+    /// <summary>
+    /// Whether an operation expands into updates (schema, process, materialize, binding and tag operations, <c>names-to-ids</c>,
+    /// <c>fold-into-stereotype</c> and the reference-type refactors) rather than naming its element.
+    /// </summary>
+    private static bool IsExpandedOperation(BatchOp op) =>
+        IsSchemaOperation(op) || IsProcessOperation(op) || IsMaterializeOperation(op) || IsBindingOperation(op) || IsTagOperation(op)
+        || IsReferenceRefactor(op) || op is BatchOp.NamesToIds or BatchOp.FoldIntoStereotype;
 
     /// <summary>Re-reads changed paths and updates the index (host-contracts requirement 17).</summary>
     /// <param name="paths">Repo-relative or absolute paths reported by a watcher.</param>
@@ -329,17 +461,36 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// The validator's report, plus the snapshot's load diagnostics (MQ1xxx) for the scope that it did not already carry, so a
     /// file that failed to load is never silently missing from a report, plus what the resolver finds once the whole model
     /// validates without error (MQ4005 over the resolved columns and the other resolution findings; once per snapshot, see
-    /// <see cref="ResolverFindingsAsync"/>), so validate reports what generation would.
+    /// <see cref="ResolverFindingsAsync"/>), so validate reports what generation would. It also adds the stale chains of complete
+    /// migration facts (MQ4103), judged against each database's committed physical snapshot: those are not part of the resolver's
+    /// once-per-snapshot findings, since generation rewrites a committed snapshot with no model change, so each call reads the
+    /// committed snapshots again; the captures they are judged against are cached per snapshot, and so are the findings while the
+    /// committed snapshots list the same rendered facts. A whole-model report judges seeds with a rows script, which the shared
+    /// validation previews wait on leaves out (<see cref="WholeReportAsync"/>; next-phase-2-design.md section 3.4, decision 31).
     /// </remarks>
     public async Task<ValidationReport> ValidateAsync(ValidationScope scope, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
-        // The whole model's report is the one the snapshot's shared resolution validated with (once per snapshot).
-        var whole = scope.ElementIds is null && scope.IncludeReferrers && scope.IncludeScriptRules;
-        var report = whole ? (await ResolvedAsync(snapshot, ct).ConfigureAwait(false)).Report
+        return await ValidateCoreAsync(snapshot, scope, committedStale: true, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// <see cref="ValidateAsync(ValidationScope, CancellationToken)"/> over a snapshot; <paramref name="committedStale"/> adds the stale chains judged against the
+    /// committed physical snapshots, which <see cref="ValidateAgainstAsync"/> judges against its baseline instead.
+    /// </summary>
+    private async Task<ValidationReport> ValidateCoreAsync(ModelSnapshot snapshot, ValidationScope scope, bool committedStale, CancellationToken ct)
+    {
+        // The whole model's report is the one the snapshot's shared resolution validated with, or with seeds that have a rows script
+        // its own (once per snapshot either way). When that one has an error the shared one lacks, generation would stop before
+        // resolving, so the resolver's findings are left out.
+        var whole = scope.ElementIds is null && scope.IncludeReferrers && scope.IncludeScriptRules && !scope.DeferScriptedRows;
+        var report = whole ? await WholeReportAsync(snapshot, ct).ConfigureAwait(false)
             : await _services.Validator.ValidateAsync(snapshot, scope, null, ct).ConfigureAwait(false);
-        var found = await ResolverFindingsAsync(snapshot, ct).ConfigureAwait(false);
+        IReadOnlyList<Diagnostic> found = whole && report.Diagnostics.Any(Generation.Outcomes.BlocksResolution) ? []
+            : await ResolverFindingsAsync(snapshot, ct).ConfigureAwait(false);
+        if (committedStale && await CommittedStaleFindingsAsync(snapshot, ct).ConfigureAwait(false) is { Count: > 0 } stale)
+            found = [.. found, .. stale];
         var seen = report.Diagnostics.Select(LoadKey).ToHashSet(StringComparer.Ordinal);
         IEnumerable<Diagnostic> load = snapshot.LoadDiagnostics;
         IEnumerable<Diagnostic> resolved = found;
@@ -451,11 +602,58 @@ public sealed partial class ModelStore : IAsyncDisposable
         if (!string.Equals(expectedHash, diskHash, StringComparison.Ordinal))
             return new SettingsSaveResult(SaveOutcome.Conflict, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []);
         if (disk is not null && disk.AsSpan().SequenceEqual(bytes))
-            return new SettingsSaveResult(SaveOutcome.Saved, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []);
+            return new SettingsSaveResult(SaveOutcome.Saved, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []) { Facts = [] };
 
-        // Validate the candidate model with the new settings; only diagnostics the change introduces come back, and only errors it
-        // introduces refuse it (the element-save rule), so pre-existing errors never block an unrelated settings save.
         var newHash = ContentHash.Of(bytes);
+        var (introduced, recording) = await CheckSettingsAsync(before, settings, newHash, repoPath, ct).ConfigureAwait(false);
+
+        // A fact file the recording rewrites (a pending fact that follows its column) that changed on disk behind the index: index it
+        // and check again from what is really there, as an element save does.
+        if (await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false) is { Count: > 0 } changedFacts)
+        {
+            await RefreshFactFilesAsync(changedFacts, notifications, ct).ConfigureAwait(false);
+            before = _current!;
+            (introduced, recording) = await CheckSettingsAsync(before, settings, newHash, repoPath, ct).ConfigureAwait(false);
+            if ((await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false)).Count > 0)
+                return new SettingsSaveResult(SaveOutcome.Conflict, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []);
+        }
+
+        if (introduced.Any(d => d.Severity == DiagnosticSeverity.Error))
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null, Sorted(introduced));
+        introduced.AddRange(recording.Diagnostics.Select(d => d.Diagnostic));
+
+        var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
+        var failure = await Documents.ApplyAsync([(ModelPaths.SettingsFile, bytes), .. recording.Writes], [], batchId, ct).ConfigureAwait(false);
+        if (failure is { Refused: true })
+        {
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null,
+                [RuleCatalog.Create("MQ6004", $"The model write to {failure.Path} was refused: {failure.Reason}", null, repoPath, null)]);
+        }
+
+        if (failure is not null)
+            throw new IOException($"The settings could not be written ({failure.Path}); nothing was changed. {failure.Reason}");
+
+        // The files are on disk: index them even if the caller has given up.
+        var changes = await ReloadAsync([repoPath, .. recording.Writes.Select(w => paths.ToRepoPath(w.Path))], false, source, CancellationToken.None).ConfigureAwait(false);
+        if (!changes.IsEmpty)
+            notifications.Add(changes);
+        var saved = _current!;
+        HandOffCaptures(before, saved, recording.Handoff);
+        RemoveUnnamedUploads(before.Settings.Branding.Icon, saved.Settings.Branding.Icon);
+        return new SettingsSaveResult(SaveOutcome.Saved, saved.SettingsHash, SettingsDocumentOf(saved.Settings, repoPath, saved.SettingsHash, bytes), Sorted(introduced))
+        {
+            Facts = recording.Facts ?? [],
+        };
+    }
+
+    /// <summary>
+    /// Validates the model with new settings and classifies the change. Only diagnostics the change introduces come back, and only
+    /// errors it introduces refuse it (the element-save rule), so pre-existing errors never block an unrelated settings save; a change
+    /// with such an error records nothing.
+    /// </summary>
+    private async Task<(List<Diagnostic> Introduced, FactRecording Recording)> CheckSettingsAsync(ModelSnapshot before, ProjectSettings settings,
+        string newHash, string repoPath, CancellationToken ct)
+    {
         var loadDiagnostics = before.LoadDiagnostics.Where(d => !string.Equals(d.FilePath, repoPath, StringComparison.Ordinal)).ToList();
         var candidate = ModelSnapshot.CreateAfter(before, before.Documents, settings, newHash, before.Extensions, before.RuleScripts, before.Version,
             loadDiagnostics, _options.EffectiveParallelism, ct);
@@ -473,26 +671,15 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
 
         if (introduced.Any(d => d.Severity == DiagnosticSeverity.Error))
-            return new SettingsSaveResult(SaveOutcome.Invalid, null, null, Sorted(introduced));
+            return (introduced, FactRecording.Nothing(CacheHandoff.Clear));
 
-        var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
-        var failure = await Documents.ApplyAsync([(ModelPaths.SettingsFile, bytes)], [], batchId, ct).ConfigureAwait(false);
-        if (failure is { Refused: true })
-        {
-            return new SettingsSaveResult(SaveOutcome.Invalid, null, null,
-                [RuleCatalog.Create("MQ6004", $"The model write to {failure.Path} was refused: {failure.Reason}", null, repoPath, null)]);
-        }
-
-        if (failure is not null)
-            throw new IOException($"The settings could not be written ({failure.Path}); nothing was changed. {failure.Reason}");
-
-        // The file is on disk: index it even if the caller has given up.
-        var changes = await ReloadAsync([repoPath], false, source, CancellationToken.None).ConfigureAwait(false);
-        if (!changes.IsEmpty)
-            notifications.Add(changes);
-        var saved = _current!;
-        RemoveUnnamedUploads(before.Settings.Branding.Icon, saved.Settings.Branding.Icon);
-        return new SettingsSaveResult(SaveOutcome.Saved, saved.SettingsHash, SettingsDocumentOf(saved.Settings, repoPath, saved.SettingsHash, bytes), Sorted(introduced));
+        // Migration facts (next-phase-1-design.md section 3.2): a change of conventions, per-database conventions, type maps or
+        // inflection can rename or retype objects of every database, so every database is classified; other settings shape no table.
+        var recording = ReshapesEveryDatabase(before.Settings, settings)
+            ? await RecordFactsAsync(new RecordingRequest(before, candidate, new Dictionary<string, int>(), true, [], false,
+                [.. baseline.Diagnostics.Concat(report.Diagnostics).Where(d => d.Severity == DiagnosticSeverity.Error)]), ct).ConfigureAwait(false)
+            : FactRecording.Nothing(CacheHandoff.Clear);
+        return (introduced, recording);
     }
 
     private static string SettingsKey(Diagnostic d) =>
@@ -565,7 +752,8 @@ public sealed partial class ModelStore : IAsyncDisposable
         return result.Changes with { Source = source };
     }
 
-    private async Task<BatchResult> ExecuteAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, CancellationToken ct, List<BatchPreviewFile>? preview = null)
+    private async Task<BatchResult> ExecuteAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, CancellationToken ct, BatchPreviewSink? preview = null,
+        IReadOnlyList<MaterializeResult>? materialized = null, IReadOnlyList<CodeMap>? codeMaps = null)
     {
         await LoadedAsync(ct).ConfigureAwait(false);
         var notifications = new List<ChangeSet>();
@@ -575,7 +763,7 @@ public sealed partial class ModelStore : IAsyncDisposable
             await _gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                result = await ExecuteCoreAsync(changes, source, notifications, preview, ct).ConfigureAwait(false);
+                result = await ExecuteCoreAsync(changes, source, notifications, preview, materialized ?? [], codeMaps ?? [], ct).ConfigureAwait(false);
             }
             finally
             {
@@ -597,7 +785,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     }
 
     private async Task<BatchResult> ExecuteCoreAsync(IReadOnlyList<PlannedChange> changes, ChangeSource source, List<ChangeSet> notifications,
-        List<BatchPreviewFile>? preview, CancellationToken ct)
+        BatchPreviewSink? preview, IReadOnlyList<MaterializeResult> materialized, IReadOnlyList<CodeMap> codeMaps, CancellationToken ct)
     {
         if (IsReadOnly && preview is null)
         {
@@ -628,15 +816,58 @@ public sealed partial class ModelStore : IAsyncDisposable
         if (plan.Failed)
             return Failed(plan);
 
-        await ValidateAsync(plan, snapshot, ct).ConfigureAwait(false);
+        var errors = await ValidateAsync(plan, snapshot, preview, ct).ConfigureAwait(false);
         if (plan.Failed)
             return Failed(plan);
 
+        // Migration facts (next-phase-1-design.md section 3.2): classified after validation and before the preview branch, so a dry
+        // run lists the facts it would record; their files join the write's own in the same atomic set.
+        var recording = await RecordAsync().ConfigureAwait(false);
+
+        // A fact file the recording rewrites (a pending fact that follows its column) that changed on disk behind the index: index it
+        // and plan, validate and classify again from what is really there, as for the plan's own files.
+        if (await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false) is { Count: > 0 } changedFacts)
+        {
+            await RefreshFactFilesAsync(changedFacts, notifications, ct).ConfigureAwait(false);
+            snapshot = _current!;
+            plan = Plan(snapshot, changes, ct);
+            if (!plan.Failed)
+                errors = await ValidateAsync(plan, snapshot, preview, ct).ConfigureAwait(false);
+            if (plan.Failed)
+                return Failed(plan);
+            recording = await RecordAsync().ConfigureAwait(false);
+            if ((await ChangedFactFilesAsync(recording, ct).ConfigureAwait(false)).Count > 0)
+            {
+                foreach (var outcome in plan.Outcomes)
+                    outcome.Fail(SaveOutcome.Conflict); // still changing under us: let the caller reload and retry
+                return Failed(plan);
+            }
+        }
+
+        foreach (var (change, diagnostic) in recording.Diagnostics)
+            plan.Outcomes[Math.Clamp(change, 0, plan.Outcomes.Count - 1)].Diagnostics.Add(diagnostic);
+        if (plan is { IsNoOp: false, Candidate: { } changed } && changed.Settings.Migrations.Record != MigrationRecording.Off)
+        {
+            // A kept reference row's code or a type's names changed outside the refactors: no value map was recorded (MQ4114).
+            foreach (var (change, diagnostic) in PlainCodeEdits(snapshot, changed, plan.ChangeByElement, codeMaps))
+                plan.Outcomes[Math.Clamp(change, 0, plan.Outcomes.Count - 1)].Diagnostics.Add(diagnostic);
+        }
+
+        var factWrites = recording.Writes.ToDictionary(w => w.Path, w => w.Bytes, StringComparer.Ordinal);
+
         if (preview is not null)
         {
-            preview.AddRange(await PreviewFilesAsync(plan, ct).ConfigureAwait(false));
+            // The dry run's files, with diffs, and its facts; the MQ4101 of each pending fact it would record is a diagnostic it adds.
+            preview.Files.Clear();
+            preview.Files.AddRange(await PreviewFilesAsync(plan, factWrites, ct).ConfigureAwait(false));
+            preview.Facts = recording.Facts;
+            if (recording.Diagnostics.Any(d => d.Diagnostic.Rule == "MQ4101"))
+                preview.Added = [.. preview.Added.Concat(recording.Diagnostics.Select(d => d.Diagnostic).Where(d => d.Rule == "MQ4101")).Order(Diagnostic.Order)];
             return new BatchResult(SaveOutcome.Saved,
-                [.. plan.Outcomes.Select(o => new SaveResult(SaveOutcome.Saved, o.Id, null, null, Sorted(o.Diagnostics), [.. o.Referrers], null))], null);
+                [.. plan.Outcomes.Select(o => new SaveResult(SaveOutcome.Saved, o.Id, null, null, Sorted(o.Diagnostics), [.. o.Referrers], null))], null)
+            {
+                Facts = recording.Facts,
+            };
         }
 
         ChangeSet changeSet;
@@ -646,7 +877,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
         else
         {
-            var writes = plan.Writes.Select(kv => (kv.Key, kv.Value)).ToList();
+            var writes =plan.Writes.Where(kv => !factWrites.ContainsKey(kv.Key)).Select(kv => (kv.Key, kv.Value)).Concat(factWrites.Select(kv => (kv.Key, kv.Value))).ToList();
             var deletes = plan.Deletes.ToList();
             var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
             var failure = await Documents.ApplyAsync(writes, deletes, batchId, ct).ConfigureAwait(false);
@@ -662,10 +893,11 @@ public sealed partial class ModelStore : IAsyncDisposable
                 throw new IOException($"The model change could not be written ({failure.Path}); nothing was changed. {failure.Reason}");
 
             // The files are on disk: index them even if the caller has given up.
-            var written = plan.Writes.Keys.Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Select(paths.ToRepoPath).ToList();
+            var written = plan.Writes.Keys.Concat(factWrites.Keys).Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Select(paths.ToRepoPath).ToList();
             changeSet = await ReloadAsync(written, false, source, CancellationToken.None).ConfigureAwait(false);
             if (!changeSet.IsEmpty)
                 notifications.Add(changeSet);
+            HandOffCaptures(snapshot, _current!, recording.Handoff);
         }
 
         var current = _current!;
@@ -674,15 +906,101 @@ public sealed partial class ModelStore : IAsyncDisposable
             var document = changes[i].Op == BatchOp.Delete || o.Id is null ? null : current.GetDocument(o.Id);
             return new SaveResult(SaveOutcome.Saved, o.Id, document?.Hash, document, Sorted(o.Diagnostics), [.. o.Referrers], changeSet);
         }).ToList();
-        return new BatchResult(SaveOutcome.Saved, items, changeSet);
+        return new BatchResult(SaveOutcome.Saved, items, changeSet) { Facts = recording.Facts ?? [] };
+
+        Task<FactRecording> RecordAsync() => plan.IsNoOp || plan.Candidate is null
+            ? Task.FromResult(FactRecording.Nothing(CacheHandoff.Carry))
+            : RecordFactsAsync(new RecordingRequest(snapshot, plan.Candidate, plan.ChangeByElement, false, materialized, preview is not null, errors, codeMaps), ct);
     }
 
-    /// <summary>The files a plan would write and delete, ordered by path, with their text before and after.</summary>
-    private async Task<List<BatchPreviewFile>> PreviewFilesAsync(ChangePlan plan, CancellationToken ct)
+    /// <summary>
+    /// MQ4114 (next-phase-2-design.md section 3.5, "Recording the value map"): a change that alters the code of a reference row it keeps
+    /// (the same row id in a seed of the same reference type, before and after), or a kept reference type's <c>name</c> or
+    /// <c>pluralName</c>, while no code map of the write covers the type, records no value map; each finding goes on the change of its
+    /// element, with the severity <c>validation.rules</c> gives it. Only the changed documents are read.
+    /// </summary>
+    private static IEnumerable<(int Change, Diagnostic Diagnostic)> PlainCodeEdits(ModelSnapshot before, ModelSnapshot after,
+        IReadOnlyDictionary<string, int> changed, IReadOnlyList<CodeMap> codeMaps)
+    {
+        var covered = codeMaps.SelectMany(m => new[] { m.ReferenceType, m.HeldType }).ToHashSet(StringComparer.Ordinal);
+        var found = new List<(int Change, Diagnostic Diagnostic)>();
+        foreach (var (id, change) in changed.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            var document = after.GetDocument(id);
+            switch (before.GetDocument(id)?.Element, document?.Element)
+            {
+                case (ReferenceType old, ReferenceType type) when !covered.Contains(type.Id):
+                    if (!string.Equals(old.Name, type.Name, StringComparison.Ordinal))
+                    {
+                        Add(change, $"Reference type '{old.Name}' was renamed to '{type.Name}' outside the refactor operations, so no value map was recorded and objects a pack named after '{old.Name}' keep that name; use rename-reference-type.",
+                            type.Id, document!.Path, "/name");
+                    }
+
+                    if (!string.Equals(old.PluralName, type.PluralName, StringComparison.Ordinal))
+                    {
+                        Add(change, $"The plural name of reference type '{type.Name}' changed from '{old.PluralName ?? "(inflected)"}' to '{type.PluralName ?? "(inflected)"}' outside the refactor operations, so no value map was recorded and objects a pack named after the old plural keep it; write a value-map fact whose from and to carry the two plural names.",
+                            type.Id, document!.Path, "/pluralName");
+                    }
+
+                    break;
+                case (Seed old, Seed seed) when string.Equals(old.Target, seed.Target, StringComparison.Ordinal) && !covered.Contains(seed.Target)
+                    && after.Get<ReferenceType>(seed.Target) is { } target:
+                    var was = Codes(old);
+                    var at = CodeColumn(seed);
+                    for (var r = 0; at >= 0 && r < seed.Rows.Count; r++)
+                    {
+                        var row = seed.Rows[r];
+                        if (at < row.Values.Count && ReferenceDataIndex.CodeKey(row.Values[at]) is { } code && was.TryGetValue(row.Id, out var previous)
+                            && !string.Equals(previous, code, StringComparison.Ordinal))
+                        {
+                            Add(change, $"The code of row {row.Id} of reference type '{target.Name}' changed from '{previous}' to '{code}' outside the refactor operations, so no value map was recorded and a database that stores '{previous}' keeps it; use rename-code (or retire-code to fold it into another code).",
+                                seed.Id, document!.Path, "/rows/" + r.ToString(CultureInfo.InvariantCulture) + "/values/" + at.ToString(CultureInfo.InvariantCulture));
+                        }
+                    }
+
+                    break;
+            }
+        }
+
+        return found;
+
+        void Add(int change, string message, string elementId, string path, string pointer)
+        {
+            foreach (var settled in Validation.ModelValidator.ApplySettings(after.Settings, [RuleCatalog.Create("MQ4114", message, elementId, path, pointer)]))
+                found.Add((change, settled));
+        }
+
+        static int CodeColumn(Seed seed)
+        {
+            for (var k = 0; k < seed.Columns.Count; k++)
+            {
+                if (string.Equals(seed.Columns[k], "code", StringComparison.Ordinal))
+                    return k;
+            }
+
+            return -1;
+        }
+
+        static Dictionary<string, string> Codes(Seed seed)
+        {
+            var codes = new Dictionary<string, string>(StringComparer.Ordinal);
+            var at = CodeColumn(seed);
+            foreach (var row in seed.Rows)
+            {
+                if (at >= 0 && at < row.Values.Count && ReferenceDataIndex.CodeKey(row.Values[at]) is { } code)
+                    codes.TryAdd(row.Id, code);
+            }
+
+            return codes;
+        }
+    }
+
+    /// <summary>The files a plan would write and delete (with the fact files it would record), ordered by path, with their text before and after.</summary>
+    private async Task<List<BatchPreviewFile>> PreviewFilesAsync(ChangePlan plan, IReadOnlyDictionary<string, byte[]> factWrites, CancellationToken ct)
     {
         var paths = _paths.Value;
         var files = new List<BatchPreviewFile>();
-        foreach (var modelPath in plan.Writes.Keys.Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        foreach (var modelPath in plan.Writes.Keys.Concat(factWrites.Keys).Concat(plan.Deletes).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
             byte[]? before = null;
             try
@@ -694,13 +1012,17 @@ public sealed partial class ModelStore : IAsyncDisposable
                 before = null;
             }
 
-            var after = plan.Writes.TryGetValue(modelPath, out var bytes) ? bytes : null;
+            var after = factWrites.TryGetValue(modelPath, out var bytes) || plan.Writes.TryGetValue(modelPath, out bytes) ? bytes : null;
             if (after is not null && before is not null && before.AsSpan().SequenceEqual(after))
                 continue;
             var action = after is null ? "deleted" : before is null ? "created" : "changed";
             var (id, kind, name) = Identify(after ?? before);
-            files.Add(new BatchPreviewFile(paths.ToRepoPath(modelPath), action, id, kind, name, before is null ? null : ContentHash.Of(before),
-                before is null ? null : System.Text.Encoding.UTF8.GetString(before), after is null ? null : System.Text.Encoding.UTF8.GetString(after)));
+            var repoPath = paths.ToRepoPath(modelPath);
+            files.Add(new BatchPreviewFile(repoPath, action, id, kind, name, before is null ? null : ContentHash.Of(before),
+                before is null ? null : System.Text.Encoding.UTF8.GetString(before), after is null ? null : System.Text.Encoding.UTF8.GetString(after))
+            {
+                Diff = _services.Diffs.Unified(repoPath, before ?? [], after ?? []),
+            });
         }
 
         return files;
@@ -726,7 +1048,9 @@ public sealed partial class ModelStore : IAsyncDisposable
     }
 
     private ChangePlan Plan(ModelSnapshot snapshot, IReadOnlyList<PlannedChange> changes, CancellationToken ct) =>
-        new ChangePlanner(snapshot, _services.Schemas, _services.Json, _paths.Value, _options.EffectiveIdGenerator, _options.EffectiveParallelism).Plan(
+        new ChangePlanner(snapshot, _services.Schemas, _services.Json, _paths.Value, _options.EffectiveIdGenerator, _options.EffectiveParallelism,
+            // Pack manifests are read only when a change removes something a pack parameter may name (next-phase-1-design.md section 4.1).
+            new Lazy<PackParameterRefs>(() => PackParameterRefs.Read(_paths.Value, snapshot.Settings), LazyThreadSafetyMode.None)).Plan(
             [.. changes.Select(c => c with { Element = c.Element?.DeepClone() })], ct);
 
     private async Task<List<string>> StalePathsAsync(ChangePlan plan, CancellationToken ct)
@@ -757,24 +1081,64 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// concerns; an error that the same scope did not already have before the change (compared by rule, element and pointer)
     /// makes that change invalid, so pre-existing errors never block an unrelated save.
     /// </summary>
-    private async Task ValidateAsync(ChangePlan plan, ModelSnapshot before, CancellationToken ct)
+    /// <returns>The errors of the validation, before the change and after it (the recording of migration facts leaves out the
+    /// objects their elements own).</returns>
+    private Task<IReadOnlyList<Diagnostic>> ValidateAsync(ChangePlan plan, ModelSnapshot before, CancellationToken ct) => ValidateAsync(plan, before, null, ct);
+
+    /// <summary><see cref="ValidateAsync(ChangePlan, ModelSnapshot, CancellationToken)"/>, collecting a dry run's diagnostics delta.</summary>
+    /// <remarks>
+    /// A dry run (<paramref name="preview"/>) also validates <paramref name="before"/> over the change's scope: every element the
+    /// change created, updated, deleted or rewrote (deletes included), their referrers before the change and the placements, each
+    /// that the model had. Each side then validates the documents only the other side's run reached and that it has (peers are
+    /// worked out on each model), so both cover the same documents. The two reports, compared as multisets keyed like
+    /// <see cref="ErrorKey"/> (every severity), give the diagnostics the change adds and removes (next-phase-1-design.md section
+    /// 5.1). The scope is the apply's, never the whole model, and the refusals do not change.
+    /// </remarks>
+    /// <returns>The errors of the validation, before the change and after it.</returns>
+    private async Task<IReadOnlyList<Diagnostic>> ValidateAsync(ChangePlan plan, ModelSnapshot before, BatchPreviewSink? preview, CancellationToken ct)
     {
+        if (preview is not null)
+        {
+            preview.Added = [];
+            preview.Removed = [];
+        }
+
         if (plan.Candidate is not { } candidate)
-            return;
+            return [];
         // A deleted database or mapping is not among the changed ids, but the entities it placed are revisited (7.2a); they are in the
         // baseline too, so their pre-existing errors never block the delete.
-        var placements = FormerPlacements([.. plan.ChangeByElement.Keys.Order(StringComparer.Ordinal)], before, candidate).Distinct(StringComparer.Ordinal).ToList();
-        if (plan.ChangedIds.Count == 0 && placements.Count == 0)
-            return;
+        var changed = plan.ChangeByElement.Keys.Order(StringComparer.Ordinal).ToList();
+        var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
+        var followers = FormerFactFollowers(changed, before, candidate).ToList();
+        // A dry run counts the deletes too: what a deleted element had shows as removed.
+        if ((preview is null ? plan.ChangedIds.Count : changed.Count) == 0 && placements.Count == 0 && followers.Count == 0)
+            return [];
         // Files that referenced a changed element or sub-element before the change are validated too: a reference the change broke
         // (a seed row or code gone) no longer shows in the candidate's index.
-        var scope = plan.ChangedIds.Concat(FormerReferrers(plan.ChangedIds, before, candidate)).Concat(placements)
+        var scope = plan.ChangedIds.Concat(FormerReferrers(plan.ChangedIds, before, candidate)).Concat(placements).Concat(followers)
             .Distinct(StringComparer.Ordinal).ToList();
-        var report = await _services.Validator.ValidateAsync(candidate, new ValidationScope(scope, IncludeReferrers: true), null, ct).ConfigureAwait(false);
-        var existing = plan.ChangedIds.Concat(placements).Distinct(StringComparer.Ordinal).Where(id => before.TryGetEntry(id, out _)).ToList();
+        var report = scope.Count > 0
+            ? await _services.Validator.ValidateAsync(candidate, new ValidationScope(scope, IncludeReferrers: true), null, ct).ConfigureAwait(false)
+            : ValidationReport.From([]);
+        var existing = plan.ChangedIds.Concat(placements).Concat(followers).Distinct(StringComparer.Ordinal).Where(id => before.TryGetEntry(id, out _)).ToList();
         var baseline = existing.Count > 0
             ? await _services.Validator.ValidateAsync(before, new ValidationScope(existing, IncludeReferrers: true), null, ct).ConfigureAwait(false)
             : ValidationReport.From([]);
+        if (preview is not null)
+        {
+            var delta = changed.Concat(placements).Concat(followers).Distinct(StringComparer.Ordinal).Where(id => before.TryGetEntry(id, out _)).ToList();
+            var prior = delta.ToHashSet(StringComparer.Ordinal).SetEquals(existing) ? baseline
+                : await _services.Validator.ValidateAsync(before, new ValidationScope(delta, IncludeReferrers: true), null, ct).ConfigureAwait(false);
+            // The validator widens each scope with conflict and row peers worked out on its own model, so a document that only one of
+            // the two runs reached (a peer of a created seed or name, or of a deleted one) is validated on the other side too: else
+            // its findings would show as added or removed.
+            var after = Validation.ModelValidator.TargetIds(candidate, new ValidationScope(scope, IncludeReferrers: true));
+            var formerly = Validation.ModelValidator.TargetIds(before, new ValidationScope(delta, IncludeReferrers: true));
+            var now = await WithDocumentsAsync(candidate, report.Diagnostics, formerly.Except(after, StringComparer.Ordinal), ct).ConfigureAwait(false);
+            var then = await WithDocumentsAsync(before, prior.Diagnostics, after.Except(formerly, StringComparer.Ordinal), ct).ConfigureAwait(false);
+            (preview.Added, preview.Removed) = (Exceeding(now, then), Exceeding(then, now));
+        }
+
         var known = baseline.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)
             .GroupBy(ErrorKey, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
@@ -792,6 +1156,26 @@ public sealed partial class ModelStore : IAsyncDisposable
             else
                 outcome.Fail(SaveOutcome.Invalid);
         }
+
+        return [.. baseline.Diagnostics.Concat(report.Diagnostics).Where(d => d.Severity == DiagnosticSeverity.Error)];
+    }
+
+    /// <summary>
+    /// <paramref name="diagnostics"/> with the findings of the <paramref name="documents"/> that <paramref name="model"/> has, validated
+    /// on their own: the validator widens their scope with their peers, whose findings are left out. A document's findings do not
+    /// depend on the scope it is validated in.
+    /// </summary>
+    private async Task<IReadOnlyList<Diagnostic>> WithDocumentsAsync(ModelSnapshot model, IReadOnlyList<Diagnostic> diagnostics, IEnumerable<string> documents,
+        CancellationToken ct)
+    {
+        var ids = documents.Where(id => model.GetDocument(id) is not null).ToHashSet(StringComparer.Ordinal);
+        if (ids.Count == 0)
+            return diagnostics;
+        var report = await _services.Validator.ValidateAsync(model, new ValidationScope([.. ids.Order(StringComparer.Ordinal)], IncludeReferrers: false), null, ct)
+            .ConfigureAwait(false);
+        var paths = ids.Select(id => model.GetDocument(id)!.Path).ToHashSet(StringComparer.Ordinal);
+        return [.. diagnostics.Concat(report.Diagnostics.Where(d => d.FilePath is { } path ? paths.Contains(path)
+            : d.ElementId is { } id && model.GetDocument(id) is { } owner && ids.Contains(owner.Element.Id)))];
     }
 
     /// <summary>
@@ -819,6 +1203,54 @@ public sealed partial class ModelStore : IAsyncDisposable
         {
             foreach (var entity in candidate.All<Entity>())
                 yield return entity.Id;
+        }
+    }
+
+    /// <summary>
+    /// The tables whose rows a changed seed or reference type gave rows to before the change (a seed's table, a type's bound tables):
+    /// a binding removed or retargeted, or a seed deleted, changes the row checks of files that do not reference it (MQ7111, MQ7112,
+    /// MQ7119); in scope, a table brings those files in through the validator's peers.
+    /// </summary>
+    private static IEnumerable<string> FormerRowTables(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        foreach (var id in changedIds)
+        {
+            IEnumerable<string> tables = before.GetDocument(id)?.Element switch
+            {
+                Seed seed when before.GetDocument(seed.Target)?.Element is Table => [seed.Target],
+                Seed seed when before.GetDocument(seed.Target)?.Element is ReferenceType type => type.Bindings.Select(b => b.Table),
+                ReferenceType type => type.Bindings.Select(b => b.Table),
+                _ => [],
+            };
+            foreach (var table in tables)
+            {
+                if (candidate.GetDocument(table) is { Element: Table })
+                    yield return table;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The migration facts whose <c>after</c> links name a fact the change deleted (MQ4111 now): links are not references, and the
+    /// validator's peers of a fact (<see cref="Validation.ModelValidator.ConflictPeers"/>) come from its document, which a deleted fact no longer
+    /// has. A fact moved to another database keeps its document, so its peers still bring in the facts that name it. One pass over
+    /// the candidate's facts, only when the change deleted a fact.
+    /// </summary>
+    private static IEnumerable<string> FormerFactFollowers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        HashSet<string>? deleted = null;
+        foreach (var id in changedIds)
+        {
+            if (before.GetDocument(id)?.Element is Migration && candidate.GetDocument(id) is null)
+                (deleted ??= new HashSet<string>(StringComparer.Ordinal)).Add(id);
+        }
+
+        if (deleted is null)
+            yield break;
+        foreach (var fact in candidate.All<Migration>())
+        {
+            if (fact.After.Any(deleted.Contains))
+                yield return fact.Id;
         }
     }
 
@@ -873,6 +1305,26 @@ public sealed partial class ModelStore : IAsyncDisposable
     }
 
     private static string ErrorKey(Diagnostic d) => d.Rule + "\u0000" + d.ElementId + "\u0000" + d.JsonPointer;
+
+    /// <summary>
+    /// The diagnostics of <paramref name="report"/> beyond those <paramref name="other"/> has, compared as multisets keyed like
+    /// <see cref="ErrorKey"/> (rule, element, pointer), every severity; in <see cref="Diagnostic.Order"/>.
+    /// </summary>
+    private static List<Diagnostic> Exceeding(IReadOnlyList<Diagnostic> report, IReadOnlyList<Diagnostic> other)
+    {
+        var counts = other.Distinct().GroupBy(ErrorKey, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var exceeding = new List<Diagnostic>();
+        foreach (var diagnostic in report.Distinct().Order(Diagnostic.Order))
+        {
+            var key = ErrorKey(diagnostic);
+            if (counts.TryGetValue(key, out var count) && count > 0)
+                counts[key] = count - 1;
+            else
+                exceeding.Add(diagnostic);
+        }
+
+        return exceeding;
+    }
 
     private static string LoadKey(Diagnostic d) => d.Rule + "\u0000" + d.ElementId + "\u0000" + d.FilePath + "\u0000" + d.JsonPointer + "\u0000" + d.Message;
 
@@ -995,7 +1447,32 @@ public sealed record SaveResult(
     ElementDocument? Current,
     IReadOnlyList<Diagnostic> Diagnostics,
     IReadOnlyList<ReferenceInfo> Referrers,
-    ChangeSet? Changes);
+    ChangeSet? Changes)
+{
+    /// <summary>
+    /// The migration facts the write created or updated (next-phase-1-design.md section 3.2): every fact a single-element call (create,
+    /// save, delete) recorded, cascades included; <see langword="null"/> on an item of a batch, whose facts are on the batch, and when the
+    /// change was not saved. The pending ones' MQ4101 is in <see cref="Diagnostics"/>.
+    /// </summary>
+    public IReadOnlyList<RecordedFact>? Facts { get; init; }
+
+    /// <summary>
+    /// What a reference-type refactor (next-phase-2-design.md section 3.5) rewrites, read from the index: on the item of the type the
+    /// operation names (for a merge, the merged-away type's delete), in a dry run and on apply; <see langword="null"/> on every other
+    /// item.
+    /// </summary>
+    public RefactorUsage? Usage { get; init; }
+}
+
+/// <summary>What a reference-type refactor rewrites (next-phase-2-design.md section 3.5), found through the index, never a resolve.</summary>
+/// <param name="UseCount">The number of uses rewritten: codes in defaults, <c>allowedValues</c> entries and cells, ids that name a removed
+/// row, and references to a merged-away type.</param>
+/// <param name="Uses">The first 200 of them, ordinal by element id, then pointer; <see cref="ReferenceInfo.ToId"/> is the row or type
+/// the use named before the refactor.</param>
+/// <param name="RowsMoved">The rows a merge moves into the target type.</param>
+/// <param name="RowsRemoved">The rows removed: a retired code's row, a merged-away type's rows whose codes the target holds.</param>
+/// <param name="TranslationsRemoved">The translation entries removed with them (one per locale and node).</param>
+public sealed record RefactorUsage(int UseCount, IReadOnlyList<ReferenceInfo> Uses, int RowsMoved, int RowsRemoved, int TranslationsRemoved);
 
 /// <summary>What a delete does with references to the deleted element.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<DeleteResolution>))]
@@ -1106,40 +1583,142 @@ public enum BatchOp
     /// renamed tag merges with the new key where both are on one list. Refused (MQ1002) when nothing uses or declares the tags.
     /// </summary>
     [JsonStringEnumMemberName("retag")] Retag,
+
+    /// <summary>
+    /// <c>names-to-ids</c> (next-phase-1-design.md section 4.1): turns every value an <c>x-ref</c> types that is a name, not an id, into
+    /// the id it finds, in the elements <c>elementIds</c> lists or, without it, in every document with <c>x-ref</c> sites (stereotype
+    /// defaults included). A name matches the in-scope candidates of the keyword's kinds: elements by their qualified-name forms
+    /// (stereotypes by key), and within the <c>of</c> scope sub-elements by name, columns by physical name and rows by code. A value
+    /// that finds nothing, or several, refuses the batch with one MQ2010 at the value; nothing to convert writes nothing.
+    /// </summary>
+    [JsonStringEnumMemberName("names-to-ids")] NamesToIds,
+
+    /// <summary>
+    /// <c>tags-to-property</c> (next-phase-1-design.md section 4.4): moves the tags that start with <c>prefix</c> into the custom
+    /// property <c>name</c> of each element and sub-element that holds them, in the scope the tag vocabulary of <c>package</c> governs
+    /// (as for <c>retag</c>), limited to <c>elementIds</c>. The schema that declares the property converts the suffixes: a string
+    /// takes one, a string array all of them in list order, an integer, number or boolean one (invariant culture), an <c>enum</c> one
+    /// member, and an <c>x-ref</c> resolves the suffix as <c>names-to-ids</c> does. The tags leave their holders and, without
+    /// <c>elementIds</c>, their declarations leave the vocabulary, except a tag that something without properties (a relation end,
+    /// for example) still uses, whose declaration stays. Refused with MQ1002 when no tag matches, and with one MQ5001 per holder
+    /// when no schema declares the property, a suffix does not fit or the holder already holds another value.
+    /// </summary>
+    [JsonStringEnumMemberName("tags-to-property")] TagsToProperty,
+
+    /// <summary>
+    /// <c>fold-into-stereotype</c> (next-phase-2-design.md section 3.1): stereotype <c>id</c>'s members replace the matching own members
+    /// of the designed and imported tables <c>tables</c> lists, or of every such table of schema <c>schema</c>. Each table carries the
+    /// stereotype; own columns match its columns by name and own keys, indexes and checks match its members structurally; what matched
+    /// leaves the table file and every reference to it names the inherited member's keyed id (<c>&lt;tableId&gt;.&lt;memberId&gt;</c>).
+    /// The database sees nothing: a redefinable facet that differs becomes a <c>redefines</c> entry with <c>redefine</c>, a member the
+    /// table lacks an <c>excludes</c> entry with <c>excludeMissing</c>; anything else refuses the table (MQ4077), and the batch writes
+    /// nothing. The write records one <c>rekey</c> fact per database. A table where nothing matches is skipped.
+    /// </summary>
+    [JsonStringEnumMemberName("fold-into-stereotype")] FoldIntoStereotype,
+
+    /// <summary>
+    /// <c>map-by-name</c> (next-phase-2-design.md section 3.3, decision 7): for each of <c>entities</c>, bound to <c>database</c>, maps
+    /// every attribute its binding does not map to a free column of the source with the same loose name (case and every character
+    /// that is not an ASCII letter or digit ignored): an attribute's name, <c>attributeMember</c> for a value object member, a to-one
+    /// navigation's name plus <c>Id</c> (or without it). Fields name a table file's columns by id and a view's by name; a table file's
+    /// binding records the provenance of the columns it maps. It writes no attribute and no column. Refused (MQ4089) for an entity with
+    /// no binding to the database, a source it cannot read (a query, a projected table), or when nothing matches for every entity.
+    /// </summary>
+    [JsonStringEnumMemberName("map-by-name")] MapByName,
+
+    /// <summary>
+    /// <c>resync-binding</c> (next-phase-2-design.md section 3.3, decision 8): brings the binding to <c>database</c> of each of
+    /// <c>entities</c>, whose source is a table file, into step with the table: renames an own attribute that followed its column's
+    /// name (unless <c>keepNames</c>), retypes an own attribute whose column was retyped, maps by name, adds an attribute per added
+    /// column still free, removes the fields of removed columns (never the attributes) and records the provenance of every column, or
+    /// with <c>columns</c> (one entity) works on those columns and updates only their entries. Refused (MQ4089) for an entity with no
+    /// binding, a source that is not a table file, <c>columns</c> misused, or when every binding it names is in step.
+    /// </summary>
+    [JsonStringEnumMemberName("resync-binding")] ResyncBinding,
+
+    /// <summary>
+    /// <c>rename-code</c> (next-phase-2-design.md section 3.5): gives the row of reference type <c>id</c> whose code is <c>code</c> the code
+    /// <c>to</c>, rewrites every default, <c>allowedValues</c> entry, seed cell and typed column's default, table seed cell or binding
+    /// constant that names <c>code</c>, and keeps <c>code</c> as a former code of the row. Refused (MQ7020) when <c>code</c> is no code
+    /// of a written row, or <c>to</c> equals it, is live, is a former code or does not fit the type's code.
+    /// </summary>
+    [JsonStringEnumMemberName("rename-code")] RenameCode,
+
+    /// <summary>
+    /// <c>retire-code</c>: removes the row of reference type <c>id</c> whose code is <c>code</c>, with its translations, rewrites the uses
+    /// of <c>code</c> to <c>to</c> and the ids that name the removed row (<c>x-ref</c> values, former codes) to the row of <c>to</c>, and
+    /// keeps <c>code</c> as a former code of that row. Refused (MQ7020) when either code is no code of a written row, or they are equal.
+    /// </summary>
+    [JsonStringEnumMemberName("retire-code")] RetireCode,
+
+    /// <summary>
+    /// <c>merge-reference-types</c>: merges reference type <c>id</c> (A) into <c>target</c> (B). An A code equal to a live B code maps to
+    /// it, <c>codes</c> maps others to B codes, and every other A row moves into B with its id, values and translations; A's seeds are
+    /// retargeted to B (one with the name of a B seed joins it), every reference to A names B, and B gains A's former codes and one per
+    /// mapped code; A is deleted. Refused (MQ7020) for mismatched code types, a binding or scripted rows on A, a code that is no live
+    /// code, a moving code B cannot take, a field B lacks, or two seeds of one name that differ in environments or apply.
+    /// </summary>
+    [JsonStringEnumMemberName("merge-reference-types")] MergeReferenceTypes,
+
+    /// <summary>
+    /// <c>rename-reference-type</c>: gives reference type <c>id</c> the name <c>name</c>; its file and the seeds in its seed folder move
+    /// as the name does. Refused (MQ7020) when the name is the current one, is not an element name or another reference type has it.
+    /// </summary>
+    [JsonStringEnumMemberName("rename-reference-type")] RenameReferenceType,
 }
 
 /// <summary>One batch operation.</summary>
 /// <param name="Op">The operation.</param>
-/// <param name="Id">The element id (update, delete; optional for create).</param>
+/// <param name="Id">The element id (update, delete; optional for create); the reference type a refactor acts on (rename-code, retire-code,
+/// rename-reference-type), the one merged away (merge-reference-types).</param>
 /// <param name="ExpectedHash">The ETag the caller loaded (update, delete).</param>
 /// <param name="Element">The element JSON (create, update).</param>
 /// <param name="Locale">The locale of a translation (translate).</param>
 /// <param name="Field">The translated field: displayName, pluralName, label or description (translate).</param>
 /// <param name="Value">The translated text, a sidecar reference, or null to remove it (translate).</param>
 /// <param name="Schema">The schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema).</param>
-/// <param name="Name">The schema name (add-schema, rename-schema); the new tag key (retag).</param>
+/// <param name="Name">The schema name (add-schema, rename-schema); the new tag key (retag); the property the tags move to
+/// (tags-to-property); the reference type's new name (rename-reference-type).</param>
 /// <param name="Target">The schema id that what lives in the removed schema moves to (remove-schema); the process (set-lifecycle); the
-/// child state (set-initial).</param>
+/// child state (set-initial); the reference type merged into (merge-reference-types).</param>
 /// <param name="Default">The schema id that becomes the default when the removed schema is the default (remove-schema).</param>
 /// <param name="Resolution">What a delete does with references to the element (delete); absent means <see cref="DeleteResolution.Refuse"/>.</param>
-/// <param name="Database">The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns).</param>
-/// <param name="Entities">The entity ids (materialize-tables, materialize-attributes, materialize-columns).</param>
+/// <param name="Database">The database id (materialize-tables, materialize-entities, materialize-attributes, materialize-columns,
+/// map-by-name, resync-binding).</param>
+/// <param name="Entities">The entity ids (materialize-tables, materialize-attributes, materialize-columns, map-by-name,
+/// resync-binding).</param>
 /// <param name="Tables">The table and view ids (materialize-entities).</param>
-/// <param name="Package">The package id the entities go to (materialize-entities); the domain whose tag vocabulary it is (retag; absent for
-/// the global one).</param>
-/// <param name="Columns">The source columns, as keys or physical names (materialize-attributes, one entity); absent means every column
-/// nothing in the binding names.</param>
+/// <param name="Package">The package id the entities go to (materialize-entities); the domain whose tag vocabulary it is (retag and
+/// tags-to-property; absent for the global one).</param>
+/// <param name="Columns">The source columns, as keys or physical names (materialize-attributes and resync-binding, one entity); absent
+/// means every column nothing in the binding names (materialize-attributes) or every column of the source (resync-binding).</param>
 /// <param name="Attributes">The binding field references, attribute ids among them (materialize-columns, one entity); absent means every
 /// attribute the binding leaves unmapped.</param>
 /// <param name="Tags">The tag keys (retag).</param>
-/// <param name="ExpectedHashes">Materialize and retag: the hash the caller read of each element it expects the operation to change or delete; given,
+/// <param name="ExpectedHashes">Materialize, retag, tags-to-property, names-to-ids and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete; given,
 /// an element that changed since, or that the operation changes but the map does not name, is a conflict.</param>
+/// <param name="As">Create and update: the placeholder (<c>$name</c>) that names the operation's element for the whole batch
+/// (next-phase-1-design.md section 5.1). Every id field of an operation may hold an id, a qualified name (<c>@kind:path</c>) or a
+/// placeholder; the batch resolver turns them into ids before the operation is planned.</param>
+/// <param name="ElementIds">The elements <c>names-to-ids</c> and <c>tags-to-property</c> act on, each an id, a qualified name or a
+/// placeholder; absent means every element they apply to.</param>
+/// <param name="Prefix">The prefix of the tags that move into the property <c>name</c> (tags-to-property).</param>
+/// <param name="Redefine">fold-into-stereotype: write a <c>redefines</c> entry with the table's value for each redefinable facet in
+/// which an own member differs from the stereotype's, instead of refusing the table; absent means false.</param>
+/// <param name="ExcludeMissing">fold-into-stereotype: exclude each member the table lacks, instead of refusing the table; absent means
+/// false.</param>
+/// <param name="KeepNames">resync-binding: keep every attribute's name, even one that followed its column's name; absent means false.</param>
+/// <param name="Code">The code a refactor renames or retires, as the code's canonical text (rename-code, retire-code).</param>
+/// <param name="To">The new code (rename-code); the live code that replaces the retired one (retire-code).</param>
+/// <param name="Codes">merge-reference-types: codes of the merged-away type mapped to live codes of the target, for codes the target does
+/// not hold itself; absent maps none.</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
     string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
     string? Database = null, IReadOnlyList<string>? Entities = null, IReadOnlyList<string>? Tables = null, string? Package = null,
     IReadOnlyDictionary<string, string>? ExpectedHashes = null, IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null,
-    IReadOnlyList<string>? Tags = null);
+    IReadOnlyList<string>? Tags = null, string? As = null, IReadOnlyList<string>? ElementIds = null, string? Prefix = null, bool? Redefine = null,
+    bool? ExcludeMissing = null, bool? KeepNames = null, string? Code = null, string? To = null, IReadOnlyDictionary<string, string>? Codes = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>
@@ -1154,7 +1733,26 @@ public sealed record BatchParseResult(ModelBatch? Batch, IReadOnlyList<Diagnosti
 /// <param name="Outcome">Saved when every operation would succeed; otherwise the first failure's outcome.</param>
 /// <param name="Items">The result per operation, as an apply would report it, with no hashes or documents.</param>
 /// <param name="Files">When saved, every file the batch would write or delete, ordered by path; empty otherwise.</param>
-public sealed record BatchPreview(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, IReadOnlyList<BatchPreviewFile> Files);
+public sealed record BatchPreview(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, IReadOnlyList<BatchPreviewFile> Files)
+{
+    /// <summary>When saved, the placeholders and qualified names the batch resolved and the ids it would mint; empty otherwise.</summary>
+    public BatchIds Ids { get; init; } = BatchIds.Empty;
+
+    /// <summary>
+    /// When saved, the diagnostics the change would add over its scope (never the whole model), in <see cref="Diagnostic.Order"/>;
+    /// empty otherwise.
+    /// </summary>
+    public IReadOnlyList<Diagnostic> DiagnosticsAdded { get; init; } = [];
+
+    /// <summary>When saved, the diagnostics the change would remove over its scope, in <see cref="Diagnostic.Order"/>; empty otherwise.</summary>
+    public IReadOnlyList<Diagnostic> DiagnosticsRemoved { get; init; } = [];
+
+    /// <summary>
+    /// When saved, the migration facts the batch would record (their files are among <see cref="Files"/>); <see langword="null"/> when
+    /// the change reaches every database, whose facts are computed on save (a dry run never resolves every database), or when not saved.
+    /// </summary>
+    public IReadOnlyList<RecordedFact>? Facts { get; init; }
+}
 
 /// <summary>A file a batch would write or delete.</summary>
 /// <param name="Path">The repo-relative path.</param>
@@ -1165,10 +1763,58 @@ public sealed record BatchPreview(SaveOutcome Outcome, IReadOnlyList<SaveResult>
 /// <param name="BeforeHash">The hash of the file on disk, or <see langword="null"/> for a created file.</param>
 /// <param name="Before">The file's text on disk, or <see langword="null"/> for a created file.</param>
 /// <param name="After">The text the batch would write, or <see langword="null"/> for a deleted file.</param>
-public sealed record BatchPreviewFile(string Path, string Action, string? Id, string? Kind, string? Name, string? BeforeHash, string? Before, string? After);
+public sealed record BatchPreviewFile(string Path, string Action, string? Id, string? Kind, string? Name, string? BeforeHash, string? Before, string? After)
+{
+    /// <summary>The change as a unified diff with three lines of context, or <see langword="null"/> when none was computed.</summary>
+    public string? Diff { get; init; }
+}
+
+/// <summary>The names a batch resolved and the ids it minted (next-phase-1-design.md section 5.1).</summary>
+/// <param name="Names">Each placeholder declared and each qualified name used, to its id, ordinal by key.</param>
+/// <param name="Minted">The ids the engine minted, in operation and document order.</param>
+public sealed record BatchIds(IReadOnlyDictionary<string, string> Names, IReadOnlyList<MintedId> Minted)
+{
+    /// <summary>No names and no minted ids.</summary>
+    public static BatchIds Empty { get; } = new(ImmutableSortedDictionary.Create<string, string>(StringComparer.Ordinal), []);
+}
+
+/// <summary>An id the engine minted for a batch.</summary>
+/// <param name="Operation">The operation's index in the batch.</param>
+/// <param name="Pointer">The JSON pointer into the operation's element (<c>""</c> for its root).</param>
+/// <param name="Kind">The element kind, else the index kind of the sub-element, else <c>sub-element</c>.</param>
+/// <param name="Id">The minted id.</param>
+/// <param name="Name">The longest qualified form when the kind has names, computed once the element's references are ids.</param>
+/// <param name="Placeholder">The placeholder the batch declared on the object with <c>as</c>, if any.</param>
+public sealed record MintedId(int Operation, string Pointer, string Kind, string Id, string? Name, string? Placeholder);
 
 /// <summary>The result of applying a batch.</summary>
 /// <param name="Outcome">Saved when every operation succeeded; otherwise the first failure's outcome, and nothing was written.</param>
 /// <param name="Items">The result per operation.</param>
 /// <param name="Changes">What changed when saved.</param>
-public sealed record BatchResult(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, ChangeSet? Changes);
+public sealed record BatchResult(SaveOutcome Outcome, IReadOnlyList<SaveResult> Items, ChangeSet? Changes)
+{
+    /// <summary>When saved, the placeholders and qualified names the batch resolved and the ids it minted; empty otherwise.</summary>
+    public BatchIds Ids { get; init; } = BatchIds.Empty;
+
+    /// <summary>The migration facts the batch created or updated (its items carry none); <see langword="null"/> when nothing was written.</summary>
+    public IReadOnlyList<RecordedFact>? Facts { get; init; }
+}
+
+/// <summary>
+/// What a batch's dry run collects on its way through the store (next-phase-1-design.md section 5.1): the files it would write or
+/// delete, the diagnostics the change would add and remove over its scope, and the migration facts it would record.
+/// </summary>
+internal sealed class BatchPreviewSink
+{
+    /// <summary>The files, ordered by path, with their diffs.</summary>
+    public List<BatchPreviewFile> Files { get; } = [];
+
+    /// <summary>The diagnostics the change would add, in <see cref="Diagnostic.Order"/>, the MQ4101 of the facts it would record included.</summary>
+    public IReadOnlyList<Diagnostic> Added { get; set; } = [];
+
+    /// <summary>The diagnostics the change would remove, in <see cref="Diagnostic.Order"/>.</summary>
+    public IReadOnlyList<Diagnostic> Removed { get; set; } = [];
+
+    /// <summary>The facts the batch would record (none until a plan records some); <see langword="null"/> when the change reaches every database.</summary>
+    public IReadOnlyList<RecordedFact>? Facts { get; set; } = [];
+}

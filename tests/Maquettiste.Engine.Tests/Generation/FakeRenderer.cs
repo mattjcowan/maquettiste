@@ -59,7 +59,7 @@ internal sealed class FakeRenderer : IRenderer
         var files = new List<RenderedFile>();
         var diagnostics = new List<Diagnostic>();
         var failed = false;
-        var template = Read(unit.Pack, unit.Unit.Template, reads);
+        var template = Read(unit.Pack, unit.Unit.Template!, reads);
         if (template.Contains("{{fail}}", StringComparison.Ordinal))
         {
             failed = true;

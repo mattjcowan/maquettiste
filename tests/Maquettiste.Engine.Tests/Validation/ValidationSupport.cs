@@ -146,6 +146,8 @@ internal sealed class FakeSandboxFactory(params (string Name, Func<ElementDocume
             [.. rules.Select(r => new ScriptRegistration(ScriptRegistrationKind.Rule, r.Name, "rules.js")),
              new ScriptRegistration(ScriptRegistrationKind.Helper, "not-a-rule", "rules.js")];
 
+        public IReadOnlyList<Diagnostic> Warnings { get; } = [];
+
         public IScriptSandboxLease Rent() => _lease;
 
         public void Dispose() => owner.PoolsDisposed++;
@@ -165,6 +167,9 @@ internal sealed class FakeSandboxFactory(params (string Name, Func<ElementDocume
             return rules.Single(r => r.Name == ruleId).Check(element);
         }
 
+        // The fake registers no whole-model rule, so the validator never calls this.
+        public IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model, ScriptCallContext ctx) => throw new NotSupportedException();
+
         public object? CallHelper(string name, IReadOnlyList<object?> args, ScriptCallContext ctx) => throw new NotSupportedException();
 
         public IReadOnlyList<string> Select(string name, ResolvedModel model, ScriptCallContext ctx) => throw new NotSupportedException();
@@ -173,5 +178,82 @@ internal sealed class FakeSandboxFactory(params (string Name, Func<ElementDocume
 
         public IReadOnlyDictionary<string, object?> Transform(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx) =>
             throw new NotSupportedException();
+
+        // The fake registers no rows script, so nothing calls this.
+        public System.Text.Json.JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx) =>
+            throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// The real sandbox (<see cref="ScriptSandboxFactory"/>), wrapped: its pool, lease and sandbox pass every member through to the real
+/// ones and count the calls, so a test sees how often the validator runs each kind of rule.
+/// </summary>
+internal sealed class CountingSandboxFactory : IScriptSandboxFactory
+{
+    private readonly ScriptSandboxFactory _inner = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(string Rule, string Element)> _calls = new();
+    private int _modelRuleCalls;
+    private int _ruleCalls;
+
+    /// <summary>The <see cref="IScriptSandbox.RunModelRule"/> calls so far.</summary>
+    public int ModelRuleCalls => Volatile.Read(ref _modelRuleCalls);
+
+    /// <summary>The <see cref="IScriptSandbox.RunRule"/> calls so far.</summary>
+    public int RuleCalls => Volatile.Read(ref _ruleCalls);
+
+    /// <summary>The (rule, element id) of every <see cref="IScriptSandbox.RunRule"/> call since the last take, ordinal; the log empties.</summary>
+    public IReadOnlyList<(string Rule, string Element)> TakeRuleCalls()
+    {
+        var taken = new List<(string Rule, string Element)>();
+        while (_calls.TryDequeue(out var call))
+            taken.Add(call);
+        return [.. taken.OrderBy(c => c.Rule, StringComparer.Ordinal).ThenBy(c => c.Element, StringComparer.Ordinal)];
+    }
+
+    public IScriptSandboxPool CreatePool(IReadOnlyList<ScriptSource> scripts, SandboxLimits limits, int size, CancellationToken ct) =>
+        new Pool(this, _inner.CreatePool(scripts, limits, size, ct));
+
+    private sealed class Pool(CountingSandboxFactory owner, IScriptSandboxPool inner) : IScriptSandboxPool
+    {
+        public IReadOnlyList<ScriptRegistration> Registrations => inner.Registrations;
+
+        public IReadOnlyList<Diagnostic> Warnings => inner.Warnings;
+
+        public IScriptSandboxLease Rent() => new Lease(owner, inner.Rent());
+
+        public void Dispose() => inner.Dispose();
+    }
+
+    private sealed class Lease(CountingSandboxFactory owner, IScriptSandboxLease inner) : IScriptSandboxLease, IScriptSandbox
+    {
+        public IScriptSandbox Sandbox => this;
+
+        public void Dispose() => inner.Dispose();
+
+        public IReadOnlyList<Diagnostic> RunRule(string ruleId, ElementDocument element, ModelSnapshot model, ScriptCallContext ctx)
+        {
+            Interlocked.Increment(ref owner._ruleCalls);
+            owner._calls.Enqueue((ruleId, element.Element.Id));
+            return inner.Sandbox.RunRule(ruleId, element, model, ctx);
+        }
+
+        public IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model, ScriptCallContext ctx)
+        {
+            Interlocked.Increment(ref owner._modelRuleCalls);
+            return inner.Sandbox.RunModelRule(ruleId, model, ctx);
+        }
+
+        public object? CallHelper(string name, IReadOnlyList<object?> args, ScriptCallContext ctx) => inner.Sandbox.CallHelper(name, args, ctx);
+
+        public IReadOnlyList<string> Select(string name, ResolvedModel model, ScriptCallContext ctx) => inner.Sandbox.Select(name, model, ctx);
+
+        public bool Filter(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx) => inner.Sandbox.Filter(name, element, model, ctx);
+
+        public IReadOnlyDictionary<string, object?> Transform(string name, IResolvedObject element, ResolvedModel model, ScriptCallContext ctx) =>
+            inner.Sandbox.Transform(name, element, model, ctx);
+
+        public System.Text.Json.JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx) =>
+            inner.Sandbox.RunRows(script, seed, model, ctx);
     }
 }

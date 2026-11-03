@@ -13,7 +13,11 @@ internal sealed partial class ModelTools
 {
     private SnapshotLibrary? _snapshots;
 
-    private SnapshotLibrary Snapshots => _snapshots ??= new SnapshotLibrary(_store);
+    /// <summary>
+    /// The server's one library (the generation service's, which the catalog's tools share), so a snapshot is loaded once; else one of
+    /// this class's own.
+    /// </summary>
+    private SnapshotLibrary Snapshots => _generation.Baselines ?? (_snapshots ??= new SnapshotLibrary(_store));
 
     /// <summary>Takes a snapshot (createSnapshot).</summary>
     /// <param name="name">The name.</param>

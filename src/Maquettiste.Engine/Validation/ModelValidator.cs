@@ -4,6 +4,7 @@ using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Processes;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
 
 namespace Maquettiste.Engine.Validation;
@@ -12,7 +13,9 @@ namespace Maquettiste.Engine.Validation;
 /// Stage 2: built-in rules, extension schemas and JavaScript rules (W2; engine-design.md section 6).
 /// <para>
 /// The report holds the snapshot's load diagnostics (MQ1xxx, filtered to the scope), the built-in rules of every file in scope,
-/// extension schema failures, extension file problems (whole-model scope only) and JavaScript rule results. Rule severities
+/// extension schema failures, extension file problems (whole-model scope only) and JavaScript rule results: element rules on each file
+/// in scope, their results reused from <see cref="RuleResultCache"/> while their inputs are unchanged, and whole-model rules
+/// (<c>scope: "model"</c>) once per whole-model validation (next-phase-1-design.md section 5.7). Rule severities
 /// follow <c>validation.rules</c> in <c>maquettiste.json</c> (<c>off</c> drops a rule; MQ1xxx cannot be turned off, and the MQ1xxx
 /// errors that leave a file out of the snapshot keep their severity). Line and
 /// column are filled for every diagnostic with a file and pointer. Files are validated in parallel
@@ -22,7 +25,12 @@ namespace Maquettiste.Engine.Validation;
 /// <param name="options">The engine options.</param>
 /// <param name="schemas">The schema registry (kept for the design's constructor; extension schemas are compiled here, see README).</param>
 /// <param name="scripts">The sandbox factory (JavaScript rules).</param>
-internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry schemas, IScriptSandboxFactory scripts) : IModelValidator
+/// <param name="resolver">The resolver that judges pending migration facts stale (MQ4103, next-phase-1-design.md section 3.2); without
+/// one every pending fact is MQ4101.</param>
+/// <param name="seedRows">The engine's cache of rows script runs (next-phase-2-design.md section 3.4); a cache of its own when absent.</param>
+internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry schemas, IScriptSandboxFactory scripts, IModelResolver? resolver = null,
+    SeedRowsCache? seedRows = null)
+    : IModelValidator
 {
     private static readonly IReadOnlyDictionary<string, object?> NoParameters = FrozenDictionary<string, object?>.Empty;
 
@@ -33,7 +41,19 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     private static readonly FrozenSet<string> FixedSeverityRules =
         new[] { "MQ1001", "MQ1002", "MQ1004", "MQ1006", "MQ1007", "MQ1009", "MQ7012" }.ToFrozenSet(StringComparer.Ordinal);
 
+    /// <summary>The walker of <see cref="TargetIds"/> (thread-safe; it caches metadata).</summary>
+    private static readonly ReferenceWalker SelectionWalker = new();
+
     private readonly ReferenceWalker _walker = new();
+
+    /// <summary>The engine's cache of rows script runs (next-phase-2-design.md section 3.4), shared with the resolver.</summary>
+    private readonly SeedRowsCache _seedRows = seedRows ?? new SeedRowsCache();
+
+    /// <summary>The per-element results of script rules, reused while their inputs are unchanged (next-phase-1-design.md section 5.7).</summary>
+    private readonly RuleResultCache _ruleResults = new();
+
+    /// <summary>The rule result cache, for tests.</summary>
+    internal RuleResultCache RuleResults => _ruleResults;
 
     /// <summary>The schema registry.</summary>
     internal ISchemaRegistry Schemas => schemas;
@@ -46,9 +66,14 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         ct.ThrowIfCancellationRequested();
 
         var active = ActiveDocuments(model);
-        var shared = new ValidationContext(model, active, _walker, null);
-        var targets = SelectTargets(shared, active, scope);
         var wholeModel = scope.ElementIds is null;
+        var shared = new ValidationContext(model, active, _walker, null, wholeModel, scripts, _seedRows)
+        {
+            DeferScriptedRows = wholeModel && scope.DeferScriptedRows,
+        };
+        var targets = SelectTargets(shared, active, scope);
+        if (!wholeModel)
+            shared.Scope = targets.Select(d => d.Element.Id).ToHashSet(StringComparer.Ordinal);
         var parallelism = options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount;
         var diagnostics = new List<Diagnostic>();
 
@@ -77,6 +102,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         IScriptSandboxPool? pool = null;
         FrozenSet<string>? ruleNames = model.RuleScripts.Count == 0 ? FrozenSet<string>.Empty : null;
         IReadOnlyList<string> rules = [];
+        IReadOnlyList<ScriptRegistration> modelRules = [];
         if (needScripts)
         {
             // A rule file that does not load (a syntax error, a registration without an id, a limit) is reported on that file with its
@@ -89,9 +115,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 try
                 {
                     pool = scripts.CreatePool(loadable, model.Settings.Limits, Math.Max(1, Math.Min(parallelism, targets.Count)), ct);
-                    rules = [.. pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Rule).Select(r => Bare(r.Name))
-                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
-                    ruleNames = failed ? null : rules.ToFrozenSet(StringComparer.Ordinal);
+                    var registered = pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Rule).ToList();
+                    // Element rules run on each document; whole-model rules (scope "model") once, after them, on whole-model runs only.
+                    rules = [.. registered.Where(r => !r.WholeModel).Select(r => Bare(r.Name)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                    modelRules = [.. registered.Where(r => r.WholeModel).DistinctBy(r => Bare(r.Name), StringComparer.Ordinal)
+                        .OrderBy(r => Bare(r.Name), StringComparer.Ordinal)];
+                    ruleNames = failed ? null : registered.Select(r => Bare(r.Name)).ToFrozenSet(StringComparer.Ordinal);
                     break;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -114,13 +143,33 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     break;
                 }
             }
+
+            // The rule files' load warnings (MQ5005: top-level let or var) are about the files, so whole-model reports carry them.
+            if (wholeModel && pool is not null)
+                diagnostics.AddRange(pool.Warnings);
         }
 
         var runtime = targets.Any(d => d.Element is Scenario) ? new ProcessRuntime(model, parallelism, ct) : null;
+        var facts = targets.Any(d => d.Element is Migration) ? MigrationRules.Analyze(model) : null;
+        if (facts is not null && resolver is not null)
+        {
+            // Pending facts whose change the model no longer shows are stale (MQ4103), never pending: with a resolver, the databases
+            // that hold pending facts are resolved to judge them; without one (the fixture harness), every pending fact is MQ4101.
+            var pending = targets.Select(d => d.Element).OfType<Migration>()
+                .Where(f => model.Get<Database>(f.Database) is { } database && MigrationRules.IntentFindings(f, database.Dialect).Any()).ToList();
+            if (pending.Count > 0)
+            {
+                foreach (var (id, message) in await Migrations.StaleFacts.PendingAsync(model, pending, resolver, parallelism, ct).ConfigureAwait(false))
+                    facts.MarkStale(id, message);
+            }
+        }
+
+        var ticket = _ruleResults.Begin();
+        var runScripts = scope.IncludeScriptRules && pool is not null && rules.Count > 0;
         try
         {
             var context = shared.WithRuleNames(ruleNames);
-            var runScripts = scope.IncludeScriptRules && pool is not null && rules.Count > 0;
+            var ruleRun = runScripts ? new RuleRun(pool!, rules, RuleKinds(pool!), CachedRuleFiles(model, pool!), _ruleResults, ticket) : null;
             var perDocument = new IReadOnlyList<Diagnostic>[targets.Count];
             var done = 0;
             await Parallel.ForEachAsync(
@@ -130,11 +179,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 {
                     var report = new Report(targets[i]);
                     BuiltinRules.Validate(context, report);
+                    MemberRules.Validate(context, report);
+                    StatusRules.Validate(context, report);
+                    PackageRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
                     ScenarioRules.Validate(context, report, runtime);
+                    if (facts is not null)
+                        MigrationRules.Validate(context, report, facts);
                     extensions.Check(context, report);
-                    if (runScripts)
-                        RunScripts(pool!, rules, model, report, token);
+                    if (ruleRun is not null)
+                        RunScripts(ruleRun, model, report, token);
                     perDocument[i] = report.Items;
                     progress?.Report(new ProgressUpdate(PipelineStage.Validate, Interlocked.Increment(ref done), targets.Count, targets[i].Path, null));
                     return ValueTask.CompletedTask;
@@ -142,12 +196,22 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
             foreach (var items in perDocument)
                 diagnostics.AddRange(items);
+
+            // Whole-model rules run once per whole-model validation, on one lease, after the per-document loop (section 5.7); scoped
+            // validations (element saves) skip them, so they never refuse a save over elements outside the change.
+            if (wholeModel && scope.IncludeScriptRules && pool is not null && modelRules.Count > 0)
+                RunModelRules(pool, modelRules, model, diagnostics, ct);
         }
         finally
         {
             pool?.Dispose();
             runtime?.Dispose();
         }
+
+        // A whole-model validation with script rules used every entry that is still current, so the others go (bounding memory). That
+        // holds when no element rule ran too (every rule file deleted or failing to load, or only whole-model rules left): all go.
+        if (wholeModel && scope.IncludeScriptRules)
+            _ruleResults.Sweep(ticket);
 
         ct.ThrowIfCancellationRequested();
         var configured = ApplySettings(model.Settings, diagnostics).Distinct().ToList(); // one diagnostic per distinct finding
@@ -251,6 +315,24 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         return active.Where(d => selected.Contains(d.Element.Id)).ToList();
     }
 
+    /// <summary>
+    /// The ids of the documents a validation of <paramref name="scope"/> looks at (<see cref="SelectTargets"/>: the listed elements'
+    /// owners, their conflict peers and, with <see cref="ValidationScope.IncludeReferrers"/>, their referrers), worked out on
+    /// <paramref name="model"/>. A dry run compares two models over the same documents with it.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="scope">What would be validated; it must list elements.</param>
+    /// <returns>The document ids, in path order.</returns>
+    internal static IReadOnlyList<string> TargetIds(ModelSnapshot model, ValidationScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(scope);
+        if (scope.ElementIds is not { Count: > 0 })
+            return [];
+        var active = ActiveDocuments(model);
+        return [.. SelectTargets(new ValidationContext(model, active, SelectionWalker, null), active, scope).Select(d => d.Element.Id)];
+    }
+
     /// <summary>Every vocabulary, and every document whose vocabulary chain contains <paramref name="scope"/>.</summary>
     /// <param name="model">The model.</param>
     /// <param name="scope">A package id, or <see langword="null"/> for the global scope (every document).</param>
@@ -262,6 +344,50 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             if (doc.Element is TagVocabulary or CategoryTree || scope is null
                 || model.VocabularyChain(BuiltinRules.VocabularyScope(doc.Element)).Contains(scope))
                 yield return doc;
+        }
+    }
+
+    /// <summary>
+    /// The files whose row checks read the rows or keys of a table that a seed, a reference type's binding or the table itself shapes:
+    /// the table's own seeds and the types bound to it with their seeds (MQ7111, MQ7112, MQ7119), and the seeds of the tables whose
+    /// foreign keys point to it, with the types bound to those tables and their seeds (MQ7111). A reference type's own seeds follow
+    /// its bindings. The tables a change named before it are added by the store (a binding removed or retargeted, a seed deleted).
+    /// </summary>
+    private static IEnumerable<ElementDocument> RowPeers(ValidationContext context, Element element)
+    {
+        var model = context.Model;
+        IEnumerable<string> tables = element switch
+        {
+            Table table => [table.Id],
+            Seed seed when model.GetDocument(seed.Target)?.Element is Table => [seed.Target],
+            Seed seed when model.GetDocument(seed.Target)?.Element is ReferenceType type => type.Bindings.Select(b => b.Table),
+            ReferenceType type => type.Bindings.Select(b => b.Table),
+            _ => [],
+        };
+        var ids = new List<string>();
+        if (element is ReferenceType { Bindings.Count: > 0 } bound)
+            ids.AddRange(context.SeedsOf(bound.Id).Select(s => s.Id));
+        foreach (var tableId in tables.Distinct(StringComparer.Ordinal))
+        {
+            Holders(tableId);
+            foreach (var referencing in model.All<Table>().Where(t => t.ForeignKeys.Any(fk => string.Equals(fk.ReferencesTable, tableId, StringComparison.Ordinal))))
+                Holders(referencing.Id);
+        }
+
+        foreach (var id in ids)
+        {
+            if (model.GetDocument(id) is { } peer)
+                yield return peer;
+        }
+
+        void Holders(string tableId)
+        {
+            ids.AddRange(context.SeedsOf(tableId).Select(s => s.Id));
+            foreach (var (type, _) in context.BoundTypesOf(tableId))
+            {
+                ids.Add(type.Id);
+                ids.AddRange(context.SeedsOf(type.Id).Select(s => s.Id));
+            }
         }
     }
 
@@ -286,7 +412,22 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// the relations whose navigations land in the same inheritance hierarchy (MQ3009), an entity's descendants (MQ3007), and for a
     /// mapping the relations and relation mappings whose foreign key binding depends on it (MQ4009, MQ4011); for a tag vocabulary or category tree every vocabulary and
     /// every element whose chain sees its scope (MQ2005, MQ2006, MQ2008, MQ3021), and for a package, when a domain vocabulary exists,
-    /// every element under it (a move changes their chains).
+    /// every element under it (a move changes their chains); for a migration fact the facts of its database and the facts whose
+    /// <c>after</c> links name it, in any database (MQ4104, MQ4105, MQ4107, MQ4111). Peers come from the document in scope: a deleted
+    /// fact has none, so the store adds the facts whose links named it (their MQ4111); the facts of a moved fact's former database
+    /// are not revisited, since leaving a database only removes findings there. For a stereotype, the elements that carry a
+    /// stereotype whose <c>implies</c> names it (MQ2004, MQ2013 to MQ2015, MQ2018 on its effective carriers). For a package, when
+    /// some package is checked, every element whose file states a package of its subtree and every referrer of those elements
+    /// (MQ2020: its <c>dependsOn</c> and <c>parent</c> decide what its subtree may reference and what reaches it). The other packages
+    /// of a <c>dependsOn</c> cycle (MQ2021; the saved package reports its own edge) and the seeds a rename or move reorders (it only
+    /// moves MQ7112, MQ7121, MQ7001 and MQ7102 between seeds that already disagree) are not revisited (next-phase-1-design.md
+    /// section 4.3). Default stereotypes (next-phase-2-design.md section 3.1, <see cref="DefaultPeers"/>): a package, while the model
+    /// declares any default, brings the files whose holder's package chain holds it (its members, its descendants' members and the
+    /// members that fall back to its package); a database whose schema entries declare defaults brings the files those schemas reach;
+    /// a stereotype brings the files that carry it, or a stereotype implying it, through a schema or package default. Typed columns
+    /// (next-phase-2-design.md section 3.2, <see cref="TypedColumnPeers"/>): an enum, a reference type or a seed of a reference type brings
+    /// the tables whose columns the type types, the table seeds of those tables and the entities and reference types whose bindings give
+    /// those tables' columns constants (MQ7014, MQ4083 and MQ4084 read the type's values, codes and bindings, which no reference reaches).
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="document">The document in scope.</param>
@@ -305,6 +446,20 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     yield return peerDocument;
             }
 
+            // A former code is no live code of its type (MQ7017), and an open value map maps away no live code (MQ4113): a row's code is
+            // judged on the type and on its value maps (next-phase-2-design.md section 3.5).
+            if (model.Get<ReferenceType>(seed.Target) is { } codeType)
+            {
+                if (codeType.FormerCodes.Count > 0 && model.GetDocument(codeType.Id) is { } typeDocument)
+                    yield return typeDocument;
+                foreach (var map in model.All<Migration>())
+                {
+                    if (map.Fact == MigrationFact.ValueMap && string.Equals(map.ReferenceType, codeType.Id, StringComparison.Ordinal)
+                        && model.GetDocument(map.Id) is { } mapDocument)
+                        yield return mapDocument;
+                }
+            }
+
             if (model.Get<Relation>(seed.Target) is { } seededRelation)
             {
                 foreach (var end in seededRelation.Ends)
@@ -317,6 +472,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 }
             }
         }
+
+        foreach (var peer in RowPeers(context, element))
+            yield return peer;
+
+        foreach (var peer in TypedColumnPeers(context, element))
+            yield return peer;
 
         foreach (var (key, _) in ValidationContext.NameKeys(element))
         {
@@ -376,6 +537,40 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         foreach (var peer in ProcessPeers(model, element))
             yield return peer;
 
+        // The files a default list reaches are judged on the effective set it gives (MQ2004, MQ2013 to MQ2015, MQ2018 and every rule
+        // that reads stereotypes), and they are not the referrers of the package, database or stereotype (next-phase-2-design.md
+        // section 3.1).
+        foreach (var peer in DefaultPeers(context, element))
+            yield return peer;
+
+        // MQ2004, MQ2013 to MQ2015 and MQ2018 on the carriers of a stereotype that implies this one depend on it (its applicability,
+        // group, conflicts, requirements and parameters), and they are not its referrers (next-phase-1-design.md section 4.2).
+        if (element is Stereotype)
+        {
+            foreach (var implying in model.ReferencesTo(element.Id))
+            {
+                if (implying.Field != "implies" || model.GetDocument(implying.FromElementId)?.Element is not Stereotype)
+                    continue;
+                foreach (var carrier in model.ReferencesTo(implying.FromElementId))
+                {
+                    if (carrier.Field == "stereotypes" && model.GetDocument(carrier.FromElementId) is { } peer)
+                        yield return peer;
+                }
+            }
+        }
+
+        // MQ4104, MQ4105, MQ4107 and MQ4111 on a migration fact depend on the other facts of its database and on the facts that
+        // name it in their after links (which are not references); the store adds the facts that named a deleted fact.
+        if (element is Migration fact)
+        {
+            foreach (var other in model.All<Migration>())
+            {
+                if ((string.Equals(other.Database, fact.Database, StringComparison.Ordinal) || other.After.Contains(fact.Id, StringComparer.Ordinal))
+                    && model.GetDocument(other.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
         switch (element)
         {
             case TagVocabulary or CategoryTree:
@@ -384,10 +579,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 foreach (var peer in VocabularyDependents(model, ModelIndexer.PackageOf(element)))
                     yield return peer;
                 break;
-            case Package when HasDomainVocabularies(model):
+            case Package:
                 // Moving a domain changes the chain of every element under it (MQ2006, MQ2008) and the enclosing domains of its
                 // vocabularies (MQ3021).
-                foreach (var peer in VocabularyDependents(model, element.Id))
+                if (HasDomainVocabularies(model))
+                {
+                    foreach (var peer in VocabularyDependents(model, element.Id))
+                        yield return peer;
+                }
+
+                foreach (var peer in LayerPeers(context, element.Id))
                     yield return peer;
                 break;
             case Table table when ValidationContext.OverlayTarget(table) is { } overlayTarget:
@@ -448,6 +649,211 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 }
 
                 break;
+        }
+    }
+
+    /// <summary>
+    /// For an enum, a reference type or a seed of a reference type: the table files with a column whose <c>typeRef</c> names the type (own,
+    /// or through a stereotype the table lists or a stereotype it lists implies), their table seeds, and the entities and reference types bound to them, whose constants
+    /// fill their columns (next-phase-2-design.md section 3.2). Nothing for any other document.
+    /// </summary>
+    private static IEnumerable<ElementDocument> TypedColumnPeers(ValidationContext context, Element element)
+    {
+        var model = context.Model;
+        var typeId = element switch
+        {
+            EnumType or ReferenceType => element.Id,
+            Seed seed when model.Get<ReferenceType>(seed.Target) is not null => seed.Target,
+            _ => null,
+        };
+        if (typeId is null)
+            yield break;
+        var tables = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var reference in model.ReferencesTo(typeId))
+        {
+            switch (model.GetDocument(reference.FromElementId)?.Element)
+            {
+                case Table table when table.Columns.Any(c => string.Equals(c.TypeRef?.Ref, typeId, StringComparison.Ordinal)):
+                    tables.Add(table.Id);
+                    break;
+                case Stereotype stereotype when stereotype.Columns.Any(c => string.Equals(c.TypeRef?.Ref, typeId, StringComparison.Ordinal)):
+                {
+                    // A table carries the stereotype by listing it or a stereotype that implies it (as DefaultPeers follows implies).
+                    var carried = new List<string> { stereotype.Id };
+                    foreach (var implying in model.ReferencesTo(stereotype.Id))
+                    {
+                        if (implying.Field == "implies" && model.GetDocument(implying.FromElementId)?.Element is Stereotype)
+                            carried.Add(implying.FromElementId);
+                    }
+
+                    foreach (var key in carried)
+                    {
+                        foreach (var carrier in model.ReferencesTo(key))
+                        {
+                            if (carrier.Field == "stereotypes" && model.Get<Table>(carrier.FromElementId) is not null)
+                                tables.Add(carrier.FromElementId);
+                        }
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        if (tables.Count == 0)
+            yield break;
+        foreach (var tableId in tables)
+        {
+            if (model.GetDocument(tableId) is { } tableDocument)
+                yield return tableDocument;
+            foreach (var seed in context.SeedsOf(tableId))
+            {
+                if (model.GetDocument(seed.Id) is { } seedDocument)
+                    yield return seedDocument;
+            }
+
+            foreach (var (type, _) in context.BoundTypesOf(tableId))
+            {
+                if (model.GetDocument(type.Id) is { } typeDocument)
+                    yield return typeDocument;
+            }
+        }
+
+        foreach (var entity in model.All<Entity>())
+        {
+            if (entity.Bindings.Any(b => tables.Contains(b.Source) || (b.Write?.Table is { } written && tables.Contains(written)))
+                && model.GetDocument(entity.Id) is { } entityDocument)
+                yield return entityDocument;
+        }
+    }
+
+    /// <summary>
+    /// The files whose effective stereotype set a document's default lists decide (next-phase-2-design.md section 3.1). The validator
+    /// sees only the candidate model, so a package brings its reach while the model declares any default (a save that removes the
+    /// model's last default list leaves its descendants' and fallback members to the next validate; its own members are its
+    /// referrers); a database brings the reach of its schema entries that declare defaults (its physical files are its referrers
+    /// too); a stereotype brings the reach of every schema entry or package whose default list names it or a stereotype implying it.
+    /// The reach of schema entries and packages is every document whose holder (<see cref="ModelSnapshot.HolderOf"/>) is in one of
+    /// the schemas or has one of the packages on its package chain, and, for schemas, the entities and relations whose tables without a
+    /// file would be in one (findings about such a table go on its entity or relation).
+    /// </summary>
+    private static IEnumerable<ElementDocument> DefaultPeers(ValidationContext context, Element element)
+    {
+        var model = context.Model;
+        var schemas = new HashSet<string>(StringComparer.Ordinal);
+        var packages = new HashSet<string>(StringComparer.Ordinal);
+        switch (element)
+        {
+            case Package package when model.StereotypeDefaults.HasDefaults || package.DefaultStereotypes.Count > 0:
+                packages.Add(package.Id);
+                break;
+            case Database database:
+                foreach (var schema in database.Schemas)
+                {
+                    if (schema.DefaultStereotypes.Count > 0)
+                        schemas.Add(schema.Id);
+                }
+
+                break;
+            case Stereotype stereotype when model.StereotypeDefaults.HasDefaults:
+                var keys = new List<string> { stereotype.Id };
+                foreach (var reference in model.ReferencesTo(stereotype.Id))
+                {
+                    if (reference.Field == "implies" && model.GetDocument(reference.FromElementId)?.Element is Stereotype)
+                        keys.Add(reference.FromElementId);
+                }
+
+                foreach (var key in keys)
+                {
+                    foreach (var reference in model.ReferencesTo(key))
+                    {
+                        if (reference.Field != "defaultStereotypes")
+                            continue;
+                        switch (model.GetDocument(reference.FromElementId)?.Element)
+                        {
+                            case Database:
+                                schemas.Add(reference.FromId);
+                                break;
+                            case Package:
+                                packages.Add(reference.FromElementId);
+                                break;
+                        }
+                    }
+                }
+
+                break;
+        }
+
+        if (schemas.Count == 0 && packages.Count == 0)
+            yield break;
+        var routed = schemas.Count == 0 ? [] : model.All<Database>().Where(d => d.Schemas.Any(s => schemas.Contains(s.Id))).ToList();
+        foreach (var doc in context.Documents)
+        {
+            var holder = model.HolderOf(doc.Element);
+            if ((holder.Schema is { } schema && schemas.Contains(schema)) || (packages.Count > 0 && OnChain(model, holder.Package, packages)))
+            {
+                yield return doc;
+                continue;
+            }
+
+            foreach (var database in routed)
+            {
+                var tableSchema = doc.Element switch
+                {
+                    Entity entity => model.StereotypeDefaults.SchemaOf(database.Id, null, entity.Id),
+                    Relation relation => model.StereotypeDefaults.SchemaOf(database.Id, null, relation: relation.Id),
+                    _ => null,
+                };
+                if (tableSchema is not null && schemas.Contains(tableSchema))
+                {
+                    yield return doc;
+                    break;
+                }
+            }
+        }
+
+        static bool OnChain(ModelSnapshot model, string? packageId, HashSet<string> packages)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var id = packageId; id is not null && seen.Add(id); id = model.Get<Package>(id)?.Parent)
+            {
+                if (packages.Contains(id))
+                    return true;
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// MQ2020 depends on a package's <c>dependsOn</c> and <c>parent</c> beyond its referrers (next-phase-1-design.md section 4.3): a
+    /// changed <c>dependsOn</c> changes what every element of its subtree may reference, and the members of child packages do not
+    /// reference the changed package; a moved subtree changes what may reference its elements. So, only when some package is
+    /// checked: every element whose file states a package of the subtree, and every referrer of those elements.
+    /// </summary>
+    private static IEnumerable<ElementDocument> LayerPeers(ValidationContext context, string packageId)
+    {
+        if (!context.Layers.AnyChecked)
+            yield break;
+        var model = context.Model;
+        var members = new List<ElementDocument>();
+        foreach (var doc in context.Documents)
+        {
+            if (ModelIndexer.PackageOf(doc.Element) is { } memberOf && context.Layers.ChainOf(memberOf).Contains(packageId, StringComparer.Ordinal))
+                members.Add(doc);
+        }
+
+        foreach (var member in members)
+        {
+            yield return member;
+            foreach (var id in SubElementIds(member.Element).Prepend(member.Element.Id))
+            {
+                foreach (var reference in model.ReferencesTo(id))
+                {
+                    if (model.GetDocument(reference.FromElementId) is { } referrer)
+                        yield return referrer;
+                }
+            }
         }
     }
 
@@ -624,18 +1030,179 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     }
 
     /// <summary>
-    /// Runs every registered rule on one document. A rule whose <c>validation.rules</c> setting (<c>x/&lt;rule&gt;</c>) is <c>off</c>
-    /// is not run at all, so its own failures are off too; a severity setting also applies to the rule's failures (MQ5002, MQ5003),
-    /// which keep their catalog id. An explicit MQ5002 or MQ5003 setting still applies on top, in <see cref="ApplySettings"/>.
+    /// The script rules of one validation: the pool, the element rules and their kinds, the rule files whose results may be cached, the
+    /// cache.
     /// </summary>
-    private static void RunScripts(IScriptSandboxPool pool, IReadOnlyList<string> rules, ModelSnapshot model, Report report, CancellationToken ct)
+    /// <param name="Pool">The pool.</param>
+    /// <param name="Rules">The element rules (without <c>x/</c>), ordinal.</param>
+    /// <param name="Kinds">Rule id → the kinds it checks, for the element rules that name kinds (<see cref="RuleKinds"/>).</param>
+    /// <param name="Cached">Rule id → its rule file, for the rules whose results are cached (<see cref="CachedRuleFiles"/>).</param>
+    /// <param name="Cache">The validator's result cache.</param>
+    /// <param name="Ticket">The validation's cache ticket.</param>
+    private sealed record RuleRun(IScriptSandboxPool Pool, IReadOnlyList<string> Rules, IReadOnlyDictionary<string, IReadOnlySet<string>> Kinds,
+        IReadOnlyDictionary<string, ScriptSource> Cached, RuleResultCache Cache, long Ticket);
+
+    /// <summary>The kinds of each element rule that names kinds; a rule missing here checks every kind.</summary>
+    private static Dictionary<string, IReadOnlySet<string>> RuleKinds(IScriptSandboxPool pool)
+    {
+        var kinds = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+        foreach (var registration in pool.Registrations)
+        {
+            if (registration is { Kind: ScriptRegistrationKind.Rule, WholeModel: false, Kinds: { } set })
+                kinds.TryAdd(Bare(registration.Name), set);
+        }
+
+        return kinds;
+    }
+
+    /// <summary>
+    /// The rules whose per-element results may be cached, with their rule file: a rule declared in one of the snapshot's rule scripts
+    /// whose file has no MQ5005 warning (top-level <c>let</c> or <c>var</c>, state the sandbox cannot freeze). One scope per file and
+    /// the globals frozen before the files run make a file's hash, with the shared sandbox setup, its behaviour (section 5.7).
+    /// </summary>
+    private static Dictionary<string, ScriptSource> CachedRuleFiles(ModelSnapshot model, IScriptSandboxPool pool)
+    {
+        var stateful = pool.Warnings.Where(w => w.Rule == "MQ5005" && w.FilePath is not null).Select(w => w.FilePath!).ToHashSet(StringComparer.Ordinal);
+        var files = new Dictionary<string, ScriptSource>(StringComparer.Ordinal);
+        foreach (var script in model.RuleScripts)
+            files.TryAdd(script.Path, script);
+        var cached = new Dictionary<string, ScriptSource>(StringComparer.Ordinal);
+        foreach (var registration in pool.Registrations)
+        {
+            if (registration.Kind == ScriptRegistrationKind.Rule && !registration.WholeModel && !stateful.Contains(registration.DeclaredIn)
+                && files.TryGetValue(registration.DeclaredIn, out var file))
+                cached.TryAdd(Bare(registration.Name), file);
+        }
+
+        return cached;
+    }
+
+    /// <summary>The keys one rule call records.</summary>
+    private sealed class RuleReads : IReadRecorder
+    {
+        public HashSet<string> Keys { get; } = new(StringComparer.Ordinal);
+
+        public void Record(string dependencyKey) => Keys.Add(dependencyKey);
+    }
+
+    /// <summary>
+    /// Runs every element rule on one document. A rule whose <c>validation.rules</c> setting (<c>x/&lt;rule&gt;</c>) is <c>off</c>
+    /// is not run at all, so its own failures are off too; a severity setting also applies to the rule's failures (MQ5002, MQ5003),
+    /// which keep their catalog id. An explicit MQ5002 or MQ5003 setting still applies on top, in <see cref="ApplySettings"/>. A rule's
+    /// raw diagnostics come from the cache when its inputs are unchanged (<see cref="RuleResultCache"/>), and a clean run is stored. A
+    /// rule whose kinds leave the document out is skipped first: no lease, no call, no cache entry.
+    /// </summary>
+    private static void RunScripts(RuleRun run, ModelSnapshot model, Report report, CancellationToken ct)
     {
         var document = report.Document;
+        var kind = KindInfo.Get(document.Element.Kind).Name;
+        var settings = model.Settings.Validation.Rules;
+        var limits = model.Settings.Limits;
+        var hasher = RuleKeyHasher.Of(model);
+        IScriptSandboxLease? lease = null;
+        try
+        {
+            foreach (var rule in run.Rules)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (run.Kinds.TryGetValue(rule, out var kinds) && !kinds.Contains(kind))
+                    continue;
+                var ruleId = "x/" + rule;
+                var setting = settings.TryGetValue(ruleId, out var configured) ? configured : null;
+                if (string.Equals(setting, "off", StringComparison.Ordinal))
+                    continue;
+                var failureSeverity = SeverityOf(setting);
+                var ruleFile = run.Cached.GetValueOrDefault(rule);
+                if (ruleFile is not null && run.Cache.TryGet(rule, document, ruleFile, limits, hasher, run.Ticket, out var cached))
+                {
+                    AddRuleDiagnostics(report, ruleId, failureSeverity, cached);
+                    continue;
+                }
+
+                try
+                {
+                    var reads = ruleFile is null ? null : new RuleReads();
+                    var context = new ScriptCallContext(reads, document.Element.Id, NoParameters, ct);
+                    lease ??= run.Pool.Rent();
+                    var diagnostics = lease.Sandbox.RunRule(rule, document, model, context);
+                    // Only a clean run is kept: a rule that threw ends with its MQ5002 (a catalog id) after its reports.
+                    if (reads is not null && !diagnostics.Any(d => RuleCatalog.TryGet(d.Rule, out _)))
+                        run.Cache.Store(rule, document, ruleFile!, limits, reads.Keys, hasher, diagnostics, run.Ticket);
+                    AddRuleDiagnostics(report, ruleId, failureSeverity, diagnostics);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (ScriptLimitException e)
+                {
+                    Fail("MQ5003", $"Rule {ruleId} exceeded a sandbox limit on this element: {e.Diagnostic.Message}");
+                }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    Fail("MQ5002", $"Rule {ruleId} failed on this element: {e.Message}");
+                }
+
+                void Fail(string id, string message)
+                {
+                    if (failureSeverity is { } severity)
+                        report.Add(id, severity, message, "");
+                    else
+                        report.Add(id, message, "");
+                }
+            }
+        }
+        finally
+        {
+            lease?.Dispose();
+        }
+    }
+
+    /// <summary>Adds a rule's raw diagnostics on one document, as they come from the sandbox or from the cache.</summary>
+    private static void AddRuleDiagnostics(Report report, string ruleId, DiagnosticSeverity? failureSeverity, IEnumerable<Diagnostic> diagnostics)
+    {
+        var document = report.Document;
+        foreach (var d in diagnostics)
+        {
+            // The sandbox returns a rule that throws as its own MQ5002 diagnostic (after the rule's reports), located at the failing
+            // line of the rule script: it keeps its catalog id and its script position instead of becoming x/<id>.
+            if (RuleCatalog.TryGet(d.Rule, out _))
+            {
+                report.Add(d with
+                {
+                    Severity = failureSeverity ?? d.Severity,
+                    ElementId = d.ElementId ?? document.Element.Id,
+                    FilePath = d.FilePath ?? document.Path,
+                    JsonPointer = d.FilePath is null ? "" : d.JsonPointer,
+                });
+                continue;
+            }
+
+            report.Add(d with
+            {
+                Rule = d.Rule.StartsWith("x/", StringComparison.Ordinal) ? d.Rule : ruleId,
+                ElementId = d.ElementId ?? document.Element.Id,
+                FilePath = d.FilePath ?? document.Path,
+                JsonPointer = d.JsonPointer ?? "",
+            });
+        }
+    }
+
+    /// <summary>
+    /// Runs the whole-model rules (<c>scope: "model"</c>) once each, on one lease, in id order, except those <c>validation.rules</c>
+    /// sets <c>off</c> (next-phase-1-design.md section 5.7). Each finding is on the file of the element it names. A rule that throws is
+    /// MQ5002 and one that breaks a limit MQ5003, on the rule file at the failing line, with the rule's severity setting applied as for
+    /// element rules. Their results are never cached.
+    /// </summary>
+    private static void RunModelRules(IScriptSandboxPool pool, IReadOnlyList<ScriptRegistration> modelRules, ModelSnapshot model, List<Diagnostic> diagnostics,
+        CancellationToken ct)
+    {
         var settings = model.Settings.Validation.Rules;
         using var lease = pool.Rent();
-        foreach (var rule in rules)
+        foreach (var registration in modelRules)
         {
             ct.ThrowIfCancellationRequested();
+            var rule = Bare(registration.Name);
             var ruleId = "x/" + rule;
             var setting = settings.TryGetValue(ruleId, out var configured) ? configured : null;
             if (string.Equals(setting, "off", StringComparison.Ordinal))
@@ -643,30 +1210,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             var failureSeverity = SeverityOf(setting);
             try
             {
-                var context = new ScriptCallContext(null, document.Element.Id, NoParameters, ct);
-                foreach (var d in lease.Sandbox.RunRule(rule, document, model, context))
+                var context = new ScriptCallContext(null, ruleId, NoParameters, ct);
+                foreach (var d in lease.Sandbox.RunModelRule(rule, model, context))
                 {
-                    // The sandbox returns a rule that throws as its own MQ5002 diagnostic (after the rule's reports), located at the
-                    // failing line of the rule script: it keeps its catalog id and its script position instead of becoming x/<id>.
                     if (RuleCatalog.TryGet(d.Rule, out _))
                     {
-                        report.Add(d with
-                        {
-                            Severity = failureSeverity ?? d.Severity,
-                            ElementId = d.ElementId ?? document.Element.Id,
-                            FilePath = d.FilePath ?? document.Path,
-                            JsonPointer = d.FilePath is null ? "" : d.JsonPointer,
-                        });
+                        diagnostics.Add(d with { Severity = failureSeverity ?? d.Severity, FilePath = d.FilePath ?? registration.DeclaredIn });
                         continue;
                     }
 
-                    report.Add(d with
-                    {
-                        Rule = d.Rule.StartsWith("x/", StringComparison.Ordinal) ? d.Rule : ruleId,
-                        ElementId = d.ElementId ?? document.Element.Id,
-                        FilePath = d.FilePath ?? document.Path,
-                        JsonPointer = d.JsonPointer ?? "",
-                    });
+                    diagnostics.Add(d with { Rule = d.Rule.StartsWith("x/", StringComparison.Ordinal) ? d.Rule : ruleId, JsonPointer = d.JsonPointer ?? "" });
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -675,19 +1228,18 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             }
             catch (ScriptLimitException e)
             {
-                Fail("MQ5003", $"Rule {ruleId} exceeded a sandbox limit on this element: {e.Diagnostic.Message}");
+                Fail("MQ5003", $"Rule {ruleId} exceeded a sandbox limit: {e.Diagnostic.Message}", e.Diagnostic);
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
-                Fail("MQ5002", $"Rule {ruleId} failed on this element: {e.Message}");
+                Fail("MQ5002", $"Rule {ruleId} failed: {e.Message}", null);
             }
 
-            void Fail(string id, string message)
+            void Fail(string id, string message, Diagnostic? located)
             {
-                if (failureSeverity is { } severity)
-                    report.Add(id, severity, message, "");
-                else
-                    report.Add(id, message, "");
+                var failure = RuleCatalog.Create(id, message, null, located?.FilePath ?? registration.DeclaredIn)
+                    with { Line = located?.Line, Column = located?.Column };
+                diagnostics.Add(failureSeverity is { } severity ? failure with { Severity = severity } : failure);
             }
         }
     }

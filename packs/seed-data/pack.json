@@ -14,12 +14,11 @@
       }
     }
   },
-  "scripts": ["helpers.js"],
   "units": [
     {
       "id": "data",
       "template": "data.scriban",
-      "for": "select databases"
+      "for": "each database"
     }
   ]
 }

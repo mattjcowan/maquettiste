@@ -38,8 +38,11 @@ test("the Storage tab sets a storage parameter and partitions the table; the Exc
   const storage = page.getByTestId("table-storage");
   await storage.getByTestId("property-bag-add").click();
   await storage.getByLabel("Key of the new parameter").fill("fillfactor");
+  // Moving to the value saves the key, which renames the row ("Value of fillfactor") while it keeps the focus and the
+  // typed text; so wait for the new name, and press Enter where the focus is rather than by the old name.
   await storage.getByRole("textbox", { name: "Value of the new parameter" }).fill("90");
-  await storage.getByRole("textbox", { name: "Value of the new parameter" }).press("Enter");
+  await expect(storage.getByRole("textbox", { name: "Value of fillfactor" })).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect.poll(async () => (await fileOf(page, "notes"))?.storage).toEqual({ postgresql: { fillfactor: 90 } });
 
   await storage.getByLabel("Partitioned by").selectOption("list");

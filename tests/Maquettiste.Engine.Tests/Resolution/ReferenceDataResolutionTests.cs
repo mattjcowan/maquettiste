@@ -64,6 +64,28 @@ public sealed class ReferenceDataResolutionTests
     }
 
     [Fact]
+    public async Task Former_codes_resolve_to_the_replacing_rows()
+    {
+        // Sorted by code; an entry whose replacedBy names no row of the type is left out (next-phase-2-design.md section 3.5).
+        var model = await ResolveAsync(prepare: repo => EditFile(repo, "model/reference-types/unit-of-measure.json", n =>
+            n["formerCodes"] = new JsonArray(
+                new JsonObject { ["code"] = "kilo", ["replacedBy"] = KgRow },
+                new JsonObject { ["code"] = "gram", ["replacedBy"] = "01JBQY77ZXYYK596NGYA1DQ91K" },
+                new JsonObject { ["code"] = "lost", ["replacedBy"] = "01JRDA00000000000000000011" })));
+        var unit = Type(model, UnitOfMeasure);
+
+        Assert.Equal(["gram", "kilo"], unit.FormerCodes.Select(f => f.Code));
+        var kilo = unit.FormerCodes[1];
+        Assert.Equal("former-code", kilo.Kind);
+        Assert.Same(model.Find(KgRow), kilo.ReplacedBy);
+        Assert.Equal("kg", kilo.ReplacedBy.Code);
+        Assert.Contains("e:" + UnitOfMeasure, kilo.Dependencies);
+        Assert.Contains("e:" + UnitSeed, kilo.Dependencies);
+        Assert.Null(unit.RowOf("kilo")); // row finds live codes only
+        Assert.Empty(Type(model, Allergen).FormerCodes);
+    }
+
+    [Fact]
     public async Task A_self_referencing_type_resolves_its_refs_lazily_and_values_stay_codes()
     {
         var model = await ResolveAsync();
@@ -281,6 +303,182 @@ public sealed class ReferenceDataResolutionTests
         Assert.Equal(ChangeKind.Altered, change.Kind);
         Assert.Contains(change.Changes, p => p.Property == "strategy" && Equals(p.Old, "check") && Equals(p.New, "lookup-table"));
         Assert.Contains(change.Changes, p => p.Property == "length" && Equals(p.New, 12));
+    }
+
+    [Fact]
+    public async Task Stable_ids_follow_the_row_key_in_database_terms()
+    {
+        // A stable id (next-phase-2-design.md section 3.4) names the row key's values in database terms: a uuid in lowercase with
+        // hyphens, a decimal without trailing zeros, an integer in plain digits, a string as it is, joined by U+001F.
+        const string Table = "01JRDT00000000000000000001", Seed = "01JRDT00000000000000000010";
+        await using var repo = Create(pack: false);
+        await repo.CreateAsync($$"""
+            {"kind":"table","id":"{{Table}}","name":"price_points","database":"{{MainDatabaseId}}","columns":[
+              {"id":"01JRDT00000000000000000002","name":"id","type":"uuid","nullable":false,"stableId":true},
+              {"id":"01JRDT00000000000000000003","name":"owner","type":"uuid","nullable":false},
+              {"id":"01JRDT00000000000000000004","name":"amount","type":"decimal","precision":10,"scale":2,"nullable":false},
+              {"id":"01JRDT00000000000000000005","name":"tier","type":"int32","nullable":false},
+              {"id":"01JRDT00000000000000000006","name":"region","type":"string","length":8,"nullable":false},
+              {"id":"01JRDT00000000000000000008","name":"label","type":"string","length":40}],
+             "primaryKey":{"columns":["01JRDT00000000000000000002"]},
+             "uniques":[{"id":"01JRDT00000000000000000007","columns":["01JRDT00000000000000000003","01JRDT00000000000000000004","01JRDT00000000000000000005","01JRDT00000000000000000006"]}]}
+            """);
+        await repo.CreateAsync($$"""
+            {"kind":"seed","id":"{{Seed}}","name":"pricePoints","target":"{{Table}}","key":"01JRDT00000000000000000007",
+             "columns":["01JRDT00000000000000000003","01JRDT00000000000000000004","01JRDT00000000000000000005","01JRDT00000000000000000006","01JRDT00000000000000000008"],
+             "rows":[{"id":"01JRDT00000000000000000011","values":["0193A3C2-0000-7000-8000-00000000000A",12.50,3,"EU","Standard"]},
+               {"id":"01JRDT00000000000000000012","values":["0193a3c2-0000-7000-8000-00000000000a",12.5,3,"US"]}]}
+            """);
+
+        static IReadOnlyList<RDataRow> Rows(ResolvedModel model) =>
+            model.Databases.Single(d => d.Id == MainDatabaseId).SeedTables.Single(t => t.Table.Name == "price_points").Rows;
+        var rows = Rows(await repo.ResolveAsync());
+        Assert.Equal(new object?[] { "0193A3C2-0000-7000-8000-00000000000A", 12.50m, 3L, "EU" }, rows[0].Key); // the key as the cells give it
+        Assert.Equal("0193a3c2-0000-7000-8000-00000000000a\u001F12.5\u001F3\u001FEU",
+            Maquettiste.Engine.Model.StableIds.KeyText(["0193a3c2-0000-7000-8000-00000000000a", 12.50m, 3L, "EU"]));
+        string eu = Maquettiste.Engine.Model.StableIds.Of(Table, ["0193a3c2-0000-7000-8000-00000000000a", "12.5", "3", "EU"]);
+        string us = Maquettiste.Engine.Model.StableIds.Of(Table, ["0193a3c2-0000-7000-8000-00000000000a", "12.5", "3", "US"]);
+        Assert.Equal([eu, us], rows.Select(r => (string?)r.Values["id"]));
+
+        // A cell outside the key leaves the id alone; a key cell gives the row another id.
+        await repo.EditAsync(Seed, n => n["rows"]![0]!["values"]![4] = "Premium");
+        Assert.Equal([eu, us], Rows(await repo.ResolveAsync()).Select(r => (string?)r.Values["id"]));
+        await repo.EditAsync(Seed, n => n["rows"]![1]!["values"]![3] = "APAC");
+        Assert.Equal([eu, Maquettiste.Engine.Model.StableIds.Of(Table, ["0193a3c2-0000-7000-8000-00000000000a", "12.5", "3", "APAC"])],
+            Rows(await repo.ResolveAsync()).Select(r => (string?)r.Values["id"]));
+    }
+
+    // Foreign keys by natural key (next-phase-2-design.md section 3.4).
+    private static string Nk(int n) => "01JRDN000000000000000000" + n.ToString("D2", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// customers (a stable id, found by email), invoices (a stable id found by number; customer_id through the entry
+    /// fk_invoices_customer, nullable) and lines (a stable id found by (invoice_id, line_no), invoice_id through the entry
+    /// fk_lines_invoice), each with a seed; the invoices seed is named aInvoices, so by name it comes before customers.
+    /// </summary>
+    private static async Task<ReferenceDataRepo> NaturalKeysAsync()
+    {
+        var repo = Create(pack: false);
+        await repo.CreateAsync($$"""
+            {"kind":"table","id":"{{Nk(1)}}","name":"customers","database":"{{MainDatabaseId}}","columns":[
+              {"id":"{{Nk(2)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
+              {"id":"{{Nk(3)}}","name":"email","type":"string","length":254,"nullable":false}],
+             "primaryKey":{"columns":["{{Nk(2)}}"]},"uniques":[{"id":"{{Nk(4)}}","name":"uq_customers_email","columns":["{{Nk(3)}}"]}]}
+            """);
+        await repo.CreateAsync($$"""
+            {"kind":"table","id":"{{Nk(10)}}","name":"invoices","database":"{{MainDatabaseId}}","columns":[
+              {"id":"{{Nk(11)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
+              {"id":"{{Nk(12)}}","name":"number","type":"string","length":32,"nullable":false},
+              {"id":"{{Nk(13)}}","name":"customer_id","type":"uuid"}],
+             "primaryKey":{"columns":["{{Nk(11)}}"]},"uniques":[{"id":"{{Nk(14)}}","name":"uq_invoices_number","columns":["{{Nk(12)}}"]}],
+             "foreignKeys":[{"id":"{{Nk(15)}}","name":"fk_invoices_customer","columns":["{{Nk(13)}}"],"referencesTable":"{{Nk(1)}}"}]}
+            """);
+        await repo.CreateAsync($$"""
+            {"kind":"table","id":"{{Nk(20)}}","name":"lines","database":"{{MainDatabaseId}}","columns":[
+              {"id":"{{Nk(21)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
+              {"id":"{{Nk(22)}}","name":"invoice_id","type":"uuid","nullable":false},
+              {"id":"{{Nk(23)}}","name":"line_no","type":"int32","nullable":false}],
+             "primaryKey":{"columns":["{{Nk(21)}}"]},"uniques":[{"id":"{{Nk(24)}}","name":"uq_lines_invoice_line","columns":["{{Nk(22)}}","{{Nk(23)}}"]}],
+             "foreignKeys":[{"id":"{{Nk(25)}}","name":"fk_lines_invoice","columns":["{{Nk(22)}}"],"referencesTable":"{{Nk(10)}}"}]}
+            """);
+        await repo.CreateAsync($$"""
+            {"kind":"seed","id":"{{Nk(30)}}","name":"customers","target":"{{Nk(1)}}","key":"{{Nk(4)}}","columns":["{{Nk(3)}}"],
+             "rows":[{"id":"{{Nk(31)}}","values":["ada@example.com"]},{"id":"{{Nk(32)}}","values":["grace@example.com"]}]}
+            """);
+        await repo.CreateAsync($$"""
+            {"kind":"seed","id":"{{Nk(40)}}","name":"aInvoices","target":"{{Nk(10)}}","key":"{{Nk(14)}}","columns":["{{Nk(12)}}","{{Nk(15)}}"],
+             "rows":[{"id":"{{Nk(41)}}","values":["INV-1","ada@example.com"]},{"id":"{{Nk(42)}}","values":["INV-2"]}]}
+            """);
+        await repo.CreateAsync($$"""
+            {"kind":"seed","id":"{{Nk(50)}}","name":"lines","target":"{{Nk(20)}}","key":"{{Nk(24)}}","columns":["{{Nk(25)}}","{{Nk(23)}}"],
+             "rows":[{"id":"{{Nk(51)}}","values":["INV-1",1]},{"id":"{{Nk(52)}}","values":["INV-1",2]}]}
+            """);
+        return repo;
+    }
+
+    private static RSeedTable SeedTable(ResolvedModel model, string name) =>
+        model.Databases.Single(d => d.Id == MainDatabaseId).SeedTables.Single(t => t.Table.Name == name);
+
+    [Fact]
+    public async Task Data_rows_carry_refs_by_foreign_key_name()
+    {
+        await using var repo = await NaturalKeysAsync();
+        var model = await repo.ResolveAsync();
+
+        var seed = model.Seeds.Single(x => x.Id == Nk(40));
+        Assert.Equal(("foreign-key", "fk_invoices_customer"), (seed.Columns[1].Kind, seed.Columns[1].ForeignKey!.Name));
+        var invoices = SeedTable(model, "invoices").Rows;
+        var ada = SeedTable(model, "customers").Rows[0];
+        var link = Assert.Single(invoices[0].Refs).Value;
+        Assert.Equal(("fk_invoices_customer", Nk(41) + "/fk_invoices_customer", "data-ref"), (invoices[0].Refs.Keys.Single(), link.Id, link.Kind));
+        Assert.Same(ada, link.Row);
+        Assert.Equal(ada.Values["id"], invoices[0].Values["customer_id"]);
+        // A row's dependencies cover the seeds its lookups read.
+        Assert.Contains("e:" + Nk(30), invoices[0].Dependencies);
+        Assert.Contains("e:" + Nk(30), SeedTable(model, "invoices").Dependencies);
+
+        // A null cell names no row: no ref, and the column is null.
+        Assert.Empty(invoices[1].Refs);
+        Assert.True(invoices[1].Values.ContainsKey("customer_id"));
+        Assert.Null(invoices[1].Values["customer_id"]);
+    }
+
+    [Fact]
+    public async Task A_stable_id_in_a_key_part_comes_from_the_referenced_row()
+    {
+        await using var repo = await NaturalKeysAsync();
+        var model = await repo.ResolveAsync();
+
+        var invoice = Maquettiste.Engine.Model.StableIds.Of(Nk(10), ["INV-1"]);
+        var lines = SeedTable(model, "lines");
+        Assert.Equal(["invoice_id", "line_no"], lines.KeyColumns.Select(c => c.Name));
+        Assert.Equal(new object?[] { invoice, 1L }, lines.Rows[0].Key);
+        Assert.Equal([Maquettiste.Engine.Model.StableIds.Of(Nk(20), [invoice, "1"]), Maquettiste.Engine.Model.StableIds.Of(Nk(20), [invoice, "2"])],
+            lines.Rows.Select(r => r.Values["id"]));
+    }
+
+    [Fact]
+    public async Task Stable_ids_do_not_depend_on_table_order()
+    {
+        await using var repo = await NaturalKeysAsync();
+
+        // One seed's rows built alone, before anything else of the database, reach the referenced rows on demand.
+        var alone = await repo.ResolveAsync();
+        var main = alone.Databases.Single(d => d.Id == MainDatabaseId);
+        var first = main.DataRowsOf(alone.Seeds.Single(x => x.Id == Nk(50)));
+        var all = SeedTable(await repo.ResolveAsync(), "lines").Rows;
+        Assert.Equal(all.Select(r => (r.Id, r.Values["id"], r.Values["invoice_id"])), first.Select(r => (r.Id, r.Values["id"], r.Values["invoice_id"])));
+        // The invoice the first line names was completed on the way, with its own stable id and its customer's.
+        var invoice = first[0].Refs["fk_lines_invoice"].Row!;
+        Assert.Equal(Maquettiste.Engine.Model.StableIds.Of(Nk(10), ["INV-1"]), invoice.Values["id"]);
+        Assert.Equal(Maquettiste.Engine.Model.StableIds.Of(Nk(1), ["ada@example.com"]), invoice.Values["customer_id"]);
+    }
+
+    [Fact]
+    public async Task Insert_order_follows_natural_key_references()
+    {
+        await using var repo = await NaturalKeysAsync();
+        // A category names its parent by code, in the same table; the file lists a child before its parent.
+        await repo.CreateAsync($$"""
+            {"kind":"table","id":"{{Nk(60)}}","name":"categories","database":"{{MainDatabaseId}}","columns":[
+              {"id":"{{Nk(61)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
+              {"id":"{{Nk(62)}}","name":"code","type":"string","length":16,"nullable":false},
+              {"id":"{{Nk(63)}}","name":"parent_id","type":"uuid"}],
+             "primaryKey":{"columns":["{{Nk(61)}}"]},"uniques":[{"id":"{{Nk(64)}}","name":"uq_categories_code","columns":["{{Nk(62)}}"]}],
+             "foreignKeys":[{"id":"{{Nk(65)}}","name":"fk_categories_parent","columns":["{{Nk(63)}}"],"referencesTable":"{{Nk(60)}}"}]}
+            """);
+        await repo.CreateAsync($$"""
+            {"kind":"seed","id":"{{Nk(70)}}","name":"categories","target":"{{Nk(60)}}","key":"{{Nk(64)}}","columns":["{{Nk(62)}}","{{Nk(65)}}"],
+             "rows":[{"id":"{{Nk(71)}}","values":["child","root"]},{"id":"{{Nk(72)}}","values":["root"]},{"id":"{{Nk(73)}}","values":["grandchild","child"]}]}
+            """);
+        var model = await repo.ResolveAsync();
+
+        var order = model.SeedsInOrder.Select(x => x.Name).ToList();
+        Assert.True(order.IndexOf("customers") < order.IndexOf("aInvoices") && order.IndexOf("aInvoices") < order.IndexOf("lines"), string.Join(", ", order));
+        Assert.Equal([Nk(72), Nk(71), Nk(73)], model.Seeds.Single(x => x.Id == Nk(70)).OrderedRows.Select(r => r.Id));
+        var categories = SeedTable(model, "categories").Rows;
+        Assert.Equal(["root", "child", "grandchild"], categories.Select(r => r.Values["code"]));
+        Assert.Equal(Maquettiste.Engine.Model.StableIds.Of(Nk(60), ["root"]), categories[1].Values["parent_id"]);
     }
 
     [Fact]

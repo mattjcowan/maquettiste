@@ -7,7 +7,8 @@ namespace Maquettiste.Engine.Model;
 /// The model-wide facts the index needs to turn seed cells, defaults and <c>allowedValues</c> entries into references
 /// (reference-types-seeds-localization.md section 2.2): which attributes are typed by a reference type, which ids are relation ends,
 /// and each reference type's codes with the row that holds them. A code cell or default becomes a reference to its row's id; an end
-/// cell (a row id) becomes a reference to that row. Built once per full index build; a patch keeps it (see
+/// cell (a row id) becomes a reference to that row. It also keeps each type's former codes (next-phase-2-design.md section 3.5), so
+/// the rules and <c>names-to-ids</c> find them without a resolve. Built once per full index build; a patch keeps it (see
 /// <see cref="ModelIndexer"/>, which rebuilds in full whenever a change could alter it).
 /// </summary>
 internal sealed class ReferenceDataIndex
@@ -17,13 +18,15 @@ internal sealed class ReferenceDataIndex
         FrozenDictionary<string, string> attributeTypes,
         FrozenSet<string> endIds,
         FrozenDictionary<string, FrozenDictionary<string, string>> codes,
-        FrozenSet<string> seedColumns)
+        FrozenSet<string> seedColumns,
+        FrozenDictionary<string, FrozenDictionary<string, string>> formerCodes)
     {
         ReferenceTypeIds = referenceTypeIds;
         AttributeTypes = attributeTypes;
         EndIds = endIds;
         Codes = codes;
         SeedColumns = seedColumns;
+        FormerCodes = formerCodes;
     }
 
     /// <summary>The ids of the model's reference types.</summary>
@@ -41,6 +44,12 @@ internal sealed class ReferenceDataIndex
     /// <summary>Every attribute or end id a seed column names.</summary>
     public FrozenSet<string> SeedColumns { get; }
 
+    /// <summary>
+    /// Reference type id to former code (its canonical text, which <see cref="CodeKey"/> gives for a cell holding it) to the id of the row
+    /// its <c>replacedBy</c> names; a code listed twice keeps its first entry (MQ7017 reports the second).
+    /// </summary>
+    public FrozenDictionary<string, FrozenDictionary<string, string>> FormerCodes { get; }
+
     /// <summary>Builds the facts from the model's elements.</summary>
     /// <param name="elements">The elements (duplicates by id keep the first).</param>
     /// <returns>The facts.</returns>
@@ -52,13 +61,21 @@ internal sealed class ReferenceDataIndex
         var seeds = new List<Seed>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var all = new List<Element>();
+        var formerCodes = new Dictionary<string, FrozenDictionary<string, string>>(StringComparer.Ordinal);
         foreach (var element in elements)
         {
             if (!seen.Add(element.Id))
                 continue;
             all.Add(element);
-            if (element is ReferenceType rt)
-                referenceTypes.Add(rt.Id);
+            if (element is not ReferenceType rt)
+                continue;
+            referenceTypes.Add(rt.Id);
+            if (rt.FormerCodes.Count == 0)
+                continue;
+            var former = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var entry in rt.FormerCodes)
+                former.TryAdd(entry.Code, entry.ReplacedBy);
+            formerCodes[rt.Id] = former.ToFrozenDictionary(StringComparer.Ordinal);
         }
 
         foreach (var element in all)
@@ -110,7 +127,8 @@ internal sealed class ReferenceDataIndex
             attributeTypes.ToFrozenDictionary(StringComparer.Ordinal),
             ends.ToFrozenSet(StringComparer.Ordinal),
             codes.ToFrozenDictionary(kv => kv.Key, kv => kv.Value.ToFrozenDictionary(StringComparer.Ordinal), StringComparer.Ordinal),
-            columns.ToFrozenSet(StringComparer.Ordinal));
+            columns.ToFrozenSet(StringComparer.Ordinal),
+            formerCodes.ToFrozenDictionary(StringComparer.Ordinal));
     }
 
     /// <summary>The attributes an element declares (entity, value object, relation, stereotype, reference type).</summary>
@@ -142,6 +160,17 @@ internal sealed class ReferenceDataIndex
     /// <returns>The row id.</returns>
     public string? RowOf(string typeId, JsonElement cell) =>
         CodeKey(cell) is { } key && Codes.TryGetValue(typeId, out var map) && map.TryGetValue(key, out var row) ? row : null;
+
+    /// <summary>
+    /// The id of the row a former code of a reference type names in its <c>replacedBy</c>, or <see langword="null"/> when the value is
+    /// not a former code of the type (next-phase-2-design.md section 3.5). A string cell matches a former code by its text, an integer
+    /// cell by its decimal digits.
+    /// </summary>
+    /// <param name="typeId">The reference type id.</param>
+    /// <param name="cell">The value.</param>
+    /// <returns>The replacing row's id.</returns>
+    public string? ReplacedByOf(string typeId, JsonElement cell) =>
+        CodeKey(cell) is { } key && FormerCodes.TryGetValue(typeId, out var map) && map.TryGetValue(key, out var row) ? row : null;
 
     private static int IndexOf(IReadOnlyList<string> list, string value)
     {

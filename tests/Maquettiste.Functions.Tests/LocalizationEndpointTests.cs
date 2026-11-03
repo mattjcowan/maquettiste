@@ -301,4 +301,34 @@ public sealed class LocalizationEndpointTests
         Assert.Equal(200, csv.Status);
         Assert.Equal(["@id,id", Row + ",0f8fad5b-d9cb-469f-a165-70867728950e", ""], csv.Text.Split('\n'));
     }
+
+    [Fact]
+    public async Task A_scripted_seed_whose_script_fails_exports_422_with_MQ7127()
+    {
+        // A seed whose rows a script computes has no rows to export when the script throws: 422 with the script's MQ7127.
+        await using var host = EditorHost.Create(packs: false);
+        const string Seed = "01K8SCR0000000000000000010";
+        Directory.CreateDirectory(host.PathOf(".maquettiste/model/reference-types"));
+        File.WriteAllText(host.PathOf(".maquettiste/model/reference-types/audited-record-type.json"), """
+            {"kind":"reference-type","id":"01K8SCR0000000000000000001","name":"AuditedRecordType",
+             "code":{"id":"01K8SCR0000000000000000002","length":32},"label":{"id":"01K8SCR0000000000000000003","length":64}}
+            """);
+        Directory.CreateDirectory(host.PathOf(".maquettiste/model/seeds"));
+        File.WriteAllText(host.PathOf(".maquettiste/model/seeds/audited-records.json"), $$$"""
+            {"kind":"seed","id":"{{{Seed}}}","name":"AuditedRecords","target":"01K8SCR0000000000000000001","columns":["code","label"],
+             "rowsFrom":{"script":"seeds/audited-records.js"}}
+            """);
+        Directory.CreateDirectory(host.PathOf(".maquettiste/extensions/seeds"));
+        File.WriteAllText(host.PathOf(".maquettiste/extensions/seeds/audited-records.js"), "maquettiste.rows((model, seed) => {\n  throw new Error('not ready');\n});\n");
+
+        var failed = await host.GetAsync("/api/seeds/" + Seed + "/csv");
+
+        Assert.Equal(422, failed.Status);
+        Contract.AssertResponse(failed, "/api/seeds/{id}/csv");
+        var diagnostic = Assert.Single(failed.Json["diagnostics"]!.AsArray())!;
+        Assert.Equal(("MQ7127", Seed, "/rowsFrom/script"),
+            (diagnostic["rule"]!.GetValue<string>(), diagnostic["elementId"]!.GetValue<string>(), diagnostic["jsonPointer"]!.GetValue<string>()));
+        Assert.Contains("not ready", diagnostic["message"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal(1, failed.Json["errors"]!.GetValue<int>());
+    }
 }

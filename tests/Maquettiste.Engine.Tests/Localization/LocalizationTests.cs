@@ -5,6 +5,7 @@ using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Tests.Loading;
 using Maquettiste.Engine.Validation;
+using Kit = Maquettiste.Engine.Tests.Localization.PropertyTextsKit;
 
 namespace Maquettiste.Engine.Tests.Localization;
 
@@ -317,6 +318,163 @@ public sealed class LocalizationTests
         Assert.NotEqual(before, store.Current.Localization.OwnerHash("fr", UnitOfMeasure)); // the l: key follows the entry and its sidecar
         Assert.DoesNotContain((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ7208");
     }
+
+    [Fact]
+    public async Task Translatable_properties_join_rows_status_and_pruning()
+    {
+        var (h, store) = await Kit.OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        var l10n = store.Current!.Localization;
+        var recipe = l10n.Nodes[Recipe];
+
+        // Only the marked property is a field, after the standard ones; the plain one is no field at all.
+        Assert.Equal(["footer"], recipe.TranslatableProperties);
+        Assert.Equal(Kit.RecipeFooter, recipe.Source("properties/footer"));
+        Assert.Null(recipe.Source("properties/note"));
+        Assert.Equal(["displayName", "pluralName", "description", "properties/footer"], LocalizationIndex.FieldsOf(recipe));
+        Assert.Equal(Kit.NameFooter, l10n.Nodes[RecipeName].Source("properties/footer"));
+        Assert.True(LocalizationIndex.IsField("properties/footer"));
+        Assert.False(LocalizationIndex.IsField("properties/9lives"));
+        Assert.False(LocalizationIndex.IsField("properties/"));
+
+        var row = Assert.Single((await store.GetTranslationsAsync("fr", Recipe, null, Ct)).Items, i => i.Id == Recipe && i.Field == "properties/footer");
+        Assert.Equal((Kit.RecipeFooter, (string?)null, "missing", Kit.FrRoot), (row.Source, row.Value, row.State, row.ShardPath));
+        var before = await RootStatus(store, "fr");
+
+        await Kit.Translate(store, "fr", new TranslationEdit(Recipe, "properties/footer", "Merci d'avoir cuisiné."),
+            new TranslationEdit(RecipeName, "properties/footer", "Affiché sous le nom."));
+
+        // The shard holds the texts in a nested properties object, their fingerprints under src as properties/<name>.
+        var shardText = File.ReadAllText(h.Model("model/locales/fr/_root.json"));
+        using (var parsed = System.Text.Json.JsonDocument.Parse(shardText))
+            Assert.Equal(Engine.Json.PrecheckVerdict.Valid, new Engine.Json.SchemaRegistry().Precheck("locale.json", parsed.RootElement)); // no slow path
+        var entry = JsonNode.Parse(shardText)!["entries"]![Recipe]!.AsObject();
+        Assert.Equal(["properties", "src"], entry.Select(p => p.Key));
+        Assert.Equal("Merci d'avoir cuisiné.", (string?)entry["properties"]!["footer"]);
+        Assert.Equal(LocalizationIndex.SourceHash(Kit.RecipeFooter), (string?)entry["src"]!["properties/footer"]);
+        l10n = store.Current!.Localization;
+        Assert.Equal("Merci d'avoir cuisiné.", l10n.Text("fr", Recipe, "properties/footer"));
+        Assert.Equal(TranslationState.Translated, l10n.StateOf("fr", l10n.Nodes[Recipe], "properties/footer"));
+        var fallback = Assert.Single((await store.GetTranslationsAsync("fr-CA", Recipe, null, Ct)).Items, i => i.Id == Recipe && i.Field == "properties/footer");
+        Assert.Equal(("fallback", "Merci d'avoir cuisiné."), (fallback.State, fallback.Effective));
+        var after = await RootStatus(store, "fr");
+        Assert.Equal((before.Expected, before.Translated + 2, before.Missing - 2), (after.Expected, after.Translated, after.Missing));
+
+        // A plain property, or a name that is not an identifier, is no translatable field.
+        var hashes = (await store.GetTranslationsAsync("fr", null, null, Ct)).ShardHashes;
+        foreach (var field in new[] { "properties/note", "properties/9lives" })
+        {
+            var refused = await store.SaveTranslationsAsync("fr", [new TranslationEdit(Recipe, field, "x")], hashes, ChangeSource.Editor, Ct);
+            Assert.Equal((SaveOutcome.Invalid, "MQ7203"), (refused.Outcome, Assert.Single(refused.Diagnostics).Rule));
+        }
+
+        // The default text changes: the translation goes stale.
+        await Kit.Edit(store, Recipe, n => n["properties"]!["footer"] = "Thanks for cooking.");
+        Assert.Equal("stale", Assert.Single((await store.GetTranslationsAsync("fr", Recipe, null, Ct)).Items, i => i.Id == Recipe && i.Field == "properties/footer").State);
+        Assert.Contains((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ7206" && d.FilePath == Kit.FrRoot);
+
+        // The mark goes: the texts are orphans (MQ7203 at the property), and pruning drops them with the empty entries.
+        var extension = store.Current!.Extensions.Single(e => e.Path.EndsWith("texts.json", StringComparison.Ordinal));
+        Assert.Equal(SaveOutcome.Saved, (await store.WriteExtensionFileAsync("texts.json", Kit.Extension(translatable: false), extension.Hash, Ct)).Outcome);
+        var orphans = (await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics.Where(d => d.Rule == "MQ7203").Select(d => d.JsonPointer).ToList();
+        Assert.Contains("/entries/" + Recipe + "/properties/footer", orphans);
+        var pruned = await store.PruneTranslationsAsync(false, ChangeSource.Editor, Ct);
+        Assert.True(pruned.Applied);
+        Assert.Equal([("fr", Recipe, "properties/footer"), ("fr", RecipeName, "properties/footer")],
+            pruned.Orphans.Select(o => (o.Locale, o.Id, o.Field ?? "")).Order());
+        Assert.False(File.Exists(h.Model("model/locales/fr/_root.json")));
+    }
+
+    [Fact]
+    public async Task An_inherited_default_text_is_not_translated()
+    {
+        const string Stereotype = "01JRDV00000000000000000001";
+        var (h, store) = await Kit.OpenAsync(h =>
+        {
+            Kit.Write(h, "model/vocabularies/stereotypes/branded.json", $$"""
+                {
+                  "kind": "stereotype",
+                  "id": "{{Stereotype}}",
+                  "key": "branded",
+                  "name": "Branded",
+                  "appliesTo": ["entity"],
+                  "parameters": { "properties": { "slogan": { "type": "string", "x-translatable": true } } },
+                  "defaultProperties": { "slogan": "Fresh every day." }
+                }
+                """);
+            Kit.EditFile(h, "model/entities/ingredient.json", n => n["stereotypes"] = new JsonArray("branded"));
+            Kit.EditFile(h, "model/entities/recipe.json", n =>
+            {
+                n["stereotypes"] = new JsonArray("branded");
+                n["properties"]!["slogan"] = "Cooked with care.";
+            });
+        });
+        using var _ = h;
+        await using var __ = store;
+        var l10n = store.Current!.Localization;
+
+        // Ingredient only inherits the stereotype's default: the property is translatable there, but it has no text of its own.
+        var ingredient = l10n.Nodes[Kit.Ingredient];
+        Assert.Contains("slogan", ingredient.TranslatableProperties);
+        Assert.Empty(ingredient.PropertyTexts);
+        Assert.DoesNotContain("properties/slogan", ingredient.ExpectedFields());
+        Assert.DoesNotContain((await store.GetTranslationsAsync("fr", Kit.Ingredient, null, Ct)).Items, i => i.Field == "properties/slogan");
+        Assert.Null(l10n.Nodes[Stereotype].Source("properties/slogan")); // nor is the default the stereotype's own property
+
+        // Recipe states its own text: that one is translated.
+        Assert.Equal("Cooked with care.", l10n.Nodes[Recipe].Source("properties/slogan"));
+        Assert.Single((await store.GetTranslationsAsync("fr", Recipe, null, Ct)).Items, i => i.Field == "properties/slogan");
+        Assert.DoesNotContain((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule is "MQ7212" or "MQ7213");
+    }
+
+    [Fact]
+    public async Task Completeness_and_owner_hashes_cover_property_fields()
+    {
+        var (h, store) = await Kit.OpenAsync(h => Kit.EditFile(h, "model/entities/recipe.json", n => n["properties"]!.AsObject().Remove("footer")));
+        using var _ = h;
+        await using var __ = store;
+        var expected = (await RootStatus(store, "fr")).Expected;
+
+        // A property text the default states is one more expected field of its shard.
+        await Kit.Edit(store, Recipe, n => n["properties"]!["footer"] = Kit.RecipeFooter);
+        Assert.Equal(expected + 1, (await RootStatus(store, "fr")).Expected);
+        var row = Assert.Single(store.Current!.Localization.Completeness("fr"), c => c.Scope == "root");
+        Assert.Equal(expected + 1, row.Expected);
+
+        // The l: hash of the owner follows the property text, and an entry without one keeps the hash it had.
+        await Kit.Translate(store, "fr", new TranslationEdit(Recipe, "displayName", "Recette"));
+        var standard = store.Current!.Localization.OwnerHash("fr", Recipe);
+        await Kit.Translate(store, "fr", new TranslationEdit(Recipe, "properties/footer", "Merci."));
+        var withProperty = store.Current!.Localization.OwnerHash("fr", Recipe);
+        Assert.NotEqual(standard, withProperty);
+        Assert.Equal(row.Translated + 2, Assert.Single(store.Current.Localization.Completeness("fr"), c => c.Scope == "root").Translated);
+        await Kit.Translate(store, "fr", new TranslationEdit(Recipe, "properties/footer", "Merci beaucoup."));
+        Assert.NotEqual(withProperty, store.Current!.Localization.OwnerHash("fr", Recipe));
+        await Kit.Translate(store, "fr", new TranslationEdit(Recipe, "properties/footer", null));
+        Assert.Equal(standard, store.Current!.Localization.OwnerHash("fr", Recipe));
+    }
+
+    [Fact]
+    public async Task A_default_locale_change_moves_property_texts_both_ways()
+    {
+        var (h, store) = await Kit.OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        await Kit.Translate(store, "fr", new TranslationEdit(Recipe, "properties/footer", "Merci d'avoir cuisiné."));
+
+        var result = await store.ChangeDefaultLocaleAsync("fr", false, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, result!.Outcome);
+        Assert.Contains(new DefaultLocaleMove(Recipe, "properties/footer", Kit.RecipeFooter, "Merci d'avoir cuisiné."), result.Moves);
+        Assert.Equal("Merci d'avoir cuisiné.", (string?)JsonNode.Parse(store.Current!.GetDocument(Recipe)!.Json.GetRawText())!["properties"]!["footer"]);
+        Assert.Equal(Kit.RecipeFooter, store.Current.Localization.Text("en", Recipe, "properties/footer"));
+        Assert.Equal(TranslationState.Translated, store.Current.Localization.StateOf("en", store.Current.Localization.Nodes[Recipe], "properties/footer"));
+    }
+
+    private static async Task<ShardStatus> RootStatus(ModelStore store, string locale) =>
+        Assert.Single(Assert.Single((await store.GetLocalizationStatusAsync(Ct)).Locales, l => l.Locale == locale).Shards,
+            s => s.Shard.EndsWith("/_root.json", StringComparison.Ordinal));
 
     private static string Shard(string locale, string scope, string entries) =>
         "{\n  \"kind\": \"locale-shard\",\n  \"locale\": \"" + locale + "\",\n  \"scope\": \"" + scope + "\",\n  \"entries\": {\n    " + entries + "\n  }\n}\n";

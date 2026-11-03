@@ -1,0 +1,172 @@
+[
+  {
+    "rule": "MQ4056",
+    "severity": "warning",
+    "message": "Database 'legacy' (sqlserver) has no migration fact steps: its migrations keep TODO comments for this rename fact, and no ledger rows are written.",
+    "elementId": "01JFCT0000000000000000000G",
+    "filePath": ".maquettiste/model/databases/legacy/migrations/open/01jfct0000000000000000000g.json",
+    "jsonPointer": "/fact",
+    "line": 6,
+    "column": 11
+  },
+  {
+    "rule": "MQ4101",
+    "severity": "error",
+    "message": "The change-type of column 'invoices.number' narrows the column (text to varchar(20)), so it also needs a data check: a query per dialect that finds the rows that would not fit, or accept with the reason no check is needed; or hold the fact.",
+    "elementId": "01JFCT00000000000000000001",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000001.json",
+    "jsonPointer": "/dataCheck",
+    "line": 1,
+    "column": 1
+  },
+  {
+    "rule": "MQ4101",
+    "severity": "error",
+    "message": "The change-type of column 'invoices.number' needs a conversion: set conversion to { \"cast\": true } or give an expression per dialect, or hold the fact.",
+    "elementId": "01JFCT00000000000000000001",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000001.json",
+    "jsonPointer": "/conversion",
+    "line": 1,
+    "column": 1
+  },
+  {
+    "rule": "MQ4101",
+    "severity": "error",
+    "message": "The drop of table 'old_notes' needs acknowledge: say why the data may go, or hold the fact.",
+    "elementId": "01JFCT00000000000000000002",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000002.json",
+    "jsonPointer": "/acknowledge",
+    "line": 1,
+    "column": 1
+  },
+  {
+    "rule": "MQ4106",
+    "severity": "error",
+    "message": "The rename's from and to are the same ('total'): a rename changes the name or the schema.",
+    "elementId": "01JFCT00000000000000000003",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000003.json",
+    "jsonPointer": "/to",
+    "line": 18,
+    "column": 9
+  },
+  {
+    "rule": "MQ4106",
+    "severity": "error",
+    "message": "The conversion has both forms: cast true and an expression; keep one.",
+    "elementId": "01JFCT00000000000000000004",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000004.json",
+    "jsonPointer": "/conversion",
+    "line": 23,
+    "column": 17
+  },
+  {
+    "rule": "MQ4106",
+    "severity": "error",
+    "message": "The fact is released but not held: released lets a held fact run; set held too, or remove released.",
+    "elementId": "01JFCT00000000000000000005",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000005.json",
+    "jsonPointer": "/released",
+    "line": 19,
+    "column": 15
+  },
+  {
+    "rule": "MQ4106",
+    "severity": "error",
+    "message": "The table key '01JENT00000000000000000006@01JDBS00000000000000000001' is listed twice.",
+    "elementId": "01JFCT00000000000000000006",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000006.json",
+    "jsonPointer": "/keys/1",
+    "line": 13,
+    "column": 5
+  },
+  {
+    "rule": "MQ4106",
+    "severity": "error",
+    "message": "A drop fact takes an object of kind column, sequence, table; this one is a view.",
+    "elementId": "01JFCT00000000000000000007",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000007.json",
+    "jsonPointer": "/object/kind",
+    "line": 8,
+    "column": 13
+  },
+  {
+    "rule": "MQ4104",
+    "severity": "error",
+    "message": "The after links of facts 01JFCT00000000000000000008, 01JFCT00000000000000000009 form a cycle, so no order applies them; remove one of the links.",
+    "elementId": "01JFCT00000000000000000008",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000008.json",
+    "jsonPointer": "/after",
+    "line": 7,
+    "column": 12
+  },
+  {
+    "rule": "MQ4104",
+    "severity": "error",
+    "message": "The after links of facts 01JFCT00000000000000000008, 01JFCT00000000000000000009 form a cycle, so no order applies them; remove one of the links.",
+    "elementId": "01JFCT00000000000000000009",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000009.json",
+    "jsonPointer": "/after",
+    "line": 7,
+    "column": 12
+  },
+  {
+    "rule": "MQ4111",
+    "severity": "warning",
+    "message": "The fact follows '01JFCT00000000000000000099', which is not a migration fact of the model (folded or removed in another copy); the link is ignored for ordering. Remove it, or name the fact that replaced it.",
+    "elementId": "01JFCT0000000000000000000A",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct0000000000000000000a.json",
+    "jsonPointer": "/after/0",
+    "line": 8,
+    "column": 5
+  },
+  {
+    "rule": "MQ4105",
+    "severity": "error",
+    "message": "The fact follows '01JFCT0000000000000000000G', a fact of another database; after links order the facts of one database. Remove the link.",
+    "elementId": "01JFCT0000000000000000000B",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct0000000000000000000b.json",
+    "jsonPointer": "/after/0",
+    "line": 8,
+    "column": 5
+  },
+  {
+    "rule": "MQ4107",
+    "severity": "error",
+    "message": "This fact and fact 01JFCT0000000000000000000C both change column 'invoices.ref_code' and neither comes after the other (merged copies changed one object); order them with after, or fold them.",
+    "elementId": "01JFCT0000000000000000000D",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct0000000000000000000d.json",
+    "jsonPointer": "/object",
+    "line": 7,
+    "column": 13
+  },
+  {
+    "rule": "MQ4108",
+    "severity": "warning",
+    "message": "The value has no entry for postgresql (the dialect of database 'main') and no \"*\" entry, so a postgresql migration has nothing to run.",
+    "elementId": "01JFCT0000000000000000000E",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct0000000000000000000e.json",
+    "jsonPointer": "/value",
+    "line": 15,
+    "column": 12
+  },
+  {
+    "rule": "MQ4101",
+    "severity": "error",
+    "message": "The raw fact needs a skipWhen guard: a query per dialect whose row means the end state already holds; or hold the fact.",
+    "elementId": "01JFCT0000000000000000000F",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct0000000000000000000f.json",
+    "jsonPointer": "/skipWhen",
+    "line": 1,
+    "column": 1
+  },
+  {
+    "rule": "MQ4107",
+    "severity": "error",
+    "message": "This fact and fact 01JFCT00000000000000000002 both change column 'old_notes.body' and neither comes after the other (merged copies changed one object); order them with after, or fold them.",
+    "elementId": "01JFCT0000000000000000000H",
+    "filePath": ".maquettiste/model/databases/main/migrations/open/01jfct0000000000000000000h.json",
+    "jsonPointer": "/object",
+    "line": 7,
+    "column": 13
+  }
+]

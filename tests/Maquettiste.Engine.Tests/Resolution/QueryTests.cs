@@ -191,7 +191,7 @@ public sealed class QueryTests
         Assert.Contains("e:" + id, query.Dependencies);
         Assert.Contains("e:" + s.Invoice.Id, query.Dependencies);
         Assert.Contains("k:query", db.Queries.MembershipKeys);
-        Assert.NotEmpty(query.Sql);
+        Assert.NotEmpty(query.Sql!);
     }
 
     [Fact]
@@ -369,7 +369,7 @@ public sealed class QueryTests
         Assert.Equal(DiagnosticSeverity.Warning, s.Resolve().Diagnostics.Single(d => d.ElementId == id && d.Rule == "MQ4026").Severity);
 
         // The query is not rendered while it has errors, and the database view refuses a model that has them.
-        Assert.Empty(s.Resolve().Db("main").Queries.Single().Sql);
+        Assert.Null(s.Resolve().Db("main").Queries.Single().Sql);
     }
 
     [Fact]

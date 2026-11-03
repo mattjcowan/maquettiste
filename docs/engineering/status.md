@@ -12,8 +12,8 @@ dotnet test maquettiste.slnx
 ```
 
 `SPEC.md` is the specification; `docs/engineering/engine-design.md` is the phase 1 engine contract and
-`docs/engineering/host-contracts.md` what the editor host requires of the engine. `docs/engineering/next.md` lists the
-work queued next, with the decisions each item waits on.
+`docs/engineering/host-contracts.md` what the editor host requires of the engine. `docs/engineering/next.md` lists
+what is not built yet and every roadmap item with where it stands, including what a team asked for.
 
 ## What is built
 
@@ -70,12 +70,13 @@ p95 0.006 ms (0.2 ms), guard p95 0.003 ms (0.05 ms), simulate of 200 inputs 12.7
 2.9 ms (10 ms), whole-model rules 359 ms added (400 ms), replay of every scenario 2.74 s (3 s), export 5.8 ms and import
 8.3 ms (50 ms).
 
-**Model snapshots (2026-10-05; phase A of `next.md` item 4, engine and server).** Named, immutable copies of the whole model
-as deterministic zip archives under `.maquettiste/model-snapshots/`, behind a document store interface under the model store
-(the model folder and a read-only archive as its providers): take, list, rename and publish, delete, open read-only, compare,
-restore after a safety snapshot, export and import, over the API, the CLI and the MCP tools. The design and its timings:
-`docs/engineering/snapshots.md`; erratum E45. The editor side (the picker on the project name, read-only "as of" mode
-with `?snapshot=` in the URL, the compare view, restore with its undo) is in that document's section 10.
+**Model snapshots (2026-10-05; phase A of the model service in `next.md`, engine and server).** Named, immutable copies
+of the whole model as deterministic zip archives under `.maquettiste/model-snapshots/`, behind a document store
+interface under the model store (the model folder and a read-only archive as its providers): take, list, rename and
+publish, delete, open read-only, compare, restore after a safety snapshot, export and import, over the API, the CLI and
+the MCP tools. The design and its timings: `docs/engineering/snapshots.md`; erratum E45. The editor side (the picker on
+the project name, read-only "as of" mode with `?snapshot=` in the URL, the compare view, restore with its undo) is in
+that document's section 10.
 
 Known misses carried forward, none a gate item: a few editor timings on the 5,000-entity scale dataset
 (`docs/engineering/explorer-redesign.md` §4.5) and the listed "Left" items of the design documents, the phase 3 ones

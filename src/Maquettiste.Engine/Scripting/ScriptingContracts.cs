@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
@@ -27,6 +28,9 @@ public interface IScriptSandboxPool : IDisposable
     /// <summary>What the scripts registered.</summary>
     IReadOnlyList<ScriptRegistration> Registrations { get; }
 
+    /// <summary>Load warnings, ordinal by path: MQ5005 per rule file with top-level let or var, at the first.</summary>
+    IReadOnlyList<Diagnostic> Warnings { get; }
+
     /// <summary>Rents an engine for a whole unit; dispose the lease to return it.</summary>
     /// <returns>The lease.</returns>
     IScriptSandboxLease Rent();
@@ -43,7 +47,17 @@ public interface IScriptSandboxLease : IDisposable
 /// <param name="Kind">What was registered.</param>
 /// <param name="Name">The registered name (the rule id for rules).</param>
 /// <param name="DeclaredIn">The script path.</param>
-public sealed record ScriptRegistration(ScriptRegistrationKind Kind, string Name, string DeclaredIn);
+public sealed record ScriptRegistration(ScriptRegistrationKind Kind, string Name, string DeclaredIn)
+{
+    /// <summary>A rule registered with scope "model": run once per whole-model validation, not per element.</summary>
+    public bool WholeModel { get; init; }
+
+    /// <summary>
+    /// The kinds an element rule checks, or <see langword="null"/> for every kind (and for other registrations), so the validator skips
+    /// a document of another kind before it rents a sandbox or reads the result cache. Internal: not part of the contract.
+    /// </summary>
+    internal IReadOnlySet<string>? Kinds { get; init; }
+}
 
 /// <summary>What a script registered.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ScriptRegistrationKind>))]
@@ -63,6 +77,12 @@ public enum ScriptRegistrationKind
 
     /// <summary>A validation rule: <c>rule</c>.</summary>
     [JsonStringEnumMemberName("rule")] Rule,
+
+    /// <summary>
+    /// A seed's rows function (<c>maquettiste.rows(fn)</c>, next-phase-2-design.md section 3.4): <c>rows</c>. Its name is the rows script's
+    /// path; only a script in <c>extensions/seeds/</c> may register one, exactly once.
+    /// </summary>
+    [JsonStringEnumMemberName("rows")] Rows,
 }
 
 /// <summary>The context of one top-level script call.</summary>
@@ -115,6 +135,25 @@ public interface IScriptSandbox
     /// <param name="ctx">The call context.</param>
     /// <returns>The rule's diagnostics.</returns>
     IReadOnlyList<Diagnostic> RunRule(string ruleId, ElementDocument element, ModelSnapshot model, ScriptCallContext ctx);
+
+    /// <summary>Runs a whole-model rule once; report(message, { element, pointer, severity }).</summary>
+    /// <param name="ruleId">The rule id (without <c>x/</c>) of a rule registered with <c>scope: "model"</c>.</param>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="ctx">The call context.</param>
+    /// <returns>
+    /// The rule's diagnostics, each on the file of the element or sub-element its <c>element</c> option names, the entry's pointer
+    /// prefixing the given one; a rule that throws (an unknown element id included) ends with its MQ5002 on the rule file.
+    /// </returns>
+    IReadOnlyList<Diagnostic> RunModelRule(string ruleId, ModelSnapshot model, ScriptCallContext ctx);
+
+    /// <summary>Runs a rows script; the array it returned, as JSON. Reads go to ctx.Reads.</summary>
+    /// <param name="script">The rows script's path, as it registered its rows (<see cref="ScriptRegistrationKind.Rows"/>).</param>
+    /// <param name="seed">The seed document; the function gets a frozen copy of its canonical JSON.</param>
+    /// <param name="model">The snapshot, seen through the rule-script model view.</param>
+    /// <param name="ctx">The call context (its seed seeds <c>Math.random</c>: the seed id).</param>
+    /// <returns>The returned array: plain objects whose values are JSON values.</returns>
+    /// <exception cref="ScriptLimitException">The call broke a sandbox limit.</exception>
+    JsonElement RunRows(string script, ElementDocument seed, ModelSnapshot model, ScriptCallContext ctx);
 }
 
 /// <summary>Thrown when a script or template exceeds a sandbox limit (MQ6007 while rendering, MQ5003 in validation rules).</summary>
