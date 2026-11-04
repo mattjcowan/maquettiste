@@ -406,7 +406,7 @@ public static class ProcessApi
                 diagnostics.Add(d);
         }
 
-        var enabled = interpreter.IsFinal ? [] : Enabled(chart, interpreter);
+        var enabled = interpreter.IsFinal ? [] : Enabled(chart, interpreter, ProcessExpressions.Get(runtime.Model, chart.Process).Compiled);
         var signatures = interpreter.Signatures;
         var gates = new List<GateState>();
         foreach (var t in ActiveTransitions(chart, interpreter).Where(t => t.Gate is not null && t.Trigger == TransitionTrigger.Event))
@@ -533,9 +533,9 @@ public static class ProcessApi
         return result;
     }
 
-    private static List<EnabledTrigger> Enabled(StatechartModel chart, StatechartInterpreter interpreter)
+    // compiled: the guards that run, an expression's or a condition's; any other guard needs an assume value.
+    private static List<EnabledTrigger> Enabled(StatechartModel chart, StatechartInterpreter interpreter, IReadOnlySet<string> compiled)
     {
-        var compiled = ProcessExpressions.Get(chart.Process).Compiled;
         var active = ActiveTransitions(chart, interpreter);
         var signatures = interpreter.Signatures;
         bool Unknown(ChartTransition t) => t.Guard is { } g && !compiled.Contains(g.Id);

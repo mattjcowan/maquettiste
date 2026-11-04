@@ -1,7 +1,10 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Loading;
+using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Processes;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.SchemaDiff;
@@ -13,14 +16,16 @@ namespace Maquettiste.Engine.Tests.Expressions;
 
 /// <summary>
 /// A project without expressions pays nothing (next-phase-3-design.md section 3.1, decision 23): nothing is typed or lowered, no
-/// runtime is loaded and no new key is written to any record or snapshot. The golden tests prove the generated files unchanged.
+/// runtime is loaded (a process's prepared script holds its JavaScript expressions alone) and no new key is written to any record or
+/// snapshot. The golden tests prove the generated files unchanged.
 /// </summary>
 public sealed class ExpressionCostTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>The types that exist only for expressions.</summary>
-    private static readonly HashSet<Type> ExpressionTypes = [typeof(RExpression), typeof(REntityCheck), typeof(RConstraint), typeof(RConstraintParameter)];
+    private static readonly HashSet<Type> ExpressionTypes =
+        [typeof(RExpression), typeof(REntityCheck), typeof(RConstraint), typeof(RConstraintParameter), typeof(ROperationGuard)];
 
     [Fact]
     public async Task A_model_without_expressions_loads_no_runtime_and_adds_no_keys()
@@ -28,7 +33,7 @@ public sealed class ExpressionCostTests
         foreach (var folder in Directory.EnumerateDirectories(Fixtures.Path("models")).Order(StringComparer.Ordinal))
         {
             var name = Path.GetFileName(folder);
-            var model = await ResolveAsync(folder);
+            var (source, model) = await ResolveAsync(folder);
 
             // Nothing was typed: the resolved model holds no expression, so nothing can lower JavaScript or load the runtime.
             var found = Reachable(model).Where(o => ExpressionTypes.Contains(o.GetType())).Select(o => o.GetType().Name).Distinct().ToList();
@@ -52,6 +57,20 @@ public sealed class ExpressionCostTests
                 Assert.False(entity.ContainsKey("checks"), $"{name}: entity {entity["name"]} has checks.");
                 foreach (var attribute in entity["attributes"]!.AsArray())
                     Assert.False(attribute!["derived"] is JsonObject derived && derived.ContainsKey("value"), $"{name}: a derived value has a value.");
+            }
+
+            foreach (var process in records.Where(r => r!["kind"]!.GetValue<string>() == "process").Select(r => r!.AsObject()))
+                Assert.All(process["guards"]!.AsArray(), g => Assert.False(g!.AsObject().ContainsKey("condition"), $"{name}: a guard has a condition."));
+            Assert.All(records.Where(r => r!["kind"]!.GetValue<string>() == "operation"), o => Assert.False(o!.AsObject().ContainsKey("guards")));
+
+            // A process's expressions compile without the runtime, into the forms the process object alone gives.
+            foreach (var process in source.All<Process>())
+            {
+                var compiled = ProcessExpressions.Get(source, process);
+                Assert.Same(ProcessExpressions.Get(process), compiled);
+                Assert.Empty(compiled.Conditions);
+                Assert.DoesNotContain("const mq", compiled.Script, StringComparison.Ordinal);
+                Assert.DoesNotContain(compiled.Scripts, s => s.Source.Path == ExprRuntime.PreparedPath);
             }
         }
     }
@@ -92,7 +111,7 @@ public sealed class ExpressionCostTests
         }
     }
 
-    private static async Task<ResolvedModel> ResolveAsync(string root)
+    private static async Task<(ModelSnapshot Snapshot, ResolvedModel Model)> ResolveAsync(string root)
     {
         var cache = Path.Combine(Path.GetTempPath(), "maquettiste-tests", "expression-cost-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(cache);
@@ -101,7 +120,7 @@ public sealed class ExpressionCostTests
             var options = new EngineOptions { RepoRoot = root, CacheDirectory = cache, MaxDegreeOfParallelism = 2 };
             var loader = new ModelLoader(options, TestServices.Schemas, TestServices.Json, new OutputPathPolicy(options, null));
             var loaded = await loader.LoadAsync(new LoadRequest(null, null, false), null, Ct);
-            return await new ModelResolver(options).ResolveAsync(loaded.Snapshot, null, Ct);
+            return (loaded.Snapshot, await new ModelResolver(options).ResolveAsync(loaded.Snapshot, null, Ct));
         }
         finally
         {

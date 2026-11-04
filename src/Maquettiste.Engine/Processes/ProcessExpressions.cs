@@ -9,8 +9,10 @@ using System.Text.Json;
 using Acornima.Ast;
 using Jint;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
 using JsEngine = Jint.Engine;
 
@@ -27,7 +29,10 @@ public sealed record ExpressionProblem(string Id, string Pointer, string Name, s
 /// <summary>
 /// A process's guard and action expressions compiled once (phase-3-design.md section 4.2): each expression that parses becomes a
 /// prepared sandbox script <c>(context, event) =&gt; (expression)</c> registered under the guard or action id. Parsing never runs code
-/// (MQ9501). Compiled forms are cached by the content of the process's expressions.
+/// (MQ9501). A guard's condition, written in the expression language (next-phase-3-design.md section 3.1, "Process guards"), is typed in
+/// its process's scope and lowered to JavaScript into the same script, which then loads after the expression runtime, prepared once for
+/// every process (<see cref="ExprRuntime.Prepared"/>); a process without one loads no runtime. Compiled forms are cached by the content
+/// of the process's expressions and lowered conditions.
 /// </summary>
 public sealed class ProcessExpressions
 {
@@ -40,19 +45,37 @@ public sealed class ProcessExpressions
     // The compiled expressions travel with the process object: replaying one model reuses them however many processes it has,
     // and they go when the model does. The content cache only shares them across models (a process an edit left unchanged),
     // up to CacheLimit; it is consulted once per process object, so a large model no longer clears it on every replay.
+    // A process with conditions lowers them in its model's scope (an enum member's code, a cited constraint), which can change
+    // while the process object does not, so its compiled forms travel with the model and the process together.
     private static readonly ConditionalWeakTable<Process, ProcessExpressions> ByProcess = new();
+    private static readonly ConditionalWeakTable<ModelSnapshot, ConditionalWeakTable<Process, ProcessExpressions>> ByModel = new();
     private const int CacheLimit = 512;
     private static readonly ConcurrentDictionary<string, ProcessExpressions> Cache = new(StringComparer.Ordinal);
 
-    private readonly IReadOnlyList<PreparedScript> _scripts;
-
-    private ProcessExpressions(Process process)
+    private ProcessExpressions(Process process, IReadOnlyList<LoweredCondition> conditions)
     {
         var code = new StringBuilder();
         var compiled = new HashSet<string>(StringComparer.Ordinal);
-        Problems = Collect(process, compiled, code);
+        var replaced = conditions.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+        Problems = Collect(process, compiled, code, replaced);
+        if (conditions.Count > 0)
+        {
+            // The runtime and the clock load first, as a script of their own, so a condition's function reads them from the global
+            // scope; the JavaScript expressions keep their form.
+            foreach (var condition in conditions)
+            {
+                if (!compiled.Add(condition.Id))
+                    continue;
+                code.Append("maquettiste.helper(").Append(JsonSerializer.Serialize(condition.Id)).Append(", ")
+                    .Append(condition.ReadsNow ? "(row, now) => ((mq) => " + condition.JavaScript + ")(mqAt(now))(row)" : condition.JavaScript).Append(");\n");
+            }
+        }
+
         Compiled = compiled;
-        _scripts = compiled.Count == 0 ? [] : PreparedScript.PrepareAll([new ScriptSource("process:" + process.Name + ".js", code.ToString(), "")], Limits);
+        Conditions = conditions.Select(c => c.Id).Where(compiled.Contains).ToHashSet(StringComparer.Ordinal);
+        Script = compiled.Count == 0 ? "" : code.ToString();
+        var own = compiled.Count == 0 ? [] : PreparedScript.PrepareAll([new ScriptSource("process:" + process.Name + ".js", Script, "")], Limits);
+        Scripts = conditions.Count > 0 ? [ExprRuntime.Prepared, .. own] : own;
     }
 
     /// <summary>The sandbox limits of an expression: 50 ms and 100,000 statements; the other limits are the sandbox defaults.</summary>
@@ -70,31 +93,84 @@ public sealed class ProcessExpressions
     /// <summary>The expressions that do not parse, in guard then action order.</summary>
     public IReadOnlyList<ExpressionProblem> Problems { get; }
 
-    /// <summary>The ids of the guards and actions whose expressions compiled.</summary>
+    /// <summary>The ids of the guards and actions whose expressions, or conditions, compiled.</summary>
     public IReadOnlySet<string> Compiled { get; }
 
-    /// <summary>The compiled expressions of a process (held by the process object, and shared by the expressions' content).</summary>
+    /// <summary>The ids of the guards whose conditions compiled: each answers only true or false, a null operand failing it.</summary>
+    public IReadOnlySet<string> Conditions { get; }
+
+    /// <summary>
+    /// The text of the process's own script (empty when nothing compiled), for tests: the registrations of its expressions and
+    /// conditions, without the runtime.
+    /// </summary>
+    internal string Script { get; }
+
+    /// <summary>
+    /// The scripts a session's engines load, in order (for tests): with conditions, the shared runtime (<see cref="ExprRuntime.Prepared"/>)
+    /// and then the process's own; else the process's own, or none when nothing compiled.
+    /// </summary>
+    internal IReadOnlyList<PreparedScript> Scripts { get; }
+
+    /// <summary>
+    /// The compiled expressions of a process (held by the process object, and shared by the expressions' content). A guard's condition
+    /// needs its model to compile: use <see cref="Get(ModelSnapshot, Process)"/>; here such a guard is a stub.
+    /// </summary>
     /// <param name="process">The process.</param>
     /// <returns>The compiled expressions.</returns>
     public static ProcessExpressions Get(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
-        return ByProcess.GetValue(process, static p => FromContent(p));
+        return ByProcess.GetValue(process, static p => FromContent(p, []));
     }
 
-    private static ProcessExpressions FromContent(Process process)
+    /// <summary>
+    /// The compiled expressions of a process of a model, its guards' conditions included: each is typed in the process's scope and
+    /// lowered as <see cref="RGuard.Condition"/> is, and one that does not type stays a stub (validation says why). A process
+    /// without conditions is <see cref="Get(Process)"/>.
+    /// </summary>
+    /// <param name="model">The model that holds the process.</param>
+    /// <param name="process">The process.</param>
+    /// <returns>The compiled expressions.</returns>
+    public static ProcessExpressions Get(ModelSnapshot model, Process process)
     {
-        var key = Key(process);
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(process);
+        if (process.Guards.All(g => g.Condition is null))
+            return Get(process);
+        return ByModel.GetOrCreateValue(model).GetValue(process, p => FromContent(p, Lower(model, p)));
+    }
+
+    private static ProcessExpressions FromContent(Process process, IReadOnlyList<LoweredCondition> conditions)
+    {
+        var key = Key(process, conditions);
         if (Cache.TryGetValue(key, out var cached))
             return cached;
         if (Cache.Count >= CacheLimit)
             Cache.Clear();
-        return Cache.GetOrAdd(key, _ => new ProcessExpressions(process));
+        return Cache.GetOrAdd(key, _ => new ProcessExpressions(process, conditions));
+    }
+
+    /// <summary>The conditions of a process's guards that type, lowered at a guard site through the API's form of values.</summary>
+    private static List<LoweredCondition> Lower(ModelSnapshot model, Process process)
+    {
+        var path = model.GetDocument(process.Id)?.Path;
+        var lowered = new List<LoweredCondition>();
+        foreach (var guard in process.Guards)
+        {
+            if (guard.Condition is null || ExprResolution.Type(model, process, guard.Id) is not { } typed)
+                continue;
+            var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Guard, ExprResolution.ApiColumns(model, guard.Id, path));
+            lowered.Add(new LoweredCondition(guard.Id, js, ReadsNow(typed.Typed)));
+        }
+
+        return lowered;
+
+        static bool ReadsNow(TypedExpr t) => t.Node.Now is not null || (t.Body is { } body && ReadsNow(body)) || t.Args.Any(ReadsNow);
     }
 
     /// <summary>
     /// The expressions of a process that do not parse (MQ9501), in guard then action order: the <see cref="Problems"/> of
-    /// <see cref="Get"/>, found by parsing alone. Validation reads these for every process, so it neither compiles the expressions
+    /// <see cref="Get(Process)"/>, found by parsing alone. Validation reads these for every process, so it neither compiles the expressions
     /// nor goes through the shared cache: a model with more processes than the cache holds would clear it on every run, and with
     /// every validation thread contending for it that cost more than the rest of the process rules together.
     /// </summary>
@@ -103,16 +179,29 @@ public sealed class ProcessExpressions
     internal static IReadOnlyList<ExpressionProblem> ProblemsOf(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
-        return Collect(process, new HashSet<string>(StringComparer.Ordinal), null);
+        return Collect(process, new HashSet<string>(StringComparer.Ordinal), null, null);
     }
 
-    /// <summary>Whether <see cref="Get"/> holds compiled expressions for the process's current expressions (for tests).</summary>
+    /// <summary>Whether <see cref="Get(Process)"/> holds compiled expressions for the process's current expressions (for tests).</summary>
     /// <param name="process">The process.</param>
     /// <returns><see langword="true"/> when they are cached.</returns>
-    internal static bool IsCached(Process process) => ByProcess.TryGetValue(process, out _) || Cache.ContainsKey(Key(process));
+    internal static bool IsCached(Process process) => ByProcess.TryGetValue(process, out _) || Cache.ContainsKey(Key(process, []));
 
-    // The problems of a process's expressions; the ids that parse go to compiled and, with code, their helper registrations to code.
-    private static List<ExpressionProblem> Collect(Process process, HashSet<string> compiled, StringBuilder? code)
+    /// <summary>
+    /// Whether <see cref="Get(ModelSnapshot, Process)"/> holds compiled expressions for the process's current expressions and lowered
+    /// conditions in the model (for tests): a rename that changes a condition's JavaScript gives a new key.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process.</param>
+    /// <returns><see langword="true"/> when they are cached.</returns>
+    internal static bool IsCached(ModelSnapshot model, Process process) =>
+        process.Guards.All(g => g.Condition is null)
+            ? IsCached(process)
+            : (ByModel.TryGetValue(model, out var processes) && processes.TryGetValue(process, out _)) || Cache.ContainsKey(Key(process, Lower(model, process)));
+
+    // The problems of a process's expressions; the ids that parse go to compiled and, with code, their helper registrations to code. A
+    // guard whose condition replaces its expression is still parsed, so the problems are the same with or without the model.
+    private static List<ExpressionProblem> Collect(Process process, HashSet<string> compiled, StringBuilder? code, IReadOnlySet<string>? replaced)
     {
         var problems = new List<ExpressionProblem>();
         for (var i = 0; i < process.Guards.Count; i++)
@@ -131,6 +220,8 @@ public sealed class ProcessExpressions
                 return;
             }
 
+            if (replaced?.Contains(id) ?? false)
+                return;
             compiled.Add(id);
             code?.Append("maquettiste.helper(").Append(JsonSerializer.Serialize(id)).Append(", ").Append(Wrap(expression)).Append(");\n");
         }
@@ -158,7 +249,10 @@ public sealed class ProcessExpressions
         }
     }
 
-    /// <summary>Opens a session: a sandbox pool over the compiled expressions, bound to <paramref name="ct"/>.</summary>
+    /// <summary>
+    /// Opens a session: a sandbox pool over the compiled expressions, bound to <paramref name="ct"/>, built on the session's first
+    /// evaluation, so a failure to load is that evaluation's MQ9502 or MQ9503.
+    /// </summary>
     /// <param name="size">The most sandboxes kept idle.</param>
     /// <param name="ct">The run's cancellation.</param>
     /// <returns>The session; dispose it when done.</returns>
@@ -166,7 +260,9 @@ public sealed class ProcessExpressions
 
     /// <summary>
     /// Opens a session with other sandbox limits: a project's (<see cref="LimitsIn"/>), or a test's that reaches one limit before the
-    /// other.
+    /// other. A process with conditions runs without the wall clock, as <see cref="ExprEvaluator.Limits"/> do: loading the expression
+    /// runtime and its exact arithmetic take a time that depends on the machine's load, and a guard's answer, so a replay, must not;
+    /// the statement limit still bounds every call, its JavaScript expressions' too.
     /// </summary>
     /// <param name="size">The most sandboxes kept idle.</param>
     /// <param name="ct">The run's cancellation.</param>
@@ -174,11 +270,25 @@ public sealed class ProcessExpressions
     /// <returns>The session; dispose it when done.</returns>
     public ProcessExpressionSession Open(int size, CancellationToken ct, SandboxLimits limits)
     {
-        if (_scripts.Count == 0)
-            return new ProcessExpressionSession(null);
-        var pool = new ScriptSandboxPool(_scripts, limits, Math.Max(1, size), ct);
-        WarmUp(pool, Compiled.First(), ct);
-        return new ProcessExpressionSession(pool);
+        if (Scripts.Count == 0)
+            return new ProcessExpressionSession(null, Compiled, Conditions);
+        var scripts = Scripts;
+        var effective = Conditions.Count > 0 ? limits with { ScriptTimeoutMs = 0 } : limits;
+        var first = Compiled.First();
+        return new ProcessExpressionSession(new LazySandboxPool(() =>
+        {
+            var pool = new ScriptSandboxPool(scripts, effective, Math.Max(1, size), ct);
+            try
+            {
+                WarmUp(pool, first, ct);
+                return pool;
+            }
+            catch
+            {
+                pool.Dispose();
+                throw;
+            }
+        }), Compiled, Conditions);
     }
 
     // The first call into a fresh engine pays the runtime's one-time costs (code paths compiled on first use), which
@@ -202,15 +312,25 @@ public sealed class ProcessExpressions
 
     private static string N(int value) => value.ToString(CultureInfo.InvariantCulture);
 
-    private static string Key(Process process)
+    // The content key: a condition's lowered JavaScript names what it reads by current name and holds each enum member's or code's
+    // literal, so a rename that changes what it reads changes the key.
+    private static string Key(Process process, IReadOnlyList<LoweredCondition> conditions)
     {
         var text = new StringBuilder(process.Name).Append('\0');
         foreach (var g in process.Guards)
             text.Append('g').Append(g.Id).Append('\0').Append(g.Expression ?? "\u0001").Append('\0');
         foreach (var a in process.Actions)
             text.Append('a').Append(a.Id).Append('\0').Append(a.Expression ?? "\u0001").Append('\0');
+        foreach (var c in conditions)
+            text.Append('c').Append(c.Id).Append('\0').Append(c.JavaScript).Append('\0');
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
     }
+
+    /// <summary>A guard's condition lowered to JavaScript.</summary>
+    /// <param name="Id">The guard id.</param>
+    /// <param name="JavaScript">The function over a row (<see cref="ExprLowering.ToJavaScript"/>).</param>
+    /// <param name="ReadsNow">Whether it reads <c>now</c>, so it receives the simulation's clock.</param>
+    private sealed record LoweredCondition(string Id, string JavaScript, bool ReadsNow);
 }
 
 /// <summary>The result of one expression evaluation.</summary>
@@ -225,9 +345,21 @@ public sealed record ExpressionResult(object? Value, Diagnostic? Diagnostic);
 public sealed class ProcessExpressionSession : IDisposable
 {
     private static readonly IReadOnlyDictionary<string, object?> NoParameters = ImmutableDictionary<string, object?>.Empty;
-    private readonly IScriptSandboxPool? _pool;
+    private readonly LazySandboxPool? _pool;
 
-    internal ProcessExpressionSession(IScriptSandboxPool? pool) => _pool = pool;
+    internal ProcessExpressionSession(LazySandboxPool? pool, IReadOnlySet<string> compiled, IReadOnlySet<string> conditions)
+    {
+        _pool = pool;
+        Compiled = compiled;
+        Conditions = conditions;
+    }
+
+    /// <summary>The ids of the guards and actions whose expressions, or conditions, compiled (<see cref="ProcessExpressions.Compiled"/>).</summary>
+    public IReadOnlySet<string> Compiled { get; }
+
+    /// <summary>The ids of the guards whose conditions compiled (<see cref="ProcessExpressions.Conditions"/>): evaluate them with
+    /// <see cref="EvaluateCondition"/>.</summary>
+    public IReadOnlySet<string> Conditions { get; }
 
     /// <summary>Evaluates a compiled guard or action expression.</summary>
     /// <param name="id">The guard or action id.</param>
@@ -241,9 +373,10 @@ public sealed class ProcessExpressionSession : IDisposable
     {
         if (_pool is null)
             throw new InvalidOperationException($"{label} has no compiled expression.");
-        using var lease = _pool.Rent();
         try
         {
+            // Renting may load an engine (the session's first, or one after a limit dropped the last): a failure there is this call's.
+            using var lease = _pool.Rent();
             return new ExpressionResult(lease.Sandbox.CallHelper(id, [context, @event], new ScriptCallContext(null, seed, NoParameters, ct)), null);
         }
         catch (ScriptLimitException ex)
@@ -254,6 +387,69 @@ public sealed class ProcessExpressionSession : IDisposable
         {
             return new ExpressionResult(null, RuleCatalog.Create("MQ9502", $"{label} threw: {Detail(ex.Diagnostic.Message)} Fix the expression, for example guard against missing values.", id, null, null));
         }
+    }
+
+    /// <summary>
+    /// Evaluates a compiled guard condition (next-phase-3-design.md section 3.1, "Process guards") over one row: the context's
+    /// attributes by name, and the event's payload under <c>event</c>, every number crossing as its exact text. The answer is
+    /// <see langword="true"/> only when the condition holds; unknown, a null operand among the causes, is <see langword="false"/>.
+    /// </summary>
+    /// <param name="id">The guard id.</param>
+    /// <param name="label">"Guard 'name'", for messages.</param>
+    /// <param name="context">The context object (attribute names to values).</param>
+    /// <param name="event">The event object (<c>name</c>, <c>actor</c>, <c>payload</c>).</param>
+    /// <param name="now">The simulation's clock, an ISO 8601 instant in UTC, which <c>now()</c> reads.</param>
+    /// <param name="seed">The seed of <c>Math.random</c>, which no condition reads.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The result: a <see cref="bool"/>, or MQ9502 or MQ9503.</returns>
+    public ExpressionResult EvaluateCondition(string id, string label, JsonElement context, JsonElement @event, string now, string seed, CancellationToken ct)
+    {
+        if (_pool is null)
+            throw new InvalidOperationException($"{label} has no compiled condition.");
+        var row = Row(context, @event);
+        try
+        {
+            using var lease = _pool.Rent();
+            var value = lease.Sandbox.CallHelper(id, [new ExactJson(row), now], new ScriptCallContext(null, seed, NoParameters, ct));
+            return new ExpressionResult(value is true, null);
+        }
+        catch (ScriptLimitException ex)
+        {
+            return new ExpressionResult(null, RuleCatalog.Create("MQ9503", $"{label} stopped: {Detail(ex.Diagnostic.Message)} Simplify the condition.", id, null, null));
+        }
+        catch (ScriptErrorException ex)
+        {
+            return new ExpressionResult(null, RuleCatalog.Create("MQ9502", $"{label} threw: {Detail(ex.Diagnostic.Message)}", id, null, null));
+        }
+    }
+
+    // The row a condition reads: the context's members, then the payload as event. A context attribute named event gives way to it; no
+    // condition reads one (MQ3102 leaves such a guard unlowered).
+    private static JsonElement Row(JsonElement context, JsonElement @event)
+    {
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            if (context.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var member in context.EnumerateObject())
+                {
+                    if (!string.Equals(member.Name, "event", StringComparison.Ordinal))
+                        member.WriteTo(writer);
+                }
+            }
+
+            writer.WritePropertyName("event");
+            if (@event.ValueKind == JsonValueKind.Object && @event.TryGetProperty("payload", out var payload))
+                payload.WriteTo(writer);
+            else
+                writer.WriteNullValue();
+            writer.WriteEndObject();
+        }
+
+        using var document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.Clone();
     }
 
     /// <summary>Converts an evaluation result to JSON.</summary>

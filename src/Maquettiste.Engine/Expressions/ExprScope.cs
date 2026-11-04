@@ -49,12 +49,32 @@ public sealed record ExprNavigation(string Id, string Name, ExprContainer Target
 /// <param name="Condition">The condition.</param>
 public sealed record ExprConstraint(string Id, string Name, IReadOnlyList<ExprMember> Parameters, Expr Condition);
 
-/// <summary>The members and navigations of one record, context or row.</summary>
+/// <summary>
+/// The members and navigations of one record, context or row. A container a navigation leads to may be filled on its first read, so
+/// a scope follows only the relations an expression names rather than every record reachable from its site. Reads are thread-safe once
+/// the container is built: a resolved condition's scope is read by every thread that prints its text, and the first read fills it once,
+/// under a lock the reads after it do not take.
+/// </summary>
 public sealed class ExprContainer
 {
     private readonly Dictionary<string, ExprMember> _members = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ExprNavigation> _navigations = new(StringComparer.Ordinal);
     private readonly Dictionary<string, object> _byName = new(StringComparer.Ordinal);
+    private readonly Lock? _gate;
+    private Action<ExprContainer>? _fill;
+
+    /// <summary>An empty container.</summary>
+    public ExprContainer()
+    {
+    }
+
+    /// <summary>A container that <paramref name="fill"/> fills on its first read; the fill adds members and navigations, never reads.</summary>
+    /// <param name="fill">Adds the members and navigations.</param>
+    public ExprContainer(Action<ExprContainer> fill)
+    {
+        _fill = fill;
+        _gate = new Lock();
+    }
 
     /// <summary>Adds a member; a second member with the same id or name is ignored.</summary>
     /// <param name="member">The member.</param>
@@ -79,20 +99,38 @@ public sealed class ExprContainer
     }
 
     /// <summary>The members, in the order they were added.</summary>
-    public IEnumerable<ExprMember> Members => _members.Values;
+    public IEnumerable<ExprMember> Members => Filled()._members.Values;
 
     /// <summary>The member with an id, or <see langword="null"/>.</summary>
     /// <param name="id">The id.</param>
     /// <returns>The member.</returns>
-    public ExprMember? Member(string id) => _members.GetValueOrDefault(id);
+    public ExprMember? Member(string id) => Filled()._members.GetValueOrDefault(id);
 
     /// <summary>The navigation with an id, or <see langword="null"/>.</summary>
     /// <param name="id">The id.</param>
     /// <returns>The navigation.</returns>
-    public ExprNavigation? Navigation(string id) => _navigations.GetValueOrDefault(id);
+    public ExprNavigation? Navigation(string id) => Filled()._navigations.GetValueOrDefault(id);
 
     /// <summary>The member or navigation the text names with these segments, or <see langword="null"/>.</summary>
-    internal object? Find(IEnumerable<string> segments) => _byName.GetValueOrDefault(string.Join('\u0001', segments));
+    internal object? Find(IEnumerable<string> segments) => Filled()._byName.GetValueOrDefault(string.Join('\u0001', segments));
+
+    // The fill runs once, under the lock, and the dictionaries are published by the write that clears it: a reader that sees no fill
+    // sees them whole, and a reader that comes while another fills waits for it.
+    private ExprContainer Filled()
+    {
+        if (Volatile.Read(ref _fill) is null)
+            return this;
+        lock (_gate!)
+        {
+            if (_fill is { } fill)
+            {
+                fill(this);
+                Volatile.Write(ref _fill, null);
+            }
+        }
+
+        return this;
+    }
 
     private static string Key(string? prefix, string name) =>
         prefix is null ? name : string.Join('\u0001', prefix.Split('.').Append(name));

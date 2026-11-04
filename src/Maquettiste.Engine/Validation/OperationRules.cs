@@ -7,8 +7,9 @@ namespace Maquettiste.Engine.Validation;
 /// errors its stereotypes contribute (MQ3026, MQ3027) and judging its <c>redefines</c> and <c>excludes</c> entries (MQ2027, MQ2028,
 /// through <see cref="ContributedMembers.CheckLinks"/>); on its sub-elements the rules other kinds' parts take: names (MQ3001, MQ3018),
 /// member facets, defaults and validation rule ids (MQ3013, MQ3019, MQ3017, MQ2007), and stereotypes and tags (MQ2003, MQ2004, MQ2006,
-/// MQ2008, MQ2013 to MQ2015). On a stereotype: MQ3029, MQ3027 and the same name and mark rules on its errors. Every finding is about
-/// the document's own file. Pure functions of the context.
+/// MQ2008, MQ2013 to MQ2015). On a stereotype: MQ3029, MQ3027 and the same name and mark rules on its errors. A guard
+/// (next-phase-3-design.md section 3.1) takes the name and mark rules here; its condition and its error (MQ31xx, MQ3111) are judged by
+/// <see cref="ExpressionRules"/>. Every finding is about the document's own file. Pure functions of the context.
 /// </summary>
 internal static class OperationRules
 {
@@ -83,6 +84,9 @@ internal static class OperationRules
 
         Unique(operation.Outcomes.Select((o, i) => (o.Name, Ptr.At("/outcomes", i), o.Id)), "outcome", "operation '" + operation.Name + "'", report);
         CheckErrors(context, operation, report);
+        for (var i = 0; i < operation.Guards.Count; i++)
+            BuiltinRules.CheckCommon(context, operation.Guards[i], Ptr.At("/guards", i), "guard", report);
+        Unique(operation.Guards.Select((g, i) => (g.Name, Ptr.At("/guards", i), g.Id)), "guard", "operation '" + operation.Name + "'", report);
         CheckDefaultOutcome(context, operation, report);
         if (operation.Effect == OperationEffect.Read)
         {
@@ -342,7 +346,7 @@ internal static class OperationRules
     {
         if (operation.Requires.Count == 0)
             return;
-        var own = ModelValidator.SubElementIds(operation).Prepend(operation.Id).ToHashSet(StringComparer.Ordinal);
+        var own = ModelValidator.SubElementIds(operation).Prepend(operation.Id).Concat(operation.Guards.Select(g => g.Id)).ToHashSet(StringComparer.Ordinal);
         for (var i = 0; i < operation.Requires.Count; i++)
         {
             var id = operation.Requires[i];

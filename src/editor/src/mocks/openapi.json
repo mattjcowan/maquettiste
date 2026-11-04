@@ -1230,7 +1230,7 @@
         ],
         "operationId": "getResolvedModel",
         "summary": "The resolved model as flat records, in pages",
-        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.\n- `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and\n  its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.\n- `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its\n  `message`. An entity's `checks` and a derived attribute's `value` are written in the same expression language: each\n  `ExpressionRecord` has the `text` printed from current names, its `type`, whether it is `nullable` and the `tree` of ids\n  the file holds; a model without expressions has none of these keys.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
+        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards\n  (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order\n  they are checked, each with its `condition` and the `error` it reports.\n- `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and\n  its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.\n- `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its\n  `message`. An entity's `checks`, a derived attribute's `value` and a process or operation guard's `condition` are\n  written in the same expression language: each `ExpressionRecord` has the `text` printed from current names, its `type`,\n  whether it is `nullable` and the `tree` of ids the file holds; a model without expressions has none of these keys.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
         "parameters": [
@@ -13505,7 +13505,7 @@
         }
       },
       "ProcessNodeAnnotations": {
-        "description": "The annotations of a state, transition, event, guard, action, gate or invoke, and of an operation's member, outcome or error.",
+        "description": "The annotations of a state, transition, event, guard, action, gate or invoke, and of an operation's member, outcome, error or guard.",
         "type": "object",
         "required": [
           "displayName",
@@ -15523,16 +15523,22 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "The JavaScript expression; null for a stub or a guard written as a condition."
               },
               "isStub": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "The guard has nothing that runs, neither an expression nor a condition that types."
               },
               "usedBy": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 }
+              },
+              "condition": {
+                "$ref": "#/components/schemas/ExpressionRecord",
+                "description": "The condition written in the expression language, only true passing; absent for a guard without one."
               }
             }
           }
@@ -16157,6 +16163,13 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "guards": {
+                "type": "array",
+                "description": "The guards, in the order they are checked; absent for an operation without any.",
+                "items": {
+                  "$ref": "#/components/schemas/OperationGuardRecord"
+                }
               }
             }
           }
@@ -16617,6 +16630,50 @@
                     "type": "null"
                   }
                 ]
+              }
+            }
+          }
+        ]
+      },
+      "OperationGuardRecord": {
+        "x-engine-record": "Maquettiste.Engine.OperationGuardRecord",
+        "description": "A guard of an operation: a condition it requires before it runs, only true passing, and the error it reports when the condition does not hold.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "condition",
+              "error"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "condition": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ExpressionRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The condition; null when it does not type (validation says why)."
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The id of the error it reports, an inherited error's keyed id."
               }
             }
           }

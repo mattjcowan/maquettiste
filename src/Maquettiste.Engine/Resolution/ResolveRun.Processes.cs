@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Processes;
 
@@ -194,12 +195,34 @@ internal sealed partial class ResolveRun
         }
 
         var guards = new List<RGuard>();
+        Dictionary<string, RAttribute>? readable = null;
         foreach (var source in process.Guards)
         {
-            var guard = Node(new RGuard { Name = source.Name, Expression = source.Expression, IsStub = source.Expression is null }, source.Id);
+            var guard = Node(new RGuard { Name = source.Name, Expression = source.Expression }, source.Id);
             FillNode(guard, source.DisplayName ?? source.Name, source.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
+            if (source.Condition is not null)
+                ResolveCondition(guard, source);
+
+            // A condition that does not type runs no more than a missing one does (simulation asks for an assume value, MQ9306).
+            guard.IsStub = guard.Expression is null && guard.Condition is null;
             if (lookup.Guards.TryAdd(source.Id, guard))
                 guards.Add(guard);
+        }
+
+        // A guard's condition (next-phase-3-design.md section 3.1): typed in the process's scope, its paths ending at the context's and
+        // payloads' attributes; what it names beyond the process (an enum, a seed, a constraint) joins the guard's keys.
+        void ResolveCondition(RGuard guard, ProcessGuard source)
+        {
+            if (ExprResolution.Type(Model, process, source.Id) is not { } typed)
+                return;
+            readable ??= r.Context.Concat(events.SelectMany(ev => ev.Payload)).DistinctBy(a => a.Id, StringComparer.Ordinal)
+                .ToDictionary(a => a.Id, StringComparer.Ordinal);
+            var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Guard,
+                ExprResolution.ApiColumns(Model, source.Id, Model.GetDocument(process.Id)?.Path));
+            guard.Condition = ExprResolution.Build(root, m => AttributeTarget(readable, m.Id), EnumMemberOf);
+            var guardDeps = DepsOf(guard);
+            foreach (var name in ExprResolution.Names(Model, typed.Typed))
+                guardDeps.Element(name);
         }
 
         var actions = new List<RAction>();

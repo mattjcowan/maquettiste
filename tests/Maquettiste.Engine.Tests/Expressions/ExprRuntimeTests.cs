@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Expressions;
+using Maquettiste.Engine.Scripting;
+using Ast = Acornima.Ast;
 using static Maquettiste.Engine.Tests.Expressions.ExprScopes;
 
 namespace Maquettiste.Engine.Tests.Expressions;
@@ -8,6 +10,8 @@ namespace Maquettiste.Engine.Tests.Expressions;
 /// <summary>The JavaScript runtime's semantics, run in the engine's sandbox (next-phase-3-design.md section 3.1, task H3).</summary>
 public sealed class ExprRuntimeTests
 {
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
     /// <summary>Runs one raw function over a row.</summary>
     internal static object? Run(string function, string row = "{}")
     {
@@ -194,5 +198,61 @@ public sealed class ExprRuntimeTests
         Assert.Equal(true, Eval("rate > quantity", """{ "rate": 1.5, "quantity": 1 }""", ExprSiteKind.Guard));
         Assert.Equal(0.30000000000000004, Eval("rate + double '0.2'", """{ "rate": 0.1 }"""));
         Assert.Equal(2.5, Eval("rate + quantity", """{ "rate": 1.5, "quantity": 1 }"""));
+    }
+
+    [Fact]
+    public void Loading_the_runtime_builds_no_regular_expression()
+    {
+        // A sandbox loads the runtime under a wall-clock bound on regular expressions, which a busy machine can pass, so nothing the load
+        // evaluates (the top level, and the body of the function that builds mq) builds one: each sits in a function a call runs.
+        var atLoad = new List<string>();
+        var inCalls = 0;
+        Walk(ExprRuntime.Prepared.Program.Program!, 0);
+        Assert.True(atLoad.Count == 0, "Regular expressions built while the runtime loads, at lines " + string.Join(", ", atLoad));
+        Assert.True(inCalls > 0, "The walk found no regular expression in the runtime's functions, so it does not reach them.");
+
+        void Walk(Ast.Node node, int depth)
+        {
+            if (node is Ast.RegExpLiteral or Ast.NewExpression { Callee: Ast.Identifier { Name: "RegExp" } } or Ast.CallExpression { Callee: Ast.Identifier { Name: "RegExp" } })
+            {
+                if (depth <= 1)
+                    atLoad.Add(node.Location.Start.Line.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                else
+                    inCalls++;
+            }
+
+            foreach (var child in node.ChildNodes)
+                Walk(child, child is Ast.IFunction ? depth + 1 : depth);
+        }
+    }
+
+    [Fact]
+    public void Every_evaluator_loads_the_one_prepared_runtime()
+    {
+        // One prepared copy of the runtime serves every pool; an evaluator's own script registers its functions alone, and they read mq from
+        // the global scope the two scripts share.
+        KeyValuePair<string, string>[] functions = [KeyValuePair.Create("f", "(row) => mq.out(mq.add(mq.dec(mq.at(row, \"a\")), mq.dec(\"1\")))")];
+        Assert.DoesNotContain("const mq", ExprEvaluator.Script(functions), StringComparison.Ordinal);
+        using var first = ExprEvaluator.Create(functions, ct: Ct);
+        using var second = ExprEvaluator.Create(functions, ct: Ct);
+        Assert.Same(ExprRuntime.Prepared, first.Scripts[0]);
+        Assert.Same(first.Scripts[0], second.Scripts[0]);
+        Assert.Equal(ExprRuntime.PreparedPath, first.Scripts[0].Source.Path);
+        using var row = JsonDocument.Parse("""{ "a": 1.5 }""");
+        Assert.Equal("2.5", first.Evaluate("f", row.RootElement, Ct));
+        Assert.Equal("2.5", second.Evaluate("f", row.RootElement, Ct));
+    }
+
+    [Fact]
+    public void A_failure_to_load_is_the_calls_and_the_next_call_tries_again()
+    {
+        // Nothing loads before the first call, so a load that fails is that call's error, which callers report, never Create's.
+        using var evaluator = ExprEvaluator.Create([KeyValuePair.Create("f", "(() => { throw new Error(\"not now\"); })()")], ct: Ct);
+        using var row = JsonDocument.Parse("{}");
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var error = Assert.Throws<ScriptErrorException>(() => evaluator.Evaluate("f", row.RootElement, Ct));
+            Assert.Contains("failed while loading", error.Diagnostic.Message, StringComparison.Ordinal);
+        }
     }
 }

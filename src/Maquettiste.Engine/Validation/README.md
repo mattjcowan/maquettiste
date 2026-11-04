@@ -173,6 +173,12 @@ Tests: `tests/Maquettiste.Engine.Tests/Validation/`; fixtures under `tests/fixtu
   `ResolvedKinds.ObjectsOf` for each rule's kinds, rules ordinal by id, objects in parallel; findings are `x/<id>`,
   placed by `ResolvedLocations.Place` and kept in `ResolvedCheckResult.Findings` (not scripts, so
   `includeScriptRules: false` keeps them). MQ5017 for a rule that selects nothing.
+- An `expression` condition (next-phase-3-design.md section 3.1, task H10) is typed by the static pass alone
+  (`DeclaredRuleChecks.TypedExpressions` reruns it for the evaluator): a `member` path takes the type its end has in the resolved
+  record of the kinds it reads, `properties.x` the type of the first property schema that declares `x` for one of them (a string
+  when none does), and a list or an object is no value. The evaluator lowers each condition that types once per run and runs it
+  in one `ExprEvaluator` (statements only) per rule-file hash, over a row holding the values of its member paths; only true
+  holds, and a condition that does not type holds. Rules without expressions load no runtime.
 
 ## Suppressions (next-phase-2-design.md section 5.6)
 

@@ -254,16 +254,17 @@ export interface paths {
          *       column of each attribute path) and the annotations.
          *     - `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,
          *       `scenarios`: the matching record.
-         *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,
-         *       actions, gates and invokes, actors by id.
+         *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards
+         *       (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id.
          *     - `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,
-         *       `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.
+         *       `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order
+         *       they are checked, each with its `condition` and the `error` it reports.
          *     - `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and
          *       its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.
          *     - `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its
-         *       `message`. An entity's `checks` and a derived attribute's `value` are written in the same expression language: each
-         *       `ExpressionRecord` has the `text` printed from current names, its `type`, whether it is `nullable` and the `tree` of ids
-         *       the file holds; a model without expressions has none of these keys.
+         *       `message`. An entity's `checks`, a derived attribute's `value` and a process or operation guard's `condition` are
+         *       written in the same expression language: each `ExpressionRecord` has the `text` printed from current names, its `type`,
+         *       whether it is `nullable` and the `tree` of ids the file holds; a model without expressions has none of these keys.
          *     - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
          *       indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
          *       for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
@@ -3403,7 +3404,7 @@ export interface components {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
         };
-        /** @description The annotations of a state, transition, event, guard, action, gate or invoke, and of an operation's member, outcome or error. */
+        /** @description The annotations of a state, transition, event, guard, action, gate or invoke, and of an operation's member, outcome, error or guard. */
         ProcessNodeAnnotations: {
             displayName: string;
             description: string | null;
@@ -3852,9 +3853,13 @@ export interface components {
         GuardRecord: components["schemas"]["ProcessNodeAnnotations"] & {
             id: string;
             name: string;
+            /** @description The JavaScript expression; null for a stub or a guard written as a condition. */
             expression: string | null;
+            /** @description The guard has nothing that runs, neither an expression nor a condition that types. */
             isStub: boolean;
             usedBy: string[];
+            /** @description The condition written in the expression language, only true passing; absent for a guard without one. */
+            condition?: components["schemas"]["ExpressionRecord"];
         };
         /** @description An action. */
         ActionRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -3991,6 +3996,8 @@ export interface components {
             errors: components["schemas"]["OperationErrorRecord"][];
             fires: string[];
             requires: string[];
+            /** @description The guards, in the order they are checked; absent for an operation without any. */
+            guards?: components["schemas"]["OperationGuardRecord"][];
         };
         /** @description A resolved custom element (next-phase-2-design.md section 4.2): its custom kind's type, its content as written and every member. */
         CustomRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -4102,6 +4109,15 @@ export interface components {
             input: string | null;
             /** @description Where an inherited error comes from; null for an own error. */
             memberOrigin: components["schemas"]["MemberOriginView"] | null;
+        };
+        /** @description A guard of an operation: a condition it requires before it runs, only true passing, and the error it reports when the condition does not hold. */
+        OperationGuardRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            /** @description The condition; null when it does not type (validation says why). */
+            condition: components["schemas"]["ExpressionRecord"] | null;
+            /** @description The id of the error it reports, an inherited error's keyed id. */
+            error: string | null;
         };
         /** @description A resolved database: every field of the database view (`DatabaseView`) with its kind. */
         DatabaseRecord: components["schemas"]["DatabaseView"] & {

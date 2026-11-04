@@ -6,6 +6,9 @@
 // doubles as numbers; dates (Day), times (Time) and timestamps (Ts, microseconds in UTC); uuids as lower-case strings;
 // JSON documents (Json). Numbers cross in as their exact text: a string, or the object { "$mq.number": text } the
 // engine passes; a plain number is read through its shortest text. A JSON value crosses in as itself.
+//
+// Loading runs no regular expression: every literal sits in the function that matches with it, so the sandbox's time bound on
+// regular expressions applies to a call, which reports a limit, never to the load.
 const mq = (() => {
   "use strict";
   const NUMBER = "$mq.number";
@@ -35,10 +38,8 @@ const mq = (() => {
 
   // Numbers -----------------------------------------------------------------------------------------------------------
 
-  const DEC = /^([+-]?)([0-9]*)(?:\.([0-9]*))?(?:[eE]([+-]?[0-9]+))?$/;
-
   function parseDec(text) {
-    const m = DEC.exec(String(text).trim());
+    const m = /^([+-]?)([0-9]*)(?:\.([0-9]*))?(?:[eE]([+-]?[0-9]+))?$/.exec(String(text).trim());
     if (m === null) return null;
     const whole = m[2], frac = m[3] === undefined ? "" : m[3];
     if (whole === "" && frac === "") return null;
@@ -248,14 +249,10 @@ const mq = (() => {
     return ((h * 60 + mi) * 60 + s) * 1000000 + us;
   }
 
-  const DATE = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/;
-  const TIME = /^([0-9]{1,2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]*))?)?$/;
-  const STAMP = /^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[T ]([0-9]{1,2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]*))?)?)? ?(Z|z|[+-][0-9]{2}(?::?[0-9]{2})?)?$/;
-
   function date(v) {
     if (none(v)) return null;
     if (v instanceof Day) return v;
-    const m = DATE.exec(String(v).trim());
+    const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(String(v).trim());
     if (m === null) return null;
     const d = days(Number(m[1]), Number(m[2]), Number(m[3]));
     return d === null ? null : new Day(d);
@@ -264,7 +261,7 @@ const mq = (() => {
   function time(v) {
     if (none(v)) return null;
     if (v instanceof Time) return v;
-    const m = TIME.exec(String(v).trim());
+    const m = /^([0-9]{1,2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]*))?)?$/.exec(String(v).trim());
     if (m === null) return null;
     const us = clock(Number(m[1]), Number(m[2]), m[3] === undefined ? 0 : Number(m[3]), m[4]);
     return us === null ? null : new Time(us);
@@ -275,7 +272,7 @@ const mq = (() => {
   function stamp(v, zoned) {
     if (none(v)) return null;
     if (v instanceof Ts) return v;
-    const m = STAMP.exec(String(v).trim());
+    const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[T ]([0-9]{1,2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]*))?)?)? ?(Z|z|[+-][0-9]{2}(?::?[0-9]{2})?)?$/.exec(String(v).trim());
     if (m === null) return null;
     const d = days(Number(m[1]), Number(m[2]), Number(m[3]));
     const us = m[4] === undefined ? 0 : clock(Number(m[4]), Number(m[5]), m[6] === undefined ? 0 : Number(m[6]), m[7]);

@@ -117,6 +117,7 @@ public sealed class ResolvedCoverageTests
         new("outcome returns", "operation.json", "$defs/returns", typeof(ROperationReturns)),
         new("error", "common.json", "$defs/operationError", typeof(ROperationError)),
         new("stereotype error", "stereotype.json", "errors/[]", typeof(ROperationError)),
+        new("operation guard", "operation.json", "$defs/guard", typeof(ROperationGuard)),
 
         // Custom elements (next-phase-2-design.md section 4.2).
         new("custom", "custom.json", "", typeof(RCustom)),
@@ -217,11 +218,6 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
-
-        // Expression trees (next-phase-3-design.md section 3.8) are read and checked from the files first; the resolved model
-        // carries checks, entity checks, derived values and constraints (task H7), and from tasks H8 process guards and H10
-        // operation guards.
-        ("guard", "condition"), ("operation", "guards"),
     ];
 
     /// <summary>

@@ -49,7 +49,7 @@ public sealed class ProcessRuntime : IDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         return _sessions.GetOrAdd(chart, c => new Lazy<ProcessExpressionSession?>(() =>
         {
-            var compiled = ProcessExpressions.Get(c.Process);
+            var compiled = ProcessExpressions.Get(Model, c.Process);
             return compiled.Compiled.Count == 0 ? null : compiled.Open(_poolSize, CancellationToken, ProcessExpressions.LimitsIn(Model.Settings.Limits));
         })).Value;
     }

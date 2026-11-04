@@ -402,9 +402,11 @@ numbers as text too.
 
 **Where lowering runs.** A tree check's SQL is lowered during resolution, for the database that holds the table, into
 `RCheck.Expression`, so the sql-ddl pack prints it unchanged. JavaScript is lowered on first read and cached on the
-resolved object. Process guards compile into the process's prepared script with the runtime as a prelude, so their
-cache, limits and sessions are the ones expressions have today. Declared rules that use `expression` share one sandbox
-pool per rule-file hash. Nothing else lowers.
+resolved object. Process guards compile into the process's prepared script, loaded after the runtime, which is
+prepared once for the engine and shared by every sandbox that needs it, so their cache, limits and sessions are the
+ones expressions have today. A process with a condition runs under statement limits only, so a replay never depends
+on the machine's load. Declared rules that use `expression` share one sandbox pool per rule-file hash; a condition
+that cannot answer is MQ5002 or MQ5003 for its rule, not a finding. Nothing else lowers.
 
 #### Use sites
 
@@ -466,7 +468,7 @@ types where the core refuses mixed ones), so a hand conversion must check them.
 | Id | Severity | Rule | Quick fix |
 | --- | --- | --- | --- |
 | MQ3101 | E | An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands. | Fix the text or the node |
-| MQ3102 | E | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, or a payload attribute some using event lacks. | Name a member of the site |
+| MQ3102 | E | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute some using event lacks, or a context attribute named `event`, under which a guard reads the payload. | Name a member of the site |
 | MQ3103 | E | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site result that is not bool, a derived value of another type, a type the core does not have (`float` among them), a `ref` against a value of no enum or reference type, or a code the column it is compared with cannot store. | Use `date_of`, `add_days` or a member of the right type; keep SQL text for `float` |
 | MQ3104 | E | `now` at a check site, a value site or a rule condition, directly or through a constraint. | Move the rule to a guard |
 | MQ3105 | E | A regular expression outside the portable subset. | Rewrite it in the subset |
